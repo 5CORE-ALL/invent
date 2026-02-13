@@ -6350,6 +6350,25 @@ class ChannelMasterController extends Controller
                 ];
             }
 
+            // ==================================================================================
+            // SCALE chart data so the latest value matches the table value
+            // Table uses marketplace_daily_metrics / fetchAdMetricsFromTables as source
+            // Chart uses ChannelMasterSummary which may have different values
+            // ==================================================================================
+            if (!empty($chartData) && !$isAll) {
+                $tableRef = $this->getTableReferenceValue($channel, $metric);
+                if ($tableRef !== null && $tableRef != 0) {
+                    $chartLatest = (float) end($chartData)['value'];
+                    if ($chartLatest != 0 && abs($chartLatest - $tableRef) > 0.01) {
+                        $sf = $tableRef / $chartLatest;
+                        foreach ($chartData as &$pt) {
+                            $pt['value'] = round($pt['value'] * $sf, 2);
+                        }
+                        unset($pt);
+                    }
+                }
+            }
+
             // Smooth out consecutive duplicate values
             $chartData = $this->interpolateChartData($chartData);
 
@@ -6362,6 +6381,73 @@ class ChannelMasterController extends Controller
             \Log::error('getChannelMetricChartData error: ' . $e->getMessage());
             return response()->json(['success' => false, 'message' => 'Error fetching chart data'], 500);
         }
+    }
+
+    /**
+     * Get the "table reference value" for a given channel and metric.
+     * This returns the exact value that the table displays, ensuring charts match.
+     * Table sources: marketplace_daily_metrics for most metrics, fetchAdMetricsFromTables for ad metrics.
+     */
+    private function getTableReferenceValue(string $channel, string $metric): ?float
+    {
+        static $mdmCache = [];
+        static $liveCache = [];
+
+        // Get marketplace_daily_metrics for this channel
+        $mdmKey = strtolower($channel);
+        if (!isset($mdmCache[$mdmKey])) {
+            $channelMap = [
+                'amazon' => 'Amazon', 'amazonfba' => 'Amazon FBA',
+                'ebay' => 'eBay', 'ebaytwo' => 'eBay 2', 'ebaythree' => 'eBay 3',
+                'shopifyb2c' => 'Shopify B2C', 'temu' => 'Temu', 'walmart' => 'Walmart',
+                'tiktokshop' => 'TikTok Shop',
+            ];
+            $mdmChannel = $channelMap[$mdmKey] ?? null;
+            $mdmCache[$mdmKey] = $mdmChannel
+                ? MarketplaceDailyMetric::where('channel', $mdmChannel)->orderBy('date', 'desc')->first()
+                : null;
+        }
+        $mdm = $mdmCache[$mdmKey];
+
+        // For ad metrics, use fetchAdMetricsFromTables (same as table)
+        if (in_array($metric, ['ad_spend', 'clicks', 'ad_sales', 'ad_sold', 'acos', 'ads_cvr'])) {
+            if (!isset($liveCache[$mdmKey])) {
+                $liveCache[$mdmKey] = $this->fetchAdMetricsFromTables($mdmKey);
+            }
+            $live = $liveCache[$mdmKey];
+
+            return match($metric) {
+                'ad_spend' => (float) ($live['Total Ad Spend'] ?? 0),
+                'clicks' => (float) ($live['clicks'] ?? 0),
+                'ad_sales' => (float) ($live['ad_sales'] ?? 0),
+                'ad_sold' => (float) ($live['ad_sold'] ?? 0),
+                'acos' => ($live['ad_sales'] ?? 0) > 0
+                    ? round(((float)($live['Total Ad Spend'] ?? 0) / (float)$live['ad_sales']) * 100, 2)
+                    : null,
+                'ads_cvr' => ($live['clicks'] ?? 0) > 0
+                    ? round(((float)($live['ad_sold'] ?? 0) / (float)$live['clicks']) * 100, 2)
+                    : null,
+                default => null,
+            };
+        }
+
+        if (!$mdm) return null;
+
+        // Map metric to marketplace_daily_metrics field
+        return match($metric) {
+            'l30_sales' => (float) $mdm->total_sales,
+            'l30_orders' => (float) $mdm->total_orders,
+            'qty' => (float) $mdm->total_quantity,
+            'gprofit' => (float) $mdm->pft_percentage,
+            'groi' => (float) $mdm->roi_percentage,
+            'ads_pct' => (float) $mdm->tacos_percentage,
+            'npft' => (float) $mdm->n_pft,
+            'nroi' => $mdm->n_roi !== null ? (float) $mdm->n_roi : null,
+            'pft' => $mdm->total_pft !== null ? (float) $mdm->total_pft : null,
+            'missing_l' => null, // not critical for matching
+            'nmap' => null,
+            default => null,
+        };
     }
 
     /**
@@ -6740,8 +6826,8 @@ class ChannelMasterController extends Controller
 
             // ==================================================================================
             // RATIO-BASED APPROACH: Use ChannelMasterSummary historical totals + today's
-            // breakdown ratios from marketplace_daily_metrics. This gives accurate values
-            // that match the table AND show proper historical trends.
+            // breakdown ratios from live campaign tables (same source as the table display).
+            // This ensures chart values match the table exactly.
             // ==================================================================================
             $metricsChannelMap = [
                 'amazon' => 'Amazon', 'amazonfba' => 'Amazon FBA',
@@ -6752,66 +6838,34 @@ class ChannelMasterController extends Controller
             // ChannelMasterSummary uses the frontend channel name directly (lowercase)
             $summaryChannel = $channel;
 
-            if ($metricsChannel) {
-                // Get today's breakdown from marketplace_daily_metrics
-                $todayMetrics = MarketplaceDailyMetric::where('channel', $metricsChannel)
-                    ->orderBy('date', 'desc')
-                    ->first();
+            // Fetch live metrics from campaign tables (same source as table display)
+            $liveMetrics = $this->fetchAdMetricsFromTables($channel);
 
-                if ($todayMetrics) {
-                    $extra = is_array($todayMetrics->extra_data)
-                        ? $todayMetrics->extra_data
-                        : json_decode($todayMetrics->extra_data, true) ?? [];
+            // Map ad_type to column name prefix
+            $adTypePrefix = match($adType) {
+                'kw' => 'KW', 'pt' => 'PT', 'hl' => 'HL',
+                'pmt' => 'PMT', 'shopping' => 'Shopping', 'serp' => 'SERP',
+                default => 'KW',
+            };
 
-                    // Calculate ratio for each metric type
-                    // For spend: ad_type_spend / total_ad_spend
-                    // For clicks/sales/sold: ad_type_value / total_value (from extra_data)
+            // Extract live values for THIS ad type
+            $adTypeSpend = (float) ($liveMetrics["{$adTypePrefix} Spent"] ?? 0);
+            $adTypeClicks = (float) ($liveMetrics["{$adTypePrefix} Clicks"] ?? 0);
+            $adTypeSales = (float) ($liveMetrics["{$adTypePrefix} Sales"] ?? 0);
+            $adTypeSold = (float) ($liveMetrics["{$adTypePrefix} Sold"] ?? 0);
+
+            // Extract totals from live metrics
+            $totalSpend = (float) ($liveMetrics['Total Ad Spend'] ?? 0);
+            $totalClicks = (float) ($liveMetrics['clicks'] ?? 0);
+            $totalSales = (float) ($liveMetrics['ad_sales'] ?? 0);
+            $totalSold = (float) ($liveMetrics['ad_sold'] ?? 0);
+
+            if ($metricsChannel && ($adTypeSpend > 0 || $adTypeClicks > 0 || $adTypeSales > 0)) {
+                    // Calculate ratios from live campaign data
                     $ratios = [];
-
-                    // SPEND ratio
-                    $adTypeSpend = match($adType) {
-                        'kw' => (float) $todayMetrics->kw_spent,
-                        'pt' => (float) $todayMetrics->pmt_spent,
-                        'hl' => (float) $todayMetrics->hl_spent,
-                        'pmt' => (float) $todayMetrics->pmt_spent,
-                        'shopping' => (float) $todayMetrics->kw_spent,
-                        'serp' => (float) $todayMetrics->pmt_spent,
-                        default => 0,
-                    };
-                    $totalSpend = (float) $todayMetrics->kw_spent + (float) $todayMetrics->pmt_spent + (float) $todayMetrics->hl_spent;
                     $ratios['spend'] = $totalSpend > 0 ? $adTypeSpend / $totalSpend : 0;
-
-                    // CLICKS ratio
-                    $clicksKey = match($adType) {
-                        'kw' => 'kw_clicks', 'pt' => 'pt_clicks', 'hl' => 'hl_clicks',
-                        'pmt' => 'pmt_clicks', 'shopping' => 'shopping_clicks', 'serp' => 'serp_clicks',
-                        default => null,
-                    };
-                    $adTypeClicks = $clicksKey ? (float) ($extra[$clicksKey] ?? 0) : 0;
-                    $totalClicks = 0;
-                    foreach ($extra as $k => $v) { if (str_ends_with($k, '_clicks')) $totalClicks += (float) $v; }
                     $ratios['clicks'] = $totalClicks > 0 ? $adTypeClicks / $totalClicks : 0;
-
-                    // SALES ratio
-                    $salesKey = match($adType) {
-                        'kw' => 'kw_sales', 'pt' => 'pt_sales', 'hl' => 'hl_sales',
-                        'pmt' => 'pmt_sales', 'shopping' => 'shopping_sales', 'serp' => 'serp_sales',
-                        default => null,
-                    };
-                    $adTypeSales = $salesKey ? (float) ($extra[$salesKey] ?? 0) : 0;
-                    $totalSales = 0;
-                    foreach ($extra as $k => $v) { if (str_ends_with($k, '_sales')) $totalSales += (float) $v; }
                     $ratios['sales'] = $totalSales > 0 ? $adTypeSales / $totalSales : 0;
-
-                    // SOLD ratio
-                    $soldKey = match($adType) {
-                        'kw' => 'kw_sold', 'pt' => 'pt_sold', 'hl' => 'hl_sold',
-                        'pmt' => 'pmt_sold', 'shopping' => 'shopping_sold', 'serp' => 'serp_sold',
-                        default => null,
-                    };
-                    $adTypeSold = $soldKey ? (float) ($extra[$soldKey] ?? 0) : 0;
-                    $totalSold = 0;
-                    foreach ($extra as $k => $v) { if (str_ends_with($k, '_sold')) $totalSold += (float) $v; }
                     $ratios['sold'] = $totalSold > 0 ? $adTypeSold / $totalSold : 0;
 
                     // Map metric to ChannelMasterSummary field
@@ -6920,7 +6974,7 @@ class ChannelMasterController extends Controller
                                     }
                                 }
                             } elseif (count($chartData) > 0 && $metric === 'acos') {
-                                // Recalculate ACOS reference from marketplace_daily_metrics
+                                // Recalculate ACOS reference from live campaign data
                                 $refAcos = $adTypeSales > 0 ? round(($adTypeSpend / $adTypeSales) * 100, 1) : 0;
                                 if ($refAcos > 0) {
                                     $lastVal = end($chartData)['value'];
@@ -6956,7 +7010,6 @@ class ChannelMasterController extends Controller
                         }
                         // If not enough data, fall through to rolling approach below
                     }
-                }
             }
 
             // ==================================================================================
@@ -7259,74 +7312,24 @@ class ChannelMasterController extends Controller
             }
 
             // ==================================================================================
-            // SCALE rolling data so the latest value matches the table (marketplace_daily_metrics)
+            // SCALE rolling data so the latest value matches the table (live campaign data)
             // This preserves the trend shape while ensuring absolute values are correct
+            // Uses the same fetchAdMetricsFromTables() source as the table display
             // ==================================================================================
-            if (!empty($chartData) && $metricsChannel) {
-                $todayMdm = $todayMetrics ?? MarketplaceDailyMetric::where('channel', $metricsChannel)
-                    ->orderBy('date', 'desc')->first();
-
-                if ($todayMdm) {
-                    $mdmExtra = is_array($todayMdm->extra_data)
-                        ? $todayMdm->extra_data
-                        : json_decode($todayMdm->extra_data, true) ?? [];
-
-                    // Determine the correct reference value from marketplace_daily_metrics
+            if (!empty($chartData) && ($adTypeSpend > 0 || $adTypeClicks > 0 || $adTypeSales > 0)) {
                     $correctValue = null;
                     if ($metric === 'spend') {
-                        $correctValue = match($adType) {
-                            'kw' => (float) $todayMdm->kw_spent,
-                            'pt' => (float) $todayMdm->pmt_spent,
-                            'hl' => (float) $todayMdm->hl_spent,
-                            'pmt' => (float) $todayMdm->pmt_spent,
-                            'shopping' => (float) $todayMdm->kw_spent,
-                            'serp' => (float) $todayMdm->pmt_spent,
-                            default => null,
-                        };
-                    } elseif (in_array($metric, ['clicks', 'sales', 'sold'])) {
-                        $refKey = match($adType) {
-                            'kw' => 'kw_' . $metric,
-                            'pt' => 'pt_' . $metric,
-                            'hl' => 'hl_' . $metric,
-                            'pmt' => 'pmt_' . $metric,
-                            'shopping' => 'shopping_' . $metric,
-                            'serp' => 'serp_' . $metric,
-                            default => null,
-                        };
-                        $correctValue = $refKey ? (float) ($mdmExtra[$refKey] ?? null) : null;
+                        $correctValue = $adTypeSpend;
+                    } elseif ($metric === 'clicks') {
+                        $correctValue = $adTypeClicks;
+                    } elseif ($metric === 'sales') {
+                        $correctValue = $adTypeSales;
+                    } elseif ($metric === 'sold') {
+                        $correctValue = $adTypeSold;
                     } elseif ($metric === 'acos') {
-                        // ACOS = spend / sales * 100
-                        $refSpend = match($adType) {
-                            'kw' => (float) $todayMdm->kw_spent,
-                            'pt' => (float) $todayMdm->pmt_spent,
-                            'hl' => (float) $todayMdm->hl_spent,
-                            'pmt' => (float) $todayMdm->pmt_spent,
-                            'shopping' => (float) $todayMdm->kw_spent,
-                            'serp' => (float) $todayMdm->pmt_spent,
-                            default => 0,
-                        };
-                        $salesRefKey = match($adType) {
-                            'kw' => 'kw_sales', 'pt' => 'pt_sales', 'hl' => 'hl_sales',
-                            'pmt' => 'pmt_sales', 'shopping' => 'shopping_sales', 'serp' => 'serp_sales',
-                            default => null,
-                        };
-                        $refSales = $salesRefKey ? (float) ($mdmExtra[$salesRefKey] ?? 0) : 0;
-                        $correctValue = $refSales > 0 ? round(($refSpend / $refSales) * 100, 1) : null;
+                        $correctValue = $adTypeSales > 0 ? round(($adTypeSpend / $adTypeSales) * 100, 1) : null;
                     } elseif ($metric === 'cvr') {
-                        // CVR = sold / clicks * 100
-                        $soldRefKey = match($adType) {
-                            'kw' => 'kw_sold', 'pt' => 'pt_sold', 'hl' => 'hl_sold',
-                            'pmt' => 'pmt_sold', 'shopping' => 'shopping_sold', 'serp' => 'serp_sold',
-                            default => null,
-                        };
-                        $clicksRefKey = match($adType) {
-                            'kw' => 'kw_clicks', 'pt' => 'pt_clicks', 'hl' => 'hl_clicks',
-                            'pmt' => 'pmt_clicks', 'shopping' => 'shopping_clicks', 'serp' => 'serp_clicks',
-                            default => null,
-                        };
-                        $refSold = $soldRefKey ? (float) ($mdmExtra[$soldRefKey] ?? 0) : 0;
-                        $refClicks = $clicksRefKey ? (float) ($mdmExtra[$clicksRefKey] ?? 0) : 0;
-                        $correctValue = $refClicks > 0 ? round(($refSold / $refClicks) * 100, 1) : null;
+                        $correctValue = $adTypeClicks > 0 ? round(($adTypeSold / $adTypeClicks) * 100, 1) : null;
                     }
 
                     // Apply scale factor if we have a valid reference value
@@ -7340,7 +7343,6 @@ class ChannelMasterController extends Controller
                             unset($point);
                         }
                     }
-                }
             }
 
             // Smooth out consecutive duplicate values
