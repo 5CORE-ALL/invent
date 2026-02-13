@@ -89,7 +89,7 @@ class EbayThreeController extends Controller
         });
         $skus = array_values($nonParentSkus);
 
-        $ebayMetrics = Ebay3Metric::select('sku', 'ebay_price', 'ebay_l30', 'ebay_l60', 'ebay_stock', 'views', 'item_id', 'lmp_data', 'lmp_link')->whereIn('sku', $skus)->get()->keyBy('sku');
+        $ebayMetrics = Ebay3Metric::select('sku', 'ebay_price', 'ebay_l30', 'ebay_l60', 'ebay_stock', 'views', 'l7_views', 'item_id', 'lmp_data', 'lmp_link')->whereIn('sku', $allSkus)->get()->keyBy('sku');
 
         // Fetch shopify data for these SKUs
         $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
@@ -151,6 +151,156 @@ class EbayThreeController extends Controller
             }
         }
 
+        // Also extract NRL values from EbayThreeDataView for KW Ads section
+        $nrlValues = [];
+        foreach ($ebayDataViews as $sku => $dataView) {
+            $value = is_array($dataView->value) ? $dataView->value : (json_decode($dataView->value, true) ?: []);
+            $nrlValues[$sku] = $value['NRL'] ?? null;
+        }
+
+        // Pre-fetch all KW campaign data from Ebay3PriorityReport (L7, L1, L30)
+        $normalizeSku = function ($sku) {
+            if (empty($sku)) return '';
+            $sku = strtoupper(trim($sku));
+            $sku = preg_replace('/\s+/u', ' ', $sku);
+            $sku = preg_replace('/[^\S\r\n]+/u', ' ', $sku);
+            return trim($sku);
+        };
+
+        $allKwReports = Ebay3PriorityReport::whereIn('report_range', ['L7', 'L1', 'L30'])
+            ->whereIn('campaignStatus', ['RUNNING', 'PAUSED'])
+            ->where('campaign_name', 'NOT LIKE', 'Campaign %')
+            ->where('campaign_name', 'NOT LIKE', 'General - %')
+            ->where('campaign_name', 'NOT LIKE', 'Default%')
+            ->orderByRaw("CASE WHEN campaignStatus = 'RUNNING' THEN 0 ELSE 1 END")
+            ->orderBy('report_range', 'asc')
+            ->get();
+
+        // Index reports by normalized campaign_name and report_range
+        $kwReportsByName = [];
+        foreach ($allKwReports as $report) {
+            $normalizedName = $normalizeSku($report->campaign_name ?? '');
+            if (!isset($kwReportsByName[$normalizedName])) {
+                $kwReportsByName[$normalizedName] = [];
+            }
+            $range = $report->report_range;
+            // Keep first match (RUNNING prioritized due to orderBy)
+            if (!isset($kwReportsByName[$normalizedName][$range])) {
+                $kwReportsByName[$normalizedName][$range] = $report;
+            }
+        }
+
+        // Pre-fetch SBID data (last_sbid, sbid_m, apprSbid)
+        $dayBeforeYesterday = date('Y-m-d', strtotime('-2 days'));
+        $yesterday = date('Y-m-d', strtotime('-1 day'));
+        
+        $lastSbidMap = [];
+        $lastSbidReports = Ebay3PriorityReport::where('report_range', $dayBeforeYesterday)
+            ->where('campaignStatus', 'RUNNING')
+            ->where('campaign_name', 'NOT LIKE', 'Campaign %')
+            ->where('campaign_name', 'NOT LIKE', 'General - %')
+            ->where('campaign_name', 'NOT LIKE', 'Default%')
+            ->get();
+        foreach ($lastSbidReports as $report) {
+            if (!empty($report->campaign_id) && !empty($report->last_sbid)) {
+                $lastSbidMap[$report->campaign_id] = $report->last_sbid;
+            }
+        }
+
+        $sbidMMap = [];
+        $sbidMReports = Ebay3PriorityReport::where(function($q) use ($yesterday) {
+                $q->where('report_range', $yesterday)
+                  ->orWhere('report_range', 'L1');
+            })
+            ->where('campaignStatus', 'RUNNING')
+            ->where('campaign_name', 'NOT LIKE', 'Campaign %')
+            ->where('campaign_name', 'NOT LIKE', 'General - %')
+            ->where('campaign_name', 'NOT LIKE', 'Default%')
+            ->get()
+            ->sortBy(function($report) use ($yesterday) {
+                return $report->report_range === $yesterday ? 0 : 1;
+            })
+            ->groupBy('campaign_id');
+        foreach ($sbidMReports as $campaignId => $reports) {
+            $report = $reports->first();
+            if (!empty($report->campaign_id) && !empty($report->sbid_m)) {
+                $sbidMMap[$report->campaign_id] = $report->sbid_m;
+            }
+        }
+
+        $apprSbidMap = [];
+        $apprSbidReports = Ebay3PriorityReport::where(function($q) use ($yesterday) {
+                $q->where('report_range', $yesterday)
+                  ->orWhere('report_range', 'L1');
+            })
+            ->where('campaignStatus', 'RUNNING')
+            ->where('campaign_name', 'NOT LIKE', 'Campaign %')
+            ->where('campaign_name', 'NOT LIKE', 'General - %')
+            ->where('campaign_name', 'NOT LIKE', 'Default%')
+            ->get()
+            ->sortBy(function($report) use ($yesterday) {
+                return $report->report_range === $yesterday ? 0 : 1;
+            })
+            ->groupBy('campaign_id');
+        foreach ($apprSbidReports as $campaignId => $reports) {
+            $report = $reports->first();
+            if (!empty($report->campaign_id) && !empty($report->apprSbid)) {
+                $apprSbidMap[$report->campaign_id] = $report->apprSbid;
+            }
+        }
+
+        // === PMT Ads pre-fetch: campaign_ads_listings for bid_percentage/suggested_bid ===
+        // Match Ebay3PmtAdsController approach: simple COST_PER_SALE filter, keyBy listing_id
+        $campaignListingsMap = collect();
+        try {
+            $campaignListingsMap = DB::connection('apicentral')
+                ->table('ebay3_campaign_ads_listings')
+                ->select('listing_id', 'bid_percentage', 'suggested_bid')
+                ->where('funding_strategy', 'COST_PER_SALE')
+                ->get()
+                ->keyBy('listing_id');
+        } catch (\Exception $e) {
+            // apicentral may be unavailable
+        }
+
+        // === PMT Ads pre-fetch: general reports for clicks L30 & L7 ===
+        $itemIds = $ebayMetrics->pluck('item_id')->filter()->toArray();
+        $ebay3GeneralReportsL30 = Ebay3GeneralReport::where('report_range', 'L30')
+            ->whereIn('listing_id', $itemIds)
+            ->get();
+        $ebay3GeneralReportsL7 = Ebay3GeneralReport::where('report_range', 'L7')
+            ->whereIn('listing_id', $itemIds)
+            ->get();
+
+        // Build item_id -> SKU map for PMT metrics aggregation
+        $itemIdToSkuMap = [];
+        foreach ($ebayMetrics as $metric) {
+            if (!empty($metric->item_id)) {
+                $itemIdToSkuMap[$metric->item_id] = strtoupper($metric->sku);
+            }
+        }
+
+        // Aggregate PMT L30 metrics by SKU
+        $pmtAdMetricsBySku = [];
+        foreach ($ebay3GeneralReportsL30 as $report) {
+            $reportSku = $itemIdToSkuMap[$report->listing_id] ?? null;
+            if (!$reportSku) continue;
+            $pmtAdMetricsBySku[$reportSku]['Clk'] = ($pmtAdMetricsBySku[$reportSku]['Clk'] ?? 0) + (int) $report->clicks;
+            $pmtAdMetricsBySku[$reportSku]['Imp'] = ($pmtAdMetricsBySku[$reportSku]['Imp'] ?? 0) + (int) $report->impressions;
+            $pmtAdMetricsBySku[$reportSku]['GENERAL_SPENT'] = ($pmtAdMetricsBySku[$reportSku]['GENERAL_SPENT'] ?? 0) + (float) str_replace('USD ', '', $report->ad_fees ?? 0);
+        }
+
+        // Aggregate PMT L7 metrics by SKU
+        $pmtAdMetricsBySkuL7 = [];
+        foreach ($ebay3GeneralReportsL7 as $report) {
+            $reportSku = $itemIdToSkuMap[$report->listing_id] ?? null;
+            if (!$reportSku) continue;
+            $pmtAdMetricsBySkuL7[$reportSku]['Clk'] = ($pmtAdMetricsBySkuL7[$reportSku]['Clk'] ?? 0) + (int) $report->clicks;
+        }
+
+        // Extra clicks data by listing_id
+        $extraClicksData = $ebay3GeneralReportsL30->pluck('clicks', 'listing_id')->toArray();
+
         // First pass: Calculate sums for each parent from child SKUs
         $parentSums = [];
         foreach ($productMasterRows as $productMaster) {
@@ -168,6 +318,7 @@ class EbayThreeController extends Controller
                             'eBay L60' => 0,
                             'eBay Stock' => 0,
                             'views' => 0,
+                            'l7_views' => 0,
                             'totalPrice' => 0,
                             'priceCount' => 0,
                             'totalLP' => 0,
@@ -178,6 +329,11 @@ class EbayThreeController extends Controller
                             'AD_Spend_L30' => 0,
                             'kw_spend_L30' => 0,
                             'pmt_spend_L30' => 0,
+                            // PMT Ads aggregation fields
+                            'pmt_bid_percentage' => null,
+                            'pmt_suggested_bid' => null,
+                            'pmt_clicks_l7' => 0,
+                            'pmt_clicks_l30' => 0,
                         ];
                     }
                     
@@ -193,6 +349,7 @@ class EbayThreeController extends Controller
                         $parentSums[$parentValue]['eBay L60'] += floatval($ebayMetrics[$sku]->ebay_l60 ?? 0);
                         $parentSums[$parentValue]['eBay Stock'] += floatval($ebayMetrics[$sku]->ebay_stock ?? 0);
                         $parentSums[$parentValue]['views'] += floatval($ebayMetrics[$sku]->views ?? 0);
+                        $parentSums[$parentValue]['l7_views'] += floatval($ebayMetrics[$sku]->l7_views ?? 0);
                         
                         // Track price for average calculation (only count non-zero prices)
                         $price = floatval($ebayMetrics[$sku]->ebay_price ?? 0);
@@ -200,6 +357,26 @@ class EbayThreeController extends Controller
                             $parentSums[$parentValue]['totalPrice'] += $price;
                             $parentSums[$parentValue]['priceCount']++;
                         }
+                        
+                        // PMT Ads: pick bid_percentage/suggested_bid from first child that has data
+                        $childItemId = $ebayMetrics[$sku]->item_id ?? null;
+                        if ($childItemId && $parentSums[$parentValue]['pmt_bid_percentage'] === null) {
+                            if (isset($campaignListingsMap[$childItemId])) {
+                                $parentSums[$parentValue]['pmt_bid_percentage'] = $campaignListingsMap[$childItemId]->bid_percentage ?? null;
+                                $parentSums[$parentValue]['pmt_suggested_bid'] = $campaignListingsMap[$childItemId]->suggested_bid ?? null;
+                            }
+                        }
+                        
+                        // PMT clicks aggregation
+                        $childSkuUpper = strtoupper($sku);
+                        $childPmtMetrics = $pmtAdMetricsBySku[$childSkuUpper] ?? [];
+                        $childPmtMetricsL7 = $pmtAdMetricsBySkuL7[$childSkuUpper] ?? [];
+                        $childPmtClicks30 = $childPmtMetrics['Clk'] ?? 0;
+                        if (isset($extraClicksData[$childItemId])) {
+                            $childPmtClicks30 += (int) $extraClicksData[$childItemId];
+                        }
+                        $parentSums[$parentValue]['pmt_clicks_l30'] += $childPmtClicks30;
+                        $parentSums[$parentValue]['pmt_clicks_l7'] += ($childPmtMetricsL7['Clk'] ?? 0);
                     }
                     
                     // Get LP and Ship from product master for averages
@@ -254,7 +431,9 @@ class EbayThreeController extends Controller
                     'totalPrice' => 0, 'priceCount' => 0,
                     'totalLP' => 0, 'totalShip' => 0, 'lpCount' => 0,
                     'Total_pft' => 0, 'T_Sale_l30' => 0,
-                    'AD_Spend_L30' => 0, 'kw_spend_L30' => 0, 'pmt_spend_L30' => 0
+                    'AD_Spend_L30' => 0, 'kw_spend_L30' => 0, 'pmt_spend_L30' => 0,
+                    'pmt_bid_percentage' => null, 'pmt_suggested_bid' => null,
+                    'pmt_clicks_l7' => 0, 'pmt_clicks_l30' => 0
                 ];
                 
                 $row['INV'] = $sums['INV'];
@@ -350,6 +529,7 @@ class EbayThreeController extends Controller
                 // Set defaults for PARENT rows
                 $row['NR'] = null;
                 $row['nr_req'] = 'REQ';
+                $row['NRL'] = null;
                 $row['Listed'] = false;
                 $row['Live'] = false;
                 $row['Hide'] = false;
@@ -359,6 +539,46 @@ class EbayThreeController extends Controller
                 $row['image_path'] = null;
                 $row['lmp_price'] = null;
                 $row['lmp_link'] = null;
+                $row['l7_views'] = $sums['l7_views'] ?? 0;
+                $row['kw_campaign_id'] = '';
+                $row['kw_campaignBudgetAmount'] = 0;
+                $row['kw_campaignStatus'] = '';
+                $row['kw_l7_spend'] = 0;
+                $row['kw_l7_cpc'] = 0;
+                $row['kw_l1_spend'] = 0;
+                $row['kw_l1_cpc'] = 0;
+                $row['kw_acos'] = 0;
+                $row['kw_clicks'] = 0;
+                $row['kw_ad_sold'] = 0;
+                $row['kw_cvr'] = 0;
+                $row['kw_last_sbid'] = '';
+                $row['kw_sbid_m'] = '';
+                $row['kw_apprSbid'] = '';
+                // PMT Ads fields for parent rows
+                // Use PARENT's own Ebay3Metric data (not aggregated children) for PMT columns
+                $parentOwnItemId = $ebayMetric->item_id ?? null;
+                if ($parentOwnItemId && isset($campaignListingsMap[$parentOwnItemId])) {
+                    $row['bid_percentage'] = $campaignListingsMap[$parentOwnItemId]->bid_percentage ?? null;
+                    $row['suggested_bid'] = $campaignListingsMap[$parentOwnItemId]->suggested_bid ?? null;
+                } else {
+                    $row['bid_percentage'] = $sums['pmt_bid_percentage'] ?? null;
+                    $row['suggested_bid'] = $sums['pmt_suggested_bid'] ?? null;
+                }
+                $row['pmt_clicks_l7'] = $sums['pmt_clicks_l7'] ?? 0;
+                $row['pmt_clicks_l30'] = $sums['pmt_clicks_l30'] ?? 0;
+
+                // PARENT's own eBay metric data for PMT section (matches Ebay3PmtAdsController behavior)
+                $row['pmt_own_views'] = $ebayMetric->views ?? 0;
+                $row['pmt_own_l7_views'] = $ebayMetric->l7_views ?? 0;
+                $row['pmt_own_ebay_l30'] = $ebayMetric->ebay_l30 ?? 0;
+                $parentSkuUpper = strtoupper($sku);
+                $parentOwnPmtL30 = $pmtAdMetricsBySku[$parentSkuUpper] ?? [];
+                $parentOwnPmtL7 = $pmtAdMetricsBySkuL7[$parentSkuUpper] ?? [];
+                $row['pmt_own_clicks_l30'] = $parentOwnPmtL30['Clk'] ?? 0;
+                if ($parentOwnItemId && isset($extraClicksData[$parentOwnItemId])) {
+                    $row['pmt_own_clicks_l30'] += (int) $extraClicksData[$parentOwnItemId];
+                }
+                $row['pmt_own_clicks_l7'] = $parentOwnPmtL7['Clk'] ?? 0;
                 $row['lmp_entries'] = [];
                 
                 // Amazon Price - set to 0 for parent rows
@@ -430,9 +650,11 @@ class EbayThreeController extends Controller
                 // NR/REQ and other values
                 $row['NR'] = $nrValues[$sku] ?? null;
                 $row['nr_req'] = $nrReqValues[$sku] ?? 'REQ';
+                $row['NRL'] = $nrlValues[$sku] ?? null;
                 $row['Listed'] = $listedValues[$sku] ?? false;
                 $row['Live'] = $liveValues[$sku] ?? false;
                 $row['Hide'] = $hideValues[$sku] ?? false;
+                $row['l7_views'] = $ebayMetric->l7_views ?? 0;
 
                 // Calculate AD% and other metrics
                 $price = floatval($row['eBay Price'] ?? 0);
@@ -444,29 +666,115 @@ class EbayThreeController extends Controller
                 $adSpendL30 = 0;
                 $kw_spend_l30 = 0;
                 $pmt_spend_l30 = 0;
+                
+                // KW Campaign data defaults
+                $row['kw_campaign_id'] = '';
+                $row['kw_campaignBudgetAmount'] = 0;
+                $row['kw_campaignStatus'] = '';
+                $row['kw_l7_spend'] = 0;
+                $row['kw_l7_cpc'] = 0;
+                $row['kw_l1_spend'] = 0;
+                $row['kw_l1_cpc'] = 0;
+                $row['kw_acos'] = 0;
+                $row['kw_clicks'] = 0;
+                $row['kw_ad_sold'] = 0;
+                $row['kw_cvr'] = 0;
+                $row['kw_last_sbid'] = '';
+                $row['kw_sbid_m'] = '';
+                $row['kw_apprSbid'] = '';
+                // PMT Ads fields for child rows
+                $row['bid_percentage'] = null;
+                $row['suggested_bid'] = null;
+                $row['pmt_clicks_l7'] = 0;
+                $row['pmt_clicks_l30'] = 0;
+                
                 if ($ebayMetric && $ebayMetric->item_id) {
                     // For keyword campaigns (Ebay3PriorityReport), search by PARENT SKU
-                    // Campaigns in eBay3 are named after parent (e.g., "5C DS CHRM" or "PARENT 5C DS CHRM")
+                    // Use pre-fetched data instead of per-SKU queries
                     $parentSku = $row['Parent'] ?? '';
+                    $normalizedParent = $normalizeSku('PARENT ' . $parentSku);
+                    $normalizedParentClean = $normalizeSku($parentSku);
                     
-                    $matchedCampaignL30 = null;
-                    if (!empty($parentSku)) {
-                        // Try exact match with parent first
-                        $matchedCampaignL30 = Ebay3PriorityReport::where('report_range', 'L30')
-                            ->where(function($q) use ($parentSku) {
-                                // Try with "PARENT " prefix
-                                $q->where('campaign_name', 'LIKE', '%' . $parentSku . '%')
-                                  // Also try without "PARENT " prefix if parent starts with "PARENT "
-                                  ->orWhere('campaign_name', 'LIKE', '%' . str_replace('PARENT ', '', $parentSku) . '%');
-                            })
-                            ->first();
-                    }
+                    // Look up pre-fetched campaign data by normalized parent name
+                    $kwReportsForSku = $kwReportsByName[$normalizedParent] ?? ($kwReportsByName[$normalizedParentClean] ?? null);
                     
                     // Fallback: try child SKU if no parent match found
-                    if (!$matchedCampaignL30) {
-                        $matchedCampaignL30 = Ebay3PriorityReport::where('report_range', 'L30')
-                            ->where('campaign_name', 'LIKE', '%' . $sku . '%')
-                            ->first();
+                    if (!$kwReportsForSku) {
+                        $normalizedChild = $normalizeSku($sku);
+                        $kwReportsForSku = $kwReportsByName[$normalizedChild] ?? null;
+                    }
+                    
+                    $matchedCampaignL30 = null;
+                    if ($kwReportsForSku) {
+                        $matchedCampaignL7 = $kwReportsForSku['L7'] ?? null;
+                        $matchedCampaignL1 = $kwReportsForSku['L1'] ?? null;
+                        $matchedCampaignL30 = $kwReportsForSku['L30'] ?? null;
+                        
+                        // Get campaign details from any available report
+                        $anyReport = $matchedCampaignL30 ?? $matchedCampaignL7 ?? $matchedCampaignL1;
+                        if ($anyReport) {
+                            $row['kw_campaign_id'] = $anyReport->campaign_id ?? '';
+                            $row['kw_campaignBudgetAmount'] = $anyReport->campaignBudgetAmount ?? 0;
+                            $row['kw_campaignStatus'] = $anyReport->campaignStatus ?? '';
+                        }
+                        
+                        // L7 data
+                        if ($matchedCampaignL7) {
+                            $row['kw_l7_spend'] = (float) str_replace(['USD ', ','], '', $matchedCampaignL7->cpc_ad_fees_payout_currency ?? '0');
+                            $row['kw_l7_cpc'] = (float) str_replace(['USD ', ','], '', $matchedCampaignL7->cost_per_click ?? '0');
+                        }
+                        
+                        // L1 data
+                        if ($matchedCampaignL1) {
+                            $row['kw_l1_spend'] = (float) str_replace(['USD ', ','], '', $matchedCampaignL1->cpc_ad_fees_payout_currency ?? '0');
+                            $row['kw_l1_cpc'] = (float) str_replace(['USD ', ','], '', $matchedCampaignL1->cost_per_click ?? '0');
+                        }
+                        
+                        // L30 data
+                        if ($matchedCampaignL30) {
+                            $adFees = (float) str_replace(['USD ', ','], '', $matchedCampaignL30->cpc_ad_fees_payout_currency ?? '0');
+                            $sales = (float) str_replace(['USD ', ','], '', $matchedCampaignL30->cpc_sale_amount_payout_currency ?? '0');
+                            $clicks = (int) ($matchedCampaignL30->cpc_clicks ?? 0);
+                            $adSold = (int) ($matchedCampaignL30->cpc_attributed_sales ?? 0);
+                            
+                            $kw_spend_l30 = $adFees;
+                            $row['kw_clicks'] = $clicks;
+                            $row['kw_ad_sold'] = $adSold;
+                            
+                            if ($clicks > 0) {
+                                $row['kw_cvr'] = round(($adSold / $clicks) * 100, 2);
+                            }
+                            if ($sales > 0) {
+                                $row['kw_acos'] = round(($adFees / $sales) * 100, 2);
+                            } elseif ($adFees > 0) {
+                                $row['kw_acos'] = 100;
+                            }
+                        }
+                        
+                        // SBID data
+                        $campaignId = $row['kw_campaign_id'];
+                        if (!empty($campaignId)) {
+                            $row['kw_last_sbid'] = $lastSbidMap[$campaignId] ?? '';
+                            $row['kw_sbid_m'] = $sbidMMap[$campaignId] ?? '';
+                            $row['kw_apprSbid'] = $apprSbidMap[$campaignId] ?? '';
+                        }
+                    } else {
+                        // Fallback for L30 spend only (old approach)
+                        $matchedCampaignL30 = null;
+                        if (!empty($parentSku)) {
+                            $matchedCampaignL30 = Ebay3PriorityReport::where('report_range', 'L30')
+                                ->where(function($q) use ($parentSku) {
+                                    $q->where('campaign_name', 'LIKE', '%' . $parentSku . '%')
+                                      ->orWhere('campaign_name', 'LIKE', '%' . str_replace('PARENT ', '', $parentSku) . '%');
+                                })
+                                ->first();
+                        }
+                        if (!$matchedCampaignL30) {
+                            $matchedCampaignL30 = Ebay3PriorityReport::where('report_range', 'L30')
+                                ->where('campaign_name', 'LIKE', '%' . $sku . '%')
+                                ->first();
+                        }
+                        $kw_spend_l30 = (float) str_replace('USD ', '', $matchedCampaignL30->cpc_ad_fees_payout_currency ?? 0);
                     }
                     
                     // Try to get from Ebay3GeneralReport (promoted listings) - this uses item_id, not parent
@@ -474,7 +782,6 @@ class EbayThreeController extends Controller
                         ->where('listing_id', $ebayMetric->item_id)
                         ->first();
                     
-                    $kw_spend_l30 = (float) str_replace('USD ', '', $matchedCampaignL30->cpc_ad_fees_payout_currency ?? 0);
                     $pmt_spend_l30 = (float) str_replace('USD ', '', $matchedGeneralL30->ad_fees ?? 0);
                     $adSpendL30 = $kw_spend_l30 + $pmt_spend_l30;
                 }
@@ -484,6 +791,31 @@ class EbayThreeController extends Controller
                 $row['spend_l30'] = round($adSpendL30, 2);
                 $row['kw_spend_L30'] = round($kw_spend_l30, 2);
                 $row['pmt_spend_L30'] = round($pmt_spend_l30, 2);
+
+                // === PMT Ads: bid_percentage, suggested_bid, clicks ===
+                // Match Ebay3PmtAdsController: use item_id directly with keyBy collection
+                if ($ebayMetric && $ebayMetric->item_id) {
+                    if (isset($campaignListingsMap[$ebayMetric->item_id])) {
+                        $row['bid_percentage'] = $campaignListingsMap[$ebayMetric->item_id]->bid_percentage ?? null;
+                        $row['suggested_bid'] = $campaignListingsMap[$ebayMetric->item_id]->suggested_bid ?? null;
+                    }
+                    // PMT clicks from aggregated metrics
+                    $skuUpper = strtoupper($sku);
+                    $pmtMetrics = $pmtAdMetricsBySku[$skuUpper] ?? [];
+                    $pmtMetricsL7 = $pmtAdMetricsBySkuL7[$skuUpper] ?? [];
+                    $row['pmt_clicks_l30'] = $pmtMetrics['Clk'] ?? 0;
+                    if (isset($extraClicksData[$ebayMetric->item_id])) {
+                        $row['pmt_clicks_l30'] += (int) $extraClicksData[$ebayMetric->item_id];
+                    }
+                    $row['pmt_clicks_l7'] = $pmtMetricsL7['Clk'] ?? 0;
+                }
+
+                // Child's own PMT data (same as regular data for child rows)
+                $row['pmt_own_views'] = $row['views'];
+                $row['pmt_own_l7_views'] = $ebayMetric->l7_views ?? 0;
+                $row['pmt_own_ebay_l30'] = $ebayMetric->ebay_l30 ?? 0;
+                $row['pmt_own_clicks_l30'] = $row['pmt_clicks_l30'] ?? 0;
+                $row['pmt_own_clicks_l7'] = $row['pmt_clicks_l7'] ?? 0;
                 
                 // Calculate AD% = (AD Spend L30 / (Price * eBay L30)) * 100
                 $totalRevenue = $price * $ebayL30;
@@ -715,6 +1047,16 @@ class EbayThreeController extends Controller
                 $syntheticParent['spend_l30'] = round($adSpendL30, 2);
                 $syntheticParent['kw_spend_L30'] = round($adSpendL30, 2);
                 $syntheticParent['pmt_spend_L30'] = 0;
+                // PMT Ads fields for synthetic parent
+                $syntheticParent['bid_percentage'] = null;
+                $syntheticParent['suggested_bid'] = null;
+                $syntheticParent['pmt_clicks_l7'] = 0;
+                $syntheticParent['pmt_clicks_l30'] = 0;
+                $syntheticParent['pmt_own_views'] = 0;
+                $syntheticParent['pmt_own_l7_views'] = 0;
+                $syntheticParent['pmt_own_ebay_l30'] = 0;
+                $syntheticParent['pmt_own_clicks_l7'] = 0;
+                $syntheticParent['pmt_own_clicks_l30'] = 0;
                 
                 // Calculate AD%
                 $syntheticParent['AD%'] = $salesL30 > 0 ? round(($adSpendL30 / $salesL30) * 100, 4) : 0;

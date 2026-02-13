@@ -2414,14 +2414,6 @@
                                 return 'red';
                             }
 
-                            // Check if UB7 and UB1 colors match
-                            var ub7Color = getUbColor(ub7);
-                            var ub1Color = getUbColor(ub1);
-
-                            if (ub7Color !== ub1Color) {
-                                return '-'; // No SBID suggestion if colors don't match
-                            }
-
                             var sbid = 0;
 
                             // Rule: If both UB7 and UB1 are above 99%, set SBID as L1_CPC * 0.90
@@ -2529,6 +2521,8 @@
                                     sbid = Math.floor(l1_cpc * 0.80 * 100) / 100;
                                 } else if (l1_cpc > 0) {
                                     sbid = Math.floor(l1_cpc * 0.90 * 100) / 100;
+                                } else if (l7_cpc > 0) {
+                                    sbid = Math.floor(l7_cpc * 0.90 * 100) / 100;
                                 } else {
                                     sbid = 0.50;
                                 }
