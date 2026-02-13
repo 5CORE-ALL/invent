@@ -471,6 +471,9 @@ class StockAdjustmentController extends Controller
             $rowNumber = 0;
 
             if (($handle = fopen($file->getRealPath(), 'r')) !== false) {
+                // Set UTF-8 encoding
+                stream_filter_append($handle, 'convert.iconv.UTF-8/UTF-8//IGNORE');
+                
                 // Read header
                 $header = fgetcsv($handle);
                 
@@ -479,6 +482,11 @@ class StockAdjustmentController extends Controller
                         'success' => false,
                         'message' => 'CSV file is empty or invalid'
                     ], 422);
+                }
+
+                // Remove BOM if present
+                if (isset($header[0])) {
+                    $header[0] = preg_replace('/^\x{FEFF}/u', '', $header[0]);
                 }
 
                 // Normalize header
@@ -511,11 +519,12 @@ class StockAdjustmentController extends Controller
                         continue; // Skip empty rows
                     }
 
-                    $sku = isset($row[$skuIndex]) ? trim($row[$skuIndex]) : null;
+                    // Clean and decode values
+                    $sku = isset($row[$skuIndex]) ? trim(mb_convert_encoding($row[$skuIndex], 'UTF-8', 'UTF-8')) : null;
                     $qty = isset($row[$qtyIndex]) ? trim($row[$qtyIndex]) : null;
-                    $warehouseName = $warehouseIndex !== false && isset($row[$warehouseIndex]) ? trim($row[$warehouseIndex]) : null;
-                    $adjustmentType = $adjustmentIndex !== false && isset($row[$adjustmentIndex]) ? trim($row[$adjustmentIndex]) : 'Add';
-                    $reason = $reasonIndex !== false && isset($row[$reasonIndex]) ? trim($row[$reasonIndex]) : null;
+                    $warehouseName = $warehouseIndex !== false && isset($row[$warehouseIndex]) ? trim(mb_convert_encoding($row[$warehouseIndex], 'UTF-8', 'UTF-8')) : null;
+                    $adjustmentType = $adjustmentIndex !== false && isset($row[$adjustmentIndex]) ? trim(mb_convert_encoding($row[$adjustmentIndex], 'UTF-8', 'UTF-8')) : 'Add';
+                    $reason = $reasonIndex !== false && isset($row[$reasonIndex]) ? trim(mb_convert_encoding($row[$reasonIndex], 'UTF-8', 'UTF-8')) : null;
 
                     if (empty($sku) || $qty === null || $qty === '') {
                         $errors[] = "Row {$rowNumber}: SKU or Quantity is empty";
