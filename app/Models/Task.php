@@ -113,26 +113,5 @@ class Task extends Model
         return $this->belongsTo(User::class, 'assign_to', 'name');
     }
 
-    // Proper relationships (when assignor_id/assignee_id columns exist)
-    public function assignor()
-    {
-        return $this->belongsTo(User::class, 'assignor_id');
-    }
-
-    public function assignee()
-    {
-        return $this->belongsTo(User::class, 'assignee_id');
-    }
-
-    // For backward compatibility with assign_to/assignor text fields
-    public function getAssigneeNameAttribute()
-    {
-        return $this->assignee?->name ?? $this->attributes['assign_to'] ?? $this->assign_to ?? '-';
-    }
-
-    public function getAssignorNameAttribute()
-    {
-        $assignorUser = $this->assignor;
-        return $assignorUser?->name ?? ($this->attributes['assignor'] ?? '-');
-    }
+   
 }
