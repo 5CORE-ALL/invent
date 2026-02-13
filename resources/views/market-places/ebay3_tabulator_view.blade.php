@@ -64,13 +64,33 @@
         .badge.bg-ebay3 {
             background-color: #6f42c1 !important;
         }
+
+        /* Frozen columns need solid background to prevent overlap on horizontal scroll */
+        .tabulator .tabulator-header .tabulator-frozen {
+            background-color: #00d5d5 !important;
+            z-index: 11 !important;
+        }
+        .tabulator-row .tabulator-frozen {
+            background-color: #fff !important;
+            z-index: 11 !important;
+        }
+        .tabulator .tabulator-footer .tabulator-frozen {
+            background-color: #fff !important;
+            z-index: 11 !important;
+        }
         
         /* PARENT row light blue background */
         .tabulator-row.parent-row {
-            background-color: rgba(69, 233, 255, 0.25) !important;
+            background-color: #d4f8fc !important;
+        }
+        .tabulator-row.parent-row .tabulator-frozen {
+            background-color: #d4f8fc !important;
         }
         .tabulator-row.parent-row:hover {
-            background-color: rgba(69, 233, 255, 0.35) !important;
+            background-color: #bef3f9 !important;
+        }
+        .tabulator-row.parent-row:hover .tabulator-frozen {
+            background-color: #bef3f9 !important;
         }
 
         .acos-info-icon {
