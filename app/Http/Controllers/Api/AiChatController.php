@@ -31,9 +31,6 @@ class AiChatController extends Controller
     }
 
 
-    /**
-     * Internal support agent: KB first, then OpenAI; if OpenAI is not confident or fails, escalate to senior.
-     */
     public function chat(Request $request): JsonResponse
     {
         try {
@@ -44,9 +41,31 @@ class AiChatController extends Controller
             $question = $this->sanitizeInput($validated['question']);
             $user = $request->user();
 
+<<<<<<< Updated upstream
             $taskResponse = $this->handleTaskQuery($question, $user);
             if ($taskResponse) {
                 return $taskResponse;
+=======
+            // FIX 1: Hardcoded answers for company/product queries
+            $hardcodedAnswer = $this->getHardcodedCompanyAnswer($question);
+            if ($hardcodedAnswer !== null) {
+                $record = null;
+                try {
+                    if (\Illuminate\Support\Facades\Schema::hasTable('ai_questions')) {
+                        $record = AiQuestion::create([
+                            'user_id' => $user->id,
+                            'question' => $question,
+                            'ai_answer' => $hardcodedAnswer,
+                        ]);
+                    }
+                } catch (\Exception $e) {
+                }
+                return response()->json([
+                    'answer' => $hardcodedAnswer,
+                    'id' => $record?->id,
+                    'status' => 'answered',
+                ]);
+>>>>>>> Stashed changes
             }
 
             $kbMatch = $this->searchKnowledgeBase($question);
@@ -106,6 +125,7 @@ class AiChatController extends Controller
         }
     }
 
+<<<<<<< Updated upstream
     /**
      * Handle task inquiry questions. Returns JsonResponse if it's a task question, null otherwise.
      */
@@ -304,6 +324,22 @@ class AiChatController extends Controller
                 return null;
             }
 
+=======
+    /** Minimum score (FIX 5) to accept a KB match and avoid wrong/mixed responses. */
+    private const KNOWLEDGE_BASE_MIN_SCORE = 5;
+
+    private function searchKnowledgeBase(string $question): ?AiKnowledgeBase
+    {
+        try {
+            $qLower = strtolower(trim($question));
+            $words = preg_split('/\s+/', $qLower, -1, PREG_SPLIT_NO_EMPTY);
+            $words = array_values(array_filter($words, fn($w) => strlen($w) >= 2));
+
+            if (empty($words)) {
+                return null;
+            }
+
+>>>>>>> Stashed changes
             if (!\Illuminate\Support\Facades\Schema::hasTable('ai_knowledge_base')) {
                 return null;
             }
@@ -317,23 +353,57 @@ class AiChatController extends Controller
             $bestScore = 0;
 
             foreach ($entries as $entry) {
-                $pattern = strtolower($entry->question_pattern);
+                $pattern = strtolower(trim($entry->question_pattern ?? ''));
                 $tags = $entry->tags ?? [];
-                $allTerms = array_merge([$pattern], is_array($tags) ? $tags : []);
+                $tags = is_array($tags) ? array_map('strtolower', array_filter($tags, 'is_string')) : [];
+                $category = strtolower(trim($entry->category ?? ''));
+                $subcategory = strtolower(trim($entry->subcategory ?? ''));
 
-                $score = 0;
+                // Word match: question words found in pattern or tags
+                $wordScore = 0;
                 foreach ($words as $word) {
-                    if (strlen($word) < 2) continue;
-
-                    foreach ($allTerms as $term) {
-                        if (is_string($term) && str_contains($term, $word)) {
-                            $score++;
+                    if (str_contains($pattern, $word)) {
+                        $wordScore += 2; // pattern match weighted higher
+                        continue;
+                    }
+                    foreach ($tags as $tag) {
+                        if (str_contains($tag, $word) || str_contains($word, $tag)) {
+                            $wordScore += 1;
                             break;
                         }
                     }
                 }
 
-                if ($score > $bestScore && $score >= 1) {
+                // similar_text: 0–100, scale to 0–5 points (FIX 2)
+                $similarity = 0;
+                if ($pattern !== '') {
+                    similar_text($qLower, $pattern, $percent);
+                    $similarity = (float) $percent;
+                }
+                $similarityScore = min(5, round($similarity / 20)); // 100% => 5, 40% => 2
+
+                // Tag match: question contains a full tag (e.g. "invoice" in question)
+                $tagMatchScore = 0;
+                foreach ($tags as $tag) {
+                    if ($tag === '' || strlen($tag) < 2) continue;
+                    if (str_contains($qLower, $tag)) {
+                        $tagMatchScore += 2;
+                    }
+                }
+                $tagMatchScore = min(5, $tagMatchScore);
+
+                // Category/subcategory in question (bonus)
+                $categoryScore = 0;
+                if ($category !== '' && str_contains($qLower, $category)) {
+                    $categoryScore += 1;
+                }
+                if ($subcategory !== '' && str_contains($qLower, $subcategory)) {
+                    $categoryScore += 1;
+                }
+
+                $score = $wordScore + $similarityScore + $tagMatchScore + $categoryScore;
+
+                if ($score > $bestScore && $score >= self::KNOWLEDGE_BASE_MIN_SCORE) {
                     $bestScore = $score;
                     $best = $entry;
                 }
@@ -343,6 +413,37 @@ class AiChatController extends Controller
         } catch (\Throwable $e) {
             return null;
         }
+    }
+
+    /**
+     * FIX 1: Hardcoded answers for "What is 5 Core", "What is Oops", etc.
+     */
+    private function getHardcodedCompanyAnswer(string $question): ?string
+    {
+        $q = preg_replace('/\s+/', ' ', strtolower(trim($question)));
+        $q = trim($q);
+
+        // 5Core / 5 Core
+        if (preg_match('/\b(what|who|tell me about)\s+is\s+(5\s*core|5core)\b/i', $q)
+            || preg_match('/\b(5\s*core|5core)\s*[?\s]*(what|who|about)/i', $q)
+            || $q === 'what is 5 core'
+            || $q === 'what is 5core'
+            || $q === 'who is 5core'
+            || str_contains($q, 'what is 5 core')
+            || str_contains($q, 'what is 5core')) {
+            return "5Core is our company and product platform. It provides integrated solutions for business operations including tasks, HR, sales, invoicing, and workflows. For specific how-to steps, ask a detailed question or check the knowledge base.";
+        }
+
+        // Oops (OOP / product name – adjust wording to your actual product)
+        if (preg_match('/\b(what|who|tell me about)\s+is\s+(oops?|oop)\b/i', $q)
+            || $q === 'what is oops'
+            || $q === 'what is oop'
+            || str_contains($q, 'what is oops')
+            || str_contains($q, 'what is oop')) {
+            return "Oops (OOP) in our context refers to Object-Oriented Programming principles used in our systems, or the related product/module name. For feature-specific steps, ask a detailed question (e.g. how to create an invoice, how to apply leave).";
+        }
+
+        return null;
     }
 
     private function formatAnswerSteps($answerSteps, ?string $videoLink = null): string
@@ -397,20 +498,24 @@ class AiChatController extends Controller
         return $emails[$domain] ?? $emails['General'] ?? 'support@5core.com';
     }
 
-    private const CLAUDE_SYSTEM_PROMPT = "You are 5Core AI Assistant, an internal support agent for 5Core team members. " .
-        "Answer questions about 5Core products, processes, and workflows. " .
-        "For greetings like 'hi', 'hello', 'hey', 'thanks', 'good morning' - respond politely and warmly. " .
-        "Keep responses professional, friendly, and concise in English. " .
-        "IMPORTANT: If you don't know the answer or the question is about IT, VPN, server, network, or anything outside 5Core scope, " .
-        "you MUST say: 'I don't have this information.' Do NOT give long explanations or recommendations to contact IT. " .
-        "Just say 'I don't have this information.' and the system will escalate. " .
-        "Do NOT say 'I'm afraid' or 'I recommend checking with IT' - just say you don't have the information.";
+    /** FIX 3: System prompt with accurate 5Core product/company info for consistent answers. */
+    private const CLAUDE_SYSTEM_PROMPT = "You are 5Core AI Assistant, an internal support agent for 5Core team members. "
 
-    /**
-     * Call OpenAI Chat API. Returns ['answer' => string, 'confident' => bool] or null on failure.
-     * Confident is false if answer indicates uncertainty (so we escalate).
-     */
+        . "ABOUT 5CORE: 5Core is the company and product platform. It provides integrated business solutions: Tasks (assignment, due dates, dashboard), HR (leave, attendance), Sales (invoicing, billing, clients), and general workflows. "
 
+        . "When users ask 'What is 5Core' or 'What is 5 Core', answer: 5Core is our company and product platform that provides integrated solutions for tasks, HR, sales, invoicing, and workflows. Keep it to 1-2 sentences unless they ask for more. "
+
+        . "When users ask about 'Oops' or 'OOP', clarify: in our context it can mean Object-Oriented Programming in our systems or a related product/module; suggest they ask a specific how-to question if they need steps. "
+
+        . "Answer questions about 5Core products, processes, and workflows using the above. For greetings like 'hi', 'hello', 'hey', 'thanks', 'good morning' - respond politely and warmly. "
+        . "Keep responses professional, friendly, and concise in English. "
+
+        . "IMPORTANT: If you don't know the answer or the question is about IT, VPN, server, network, or anything outside 5Core scope, "
+        . "you MUST say: 'I don't have this information.' Do NOT give long explanations or recommendations to contact IT. "
+        . "Just say 'I don't have this information.' and the system will escalate. "
+        . "Do NOT say 'I'm afraid' or 'I recommend checking with IT' - just say you don't have the information.";
+
+    
     private function callClaude(string $question): ?array
     {
         $apiKey = config('services.anthropic.key');
@@ -472,12 +577,10 @@ class AiChatController extends Controller
         }
     }
 
-
     private function isAnswerUncertain(string $answer): bool
     {
         $lower = strtolower($answer);
 
-        // ✅ GREETINGS ARE CONFIDENT
         $greetings = ['hi', 'hello', 'hey', 'thanks', 'thank you', 'good morning', 'good afternoon', 'good evening'];
         foreach ($greetings as $greeting) {
             if (trim($lower) === $greeting || str_starts_with($lower, $greeting . ' ') || str_contains($lower, ' ' . $greeting . ' ')) {
@@ -552,7 +655,7 @@ class AiChatController extends Controller
             return true;
         }
 
-        return false; // Confident
+        return false; 
     }
 
     private function escalateToSenior(string $question, $user): JsonResponse
@@ -613,10 +716,21 @@ class AiChatController extends Controller
         ]);
 
         try {
+<<<<<<< Updated upstream
             $this->processCSVTraining(storage_path('app/' . $path), $record->id);
             $record->update(['status' => 'processed', 'processed_at' => now()]);
 
             return response()->json(['success' => true, 'message' => 'File uploaded and processed successfully.']);
+=======
+            $entriesAdded = $this->processCSVTraining(storage_path('app/' . $path), $record->id);
+            $record->update(['status' => 'processed', 'processed_at' => now()]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'File uploaded and processed successfully.',
+                'entries_added' => $entriesAdded,
+            ]);
+>>>>>>> Stashed changes
         } catch (\Throwable $e) {
             $record->update(['status' => 'failed']);
 
@@ -628,7 +742,10 @@ class AiChatController extends Controller
         }
     }
 
-    private function processCSVTraining(string $filePath, int $fileId): void
+    /**
+     * Process CSV and insert into ai_knowledge_base. Returns number of entries added (FIX 4).
+     */
+    private function processCSVTraining(string $filePath, int $fileId): int
     {
         $content = file_get_contents($filePath);
         $bom = "\xef\xbb\xbf";
@@ -636,6 +753,10 @@ class AiChatController extends Controller
             $content = substr($content, 3);
             file_put_contents($filePath, $content);
         }
+<<<<<<< Updated upstream
+=======
+
+>>>>>>> Stashed changes
         $content = str_replace("\0", '', $content);
         file_put_contents($filePath, $content);
 
@@ -644,11 +765,10 @@ class AiChatController extends Controller
             throw new \RuntimeException('Could not open file.');
         }
 
-        // 🔥 FIX: Skip empty lines
         $header = null;
         while (($row = fgetcsv($handle)) !== false) {
             if ($row === [null] || empty(array_filter($row))) {
-                continue; // Skip empty lines
+                continue;
             }
             $header = $row;
             break;
@@ -675,6 +795,10 @@ class AiChatController extends Controller
             throw new \RuntimeException('CSV must have a question_pattern column.');
         }
 
+<<<<<<< Updated upstream
+=======
+        $entriesAdded = 0;
+>>>>>>> Stashed changes
         while (($row = fgetcsv($handle)) !== false) {
             try {
                 $category = isset($map['category']) ? trim($row[$map['category']] ?? '') : 'General';
@@ -703,12 +827,20 @@ class AiChatController extends Controller
                     'video_link' => $video_link ?: null,
                     'tags' => $tags,
                 ]);
+<<<<<<< Updated upstream
+=======
+                $entriesAdded++;
+>>>>>>> Stashed changes
             } catch (\Throwable $e) {
                 throw $e;
             }
         }
 
         fclose($handle);
+<<<<<<< Updated upstream
+=======
+        return $entriesAdded;
+>>>>>>> Stashed changes
     }
     public function checkNotifications(Request $request): JsonResponse
     {
@@ -757,9 +889,7 @@ class AiChatController extends Controller
         return response()->json(['success' => true]);
     }
 
-    /**
-     * Download sample CSV for AI training upload format.
-     */
+  
     public function downloadSampleCsv()
     {
         $headers = [
@@ -779,7 +909,25 @@ class AiChatController extends Controller
             // Headers - EXACT format
             fputcsv($handle, ['category', 'subcategory', 'question_pattern', 'answer_steps', 'video_link', 'tags']);
 
-            // Sample Row 1: Task
+            // 5Core company info (train bot for "What is 5 Core" type questions)
+            fputcsv($handle, [
+                'Company',
+                'About',
+                'what is 5core what is 5 core',
+                '["5Core is our company and product platform.", "It provides integrated solutions: Tasks, HR, Sales, Invoicing, and workflows.", "Ask specific how-to questions for step-by-step guides."]',
+                '',
+                '["5core", "5 core", "company", "about"]'
+            ]);
+            fputcsv($handle, [
+                'Company',
+                'Products',
+                'what is oops what is oop',
+                '["Oops/OOP in our context refers to Object-Oriented Programming or the related product module.", "For feature steps, ask e.g. how to create invoice, how to apply leave."]',
+                '',
+                '["oops", "oop", "product"]'
+            ]);
+
+            // Task
             fputcsv($handle, [
                 'Task',
                 'Assignment',
@@ -789,7 +937,7 @@ class AiChatController extends Controller
                 '["task", "assign", "dashboard"]'
             ]);
 
-            // Sample Row 2: HR - Leave
+            // HR - Leave
             fputcsv($handle, [
                 'HR',
                 'Leave',
@@ -799,7 +947,7 @@ class AiChatController extends Controller
                 '["leave", "hr", "attendance"]'
             ]);
 
-            // Sample Row 3: Sales - Invoice
+            // Sales - Invoice
             fputcsv($handle, [
                 'Sales',
                 'Invoicing',
