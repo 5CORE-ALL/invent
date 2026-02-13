@@ -266,7 +266,9 @@ class ChannelMasterController extends Controller
     private function fetchEbayAdSpendBreakdownFromTables(string $channel): array
     {
         $channel = strtolower(trim($channel));
-        $thirtyDaysAgo = Carbon::now()->subDays(30)->format('Y-m-d');
+        // Use 31 days to match eBay Seller Hub "last 31 days" view
+        $startDate = Carbon::now()->subDays(31)->format('Y-m-d');
+        $endDate = Carbon::now()->format('Y-m-d');
 
         $kwTable = match ($channel) {
             'ebay' => 'ebay_priority_reports',
@@ -285,26 +287,32 @@ class ChannelMasterController extends Controller
             return ['kw' => 0.0, 'pmt' => 0.0];
         }
 
+        // Sum daily reports (individual date report_ranges) instead of L30 aggregate
+        // Daily data is closer to eBay Seller Hub dashboard values
         if ($channel === 'ebaythree') {
             $kwSpent = (float) DB::table($kwTable)
-                ->where('report_range', 'L30')
-                ->whereDate('updated_at', '>=', $thirtyDaysAgo)
+                ->where('report_range', '>=', $startDate)
+                ->where('report_range', '<=', $endDate)
+                ->where('report_range', 'NOT LIKE', 'L%')
                 ->get()
                 ->sum(fn ($r) => (float) preg_replace('/[^\d.]/', '', $r->cpc_ad_fees_payout_currency ?? '0'));
             $pmtSpent = (float) DB::table($pmtTable)
-                ->where('report_range', 'L30')
-                ->whereDate('updated_at', '>=', $thirtyDaysAgo)
+                ->where('report_range', '>=', $startDate)
+                ->where('report_range', '<=', $endDate)
+                ->where('report_range', 'NOT LIKE', 'L%')
                 ->get()
                 ->sum(fn ($r) => (float) preg_replace('/[^\d.]/', '', $r->ad_fees ?? '0'));
         } else {
             $kwSpent = (float) DB::table($kwTable)
-                ->where('report_range', 'L30')
-                ->whereDate('updated_at', '>=', $thirtyDaysAgo)
+                ->where('report_range', '>=', $startDate)
+                ->where('report_range', '<=', $endDate)
+                ->where('report_range', 'NOT LIKE', 'L%')
                 ->selectRaw('COALESCE(SUM(REPLACE(REPLACE(cpc_ad_fees_payout_currency, "USD ", ""), ",", "")), 0) as total')
                 ->value('total') ?? 0;
             $pmtSpent = (float) DB::table($pmtTable)
-                ->where('report_range', 'L30')
-                ->whereDate('updated_at', '>=', $thirtyDaysAgo)
+                ->where('report_range', '>=', $startDate)
+                ->where('report_range', '<=', $endDate)
+                ->where('report_range', 'NOT LIKE', 'L%')
                 ->selectRaw('COALESCE(SUM(REPLACE(REPLACE(ad_fees, "USD ", ""), ",", "")), 0) as total')
                 ->value('total') ?? 0;
         }
@@ -456,7 +464,10 @@ class ChannelMasterController extends Controller
                 case 'ebay':
                 case 'ebaytwo':
                 case 'ebaythree': {
-                    $thirtyDaysAgo = Carbon::now()->subDays(30)->format('Y-m-d');
+                    // Use daily data sum (individual date report_ranges) instead of L30 aggregate
+                    // Daily data is closer to eBay Seller Hub dashboard values
+                    $startDate = Carbon::now()->subDays(31)->format('Y-m-d');
+                    $endDate = Carbon::now()->format('Y-m-d');
                     $kwTable = match ($channel) {
                         'ebay' => 'ebay_priority_reports',
                         'ebaytwo' => 'ebay_2_priority_reports',
@@ -471,10 +482,16 @@ class ChannelMasterController extends Controller
                     };
                     if (!$kwTable || !$pmtTable) return $defaults;
 
-                    $kw = DB::table($kwTable)->where('report_range', 'L30')->whereDate('updated_at', '>=', $thirtyDaysAgo)
+                    $kw = DB::table($kwTable)
+                        ->where('report_range', '>=', $startDate)
+                        ->where('report_range', '<=', $endDate)
+                        ->where('report_range', 'NOT LIKE', 'L%')
                         ->selectRaw('COALESCE(SUM(cpc_clicks), 0) as c, COALESCE(SUM(REPLACE(REPLACE(cpc_sale_amount_payout_currency, "USD ", ""), ",", "")), 0) as s, COALESCE(SUM(cpc_attributed_sales), 0) as u, COALESCE(SUM(REPLACE(REPLACE(cpc_ad_fees_payout_currency, "USD ", ""), ",", "")), 0) as sp')
                         ->first();
-                    $pmt = DB::table($pmtTable)->where('report_range', 'L30')->whereDate('updated_at', '>=', $thirtyDaysAgo)
+                    $pmt = DB::table($pmtTable)
+                        ->where('report_range', '>=', $startDate)
+                        ->where('report_range', '<=', $endDate)
+                        ->where('report_range', 'NOT LIKE', 'L%')
                         ->selectRaw('COALESCE(SUM(clicks), 0) as c, COALESCE(SUM(REPLACE(REPLACE(sale_amount, "USD ", ""), ",", "")), 0) as s, COALESCE(SUM(sales), 0) as u, COALESCE(SUM(REPLACE(REPLACE(ad_fees, "USD ", ""), ",", "")), 0) as sp')
                         ->first();
 

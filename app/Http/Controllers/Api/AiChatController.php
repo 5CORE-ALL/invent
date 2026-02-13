@@ -16,7 +16,6 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
 
 class AiChatController extends Controller
@@ -42,9 +41,12 @@ class AiChatController extends Controller
             $question = $this->sanitizeInput($validated['question']);
             $user = $request->user();
 
+
             Log::info('🚀 CHAT REQUEST', ['user' => $user->email, 'question' => $question]);
             Log::info('🌐 ENV CHECK', ['APP_ENV' => config('app.env'), 'APP_URL' => config('app.url')]);
 
+
+            // FIX 1: Hardcoded answers for company/product queries
             $hardcodedAnswer = $this->getHardcodedCompanyAnswer($question);
             if ($hardcodedAnswer !== null) {
                 $record = null;
@@ -65,10 +67,7 @@ class AiChatController extends Controller
                 ]);
             }
 
-            Log::info('🔍 KB SEARCH', ['question' => $question]);
-            Log::info('📊 KB COUNT', ['count' => \Illuminate\Support\Facades\Schema::hasTable('ai_knowledge_base') ? AiKnowledgeBase::count() : 0]);
             $kbMatch = $this->searchKnowledgeBase($question);
-            Log::info('📚 KB RESULT', ['found' => $kbMatch ? 'YES' : 'NO']);
 
             if ($kbMatch) {
                 $record = null;
@@ -92,9 +91,7 @@ class AiChatController extends Controller
                 ]);
             }
 
-            Log::info('🤖 CALLING CLAUDE', ['question' => $question]);
             $claudeResult = $this->callClaude($question);
-            Log::info('✅ CLAUDE RESPONSE', ['confident' => $claudeResult['confident'] ?? false]);
 
             if ($claudeResult && $claudeResult['confident']) {
                 $answer = $claudeResult['answer'];
@@ -116,8 +113,6 @@ class AiChatController extends Controller
                 ]);
             }
 
-            $domain = $this->detectDomain($question);
-            Log::info('⚠️ ESCALATING', ['domain' => $domain]);
             return $this->escalateToSenior($question, $user);
         } catch (\Illuminate\Validation\ValidationException $e) {
             throw $e;
@@ -325,10 +320,6 @@ class AiChatController extends Controller
     private function callClaude(string $question): ?array
     {
         $apiKey = config('services.anthropic.key');
-        Log::info('🔑 CLAUDE API KEY', [
-            'exists' => !empty($apiKey),
-            'prefix' => $apiKey ? (substr($apiKey, 0, 10) . '...') : '',
-        ]);
         if (empty($apiKey)) {
             return null;
         }
@@ -358,9 +349,7 @@ class AiChatController extends Controller
                     ],
                 ]);
 
-            Log::info('📡 CLAUDE HTTP RESPONSE', ['status' => $response->status()]);
             if (!$response->successful()) {
-                Log::error('❌ CLAUDE API ERROR', ['status' => $response->status(), 'body' => $response->body()]);
                 return null;
             }
 
