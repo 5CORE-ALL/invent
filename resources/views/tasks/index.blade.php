@@ -1978,10 +1978,32 @@
                 columns: (function() {
                     var cols = [];
                     
-                    // Add checkbox column for all users (for bulk delete of own tasks)
+                    // Add checkbox column - FIXED to only select VISIBLE rows
                     cols.push({
                         formatter: "rowSelection", 
-                        titleFormatter: "rowSelection", 
+                        titleFormatter: function(cell, formatterParams, onRendered) {
+                            const checkbox = document.createElement("input");
+                            checkbox.type = "checkbox";
+                            checkbox.style.margin = "0";
+                            checkbox.style.cursor = "pointer";
+                            
+                            // Custom select all - ONLY visible rows!
+                            checkbox.addEventListener("click", function(e) {
+                                e.stopPropagation();
+                                const table = cell.getTable();
+                                const activeRows = table.getRows('active'); // Only filtered rows!
+                                
+                                if (checkbox.checked) {
+                                    console.log('✓ Selecting ONLY visible rows:', activeRows.length);
+                                    activeRows.forEach(row => row.select());
+                                } else {
+                                    console.log('✓ Deselecting all rows');
+                                    table.deselectRow();
+                                }
+                            });
+                            
+                            return checkbox;
+                        },
                         hozAlign: "center", 
                         headerSort: false, 
                         width: 60,
@@ -2438,20 +2460,35 @@
                 var assigneeValue = $('#filter-assignee').val();
                 if (assigneeValue) {
                     if (assigneeValue === '__NULL__') {
-                        // Custom filter for tasks with NO assignee
-                        table.setFilter(function(data) {
-                            const hasNoAssignee = !data.assignee_name || data.assignee_name === '-' || data.assignee_name === '';
-                            console.log('Checking task:', data.id, 'Assignee:', data.assignee_name, 'No assignee?', hasNoAssignee);
-                            return hasNoAssignee;
-                        });
-                        console.log('✓ Filter applied: No Assignee');
+                        console.log('🔴 NO ASSIGNEE FILTER TRIGGERED');
                         
-                        // Update mobile view too
+                        // First, let's see what we're working with
+                        const allData = table.getData();
+                        console.log('📊 Total tasks:', allData.length);
+                        console.log('📝 Sample assignee_name values:', allData.slice(0, 10).map(t => `ID:${t.id} assignee="${t.assignee_name}"`));
+                        
+                        // Count how many actually have no assignee
+                        const noAssigneeCount = allData.filter(t => {
+                            const name = t.assignee_name;
+                            return name === '-' || name === '' || name === null || name === undefined;
+                        }).length;
+                        console.log('📊 Tasks with no assignee (-, null, empty):', noAssigneeCount);
+                        
+                        // Apply filter - ONLY show tasks where assignee_name is exactly "-"
+                        table.clearFilter();
+                        filters.push({field:"assignee_name", type:"=", value:"-"});
+                        table.setFilter(filters);
+                        
+                        console.log('✅ Filter applied: assignee_name = "-"');
+                        console.log('📊 Filtered tasks showing:', table.getDataCount('active'));
+                        
+                        // Update mobile view
                         if (window.innerWidth < 768) {
-                            const allData = table.getData();
-                            const filtered = allData.filter(t => !t.assignee_name || t.assignee_name === '-' || t.assignee_name === '');
+                            const filtered = table.getData('active');
                             renderMobileTasks(filtered);
                         }
+                        
+                        setTimeout(updateStatistics, 100);
                         return; // Skip other filters
                     } else {
                         filters.push({field:"assignee_name", type:"=", value:assigneeValue});
@@ -2607,10 +2644,26 @@
                 }
             });
 
-            // Handle Row Selection
+            // Handle Row Selection - ONLY select FILTERED (visible) rows
             table.on("rowSelectionChanged", function(data, rows) {
-                selectedTasks = data.map(task => task.id);
+                // IMPORTANT: Only get IDs from ACTIVE (filtered) rows
+                const activeRows = table.getRows('active');
+                const selectedRows = table.getSelectedRows();
+                
+                // Get IDs that are both selected AND visible (active)
+                const activeRowIds = activeRows.map(r => r.getData().id);
+                const selectedRowIds = selectedRows.map(r => r.getData().id);
+                
+                // Only include IDs that are in BOTH arrays (selected AND visible)
+                selectedTasks = selectedRowIds.filter(id => activeRowIds.includes(id));
+                
                 var count = selectedTasks.length;
+                
+                console.log('📊 Selection changed:');
+                console.log('Active (visible) rows:', activeRowIds.length);
+                console.log('Selected rows:', selectedRowIds.length);
+                console.log('Final selectedTasks (active + selected):', count);
+                console.log('Task IDs:', selectedTasks.slice(0, 10), '...');
                 
                 if (count > 0) {
                     $('#selected-count').show();
@@ -2723,20 +2776,50 @@
             });
             
             $('#confirm-bulk-assignee-btn').on('click', function() {
-                const selectedEmails = $('.bulk-assignee-checkbox:checked').map(function() {
-                    return $(this).val();
-                }).get();
+                console.log('🔍 Bulk Assignee Confirm clicked');
+                console.log('Looking for checkboxes with class: .bulk-assignee-checkbox');
+                console.log('Total checkboxes found:', $('.bulk-assignee-checkbox').length);
+                console.log('Checked checkboxes:', $('.bulk-assignee-checkbox:checked').length);
+                
+                // Debug: Show all checkbox values
+                $('.bulk-assignee-checkbox').each(function(i) {
+                    console.log(`Checkbox ${i}: checked=${$(this).is(':checked')}, value="${$(this).val()}"`);
+                });
+                
+                const selectedEmails = [];
+                $('.bulk-assignee-checkbox:checked').each(function() {
+                    const val = $(this).val();
+                    console.log('✓ Checked box has value:', val);
+                    if (val) {
+                        selectedEmails.push(val);
+                    }
+                });
+                
+                console.log('✅ Collected emails array:', selectedEmails);
                 
                 if (selectedEmails.length === 0) {
-                    alert('Please select at least one assignee');
+                    alert('❌ No assignees selected!\n\n' +
+                          'Checkboxes found: ' + $('.bulk-assignee-checkbox').length + '\n' +
+                          'Checkboxes checked: ' + $('.bulk-assignee-checkbox:checked').length + '\n\n' +
+                          'Please click the checkbox squares (☐) next to user names!');
                     return;
                 }
                 
                 const assigneeEmails = selectedEmails.join(', ');
-                console.log('Bulk assigning assignees:', assigneeEmails, 'to tasks:', selectedTasks);
+                console.log('✅ Final email string to send:', assigneeEmails);
+                console.log('✅ Bulk assigning to tasks:', selectedTasks);
                 
+                if (selectedTasks.length === 0) {
+                    alert('❌ No tasks selected!');
+                    return;
+                }
+                
+                console.log('📤 Calling bulkUpdate with:', {action: 'assign_assignee', assignee: assigneeEmails});
                 bulkUpdate('assign_assignee', { assignee: assigneeEmails });
                 $('#bulkAssigneeModal').modal('hide');
+                
+                // Clear selections
+                $('.bulk-assignee-checkbox').prop('checked', false);
             });
             
             // Bulk Assign Assignor (Admin only)
