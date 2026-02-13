@@ -2422,11 +2422,12 @@
                 var assignorValue = $('#filter-assignor').val();
                 if (assignorValue) {
                     if (assignorValue === '__NULL__') {
-                        // Filter for tasks with NO assignor
-                        filters.push(function(data) {
+                        // Custom filter for tasks with NO assignor
+                        table.setFilter(function(data) {
                             return !data.assignor_name || data.assignor_name === '-' || data.assignor_name === '';
                         });
-                        console.log('Filter - Assignor: NULL (no assignor)');
+                        console.log('✓ Filter applied: No Assignor');
+                        return; // Skip other filters
                     } else {
                         filters.push({field:"assignor_name", type:"=", value:assignorValue});
                         console.log('Filter - Assignor:', assignorValue);
@@ -2437,11 +2438,21 @@
                 var assigneeValue = $('#filter-assignee').val();
                 if (assigneeValue) {
                     if (assigneeValue === '__NULL__') {
-                        // Filter for tasks with NO assignee
-                        filters.push(function(data) {
-                            return !data.assignee_name || data.assignee_name === '-' || data.assignee_name === '';
+                        // Custom filter for tasks with NO assignee
+                        table.setFilter(function(data) {
+                            const hasNoAssignee = !data.assignee_name || data.assignee_name === '-' || data.assignee_name === '';
+                            console.log('Checking task:', data.id, 'Assignee:', data.assignee_name, 'No assignee?', hasNoAssignee);
+                            return hasNoAssignee;
                         });
-                        console.log('Filter - Assignee: NULL (no assignee)');
+                        console.log('✓ Filter applied: No Assignee');
+                        
+                        // Update mobile view too
+                        if (window.innerWidth < 768) {
+                            const allData = table.getData();
+                            const filtered = allData.filter(t => !t.assignee_name || t.assignee_name === '-' || t.assignee_name === '');
+                            renderMobileTasks(filtered);
+                        }
+                        return; // Skip other filters
                     } else {
                         filters.push({field:"assignee_name", type:"=", value:assigneeValue});
                         console.log('Filter - Assignee:', assigneeValue);
