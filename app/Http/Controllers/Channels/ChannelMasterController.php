@@ -6356,13 +6356,15 @@ class ChannelMasterController extends Controller
             // Chart uses ChannelMasterSummary which may have different values
             // ==================================================================================
             if (!empty($chartData)) {
-                // If the frontend passed the exact badge value, use it directly
-                $badgeValue = $request->input('badge_value');
-                $tableRef = ($isAll && $badgeValue !== null)
-                    ? (float) $badgeValue
-                    : ($isAll
-                        ? $this->getAllChannelsTableReference($metric)
-                        : $this->getTableReferenceValue($channel, $metric));
+                // If the frontend passed the exact cell/badge value, use it directly
+                $cellValue = $request->input('badge_value');
+                if ($cellValue !== null) {
+                    $tableRef = (float) $cellValue;
+                } elseif ($isAll) {
+                    $tableRef = $this->getAllChannelsTableReference($metric);
+                } else {
+                    $tableRef = $this->getTableReferenceValue($channel, $metric);
+                }
                 if ($tableRef !== null && $tableRef != 0) {
                     $chartLatest = (float) end($chartData)['value'];
                     if ($chartLatest != 0 && abs($chartLatest - $tableRef) > 0.01) {

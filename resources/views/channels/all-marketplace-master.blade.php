@@ -872,7 +872,7 @@
                         cellClick: function(e, cell) {
                             if (e.target.classList.contains('metric-chart-icon')) {
                                 e.stopPropagation();
-                                showMetricChart($(e.target).data('channel'), $(e.target).data('metric'));
+                                var cv = cell.getElement().querySelector('span'); cv = cv ? parseFloat(cv.textContent.replace(/[$,%,\s]/g, '')) : null; showMetricChart($(e.target).data('channel'), $(e.target).data('metric'), cv);
                             }
                         },
                         bottomCalc: "sum",
@@ -920,7 +920,7 @@
                         cellClick: function(e, cell) {
                             if (e.target.classList.contains('metric-chart-icon')) {
                                 e.stopPropagation();
-                                showMetricChart($(e.target).data('channel'), $(e.target).data('metric'));
+                                var cv = cell.getElement().querySelector('span'); cv = cv ? parseFloat(cv.textContent.replace(/[$,%,\s]/g, '')) : null; showMetricChart($(e.target).data('channel'), $(e.target).data('metric'), cv);
                             }
                         },
                         bottomCalc: "sum",
@@ -955,7 +955,7 @@
                         cellClick: function(e, cell) {
                             if (e.target.classList.contains('metric-chart-icon')) {
                                 e.stopPropagation();
-                                showMetricChart($(e.target).data('channel'), $(e.target).data('metric'));
+                                var cv = cell.getElement().querySelector('span'); cv = cv ? parseFloat(cv.textContent.replace(/[$,%,\s]/g, '')) : null; showMetricChart($(e.target).data('channel'), $(e.target).data('metric'), cv);
                             }
                         },
                         bottomCalc: "sum",
@@ -982,7 +982,7 @@
                         cellClick: function(e, cell) {
                             if (e.target.classList.contains('metric-chart-icon')) {
                                 e.stopPropagation();
-                                showMetricChart($(e.target).data('channel'), $(e.target).data('metric'));
+                                var cv = cell.getElement().querySelector('span'); cv = cv ? parseFloat(cv.textContent.replace(/[$,%,\s]/g, '')) : null; showMetricChart($(e.target).data('channel'), $(e.target).data('metric'), cv);
                             }
                             if (e.target.classList.contains('ad-spend-breakdown-toggle')) {
                                 e.stopPropagation();
@@ -1175,7 +1175,7 @@
                         cellClick: function(e, cell) {
                             if (e.target.classList.contains('metric-chart-icon')) {
                                 e.stopPropagation();
-                                showMetricChart($(e.target).data('channel'), $(e.target).data('metric'));
+                                var cv = cell.getElement().querySelector('span'); cv = cv ? parseFloat(cv.textContent.replace(/[$,%,\s]/g, '')) : null; showMetricChart($(e.target).data('channel'), $(e.target).data('metric'), cv);
                             }
                             if (e.target.classList.contains('clicks-breakdown-toggle')) {
                                 e.stopPropagation();
@@ -1364,7 +1364,7 @@
                         cellClick: function(e, cell) {
                             if (e.target.classList.contains('metric-chart-icon')) {
                                 e.stopPropagation();
-                                showMetricChart($(e.target).data('channel'), $(e.target).data('metric'));
+                                var cv = cell.getElement().querySelector('span'); cv = cv ? parseFloat(cv.textContent.replace(/[$,%,\s]/g, '')) : null; showMetricChart($(e.target).data('channel'), $(e.target).data('metric'), cv);
                             }
                             if (e.target.classList.contains('ad-sales-breakdown-toggle')) {
                                 e.stopPropagation();
@@ -1554,7 +1554,7 @@
                         cellClick: function(e, cell) {
                             if (e.target.classList.contains('metric-chart-icon')) {
                                 e.stopPropagation();
-                                showMetricChart($(e.target).data('channel'), $(e.target).data('metric'));
+                                var cv = cell.getElement().querySelector('span'); cv = cv ? parseFloat(cv.textContent.replace(/[$,%,\s]/g, '')) : null; showMetricChart($(e.target).data('channel'), $(e.target).data('metric'), cv);
                             }
                             if (e.target.classList.contains('ad-sold-breakdown-toggle')) {
                                 e.stopPropagation();
@@ -1743,7 +1743,7 @@
                         cellClick: function(e, cell) {
                             if (e.target.classList.contains('metric-chart-icon')) {
                                 e.stopPropagation();
-                                showMetricChart($(e.target).data('channel'), $(e.target).data('metric'));
+                                var cv = cell.getElement().querySelector('span'); cv = cv ? parseFloat(cv.textContent.replace(/[$,%,\s]/g, '')) : null; showMetricChart($(e.target).data('channel'), $(e.target).data('metric'), cv);
                             }
                             if (e.target.classList.contains('acos-breakdown-toggle')) {
                                 e.stopPropagation();
@@ -1917,7 +1917,7 @@
                         cellClick: function(e, cell) {
                             if (e.target.classList.contains('metric-chart-icon')) {
                                 e.stopPropagation();
-                                showMetricChart($(e.target).data('channel'), $(e.target).data('metric'));
+                                var cv = cell.getElement().querySelector('span'); cv = cv ? parseFloat(cv.textContent.replace(/[$,%,\s]/g, '')) : null; showMetricChart($(e.target).data('channel'), $(e.target).data('metric'), cv);
                             }
                             if (e.target.classList.contains('cvr-breakdown-toggle')) {
                                 e.stopPropagation();
@@ -2124,7 +2124,7 @@
                         cellClick: function(e, cell) {
                             if (e.target.classList.contains('metric-chart-icon')) {
                                 e.stopPropagation();
-                                showMetricChart($(e.target).data('channel'), $(e.target).data('metric'));
+                                var cv = cell.getElement().querySelector('span'); cv = cv ? parseFloat(cv.textContent.replace(/[$,%,\s]/g, '')) : null; showMetricChart($(e.target).data('channel'), $(e.target).data('metric'), cv);
                             }
                         },
                         bottomCalc: "sum",
@@ -2148,7 +2148,7 @@
                         cellClick: function(e, cell) {
                             if (e.target.classList.contains('metric-chart-icon')) {
                                 e.stopPropagation();
-                                showMetricChart($(e.target).data('channel'), $(e.target).data('metric'));
+                                var cv = cell.getElement().querySelector('span'); cv = cv ? parseFloat(cv.textContent.replace(/[$,%,\s]/g, '')) : null; showMetricChart($(e.target).data('channel'), $(e.target).data('metric'), cv);
                             }
                         },
                         bottomCalc: "sum",
@@ -2187,7 +2187,7 @@
                         cellClick: function(e, cell) {
                             if (e.target.classList.contains('metric-chart-icon')) {
                                 e.stopPropagation();
-                                showMetricChart($(e.target).data('channel'), $(e.target).data('metric'));
+                                var cv = cell.getElement().querySelector('span'); cv = cv ? parseFloat(cv.textContent.replace(/[$,%,\s]/g, '')) : null; showMetricChart($(e.target).data('channel'), $(e.target).data('metric'), cv);
                             }
                         }
                     },
@@ -2217,7 +2217,7 @@
                         cellClick: function(e, cell) {
                             if (e.target.classList.contains('metric-chart-icon')) {
                                 e.stopPropagation();
-                                showMetricChart($(e.target).data('channel'), $(e.target).data('metric'));
+                                var cv = cell.getElement().querySelector('span'); cv = cv ? parseFloat(cv.textContent.replace(/[$,%,\s]/g, '')) : null; showMetricChart($(e.target).data('channel'), $(e.target).data('metric'), cv);
                             }
                         }
                     },
@@ -2255,7 +2255,7 @@
                         cellClick: function(e, cell) {
                             if (e.target.classList.contains('metric-chart-icon')) {
                                 e.stopPropagation();
-                                showMetricChart($(e.target).data('channel'), $(e.target).data('metric'));
+                                var cv = cell.getElement().querySelector('span'); cv = cv ? parseFloat(cv.textContent.replace(/[$,%,\s]/g, '')) : null; showMetricChart($(e.target).data('channel'), $(e.target).data('metric'), cv);
                             }
                         }
                     },
@@ -2287,7 +2287,7 @@
                         cellClick: function(e, cell) {
                             if (e.target.classList.contains('metric-chart-icon')) {
                                 e.stopPropagation();
-                                showMetricChart($(e.target).data('channel'), $(e.target).data('metric'));
+                                var cv = cell.getElement().querySelector('span'); cv = cv ? parseFloat(cv.textContent.replace(/[$,%,\s]/g, '')) : null; showMetricChart($(e.target).data('channel'), $(e.target).data('metric'), cv);
                             }
                         }
                     },
@@ -2317,7 +2317,7 @@
                         cellClick: function(e, cell) {
                             if (e.target.classList.contains('metric-chart-icon')) {
                                 e.stopPropagation();
-                                showMetricChart($(e.target).data('channel'), $(e.target).data('metric'));
+                                var cv = cell.getElement().querySelector('span'); cv = cv ? parseFloat(cv.textContent.replace(/[$,%,\s]/g, '')) : null; showMetricChart($(e.target).data('channel'), $(e.target).data('metric'), cv);
                             }
                         }
                     },
@@ -3085,8 +3085,8 @@
                         metric: currentMetricKey,
                         days: currentChartDays
                     };
-                    if (currentBadgeValue !== null) {
-                        params.badge_value = currentBadgeValue;
+                    if (currentCellValue !== null) {
+                        params.badge_value = currentCellValue;
                     }
                 } else {
                     // Ad breakdown mode — uses daily ad campaign reports
@@ -3148,14 +3148,14 @@
             };
 
             // Show metric chart (for non-ad-breakdown columns)
-            var currentBadgeValue = null;
-            function showMetricChart(channel, metricKey, badgeValue) {
+            var currentCellValue = null;
+            function showMetricChart(channel, metricKey, cellValue) {
                 currentChartMode = 'metric';
                 currentChartChannel = channel.toLowerCase().replace(/[^a-z0-9]/g, '');
                 currentMetricKey = metricKey;
                 currentChartMetric = metricKey; // for fmtVal formatting
                 currentChartDays = 30;
-                currentBadgeValue = badgeValue || null;
+                currentCellValue = (cellValue !== undefined && cellValue !== null && !isNaN(cellValue)) ? cellValue : null;
 
                 // Reset dropdown
                 $('#adChartRangeSelect').val('30');
