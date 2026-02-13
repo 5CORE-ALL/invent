@@ -3824,16 +3824,20 @@
 
         // Store previous view mode before PMT Ads switches it
         var prevViewModeBeforePmt = null;
+        var prevViewModeBeforeKw = null;
 
         $('#section-filter').on('change', function() {
             var sectionVal = $(this).val();
             applySectionColumnVisibility(sectionVal);
 
             if (sectionVal === 'all' || sectionVal === 'pricing') {
-                // Restore view mode if returning from PMT Ads
+                // Restore view mode if returning from PMT Ads or KW Ads
                 if (prevViewModeBeforePmt !== null) {
                     $('#view-mode-filter').val(prevViewModeBeforePmt);
                     prevViewModeBeforePmt = null;
+                } else if (prevViewModeBeforeKw !== null) {
+                    $('#view-mode-filter').val(prevViewModeBeforeKw);
+                    prevViewModeBeforeKw = null;
                 }
                 // Hide KW Ads stats & filters, show pricing filters & Summary stats
                 $('#kw-ads-stats').hide();
@@ -3851,6 +3855,12 @@
                     $('#view-mode-filter').val(prevViewModeBeforePmt);
                     prevViewModeBeforePmt = null;
                 }
+                // Save current view mode and force Parent Only (like ebay-3/utilized page)
+                if (prevViewModeBeforeKw === null) {
+                    prevViewModeBeforeKw = $('#view-mode-filter').val();
+                }
+                $('#view-mode-filter').val('parent');
+                $('#view-mode-filter').hide();
                 // Show KW Ads filters, hide pricing filters & Summary stats
                 $('#kw-ads-stats').show();
                 $('#kw-ads-range-section').show();
@@ -3859,10 +3869,13 @@
                 $('.pmt-ads-filter-item').hide();
                 $('.pricing-filter-item').hide();
                 $('#summary-stats').hide();
-                $('#view-mode-filter').show();
                 applyFilters();
                 updateKwAdsStats();
             } else if (sectionVal === 'pmt_ads') {
+                // Restore view mode if returning from KW Ads
+                if (prevViewModeBeforeKw !== null) {
+                    prevViewModeBeforeKw = null;
+                }
                 // Save current view mode and force Parent Only (like ebay-3/pmt/ads page)
                 if (prevViewModeBeforePmt === null) {
                     prevViewModeBeforePmt = $('#view-mode-filter').val();

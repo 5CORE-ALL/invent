@@ -2050,18 +2050,13 @@
                         field: "sbgt",
                         mutator: function (value, data) {
                             var acos = parseFloat(data.acos || 0);
-                            var sbgt;
-
-                            // ACOS-based sbgt rule, max $5
-                            if (acos < 5) sbgt = 6;
-                            else if (acos < 10) sbgt = 5;
-                            else if (acos < 15) sbgt = 4;
-                            else if (acos < 20) sbgt = 3;
-                            else if (acos < 25) sbgt = 2;
-                            else sbgt = 1;
-                            if (sbgt > 5) sbgt = 5;
-
-                            return sbgt;
+                            // ACOS-based SBGT rules
+                            if (acos > 25) return 1;
+                            if (acos >= 20) return 2;
+                            if (acos >= 15) return 4;
+                            if (acos >= 10) return 6;
+                            if (acos >= 5) return 8;
+                            return 10; // Less than 5
                         }
 
                     },

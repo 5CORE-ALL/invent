@@ -2250,18 +2250,13 @@
                         field: "sbgt",
                         mutator: function (value, data) {
                             var acos = parseFloat(data.acos || 0);
-                            var price = parseFloat(data.price || 0);
-                            var sbgt;
-                            // Same price-based SBGT for all rows (parent now has avg price)
-                            if (acos > 20) {
-                                sbgt = 1;
-                            } else {
-                                sbgt = Math.ceil(price * 0.10);
-                                if (sbgt < 1) sbgt = 1;
-                                if (sbgt > 5) sbgt = 5;
-                            }
-
-                            return sbgt; // ✅ sets row.sbgt
+                            // ACOS-based SBGT rules
+                            if (acos > 25) return 1;
+                            if (acos >= 20) return 2;
+                            if (acos >= 15) return 4;
+                            if (acos >= 10) return 6;
+                            if (acos >= 5) return 8;
+                            return 10; // Less than 5
                         }
 
                     },
@@ -3181,20 +3176,14 @@
 
                 let rowAcos = parseFloat(acos) || 0;
 
-                // Compute SBGT from ACOS mapping (same rules as ACOS control)
-                // ACOS 0-5%: sbgt = 6
-                // ACOS 5-10%: sbgt = 5
-                // ACOS 10-15%: sbgt = 4
-                // ACOS 15-20%: sbgt = 3
-                // ACOS 20-25%: sbgt = 2
-                // ACOS > 25%: sbgt = 1
+                // ACOS-based SBGT rules
                 let rowSbgt = null;
-                if (rowAcos < 5) rowSbgt = 6;
-                else if (rowAcos < 10) rowSbgt = 5;
-                else if (rowAcos < 15) rowSbgt = 4;
-                else if (rowAcos < 20) rowSbgt = 3;
-                else if (rowAcos < 25) rowSbgt = 2;
-                else rowSbgt = 1;
+                if (rowAcos > 25) rowSbgt = 1;
+                else if (rowAcos >= 20) rowSbgt = 2;
+                else if (rowAcos >= 15) rowSbgt = 4;
+                else if (rowAcos >= 10) rowSbgt = 6;
+                else if (rowAcos >= 5) rowSbgt = 8;
+                else rowSbgt = 10; // Less than 5
 
                 // ACOS filter (sbgt-filter dropdown)
                 let acosFilterVal = $('#sbgt-filter').val();

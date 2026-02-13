@@ -540,6 +540,7 @@ class EbayThreeController extends Controller
                 $row['lmp_price'] = null;
                 $row['lmp_link'] = null;
                 $row['l7_views'] = $sums['l7_views'] ?? 0;
+                // KW Ads fields for parent rows - populate from pre-fetched campaign data
                 $row['kw_campaign_id'] = '';
                 $row['kw_campaignBudgetAmount'] = 0;
                 $row['kw_campaignStatus'] = '';
@@ -554,6 +555,62 @@ class EbayThreeController extends Controller
                 $row['kw_last_sbid'] = '';
                 $row['kw_sbid_m'] = '';
                 $row['kw_apprSbid'] = '';
+
+                // Look up KW campaign data for PARENT row (same logic as child rows)
+                $normalizedParentName = $normalizeSku($sku); // e.g. "PARENT 10 FR"
+                $normalizedParentClean = $normalizeSku($parentKey); // e.g. "10 FR"
+                $kwReportsForParent = $kwReportsByName[$normalizedParentName] ?? ($kwReportsByName[$normalizedParentClean] ?? null);
+
+                if ($kwReportsForParent) {
+                    $matchedKwL7 = $kwReportsForParent['L7'] ?? null;
+                    $matchedKwL1 = $kwReportsForParent['L1'] ?? null;
+                    $matchedKwL30 = $kwReportsForParent['L30'] ?? null;
+
+                    $anyKwReport = $matchedKwL30 ?? $matchedKwL7 ?? $matchedKwL1;
+                    if ($anyKwReport) {
+                        $row['kw_campaign_id'] = $anyKwReport->campaign_id ?? '';
+                        $row['kw_campaignBudgetAmount'] = $anyKwReport->campaignBudgetAmount ?? 0;
+                        $row['kw_campaignStatus'] = $anyKwReport->campaignStatus ?? '';
+                    }
+
+                    if ($matchedKwL7) {
+                        $row['kw_l7_spend'] = (float) str_replace(['USD ', ','], '', $matchedKwL7->cpc_ad_fees_payout_currency ?? '0');
+                        $row['kw_l7_cpc'] = (float) str_replace(['USD ', ','], '', $matchedKwL7->cost_per_click ?? '0');
+                    }
+
+                    if ($matchedKwL1) {
+                        $row['kw_l1_spend'] = (float) str_replace(['USD ', ','], '', $matchedKwL1->cpc_ad_fees_payout_currency ?? '0');
+                        $row['kw_l1_cpc'] = (float) str_replace(['USD ', ','], '', $matchedKwL1->cost_per_click ?? '0');
+                    }
+
+                    if ($matchedKwL30) {
+                        $kwAdFees = (float) str_replace(['USD ', ','], '', $matchedKwL30->cpc_ad_fees_payout_currency ?? '0');
+                        $kwSales = (float) str_replace(['USD ', ','], '', $matchedKwL30->cpc_sale_amount_payout_currency ?? '0');
+                        $kwClicks = (int) ($matchedKwL30->cpc_clicks ?? 0);
+                        $kwAdSold = (int) ($matchedKwL30->cpc_attributed_sales ?? 0);
+
+                        $row['kw_clicks'] = $kwClicks;
+                        $row['kw_ad_sold'] = $kwAdSold;
+
+                        if ($kwClicks > 0) {
+                            $row['kw_cvr'] = round(($kwAdSold / $kwClicks) * 100, 2);
+                        }
+                        if ($kwSales > 0) {
+                            $row['kw_acos'] = round(($kwAdFees / $kwSales) * 100, 2);
+                        } elseif ($kwAdFees > 0) {
+                            $row['kw_acos'] = 100;
+                        }
+                    }
+
+                    // SBID data for parent
+                    $parentCampaignId = $row['kw_campaign_id'];
+                    if (!empty($parentCampaignId)) {
+                        $row['kw_last_sbid'] = $lastSbidMap[$parentCampaignId] ?? '';
+                        $row['kw_sbid_m'] = $sbidMMap[$parentCampaignId] ?? '';
+                        $row['kw_apprSbid'] = $apprSbidMap[$parentCampaignId] ?? '';
+                    }
+                }
+
                 // PMT Ads fields for parent rows
                 // Use PARENT's own Ebay3Metric data (not aggregated children) for PMT columns
                 $parentOwnItemId = $ebayMetric->item_id ?? null;
