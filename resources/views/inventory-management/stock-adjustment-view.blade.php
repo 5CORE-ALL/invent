@@ -192,17 +192,20 @@
 
                     <!-- Search Box and Add Button-->
                     <div class="row mb-3">
-                        <div class="col-md-6 d-flex align-items-center">
+                        <div class="col-md-8 d-flex align-items-center">
                             <button type="button" class="btn btn-primary" id="openAddWarehouseModal" data-bs-toggle="modal" data-bs-target="#addWarehouseModal">
                                 <i class="fas fa-plus me-1"></i> CREATE STOCK ADJUSTMENT
                             </button>
                             <button type="button" class="btn btn-success ms-2" data-bs-toggle="modal" data-bs-target="#bulkCSVModal">
                                 <i class="fas fa-file-csv me-1"></i> CREATE STOCK ADJUSTMENT BULK
                             </button>
+                            <button type="button" class="btn btn-info ms-2" onclick="manageReasons()">
+                                <i class="fas fa-cog me-1"></i> MANAGE REASONS
+                            </button>
                             <div class="dataTables_length ms-3"></div>
                         </div>
 
-                        <div class="col-md-3 offset-md-3">
+                        <div class="col-md-1 offset-md-3">
                             <div class="input-group">
                                 <span class="input-group-text"><i class="fas fa-search"></i></span>
                                 <input type="text" id="customSearch" class="form-control" placeholder="Search Stock Adjustment">
@@ -284,13 +287,19 @@
                                         <!-- Reason Dropdown -->
                                         <div class="mb-3">
                                             <label for="reason" class="form-label fw-bold">Reason</label>
-                                            <select class="form-select" id="reason" name="reason" required>
-                                                <option selected disabled>Select Reason</option>
-                                                <option value="Container Shortfall">Container Shortfall</option>
-                                                <option value="Container Excess">Container Excess</option>
-                                                <option value="Container Damaged">Container Damaged</option>
-                                                <option value="Other">Other</option>
-                                            </select>
+                                            <div class="input-group">
+                                                <select class="form-select" id="reason" name="reason" required>
+                                                    <option selected disabled>Select Reason</option>
+                                                    <option value="Container Shortfall">Container Shortfall</option>
+                                                    <option value="Container Excess">Container Excess</option>
+                                                    <option value="Container Damaged">Container Damaged</option>
+                                                    <option value="Veeqo Error Reversal">Veeqo Error Reversal</option>
+                                                    <option value="Other">Other</option>
+                                                </select>
+                                                <button class="btn btn-outline-primary" type="button" onclick="addNewReason()">
+                                                    <i class="fas fa-plus"></i> Add New
+                                                </button>
+                                            </div>
                                         </div>
 
                                         <!-- Auto Date -->
@@ -396,6 +405,42 @@ MS RBP5 2PCS,100,Main Godawn,Add,Other</pre>
                                     <button type="button" class="btn btn-success" id="submitBulkBtn" disabled>
                                         <i class="fas fa-save me-1"></i> Create Adjustments
                                     </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Manage Reasons Modal -->
+                    <div class="modal fade" id="manageReasonsModal" tabindex="-1">
+                        <div class="modal-dialog modal-lg">
+                            <div class="modal-content">
+                                <div class="modal-header bg-info text-white">
+                                    <h5 class="modal-title">
+                                        <i class="fas fa-cog me-2"></i>Manage Adjustment Reasons
+                                    </h5>
+                                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                                </div>
+                                <div class="modal-body">
+                                    <div class="mb-3">
+                                        <label class="form-label fw-bold">Add New Reason</label>
+                                        <div class="input-group">
+                                            <input type="text" class="form-control" id="newReasonInput" 
+                                                   placeholder="Enter new reason...">
+                                            <button class="btn btn-primary" type="button" onclick="saveNewReason()">
+                                                <i class="fas fa-plus me-1"></i> Add
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    <hr>
+
+                                    <h6>Current Reasons:</h6>
+                                    <div id="reasonsList" class="list-group">
+                                        <!-- Will be populated dynamically -->
+                                    </div>
+                                </div>
+                                <div class="modal-footer">
+                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
                                 </div>
                             </div>
                         </div>
@@ -1332,6 +1377,153 @@ MS RBP5 2PCS,100,Main Godawn,Add,Other</pre>
             }
 
             initializeTable();
+        });
+
+        // ========== ADD NEW REASON FUNCTIONALITY ==========
+        
+        const defaultReasons = [
+            'Container Shortfall',
+            'Container Excess',
+            'Container Damaged',
+            'Veeqo Error Reversal',
+            'Other'
+        ];
+
+        function manageReasons() {
+            loadReasonsList();
+            $('#manageReasonsModal').modal('show');
+        }
+
+        function loadReasonsList() {
+            const storedReasons = JSON.parse(localStorage.getItem('stockAdjustmentReasons') || '[]');
+            const allReasons = [...defaultReasons, ...storedReasons];
+            
+            let html = '';
+            allReasons.forEach(function(reason, index) {
+                const isDefault = defaultReasons.includes(reason);
+                html += `
+                    <div class="list-group-item d-flex justify-content-between align-items-center">
+                        <span>
+                            ${isDefault ? '<i class="fas fa-lock text-muted me-2"></i>' : '<i class="fas fa-tag text-primary me-2"></i>'}
+                            <strong>${reason}</strong>
+                        </span>
+                        <div>
+                            <button class="btn btn-sm btn-outline-primary me-1" onclick="copyReason('${reason}')" title="Copy to clipboard">
+                                <i class="fas fa-copy"></i>
+                            </button>
+                            ${!isDefault ? `
+                                <button class="btn btn-sm btn-danger" onclick="deleteReason('${reason}')" title="Delete">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            ` : '<span class="badge bg-secondary">Default</span>'}
+                        </div>
+                    </div>`;
+            });
+            
+            $('#reasonsList').html(html || '<p class="text-muted">No custom reasons added yet.</p>');
+        }
+
+        function copyReason(reason) {
+            // Fallback copy method that works in all browsers
+            const textArea = document.createElement('textarea');
+            textArea.value = reason;
+            textArea.style.position = 'fixed';
+            textArea.style.left = '-999999px';
+            document.body.appendChild(textArea);
+            textArea.select();
+            
+            try {
+                const successful = document.execCommand('copy');
+                document.body.removeChild(textArea);
+                
+                if (successful) {
+                    // Show temporary success message
+                    const btn = event.target.closest('button');
+                    const originalHTML = btn.innerHTML;
+                    btn.innerHTML = '<i class="fas fa-check"></i>';
+                    btn.classList.add('btn-success');
+                    btn.classList.remove('btn-outline-primary');
+                    
+                    setTimeout(function() {
+                        btn.innerHTML = originalHTML;
+                        btn.classList.remove('btn-success');
+                        btn.classList.add('btn-outline-primary');
+                    }, 1000);
+                } else {
+                    throw new Error('Copy failed');
+                }
+            } catch (err) {
+                document.body.removeChild(textArea);
+                // Show reason in alert so user can copy manually
+                alert('Copy this reason:\n\n' + reason);
+            }
+        }
+
+        function saveNewReason() {
+            const newReason = $('#newReasonInput').val().trim();
+            
+            if (!newReason) {
+                alert('Please enter a reason');
+                return;
+            }
+            
+            // Check if already exists
+            const storedReasons = JSON.parse(localStorage.getItem('stockAdjustmentReasons') || '[]');
+            const allReasons = [...defaultReasons, ...storedReasons];
+            
+            if (allReasons.includes(newReason)) {
+                alert('This reason already exists!');
+                return;
+            }
+            
+            // Add to localStorage
+            storedReasons.push(newReason);
+            localStorage.setItem('stockAdjustmentReasons', JSON.stringify(storedReasons));
+            
+            // Add to dropdown
+            $('#reason').append(new Option(newReason, newReason));
+            
+            // Refresh list
+            loadReasonsList();
+            $('#newReasonInput').val('');
+            
+            alert('✅ Reason "' + newReason + '" added successfully!');
+        }
+
+        function deleteReason(reason) {
+            if (!confirm(`Delete reason "${reason}"?`)) {
+                return;
+            }
+            
+            let storedReasons = JSON.parse(localStorage.getItem('stockAdjustmentReasons') || '[]');
+            storedReasons = storedReasons.filter(r => r !== reason);
+            localStorage.setItem('stockAdjustmentReasons', JSON.stringify(storedReasons));
+            
+            // Remove from dropdown
+            $(`#reason option[value="${reason}"]`).remove();
+            
+            // Refresh list
+            loadReasonsList();
+            
+            alert('✅ Reason deleted');
+        }
+
+        function addNewReason() {
+            manageReasons();
+        }
+        
+        // Load custom reasons from localStorage on page load
+        $(document).ready(function() {
+            const storedReasons = JSON.parse(localStorage.getItem('stockAdjustmentReasons') || '[]');
+            storedReasons.forEach(function(reason) {
+                // Check if not already in dropdown
+                const exists = Array.from(document.querySelectorAll('#reason option')).find(
+                    opt => opt.value === reason
+                );
+                if (!exists) {
+                    $('#reason').append(new Option(reason, reason));
+                }
+            });
         });
 
         // ========== BULK CSV UPLOAD FUNCTIONALITY ==========
