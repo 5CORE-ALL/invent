@@ -2003,21 +2003,26 @@ class EbayController extends Controller
     public function getKwPmtSpendTotals()
     {
         try {
-            $thirtyDaysAgo = Carbon::now()->subDays(30)->format('Y-m-d');
+            // Use daily data sum (individual date report_ranges) instead of L30 aggregate
+            // Daily data is closer to eBay Seller Hub dashboard values
+            $startDate = Carbon::now()->subDays(31)->format('Y-m-d');
+            $endDate = Carbon::now()->format('Y-m-d');
 
-            // KW Spend: From ebay_priority_reports (L30 range, recent data only)
+            // KW Spend: Sum daily reports from ebay_priority_reports
             // Matches ChannelMasterController::fetchAdMetricsFromTables() exactly
             $kwSpend = DB::table('ebay_priority_reports')
-                ->where('report_range', 'L30')
-                ->whereDate('updated_at', '>=', $thirtyDaysAgo)
+                ->where('report_range', '>=', $startDate)
+                ->where('report_range', '<=', $endDate)
+                ->where('report_range', 'NOT LIKE', 'L%')
                 ->selectRaw('SUM(REPLACE(REPLACE(cpc_ad_fees_payout_currency, "USD ", ""), ",", "")) as total_spend')
                 ->value('total_spend') ?? 0;
 
-            // PMT Spend: From ebay_general_reports (L30 range, recent data only)
+            // PMT Spend: Sum daily reports from ebay_general_reports
             // Matches ChannelMasterController::fetchAdMetricsFromTables() exactly
             $pmtSpend = DB::table('ebay_general_reports')
-                ->where('report_range', 'L30')
-                ->whereDate('updated_at', '>=', $thirtyDaysAgo)
+                ->where('report_range', '>=', $startDate)
+                ->where('report_range', '<=', $endDate)
+                ->where('report_range', 'NOT LIKE', 'L%')
                 ->selectRaw('SUM(REPLACE(REPLACE(ad_fees, "USD ", ""), ",", "")) as total_spend')
                 ->value('total_spend') ?? 0;
 

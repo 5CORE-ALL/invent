@@ -3496,7 +3496,8 @@
                             var row = cell.getRow().getData();
                             var spend30 = parseFloat(row.hl_spend_L30 || 0);
                             var sales30 = parseFloat(row.hl_sales_L30 || 0);
-                            var acos = sales30 > 0 ? (spend30 / sales30) * 100 : 0;
+                            // Match HL utilized page: spend > 0 && sales == 0 → ACOS = 100%
+                            var acos = (spend30 > 0 && sales30 > 0) ? (spend30 / sales30) * 100 : (spend30 > 0 ? 100 : 0);
                             
                             var td = cell.getElement();
                             td.classList.remove('green-bg', 'pink-bg', 'red-bg');
@@ -3534,8 +3535,8 @@
                             var aSales = parseFloat(aData.hl_sales_L30 || 0);
                             var bSpend = parseFloat(bData.hl_spend_L30 || 0);
                             var bSales = parseFloat(bData.hl_sales_L30 || 0);
-                            var aAcos = aSales > 0 ? (aSpend / aSales) * 100 : 0;
-                            var bAcos = bSales > 0 ? (bSpend / bSales) * 100 : 0;
+                            var aAcos = (aSpend > 0 && aSales > 0) ? (aSpend / aSales) * 100 : (aSpend > 0 ? 100 : 0);
+                            var bAcos = (bSpend > 0 && bSales > 0) ? (bSpend / bSales) * 100 : (bSpend > 0 ? 100 : 0);
                             return aAcos - bAcos;
                         }
                     },
@@ -3558,7 +3559,8 @@
                         mutator: function (value, data) {
                             var spend = parseFloat(data.hl_spend_L30 || 0);
                             var sales = parseFloat(data.hl_sales_L30 || 0);
-                            var acos = sales > 0 ? (spend / sales) * 100 : 0;
+                            // Match HL utilized page: spend > 0 && sales == 0 → ACOS = 100%
+                            var acos = (spend > 0 && sales > 0) ? (spend / sales) * 100 : (spend > 0 ? 100 : 0);
                             // ACOS-based SBGT rules
                             if (acos > 25) return 1;
                             if (acos >= 20) return 2;
@@ -5340,7 +5342,7 @@
                         if (currentSection === 'hl-ads') {
                             var hlSpend30 = parseFloat(data.hl_spend_L30 || 0);
                             var hlSales30 = parseFloat(data.hl_sales_L30 || 0);
-                            acos = hlSales30 > 0 ? (hlSpend30 / hlSales30) * 100 : 0;
+                            acos = (hlSpend30 > 0 && hlSales30 > 0) ? (hlSpend30 / hlSales30) * 100 : (hlSpend30 > 0 ? 100 : 0);
                             spend = hlSpend30;
                         } else if (currentSection === 'pt-ads') {
                             var ptSpend30 = parseFloat(data.pt_spend_L30 || 0);
@@ -5422,7 +5424,7 @@
                         if (currentSection === 'hl-ads') {
                             var hlSpend = parseFloat(data.hl_spend_L30 || 0);
                             var hlSales = parseFloat(data.hl_sales_L30 || 0);
-                            acos = hlSales > 0 ? (hlSpend / hlSales) * 100 : 0;
+                            acos = (hlSpend > 0 && hlSales > 0) ? (hlSpend / hlSales) * 100 : (hlSpend > 0 ? 100 : 0);
                         } else if (currentSection === 'pt-ads') {
                             var ptSpend = parseFloat(data.pt_spend_L30 || 0);
                             var ptSales = parseFloat(data.pt_sales_L30 || 0);
