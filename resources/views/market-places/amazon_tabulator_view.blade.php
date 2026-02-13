@@ -2948,17 +2948,13 @@
                         minWidth: 60,
                         mutator: function (value, data) {
                             var acos = parseFloat(data.acos || data.ACOS || 0);
-                            var price = parseFloat(data.price || 0);
-                            var sbgt;
-                            // Same price-based SBGT for all rows (parent now has avg price)
-                            if (acos > 20) {
-                                sbgt = 1;
-                            } else {
-                                sbgt = Math.ceil(price * 0.10);
-                                if (sbgt < 1) sbgt = 1;
-                                if (sbgt > 5) sbgt = 5;
-                            }
-                            return sbgt;
+                            // ACOS-based SBGT rules
+                            if (acos > 25) return 1;
+                            if (acos >= 20) return 2;
+                            if (acos >= 15) return 4;
+                            if (acos >= 10) return 6;
+                            if (acos >= 5) return 8;
+                            return 10; // Less than 5
                         },
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
@@ -3150,16 +3146,13 @@
                             var spend = parseFloat(data.pt_spend_L30 || 0);
                             var sales = parseFloat(data.pt_sales_L30 || 0);
                             var acos = sales > 0 ? (spend / sales) * 100 : 0;
-                            var price = parseFloat(data.price || 0);
-                            var sbgt;
-                            if (acos > 20) {
-                                sbgt = 1;
-                            } else {
-                                sbgt = Math.ceil(price * 0.10);
-                                if (sbgt < 1) sbgt = 1;
-                                if (sbgt > 5) sbgt = 5;
-                            }
-                            return sbgt;
+                            // ACOS-based SBGT rules
+                            if (acos > 25) return 1;
+                            if (acos >= 20) return 2;
+                            if (acos >= 15) return 4;
+                            if (acos >= 10) return 6;
+                            if (acos >= 5) return 8;
+                            return 10; // Less than 5
                         },
                         formatter: function(cell) {
                             return cell.getValue();

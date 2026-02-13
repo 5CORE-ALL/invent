@@ -2181,18 +2181,13 @@
                         field: "sbgt",
                         mutator: function (value, data) {
                             var acos = parseFloat(data.acos || 0);
-                            var price = parseFloat(data.price || 0);
-                            var sbgt;
-                            // Same price-based SBGT for all rows (parent now has avg price)
-                            if (acos > 20) {
-                                sbgt = 1;
-                            } else {
-                                sbgt = Math.ceil(price * 0.10);
-                                if (sbgt < 1) sbgt = 1;
-                                if (sbgt > 5) sbgt = 5;
-                            }
-
-                            return sbgt; // ✅ sets row.sbgt
+                            // ACOS-based SBGT rules
+                            if (acos > 25) return 1;
+                            if (acos >= 20) return 2;
+                            if (acos >= 15) return 4;
+                            if (acos >= 10) return 6;
+                            if (acos >= 5) return 8;
+                            return 10; // Less than 5
                         }
 
                     },

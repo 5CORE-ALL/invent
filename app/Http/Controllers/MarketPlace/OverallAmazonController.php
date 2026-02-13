@@ -4842,7 +4842,7 @@ class OverallAmazonController extends Controller
                 
                 $adCvr = $l30Clicks > 0 ? (($l30Purchases / $l30Clicks) * 100) : 0;
                 
-                // Calculate ACOS for sbgt calculation (matching AmazonSpBudgetController logic)
+                // Calculate ACOS for sbgt calculation
                 if ($l30Spend > 0 && $l30Sales > 0) {
                     $acos = ($l30Spend / $l30Sales) * 100;
                 } elseif ($l30Spend > 0 && $l30Sales == 0) {
@@ -4851,21 +4851,19 @@ class OverallAmazonController extends Controller
                     $acos = 0;
                 }
                 
-                // Calculate sbgt: Budget = 10% of price (rounded up)
-                // BUT if ACOS > 20%, then budget = $1
-                // Maximum budget is $5
-                $sbgt = 0;
-                if ($price > 0) {
-                    if ($acos > 20) {
-                        $sbgt = 1;
-                    } else {
-                        $sbgt = ceil($price * 0.10);
-                        if ($sbgt < 1) $sbgt = 1;
-                    }
-                    // Cap maximum budget at $5
-                    if ($sbgt > 5) {
-                        $sbgt = 5;
-                    }
+                // ACOS-based SBGT rules
+                if ($acos > 25) {
+                    $sbgt = 1;
+                } elseif ($acos >= 20) {
+                    $sbgt = 2;
+                } elseif ($acos >= 15) {
+                    $sbgt = 4;
+                } elseif ($acos >= 10) {
+                    $sbgt = 6;
+                } elseif ($acos >= 5) {
+                    $sbgt = 8;
+                } else {
+                    $sbgt = 10; // Less than 5
                 }
                 
                 // Get last_sbid from day-before-yesterday's records
@@ -5114,7 +5112,7 @@ class OverallAmazonController extends Controller
                 
                 $adCvr = $l30Clicks > 0 ? (($l30Purchases / $l30Clicks) * 100) : 0;
                 
-                // Calculate ACOS for sbgt calculation (matching AmazonSpBudgetController logic)
+                // Calculate ACOS for sbgt calculation
                 if ($l30Spend > 0 && $l30Sales > 0) {
                     $acos = ($l30Spend / $l30Sales) * 100;
                 } elseif ($l30Spend > 0 && $l30Sales == 0) {
@@ -5123,21 +5121,19 @@ class OverallAmazonController extends Controller
                     $acos = 0;
                 }
                 
-                // Calculate sbgt: Budget = 10% of price (rounded up)
-                // BUT if ACOS > 20%, then budget = $1
-                // Maximum budget is $5
-                $sbgt = 0;
-                if ($price > 0) {
-                    if ($acos > 20) {
-                        $sbgt = 1;
-                    } else {
-                        $sbgt = ceil($price * 0.10);
-                        if ($sbgt < 1) $sbgt = 1;
-                    }
-                    // Cap maximum budget at $5
-                    if ($sbgt > 5) {
-                        $sbgt = 5;
-                    }
+                // ACOS-based SBGT rules
+                if ($acos > 25) {
+                    $sbgt = 1;
+                } elseif ($acos >= 20) {
+                    $sbgt = 2;
+                } elseif ($acos >= 15) {
+                    $sbgt = 4;
+                } elseif ($acos >= 10) {
+                    $sbgt = 6;
+                } elseif ($acos >= 5) {
+                    $sbgt = 8;
+                } else {
+                    $sbgt = 10; // Less than 5
                 }
                 
                 // Get last_sbid from day-before-yesterday's records
@@ -5362,20 +5358,19 @@ class OverallAmazonController extends Controller
                     $acos = 0;
                 }
                 
-                // Calculate sbgt for HL (matching amazon-utilized-hl.blade.php mutator logic)
-                $sbgt = 0;
-                if ($acos > 20) {
-                    // Rule: If ACOS > 20%, budget = $1
+                // ACOS-based SBGT rules for HL
+                if ($acos > 25) {
                     $sbgt = 1;
+                } elseif ($acos >= 20) {
+                    $sbgt = 2;
+                } elseif ($acos >= 15) {
+                    $sbgt = 4;
+                } elseif ($acos >= 10) {
+                    $sbgt = 6;
+                } elseif ($acos >= 5) {
+                    $sbgt = 8;
                 } else {
-                    // Calculate from price: ceil(price * 0.10)
-                    if ($hlPrice > 0) {
-                        $sbgt = ceil($hlPrice * 0.10);
-                    }
-                    // Minimum budget is always $1 (matching frontend logic)
-                    if ($sbgt < 1) $sbgt = 1;
-                    // Maximum budget cap: $5
-                    if ($sbgt > 5) $sbgt = 5;
+                    $sbgt = 10; // Less than 5
                 }
                 
                 // Fetch last_sbid from day-before-yesterday's records for HL campaigns
