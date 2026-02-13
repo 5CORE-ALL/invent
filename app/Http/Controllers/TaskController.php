@@ -627,32 +627,36 @@ class TaskController extends Controller
                         'success' => true,
                         'message' => "$count task(s) ETC updated!"
                     ]);
-                } elseif ($action === 'assign_assignee') {
-                    // Bulk assign assignee(s) - comma-separated for multiple
-                    $assigneeEmails = $request->assignee;
-                    Task::whereIn('id', $taskIds)->update(['assign_to' => $assigneeEmails]);
-                    \Log::info("Bulk assigned assignee(s) to $count tasks: $assigneeEmails");
-                    return response()->json([
-                        'success' => true,
-                        'message' => "$count task(s) assignee updated!"
-                    ]);
-                } elseif ($action === 'assign_assignor') {
-                    // Bulk assign assignor (admin only)
-                    if (!$isAdmin) {
-                        return response()->json([
-                            'success' => false,
-                            'message' => 'Only admins can change assignor'
-                        ], 403);
-                    }
-                    $assignorEmail = $request->assignor;
-                    Task::whereIn('id', $taskIds)->update(['assignor' => $assignorEmail]);
-                    \Log::info("Bulk assigned assignor to $count tasks: $assignorEmail");
-                    return response()->json([
-                        'success' => true,
-                        'message' => "$count task(s) assignor updated!"
-                    ]);
                 }
                 break;
+            
+            case 'assign_assignee':
+                // Bulk assign assignee(s) - comma-separated for multiple
+                $count = count($taskIds);
+                $assigneeEmails = $request->assignee;
+                Task::whereIn('id', $taskIds)->update(['assign_to' => $assigneeEmails]);
+                \Log::info("Bulk assigned assignee(s) to $count tasks: $assigneeEmails");
+                return response()->json([
+                    'success' => true,
+                    'message' => "$count task(s) assignee updated!"
+                ]);
+            
+            case 'assign_assignor':
+                // Bulk assign assignor (admin only)
+                if (!$isAdmin) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Only admins can change assignor'
+                    ], 403);
+                }
+                $count = count($taskIds);
+                $assignorEmail = $request->assignor;
+                Task::whereIn('id', $taskIds)->update(['assignor' => $assignorEmail]);
+                \Log::info("Bulk assigned assignor to $count tasks: $assignorEmail");
+                return response()->json([
+                    'success' => true,
+                    'message' => "$count task(s) assignor updated!"
+                ]);
 
             default:
                 return response()->json([
