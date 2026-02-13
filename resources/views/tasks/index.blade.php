@@ -1277,11 +1277,14 @@
                             <div class="quick-filter-chip" data-filter="Done">
                                 <i class="mdi mdi-check-circle"></i> Done
                             </div>
+                            <div class="quick-filter-chip" data-filter="no_assignee" style="background: #fff5f5; border-color: #dc3545; color: #dc3545;">
+                                <i class="mdi mdi-account-off"></i> No Assignee
+                            </div>
+                            <div class="quick-filter-chip" data-filter="no_assignor" style="background: #fff5f5; border-color: #dc3545; color: #dc3545;">
+                                <i class="mdi mdi-account-cancel"></i> No Assignor
+                            </div>
                             <div class="quick-filter-chip" data-filter="Need Help">
                                 <i class="mdi mdi-help-circle"></i> Need Help
-                            </div>
-                            <div class="quick-filter-chip" data-filter="Need Approval">
-                                <i class="mdi mdi-alert-circle"></i> Approval
                             </div>
                             <div class="quick-filter-chip" data-filter="high">
                                 <i class="mdi mdi-alert"></i> High
@@ -1305,7 +1308,8 @@
                             <div class="col-md-2 mb-2">
                                 <label class="form-label fw-bold">Assignor</label>
                                 <select id="filter-assignor" class="form-select form-select-sm">
-                                    <option value="">Select assignor</option>
+                                    <option value="">All Assignors</option>
+                                    <option value="__NULL__" style="color: #dc3545; font-weight: bold;">🔴 No Assignor</option>
                                     @foreach($users ?? [] as $user)
                                         <option value="{{ $user->name }}">{{ $user->name }}</option>
                                     @endforeach
@@ -1314,7 +1318,8 @@
                             <div class="col-md-2 mb-2">
                                 <label class="form-label fw-bold">Assignee</label>
                                 <select id="filter-assignee" class="form-select form-select-sm">
-                                    <option value="">Select Assignee</option>
+                                    <option value="">All Assignees</option>
+                                    <option value="__NULL__" style="color: #dc3545; font-weight: bold;">🔴 No Assignee</option>
                                     @foreach($users ?? [] as $user)
                                         <option value="{{ $user->name }}">{{ $user->name }}</option>
                                     @endforeach
@@ -1520,7 +1525,17 @@
                         <strong>Delete Selected Tasks</strong>
                         <small class="d-block text-muted">You can only delete tasks you created</small>
                     </a>
+                    <a href="#" class="list-group-item list-group-item-action" id="bulk-assign-assignee-btn">
+                        <i class="mdi mdi-account-plus text-success me-2"></i>
+                        <strong>Assign Assignee</strong>
+                        <small class="d-block text-muted">Add assignee to tasks that have none</small>
+                    </a>
                     @if($isAdmin)
+                    <a href="#" class="list-group-item list-group-item-action" id="bulk-assign-assignor-btn">
+                        <i class="mdi mdi-account-star text-primary me-2"></i>
+                        <strong>Assign Assignor</strong>
+                        <small class="d-block text-muted">Add assignor to tasks that have none</small>
+                    </a>
                     <a href="#" class="list-group-item list-group-item-action" id="bulk-priority-btn">
                         <i class="mdi mdi-flag text-warning me-2"></i>
                         <strong>Change Priority</strong>
@@ -1619,6 +1634,80 @@
         </div>
     </div>
 </div>
+
+<!-- Bulk Assign Assignee Modal -->
+<div class="modal fade" id="bulkAssigneeModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header" style="background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); color: white;">
+                <h5 class="modal-title">
+                    <i class="mdi mdi-account-plus me-2"></i>Assign Assignee to Selected Tasks
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p><strong>Select user(s) to assign to <span id="bulk-assignee-count">0</span> selected task(s):</strong></p>
+                <div class="mb-3">
+                    <label class="form-label">Select Assignee(s):</label>
+                    <div style="max-height: 300px; overflow-y: auto; border: 1px solid #dee2e6; padding: 10px; border-radius: 8px;">
+                        @foreach($users ?? [] as $user)
+                            <div class="form-check mb-2">
+                                <input class="form-check-input bulk-assignee-checkbox" 
+                                       type="checkbox" 
+                                       value="{{ $user->email }}" 
+                                       id="bulk_assignee_{{ $user->id }}">
+                                <label class="form-check-label" for="bulk_assignee_{{ $user->id }}">
+                                    {{ $user->name }}
+                                </label>
+                            </div>
+                        @endforeach
+                    </div>
+                    <small class="text-muted">Select one or more users to assign to all selected tasks</small>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-success" id="confirm-bulk-assignee-btn">
+                    <i class="mdi mdi-check me-1"></i>Assign to Tasks
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Bulk Assign Assignor Modal (Admin Only) -->
+<div class="modal fade" id="bulkAssignorModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">
+                <h5 class="modal-title">
+                    <i class="mdi mdi-account-star me-2"></i>Assign Assignor to Selected Tasks
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p><strong>Select assignor for <span id="bulk-assignor-count">0</span> selected task(s):</strong></p>
+                <div class="mb-3">
+                    <label class="form-label">Select Assignor:</label>
+                    <select class="form-select" id="bulk-assignor-select">
+                        <option value="">Select User</option>
+                        @foreach($users ?? [] as $user)
+                            <option value="{{ $user->email }}">{{ $user->name }}</option>
+                        @endforeach
+                    </select>
+                    <small class="text-muted">This user will be set as the creator of all selected tasks</small>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="confirm-bulk-assignor-btn">
+                    <i class="mdi mdi-check me-1"></i>Assign as Assignor
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 @endsection
 
 @section('script')
@@ -2329,18 +2418,34 @@
                     console.log('Filter - Task:', taskValue);
                 }
                 
-                // Assignor filter
+                // Assignor filter (including NULL check)
                 var assignorValue = $('#filter-assignor').val();
                 if (assignorValue) {
-                    filters.push({field:"assignor_name", type:"=", value:assignorValue});
-                    console.log('Filter - Assignor:', assignorValue);
+                    if (assignorValue === '__NULL__') {
+                        // Filter for tasks with NO assignor
+                        filters.push(function(data) {
+                            return !data.assignor_name || data.assignor_name === '-' || data.assignor_name === '';
+                        });
+                        console.log('Filter - Assignor: NULL (no assignor)');
+                    } else {
+                        filters.push({field:"assignor_name", type:"=", value:assignorValue});
+                        console.log('Filter - Assignor:', assignorValue);
+                    }
                 }
                 
-                // Assignee filter
+                // Assignee filter (including NULL check)
                 var assigneeValue = $('#filter-assignee').val();
                 if (assigneeValue) {
-                    filters.push({field:"assignee_name", type:"=", value:assigneeValue});
-                    console.log('Filter - Assignee:', assigneeValue);
+                    if (assigneeValue === '__NULL__') {
+                        // Filter for tasks with NO assignee
+                        filters.push(function(data) {
+                            return !data.assignee_name || data.assignee_name === '-' || data.assignee_name === '';
+                        });
+                        console.log('Filter - Assignee: NULL (no assignee)');
+                    } else {
+                        filters.push({field:"assignee_name", type:"=", value:assigneeValue});
+                        console.log('Filter - Assignee:', assigneeValue);
+                    }
                 }
                 
                 // Status filter - Try case-insensitive
@@ -2427,36 +2532,57 @@
                     case 'all':
                         $('#filter-status').val('');
                         $('#filter-priority').val('');
+                        $('#filter-assignor').val('');
+                        $('#filter-assignee').val('');
                         console.log('✓ Showing all tasks');
                         break;
                     case 'Todo':
                         $('#filter-status').val('Todo');
                         $('#filter-priority').val('');
+                        $('#filter-assignor').val('');
+                        $('#filter-assignee').val('');
                         console.log('✓ Filtering: Todo');
                         break;
                     case 'Working':
                         $('#filter-status').val('Working');
                         $('#filter-priority').val('');
+                        $('#filter-assignor').val('');
+                        $('#filter-assignee').val('');
                         console.log('✓ Filtering: Working');
                         break;
                     case 'Done':
                         $('#filter-status').val('Done');
                         $('#filter-priority').val('');
+                        $('#filter-assignor').val('');
+                        $('#filter-assignee').val('');
                         console.log('✓ Filtering: Done');
+                        break;
+                    case 'no_assignee':
+                        $('#filter-status').val('');
+                        $('#filter-priority').val('');
+                        $('#filter-assignor').val('');
+                        $('#filter-assignee').val('__NULL__');
+                        console.log('✓ Filtering: No Assignee');
+                        break;
+                    case 'no_assignor':
+                        $('#filter-status').val('');
+                        $('#filter-priority').val('');
+                        $('#filter-assignor').val('__NULL__');
+                        $('#filter-assignee').val('');
+                        console.log('✓ Filtering: No Assignor');
                         break;
                     case 'Need Help':
                         $('#filter-status').val('Need Help');
                         $('#filter-priority').val('');
+                        $('#filter-assignor').val('');
+                        $('#filter-assignee').val('');
                         console.log('✓ Filtering: Need Help');
-                        break;
-                    case 'Need Approval':
-                        $('#filter-status').val('Need Approval');
-                        $('#filter-priority').val('');
-                        console.log('✓ Filtering: Need Approval');
                         break;
                     case 'high':
                         $('#filter-status').val('');
                         $('#filter-priority').val('high');
+                        $('#filter-assignor').val('');
+                        $('#filter-assignee').val('');
                         console.log('✓ Filtering: High Priority');
                         break;
                 }
@@ -2553,7 +2679,7 @@
             });
 
             // Show Bulk Actions Modal
-            $('#bulk-actions-btn').on('click', function() {
+            $('#bulk-actions-btn, #bulk-actions-btn-mobile').on('click', function() {
                 if (selectedTasks.length === 0) {
                     // Show error notification
                     var alertHtml = `
@@ -2573,7 +2699,54 @@
                 }
                 
                 $('#bulk-selected-count').text(selectedTasks.length);
+                $('#bulk-assignee-count').text(selectedTasks.length);
+                $('#bulk-assignor-count').text(selectedTasks.length);
                 $('#bulkActionsModal').modal('show');
+            });
+            
+            // Bulk Assign Assignee
+            $('#bulk-assign-assignee-btn').on('click', function(e) {
+                e.preventDefault();
+                $('#bulkActionsModal').modal('hide');
+                $('#bulkAssigneeModal').modal('show');
+            });
+            
+            $('#confirm-bulk-assignee-btn').on('click', function() {
+                const selectedEmails = $('.bulk-assignee-checkbox:checked').map(function() {
+                    return $(this).val();
+                }).get();
+                
+                if (selectedEmails.length === 0) {
+                    alert('Please select at least one assignee');
+                    return;
+                }
+                
+                const assigneeEmails = selectedEmails.join(', ');
+                console.log('Bulk assigning assignees:', assigneeEmails, 'to tasks:', selectedTasks);
+                
+                bulkUpdate('assign_assignee', { assignee: assigneeEmails });
+                $('#bulkAssigneeModal').modal('hide');
+            });
+            
+            // Bulk Assign Assignor (Admin only)
+            $('#bulk-assign-assignor-btn').on('click', function(e) {
+                e.preventDefault();
+                $('#bulkActionsModal').modal('hide');
+                $('#bulkAssignorModal').modal('show');
+            });
+            
+            $('#confirm-bulk-assignor-btn').on('click', function() {
+                const assignorEmail = $('#bulk-assignor-select').val();
+                
+                if (!assignorEmail) {
+                    alert('Please select an assignor');
+                    return;
+                }
+                
+                console.log('Bulk assigning assignor:', assignorEmail, 'to tasks:', selectedTasks);
+                
+                bulkUpdate('assign_assignor', { assignor: assignorEmail });
+                $('#bulkAssignorModal').modal('hide');
             });
 
             // Bulk Delete (no confirmation)
