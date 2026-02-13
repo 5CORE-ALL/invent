@@ -6355,8 +6355,14 @@ class ChannelMasterController extends Controller
             // Table uses marketplace_daily_metrics / fetchAdMetricsFromTables as source
             // Chart uses ChannelMasterSummary which may have different values
             // ==================================================================================
-            if (!empty($chartData) && !$isAll) {
-                $tableRef = $this->getTableReferenceValue($channel, $metric);
+            if (!empty($chartData)) {
+                // If the frontend passed the exact badge value, use it directly
+                $badgeValue = $request->input('badge_value');
+                $tableRef = ($isAll && $badgeValue !== null)
+                    ? (float) $badgeValue
+                    : ($isAll
+                        ? $this->getAllChannelsTableReference($metric)
+                        : $this->getTableReferenceValue($channel, $metric));
                 if ($tableRef !== null && $tableRef != 0) {
                     $chartLatest = (float) end($chartData)['value'];
                     if ($chartLatest != 0 && abs($chartLatest - $tableRef) > 0.01) {
@@ -6381,6 +6387,104 @@ class ChannelMasterController extends Controller
             \Log::error('getChannelMetricChartData error: ' . $e->getMessage());
             return response()->json(['success' => false, 'message' => 'Error fetching chart data'], 500);
         }
+    }
+
+    /**
+     * Get the "table reference value" for ALL channels combined.
+     * Sums the latest marketplace_daily_metrics value across every channel.
+     * Used when channel='all' to scale charts to match the badge totals.
+     */
+    private function getAllChannelsTableReference(string $metric): ?float
+    {
+        // Metrics that are averaged (percentages) — cannot simply sum
+        $avgMetrics = ['gprofit', 'groi', 'ads_pct', 'npft', 'nroi', 'acos', 'ads_cvr'];
+        if (in_array($metric, $avgMetrics)) {
+            // For averaged metrics, get weighted average across channels
+            $allMdm = MarketplaceDailyMetric::selectRaw('channel, MAX(date) as max_date')
+                ->groupBy('channel')
+                ->get();
+
+            $totalSales = 0;
+            $weightedSum = 0;
+            $count = 0;
+            foreach ($allMdm as $row) {
+                $mdm = MarketplaceDailyMetric::where('channel', $row->channel)
+                    ->where('date', $row->max_date)->first();
+                if (!$mdm) continue;
+
+                $sales = (float) ($mdm->total_sales ?? 0);
+                $val = match($metric) {
+                    'gprofit' => (float) ($mdm->pft_percentage ?? 0),
+                    'groi' => (float) ($mdm->roi_percentage ?? 0),
+                    'ads_pct' => (float) ($mdm->tacos_percentage ?? 0),
+                    'npft' => (float) ($mdm->n_pft ?? 0),
+                    'nroi' => (float) ($mdm->n_roi ?? 0),
+                    default => null,
+                };
+                if ($val === null) continue;
+                // Weight by sales for meaningful average
+                $totalSales += $sales;
+                $weightedSum += $val * $sales;
+                $count++;
+            }
+            if ($metric === 'acos' || $metric === 'ads_cvr') {
+                // For ad metrics, compute from totals
+                $liveTotal = ['Total Ad Spend' => 0, 'clicks' => 0, 'ad_sales' => 0, 'ad_sold' => 0];
+                $adChannels = ['amazon', 'amazonfba', 'ebay', 'ebaytwo', 'ebaythree', 'temu', 'walmart', 'shopifyb2c', 'tiktokshop'];
+                foreach ($adChannels as $ch) {
+                    $live = $this->fetchAdMetricsFromTables($ch);
+                    $liveTotal['Total Ad Spend'] += (float) ($live['Total Ad Spend'] ?? 0);
+                    $liveTotal['clicks'] += (float) ($live['clicks'] ?? 0);
+                    $liveTotal['ad_sales'] += (float) ($live['ad_sales'] ?? 0);
+                    $liveTotal['ad_sold'] += (float) ($live['ad_sold'] ?? 0);
+                }
+                return match($metric) {
+                    'acos' => $liveTotal['ad_sales'] > 0 ? round(($liveTotal['Total Ad Spend'] / $liveTotal['ad_sales']) * 100, 2) : null,
+                    'ads_cvr' => $liveTotal['clicks'] > 0 ? round(($liveTotal['ad_sold'] / $liveTotal['clicks']) * 100, 2) : null,
+                    default => null,
+                };
+            }
+            return $totalSales > 0 ? round($weightedSum / $totalSales, 2) : ($count > 0 ? round($weightedSum / $count, 2) : null);
+        }
+
+        // For summable metrics (counts, amounts): sum across all channels
+        $allMdm = MarketplaceDailyMetric::selectRaw('channel, MAX(date) as max_date')
+            ->groupBy('channel')
+            ->get();
+
+        $total = 0;
+        foreach ($allMdm as $row) {
+            $mdm = MarketplaceDailyMetric::where('channel', $row->channel)
+                ->where('date', $row->max_date)->first();
+            if (!$mdm) continue;
+
+            $val = match($metric) {
+                'l30_sales' => (float) ($mdm->total_sales ?? 0),
+                'l30_orders' => (float) ($mdm->total_orders ?? 0),
+                'qty' => (float) ($mdm->total_quantity ?? 0),
+                'pft' => (float) ($mdm->total_pft ?? 0),
+                default => null,
+            };
+            if ($val !== null) $total += $val;
+        }
+
+        // For ad metrics, sum from live campaign tables
+        if (in_array($metric, ['ad_spend', 'clicks', 'ad_sales', 'ad_sold'])) {
+            $adChannels = ['amazon', 'amazonfba', 'ebay', 'ebaytwo', 'ebaythree', 'temu', 'walmart', 'shopifyb2c', 'tiktokshop'];
+            $total = 0;
+            foreach ($adChannels as $ch) {
+                $live = $this->fetchAdMetricsFromTables($ch);
+                $total += match($metric) {
+                    'ad_spend' => (float) ($live['Total Ad Spend'] ?? 0),
+                    'clicks' => (float) ($live['clicks'] ?? 0),
+                    'ad_sales' => (float) ($live['ad_sales'] ?? 0),
+                    'ad_sold' => (float) ($live['ad_sold'] ?? 0),
+                    default => 0,
+                };
+            }
+        }
+
+        return $total > 0 ? round($total, 2) : null;
     }
 
     /**

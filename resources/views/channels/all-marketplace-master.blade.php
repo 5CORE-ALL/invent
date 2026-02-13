@@ -3085,6 +3085,9 @@
                         metric: currentMetricKey,
                         days: currentChartDays
                     };
+                    if (currentBadgeValue !== null) {
+                        params.badge_value = currentBadgeValue;
+                    }
                 } else {
                     // Ad breakdown mode — uses daily ad campaign reports
                     url = '/ad-breakdown-chart-data';
@@ -3145,12 +3148,14 @@
             };
 
             // Show metric chart (for non-ad-breakdown columns)
-            function showMetricChart(channel, metricKey) {
+            var currentBadgeValue = null;
+            function showMetricChart(channel, metricKey, badgeValue) {
                 currentChartMode = 'metric';
                 currentChartChannel = channel.toLowerCase().replace(/[^a-z0-9]/g, '');
                 currentMetricKey = metricKey;
                 currentChartMetric = metricKey; // for fmtVal formatting
                 currentChartDays = 30;
+                currentBadgeValue = badgeValue || null;
 
                 // Reset dropdown
                 $('#adChartRangeSelect').val('30');
@@ -3182,7 +3187,10 @@
             // Badge click handler — show overall (all channels) metric trend
             $(document).on('click', '.badge-chart-link', function() {
                 const metricKey = $(this).data('metric');
-                showMetricChart('All', metricKey);
+                // Extract the displayed badge value so the chart can match it exactly
+                const badgeText = $(this).find('span').text().replace(/[,$%]/g, '').trim();
+                const badgeValue = parseFloat(badgeText) || null;
+                showMetricChart('All', metricKey, badgeValue);
             });
 
             // Render chart
