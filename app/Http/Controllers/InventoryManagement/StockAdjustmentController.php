@@ -470,23 +470,32 @@ class StockAdjustmentController extends Controller
             $errors = [];
             $rowNumber = 0;
 
-            if (($handle = fopen($file->getRealPath(), 'r')) !== false) {
-                // Set UTF-8 encoding
-                stream_filter_append($handle, 'convert.iconv.UTF-8/UTF-8//IGNORE');
-                
+            // Read file content and handle encoding
+            $content = file_get_contents($file->getRealPath());
+            
+            // Remove BOM if present
+            $content = preg_replace('/^\xEF\xBB\xBF/', '', $content);
+            
+            // Convert to UTF-8 if needed
+            if (!mb_check_encoding($content, 'UTF-8')) {
+                $content = mb_convert_encoding($content, 'UTF-8', mb_detect_encoding($content));
+            }
+            
+            // Create temporary file with clean content
+            $tempFile = tempnam(sys_get_temp_dir(), 'csv');
+            file_put_contents($tempFile, $content);
+
+            if (($handle = fopen($tempFile, 'r')) !== false) {
                 // Read header
                 $header = fgetcsv($handle);
                 
                 if (!$header) {
+                    fclose($handle);
+                    unlink($tempFile);
                     return response()->json([
                         'success' => false,
                         'message' => 'CSV file is empty or invalid'
                     ], 422);
-                }
-
-                // Remove BOM if present
-                if (isset($header[0])) {
-                    $header[0] = preg_replace('/^\x{FEFF}/u', '', $header[0]);
                 }
 
                 // Normalize header
@@ -520,11 +529,11 @@ class StockAdjustmentController extends Controller
                     }
 
                     // Clean and decode values
-                    $sku = isset($row[$skuIndex]) ? trim(mb_convert_encoding($row[$skuIndex], 'UTF-8', 'UTF-8')) : null;
+                    $sku = isset($row[$skuIndex]) ? trim($row[$skuIndex]) : null;
                     $qty = isset($row[$qtyIndex]) ? trim($row[$qtyIndex]) : null;
-                    $warehouseName = $warehouseIndex !== false && isset($row[$warehouseIndex]) ? trim(mb_convert_encoding($row[$warehouseIndex], 'UTF-8', 'UTF-8')) : null;
-                    $adjustmentType = $adjustmentIndex !== false && isset($row[$adjustmentIndex]) ? trim(mb_convert_encoding($row[$adjustmentIndex], 'UTF-8', 'UTF-8')) : 'Add';
-                    $reason = $reasonIndex !== false && isset($row[$reasonIndex]) ? trim(mb_convert_encoding($row[$reasonIndex], 'UTF-8', 'UTF-8')) : null;
+                    $warehouseName = $warehouseIndex !== false && isset($row[$warehouseIndex]) ? trim($row[$warehouseIndex]) : null;
+                    $adjustmentType = $adjustmentIndex !== false && isset($row[$adjustmentIndex]) ? trim($row[$adjustmentIndex]) : 'Add';
+                    $reason = $reasonIndex !== false && isset($row[$reasonIndex]) ? trim($row[$reasonIndex]) : null;
 
                     if (empty($sku) || $qty === null || $qty === '') {
                         $errors[] = "Row {$rowNumber}: SKU or Quantity is empty";
@@ -591,6 +600,7 @@ class StockAdjustmentController extends Controller
                 }
 
                 fclose($handle);
+                unlink($tempFile); // Delete temporary file
             }
 
             if (empty($csvData) && empty($errors)) {
