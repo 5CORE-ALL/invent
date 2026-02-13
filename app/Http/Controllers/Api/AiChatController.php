@@ -8,11 +8,11 @@ use App\Models\AiEscalation;
 use App\Models\AiKnowledgeBase;
 use App\Models\AiKnowledgeFile;
 use App\Models\AiQuestion;
+use App\Models\Task;
+use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\StreamedResponse;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Support\Facades\Http;
@@ -36,14 +36,6 @@ class AiChatController extends Controller
      */
     public function chat(Request $request): JsonResponse
     {
-        // 🔍 DEBUG LOG - Request aaya ya nahi
-        Log::info('===== AI CHAT REQUEST STARTED =====', [
-            'user_id' => $request->user()?->id,
-            'user_email' => $request->user()?->email,
-            'question' => $request->input('question'),
-            'timestamp' => now()->toDateTimeString()
-        ]);
-
         try {
             $validated = $request->validate([
                 'question' => ['required', 'string', 'max:8000'],
@@ -52,16 +44,12 @@ class AiChatController extends Controller
             $question = $this->sanitizeInput($validated['question']);
             $user = $request->user();
 
-            // 🔍 DEBUG - Knowledge base search
-            Log::info('🔎 Searching knowledge base', ['question' => $question]);
+            $taskResponse = $this->handleTaskQuery($question, $user);
+            if ($taskResponse) {
+                return $taskResponse;
+            }
 
             $kbMatch = $this->searchKnowledgeBase($question);
-
-            Log::info('📚 Knowledge base result', [
-                'found' => $kbMatch ? 'YES' : 'NO',
-                'id' => $kbMatch?->id,
-                'pattern' => $kbMatch?->question_pattern
-            ]);
 
             if ($kbMatch) {
                 $record = null;
@@ -74,10 +62,8 @@ class AiChatController extends Controller
                             'question' => $question,
                             'ai_answer' => $answer,
                         ]);
-                        Log::info('💾 Saved to ai_questions', ['record_id' => $record->id]);
                     }
                 } catch (\Exception $e) {
-                    Log::warning('AI question not stored', ['message' => $e->getMessage()]);
                 }
 
                 return response()->json([
@@ -87,10 +73,7 @@ class AiChatController extends Controller
                 ]);
             }
 
-            // No KB match → try OpenAI first
-            // No KB match → try Claude first
-            Log::info('⚠️ No KB match, calling Claude', ['question' => $question]);
-            $claudeResult = $this->callClaude($question);  // ✅ callClaude, NOT callOpenAI
+            $claudeResult = $this->callClaude($question);
 
             if ($claudeResult && $claudeResult['confident']) {
                 $answer = $claudeResult['answer'];
@@ -104,7 +87,6 @@ class AiChatController extends Controller
                         ]);
                     }
                 } catch (\Exception $e) {
-                    Log::warning('AI question not stored', ['message' => $e->getMessage()]);
                 }
                 return response()->json([
                     'answer' => $answer,
@@ -113,29 +95,10 @@ class AiChatController extends Controller
                 ]);
             }
 
-            // Claude not confident or failed → escalate to senior
-            Log::info('⚠️ Claude not confident or failed, escalating', ['question' => $question, 'user_id' => $user->id]);
-            $escalationResponse = $this->escalateToSenior($question, $user);
-            return $escalationResponse;
-
-            // OpenAI not confident or failed → escalate to senior
-            Log::info('⚠️ OpenAI not confident or failed, escalating', ['question' => $question, 'user_id' => $user->id]);
-            $escalationResponse = $this->escalateToSenior($question, $user);
-            return $escalationResponse;
+            return $this->escalateToSenior($question, $user);
         } catch (\Illuminate\Validation\ValidationException $e) {
-            Log::error('❌ Validation error', [
-                'errors' => $e->errors(),
-                'message' => $e->getMessage()
-            ]);
             throw $e;
         } catch (\Throwable $e) {
-            Log::error('❌ CHAT METHOD CRASHED', [
-                'error' => $e->getMessage(),
-                'file' => $e->getFile(),
-                'line' => $e->getLine(),
-                'trace' => $e->getTraceAsString()
-            ]);
-
             return response()->json([
                 'answer' => 'Something went wrong. Please try again.',
                 'error' => app()->environment('local') ? $e->getMessage() : null
@@ -143,31 +106,210 @@ class AiChatController extends Controller
         }
     }
 
-    private function searchKnowledgeBase(string $question): ?AiKnowledgeBase
+    /**
+     * Handle task inquiry questions. Returns JsonResponse if it's a task question, null otherwise.
+     */
+    private function handleTaskQuery(string $question, $user): ?JsonResponse
     {
-        Log::debug('🔍 searchKnowledgeBase called', ['question' => $question]);
+        $keywords = [
+            'task', 'tasks', 'assign', 'assigned', 'pending', 'assign to',
+            'task list', 'my tasks', 'tasks of', 'tasks for', 'working on',
+            'how many', 'does', 'have',
+        ];
+        $q = strtolower(trim($question));
+        $hasKeyword = false;
+        foreach ($keywords as $kw) {
+            if (str_contains($q, $kw)) {
+                $hasKeyword = true;
+                break;
+            }
+        }
+        if (!$hasKeyword) {
+            return null;
+        }
 
         try {
-            $words = preg_split('/\s+/', strtolower($question), -1, PREG_SPLIT_NO_EMPTY);
-
-            if (empty($words)) {
-                Log::debug('⚠️ No words extracted from question');
+            if (!\Illuminate\Support\Facades\Schema::hasTable('tasks')) {
                 return null;
             }
 
-            Log::debug('📊 Extracted words', ['words' => $words]);
+            $targetUser = $this->resolveTargetUserFromQuestion($question, $user);
+            if (!$targetUser) {
+                $extracted = $this->extractNameFromQuestion($question);
+                $answer = $extracted
+                    ? "I couldn't find any team member with name \"{$extracted}\". Please check the spelling or try with full name/email."
+                    : "I couldn't identify which team member you're asking about. Try: \"Tasks assigned to [name]\" or \"My tasks\".";
+                return $this->taskQueryResponse($answer, $user, $question);
+            }
 
-            // Check if table exists
+            $tasksQuery = $this->buildTasksQueryForUser($targetUser);
+            $total = $tasksQuery->count();
+            $pendingStatuses = ['pending', 'in_progress', 'Todo', 'Working', 'Need Help', 'Need Approval', 'Dependent', 'Approved', 'Hold', 'Rework'];
+            $pendingTasks = (clone $tasksQuery)->whereIn('status', $pendingStatuses)->get();
+            $pendingCount = $pendingTasks->count();
+
+            $isCurrentUser = $targetUser->id === $user->id;
+            $displayName = $targetUser->name ?: $targetUser->email;
+
+            if ($total === 0) {
+                $answer = $isCurrentUser
+                    ? "You have no tasks assigned."
+                    : "{$displayName} has no tasks assigned.";
+                return $this->taskQueryResponse($answer, $user, $question);
+            }
+
+            if ($pendingCount === 0) {
+                $answer = $isCurrentUser
+                    ? "You have no pending tasks. All assigned tasks are completed."
+                    : "{$displayName} has no pending tasks. All assigned tasks are completed.";
+                return $this->taskQueryResponse($answer, $user, $question);
+            }
+
+            $lines = [];
+            if ($isCurrentUser) {
+                $lines[] = "You have {$pendingCount} pending task" . ($pendingCount !== 1 ? 's' : '') . ":";
+            } else {
+                $lines[] = "{$displayName} has {$pendingCount} pending task" . ($pendingCount !== 1 ? 's' : '') . " out of {$total} total assigned tasks:";
+            }
+
+            $emojiByPriority = ['high' => '🔴', 'normal' => '🔵', 'low' => '🟢'];
+            foreach ($pendingTasks->take(20) as $i => $t) {
+                $due = $t->due_date ?? $t->start_date ?? $t->tid ?? null;
+                $dueStr = $due ? $this->formatDueDate($due) : 'No due date';
+                $prio = strtolower($t->priority ?? 'normal');
+                $emoji = $emojiByPriority[$prio] ?? '🟡';
+                $lines[] = ($i + 1) . ". {$emoji} " . ($t->title ?: 'Untitled') . " (Due: {$dueStr})";
+            }
+            if ($pendingTasks->count() > 20) {
+                $lines[] = '... and ' . ($pendingTasks->count() - 20) . ' more.';
+            }
+
+            $statusCounts = (clone $tasksQuery)->selectRaw('status, count(*) as c')->groupBy('status')->pluck('c', 'status');
+            $inProgress = ($statusCounts['in_progress'] ?? 0) + ($statusCounts['Working'] ?? 0);
+            $completed = ($statusCounts['completed'] ?? 0) + ($statusCounts['Done'] ?? 0);
+            $summary = [];
+            if ($pendingCount > 0) $summary[] = "{$pendingCount} pending";
+            if ($inProgress > 0) $summary[] = "{$inProgress} in progress";
+            if ($completed > 0) $summary[] = "{$completed} completed";
+            if (!empty($summary)) {
+                $lines[] = '';
+                $lines[] = 'Total assigned: ' . $total . ' tasks (' . implode(', ', $summary) . ')';
+            }
+
+            $answer = implode("\n", $lines);
+            return $this->taskQueryResponse($answer, $user, $question);
+        } catch (\Throwable $e) {
+            return null;
+        }
+    }
+
+    private function resolveTargetUserFromQuestion(string $question, $currentUser): ?User
+    {
+        $q = strtolower(trim($question));
+        $myPatterns = [
+            'my tasks', 'my pending tasks', 'tasks assigned to me', 'my task list',
+            'what are my tasks', 'show my tasks', 'my task', 'show me tasks', 'show tasks',
+        ];
+        foreach ($myPatterns as $p) {
+            if (str_contains($q, $p)) {
+                return $currentUser;
+            }
+        }
+
+        $name = $this->extractNameFromQuestion($question);
+        if ($name !== null && $name !== '') {
+            $found = User::where('name', 'like', '%' . $name . '%')
+                ->orWhere('email', 'like', '%' . $name . '%')
+                ->first();
+            return $found;
+        }
+
+        if (preg_match('/\b[\w._%+-]+@[\w.-]+\.\w+\b/', $question, $m)) {
+            return User::where('email', $m[0])->first();
+        }
+
+        return null;
+    }
+
+    private function extractNameFromQuestion(string $question): ?string
+    {
+        $patterns = [
+            '/tasks?\s+assigned\s+to\s+([^?.!]+)/i',
+            '/tasks?\s+of\s+([^?.!]+)/i',
+            '/tasks?\s+for\s+([^?.!]+)/i',
+            '/pending\s+tasks?\s+(?:of|for)\s+([^?.!]+)/i',
+            '/task\s+list\s+of\s+([^?.!]+)/i',
+            '/what\s+is\s+([^?\s]+(?:\s+[^?\s]+)?)\s+working\s+on/i',
+            '/how\s+many\s+tasks?\s+(?:does\s+)?([^?]+?)\s+have/i',
+            '/show\s+tasks?\s+of\s+([^?.!]+)/i',
+        ];
+        foreach ($patterns as $pat) {
+            if (preg_match($pat, $question, $m)) {
+                return trim($m[1], " \t\n\r\0\x0B\"'");
+            }
+        }
+        return null;
+    }
+
+    private function buildTasksQueryForUser(User $targetUser)
+    {
+        if (\Illuminate\Support\Facades\Schema::hasColumn('tasks', 'assignee_id')) {
+            return Task::where('assignee_id', $targetUser->id);
+        }
+        $email = $targetUser->email;
+        return Task::where(function ($q) use ($email) {
+            $q->where('assign_to', $email)
+                ->orWhere('assign_to', 'like', $email . ',%')
+                ->orWhere('assign_to', 'like', '%,' . $email)
+                ->orWhere('assign_to', 'like', '%,' . $email . ',%');
+        });
+    }
+
+    private function formatDueDate($date): string
+    {
+        if (!$date) return 'No due date';
+        $d = \Carbon\Carbon::parse($date);
+        $tomorrow = \Carbon\Carbon::tomorrow();
+        if ($d->isSameDay($tomorrow)) {
+            return 'Tomorrow';
+        }
+        return $d->format('Y-m-d');
+    }
+
+    private function taskQueryResponse(string $answer, $user, string $question): JsonResponse
+    {
+        $record = null;
+        try {
+            if (\Illuminate\Support\Facades\Schema::hasTable('ai_questions')) {
+                $record = AiQuestion::create([
+                    'user_id' => $user->id,
+                    'question' => $question,
+                    'ai_answer' => $answer,
+                ]);
+            }
+        } catch (\Exception $e) {
+        }
+        return response()->json([
+            'answer' => $answer,
+            'id' => $record?->id,
+            'status' => 'answered',
+        ]);
+    }
+
+    private function searchKnowledgeBase(string $question): ?AiKnowledgeBase
+    {
+        try {
+            $words = preg_split('/\s+/', strtolower($question), -1, PREG_SPLIT_NO_EMPTY);
+            if (empty($words)) {
+                return null;
+            }
+
             if (!\Illuminate\Support\Facades\Schema::hasTable('ai_knowledge_base')) {
-                Log::error('❌ ai_knowledge_base table does not exist!');
                 return null;
             }
 
             $entries = AiKnowledgeBase::all();
-            Log::debug('📚 Total KB entries', ['count' => $entries->count()]);
-
             if ($entries->isEmpty()) {
-                Log::warning('⚠️ Knowledge base is empty! Run seeder: php artisan db:seed --class=AiKnowledgeBaseSeeder');
                 return null;
             }
 
@@ -194,31 +336,11 @@ class AiChatController extends Controller
                 if ($score > $bestScore && $score >= 1) {
                     $bestScore = $score;
                     $best = $entry;
-                    Log::debug('🎯 New best match', [
-                        'id' => $entry->id,
-                        'pattern' => $entry->question_pattern,
-                        'score' => $score
-                    ]);
                 }
-            }
-
-            if ($best) {
-                Log::info('✅ KB match found', [
-                    'id' => $best->id,
-                    'pattern' => $best->question_pattern,
-                    'score' => $bestScore
-                ]);
-            } else {
-                Log::info('❌ No KB match found', ['question' => $question]);
             }
 
             return $best;
         } catch (\Throwable $e) {
-            Log::error('❌ searchKnowledgeBase CRASHED', [
-                'error' => $e->getMessage(),
-                'file' => $e->getFile(),
-                'line' => $e->getLine()
-            ]);
             return null;
         }
     }
@@ -226,15 +348,26 @@ class AiChatController extends Controller
     private function formatAnswerSteps($answerSteps, ?string $videoLink = null): string
     {
         $steps = is_array($answerSteps) ? $answerSteps : (is_string($answerSteps) ? json_decode($answerSteps, true) : []);
+        
         if (!is_array($steps)) {
-            $steps = [$answerSteps];
+            $steps = [$steps];
         }
-        $out = implode("\n", array_map(function ($step, $i) {
-            return (is_int($i) ? ($i + 1) . '. ' : '') . $step;
-        }, $steps, array_keys($steps)));
+        
+        // 🔥 FIX: Check if steps already have numbers (1., 2., etc.)
+        $formattedSteps = [];
+        foreach ($steps as $index => $step) {
+            // Remove existing numbers if present
+            $cleanStep = preg_replace('/^\d+\.\s*/', '', trim($step));
+            // Add single number
+            $formattedSteps[] = ($index + 1) . '. ' . $cleanStep;
+        }
+        
+        $out = implode("\n", $formattedSteps);
+        
         if ($videoLink) {
-            $out .= "\n\nVideo: " . $videoLink;
+            $out .= "\n\n📹 Video tutorial: " . $videoLink;
         }
+        
         return $out;
     }
 
@@ -282,13 +415,10 @@ class AiChatController extends Controller
     {
         $apiKey = config('services.anthropic.key');
         if (empty($apiKey)) {
-            Log::warning('❌ Anthropic API key not set in config/services.php or .env');
             return null;
         }
 
         try {
-            Log::info('🤖 Calling Claude API', ['question' => substr($question, 0, 50)]);
-
             $response = Http::timeout(60)
                 ->withHeaders([
                     'x-api-key' => $apiKey,
@@ -314,12 +444,6 @@ class AiChatController extends Controller
                 ]);
 
             if (!$response->successful()) {
-                Log::warning('❌ Claude API error', [
-                    'status' => $response->status(),
-                    'body' => substr($response->body(), 0, 500)
-                ]);
-
-                // Rate limit ya auth error pe bhi null return
                 return null;
             }
 
@@ -334,27 +458,16 @@ class AiChatController extends Controller
             }
 
             if ($answer === '') {
-                Log::warning('❌ Claude returned empty response');
                 return null;
             }
 
-            // Confidence check
             $confident = !$this->isAnswerUncertain($answer);
-
-            Log::info('✅ Claude response received', [
-                'confident' => $confident,
-                'answer_length' => strlen($answer)
-            ]);
 
             return [
                 'answer' => $answer,
                 'confident' => $confident
             ];
         } catch (\Throwable $e) {
-            Log::error('❌ Claude API exception', [
-                'message' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
-            ]);
             return null;
         }
     }
@@ -368,7 +481,6 @@ class AiChatController extends Controller
         $greetings = ['hi', 'hello', 'hey', 'thanks', 'thank you', 'good morning', 'good afternoon', 'good evening'];
         foreach ($greetings as $greeting) {
             if (trim($lower) === $greeting || str_starts_with($lower, $greeting . ' ') || str_contains($lower, ' ' . $greeting . ' ')) {
-                Log::info('✅ Greeting detected, marking as confident', ['answer' => $answer]);
                 return false;
             }
         }
@@ -429,22 +541,14 @@ class AiChatController extends Controller
 
         foreach ($phrases as $phrase) {
             if (str_contains($lower, $phrase)) {
-                Log::info('❌ Uncertainty phrase detected', [
-                    'phrase' => $phrase,
-                    'answer' => substr($answer, 0, 100)
-                ]);
-                return true; // Uncertain - escalate!
+                return true;
             }
         }
 
-        // 🔍 EXTRA CHECK: Agar answer mein "I don't" + "information" ya "knowledge" ho
         if (
             str_contains($lower, "i don't") &&
-            (str_contains($lower, "information") ||
-                str_contains($lower, "knowledge") ||
-                str_contains($lower, "specifics"))
+            (str_contains($lower, "information") || str_contains($lower, "knowledge") || str_contains($lower, "specifics"))
         ) {
-            Log::info('❌ Pattern detected: "I don\'t" + information/knowledge', ['answer' => substr($answer, 0, 100)]);
             return true;
         }
 
@@ -453,19 +557,10 @@ class AiChatController extends Controller
 
     private function escalateToSenior(string $question, $user): JsonResponse
     {
-        Log::info('🚀 Starting escalation process', [
-            'user_id' => $user->id,
-            'question' => substr($question, 0, 100)
-        ]);
-
         try {
             $domain = $this->detectDomain($question);
-            Log::info('🎯 Domain detected', ['domain' => $domain]);
-
             $seniorEmail = $this->getSeniorEmailByDomain($domain);
-            Log::info('📧 Senior email', ['email' => $seniorEmail]);
 
-            Log::info('💾 Creating escalation record');
             $escalation = AiEscalation::create([
                 'user_id' => $user->id,
                 'original_question' => $question,
@@ -473,13 +568,9 @@ class AiChatController extends Controller
                 'assigned_senior_email' => $seniorEmail,
                 'status' => 'pending',
             ]);
-            Log::info('✅ Escalation record created', ['escalation_id' => $escalation->id]);
 
-            Log::info('🔗 Generating signed reply link');
             $replyLink = url('/ai/escalation/' . $escalation->id . '/reply');
-            Log::info('✅ Reply link generated', ['link' => $replyLink]);
 
-            Log::info('📨 Sending escalation email');
             try {
                 Mail::to($seniorEmail)->send(new EscalationMail(
                     $user->name ?? $user->email,
@@ -489,21 +580,10 @@ class AiChatController extends Controller
                     $domain,
                     $replyLink
                 ));
-                Log::info('✅ Email sent successfully');
             } catch (\Exception $e) {
-                Log::error('❌ Escalation email failed', [
-                    'escalation_id' => $escalation->id,
-                    'error' => $e->getMessage(),
-                    'trace' => $e->getTraceAsString()
-                ]);
             }
 
             $answer = "I don't have this information. Your question has been escalated to the {$domain} team senior. You will be notified when they respond.";
-
-            Log::info('📤 Returning escalation response', [
-                'escalation_id' => $escalation->id,
-                'domain' => $domain
-            ]);
 
             return response()->json([
                 'answer' => $answer,
@@ -511,24 +591,12 @@ class AiChatController extends Controller
                 'escalation_id' => $escalation->id,
             ]);
         } catch (\Throwable $e) {
-            Log::error('❌ ESCALATION METHOD CRASHED', [
-                'error' => $e->getMessage(),
-                'file' => $e->getFile(),
-                'line' => $e->getLine(),
-                'trace' => $e->getTraceAsString()
-            ]);
             throw $e;
         }
     }
+
     public function uploadKnowledge(Request $request): JsonResponse
     {
-        Log::info('📤 CSV UPLOAD STARTED', [
-            'user_id' => $request->user()?->id,
-            'user_email' => $request->user()?->email,
-            'has_file' => $request->hasFile('file'),
-            'timestamp' => now()
-        ]);
-
         $request->validate([
             'file' => ['required', 'file', 'mimes:csv,txt', 'max:10240'],
         ]);
@@ -536,13 +604,6 @@ class AiChatController extends Controller
         $file = $request->file('file');
         $path = $file->store('ai_knowledge', 'local');
         $originalName = $file->getClientOriginalName();
-
-        Log::info('📁 File stored', [
-            'original_name' => $originalName,
-            'path' => $path,
-            'size' => $file->getSize(),
-            'mime' => $file->getMimeType()
-        ]);
 
         $record = AiKnowledgeFile::create([
             'filename' => basename($path),
@@ -552,18 +613,11 @@ class AiChatController extends Controller
         ]);
 
         try {
-            Log::info('🔄 Processing CSV', ['file_id' => $record->id, 'file_path' => $path]);
             $this->processCSVTraining(storage_path('app/' . $path), $record->id);
             $record->update(['status' => 'processed', 'processed_at' => now()]);
-            Log::info('✅ CSV processed successfully', ['file_id' => $record->id]);
 
             return response()->json(['success' => true, 'message' => 'File uploaded and processed successfully.']);
         } catch (\Throwable $e) {
-            Log::error('❌ CSV processing failed', [
-                'file_id' => $record->id,
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
-            ]);
             $record->update(['status' => 'failed']);
 
             return response()->json([
@@ -576,24 +630,17 @@ class AiChatController extends Controller
 
     private function processCSVTraining(string $filePath, int $fileId): void
     {
-        Log::debug('📂 Opening CSV file', ['path' => $filePath]);
-
-        // 🔥 FIX: Remove BOM if present
         $content = file_get_contents($filePath);
         $bom = "\xef\xbb\xbf";
         if (substr($content, 0, 3) === $bom) {
             $content = substr($content, 3);
             file_put_contents($filePath, $content);
-            Log::info('✅ BOM removed from CSV');
         }
-
-        // 🔥 FIX: Also remove any NULL bytes or control characters
         $content = str_replace("\0", '', $content);
         file_put_contents($filePath, $content);
 
         $handle = fopen($filePath, 'r');
         if (!$handle) {
-            Log::error('❌ Could not open file', ['path' => $filePath]);
             throw new \RuntimeException('Could not open file.');
         }
 
@@ -609,11 +656,8 @@ class AiChatController extends Controller
 
         if (!$header) {
             fclose($handle);
-            Log::error('❌ CSV has no header row');
             throw new \RuntimeException('CSV file is empty or has no header row.');
         }
-
-        Log::debug('📋 CSV Header', ['header' => $header]);
 
         $expected = ['category', 'subcategory', 'question_pattern', 'answer_steps', 'video_link', 'tags'];
         $header = array_map('trim', $header);
@@ -623,30 +667,21 @@ class AiChatController extends Controller
             $idx = array_search($col, $header);
             if ($idx !== false) {
                 $map[$col] = $idx;
-                Log::debug('✅ Column found', ['column' => $col, 'index' => $idx]);
-            } else {
-                Log::warning('⚠️ Column missing', ['column' => $col]);
             }
         }
 
         if (!isset($map['question_pattern'])) {
             fclose($handle);
-            Log::error('❌ Missing question_pattern column', ['header' => $header]);
             throw new \RuntimeException('CSV must have a question_pattern column.');
         }
 
-        $rowCount = 0;
         while (($row = fgetcsv($handle)) !== false) {
-            $rowCount++;
-            Log::debug('📄 Processing row', ['row_number' => $rowCount, 'row_data' => $row]);
-
             try {
                 $category = isset($map['category']) ? trim($row[$map['category']] ?? '') : 'General';
                 $subcategory = isset($map['subcategory']) ? trim($row[$map['subcategory']] ?? '') : null;
                 $question_pattern = trim($row[$map['question_pattern']] ?? '');
 
                 if ($question_pattern === '') {
-                    Log::warning('⚠️ Skipping row - empty question_pattern', ['row' => $rowCount]);
                     continue;
                 }
 
@@ -654,35 +689,11 @@ class AiChatController extends Controller
                 $video_link = isset($map['video_link']) ? trim($row[$map['video_link']] ?? '') : null;
                 $tags_raw = isset($map['tags']) ? ($row[$map['tags']] ?? '[]') : '[]';
 
-                Log::debug('📊 Raw data', [
-                    'category' => $category,
-                    'question_pattern' => $question_pattern,
-                    'answer_steps_raw' => $answer_steps_raw,
-                    'tags_raw' => $tags_raw
-                ]);
-
-                // JSON decode with error handling
                 $decoded = json_decode($answer_steps_raw, true);
-                if ($decoded === null && json_last_error() !== JSON_ERROR_NONE) {
-                    Log::warning('⚠️ Invalid JSON in answer_steps, using as plain text', [
-                        'error' => json_last_error_msg(),
-                        'value' => $answer_steps_raw
-                    ]);
-                    $answer_steps = [$answer_steps_raw];
-                } else {
-                    $answer_steps = is_array($decoded) ? $decoded : [$answer_steps_raw];
-                }
+                $answer_steps = ($decoded === null && json_last_error() !== JSON_ERROR_NONE) ? [$answer_steps_raw] : (is_array($decoded) ? $decoded : [$answer_steps_raw]);
 
                 $tagsDecoded = json_decode($tags_raw, true);
-                if ($tagsDecoded === null && json_last_error() !== JSON_ERROR_NONE) {
-                    Log::warning('⚠️ Invalid JSON in tags, using as plain text', [
-                        'error' => json_last_error_msg(),
-                        'value' => $tags_raw
-                    ]);
-                    $tags = (array) $tags_raw;
-                } else {
-                    $tags = is_array($tagsDecoded) ? $tagsDecoded : (array) $tags_raw;
-                }
+                $tags = ($tagsDecoded === null && json_last_error() !== JSON_ERROR_NONE) ? (array) $tags_raw : (is_array($tagsDecoded) ? $tagsDecoded : (array) $tags_raw);
 
                 AiKnowledgeBase::create([
                     'category' => $category ?: 'General',
@@ -692,20 +703,12 @@ class AiChatController extends Controller
                     'video_link' => $video_link ?: null,
                     'tags' => $tags,
                 ]);
-
-                Log::debug('✅ Row inserted', ['question_pattern' => $question_pattern]);
             } catch (\Throwable $e) {
-                Log::error('❌ Error processing row', [
-                    'row' => $rowCount,
-                    'error' => $e->getMessage(),
-                    'row_data' => $row
-                ]);
                 throw $e;
             }
         }
 
         fclose($handle);
-        Log::info('📊 CSV processing complete', ['total_rows' => $rowCount, 'file_id' => $fileId]);
     }
     public function checkNotifications(Request $request): JsonResponse
     {
@@ -759,11 +762,6 @@ class AiChatController extends Controller
      */
     public function downloadSampleCsv()
     {
-        Log::info('📥 Sample CSV download requested', [
-            'user_id' => auth()->id(),
-            'timestamp' => now()
-        ]);
-
         $headers = [
             'Content-Type' => 'text/csv; charset=utf-8',
             'Content-Disposition' => 'attachment; filename="5core-ai-training-sample.csv"',
