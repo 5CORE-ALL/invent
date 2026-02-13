@@ -6474,6 +6474,20 @@ class ChannelMasterController extends Controller
             $transitions[] = $n - 1;
         }
 
+        // Handle end-of-series duplicates: if the last transition and the forced last point
+        // have the same value, remove the earlier one so interpolation spans from further back
+        $tCount = count($transitions);
+        if ($tCount >= 3) {
+            $lastIdx = $transitions[$tCount - 1];
+            $prevIdx = $transitions[$tCount - 2];
+            $lastVal = (float) $chartData[$lastIdx]['value'];
+            $prevVal = (float) $chartData[$prevIdx]['value'];
+            if (abs($lastVal - $prevVal) < 0.001) {
+                // Remove the second-to-last transition so interpolation bridges from further back
+                array_splice($transitions, $tCount - 2, 1);
+            }
+        }
+
         // If transitions cover most points, no smoothing needed
         if (count($transitions) >= $n - 1) return $chartData;
 
