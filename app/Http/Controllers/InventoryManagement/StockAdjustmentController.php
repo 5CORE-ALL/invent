@@ -454,4 +454,173 @@ class StockAdjustmentController extends Controller
 
         return response()->json(['data' => $data]);
     }
+
+    /**
+     * Process bulk stock adjustment from CSV
+     */
+    public function processBulkCSV(Request $request)
+    {
+        $request->validate([
+            'csv_file' => 'required|file|mimes:csv,txt|max:10240', // Max 10MB
+        ]);
+
+        try {
+            $file = $request->file('csv_file');
+            $csvData = [];
+            $errors = [];
+            $rowNumber = 0;
+
+            if (($handle = fopen($file->getRealPath(), 'r')) !== false) {
+                // Read header
+                $header = fgetcsv($handle);
+                
+                if (!$header) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'CSV file is empty or invalid'
+                    ], 422);
+                }
+
+                // Normalize header
+                $header = array_map(function($col) {
+                    return strtolower(trim($col));
+                }, $header);
+
+                // Find column indexes
+                $skuIndex = $this->findColumnIndex($header, ['sku', 'item', 'product_sku']);
+                $qtyIndex = $this->findColumnIndex($header, ['quantity', 'qty', 'stock_adjustment']);
+                $warehouseIndex = $this->findColumnIndex($header, ['warehouse', 'warehouse_name']);
+                $adjustmentIndex = $this->findColumnIndex($header, ['adjustment', 'adjustment_type', 'type']);
+                $reasonIndex = $this->findColumnIndex($header, ['reason', 'notes']);
+
+                if ($skuIndex === false || $qtyIndex === false) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'CSV must contain SKU and QUANTITY columns'
+                    ], 422);
+                }
+
+                // Get all warehouses for lookup
+                $warehouses = Warehouse::all();
+
+                // Read data rows
+                while (($row = fgetcsv($handle)) !== false) {
+                    $rowNumber++;
+                    
+                    if (empty(array_filter($row))) {
+                        continue; // Skip empty rows
+                    }
+
+                    $sku = isset($row[$skuIndex]) ? trim($row[$skuIndex]) : null;
+                    $qty = isset($row[$qtyIndex]) ? trim($row[$qtyIndex]) : null;
+                    $warehouseName = $warehouseIndex !== false && isset($row[$warehouseIndex]) ? trim($row[$warehouseIndex]) : null;
+                    $adjustmentType = $adjustmentIndex !== false && isset($row[$adjustmentIndex]) ? trim($row[$adjustmentIndex]) : 'Add';
+                    $reason = $reasonIndex !== false && isset($row[$reasonIndex]) ? trim($row[$reasonIndex]) : null;
+
+                    if (empty($sku) || $qty === null || $qty === '') {
+                        $errors[] = "Row {$rowNumber}: SKU or Quantity is empty";
+                        continue;
+                    }
+
+                    // Validate quantity is numeric
+                    if (!is_numeric($qty)) {
+                        $errors[] = "Row {$rowNumber}: Quantity must be a number (SKU: {$sku})";
+                        continue;
+                    }
+
+                    // Check if SKU exists in product master
+                    $product = ProductMaster::where('sku', $sku)->first();
+                    
+                    if (!$product) {
+                        $errors[] = "Row {$rowNumber}: SKU not found in Product Master ({$sku})";
+                        continue;
+                    }
+
+                    // Check if SKU exists in Shopify
+                    $shopifySku = ShopifySku::where('sku', $sku)->first();
+                    if (!$shopifySku) {
+                        $errors[] = "Row {$rowNumber}: SKU not found in Shopify ({$sku})";
+                        continue;
+                    }
+
+                    // Find warehouse (case-insensitive, handles spelling variations)
+                    $warehouse = null;
+                    $warehouseId = null;
+                    if ($warehouseName) {
+                        // Try exact match first
+                        $warehouse = $warehouses->firstWhere('name', $warehouseName);
+                        
+                        // If not found, try case-insensitive
+                        if (!$warehouse) {
+                            $warehouse = $warehouses->first(function($w) use ($warehouseName) {
+                                return strcasecmp($w->name, $warehouseName) === 0;
+                            });
+                        }
+                        
+                        // If still not found, try partial match (handles "Godawn" vs "Godown")
+                        if (!$warehouse) {
+                            $warehouse = $warehouses->first(function($w) use ($warehouseName) {
+                                return stripos($w->name, substr($warehouseName, 0, 8)) !== false ||
+                                       stripos($warehouseName, substr($w->name, 0, 8)) !== false;
+                            });
+                        }
+                        
+                        $warehouseId = $warehouse ? $warehouse->id : null;
+                    }
+
+                    $csvData[] = [
+                        'sku' => $sku,
+                        'parent' => $product->parent ?? '',
+                        'title' => $product->title ?? '',
+                        'quantity' => (int)$qty,
+                        'warehouse_name' => $warehouseName ?? '',
+                        'warehouse_id' => $warehouseId,
+                        'adjustment_type' => $adjustmentType,
+                        'reason' => $reason,
+                        'row' => $rowNumber
+                    ];
+                }
+
+                fclose($handle);
+            }
+
+            if (empty($csvData) && empty($errors)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'No valid data found in CSV file'
+                ], 422);
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => 'CSV processed successfully',
+                'data' => $csvData,
+                'errors' => $errors,
+                'total_rows' => $rowNumber,
+                'valid_rows' => count($csvData),
+                'error_rows' => count($errors)
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Bulk CSV processing error: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Error processing CSV: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Find column index by possible names
+     */
+    private function findColumnIndex($header, $possibleNames)
+    {
+        foreach ($possibleNames as $name) {
+            $index = array_search(strtolower($name), $header);
+            if ($index !== false) {
+                return $index;
+            }
+        }
+        return false;
+    }
 }

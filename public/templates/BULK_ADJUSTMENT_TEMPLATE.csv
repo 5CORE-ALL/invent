@@ -1,0 +1,6 @@
+SKU,QUANTITY,WAREHOUSE,ADJUSTMENT,REASON
+CAPO GLD,1,Main Godown,Reduce,Container Damaged
+MS RBP5 2PCS,100,Main Godown,Add,Other
+MR RBP5,200,Main Godown,Reduce,Other
+KS 1X BLK+KB 02 BLK,50,Main Godown,Add,Other
+KBB 02 BLK,50,Main Godown,Reduce,Other

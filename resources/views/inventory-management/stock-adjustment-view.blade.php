@@ -196,6 +196,9 @@
                             <button type="button" class="btn btn-primary" id="openAddWarehouseModal" data-bs-toggle="modal" data-bs-target="#addWarehouseModal">
                                 <i class="fas fa-plus me-1"></i> CREATE STOCK ADJUSTMENT
                             </button>
+                            <button type="button" class="btn btn-success ms-2" data-bs-toggle="modal" data-bs-target="#bulkCSVModal">
+                                <i class="fas fa-file-csv me-1"></i> CREATE STOCK ADJUSTMENT BULK
+                            </button>
                             <div class="dataTables_length ms-3"></div>
                         </div>
 
@@ -309,6 +312,94 @@
                         </div>
                     </div>
 
+
+                    <!-- Bulk CSV Upload Modal -->
+                    <div class="modal fade" id="bulkCSVModal" tabindex="-1" aria-labelledby="bulkCSVModalLabel" aria-hidden="true">
+                        <div class="modal-dialog modal-xl">
+                            <div class="modal-content">
+                                <div class="modal-header bg-success text-white">
+                                    <h5 class="modal-title" id="bulkCSVModalLabel">
+                                        <i class="fas fa-file-csv me-2"></i>Create Stock Adjustment - Bulk CSV Upload
+                                    </h5>
+                                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                                </div>
+
+                                <div class="modal-body">
+                                    <!-- Step 1: Upload CSV -->
+                                    <div class="mb-4">
+                                        <h6><i class="fas fa-cloud-upload-alt me-1"></i> Step 1: Upload CSV File</h6>
+                                        <div class="border rounded p-3 bg-light">
+                                            <div class="mb-3">
+                                                <input type="file" class="form-control" id="bulkCSVFile" accept=".csv,.txt">
+                                                <div id="csvFileInfo" class="mt-2" style="display: none;">
+                                                    <span class="badge bg-info"><i class="fas fa-file-csv"></i> <span id="csvFileName"></span></span>
+                                                    <button type="button" class="btn btn-sm btn-link text-danger" onclick="clearBulkCSVFile()">
+                                                        <i class="fas fa-times"></i> Remove
+                                                    </button>
+                                                </div>
+                                            </div>
+                                            <button type="button" class="btn btn-primary" id="processBulkCSVBtn" disabled>
+                                                <i class="fas fa-upload me-1"></i> Process CSV
+                                            </button>
+                                            <div class="mt-2">
+                                                <small class="text-muted">
+                                                    <strong>CSV Format:</strong> Required columns: <code>SKU</code> and <code>QUANTITY</code>
+                                                    <br>Optional columns: <code>WAREHOUSE</code>, <code>ADJUSTMENT</code>, <code>REASON</code>
+                                                    <br><em>CREATED BY and DATE will be automatically set by the system</em>
+                                                    <br><strong>Example:</strong>
+                                                    <pre class="mt-1 p-2 bg-white border" style="font-size: 10px;">SKU,QUANTITY,WAREHOUSE,ADJUSTMENT,REASON
+CAPO GLD,1,Main Godawn,Reduce,Container Damaged
+MS RBP5 2PCS,100,Main Godawn,Add,Other</pre>
+                                                    <a href="{{ asset('templates/BULK_ADJUSTMENT_TEMPLATE.csv') }}" class="btn btn-sm btn-outline-primary mt-1" download>
+                                                        <i class="fas fa-download me-1"></i> Download Template
+                                                    </a>
+                                                </small>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Step 2: Preview & Configure -->
+                                    <div id="bulkPreviewSection" style="display: none;">
+                                        <hr>
+                                        <h6><i class="fas fa-cog me-1"></i> Step 2: Configure Adjustment Details</h6>
+                                        
+                                        <div id="bulkDefaultFieldsSection" class="row mb-3">
+                                            <div class="col-md-6" id="bulk_warehouse_container">
+                                                <label for="bulk_warehouse_id" class="form-label fw-bold">
+                                                    Default Warehouse <span class="text-danger">*</span>
+                                                    <small class="text-muted">(for rows without warehouse in CSV)</small>
+                                                </label>
+                                                <select class="form-select" id="bulk_warehouse_id">
+                                                    <option value="" selected>Select Warehouse</option>
+                                                    @foreach($warehouses as $warehouse)
+                                                        <option value="{{ $warehouse->id }}">{{ $warehouse->name }}</option>
+                                                    @endforeach
+                                                </select>
+                                            </div>
+                                            <div class="col-md-6" id="bulk_reason_container">
+                                                <label for="bulk_reason" class="form-label fw-bold">
+                                                    Default Reason <span class="text-danger">*</span>
+                                                    <small class="text-muted">(for rows without reason in CSV)</small>
+                                                </label>
+                                                <input type="text" class="form-control" id="bulk_reason" 
+                                                       placeholder="e.g., Bulk adjustment from CSV import">
+                                            </div>
+                                        </div>
+
+                                        <h6><i class="fas fa-list me-1"></i> Preview (First 20 rows)</h6>
+                                        <div id="bulkPreviewContent"></div>
+                                    </div>
+                                </div>
+
+                                <div class="modal-footer">
+                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                                    <button type="button" class="btn btn-success" id="submitBulkBtn" disabled>
+                                        <i class="fas fa-save me-1"></i> Create Adjustments
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
 
                     <!-- Progress Modal -->
                     <div id="progressModal" class="modal fade" tabindex="-1">
@@ -1241,6 +1332,310 @@
             }
 
             initializeTable();
+        });
+
+        // ========== BULK CSV UPLOAD FUNCTIONALITY ==========
+        
+        let bulkCSVData = [];
+        let bulkCSVErrors = [];
+
+        $('#bulkCSVFile').on('change', function() {
+            const file = this.files[0];
+            if (file) {
+                $('#csvFileName').text(file.name);
+                $('#csvFileInfo').show();
+                $('#processBulkCSVBtn').prop('disabled', false);
+            }
+        });
+
+        function clearBulkCSVFile() {
+            $('#bulkCSVFile').val('');
+            $('#csvFileInfo').hide();
+            $('#processBulkCSVBtn').prop('disabled', true);
+            $('#bulkPreviewSection').hide();
+            bulkCSVData = [];
+            bulkCSVErrors = [];
+        }
+
+        $('#processBulkCSVBtn').on('click', function() {
+            const formData = new FormData();
+            const file = $('#bulkCSVFile')[0].files[0];
+            
+            if (!file) {
+                alert('Please select a CSV file');
+                return;
+            }
+
+            formData.append('csv_file', file);
+
+            $(this).prop('disabled', true).html('<i class="fas fa-spinner fa-spin me-1"></i> Processing...');
+
+            $.ajax({
+                url: '{{ route("stock.adjustment.bulk-csv") }}',
+                method: 'POST',
+                data: formData,
+                processData: false,
+                contentType: false,
+                headers: {
+                    'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                },
+                success: function(response) {
+                    if (response.success) {
+                        bulkCSVData = response.data;
+                        bulkCSVErrors = response.errors || [];
+                        
+                        displayBulkPreview(response);
+                        $('#processBulkCSVBtn').prop('disabled', false).html('<i class="fas fa-check me-1"></i> Process CSV');
+                    } else {
+                        alert('Error: ' + response.message);
+                        $('#processBulkCSVBtn').prop('disabled', false).html('<i class="fas fa-upload me-1"></i> Process CSV');
+                    }
+                },
+                error: function(xhr) {
+                    const message = xhr.responseJSON?.message || 'Error processing CSV';
+                    alert('Error: ' + message);
+                    $('#processBulkCSVBtn').prop('disabled', false).html('<i class="fas fa-upload me-1"></i> Process CSV');
+                }
+            });
+        });
+
+        function displayBulkPreview(response) {
+            // Check if CSV has warehouse and reason columns
+            const hasWarehouse = bulkCSVData.some(item => item.warehouse_id);
+            const hasReason = bulkCSVData.some(item => item.reason);
+
+            // Show/hide default fields based on CSV content
+            if (hasWarehouse) {
+                $('#bulk_warehouse_container').hide();
+            } else {
+                $('#bulk_warehouse_container').show();
+            }
+
+            if (hasReason) {
+                $('#bulk_reason_container').hide();
+            } else {
+                $('#bulk_reason_container').show();
+            }
+
+            // Show appropriate message
+            let alertMessage = '';
+            if (hasWarehouse && hasReason) {
+                alertMessage = '<div class="alert alert-success"><i class="fas fa-check-circle me-1"></i><strong>All details provided in CSV!</strong> Warehouse and Reason from CSV will be used. CREATED BY and DATE will be set automatically.</div>';
+            } else if (hasWarehouse) {
+                alertMessage = '<div class="alert alert-warning"><i class="fas fa-info-circle me-1"></i><strong>Note:</strong> Warehouse from CSV will be used. Please provide default Reason below.</div>';
+            } else if (hasReason) {
+                alertMessage = '<div class="alert alert-warning"><i class="fas fa-info-circle me-1"></i><strong>Note:</strong> Reason from CSV will be used. Please provide default Warehouse below.</div>';
+            } else {
+                alertMessage = '<div class="alert alert-warning"><i class="fas fa-info-circle me-1"></i><strong>Note:</strong> Please provide default Warehouse and Reason below (not found in CSV).</div>';
+            }
+
+            let html = `
+                <div class="alert alert-info">
+                    <strong>CSV Processed:</strong> ${response.valid_rows} valid rows, ${response.error_rows} errors
+                </div>
+                ${alertMessage}`;
+
+            if (bulkCSVErrors.length > 0) {
+                html += `<div class="alert alert-danger">
+                    <strong>Errors Found:</strong><br>
+                    ${bulkCSVErrors.slice(0, 5).join('<br>')}
+                    ${bulkCSVErrors.length > 5 ? '<br><em>...and ' + (bulkCSVErrors.length - 5) + ' more</em>' : ''}
+                </div>`;
+            }
+
+            html += `
+                <div class="table-responsive" style="max-height: 400px;">
+                    <table class="table table-sm table-bordered table-hover">
+                        <thead class="table-primary" style="position: sticky; top: 0; z-index: 10;">
+                            <tr>
+                                <th>SKU</th>
+                                <th>QUANTITY</th>
+                                <th>WAREHOUSE</th>
+                                <th>ADJUSTMENT</th>
+                                <th>REASON</th>
+                            </tr>
+                        </thead>
+                        <tbody>`;
+
+            bulkCSVData.slice(0, 20).forEach(function(item) {
+                const warehouseDisplay = item.warehouse_name || '<span class="text-muted">Will use selected</span>';
+                const reasonDisplay = item.reason || '<span class="text-muted">Will use selected</span>';
+                
+                html += `
+                    <tr>
+                        <td><strong>${item.sku}</strong><br><small class="text-muted">${item.title}</small></td>
+                        <td><span class="badge bg-primary">${item.quantity}</span></td>
+                        <td>${warehouseDisplay}</td>
+                        <td><span class="badge bg-${item.adjustment_type === 'Add' ? 'success' : 'danger'}">${item.adjustment_type}</span></td>
+                        <td>${reasonDisplay}</td>
+                    </tr>`;
+            });
+
+            if (bulkCSVData.length > 20) {
+                html += `<tr><td colspan="5" class="text-center text-muted">...and ${bulkCSVData.length - 20} more rows</td></tr>`;
+            }
+
+            html += `</tbody></table></div>`;
+
+            $('#bulkPreviewContent').html(html);
+            $('#bulkPreviewSection').show();
+            $('#submitBulkBtn').prop('disabled', false);
+        }
+
+        $('#submitBulkBtn').on('click', function() {
+            if (bulkCSVData.length === 0) {
+                alert('No data to process');
+                return;
+            }
+
+            if (!confirm(`Are you sure you want to create ${bulkCSVData.length} stock adjustments?`)) {
+                return;
+            }
+
+            const defaultWarehouse = $('#bulk_warehouse_id').val();
+            const defaultReason = $('#bulk_reason').val();
+
+            // Check if we need defaults
+            const needsWarehouse = bulkCSVData.some(item => !item.warehouse_id);
+            const needsReason = bulkCSVData.some(item => !item.reason);
+            
+            if (needsWarehouse && !defaultWarehouse) {
+                alert('Please select default warehouse (some rows don\'t have warehouse in CSV)');
+                return;
+            }
+
+            if (needsReason && !defaultReason) {
+                alert('Please enter default reason (some rows don\'t have reason in CSV)');
+                return;
+            }
+
+            $(this).prop('disabled', true).html('<i class="fas fa-spinner fa-spin me-1"></i> Creating...');
+
+            // Show progress indicator
+            const totalRows = bulkCSVData.length;
+            $('#bulkPreviewContent').prepend(`
+                <div id="bulkProgressBar" class="mb-3">
+                    <div class="d-flex justify-content-between mb-1">
+                        <span>Processing: <span id="bulkProgressText">0 / ${totalRows}</span></span>
+                        <span><span id="bulkProgressPercent">0</span>%</span>
+                    </div>
+                    <div class="progress" style="height: 25px;">
+                        <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                             id="bulkProgressBarInner" 
+                             role="progressbar" 
+                             style="width: 0%">0%</div>
+                    </div>
+                </div>
+            `);
+
+            // Process each SKU
+            let processed = 0;
+            let failed = 0;
+            let failedSkus = [];
+
+            function updateProgress() {
+                const current = processed + failed;
+                const percent = Math.round((current / totalRows) * 100);
+                $('#bulkProgressText').text(`${current} / ${totalRows}`);
+                $('#bulkProgressPercent').text(percent);
+                $('#bulkProgressBarInner').css('width', percent + '%').text(percent + '%');
+                
+                if (failed > 0) {
+                    $('#bulkProgressBarInner').removeClass('bg-success').addClass('bg-warning');
+                } else {
+                    $('#bulkProgressBarInner').removeClass('bg-warning').addClass('bg-success');
+                }
+            }
+
+            function processNextSKU(index) {
+                if (index >= bulkCSVData.length) {
+                    // All done - remove progress bar
+                    $('#bulkProgressBar').remove();
+                    
+                    // Close modal
+                    $('#bulkCSVModal').modal('hide');
+                    clearBulkCSVFile();
+                    
+                    // Reload table data instantly without page refresh
+                    if (typeof loadInventoryData === 'function') {
+                        loadInventoryData();
+                    } else if (window.inventoryTable) {
+                        window.inventoryTable.ajax.reload(null, false);
+                    }
+                    
+                    // Build detailed message
+                    let messageHtml = `
+                        <div class="text-center">
+                            <i class="fas fa-check-circle text-success" style="font-size: 3rem;"></i>
+                            <h4 class="mt-3">Bulk Stock Adjustment Complete!</h4>
+                            <p class="mb-2"><strong>Created:</strong> <span class="badge bg-success">${processed}</span></p>
+                            <p class="mb-3"><strong>Failed:</strong> <span class="badge bg-danger">${failed}</span></p>`;
+                    
+                    if (failedSkus.length > 0) {
+                        messageHtml += `
+                            <div class="alert alert-warning text-start">
+                                <strong>Failed SKUs:</strong><br>
+                                ${failedSkus.slice(0, 10).join('<br>')}
+                                ${failedSkus.length > 10 ? '<br><em>...and ' + (failedSkus.length - 10) + ' more</em>' : ''}
+                            </div>`;
+                    }
+                    
+                    messageHtml += `</div>`;
+                    
+                    // Show in existing success alert function or create modal
+                    if (typeof showLargeSuccessAlert === 'function') {
+                        showLargeSuccessAlert('Bulk Processing Complete', messageHtml);
+                    } else {
+                        // Fallback to standard alert
+                        alert(`Bulk stock adjustment complete!\n\nCreated: ${processed}\nFailed: ${failed}${failedSkus.length > 0 ? '\n\nFailed SKUs:\n' + failedSkus.slice(0, 5).join('\n') : ''}`);
+                    }
+                    
+                    $('#submitBulkBtn').prop('disabled', false).html('<i class="fas fa-save me-1"></i> Create Adjustments');
+                    return;
+                }
+
+                const item = bulkCSVData[index];
+                
+                // Use CSV values if provided, otherwise use defaults
+                const warehouseId = item.warehouse_id || defaultWarehouse;
+                const reason = item.reason || defaultReason;
+                const adjustmentType = item.adjustment_type || 'Add';
+                const parent = item.parent || '';
+                const today = new Date().toISOString().split('T')[0];
+
+                $.ajax({
+                    url: '{{ route("stock.adjustment.store") }}',
+                    method: 'POST',
+                    data: {
+                        sku: item.sku,
+                        parent: parent,
+                        qty: Math.abs(item.quantity),
+                        warehouse_id: warehouseId,
+                        adjustment: adjustmentType,
+                        reason: reason,
+                        date: today,
+                        type: 'adjustment',
+                        is_approved: false
+                    },
+                    headers: {
+                        'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                    },
+                    success: function() {
+                        processed++;
+                        updateProgress();
+                        processNextSKU(index + 1);
+                    },
+                    error: function(xhr) {
+                        failed++;
+                        const errorMsg = xhr.responseJSON?.error || xhr.responseJSON?.details || 'Error';
+                        failedSkus.push(item.sku + ': ' + errorMsg);
+                        updateProgress();
+                        processNextSKU(index + 1);
+                    }
+                });
+            }
+
+            processNextSKU(0);
         });
     </script>
 
