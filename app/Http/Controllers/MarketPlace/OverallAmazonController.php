@@ -573,6 +573,17 @@ class OverallAmazonController extends Controller
                 }
             })
             ->get();
+
+        $amazonHlL1 = AmazonSbCampaignReport::where('ad_type', 'SPONSORED_BRANDS')
+            ->where('report_date_range', 'L1')
+            ->where(function ($q) use ($skus) {
+                foreach ($skus as $sku) {
+                    $upperSku = strtoupper($sku);
+                    $q->orWhere('campaignName', 'NOT LIKE', '%' . $upperSku . '% PT')
+                    ->orWhere('campaignName', 'NOT LIKE', '%' . $upperSku . '% pt');
+                }
+            })
+            ->get();
             
         $result = [];
         $parentHlSpendData = [];
@@ -1626,6 +1637,7 @@ class OverallAmazonController extends Controller
         $amazonHlL30 = DB::table('amazon_sb_campaign_reports')
             ->selectRaw('
                 campaignName,
+                MAX(campaign_id) as campaign_id,
                 MAX(cost) as cost,
                 SUM(clicks) as clicks,
                 SUM(sales) as sales,
@@ -1637,6 +1649,30 @@ class OverallAmazonController extends Controller
             ->where('ad_type', 'SPONSORED_BRANDS')
             ->where('report_date_range', 'L30')
             ->groupBy('campaignName')
+            ->get();
+
+        // Fetch Amazon SB Campaign Reports for L7 (HL campaigns)
+        $amazonHlL7 = AmazonSbCampaignReport::where('ad_type', 'SPONSORED_BRANDS')
+            ->where('report_date_range', 'L7')
+            ->where(function ($q) use ($skus) {
+                foreach ($skus as $sku) {
+                    $upperSku = strtoupper($sku);
+                    $q->orWhere('campaignName', 'NOT LIKE', '%' . $upperSku . '% PT')
+                    ->orWhere('campaignName', 'NOT LIKE', '%' . $upperSku . '% pt');
+                }
+            })
+            ->get();
+
+        // Fetch Amazon SB Campaign Reports for L1 (HL campaigns)
+        $amazonHlL1 = AmazonSbCampaignReport::where('ad_type', 'SPONSORED_BRANDS')
+            ->where('report_date_range', 'L1')
+            ->where(function ($q) use ($skus) {
+                foreach ($skus as $sku) {
+                    $upperSku = strtoupper($sku);
+                    $q->orWhere('campaignName', 'NOT LIKE', '%' . $upperSku . '% PT')
+                    ->orWhere('campaignName', 'NOT LIKE', '%' . $upperSku . '% pt');
+                }
+            })
             ->get();
 
         // Fetch Amazon SP Campaign Reports for L7 (KW campaigns - for utilization)
@@ -1814,6 +1850,48 @@ class OverallAmazonController extends Controller
             }
         }
 
+        // Fetch HL-specific last_sbid and sbid_m from day-before-yesterday and yesterday records
+        $hlLastSbidReports = DB::table('amazon_sb_campaign_reports')
+            ->select('campaignName', 'campaign_id', 'last_sbid', 'sbid_m')
+            ->where('ad_type', 'SPONSORED_BRANDS')
+            ->where(function($q) use ($dayBeforeYesterday, $yesterday) {
+                $q->where('report_date_range', $dayBeforeYesterday)
+                  ->orWhere('report_date_range', $yesterday);
+            })
+            ->where(function($q) {
+                $q->whereNotNull('last_sbid')
+                  ->where('last_sbid', '!=', '')
+                  ->orWhere(function($q2) {
+                      $q2->whereNotNull('sbid_m')
+                         ->where('sbid_m', '!=', '');
+                  });
+            })
+            ->orderByRaw("CASE WHEN report_date_range = ? THEN 0 ELSE 1 END", [$dayBeforeYesterday])
+            ->get();
+
+        // Build HL last_sbid and sbid_m maps
+        $hlLastSbidMap = [];
+        $hlSbidMMap = [];
+        foreach ($hlLastSbidReports as $report) {
+            $campaignIdStr = (string)$report->campaign_id;
+            if (!empty($campaignIdStr) && !isset($hlLastSbidMap[$campaignIdStr]) && !empty($report->last_sbid)) {
+                $hlLastSbidMap[$campaignIdStr] = $report->last_sbid;
+            }
+            if (!empty($campaignIdStr) && !isset($hlSbidMMap[$campaignIdStr]) && !empty($report->sbid_m)) {
+                $hlSbidMMap[$campaignIdStr] = $report->sbid_m;
+            }
+            // Also map by normalized campaign name for fallback
+            if (!empty($report->campaignName)) {
+                $normalizedName = strtoupper(trim(rtrim($report->campaignName, '.')));
+                if (!isset($hlLastSbidMap['name_' . $normalizedName]) && !empty($report->last_sbid)) {
+                    $hlLastSbidMap['name_' . $normalizedName] = $report->last_sbid;
+                }
+                if (!isset($hlSbidMMap['name_' . $normalizedName]) && !empty($report->sbid_m)) {
+                    $hlSbidMMap['name_' . $normalizedName] = $report->sbid_m;
+                }
+            }
+        }
+
         // Calculate AVG CPC for PT campaigns (from daily records)
         // Use same query as amazon-utilized-pt page: AVG(costPerClick) grouped by campaign_id
         // Do NOT filter by campaign name - just use campaign_id (same approach as PT utilized page)
@@ -1835,6 +1913,27 @@ class OverallAmazonController extends Controller
             }
         } catch (\Exception $e) {
             // Continue without PT avg_cpc data if there's an error
+        }
+
+        // Calculate HL AVG CPC from all daily records (lifetime average)
+        $hlAvgCpcData = collect();
+        try {
+            $hlDailyRecords = DB::table('amazon_sb_campaign_reports')
+                ->select('campaign_id', DB::raw('AVG(CASE WHEN clicks > 0 THEN cost / clicks ELSE 0 END) as avg_cpc'))
+                ->where('ad_type', 'SPONSORED_BRANDS')
+                ->where('campaignStatus', '!=', 'ARCHIVED')
+                ->where('report_date_range', 'REGEXP', '^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+                ->whereNotNull('campaign_id')
+                ->groupBy('campaign_id')
+                ->get();
+            
+            foreach ($hlDailyRecords as $record) {
+                if ($record->campaign_id && $record->avg_cpc > 0) {
+                    $hlAvgCpcData->put($record->campaign_id, round($record->avg_cpc, 2));
+                }
+            }
+        } catch (\Exception $e) {
+            Log::warning('Could not calculate HL AVG CPC: ' . $e->getMessage());
         }
 
         $parentSkuCounts = $productMasters
@@ -2366,6 +2465,84 @@ class OverallAmazonController extends Controller
                 $row['hl_sales_L30'] = 0;
             }
 
+            // --- HL Campaign Details (for HL Ads section) ---
+            // Match HL L7 campaign for this row (check SKU and parent, same as HL L30 match)
+            $hlCleanParent = strtoupper(trim($parent ?? ''));
+            $matchedHlL7 = $amazonHlL7->first(function ($item) use ($cleanSku, $hlCleanParent) {
+                $cleanName = strtoupper(trim($item->campaignName));
+                return (in_array($cleanName, [$cleanSku, $cleanSku . ' HEAD'])
+                    || ($hlCleanParent && in_array($cleanName, [$hlCleanParent, $hlCleanParent . ' HEAD'])))
+                    && strtoupper($item->campaignStatus) === 'ENABLED';
+            });
+            // Match HL L1 campaign
+            $matchedHlL1 = $amazonHlL1->first(function ($item) use ($cleanSku, $hlCleanParent) {
+                $cleanName = strtoupper(trim($item->campaignName));
+                return (in_array($cleanName, [$cleanSku, $cleanSku . ' HEAD'])
+                    || ($hlCleanParent && in_array($cleanName, [$hlCleanParent, $hlCleanParent . ' HEAD'])))
+                    && strtoupper($item->campaignStatus) === 'ENABLED';
+            });
+
+            // HL Campaign name, budget, campaign_id, status
+            $row['hl_campaignName'] = ($matchedCampaignHlL30 ? $matchedCampaignHlL30->campaignName : null) ?? ($matchedHlL7 ? $matchedHlL7->campaignName : null) ?? null;
+            $row['hl_campaignBudgetAmount'] = ($matchedCampaignHlL30 ? ($matchedCampaignHlL30->campaignBudgetAmount ?? null) : null)
+                ?? ($matchedHlL7 ? ($matchedHlL7->campaignBudgetAmount ?? null) : null)
+                ?? ($matchedHlL1 ? ($matchedHlL1->campaignBudgetAmount ?? null) : null)
+                ?? 0;
+            $row['hl_campaign_id'] = ($matchedCampaignHlL30 ? $matchedCampaignHlL30->campaign_id : null) ?? ($matchedHlL7 ? $matchedHlL7->campaign_id : null) ?? null;
+            $hlHasEnabled = ($matchedCampaignHlL30 && strtoupper($matchedCampaignHlL30->campaignStatus ?? '') === 'ENABLED')
+                || ($matchedHlL7 && strtoupper($matchedHlL7->campaignStatus ?? '') === 'ENABLED')
+                || ($matchedHlL1 && strtoupper($matchedHlL1->campaignStatus ?? '') === 'ENABLED');
+            $row['hl_campaign_status'] = ($matchedCampaignHlL30 || $matchedHlL7 || $matchedHlL1)
+                ? ($hlHasEnabled ? 'ENABLED' : 'PAUSED')
+                : '';
+
+            // HL L1 spend and clicks
+            $row['hl_spend_L1'] = $matchedHlL1 ? ($matchedHlL1->cost ?? 0) : 0;
+            $row['hl_clicks_L1'] = $matchedHlL1 ? (int)($matchedHlL1->clicks ?? 0) : 0;
+
+            // HL CPC fields
+            $row['hl_l7_cpc'] = ($matchedHlL7 && ($matchedHlL7->clicks ?? 0) > 0)
+                ? round(($matchedHlL7->cost ?? 0) / $matchedHlL7->clicks, 2)
+                : 0;
+            $row['hl_l1_cpc'] = ($matchedHlL1 && ($matchedHlL1->clicks ?? 0) > 0)
+                ? round(($matchedHlL1->cost ?? 0) / $matchedHlL1->clicks, 2)
+                : 0;
+            $row['hl_avg_cpc'] = $row['hl_campaign_id'] ? $hlAvgCpcData->get($row['hl_campaign_id'], 0) : 0;
+
+            // HL AD CVR = (hl_sold_L30 / hl_clicks_L30) * 100
+            $hlClicks30 = (int)($row['hl_clicks_L30'] ?? 0);
+            $hlSold30 = (int)($row['hl_sold_L30'] ?? 0);
+            $row['hl_ad_cvr'] = $hlClicks30 > 0 ? round(($hlSold30 / $hlClicks30) * 100, 2) : 0;
+
+            // HL SBID fields - get from HL-specific maps
+            $hlCampaignIdStr = $row['hl_campaign_id'] ? (string)$row['hl_campaign_id'] : null;
+            $hlLastSbid = '';
+            $hlSbidM = '';
+            if ($hlCampaignIdStr && isset($hlLastSbidMap[$hlCampaignIdStr])) {
+                $hlLastSbid = $hlLastSbidMap[$hlCampaignIdStr];
+            } else {
+                $hlCampaignNameForSbid = $row['hl_campaignName'];
+                if ($hlCampaignNameForSbid) {
+                    $hlNormalizedName = strtoupper(trim(rtrim($hlCampaignNameForSbid, '.')));
+                    if (isset($hlLastSbidMap['name_' . $hlNormalizedName])) {
+                        $hlLastSbid = $hlLastSbidMap['name_' . $hlNormalizedName];
+                    }
+                }
+            }
+            if ($hlCampaignIdStr && isset($hlSbidMMap[$hlCampaignIdStr])) {
+                $hlSbidM = $hlSbidMMap[$hlCampaignIdStr];
+            } else {
+                $hlCampaignNameForSbid = $row['hl_campaignName'];
+                if ($hlCampaignNameForSbid) {
+                    $hlNormalizedName = strtoupper(trim(rtrim($hlCampaignNameForSbid, '.')));
+                    if (isset($hlSbidMMap['name_' . $hlNormalizedName])) {
+                        $hlSbidM = $hlSbidMMap['name_' . $hlNormalizedName];
+                    }
+                }
+            }
+            $row['hl_last_sbid'] = $hlLastSbid;
+            $row['hl_sbid_m'] = $hlSbidM;
+
             // SPEND_L30 and SALES_L30 include HL (like AmazonAdRunningController)
             $row['SPEND_L30'] = ($row['kw_spend_L30'] ?? 0) + ($row['pmt_spend_L30'] ?? 0) + ($row['hl_spend_L30'] ?? 0);
             $row['AD_Spend_L30'] = ($row['kw_spend_L30'] ?? 0) + ($row['pmt_spend_L30'] ?? 0) + ($row['hl_spend_L30'] ?? 0);
@@ -2876,9 +3053,124 @@ class OverallAmazonController extends Controller
             $ptParentEnabled = $ptParentStatus && strtoupper($ptParentStatus) === 'ENABLED';
             $sumRow['pt_campaign_status'] = $ptParentEnabled ? 'ENABLED' : ($ptParentStatus ? 'PAUSED' : '');
             
-            // ad_pause: true if neither KW nor PT is ENABLED
-            $sumRow['ad_pause'] = !($kwParentEnabled || $ptParentEnabled);
-            $sumRow['has_campaigns'] = $sumRow['hasCampaign'] || $hasParentPtCampaign;
+            // --- HL (Headline/Sponsored Brands) Data for parent ---
+            // Match HL campaigns using "PARENT {parent}" or "PARENT {parent} HEAD"
+            $hlParentName = $parentCampaignName;  // e.g. "PARENT 12 WF PP"
+            $hlParentNameNoDot = $parentCampaignNameNoDot;
+            
+            // Match HL L30 campaign for parent
+            $parentHlL30 = $amazonHlL30->first(function ($item) use ($hlParentName, $hlParentNameNoDot) {
+                $cleanName = strtoupper(trim($item->campaignName));
+                return (in_array($cleanName, [$hlParentName, $hlParentName . ' HEAD', $hlParentNameNoDot, $hlParentNameNoDot . ' HEAD']))
+                    && strtoupper($item->campaignStatus) === 'ENABLED';
+            });
+            // Match HL L7 campaign for parent
+            $parentHlL7 = $amazonHlL7->first(function ($item) use ($hlParentName, $hlParentNameNoDot) {
+                $cleanName = strtoupper(trim($item->campaignName));
+                return (in_array($cleanName, [$hlParentName, $hlParentName . ' HEAD', $hlParentNameNoDot, $hlParentNameNoDot . ' HEAD']))
+                    && strtoupper($item->campaignStatus) === 'ENABLED';
+            });
+            // Match HL L1 campaign for parent
+            $parentHlL1 = $amazonHlL1->first(function ($item) use ($hlParentName, $hlParentNameNoDot) {
+                $cleanName = strtoupper(trim($item->campaignName));
+                return (in_array($cleanName, [$hlParentName, $hlParentName . ' HEAD', $hlParentNameNoDot, $hlParentNameNoDot . ' HEAD']))
+                    && strtoupper($item->campaignStatus) === 'ENABLED';
+            });
+            
+            $hasParentHlCampaign = $parentHlL30 || $parentHlL7 || $parentHlL1;
+            
+            // HL Campaign name, budget, ID, status
+            $sumRow['hl_campaignName'] = ($parentHlL30 ? $parentHlL30->campaignName : null)
+                ?? ($parentHlL7 ? $parentHlL7->campaignName : null)
+                ?? ($parentHlL1 ? $parentHlL1->campaignName : null);
+            $sumRow['hl_campaignBudgetAmount'] = ($parentHlL30 ? ($parentHlL30->campaignBudgetAmount ?? null) : null)
+                ?? ($parentHlL7 ? ($parentHlL7->campaignBudgetAmount ?? null) : null)
+                ?? ($parentHlL1 ? ($parentHlL1->campaignBudgetAmount ?? null) : null)
+                ?? 0;
+            // campaign_id: try L30 first, then L7, then L1
+            $sumRow['hl_campaign_id'] = ($parentHlL30 ? ($parentHlL30->campaign_id ?? null) : null)
+                ?? ($parentHlL7 ? $parentHlL7->campaign_id : null)
+                ?? ($parentHlL1 ? $parentHlL1->campaign_id : null);
+            $hlParentHasEnabled = ($parentHlL30 && strtoupper($parentHlL30->campaignStatus ?? '') === 'ENABLED')
+                || ($parentHlL7 && strtoupper($parentHlL7->campaignStatus ?? '') === 'ENABLED')
+                || ($parentHlL1 && strtoupper($parentHlL1->campaignStatus ?? '') === 'ENABLED');
+            $sumRow['hl_campaign_status'] = $hasParentHlCampaign
+                ? ($hlParentHasEnabled ? 'ENABLED' : 'PAUSED')
+                : '';
+            
+            // HL L30 data (from grouped SB query - uses cost instead of spend, purchases instead of unitsSold)
+            $sumRow['hl_spend_L30'] = $parentHlL30 ? round((float)($parentHlL30->cost ?? 0), 2) : 0;
+            $sumRow['hl_clicks_L30'] = $parentHlL30 ? (int)($parentHlL30->clicks ?? 0) : 0;
+            $sumRow['hl_sales_L30'] = $parentHlL30 ? round((float)($parentHlL30->sales ?? 0), 2) : 0;
+            $sumRow['hl_sold_L30'] = $parentHlL30 ? (int)($parentHlL30->purchases ?? 0) : 0;
+            
+            // HL L7 data
+            if ($parentHlL7) {
+                $sumRow['hl_spend_L7'] = round((float)($parentHlL7->cost ?? 0), 2);
+                $sumRow['hl_clicks_L7'] = (int)($parentHlL7->clicks ?? 0);
+                $sumRow['hl_sales_L7'] = round((float)($parentHlL7->sales ?? 0), 2);
+                $sumRow['hl_sold_L7'] = (int)($parentHlL7->unitsSold ?? $parentHlL7->purchases ?? 0);
+                $sumRow['hl_l7_cpc'] = ($parentHlL7->clicks ?? 0) > 0
+                    ? round(($parentHlL7->cost ?? 0) / $parentHlL7->clicks, 2) : 0;
+            } else {
+                $sumRow['hl_spend_L7'] = 0;
+                $sumRow['hl_clicks_L7'] = 0;
+                $sumRow['hl_sales_L7'] = 0;
+                $sumRow['hl_sold_L7'] = 0;
+                $sumRow['hl_l7_cpc'] = 0;
+            }
+            
+            // HL L1 data
+            if ($parentHlL1) {
+                $sumRow['hl_spend_L1'] = round((float)($parentHlL1->cost ?? 0), 2);
+                $sumRow['hl_clicks_L1'] = (int)($parentHlL1->clicks ?? 0);
+                $sumRow['hl_l1_cpc'] = ($parentHlL1->clicks ?? 0) > 0
+                    ? round(($parentHlL1->cost ?? 0) / $parentHlL1->clicks, 2) : 0;
+            } else {
+                $sumRow['hl_spend_L1'] = 0;
+                $sumRow['hl_clicks_L1'] = 0;
+                $sumRow['hl_l1_cpc'] = 0;
+            }
+            
+            // HL AVG CPC
+            $sumRow['hl_avg_cpc'] = $sumRow['hl_campaign_id'] ? $hlAvgCpcData->get($sumRow['hl_campaign_id'], 0) : 0;
+            
+            // HL AD CVR = (hl_sold_L30 / hl_clicks_L30) * 100
+            $sumRow['hl_ad_cvr'] = $sumRow['hl_clicks_L30'] > 0
+                ? round(($sumRow['hl_sold_L30'] / $sumRow['hl_clicks_L30']) * 100, 2) : 0;
+            
+            // HL SBID fields
+            $hlParentCampaignIdStr = $sumRow['hl_campaign_id'] ? (string)$sumRow['hl_campaign_id'] : null;
+            $hlParentLastSbid = '';
+            $hlParentSbidM = '';
+            if ($hlParentCampaignIdStr && isset($hlLastSbidMap[$hlParentCampaignIdStr])) {
+                $hlParentLastSbid = $hlLastSbidMap[$hlParentCampaignIdStr];
+            } else {
+                $hlCampNameForSbid = $sumRow['hl_campaignName'];
+                if ($hlCampNameForSbid) {
+                    $hlNormName = strtoupper(trim(rtrim($hlCampNameForSbid, '.')));
+                    if (isset($hlLastSbidMap['name_' . $hlNormName])) {
+                        $hlParentLastSbid = $hlLastSbidMap['name_' . $hlNormName];
+                    }
+                }
+            }
+            if ($hlParentCampaignIdStr && isset($hlSbidMMap[$hlParentCampaignIdStr])) {
+                $hlParentSbidM = $hlSbidMMap[$hlParentCampaignIdStr];
+            } else {
+                $hlCampNameForSbid = $sumRow['hl_campaignName'];
+                if ($hlCampNameForSbid) {
+                    $hlNormName = strtoupper(trim(rtrim($hlCampNameForSbid, '.')));
+                    if (isset($hlSbidMMap['name_' . $hlNormName])) {
+                        $hlParentSbidM = $hlSbidMMap['name_' . $hlNormName];
+                    }
+                }
+            }
+            $sumRow['hl_last_sbid'] = $hlParentLastSbid;
+            $sumRow['hl_sbid_m'] = $hlParentSbidM;
+            
+            // ad_pause: true if neither KW nor PT nor HL is ENABLED
+            $sumRow['ad_pause'] = !($kwParentEnabled || $ptParentEnabled || $hlParentHasEnabled);
+            $sumRow['has_campaigns'] = $sumRow['hasCampaign'] || $hasParentPtCampaign || $hasParentHlCampaign;
             
             // Price for parent (average of children with prices)
             $childPrices = $rows->pluck('price')->filter(fn($p) => is_numeric($p) && $p > 0);

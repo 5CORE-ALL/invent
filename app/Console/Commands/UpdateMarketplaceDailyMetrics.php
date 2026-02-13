@@ -403,13 +403,16 @@ class UpdateMarketplaceDailyMetrics extends Command
         $roiPercentage = $totalCogs > 0 ? ($totalPft / $totalCogs) * 100 : 0;
 
         // Calculate KW and PMT Spent for eBay
-        // Using ebay_priority_reports for KW Spent and ebay_general_reports for PMT Spent
-        $thirtyDaysAgo = Carbon::now()->subDays(30);
+        // Sum daily reports (individual date report_ranges) instead of L30 aggregate
+        // Daily data is closer to eBay Seller Hub dashboard values
+        $startDate = Carbon::now()->subDays(31)->format('Y-m-d');
+        $endDate = Carbon::now()->format('Y-m-d');
 
-        // KW from ebay_priority_reports (CPC ads) - fetch all metrics
+        // KW from ebay_priority_reports (CPC ads) - fetch all metrics using daily sum
         $kwRow = DB::table('ebay_priority_reports')
-            ->where('report_range', 'L30')
-            ->whereDate('updated_at', '>=', $thirtyDaysAgo->format('Y-m-d'))
+            ->where('report_range', '>=', $startDate)
+            ->where('report_range', '<=', $endDate)
+            ->where('report_range', 'NOT LIKE', 'L%')
             ->selectRaw('COALESCE(SUM(REPLACE(REPLACE(cpc_ad_fees_payout_currency, "USD ", ""), ",", "")), 0) as spend,
                          COALESCE(SUM(cpc_clicks), 0) as clicks,
                          COALESCE(SUM(REPLACE(REPLACE(cpc_sale_amount_payout_currency, "USD ", ""), ",", "")), 0) as sales,
@@ -420,10 +423,11 @@ class UpdateMarketplaceDailyMetrics extends Command
         $kwSales = (float) ($kwRow->sales ?? 0);
         $kwSold = (int) ($kwRow->sold ?? 0);
 
-        // PMT from ebay_general_reports (Promoted Listing ads) - fetch all metrics
+        // PMT from ebay_general_reports (Promoted Listing ads) - fetch all metrics using daily sum
         $pmtRow = DB::table('ebay_general_reports')
-            ->where('report_range', 'L30')
-            ->whereDate('updated_at', '>=', $thirtyDaysAgo->format('Y-m-d'))
+            ->where('report_range', '>=', $startDate)
+            ->where('report_range', '<=', $endDate)
+            ->where('report_range', 'NOT LIKE', 'L%')
             ->selectRaw('COALESCE(SUM(REPLACE(REPLACE(ad_fees, "USD ", ""), ",", "")), 0) as spend,
                          COALESCE(SUM(clicks), 0) as clicks,
                          COALESCE(SUM(REPLACE(REPLACE(sale_amount, "USD ", ""), ",", "")), 0) as sales,
@@ -594,12 +598,15 @@ class UpdateMarketplaceDailyMetrics extends Command
         $roiPercentage = $totalCogs > 0 ? ($totalPft / $totalCogs) * 100 : 0;
 
         // Calculate ad spend for eBay 2
-        $thirtyDaysAgo = Carbon::now()->subDays(30);
+        // Sum daily reports instead of L30 aggregate — closer to eBay dashboard values
+        $startDate2 = Carbon::now()->subDays(31)->format('Y-m-d');
+        $endDate2 = Carbon::now()->format('Y-m-d');
 
-        // KW from ebay_2_priority_reports (CPC ads) - fetch all metrics
+        // KW from ebay_2_priority_reports (CPC ads) - fetch all metrics using daily sum
         $kwRow = DB::table('ebay_2_priority_reports')
-            ->where('report_range', 'L30')
-            ->whereDate('updated_at', '>=', $thirtyDaysAgo->format('Y-m-d'))
+            ->where('report_range', '>=', $startDate2)
+            ->where('report_range', '<=', $endDate2)
+            ->where('report_range', 'NOT LIKE', 'L%')
             ->selectRaw('COALESCE(SUM(REPLACE(REPLACE(cpc_ad_fees_payout_currency, "USD ", ""), ",", "")), 0) as spend,
                          COALESCE(SUM(cpc_clicks), 0) as clicks,
                          COALESCE(SUM(REPLACE(REPLACE(cpc_sale_amount_payout_currency, "USD ", ""), ",", "")), 0) as sales,
@@ -610,10 +617,11 @@ class UpdateMarketplaceDailyMetrics extends Command
         $kwSales = (float) ($kwRow->sales ?? 0);
         $kwSold = (int) ($kwRow->sold ?? 0);
 
-        // PMT from ebay_2_general_reports (Promoted Listings) - fetch all metrics
+        // PMT from ebay_2_general_reports (Promoted Listings) - fetch all metrics using daily sum
         $pmtRow = DB::table('ebay_2_general_reports')
-            ->where('report_range', 'L30')
-            ->whereDate('updated_at', '>=', $thirtyDaysAgo->format('Y-m-d'))
+            ->where('report_range', '>=', $startDate2)
+            ->where('report_range', '<=', $endDate2)
+            ->where('report_range', 'NOT LIKE', 'L%')
             ->selectRaw('COALESCE(SUM(REPLACE(REPLACE(ad_fees, "USD ", ""), ",", "")), 0) as spend,
                          COALESCE(SUM(clicks), 0) as clicks,
                          COALESCE(SUM(REPLACE(REPLACE(sale_amount, "USD ", ""), ",", "")), 0) as sales,
@@ -759,13 +767,15 @@ class UpdateMarketplaceDailyMetrics extends Command
         $roiPercentage = $totalCogs > 0 ? ($totalPft / $totalCogs) * 100 : 0;
 
         // Calculate KW and PMT Spent for eBay 3
-        // Use the latest report data (from last 30 days of updated_at) to avoid accumulating old reports
-        $thirtyDaysAgo = Carbon::now()->subDays(30);
+        // Sum daily reports instead of L30 aggregate — closer to eBay dashboard values
+        $startDate3 = Carbon::now()->subDays(31)->format('Y-m-d');
+        $endDate3 = Carbon::now()->format('Y-m-d');
         
-        // KW from ebay_3_priority_reports (CPC ads) - fetch all metrics
+        // KW from ebay_3_priority_reports (CPC ads) - fetch all metrics using daily sum
         $kwRow = DB::table('ebay_3_priority_reports')
-            ->where('report_range', 'L30')
-            ->whereDate('updated_at', '>=', $thirtyDaysAgo->format('Y-m-d'))
+            ->where('report_range', '>=', $startDate3)
+            ->where('report_range', '<=', $endDate3)
+            ->where('report_range', 'NOT LIKE', 'L%')
             ->selectRaw('COALESCE(SUM(REPLACE(REPLACE(cpc_ad_fees_payout_currency, "USD ", ""), ",", "")), 0) as spend,
                          COALESCE(SUM(cpc_clicks), 0) as clicks,
                          COALESCE(SUM(REPLACE(REPLACE(cpc_sale_amount_payout_currency, "USD ", ""), ",", "")), 0) as sales,
@@ -776,10 +786,11 @@ class UpdateMarketplaceDailyMetrics extends Command
         $kwSales = (float) ($kwRow->sales ?? 0);
         $kwSold = (int) ($kwRow->sold ?? 0);
 
-        // PMT from ebay_3_general_reports (Promoted Listings) - fetch all metrics
+        // PMT from ebay_3_general_reports (Promoted Listings) - fetch all metrics using daily sum
         $pmtRow = DB::table('ebay_3_general_reports')
-            ->where('report_range', 'L30')
-            ->whereDate('updated_at', '>=', $thirtyDaysAgo->format('Y-m-d'))
+            ->where('report_range', '>=', $startDate3)
+            ->where('report_range', '<=', $endDate3)
+            ->where('report_range', 'NOT LIKE', 'L%')
             ->selectRaw('COALESCE(SUM(REPLACE(REPLACE(ad_fees, "USD ", ""), ",", "")), 0) as spend,
                          COALESCE(SUM(clicks), 0) as clicks,
                          COALESCE(SUM(REPLACE(REPLACE(sale_amount, "USD ", ""), ",", "")), 0) as sales,
