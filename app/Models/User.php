@@ -51,4 +51,12 @@ class User extends Authenticatable
     {
         return $this->hasOne(Permission::class);
     }
+
+    /**
+     * Whether the user is a 5Core team member (internal support agent access).
+     */
+    public function is5CoreMember(): bool
+    {
+        return str_ends_with(strtolower($this->email ?? ''), '@5core.com');
+    }
 }

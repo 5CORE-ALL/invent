@@ -13,6 +13,7 @@ class AmazonSkuCompetitor extends Model
         'asin',
         'marketplace',
         'product_link',
+        'image',
         'product_title',
         'price',
     ];

@@ -4474,12 +4474,19 @@ class OverallAmazonController extends Controller
             return response()->json([
                 'success' => true,
                 'competitors' => $competitors->map(function($comp) {
+                    // Use stored image or construct from ASIN (Amazon image URL pattern)
+                    $image = $comp->image ?? (
+                        $comp->asin
+                            ? 'https://m.media-amazon.com/images/P/' . $comp->asin . '._AC_SL160_.jpg'
+                            : null
+                    );
                     return [
                         'id' => $comp->id,
                         'asin' => $comp->asin,
                         'price' => floatval($comp->price),
                         'product_link' => $comp->product_link,
                         'product_title' => $comp->product_title,
+                        'image' => $image,
                         'marketplace' => $comp->marketplace,
                         'created_at' => $comp->created_at->format('Y-m-d H:i:s'),
                     ];

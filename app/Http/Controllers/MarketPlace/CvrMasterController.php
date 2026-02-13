@@ -50,6 +50,8 @@ use App\Models\TemuViewData;
 use App\Models\TemuAdData;
 use App\Models\MarketplacePercentage;
 use App\Models\AmazonSpCampaignReport;
+use App\Models\AmazonSkuCompetitor;
+use App\Models\EbaySkuCompetitor;
 use App\Models\CvrRemark;
 use Carbon\Carbon;
 use App\Services\AmazonSpApiService;
@@ -284,6 +286,52 @@ class CvrMasterController extends Controller
                 'ebay2_metrics' => $ebay2Metrics->count(),
                 'ebay3_metrics' => $ebay3Metrics->count()
             ]);
+
+            // Fetch Amazon LMP data from amazon_sku_competitors
+            $amazonLmpLookup = collect();
+            $amazonLmpCountLookup = collect();
+            try {
+                $amazonLmpRecords = AmazonSkuCompetitor::where('marketplace', 'amazon')
+                    ->where('price', '>', 0)
+                    ->orderBy('price', 'asc')
+                    ->get()
+                    ->groupBy(function ($item) {
+                        return strtoupper(preg_replace('/\s+/', ' ', trim($item->sku)));
+                    });
+                $amazonLmpLookup = $amazonLmpRecords->map(fn ($items) => $items->first());
+                $amazonLmpCountLookup = $amazonLmpRecords->map(fn ($items) => $items->count());
+            } catch (\Exception $e) {
+                Log::warning('Could not fetch Amazon LMP: ' . $e->getMessage());
+            }
+
+            // Fetch eBay LMP data from ebay_sku_competitors
+            $ebayLmpLookup = collect();
+            $ebayLmpCountLookup = collect();
+            try {
+                $ebayLmpRecords = EbaySkuCompetitor::where('marketplace', 'ebay')
+                    ->where(function ($q) {
+                        $q->where('total_price', '>', 0)
+                          ->orWhere('price', '>', 0);
+                    })
+                    ->orderByRaw('COALESCE(total_price, price + COALESCE(shipping_cost, 0)) ASC')
+                    ->get()
+                    ->groupBy(function ($item) {
+                        return strtoupper(preg_replace('/\s+/', ' ', trim($item->sku)));
+                    });
+                $ebayLmpLookup = $ebayLmpRecords->map(function ($items) {
+                    $lowest = $items->sortBy(function ($i) {
+                        $total = floatval($i->total_price ?? 0);
+                        if ($total <= 0) {
+                            $total = floatval($i->price ?? 0) + floatval($i->shipping_cost ?? 0);
+                        }
+                        return $total;
+                    })->first();
+                    return $lowest;
+                });
+                $ebayLmpCountLookup = $ebayLmpRecords->map(fn ($items) => $items->count());
+            } catch (\Exception $e) {
+                Log::warning('Could not fetch eBay LMP: ' . $e->getMessage());
+            }
 
             // Fetch latest remarks for all SKUs in one query
             $latestRemarks = CvrRemark::whereIn('sku', $skus)
@@ -697,6 +745,27 @@ class CvrMasterController extends Controller
                 $remarkText = $latestRemark ? $latestRemark->remark : null;
                 $remarkSolved = $latestRemark ? $latestRemark->is_solved : false;
 
+                // Amazon LMP and eBay LMP
+                $skuLookupKey = strtoupper(preg_replace('/\s+/', ' ', trim($sku)));
+                $amazonLmp = $amazonLmpLookup->get($skuLookupKey);
+                $ebayLmp = $ebayLmpLookup->get($skuLookupKey);
+                $amazonLmpPrice = ($amazonLmp && isset($amazonLmp->price) && is_numeric($amazonLmp->price))
+                    ? round(floatval($amazonLmp->price), 2) : null;
+                $amazonLmpLink = ($amazonLmp && !empty($amazonLmp->product_link)) ? $amazonLmp->product_link : null;
+                $ebayLmpTotal = null;
+                $ebayLmpLink = null;
+                if ($ebayLmp) {
+                    $t = floatval($ebayLmp->total_price ?? 0);
+                    if ($t <= 0) {
+                        $t = floatval($ebayLmp->price ?? 0) + floatval($ebayLmp->shipping_cost ?? 0);
+                    }
+                    $ebayLmpTotal = $t > 0 ? round($t, 2) : null;
+                    $ebayLmpLink = !empty($ebayLmp->product_link) ? $ebayLmp->product_link : null;
+                }
+                $ebayLmpPrice = $ebayLmpTotal;
+                $amazonLmpCount = $amazonLmpCountLookup->get($skuLookupKey) ?? 0;
+                $ebayLmpCount = $ebayLmpCountLookup->get($skuLookupKey) ?? 0;
+
                 $result[] = (object) [
                     "sku" => $sku,
                     "parent" => $parent,
@@ -711,6 +780,12 @@ class CvrMasterController extends Controller
                     "avg_gpft" => $avgGPFT,
                     "avg_ad" => $avgAD,
                     "avg_pft" => $avgPFT,
+                    "amazon_lmp_price" => $amazonLmpPrice,
+                    "ebay_lmp_price" => $ebayLmpPrice,
+                    "amazon_lmp_link" => $amazonLmpLink,
+                    "ebay_lmp_link" => $ebayLmpLink,
+                    "amazon_lmp_count" => $amazonLmpCount,
+                    "ebay_lmp_count" => $ebayLmpCount,
                     "latest_remark" => $remarkText,
                     "remark_solved" => $remarkSolved,
                 ];
@@ -735,6 +810,8 @@ class CvrMasterController extends Controller
                 }
 
                 // Create synthetic parent summary row (placed BELOW children)
+                $amazonLmpVals = $rows->pluck('amazon_lmp_price')->filter(fn ($v) => $v !== null && $v > 0);
+                $ebayLmpVals = $rows->pluck('ebay_lmp_price')->filter(fn ($v) => $v !== null && $v > 0);
                 $parentRow = [
                     'SL No.' => $slNo++,
                     'sku' => 'PARENT ' . $parent,
@@ -750,6 +827,12 @@ class CvrMasterController extends Controller
                     'avg_gpft' => $rows->count() > 0 ? round($rows->avg('avg_gpft'), 2) : 0,
                     'avg_ad' => $rows->count() > 0 ? round($rows->avg('avg_ad'), 2) : 0,
                     'avg_pft' => $rows->count() > 0 ? round($rows->avg('avg_pft'), 2) : 0,
+                    'amazon_lmp_price' => $amazonLmpVals->isNotEmpty() ? round($amazonLmpVals->avg(), 2) : null,
+                    'ebay_lmp_price' => $ebayLmpVals->isNotEmpty() ? round($ebayLmpVals->avg(), 2) : null,
+                    'amazon_lmp_link' => null,
+                    'ebay_lmp_link' => null,
+                    'amazon_lmp_count' => $rows->sum('amazon_lmp_count'),
+                    'ebay_lmp_count' => $rows->sum('ebay_lmp_count'),
                     'is_parent_summary' => true,
                 ];
 
@@ -2243,8 +2326,13 @@ class CvrMasterController extends Controller
             $dobaApiService = new DobaApiService();
             $priceResult = $dobaApiService->updateItemPrice($itemId, $price, $selfPickPrice);
 
-            // Check if the response indicates errors
-            if (isset($priceResult['errors'])) {
+            // Check if the response indicates real errors
+            // Some API responses include an "errors" key even when empty.
+            if (!empty($priceResult['errors'])) {
+                $errorMessage = is_array($priceResult['errors'])
+                    ? json_encode($priceResult['errors'])
+                    : (string) $priceResult['errors'];
+
                 // Save error status to doba_data_view
                 $this->savePricePushStatus($sku, 'doba', 'error', $price);
                 
@@ -2253,13 +2341,13 @@ class CvrMasterController extends Controller
                     'item_id' => $itemId,
                     'price' => $price,
                     'self_pick_price' => $selfPickPrice,
-                    'error' => $priceResult['errors']
+                    'error' => $errorMessage
                 ]);
                 
                 return response()->json([
                     'success' => false,
-                    'message' => 'Price update failed: ' . $priceResult['errors'],
-                    'errors' => [['message' => 'Price update: ' . $priceResult['errors']]]
+                    'message' => 'Price update failed: ' . $errorMessage,
+                    'errors' => [['message' => 'Price update: ' . $errorMessage]]
                 ], 400);
             }
 
@@ -2660,6 +2748,121 @@ class CvrMasterController extends Controller
                 'status' => $status,
                 'error' => $e->getMessage()
             ]);
+        }
+    }
+
+    /**
+     * Bulk change price for selected SKUs across all marketplaces.
+     * - Doba & Shopify Wholesale: 25% discount (price * 0.75)
+     * - Shopify B2B: 25% discount + shipping deducted (price * 0.75 - ship)
+     * - Others (Amazon, Walmart, Shopify B2C): Full price
+     */
+    public function bulkChangePrice(Request $request)
+    {
+        $validator = \Illuminate\Support\Facades\Validator::make($request->all(), [
+            'price' => 'required|numeric|min:0.01|max:999999.99',
+            'skus' => 'required|array',
+            'skus.*' => 'string'
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation failed: ' . $validator->errors()->first()
+            ], 400);
+        }
+
+        $basePrice = round(floatval($request->input('price')), 2);
+        $skus = array_map(fn($s) => strtoupper(trim($s)), $request->input('skus', []));
+        $skus = array_values(array_filter(array_unique($skus)));
+
+        if (empty($skus)) {
+            return response()->json(['success' => false, 'message' => 'No valid SKUs provided'], 400);
+        }
+
+        $pushableMarketplaces = ['amazon', 'doba', 'walmart', 'sb2c', 'sb2b'];
+        $updated = 0;
+        $errors = [];
+
+        foreach ($skus as $sku) {
+            $productMaster = ProductMaster::where('sku', $sku)->first();
+            $values = $productMaster && $productMaster->Values
+                ? (is_array($productMaster->Values) ? $productMaster->Values : json_decode($productMaster->Values ?? '{}', true) ?? [])
+                : [];
+            $ship = floatval($values['ship'] ?? $productMaster->ship ?? 0);
+
+            $dobaPrice = round($basePrice * 0.75, 2);
+            $sb2bPrice = max(0.01, round($basePrice * 0.75 - $ship, 2));
+
+            foreach ($pushableMarketplaces as $mp) {
+                $price = match ($mp) {
+                    'doba' => $dobaPrice,
+                    'sb2b' => $sb2bPrice,
+                    default => $basePrice
+                };
+
+                try {
+                    // Keep suggested SPRICE in sync with bulk pricing rules,
+                    // so Doba/Shopify wholesale shows 25% reduced price in UI.
+                    if (in_array($mp, ['doba', 'sb2b'])) {
+                        $this->saveSpriceToView($sku, $mp, $price);
+                    }
+
+                    $req = Request::create('/cvr-master-push-price', 'POST', [
+                        'sku' => $sku,
+                        'price' => $price,
+                        'marketplace' => $mp,
+                        '_token' => $request->input('_token')
+                    ]);
+                    $req->setUserResolver($request->getUserResolver());
+                    $response = $this->pushPriceToAmazon($req);
+                    $data = json_decode($response->getContent(), true);
+                    if ($data['success'] ?? false) {
+                        $this->saveSpriceToView($sku, $mp, $price);
+                        $updated++;
+                    } else {
+                        $errors[] = "{$sku}/{$mp}: " . ($data['message'] ?? 'Failed');
+                    }
+                } catch (\Exception $e) {
+                    $errors[] = "{$sku}/{$mp}: " . $e->getMessage();
+                    Log::error('Bulk change price error', ['sku' => $sku, 'mp' => $mp, 'error' => $e->getMessage()]);
+                }
+            }
+        }
+
+        return response()->json([
+            'success' => true,
+            'updated' => $updated,
+            'errors' => array_slice($errors, 0, 10),
+            'message' => "Price \${$basePrice} applied. " . count($skus) . " SKU(s) processed across marketplaces."
+        ]);
+    }
+
+    private function saveSpriceToView($sku, $marketplace, $sprice)
+    {
+        $dataView = null;
+        if ($marketplace === 'amazon') {
+            $dataView = AmazonDataView::firstOrNew(['sku' => $sku]);
+        } elseif ($marketplace === 'doba') {
+            $dataView = DobaDataView::firstOrNew(['sku' => $sku]);
+        } elseif ($marketplace === 'walmart') {
+            $dataView = WalmartDataView::firstOrNew(['sku' => $sku]);
+        } elseif ($marketplace === 'sb2c' || $marketplace === 'shopifyb2c') {
+            $dataView = Shopifyb2cDataView::firstOrNew(['sku' => $sku]);
+        } elseif ($marketplace === 'sb2b' || $marketplace === 'shopifyb2b') {
+            $dataView = ShopifyB2BDataView::firstOrNew(['sku' => $sku]);
+        }
+
+        if ($dataView) {
+            $value = is_array($dataView->value) ? $dataView->value : (json_decode($dataView->value ?? '{}', true) ?? []);
+            if (!is_array($value)) $value = [];
+            if ($marketplace === 'walmart') {
+                $value['sprice'] = $sprice;
+            } else {
+                $value['SPRICE'] = $sprice;
+            }
+            $dataView->value = $value;
+            $dataView->save();
         }
     }
 }

@@ -70,11 +70,21 @@ class ShopifyController extends Controller
 
     public function shopifyView(Request $request, $first, $second)
     {
-        $products = $this->getProducts(); // Assuming it returns a single product
-
-        // return response()->json($products);
-
-        // Extract according the ID and title
+        // 🚨🚨🚨 IMPORTANT: AI ROUTES KO IGNORE KARO 🚨🚨🚨
+        if ($first === 'ai' || $first === 'ai-admin') {
+            // YEH AI CHATBOT KA ROUTE HAI - 404 do ya redirect
+            abort(404, 'Route not found in ShopifyController');
+            // YA
+            // return response()->json(['error' => 'Not found'], 404);
+        }
+        
+        // Agar assets hai to redirect
+        if ($first == "assets") {
+            return redirect('home');
+        }
+    
+        $products = $this->getProducts();
+        
         $productList = isset($products['products']) ?
             array_map(function ($product) {
                 return [
@@ -88,23 +98,16 @@ class ShopifyController extends Controller
                     'image' => isset($product['image']['src']) ? $product['image']['src'] : null,                 
                 ];
             }, $products['products']) : [];
-
-        // Get query parameters
+    
         $mode = $request->query('mode');
         $demo = $request->query('demo');
-
-        if ($first == "assets") {
-            return redirect('home');
-        }
-
-        // Pass data to the Blade view
+    
         return view($first . '.' . $second, [
             'mode' => $mode,
             'demo' => $demo,
             'products' => $productList
         ]);
     }
-
     
 
     public function updateToAdjust(Request $request)
@@ -170,6 +173,8 @@ class ShopifyController extends Controller
         $levels = $response->json()['inventory_levels'];
         return $levels[0]['location_id'] ?? null;
     }
+
+    
 
     private function adjustInventory($inventoryItemId, $locationId, $adjustment)
     {

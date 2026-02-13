@@ -13,6 +13,7 @@ class EbaySkuCompetitor extends Model
         'item_id',
         'marketplace',
         'product_link',
+        'image',
         'product_title',
         'price',
         'shipping_cost',

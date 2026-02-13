@@ -2694,6 +2694,7 @@ class EbayController extends Controller
                         'total_price' => floatval($comp->total_price ?? 0),
                         'link' => $comp->product_link,
                         'title' => $comp->product_title,
+                        'image' => $comp->image ?? null,
                         'created_at' => $comp->created_at->format('Y-m-d H:i:s'),
                     ];
                 }),
@@ -2726,6 +2727,7 @@ class EbayController extends Controller
                 'shipping_cost' => 'nullable|numeric|min:0',
                 'product_link' => 'nullable|string',
                 'product_title' => 'nullable|string',
+                'image' => 'nullable|string',
             ]);
             
             $sku = $validated['sku'];
@@ -2757,6 +2759,7 @@ class EbayController extends Controller
                 'marketplace' => 'ebay',
                 'product_link' => $validated['product_link'] ?? null,
                 'product_title' => $validated['product_title'] ?? null,
+                'image' => $validated['image'] ?? null,
             ]);
             
             DB::commit();
