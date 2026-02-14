@@ -283,9 +283,6 @@
                             <a href="{{ route('dim.wt.master') }}">Dim & Wt Master</a>
                         </li>
                         <li>
-                            <a href="{{ route('shipping.master') }}">Shipping Masters</a>
-                        </li>
-                        <li>
                             <a href="{{ route('general.specific.master') }}">General Specific Masters</a>
                         </li>
                         <li>
@@ -789,12 +786,6 @@
                             </div>
                         </li>
 
-                        <li>
-                            <a href="{{ route('return.master') }}">Return Analysis</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('shipping.master.list') }}">Shipping Master</a>
-                        </li>
                         <li>
                             <a href="{{ route('traffic.master.list') }}">Traffic Master</a>
                         </li>
