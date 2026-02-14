@@ -3083,16 +3083,12 @@
                         // 0-50: use ESBID
                         sbidValue = parseFloat(item.ESBID) || 0;
                     } else if (l7Views >= 50 && l7Views < 100) {
-                        sbidValue = 10;
-                    } else if (l7Views >= 100 && l7Views < 150) {
-                        sbidValue = 9;
-                    } else if (l7Views >= 150 && l7Views < 200) {
                         sbidValue = 8;
-                    } else if (l7Views >= 200 && l7Views < 250) {
+                    } else if (l7Views >= 100 && l7Views < 150) {
                         sbidValue = 7;
-                    } else if (l7Views >= 250 && l7Views < 300) {
+                    } else if (l7Views >= 150 && l7Views < 200) {
                         sbidValue = 6;
-                    } else if (l7Views >= 300 && l7Views < 350) {
+                    } else if (l7Views >= 200 && l7Views < 350) {
                         sbidValue = 5;
                     } else if (l7Views >= 350 && l7Views < 400) {
                         sbidValue = 4;
@@ -4968,21 +4964,17 @@
                             // 0-50: use ESBID
                             sbidValue = parseFloat(item.ESBID || 0) || 0;
                         } else if (l7Views >= 50 && l7Views < 100) {
-                            sbidValue = 9;
-                        } else if (l7Views >= 100 && l7Views < 150) {
                             sbidValue = 8;
-                        } else if (l7Views >= 150 && l7Views < 200) {
+                        } else if (l7Views >= 100 && l7Views < 150) {
                             sbidValue = 7;
-                        } else if (l7Views >= 200 && l7Views < 250) {
+                        } else if (l7Views >= 150 && l7Views < 200) {
                             sbidValue = 6;
-                        } else if (l7Views >= 250 && l7Views < 300) {
+                        } else if (l7Views >= 200 && l7Views < 350) {
                             sbidValue = 5;
-                        } else if (l7Views >= 300 && l7Views < 350) {
-                            sbidValue = 4;
                         } else if (l7Views >= 350 && l7Views < 400) {
-                            sbidValue = 3;
+                            sbidValue = 4;
                         } else if (l7Views >= 400) {
-                            sbidValue = 2;
+                            sbidValue = 3;
                         } else {
                             // Fallback: use ESBID
                             sbidValue = parseFloat(item.ESBID || 0) || 0;
