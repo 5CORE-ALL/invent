@@ -322,6 +322,11 @@ class EbayTwoController extends Controller
         $percentage = 0.85;
         $pmtAds = 0; // No PMT ads updates tracking for eBay2
 
+        // 5b. Read PMT-specific percentage from DB (matching Ebay2PMTAdController)
+        $pmtMarketplaceData = \App\Models\MarketplacePercentage::where('marketplace', 'Ebay2')->first();
+        $pmtPercentage = $pmtMarketplaceData ? ($pmtMarketplaceData->percentage / 100) : 1;
+        $pmtAdPercentage = $pmtMarketplaceData ? ($pmtMarketplaceData->ad_updates / 100) : 0;
+
         // 6. Build Result
         $result = [];
 
@@ -527,6 +532,22 @@ class EbayTwoController extends Controller
             $row["Ship_productmaster"] = $ship;
             $row["ebay2_ship"] = $ship;
 
+            // PMT-specific PFT/ROI (matching Ebay2PMTAdController formulas)
+            // PMT controller uses $values["ship"] (general ship), not ebay2_ship
+            $pmtShip = isset($values["ship"]) ? floatval($values["ship"]) : (isset($pm->ship) ? floatval($pm->ship) : 0);
+            $row["pmt_pft_val"] = round(
+                $price > 0 ? (($price * $pmtPercentage - $lp - $pmtShip) / $price) : 0,
+                2
+            );
+            $row["pmt_roi_val"] = round(
+                $lp > 0 ? (($price * $pmtPercentage - $lp - $pmtShip) / $lp) : 0,
+                2
+            );
+            $cbid = floatval($row['bid_percentage'] ?? 0);
+            $row["pmt_tpft_val"] = round($row["pmt_pft_val"] + $pmtAdPercentage - $cbid, 2);
+            $row["pmt_troi_val"] = round($row["pmt_roi_val"] + $pmtAdPercentage - $cbid, 2);
+            $row["pmt_ad_percentage"] = $pmtAdPercentage;
+
             // NR & Hide
             $row['NR'] = "";
             $row['SPRICE'] = null;
@@ -638,6 +659,11 @@ class EbayTwoController extends Controller
                 $row["LP_productmaster"] = 0;
                 $row["Ship_productmaster"] = 0;
                 $row["ebay2_ship"] = 0;
+                $row["pmt_pft_val"] = 0;
+                $row["pmt_roi_val"] = 0;
+                $row["pmt_tpft_val"] = 0;
+                $row["pmt_troi_val"] = 0;
+                $row["pmt_ad_percentage"] = $pmtAdPercentage;
                 $row['NR'] = "";
                 $row['SPRICE'] = null;
                 $row['SGPFT'] = null;

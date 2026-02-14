@@ -136,7 +136,7 @@ class GoogleAdsController extends Controller
         $endDate = \Carbon\Carbon::now()->subDays(2)->format('Y-m-d');
         $startDate = \Carbon\Carbon::now()->subDays(31)->format('Y-m-d');
 
-        // Spend & Clicks: ENABLED SHOPPING only (matches Google Ads overview Cost which reflects active campaigns)
+        // Spend & Clicks: ENABLED + PAUSED SHOPPING (exclude ARCHIVED only)
         $dataSpend = DB::table('google_ads_campaigns')
             ->selectRaw('
                 date,
@@ -144,14 +144,14 @@ class GoogleAdsController extends Controller
                 SUM(metrics_cost_micros) / 1000000 as spend
             ')
             ->where('advertising_channel_type', 'SHOPPING')
-            ->where('campaign_status', 'ENABLED')
+            ->where('campaign_status', '!=', 'ARCHIVED')
             ->whereBetween('date', [$startDate, $endDate])
             ->groupBy('date')
             ->orderBy('date', 'asc')
             ->get()
             ->keyBy('date');
 
-        // Sales & Orders: all SHOPPING. Prefer GA4 actual (match GA4 report); fallback to Google Ads only when no GA4 data in range
+        // Sales & Orders: ENABLED + PAUSED SHOPPING (exclude ARCHIVED). Prefer GA4 actual; fallback to Google Ads
         $dataSales = DB::table('google_ads_campaigns')
             ->selectRaw('
                 date,
@@ -161,6 +161,7 @@ class GoogleAdsController extends Controller
                 SUM(ga4_sold_units) as ad_orders
             ')
             ->where('advertising_channel_type', 'SHOPPING')
+            ->where('campaign_status', '!=', 'ARCHIVED')
             ->whereBetween('date', [$startDate, $endDate])
             ->groupBy('date')
             ->orderBy('date', 'asc')
