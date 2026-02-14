@@ -14,7 +14,6 @@ use App\Http\Controllers\MarketPlace\ListingAuditAmazonController;
 use App\Http\Controllers\MarketPlace\ListingAuditEbayController;
 use App\Http\Controllers\MarketPlace\ListingAuditMacyController;
 use App\Http\Controllers\MarketPlace\ListingAuditNeweggb2cController;
-use App\Http\Controllers\MarketPlace\ListingAuditReverbController;
 use App\Http\Controllers\MarketPlace\ListingAuditShopifyb2cController;
 use App\Http\Controllers\MarketPlace\ListingAuditTemuController;
 use App\Http\Controllers\MarketPlace\ListingAuditWayfairController;
@@ -63,7 +62,6 @@ use App\Http\Controllers\MarketPlace\Neweggb2cLowVisibilityController;
 use App\Http\Controllers\MarketPlace\Neweggb2cZeroController;
 use App\Http\Controllers\MarketPlace\OverallAmazonFbaController;
 use App\Http\Controllers\MarketPlace\OverallAmazonPriceController;
-use App\Http\Controllers\MarketPlace\ReverbLowVisibilityController;
 use App\Http\Controllers\MarketPlace\Shopifyb2cController;
 use App\Http\Controllers\Channels\ChannelMasterController;
 use App\Http\Controllers\Channels\ChannelwiseController;
@@ -136,7 +134,6 @@ use Illuminate\Foundation\Console\RouteCacheCommand;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\RoutingController;
 use App\Http\Controllers\MarketPlace\ReverbController;
-use App\Http\Controllers\MarketPlace\ReverbZeroController;
 use App\Http\Controllers\MarketPlace\CvrMasterController;
 use App\Http\Controllers\MarketPlace\TikTokPricingController;
 use App\Http\Controllers\PurchaseMaster\ChinaLoadController;
@@ -724,12 +721,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/Wayfaire/view-data', [WayfairZeroController::class, 'getViewWayfairZeroData']);
     Route::get('/Wayfaire/low-visibility/view-data', [WayfairLowVisibilityController::class, 'getViewWayfairLowVisibilityData']);
     Route::get('/Temu/view-data', [TemuZeroController::class, 'getViewTemuZeroData']);
-    Route::get('/reverb/zero/view', [ReverbZeroController::class, 'index'])->name('reverb.zero.view');
-    Route::get('/reverb/low-visibility/view', [ReverbLowVisibilityController::class, 'reverbLowVisibilityview'])->name('reverb.low.visibility.view');
     Route::get('/Temu/low-visibility/view-data', [TemuLowVisibilityController::class, 'getViewTemuLowVisibilityData']);
-    Route::get('/reverb/zero/view-data', [ReverbZeroController::class, 'getZeroViewData']);
-    Route::get('/zero-reverb/view-data', [ReverbZeroController::class, 'getViewReverbZeroData']);
-    Route::get('/reverb/zero-low-visibility/view-data', [ReverbLowVisibilityController::class, 'getViewReverbLowVisibilityData']);
     Route::get('/temu/view-data', [TemuController::class, 'getViewTemuData']);
     Route::post('/temu/upload-daily-data-chunk', [TemuController::class, 'uploadDailyDataChunk']);
     Route::get('/temu/download-daily-data-sample', [TemuController::class, 'downloadDailyDataSample'])->name('temu.daily.sample');
@@ -1275,7 +1267,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/listing_neweggb2c/view-data', [ListingNeweggB2CController::class, 'getViewListingNeweggB2CData']);
     Route::post('/listing_neweggb2c/save-status', [ListingNeweggB2CController::class, 'saveStatus']);
 
-    //listing audit reverb
+    //listing reverb
     Route::get('/listing-reverb', [ListingReverbController::class, 'listingReverb'])->name('listing.reverb');
     Route::get('/listing_reverb/view-data', [ListingReverbController::class, 'getViewListingReverbData']);
     Route::post('/listing_reverb/save-status', [ListingReverbController::class, 'saveStatus']);
@@ -1284,8 +1276,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/listing_reverb/export', [ListingReverbController::class, 'export'])->name('listing_reverb.export');
     Route::get('/listing_reverb/sample', [ListingReverbController::class, 'downloadSample'])->name('listing_reverb.sample');
     Route::post('/reverb/saveLowProfit', [ReverbController::class, 'saveLowProfit']);
-    Route::get('/reverb/zero/view', [ReverbZeroController::class, 'index'])->name('reverb.zero.view');
-    Route::get('/reverb-low-visiblity-view', [ReverbLowVisibilityController::class, 'reverbLowVisibilityview'])->name('reverb.low.visibility.view');
 
     //listing temu
     Route::get('/listing-temu', [ListingTemuController::class, 'listingTemu'])->name('listing.temu');
@@ -1701,13 +1691,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/wayfair-low-visibility/reason-action/update', [WayfairLowVisibilityController::class, 'updateReasonAction']);
 
     // Reverb route
-    Route::get('/listing-audit-reverb', [ListingAuditReverbController::class, 'listingAuditReverb'])->name('listing.audit.reverb');
-    Route::get('/listing_audit_reverb/view-data', [ListingAuditReverbController::class, 'getViewListingAuditReverbData']);
     Route::post('/reverb/save-nr', [ReverbController::class, 'saveNrToDatabase']);
     Route::post('/reverb/update-listed-live', [ReverbController::class, 'updateListedLive']);
-    Route::post('/listing_audit_reverb/save-na', [ListingAuditReverbController::class, 'saveAuditToDatabase']);
-    Route::post('/reverb-zero/reason-action/update', [ReverbZeroController::class, 'updateReasonAction']);
-    Route::post('/reverb-low-visibility/reason-action/update', [ReverbLowVisibilityController::class, 'updateReasonAction']);
     Route::post('/reverb-data/import', [ReverbController::class, 'importReverbAnalytics'])->name('reverb.analytics.import');
     Route::get('/reverb-data/export', [ReverbController::class, 'exportReverbAnalytics'])->name('reverb.analytics.export');
     Route::get('/reverb-data/sample', [ReverbController::class, 'downloadSample'])->name('reverb.analytics.sample');
