@@ -2065,16 +2065,7 @@
                                         <a href="{{ url('reverb-pricing') }}">Reverb Analytics</a>
                                     </li>
                                     <li>
-                                        <a href="{{ route('reverb.zero.view') }}">Reverb 0 View</a>
-                                    </li>
-                                    <li>
-                                        <a href="{{ route('reverb.low.visibility.view') }}">Reverb Low Visibility</a>
-                                    </li>
-                                    <li>
                                         <a href="{{ route('listing.reverb') }}">Listing Reverb</a>
-                                    </li>
-                                    <li>
-                                        <a href="{{ route('listing.audit.reverb') }}">Listing Audit Reverb</a>
                                     </li>
                                 </ul>
                             </div>

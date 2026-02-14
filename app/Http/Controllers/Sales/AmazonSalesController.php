@@ -62,34 +62,32 @@ class AmazonSalesController extends Controller
     public function getData(Request $request)
     {
         // ============================================================
-        // LAST 31 DAYS BASED ON LATEST ORDER DATE IN DATABASE
-        // Get the latest order date from amazon_orders and calculate 31-day range from there
-        // Example: Latest order Feb 5 → Jan 6 to Feb 5 (31 days)
+        // LAST 30 DAYS - MATCHING AMAZON'S DATE RANGE
+        // Amazon shows yesterday and previous 29 days (30 days total)
+        // Example: Today Feb 14 → Show Jan 15 to Feb 13 (30 days)
         // ============================================================
     
-        $latestDate = DB::table('amazon_orders')->max('order_date');
-        
-        if (!$latestDate) {
-            return response()->json([]);
-        }
-        
-        $latestDateCarbon = \Carbon\Carbon::parse($latestDate);
-        $endDateCarbon = $latestDateCarbon->endOfDay(); // Latest date in DB
-        $startDateCarbon = $latestDateCarbon->copy()->subDays(30)->startOfDay(); // 31 days before latest
+        // Use yesterday as the end date (Amazon doesn't include today)
+        $yesterday = \Carbon\Carbon::yesterday();
+        $endDateCarbon = $yesterday->endOfDay(); // Yesterday 23:59:59
+        $startDateCarbon = $yesterday->copy()->subDays(29)->startOfDay(); // 30 days total (yesterday - 29 days = 30 days)
     
         $startDateStr = $startDateCarbon->format('Y-m-d');
         $endDateStr   = $endDateCarbon->format('Y-m-d');
     
         // ============================================================
         // QUERY 1: Inventory Database - Amazon Orders + Items
+        // CRITICAL FIX: Proper status filtering
         // ============================================================
     
         $orderItems = DB::table('amazon_orders as o')
             ->join('amazon_order_items as i', 'o.id', '=', 'i.amazon_order_id')
-            ->whereBetween('o.order_date', [$startDateCarbon, $endDateCarbon])
+            ->where('o.order_date', '>=', $startDateCarbon)
+            ->where('o.order_date', '<=', $endDateCarbon)
             ->where(function ($query) {
-                $query->where('o.status', '!=', 'Canceled')
-                    ->orWhereNull('o.status');
+                // Only exclude if status is explicitly 'Canceled'
+                $query->whereNull('o.status')
+                    ->orWhere('o.status', '!=', 'Canceled');
             })
             ->select([
                 'o.amazon_order_id as order_id',
@@ -296,114 +294,197 @@ class AmazonSalesController extends Controller
      */
     public function debugData(Request $request)
     {
+        // Use the SAME date calculation as getData() method
+        // Amazon shows yesterday and previous 29 days (30 days total)
         $yesterday = \Carbon\Carbon::yesterday();
-        $startDate = $yesterday->copy()->subDays(30); // 30 days total
-        
-        // Match Amazon's date range exactly (Dec 3 to Jan 2)
-        $amazonStartDate = \Carbon\Carbon::parse('2025-12-03');
-        $amazonEndDate = \Carbon\Carbon::parse('2026-01-02')->endOfDay();
+        $endDateCarbon = $yesterday->endOfDay();
+        $startDateCarbon = $yesterday->copy()->subDays(29)->startOfDay(); // 30 days total
         
         $debug = [];
         
         // 1. Date range info
+        $latestOrderInDb = DB::table('amazon_orders')->max('order_date');
         $debug['date_ranges'] = [
-            'code_uses' => $startDate->format('Y-m-d') . ' to ' . $yesterday->format('Y-m-d'),
-            'amazon_shows' => '2025-12-03 to 2026-01-02',
+            'latest_order_in_db' => $latestOrderInDb,
+            'yesterday' => $yesterday->format('Y-m-d'),
+            'calculated_start' => $startDateCarbon->format('Y-m-d H:i:s'),
+            'calculated_end' => $endDateCarbon->format('Y-m-d H:i:s'),
+            'amazon_shows' => 'Jan 15, 2026 to Feb 13, 2026 (from your screenshot)',
+            'days_difference' => $startDateCarbon->diffInDays($endDateCarbon) + 1,
+            'note' => 'Using yesterday as end date to match Amazon (Amazon excludes today)',
         ];
         
-        // 2. Count total orders in date range (matching Amazon's range)
-        $totalOrders = DB::table('amazon_orders')
-            ->whereBetween('order_date', [$amazonStartDate, $amazonEndDate])
+        // 2. Total orders in date range (all statuses)
+        $totalOrdersAll = DB::table('amazon_orders')
+            ->where('order_date', '>=', $startDateCarbon)
+            ->where('order_date', '<=', $endDateCarbon)
             ->count();
-        $debug['total_orders'] = $totalOrders;
+        $debug['total_orders_all_statuses'] = $totalOrdersAll;
         
-        // 3. Count non-cancelled orders
+        // 3. Orders by status breakdown
+        $ordersByStatus = DB::table('amazon_orders')
+            ->where('order_date', '>=', $startDateCarbon)
+            ->where('order_date', '<=', $endDateCarbon)
+            ->select('status', DB::raw('COUNT(*) as count'))
+            ->groupBy('status')
+            ->get();
+        $debug['orders_by_status'] = $ordersByStatus;
+        
+        // 4. Non-cancelled orders (correct logic)
         $nonCancelledOrders = DB::table('amazon_orders')
-            ->whereBetween('order_date', [$amazonStartDate, $amazonEndDate])
-            ->where('status', '!=', 'Canceled')
+            ->where('order_date', '>=', $startDateCarbon)
+            ->where('order_date', '<=', $endDateCarbon)
+            ->where(function ($query) {
+                $query->whereNull('status')
+                    ->orWhere('status', '!=', 'Canceled');
+            })
             ->count();
         $debug['non_cancelled_orders'] = $nonCancelledOrders;
         
-        // 4. Orders WITHOUT items (potential missing data)
-        $ordersWithoutItems = DB::table('amazon_orders')
-            ->whereBetween('order_date', [$amazonStartDate, $amazonEndDate])
-            ->where('status', '!=', 'Canceled')
-            ->whereNotIn('id', function($q) {
-                $q->select('amazon_order_id')->from('amazon_order_items');
+        // 5. Orders WITHOUT items (orphaned orders - potential data loss)
+        $ordersWithoutItems = DB::table('amazon_orders as o')
+            ->where('o.order_date', '>=', $startDateCarbon)
+            ->where('o.order_date', '<=', $endDateCarbon)
+            ->where(function ($query) {
+                $query->whereNull('o.status')
+                    ->orWhere('o.status', '!=', 'Canceled');
+            })
+            ->whereNotExists(function($q) {
+                $q->select(DB::raw(1))
+                  ->from('amazon_order_items as i')
+                  ->whereRaw('i.amazon_order_id = o.id');
             })
             ->count();
         $debug['orders_without_items'] = $ordersWithoutItems;
         
-        // 5. Count order items via join
+        // 6. Sample orphaned orders
+        if ($ordersWithoutItems > 0) {
+            $orphanedSample = DB::table('amazon_orders as o')
+                ->where('o.order_date', '>=', $startDateCarbon)
+                ->where('o.order_date', '<=', $endDateCarbon)
+                ->where(function ($query) {
+                    $query->whereNull('o.status')
+                        ->orWhere('o.status', '!=', 'Canceled');
+                })
+                ->whereNotExists(function($q) {
+                    $q->select(DB::raw(1))
+                      ->from('amazon_order_items as i')
+                      ->whereRaw('i.amazon_order_id = o.id');
+                })
+                ->select('o.amazon_order_id', 'o.order_date', 'o.status', 'o.total_amount')
+                ->limit(10)
+                ->get();
+            $debug['orphaned_orders_sample'] = $orphanedSample;
+        }
+        
+        // 7. Count order items via join (what getData() returns)
         $itemCount = DB::table('amazon_orders as o')
             ->join('amazon_order_items as i', 'o.id', '=', 'i.amazon_order_id')
-            ->whereBetween('o.order_date', [$amazonStartDate, $amazonEndDate])
-            ->where('o.status', '!=', 'Canceled')
+            ->where('o.order_date', '>=', $startDateCarbon)
+            ->where('o.order_date', '<=', $endDateCarbon)
+            ->where(function ($query) {
+                $query->whereNull('o.status')
+                    ->orWhere('o.status', '!=', 'Canceled');
+            })
             ->count();
-        $debug['total_order_items'] = $itemCount;
+        $debug['total_order_items_joined'] = $itemCount;
         
-        // 6. Total quantity
+        // 8. Total quantity from joined items
         $totalQty = DB::table('amazon_orders as o')
             ->join('amazon_order_items as i', 'o.id', '=', 'i.amazon_order_id')
-            ->whereBetween('o.order_date', [$amazonStartDate, $amazonEndDate])
-            ->where('o.status', '!=', 'Canceled')
+            ->where('o.order_date', '>=', $startDateCarbon)
+            ->where('o.order_date', '<=', $endDateCarbon)
+            ->where(function ($query) {
+                $query->whereNull('o.status')
+                    ->orWhere('o.status', '!=', 'Canceled');
+            })
             ->sum('i.quantity');
-        $debug['total_quantity'] = $totalQty;
+        $debug['total_quantity_from_items'] = $totalQty;
         
-        // 7. Sum of all item prices (this should match Amazon's "Ordered product sales")
+        // 9. Total sales from item prices
         $totalSales = DB::table('amazon_orders as o')
             ->join('amazon_order_items as i', 'o.id', '=', 'i.amazon_order_id')
-            ->whereBetween('o.order_date', [$amazonStartDate, $amazonEndDate])
-            ->where('o.status', '!=', 'Canceled')
+            ->where('o.order_date', '>=', $startDateCarbon)
+            ->where('o.order_date', '<=', $endDateCarbon)
+            ->where(function ($query) {
+                $query->whereNull('o.status')
+                    ->orWhere('o.status', '!=', 'Canceled');
+            })
             ->sum('i.price');
-        $debug['total_sales_from_items'] = round($totalSales, 2);
+        $debug['total_sales_from_item_prices'] = round($totalSales, 2);
         
-        // 8. Items with 0 price (potential missing price data)
+        // 10. Items with 0 or null price (data quality issue)
         $zeroPriceItems = DB::table('amazon_orders as o')
             ->join('amazon_order_items as i', 'o.id', '=', 'i.amazon_order_id')
-            ->whereBetween('o.order_date', [$amazonStartDate, $amazonEndDate])
-            ->where('o.status', '!=', 'Canceled')
-            ->where('i.price', '=', 0)
+            ->where('o.order_date', '>=', $startDateCarbon)
+            ->where('o.order_date', '<=', $endDateCarbon)
+            ->where(function ($query) {
+                $query->whereNull('o.status')
+                    ->orWhere('o.status', '!=', 'Canceled');
+            })
+            ->where(function ($query) {
+                $query->where('i.price', '=', 0)
+                    ->orWhereNull('i.price');
+            })
             ->count();
-        $debug['items_with_zero_price'] = $zeroPriceItems;
+        $debug['items_with_zero_or_null_price'] = $zeroPriceItems;
         
-        // 9. Sample of items with 0 price to check raw_data
-        $sampleZeroPrice = DB::table('amazon_orders as o')
-            ->join('amazon_order_items as i', 'o.id', '=', 'i.amazon_order_id')
-            ->whereBetween('o.order_date', [$amazonStartDate, $amazonEndDate])
-            ->where('o.status', '!=', 'Canceled')
-            ->where('i.price', '=', 0)
-            ->select('i.raw_data', 'i.asin', 'i.sku', 'i.quantity', 'o.amazon_order_id')
-            ->limit(10)
-            ->get();
-        
-        $zeroPriceSamples = [];
-        foreach ($sampleZeroPrice as $item) {
-            $rawData = json_decode($item->raw_data, true);
-            $zeroPriceSamples[] = [
-                'order_id' => $item->amazon_order_id,
-                'asin' => $item->asin,
-                'sku' => $item->sku,
-                'quantity' => $item->quantity,
-                'has_item_price' => isset($rawData['ItemPrice']),
-                'item_price_raw' => $rawData['ItemPrice'] ?? 'NOT SET',
-            ];
+        // 11. Sample of zero price items
+        if ($zeroPriceItems > 0) {
+            $sampleZeroPrice = DB::table('amazon_orders as o')
+                ->join('amazon_order_items as i', 'o.id', '=', 'i.amazon_order_id')
+                ->where('o.order_date', '>=', $startDateCarbon)
+                ->where('o.order_date', '<=', $endDateCarbon)
+                ->where(function ($query) {
+                    $query->whereNull('o.status')
+                        ->orWhere('o.status', '!=', 'Canceled');
+                })
+                ->where(function ($query) {
+                    $query->where('i.price', '=', 0)
+                        ->orWhereNull('i.price');
+                })
+                ->select('o.amazon_order_id', 'o.order_date', 'i.asin', 'i.sku', 'i.quantity', 'i.price')
+                ->limit(10)
+                ->get();
+            $debug['zero_price_items_sample'] = $sampleZeroPrice;
         }
-        $debug['zero_price_samples'] = $zeroPriceSamples;
         
-        // 10. Amazon's expected values
-        $debug['amazon_expected'] = [
-            'total_order_items' => 4379,
-            'units_ordered' => 4639,
-            'ordered_product_sales' => 164459.86,
+        // 12. Amazon's expected values (from your screenshots)
+        $debug['amazon_expected_values'] = [
+            'date_range' => 'Jan 15 to Feb 13, 2026',
+            'ordered_product_sales' => 142925.00, // $142.9K
+            'units_ordered' => 2609,
+            'total_order_items' => 2327,
         ];
         
-        // 11. Calculate discrepancies
+        // 13. What your system currently shows
+        $debug['your_system_shows'] = [
+            'total_sales' => 67928.54,
+            'total_quantity' => 1599,
+            'total_orders' => 1426,
+        ];
+        
+        // 14. Calculate discrepancies
         $debug['discrepancies'] = [
-            'missing_order_items' => 4379 - $itemCount,
-            'missing_units' => 4639 - $totalQty,
-            'missing_sales' => round(164459.86 - $totalSales, 2),
+            'missing_sales_amount' => round(142925.00 - $totalSales, 2),
+            'missing_sales_percentage' => $totalSales > 0 ? round((142925.00 - $totalSales) / 142925.00 * 100, 1) : 100,
+            'missing_units' => 2609 - $totalQty,
+            'missing_units_percentage' => $totalQty > 0 ? round((2609 - $totalQty) / 2609 * 100, 1) : 100,
+            'missing_order_items' => 2327 - $itemCount,
         ];
+        
+        // 15. Recommendations
+        $recommendations = [];
+        if ($ordersWithoutItems > 0) {
+            $recommendations[] = "CRITICAL: {$ordersWithoutItems} orders have NO items in amazon_order_items table. Run FetchAmazonOrders command to sync missing items.";
+        }
+        if ($zeroPriceItems > 0) {
+            $recommendations[] = "WARNING: {$zeroPriceItems} items have zero or null price. Check data import process.";
+        }
+        if ($totalSales < 142925.00 * 0.9) {
+            $recommendations[] = "CRITICAL: Sales are more than 10% lower than Amazon's report. Check date range and data completeness.";
+        }
+        $debug['recommendations'] = $recommendations;
         
         return response()->json($debug, 200, [], JSON_PRETTY_PRINT);
     }
