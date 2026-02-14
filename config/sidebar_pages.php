@@ -131,10 +131,7 @@ return [
     ['value' => 'listing_audit_wayfair', 'text' => 'Listing Audit Wayfair', 'group' => 'Marketplace'],
 
     ['value' => 'reverb', 'text' => 'Reverb', 'group' => 'Marketplace'],
-    ['value' => 'reverb_zero_view', 'text' => 'Reverb 0 View', 'group' => 'Marketplace'],
-    ['value' => 'reverb_low_visibility', 'text' => 'Reverb Low Visibility', 'group' => 'Marketplace'],
     ['value' => 'listing_reverb', 'text' => 'Listing Reverb', 'group' => 'Marketplace'],
-    ['value' => 'listing_audit_reverb', 'text' => 'Listing Audit Reverb', 'group' => 'Marketplace'],
 
     ['value' => 'temu', 'text' => 'Temu', 'group' => 'Marketplace'],
     ['value' => 'temu_zero_view', 'text' => 'Temu 0 View', 'group' => 'Marketplace'],

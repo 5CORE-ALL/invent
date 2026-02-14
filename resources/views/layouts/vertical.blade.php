@@ -68,7 +68,7 @@
 
     @vite(['resources/js/layout.js', 'resources/js/main.js'])
 
-    @include('components.ai-chat-widget')
+    {{-- @include('components.ai-chat-widget') --}}
     
     <!-- PWA Service Worker Registration with Error Handling -->
     <script>
