@@ -24,10 +24,10 @@ class TaskController extends Controller
         
         if (!$isAdmin) {
             // Normal user: only see tasks they created OR tasks assigned to them
-            // Old table uses email fields
+            // Handle comma-separated assignees with LIKE
             $tasksQuery->where(function($query) use ($user) {
                 $query->where('assignor', $user->email)
-                      ->orWhere('assign_to', $user->email);
+                      ->orWhere('assign_to', 'LIKE', '%' . $user->email . '%');
             });
         }
 
@@ -62,10 +62,10 @@ class TaskController extends Controller
         
         if (!$isAdmin) {
             // Normal user: only see tasks they created OR tasks assigned to them
-            // Old table uses email fields
+            // Handle comma-separated assignees with LIKE
             $tasksQuery->where(function($query) use ($user) {
                 $query->where('assignor', $user->email)
-                      ->orWhere('assign_to', $user->email);
+                      ->orWhere('assign_to', 'LIKE', '%' . $user->email . '%');
             });
         }
 
@@ -174,19 +174,36 @@ class TaskController extends Controller
         $assigneeEmail = null;
         $assigneeIds = $request->assignee_ids ?? [];
         
+        \Log::info('📝 Assignee Processing:', [
+            'has_assignee_id' => $request->has('assignee_id'),
+            'assignee_id_value' => $request->assignee_id,
+            'has_assignee_ids' => !empty($assigneeIds),
+            'assignee_ids_value' => $assigneeIds,
+            'validated_assignee_id' => $validated['assignee_id'] ?? null
+        ]);
+        
         if (!empty($assigneeIds) && count($assigneeIds) > 0) {
             // Multiple assignees - store as comma-separated emails
             $assigneeEmails = User::whereIn('id', $assigneeIds)->pluck('email')->toArray();
             $assigneeEmail = implode(', ', $assigneeEmails);
-            \Log::info('Multiple assignees:', ['ids' => $assigneeIds, 'emails' => $assigneeEmail]);
+            \Log::info('✅ Multiple assignees selected:', [
+                'count' => count($assigneeIds),
+                'ids' => $assigneeIds, 
+                'emails' => $assigneeEmail
+            ]);
         } elseif ($request->has('assignee_id') && $validated['assignee_id']) {
             // Single assignee
             $assigneeUser = User::find($validated['assignee_id']);
             $assigneeEmail = $assigneeUser ? $assigneeUser->email : null;
-            \Log::info('Single assignee:', ['id' => $validated['assignee_id'], 'email' => $assigneeEmail]);
+            \Log::info('✅ Single assignee selected:', [
+                'id' => $validated['assignee_id'], 
+                'email' => $assigneeEmail
+            ]);
         } else {
-            \Log::warning('No assignee provided');
+            \Log::warning('⚠️ No assignee provided - task will be unassigned');
         }
+        
+        \Log::info('💾 Final assignee to save:', ['assign_to' => $assigneeEmail]);
         
         // Handle image upload
         $imageName = null;
@@ -493,6 +510,18 @@ class TaskController extends Controller
         if ($validated['status'] === 'Done') {
             if (isset($validated['atc'])) {
                 $task->etc_done = $validated['atc']; // Map to old column name
+                
+                // Log ATC for all assignees (comma-separated)
+                if ($task->assign_to && str_contains($task->assign_to, ',')) {
+                    $assigneeEmails = array_map('trim', explode(',', $task->assign_to));
+                    \Log::info('✅ Task completed - ATC credited to ALL assignees:', [
+                        'task_id' => $task->id,
+                        'atc_minutes' => $validated['atc'],
+                        'assignees' => $assigneeEmails,
+                        'count' => count($assigneeEmails),
+                        'note' => 'Each assignee gets credit for ' . $validated['atc'] . ' minutes'
+                    ]);
+                }
             }
             $task->completion_date = now(); // Map to old column name
             

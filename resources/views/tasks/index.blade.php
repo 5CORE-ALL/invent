@@ -210,29 +210,36 @@
                 box-shadow: 0 4px 8px rgba(102,126,234,0.3);
             }
             
-            /* Mobile Action Buttons Grid */
+            /* Mobile Action Buttons - Ultra Compact */
             .mobile-action-buttons {
-                display: grid;
-                grid-template-columns: repeat(2, 1fr);
-                gap: 10px;
-                padding: 15px;
-                margin-bottom: 15px;
+                display: flex;
+                gap: 6px;
+                padding: 8px 12px;
+                margin-bottom: 8px;
+                overflow-x: auto;
+                -webkit-overflow-scrolling: touch;
+                scrollbar-width: none;
+            }
+            
+            .mobile-action-buttons::-webkit-scrollbar {
+                display: none;
             }
             
             .mobile-action-btn {
-                display: flex;
-                flex-direction: column;
+                flex: 0 0 auto;
+                display: inline-flex;
                 align-items: center;
-                justify-content: center;
-                padding: 16px 12px;
-                border-radius: 12px;
+                gap: 6px;
+                padding: 8px 14px;
+                border-radius: 20px;
                 border: none;
                 text-decoration: none;
                 color: white;
                 font-weight: 500;
-                transition: all 0.3s ease;
-                min-height: 85px;
-                box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+                font-size: 13px;
+                white-space: nowrap;
+                box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+                transition: transform 0.1s;
             }
             
             .mobile-action-btn:active {
@@ -240,14 +247,11 @@
             }
             
             .mobile-action-btn i {
-                font-size: 28px;
-                margin-bottom: 6px;
+                font-size: 16px;
             }
             
             .mobile-action-btn span {
                 font-size: 13px;
-                text-align: center;
-                line-height: 1.2;
             }
             
             .mobile-action-btn.btn-primary {
@@ -1045,15 +1049,8 @@
         </div>     
         <!-- end page title --> 
 
-        <!-- Mobile Stats Header -->
-        <div class="d-md-none text-center mb-2" style="padding: 10px 15px 0 15px;">
-            <h6 class="mb-0" style="color: #667eea; font-weight: 700; font-size: 14px;">
-                <i class="mdi mdi-chart-box"></i> STATISTICS
-            </h6>
-        </div>
-        
-        <!-- Statistics Cards -->
-        <div class="row mb-4 stats-row">
+        <!-- Statistics Cards (Hidden on mobile) -->
+        <div class="row mb-4 stats-row d-none d-md-flex">
             <!-- Total Tasks -->
             <div class="col-xl-3 col-md-6">
                 <div class="stat-card stat-card-blue">
@@ -1107,8 +1104,8 @@
             </div>
         </div>
 
-        <!-- Time Statistics Cards -->
-        <div class="row mb-4 stats-row">
+        <!-- Time Statistics Cards (Hidden on mobile) -->
+        <div class="row mb-4 stats-row d-none d-md-flex">
             <!-- Total ETC -->
             <div class="col-xl-3 col-md-6">
                 <div class="stat-card stat-card-yellow">
@@ -1203,13 +1200,6 @@
                                     </div>
                                 </div>
                                 
-                                <!-- Mobile Action Buttons Header -->
-                                <div class="d-md-none text-center mb-2" style="padding: 15px 15px 0 15px;">
-                                    <h6 class="mb-0" style="color: #667eea; font-weight: 700; font-size: 14px;">
-                                        <i class="mdi mdi-lightning-bolt"></i> QUICK ACTIONS
-                                    </h6>
-                                </div>
-                                
                                 <!-- Mobile Action Buttons Grid -->
                                 <div class="d-md-none mobile-action-buttons">
                                     <a href="{{ route('tasks.create') }}" class="mobile-action-btn btn-primary">
@@ -1253,16 +1243,6 @@
                             </div>
                         @endif
 
-                        <!-- Mobile Quick Filters Header -->
-                        <div class="d-md-none text-center mb-1" style="padding: 15px 15px 5px 15px;">
-                            <h6 class="mb-0" style="color: #667eea; font-weight: 700; font-size: 14px;">
-                                <i class="mdi mdi-filter-variant"></i> QUICK FILTERS
-                            </h6>
-                            <small class="text-muted" style="font-size: 11px;">
-                                <i class="mdi mdi-gesture-swipe-horizontal"></i> Swipe to see more
-                            </small>
-                        </div>
-                        
                         <!-- Mobile Quick Filters (Only on mobile) -->
                         <div class="mobile-quick-filters d-md-none">
                             <div class="quick-filter-chip active" data-filter="all">
@@ -1293,19 +1273,22 @@
 
                         <!-- Search/Filter Bar -->
                         <div class="row mb-3 p-3 filter-section" style="background: #f8f9fa; border-radius: 8px;">
-                            <div class="col-md-2 mb-2">
+                            <!-- Desktop: All Filters -->
+                            <div class="col-md-2 mb-2 d-none d-md-block">
                                 <label class="form-label fw-bold">Search</label>
                                 <input type="text" id="filter-search" class="form-control form-control-sm" placeholder="Search all">
                             </div>
-                            <div class="col-md-2 mb-2">
+                            <div class="col-md-2 mb-2 d-none d-md-block">
                                 <label class="form-label fw-bold">Group</label>
                                 <input type="text" id="filter-group" class="form-control form-control-sm" placeholder="Enter Group">
                             </div>
-                            <div class="col-md-2 mb-2">
+                            <div class="col-md-2 mb-2 d-none d-md-block">
                                 <label class="form-label fw-bold">Task</label>
                                 <input type="text" id="filter-task" class="form-control form-control-sm" placeholder="Enter Task">
                             </div>
-                            <div class="col-md-2 mb-2">
+                            
+                            <!-- Mobile & Desktop: Essential Filters -->
+                            <div class="col-md-2 col-12 mb-2">
                                 <label class="form-label fw-bold">Assignor</label>
                                 <select id="filter-assignor" class="form-select form-select-sm">
                                     <option value="">All Assignors</option>
@@ -1315,7 +1298,7 @@
                                     @endforeach
                                 </select>
                             </div>
-                            <div class="col-md-2 mb-2">
+                            <div class="col-md-2 col-12 mb-2">
                                 <label class="form-label fw-bold">Assignee</label>
                                 <select id="filter-assignee" class="form-select form-select-sm">
                                     <option value="">All Assignees</option>
@@ -1325,7 +1308,7 @@
                                     @endforeach
                                 </select>
                             </div>
-                            <div class="col-md-1 mb-2">
+                            <div class="col-md-1 col-12 mb-2">
                                 <label class="form-label fw-bold">Status</label>
                                 <select id="filter-status" class="form-select form-select-sm">
                                     <option value="">All</option>
@@ -1341,7 +1324,9 @@
                                     <option value="Cancelled">Cancelled</option>
                                 </select>
                             </div>
-                            <div class="col-md-1 mb-2">
+                            
+                            <!-- Desktop only: Priority -->
+                            <div class="col-md-1 mb-2 d-none d-md-block">
                                 <label class="form-label fw-bold">Priority</label>
                                 <select id="filter-priority" class="form-select form-select-sm">
                                     <option value="">All</option>
@@ -1725,9 +1710,16 @@
             // MOBILE TASK CARDS RENDERER
             // ==========================================
             function renderMobileTasks(tasks) {
+                console.log('📱 renderMobileTasks called with', tasks.length, 'tasks');
                 const container = $('#mobile-tasks-container');
                 
+                if (!container.length) {
+                    console.error('❌ mobile-tasks-container not found!');
+                    return;
+                }
+                
                 if (!tasks || tasks.length === 0) {
+                    console.log('No tasks to render');
                     container.html(`
                         <div class="mobile-empty-state">
                             <i class="mdi mdi-clipboard-text-outline"></i>
@@ -1738,9 +1730,11 @@
                     return;
                 }
                 
+                console.log('✓ Rendering', tasks.length, 'mobile task cards...');
                 let html = '';
                 
-                tasks.forEach(task => {
+                try {
+                    tasks.forEach(task => {
                     // OVERDUE BASED ON completion_day
                     let isOverdue = false;
                     let statusText = task.status;
@@ -1839,9 +1833,38 @@
                             </div>
                         </div>
                     `;
-                });
-                
-                container.html(html);
+                    });
+                    
+                    console.log('✓ Generated HTML for', tasks.length, 'cards');
+                    console.log('HTML length:', html.length, 'characters');
+                    
+                    container.html(html);
+                    console.log('✅ Mobile tasks rendered successfully!');
+                    
+                } catch (error) {
+                    console.error('❌ Error rendering mobile tasks:', error);
+                    console.error('Error stack:', error.stack);
+                    container.html(`
+                        <div class="alert alert-danger m-3 text-center">
+                            <i class="mdi mdi-alert-circle" style="font-size: 48px;"></i>
+                            <h5 class="mt-2">Error Loading Task Cards</h5>
+                            <p><strong>${error.message}</strong></p>
+                            <p class="small text-muted">${error.stack ? error.stack.split('\n')[0] : ''}</p>
+                            <hr>
+                            <button class="btn btn-danger btn-sm" onclick="console.log(this.error)">
+                                <i class="mdi mdi-bug"></i> Show Error Details
+                            </button>
+                            <button class="btn btn-primary btn-sm" onclick="location.reload()">
+                                <i class="mdi mdi-refresh"></i> Reload Page
+                            </button>
+                            <hr>
+                            <small class="text-muted">
+                                Open Console (F12) for full error details<br>
+                                Or contact support with screenshot
+                            </small>
+                        </div>
+                    `);
+                }
             }
             
             // Helper functions for mobile actions
@@ -1919,12 +1942,43 @@
                     })));
                     console.log('==============================');
                     
-                    // Render mobile view
+                    // Render mobile view with error handling
                     if (window.innerWidth < 768) {
-                        renderMobileTasks(response);
+                        try {
+                            renderMobileTasks(response);
+                        } catch (error) {
+                            console.error('❌ Mobile render failed:', error);
+                            $('#mobile-tasks-container').html(`
+                                <div class="alert alert-danger m-3">
+                                    <h5><i class="mdi mdi-alert-circle"></i> Error Loading Tasks</h5>
+                                    <p><strong>${error.message}</strong></p>
+                                    <small>Check console (F12) for details</small>
+                                    <hr>
+                                    <button class="btn btn-primary btn-sm mt-2" onclick="location.reload()">
+                                        <i class="mdi mdi-refresh"></i> Retry
+                                    </button>
+                                </div>
+                            `);
+                        }
                     }
                     
                     return response;
+                },
+                ajaxError: function(xhr, textStatus, errorThrown) {
+                    console.error('❌ Failed to load tasks:', textStatus, errorThrown);
+                    if (window.innerWidth < 768) {
+                        $('#mobile-tasks-container').html(`
+                            <div class="alert alert-danger m-3">
+                                <h5><i class="mdi mdi-wifi-off"></i> Failed to Load Tasks</h5>
+                                <p><strong>Error:</strong> ${textStatus}</p>
+                                <p>${errorThrown || 'Network error or server issue'}</p>
+                                <button class="btn btn-primary mt-2" onclick="table.replaceData()">
+                                    <i class="mdi mdi-refresh"></i> Retry Loading
+                                </button>
+                            </div>
+                        `);
+                    }
+                    return false;
                 },
                 rowFormatter: function(row) {
                     var data = row.getData();
@@ -2076,14 +2130,21 @@
                     cols.push({
                         title: "ASSIGNEE", 
                         field: "assignee_name", 
-                        width: 100, 
+                        width: 200, 
                         formatter: function(cell) {
                             var value = cell.getValue();
                             if (value && value !== '-') {
-                                var firstName = value.trim().split(' ')[0];
-                                return '<strong>' + firstName + '</strong>';
+                                // Show ALL assignees, comma-separated
+                                return '<strong style="font-size: 11px; line-height: 1.4;">' + value + '</strong>';
                             }
                             return '<span style="color: #adb5bd;">-</span>';
+                        },
+                        tooltip: function(cell) {
+                            var value = cell.getValue();
+                            if (value && value !== '-') {
+                                return "Assigned to: " + value;
+                            }
+                            return "No assignee";
                         }
                     });
                     
@@ -2995,7 +3056,28 @@
                         }, 3000);
                     },
                     error: function(xhr) {
-                        alert('Error: ' + (xhr.responseJSON?.message || 'Something went wrong'));
+                        const errorMsg = xhr.responseJSON?.message || xhr.statusText || 'Something went wrong';
+                        console.error('❌ Bulk update failed:', xhr);
+                        
+                        // Show instant error notification
+                        const errorHtml = `
+                            <div class="alert alert-danger alert-dismissible position-fixed fade show" 
+                                 style="top: 20px; left: 20px; right: 20px; z-index: 9999;" 
+                                 role="alert">
+                                <h5 class="alert-heading">
+                                    <i class="mdi mdi-alert-circle me-2"></i>Bulk Update Failed
+                                </h5>
+                                <p><strong>Error:</strong> ${errorMsg}</p>
+                                <p class="mb-0"><small>Status: ${xhr.status} - ${xhr.statusText}</small></p>
+                                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                            </div>
+                        `;
+                        $('body').prepend(errorHtml);
+                        
+                        // Auto dismiss after 8 seconds
+                        setTimeout(function() {
+                            $('.alert-danger').fadeOut();
+                        }, 8000);
                     }
                 });
             }
