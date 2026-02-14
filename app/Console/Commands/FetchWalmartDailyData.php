@@ -64,8 +64,8 @@ class FetchWalmartDailyData extends Command
      */
     protected function getAccessToken(): ?string
     {
-        $clientId = env('WALMART_CLIENT_ID');
-        $clientSecret = env('WALMART_CLIENT_SECRET');
+        $clientId = config('services.walmart.client_id');
+        $clientSecret = config('services.walmart.client_secret');
 
         if (!$clientId || !$clientSecret) {
             $this->error('Walmart credentials missing');

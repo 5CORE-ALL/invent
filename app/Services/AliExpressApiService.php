@@ -15,8 +15,8 @@ class AliExpressApiService
     public function getAccessToken(){
 
 // Replace these variables with your actual values
-$appKey = env('ALIEXPRESS_APP_KEY');
-$appSecret = env('ALIEXPRESS_APP_SECRET');
+$appKey = config('services.aliexpress.app_key');
+$appSecret = config('services.aliexpress.app_secret');
 $code = '0_2DL4DV3jcU1UOT7WGI1A4rY91'; // The code obtained from the authorization callback URL
 $uuid = ''; // Optional parameter
 $url = 'https://api-sg.aliexpress.com/rest/'; // The API endpoint
@@ -80,8 +80,8 @@ public function getInventory()
 {$apiUrl = 'https://api-sg.aliexpress.com/sync';
 
     $appKey = '520170';
-    $appSecret = env('ALIEXPRESS_APP_SECRET');
-    $accessToken = env('ALIEXPRESS_ACCESS_TOKEN');
+    $appSecret = config('services.aliexpress.app_secret');
+    $accessToken = config('services.aliexpress.access_token');
     $timestamp = round(microtime(true) * 1000); // current time in ms
 
     $method = 'aliexpress.local.service.products.list';

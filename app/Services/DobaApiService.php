@@ -52,7 +52,7 @@ class DobaApiService
             $url = $this->baseUrl . "/goods/price/update";
 
             $headers = [
-                'appKey'     => env('DOBA_APP_KEY'),
+                'appKey'     => config('services.doba.app_key'),
                 'signType'   => 'rsa2',
                 'timestamp'  => $timestamp,
                 'sign'       => $sign,
@@ -190,7 +190,7 @@ class DobaApiService
             $url = $this->baseUrl . "/goods/sale/update";
 
             $headers = [
-                'appKey'     => env('DOBA_APP_KEY'),
+                'appKey'     => config('services.doba.app_key'),
                 'signType'   => 'rsa2',
                 'timestamp'  => $timestamp,
                 'sign'       => $sign,
@@ -302,7 +302,7 @@ class DobaApiService
 
             $url = $this->baseUrl . "/goods/price/update";
             $headers = [
-                'appKey' => env('DOBA_APP_KEY'),
+                'appKey' => config('services.doba.app_key'),
                 'signType' => 'rsa2',
                 'timestamp' => $timestamp,
                 'sign' => $sign,
@@ -332,7 +332,7 @@ class DobaApiService
             ];
 
             $response = Http::withHeaders([
-                'appKey' => env('DOBA_APP_KEY'),
+                'appKey' => config('services.doba.app_key'),
                 'signType' => 'rsa2',
                 'timestamp' => $timestamp,
                 'sign' => $sign,
@@ -365,7 +365,7 @@ class DobaApiService
             $url = $this->baseUrl . "/goods/get/item";
 
             $response = Http::withHeaders([
-                'appKey'     => env('DOBA_APP_KEY'),
+                'appKey'     => config('services.doba.app_key'),
                 'signType'   => 'rsa2',
                 'timestamp'  => $timestamp,
                 'sign'       => $sign,
@@ -400,7 +400,7 @@ class DobaApiService
 
     private function generateSignature($content)
     {
-        $privateKeyContent = trim(env('DOBA_PRIVATE_KEY'));
+        $privateKeyContent = trim(config('services.doba.private_key'));
         $privateKeyFormatted = "-----BEGIN RSA PRIVATE KEY-----\n" .
             wordwrap($privateKeyContent, 64, "\n", true) .
             "\n-----END RSA PRIVATE KEY-----";
@@ -418,7 +418,7 @@ class DobaApiService
 
     private function getContent($timestamp)
     {
-        $appKey = env('DOBA_APP_KEY');
+        $appKey = config('services.doba.app_key');
         return "appKey={$appKey}&signType=rsa2&timestamp={$timestamp}";
     }
 
@@ -439,7 +439,7 @@ class DobaApiService
 
             $url = $this->baseUrl . "/goods/price/update";
             $headers = [
-                'appKey' => env('DOBA_APP_KEY'),
+                'appKey' => config('services.doba.app_key'),
                 'signType' => 'rsa2',
                 'timestamp' => $timestamp,
                 'sign' => $sign,
@@ -453,8 +453,8 @@ class DobaApiService
             Log::info('JSON Payload', ['json' => json_encode($payload)]);
             Log::info('Signature Content', ['content' => $content]);
             Log::info('Environment Check', [
-                'app_key' => env('DOBA_APP_KEY'),
-                'private_key_length' => strlen(env('DOBA_PRIVATE_KEY')),
+                'app_key' => config('services.doba.app_key'),
+                'private_key_length' => strlen(config('services.doba.private_key')),
                 'base_url' => $this->baseUrl
             ]);
 
@@ -508,8 +508,8 @@ class DobaApiService
                 'signature' => $sign,
                 'test_methods' => $results,
                 'environment' => [
-                    'app_key' => env('DOBA_APP_KEY'),
-                    'private_key_length' => strlen(env('DOBA_PRIVATE_KEY')),
+                    'app_key' => config('services.doba.app_key'),
+                    'private_key_length' => strlen(config('services.doba.private_key')),
                     'base_url' => $this->baseUrl
                 ]
             ];
@@ -538,7 +538,7 @@ class DobaApiService
                 $url = $this->baseUrl . "/goods/get/item";
                 $payload = ['itemNo' => $itemId];
                 $response = Http::withHeaders([
-                    'appKey' => env('DOBA_APP_KEY'),
+                    'appKey' => config('services.doba.app_key'),
                     'signType' => 'rsa2',
                     'timestamp' => $timestamp,
                     'sign' => $sign,
@@ -549,7 +549,7 @@ class DobaApiService
                 $url = $this->baseUrl . "/goods/price/update";
                 $payload = ['itemNo' => 'test', 'anticipatedIncome' => 1.00];
                 $response = Http::withHeaders([
-                    'appKey' => env('DOBA_APP_KEY'),
+                    'appKey' => config('services.doba.app_key'),
                     'signType' => 'rsa2',
                     'timestamp' => $timestamp,
                     'sign' => $sign,
@@ -587,15 +587,15 @@ class DobaApiService
                 'timestamp' => $timestamp,
                 'content_to_sign' => $content,
                 'content_breakdown' => [
-                    'appKey' => env('DOBA_APP_KEY'),
+                    'appKey' => config('services.doba.app_key'),
                     'signType' => 'rsa2',
                     'timestamp' => $timestamp,
-                    'formatted' => "appKey=" . env('DOBA_APP_KEY') . "&signType=rsa2&timestamp=" . $timestamp
+                    'formatted' => "appKey=" . config('services.doba.app_key') . "&signType=rsa2&timestamp=" . $timestamp
                 ],
                 'signature' => $signature,
-                'app_key' => env('DOBA_APP_KEY'),
-                'private_key_length' => strlen(env('DOBA_PRIVATE_KEY')),
-                'private_key_start' => substr(env('DOBA_PRIVATE_KEY'), 0, 50) . '...',
+                'app_key' => config('services.doba.app_key'),
+                'private_key_length' => strlen(config('services.doba.private_key')),
+                'private_key_start' => substr(config('services.doba.private_key'), 0, 50) . '...',
             ];
         } catch (Exception $e) {
             return [
@@ -615,7 +615,7 @@ class DobaApiService
             $sign = $this->generateSignature($getContent);
             
             $response = Http::withHeaders([
-                'appKey' => env('DOBA_APP_KEY'),
+                'appKey' => config('services.doba.app_key'),
                 'signType' => 'rsa2',
                 'timestamp' => $timestamp,
                 'sign' => $sign,
@@ -664,7 +664,7 @@ class DobaApiService
             $sign = $this->generateSignature($getContent);
             
             $response = Http::withoutVerifying()->withHeaders([
-                'appKey' => env('DOBA_APP_KEY'),
+                'appKey' => config('services.doba.app_key'),
                 'signType' => 'rsa2',
                 'timestamp' => $timestamp,
                 'sign' => $sign,

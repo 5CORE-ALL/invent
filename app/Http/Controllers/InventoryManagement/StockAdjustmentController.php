@@ -29,9 +29,9 @@ class StockAdjustmentController extends Controller
     public function __construct(ApiController $apiController)
     {
         $this->apiController = $apiController;
-        $this->shopifyDomain = env('SHOPIFY_STORE_URL');
-        $this->shopifyApiKey = env('SHOPIFY_API_KEY');
-        $this->shopifyPassword = env('SHOPIFY_PASSWORD');
+        $this->shopifyDomain = config('services.shopify.store_url');
+        $this->shopifyApiKey = config('services.shopify.api_key');
+        $this->shopifyPassword = config('services.shopify.password');
     }
 
     /**

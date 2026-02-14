@@ -1774,11 +1774,11 @@ class ProductMasterController extends Controller
             $skus = $validated['skus'];
 
             // Get Amazon API configuration
-            $clientId = env('SPAPI_CLIENT_ID');
-            $clientSecret = env('SPAPI_CLIENT_SECRET');
-            $refreshToken = env('SPAPI_REFRESH_TOKEN');
-            $sellerId = env('AMAZON_SELLER_ID');
-            $marketplaceId = env('SPAPI_MARKETPLACE_ID', 'ATVPDKIKX0DER');
+            $clientId = config('services.amazon_sp.client_id');
+            $clientSecret = config('services.amazon_sp.client_secret');
+            $refreshToken = config('services.amazon_sp.refresh_token');
+            $sellerId = config('services.amazon_sp.seller_id');
+            $marketplaceId = config('services.amazon_sp.marketplace_id');
 
             if (! $clientId || ! $clientSecret || ! $refreshToken || ! $sellerId) {
                 return response()->json([
@@ -1956,8 +1956,8 @@ class ProductMasterController extends Controller
             Log::info("Starting Shopify title update for SKU: {$sku}, Title: {$title}");
 
             // Get Shopify credentials from env - try multiple variable names
-            $shopifyDomain = env('SHOPIFY_DOMAIN') ?? env('SHOPIFY_STORE_URL') ?? env('SHOPIFY_5CORE_DOMAIN');
-            $shopifyToken = env('SHOPIFY_ACCESS_TOKEN') ?? env('SHOPIFY_PASSWORD');
+            $shopifyDomain = config('services.shopify.domain') ?? config('services.shopify.store_url') ?? config('services.shopify_5core.domain');
+            $shopifyToken = config('services.shopify.access_token') ?? config('services.shopify.password');
 
             // Clean up domain (remove https://, trailing slashes)
             if ($shopifyDomain) {
@@ -2277,11 +2277,11 @@ class ProductMasterController extends Controller
     {
         try {
             // Get credentials from environment
-            $clientId = env('SPAPI_CLIENT_ID');
-            $clientSecret = env('SPAPI_CLIENT_SECRET');
-            $refreshToken = env('SPAPI_REFRESH_TOKEN');
-            $sellerId = env('AMAZON_SELLER_ID');
-            $marketplaceId = env('SPAPI_MARKETPLACE_ID', 'ATVPDKIKX0DER');
+            $clientId = config('services.amazon_sp.client_id');
+            $clientSecret = config('services.amazon_sp.client_secret');
+            $refreshToken = config('services.amazon_sp.refresh_token');
+            $sellerId = config('services.amazon_sp.seller_id');
+            $marketplaceId = config('services.amazon_sp.marketplace_id');
 
             if (! $clientId || ! $clientSecret || ! $refreshToken || ! $sellerId) {
                 Log::warning('Amazon credentials not configured');
@@ -2483,10 +2483,12 @@ class ProductMasterController extends Controller
             return null;
         }
 
-        $appId = env("{$envPrefix}_APP_ID");
-        $certId = env("{$envPrefix}_CERT_ID");
-        $devId = env("{$envPrefix}_DEV_ID");
-        $refreshToken = env("{$envPrefix}_REFRESH_TOKEN");
+        $ebayConfigMap = ['EBAY' => 'services.ebay', 'EBAY2' => 'services.ebay2', 'EBAY_3' => 'services.ebay3'];
+        $configPrefix = $ebayConfigMap[$envPrefix] ?? null;
+        $appId = $configPrefix ? config("{$configPrefix}.app_id") : null;
+        $certId = $configPrefix ? config("{$configPrefix}.cert_id") : null;
+        $devId = $configPrefix ? config("{$configPrefix}.dev_id") : null;
+        $refreshToken = $configPrefix ? config("{$configPrefix}.refresh_token") : null;
 
         Log::info("eBay credentials check for {$account}: APP_ID=".($appId ? 'SET' : 'MISSING').
                   ', CERT_ID='.($certId ? 'SET' : 'MISSING').
@@ -2544,10 +2546,10 @@ class ProductMasterController extends Controller
         try {
             Log::info("Starting Walmart title update for SKU: {$sku}, Title: {$title}");
 
-            $clientId = env('WALMART_CLIENT_ID');
-            $clientSecret = env('WALMART_CLIENT_SECRET');
-            $channelType = env('WALMART_CHANNEL_TYPE', '0f3e4dd4-0514-4346-b39d-af0e00ea066d');
-            $baseUrl = env('WALMART_API_ENDPOINT', 'https://marketplace.walmartapis.com');
+            $clientId = config('services.walmart.client_id');
+            $clientSecret = config('services.walmart.client_secret');
+            $channelType = config('services.walmart.channel_type');
+            $baseUrl = config('services.walmart.api_endpoint');
 
             if (! $clientId || ! $clientSecret) {
                 Log::warning('Walmart credentials not configured in .env file');
@@ -2708,8 +2710,8 @@ class ProductMasterController extends Controller
     private function checkWalmartFeedStatus($feedId, $accessToken)
     {
         try {
-            $baseUrl = env('WALMART_API_ENDPOINT', 'https://marketplace.walmartapis.com');
-            $channelType = env('WALMART_CHANNEL_TYPE', '0f3e4dd4-0514-4346-b39d-af0e00ea066d');
+            $baseUrl = config('services.walmart.api_endpoint');
+            $channelType = config('services.walmart.channel_type');
 
             Log::info("Checking Walmart feed status for feedId: {$feedId}");
 
@@ -2756,9 +2758,9 @@ class ProductMasterController extends Controller
         try {
             Log::info("Starting Temu title update for SKU: {$sku}, Title: {$title}");
 
-            $appKey = env('TEMU_APP_KEY');
-            $appSecret = env('TEMU_SECRET_KEY');
-            $accessToken = env('TEMU_ACCESS_TOKEN');
+            $appKey = config('services.temu.app_key');
+            $appSecret = config('services.temu.secret_key');
+            $accessToken = config('services.temu.access_token');
 
             if (! $appKey || ! $appSecret || ! $accessToken) {
                 Log::warning('Temu credentials not configured in .env file');
@@ -2881,8 +2883,8 @@ class ProductMasterController extends Controller
             // Try to get credentials - check both possible variable names
             // First try OPEN_KEY_ID and SECRET_KEY (for signature generation)
             // If not found, try APP_ID and APP_SECRET/APP_S
-            $openKeyId = env('SHEIN_OPEN_KEY_ID') ?: env('SHEIN_APP_ID');
-            $secretKey = env('SHEIN_SECRET_KEY') ?: env('SHEIN_APP_SECRET') ?: env('SHEIN_APP_S');
+            $openKeyId = config('services.shein.open_key_id') ?: config('services.shein.app_id');
+            $secretKey = config('services.shein.secret_key') ?: config('services.shein.app_secret') ?: config('services.shein.app_s');
 
             if (! $openKeyId || ! $secretKey) {
                 $missing = [];
@@ -2909,7 +2911,7 @@ class ProductMasterController extends Controller
                 return false;
             }
 
-            Log::info('✓ Shein credentials found - Using: '.(env('SHEIN_OPEN_KEY_ID') ? 'SHEIN_OPEN_KEY_ID' : 'SHEIN_APP_ID'));
+            Log::info('✓ Shein credentials found - Using: '.(config('services.shein.open_key_id') ? 'SHEIN_OPEN_KEY_ID' : 'SHEIN_APP_ID'));
 
             // Check if product exists in your local DB/view
             $sheinProduct = \App\Models\SheinDataView::where('sku', $sku)
@@ -2933,8 +2935,8 @@ class ProductMasterController extends Controller
             // IMPORTANT: Shein API signature requires SHEIN_OPEN_KEY_ID and SHEIN_SECRET_KEY
             // These are DIFFERENT from SHEIN_APP_ID and SHEIN_APP_SECRET
             // Check if we have the correct credentials for signature
-            $signatureOpenKeyId = env('SHEIN_OPEN_KEY_ID');
-            $signatureSecretKey = env('SHEIN_SECRET_KEY');
+            $signatureOpenKeyId = config('services.shein.open_key_id');
+            $signatureSecretKey = config('services.shein.secret_key');
 
             // If we don't have OPEN_KEY_ID, try using APP_ID (they might be the same value)
             // But this will likely fail - user needs to add SHEIN_OPEN_KEY_ID to .env
@@ -2959,9 +2961,9 @@ class ProductMasterController extends Controller
             $base64Signature = base64_encode($hmacResult);
             $signature = $random.$base64Signature;
 
-            Log::info('Generated Shein signature - OpenKeyId: '.substr($signatureOpenKeyId, 0, 10).'... (Using: '.(env('SHEIN_OPEN_KEY_ID') ? 'OPEN_KEY_ID' : 'APP_ID fallback').')');
+            Log::info('Generated Shein signature - OpenKeyId: '.substr($signatureOpenKeyId, 0, 10).'... (Using: '.(config('services.shein.open_key_id') ? 'OPEN_KEY_ID' : 'APP_ID fallback').')');
 
-            $baseUrl = env('SHEIN_BASE_URL', 'https://openapi.sheincorp.com');
+            $baseUrl = config('services.shein.base_url');
             $url = $baseUrl.$endpoint;
 
             // Log all available fields from SheinDataView for debugging
@@ -3101,8 +3103,8 @@ class ProductMasterController extends Controller
             Log::info("Starting Wayfair title update for SKU: {$sku}, Title: {$title}");
 
             // Get Wayfair credentials from env (similar to Amazon approach)
-            $clientId = env('WAYFAIR_CLIENT_ID');
-            $clientSecret = env('WAYFAIR_CLIENT_SECRET');
+            $clientId = config('services.wayfair.client_id');
+            $clientSecret = config('services.wayfair.client_secret');
 
             if (! $clientId || ! $clientSecret) {
                 Log::warning('Wayfair credentials not configured');
@@ -3133,7 +3135,7 @@ class ProductMasterController extends Controller
             }
 
             // Get supplier ID from env (if available)
-            $supplierId = env('WAYFAIR_SUPPLIER_ID');
+            $supplierId = config('services.wayfair.supplier_id');
 
             // Use GraphQL mutation to update product name (Wayfair's direct API method)
             $graphqlMutation = <<<'GRAPHQL'
@@ -3240,7 +3242,7 @@ GRAPHQL;
             Log::info("Starting Reverb title update for SKU: {$sku}, Title: {$title}");
 
             // Get Reverb API token from env or config
-            $reverbToken = env('REVERB_TOKEN') ?? config('services.reverb.token');
+            $reverbToken = config('services.reverb.token');
 
             if (! $reverbToken) {
                 Log::warning('Reverb token not configured in .env file');
@@ -3396,22 +3398,20 @@ GRAPHQL;
             Log::info("Starting Faire title update for SKU: {$sku}, New Title: {$newTitle}");
 
             // Get Faire credentials from .env
-            $appId = env('FAIRE_APP_ID');
-            $appSecret = env('FAIRE_APP_SECRET');
-            $redirectUrl = env('FAIRE_REDIRECT_URL');
+            $appId = config('services.faire.app_id');
+            $appSecret = config('services.faire.app_secret');
+            $redirectUrl = config('services.faire.redirect_url');
 
             // Try to get access token - first check for direct token, then try OAuth
-            $token = env('FAIRE_BEARER_TOKEN')
-                ?? env('FAIRE_ACCESS_TOKEN')
-                ?? env('FAIRE_TOKEN');
+            $token = config('services.faire.bearer_token') ?? config('services.faire.access_token') ?? config('services.faire.token');
 
             // If no direct token and we have OAuth credentials, try to get access token
             if (! $token && $appId && $appSecret) {
                 Log::info('No direct token found, attempting to get access token via OAuth...');
 
                 // Check if we have a refresh token or authorization code
-                $refreshToken = env('FAIRE_REFRESH_TOKEN');
-                $authCode = env('FAIRE_AUTH_CODE') ?? env('code'); // Also check 'code' variable from .env
+                $refreshToken = config('services.faire.refresh_token');
+                $authCode = config('services.faire.auth_code');
 
                 if ($refreshToken) {
                     // Use refresh token to get new access token
@@ -3841,9 +3841,9 @@ GRAPHQL;
         try {
             Log::info("Starting AliExpress title update for SKU: {$sku}, Title: {$newTitle}");
 
-            $appKey = env('ALIEXPRESS_APP_KEY');
-            $appSecret = env('ALIEXPRESS_APP_SECRET');
-            $accessToken = env('ALIEXPRESS_ACCESS_TOKEN');
+            $appKey = config('services.aliexpress.app_key');
+            $appSecret = config('services.aliexpress.app_secret');
+            $accessToken = config('services.aliexpress.access_token');
 
             if (! $appKey || ! $appSecret || ! $accessToken) {
                 Log::warning('AliExpress credentials missing in .env');
@@ -3989,16 +3989,9 @@ GRAPHQL;
             Log::info("Starting TikTok title update for SKU: {$sku}, Title: {$newTitle}");
 
             // Get TikTok Shop API credentials from .env - try multiple variable name formats
-            $appKey = env('TIKTOK_APP_KEY')
-                ?? env('TIKTOK_CLIENT_KEY')
-                ?? env('TIKTOK_APP_ID')
-                ?? env('TIKTOK_KEY');
-            $appSecret = env('TIKTOK_APP_SECRET')
-                ?? env('TIKTOK_CLIENT_SECRET')
-                ?? env('TIKTOK_SECRET');
-            $accessToken = env('TIKTOK_ACCESS_TOKEN')
-                ?? env('TIKTOK_TOKEN')
-                ?? env('TIKTOK_BEARER_TOKEN');
+            $appKey = config('services.tiktok.app_key');
+            $appSecret = config('services.tiktok.app_secret');
+            $accessToken = config('services.tiktok.access_token');
 
             if (! $appKey || ! $appSecret || ! $accessToken) {
                 Log::warning('TikTok credentials missing in .env');
@@ -4041,7 +4034,7 @@ GRAPHQL;
             // Step 3: Update product title using TikTok Shop API
             // TikTok Shop API endpoint for updating product
             $baseUrl = 'https://open-api.tiktokglobalshop.com';
-            $shopId = env('TIKTOK_SHOP_ID'); // Optional, may be required for some endpoints
+            $shopId = config('services.tiktok.shop_id'); // Optional, may be required for some endpoints
 
             // TikTok Shop API uses Bearer token authentication
             $headers = [
@@ -4132,9 +4125,9 @@ GRAPHQL;
         try {
             Log::info("Starting Doba title update for SKU: {$sku}, Title: {$title}");
 
-            $publicKey = env('DOBA_PUBLIC_KEY');
-            $privateKey = env('DOBA_PRIVATE_KEY');
-            $appKey = env('DOBA_APP_KEY');
+            $publicKey = config('services.doba.public_key');
+            $privateKey = config('services.doba.private_key');
+            $appKey = config('services.doba.app_key');
 
             if (! $publicKey || ! $privateKey || ! $appKey) {
                 Log::warning('Doba credentials not configured in .env file');
@@ -4667,13 +4660,13 @@ CREATE NEW TITLE:
 Return ONLY the optimized title (no quotes, no explanation).";
 
         // Try Claude first (working API key)
-        if (env('CLAUDE_API_KEY')) {
+        if (config('services.claude.key')) {
             $title = $this->callClaudeAI($prompt, $maxChars);
             if ($title) return $title;
         }
         
         // Try OpenAI
-        if (env('OPENAI_API_KEY')) {
+        if (config('services.openai.key')) {
             $title = $this->callOpenAI($prompt, $maxChars);
             if ($title) return $title;
         }
@@ -4760,13 +4753,13 @@ Add value, improve clarity, boost searchability.
 Return ONLY the dramatically improved title without quotes.";
 
         // Try Claude first (working API key)
-        if (env('CLAUDE_API_KEY')) {
+        if (config('services.claude.key')) {
             $title = $this->callClaudeAI($prompt, $maxChars);
             if ($title) return $title;
         }
         
         // Try OpenAI
-        if (env('OPENAI_API_KEY')) {
+        if (config('services.openai.key')) {
             $title = $this->callOpenAI($prompt, $maxChars);
             if ($title) return $title;
         }
@@ -4777,7 +4770,7 @@ Return ONLY the dramatically improved title without quotes.";
 
     private function callClaudeAI($prompt, $maxChars)
     {
-        $apiKey = env('CLAUDE_API_KEY');
+        $apiKey = config('services.claude.key');
         if (!$apiKey) {
             return null;
         }
@@ -4834,7 +4827,7 @@ Return ONLY the dramatically improved title without quotes.";
 
     private function callOpenAI($prompt, $maxChars)
     {
-        $apiKey = env('OPENAI_API_KEY');
+        $apiKey = config('services.openai.key');
         if (!$apiKey) {
             Log::warning('OpenAI API key not configured - using fallback');
             return null;

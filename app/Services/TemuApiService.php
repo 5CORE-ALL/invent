@@ -26,9 +26,9 @@ class TemuApiService
 private function generateSignValue($requestBody)
     {
         // Environment/config variables
-        $appKey = env('TEMU_APP_KEY');
-        $appSecret = env('TEMU_SECRET_KEY');
-        $accessToken = env('TEMU_ACCESS_TOKEN');
+        $appKey = config('services.temu.app_key');
+        $appSecret = config('services.temu.secret_key');
+        $accessToken = config('services.temu.access_token');
         $timestamp = time();
         
         // Top-level params
@@ -96,7 +96,7 @@ private function generateSignValue($requestBody)
             ]);
 
             // Only disable SSL verification in local dev (not recommended for production)
-            if (env('FILESYSTEM_DRIVER') === 'local') {
+            if (config('filesystems.default') === 'local') {
                 $request = $request->withoutVerifying();
             }
 
@@ -184,7 +184,7 @@ public function getInventory__()
             'Content-Type' => 'application/json'
         ]);
 
-        if (env('FILESYSTEM_DRIVER') === 'local') {
+        if (config('filesystems.default') === 'local') {
             $request = $request->withoutVerifying();
         }
 
@@ -280,7 +280,7 @@ public function getInventory1()
         ]);
 
         // Only disable TLS verification in local dev if absolutely 
-        if (env('APP_ENV') === 'local') { $request = $request->withoutVerifying(); }
+        if (config('app.env') === 'local') { $request = $request->withoutVerifying(); }
 
         // 🔥 Fixed URL: no trailing spaces
         $response = $request->post('https://openapi-b-us.temu.com/openapi/router', $signedRequest);
@@ -377,7 +377,7 @@ public function fetchAdsData($goodsId, $startTs = null, $endTs = null)
         'Content-Type' => 'application/json',
     ]);
 
-    if (env('FILESYSTEM_DRIVER') === 'local') {
+    if (config('filesystems.default') === 'local') {
         $request = $request->withoutVerifying();
     }
 

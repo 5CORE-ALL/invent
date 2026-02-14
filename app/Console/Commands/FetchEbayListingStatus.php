@@ -292,9 +292,9 @@ class FetchEbayListingStatus extends Command
 
     private function getAccessToken()
     {
-        $appId = env('EBAY_APP_ID');
-        $certId = env('EBAY_CERT_ID');
-        $refreshToken = trim(env('EBAY_REFRESH_TOKEN'), '"'); // Remove quotes if present
+        $appId = config('services.ebay.app_id');
+        $certId = config('services.ebay.cert_id');
+        $refreshToken = trim(config('services.ebay.refresh_token') ?? '', '"'); // Remove quotes if present
 
         if (!$appId || !$certId || !$refreshToken) {
             $this->error('Missing eBay credentials in .env file');

@@ -14,8 +14,8 @@ class ShopifyMarketingService
 
     public function __construct()
     {
-        $this->shopifyStoreUrl = env('SHOPIFY_STORE_URL', '5-core.myshopify.com');
-        $this->shopifyAccessToken = env('SHOPIFY_ACCESS_TOKEN');
+        $this->shopifyStoreUrl = config('services.shopify.store_url', '5-core.myshopify.com');
+        $this->shopifyAccessToken = config('services.shopify.access_token');
     }
 
     /**

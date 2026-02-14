@@ -5137,8 +5137,8 @@ class CategoryController extends Controller
                 return false;
             }
 
-            $sellerId = env('AMAZON_SELLER_ID');
-            $marketplaceId = env('SPAPI_MARKETPLACE_ID', 'ATVPDKIKX0DER');
+            $sellerId = config('services.amazon_sp.seller_id');
+            $marketplaceId = config('services.amazon_sp.marketplace_id');
 
             if (!$sellerId) {
                 Log::error('Amazon seller ID not configured');
@@ -5321,14 +5321,14 @@ class CategoryController extends Controller
 
             $xmlBody = $xml->asXML();
             
-            $endpoint = env('EBAY_TRADING_API_ENDPOINT', 'https://api.ebay.com/ws/api.dll');
+            $endpoint = config('services.ebay.trading_api_endpoint');
             $headers = [
-                'X-EBAY-API-COMPATIBILITY-LEVEL' => env('EBAY_COMPAT_LEVEL', '1189'),
-                'X-EBAY-API-DEV-NAME' => env('EBAY_DEV_ID'),
-                'X-EBAY-API-APP-NAME' => env('EBAY_APP_ID'),
-                'X-EBAY-API-CERT-NAME' => env('EBAY_CERT_ID'),
+                'X-EBAY-API-COMPATIBILITY-LEVEL' => config('services.ebay.compat_level'),
+                'X-EBAY-API-DEV-NAME' => config('services.ebay.dev_id'),
+                'X-EBAY-API-APP-NAME' => config('services.ebay.app_id'),
+                'X-EBAY-API-CERT-NAME' => config('services.ebay.cert_id'),
                 'X-EBAY-API-CALL-NAME' => 'ReviseItem',
-                'X-EBAY-API-SITEID' => env('EBAY_SITE_ID', 0),
+                'X-EBAY-API-SITEID' => config('services.ebay.site_id'),
                 'Content-Type' => 'text/xml',
             ];
             
@@ -5378,9 +5378,9 @@ class CategoryController extends Controller
             }
 
             $variantId = $shopifySku->variant_id;
-            $storeUrl = "https://" . env('SHOPIFY_STORE_URL');
+            $storeUrl = "https://" . config('services.shopify.store_url');
             $apiVersion = "2025-01";
-            $accessToken = env('SHOPIFY_PASSWORD');
+            $accessToken = config('services.shopify.password');
 
             if (!$storeUrl || !$accessToken) {
                 Log::error('Shopify credentials missing');
@@ -5463,7 +5463,7 @@ class CategoryController extends Controller
                 return false;
             }
 
-            $baseUrl = env('WALMART_API_ENDPOINT', 'https://marketplace.walmartapis.com');
+            $baseUrl = config('services.walmart.api_endpoint');
             
             // Build payload for Walmart item update
             $payload = [

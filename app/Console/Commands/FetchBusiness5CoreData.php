@@ -26,8 +26,8 @@ class FetchBusiness5CoreData extends Command
 
     public function handle()
     {
-        $shopUrl  = env('BUSINESS_5CORE_SHOPIFY_DOMAIN');
-        $accessToken = env('BUSINESS_5CORE_SHOPIFY_ACCESS_TOKEN');
+        $shopUrl  = config('services.shopify_b5c.domain');
+        $accessToken = config('services.shopify_b5c.access_token');
         $version  = "2025-07";
 
         // Validate environment variables

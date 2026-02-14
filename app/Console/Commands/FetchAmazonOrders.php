@@ -265,7 +265,7 @@ class FetchAmazonOrders extends Command
      */
     private function executeDailySync($accessToken, $sync, $date)
     {
-        $marketplaceId = env('SPAPI_MARKETPLACE_ID');
+        $marketplaceId = config('services.amazon_sp.marketplace_id');
         $delay = (int) $this->option('delay') ?: 3;
         $maxRetries = (int) $this->option('max-retries') ?: 3;
         
@@ -958,9 +958,9 @@ class FetchAmazonOrders extends Command
     {
         $res = Http::asForm()->post('https://api.amazon.com/auth/o2/token', [
             'grant_type' => 'refresh_token',
-            'refresh_token' => env('SPAPI_REFRESH_TOKEN'),
-            'client_id' => env('SPAPI_CLIENT_ID'),
-            'client_secret' => env('SPAPI_CLIENT_SECRET'),
+            'refresh_token' => config('services.amazon_sp.refresh_token'),
+            'client_id' => config('services.amazon_sp.client_id'),
+            'client_secret' => config('services.amazon_sp.client_secret'),
         ]);
 
         return $res['access_token'] ?? null;

@@ -27,8 +27,8 @@ class FetchFbaInventory extends Command
             return 1;
         }
 
-        $marketplaceId = env('SPAPI_MARKETPLACE_ID', 'ATVPDKIKX0DER');
-        $endpoint = env('SPAPI_ENDPOINT', 'https://sellingpartnerapi-na.amazon.com');
+        $marketplaceId = config('services.amazon_sp.marketplace_id');
+        $endpoint = config('services.amazon_sp.endpoint');
 
         // If prices-only, skip inventory
         if ($this->option('prices-only')) {
@@ -72,9 +72,9 @@ class FetchFbaInventory extends Command
         try {
             $res = Http::asForm()->post('https://api.amazon.com/auth/o2/token', [
                 'grant_type' => 'refresh_token',
-                'refresh_token' => env('SPAPI_REFRESH_TOKEN'),
-                'client_id' => env('SPAPI_CLIENT_ID'),
-                'client_secret' => env('SPAPI_CLIENT_SECRET'),
+                'refresh_token' => config('services.amazon_sp.refresh_token'),
+                'client_id' => config('services.amazon_sp.client_id'),
+                'client_secret' => config('services.amazon_sp.client_secret'),
             ]);
 
             if ($res->failed()) {

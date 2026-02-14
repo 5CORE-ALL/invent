@@ -31,7 +31,7 @@ class AmazonCampaignReports extends Command
      */
     public function handle()
     {        
-        $profileId = env('AMAZON_ADS_PROFILE_IDS');
+        $profileId = config('services.amazon_ads.profile_ids');
 
         $adTypes = [
             'SPONSORED_PRODUCTS' => 'spCampaigns',
@@ -76,7 +76,7 @@ class AmazonCampaignReports extends Command
         $response = Http::withToken($accessToken)
             ->withHeaders([
                 'Amazon-Advertising-API-Scope' => $profileId,
-                'Amazon-Advertising-API-ClientId' => env('AMAZON_ADS_CLIENT_ID'),
+                'Amazon-Advertising-API-ClientId' => config('services.amazon_ads.client_id'),
                 'Content-Type' => 'application/vnd.createasyncreportrequest.v3+json',
             ])
             ->post('https://advertising-api.amazon.com/reporting/reports', [
@@ -124,7 +124,7 @@ class AmazonCampaignReports extends Command
 
             $statusResponse = Http::withHeaders([
                 'Authorization' => 'Bearer ' . $token,
-                'Amazon-Advertising-API-ClientId' => env('AMAZON_ADS_CLIENT_ID'),
+                'Amazon-Advertising-API-ClientId' => config('services.amazon_ads.client_id'),
                 'Amazon-Advertising-API-Scope' => $profileId,
                 'Content-Type' => 'application/vnd.getasyncreportresponse.v3+json',
             ])->get("https://advertising-api.amazon.com/reporting/reports/{$reportId}");
@@ -246,9 +246,9 @@ class AmazonCampaignReports extends Command
 
     private function getAccessToken()
     {
-        $clientId = env('AMAZON_ADS_CLIENT_ID');
-        $clientSecret = env('AMAZON_ADS_CLIENT_SECRET');
-        $refreshToken = env('AMAZON_ADS_REFRESH_TOKEN');
+        $clientId = config('services.amazon_ads.client_id');
+        $clientSecret = config('services.amazon_ads.client_secret');
+        $refreshToken = config('services.amazon_ads.refresh_token');
 
         // Step 1: Get access token
         $tokenResponse = Http::asForm()->post('https://api.amazon.com/auth/o2/token', [

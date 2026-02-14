@@ -32,9 +32,9 @@ class IncomingController extends Controller
     public function __construct(ApiController $apiController)
     {
         $this->apiController = $apiController;
-        $this->shopifyDomain = env('SHOPIFY_STORE_URL');
-        $this->shopifyApiKey =  '9d5c067dd4bcaf83a72137dddab72a4d';  //env('SHOPIFY_API_KEY');
-        $this->shopifyPassword =  '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'; //env('SHOPIFY_PASSWORD');
+        $this->shopifyDomain = config('services.shopify.store_url');
+        $this->shopifyApiKey =  '9d5c067dd4bcaf83a72137dddab72a4d';  //config('services.shopify.api_key');
+        $this->shopifyPassword =  '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'; //config('services.shopify.password');
     }
 
 
@@ -93,10 +93,10 @@ class IncomingController extends Controller
 
     //             try {
 
-    //             // $response = Http::withBasicAuth(env('SHOPIFY_API_KEY'),env('SHOPIFY_PASSWORD') 
+    //             // $response = Http::withBasicAuth(config('services.shopify.api_key'),config('services.shopify.password') 
     //             // )->get("https://{$shopifyDomain}/admin/api/2025-01/products.json",$query_p);
 
-    //             $response = Http::withBasicAuth(env('SHOPIFY_API_KEY'), env('SHOPIFY_PASSWORD'))
+    //             $response = Http::withBasicAuth(config('services.shopify.api_key'), config('services.shopify.password'))
     //                 ->get("https://5-core.myshopify.com/admin/api/2025-01/products.json", $queryParams);
 
 
@@ -149,7 +149,7 @@ class IncomingController extends Controller
     //         try {
 
     //         //  Get location ID from inventory_levels
-    //         $invLevelResponse = Http::withBasicAuth(env('SHOPIFY_API_KEY'), env('SHOPIFY_PASSWORD'))
+    //         $invLevelResponse = Http::withBasicAuth(config('services.shopify.api_key'), config('services.shopify.password'))
     //             ->get("https://5-core.myshopify.com/admin/api/2025-01/inventory_levels.json", [
     //                 'inventory_item_ids' => $inventoryItemId,
     //             ]);
@@ -183,7 +183,7 @@ class IncomingController extends Controller
     //         try {
 
     //             // Send adjustment to Shopify (increase available by qty)
-    //             $adjustResponse = Http::withBasicAuth(env('SHOPIFY_API_KEY'), env('SHOPIFY_PASSWORD'))
+    //             $adjustResponse = Http::withBasicAuth(config('services.shopify.api_key'), config('services.shopify.password'))
     //                 ->post("https://5-core.myshopify.com/admin/api/2025-01/inventory_levels/adjust.json", [
     //                     'inventory_item_id' => $inventoryItemId,
     //                     'location_id' => $locationId,   
@@ -261,8 +261,8 @@ class IncomingController extends Controller
             ]);
 
             // Shopify credentials
-            $shopifyDomain = env('SHOPIFY_STORE_URL');
-            $accessToken = env('SHOPIFY_ACCESS_TOKEN');
+            $shopifyDomain = config('services.shopify.store_url');
+            $accessToken = config('services.shopify.access_token');
 
             if (!$accessToken || !$shopifyDomain) {
                 Log::error("Missing Shopify credentials");

@@ -1,0 +1,53 @@
+#==============================================================================
+# CRON CONFIGURATION for Invent Project (VDS Production)
+#==============================================================================
+#
+# To install, run: crontab -e
+# Then paste the line below (after updating paths).
+#
+# IMPORTANT:
+#   1. Use FULL paths for both PHP and the project directory
+#   2. Find your PHP path with: which php
+#   3. Ensure the project path is correct
+#   4. Run as the web server user (www-data): sudo crontab -u www-data -e
+#
+#==============================================================================
+
+# Laravel Scheduler - runs every minute
+* * * * * cd /var/www/invent && /usr/bin/php artisan schedule:run >> /var/www/invent/storage/logs/cron.log 2>&1
+
+#==============================================================================
+# VERIFICATION STEPS:
+#==============================================================================
+#
+# 1. Verify cron is running:
+#    crontab -l
+#
+# 2. Check cron log:
+#    tail -f /var/www/invent/storage/logs/cron.log
+#
+# 3. Check scheduler log:
+#    tail -f /var/www/invent/storage/logs/scheduler.log
+#
+# 4. Test manually:
+#    cd /var/www/invent && /usr/bin/php artisan schedule:run
+#
+# 5. Ensure storage/logs is writable:
+#    ls -la /var/www/invent/storage/logs/
+#
+#==============================================================================
+# LOG ROTATION (add to /etc/logrotate.d/invent):
+#==============================================================================
+#
+# /var/www/invent/storage/logs/*.log {
+#     daily
+#     missingok
+#     rotate 14
+#     compress
+#     delaycompress
+#     notifempty
+#     create 0664 www-data www-data
+#     sharedscripts
+# }
+#
+#==============================================================================

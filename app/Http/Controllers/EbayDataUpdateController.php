@@ -21,9 +21,9 @@ class EbayDataUpdateController extends Controller
 
             $headers = [
                 'X-EBAY-API-COMPATIBILITY-LEVEL' => '967',
-                'X-EBAY-API-DEV-NAME' => env('EBAY_DEV_ID'),
-                'X-EBAY-API-APP-NAME' => env('EBAY_APP_ID'),
-                'X-EBAY-API-CERT-NAME' => env('EBAY_CERT_ID'),
+                'X-EBAY-API-DEV-NAME' => config('services.ebay.dev_id'),
+                'X-EBAY-API-APP-NAME' => config('services.ebay.app_id'),
+                'X-EBAY-API-CERT-NAME' => config('services.ebay.cert_id'),
                 'X-EBAY-API-CALL-NAME' => 'ReviseFixedPriceItem',
                 'X-EBAY-API-SITEID' => '0',
                 'Content-Type' => 'text/xml',
@@ -78,8 +78,8 @@ class EbayDataUpdateController extends Controller
 
     private function generateEbayToken(): ?string
     {
-        $clientId = env('EBAY_APP_ID');
-        $clientSecret = env('EBAY_CERT_ID');
+        $clientId = config('services.ebay.app_id');
+        $clientSecret = config('services.ebay.cert_id');
 
         $scope = implode(' ', [
             'https://api.ebay.com/oauth/api_scope',
@@ -98,7 +98,7 @@ class EbayDataUpdateController extends Controller
                 ->withBasicAuth($clientId, $clientSecret)
                 ->post('https://api.ebay.com/identity/v1/oauth2/token', [
                     'grant_type' => 'refresh_token',
-                    'refresh_token' => env('EBAY_REFRESH_TOKEN'),
+                    'refresh_token' => config('services.ebay.refresh_token'),
                     'scope' => $scope,
                 ]);
 

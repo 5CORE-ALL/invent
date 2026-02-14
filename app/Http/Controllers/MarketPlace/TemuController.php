@@ -1530,7 +1530,7 @@ class TemuController extends Controller
                 ->get()
                 ->keyBy('goods_id');
             
-            // Fetch campaign report data (L30) for saved status, in_roas, and out_roas
+            // Fetch campaign report data (L30) for saved status, in_roas, out_roas, ad_sales, ad_sold
             $goodsIds = $pricingData->pluck('goods_id')->filter()->unique()->values()->all();
             $campaignReportL30 = TemuCampaignReport::whereIn('goods_id', $goodsIds)
                 ->where('report_range', 'L30')
@@ -1539,7 +1539,9 @@ class TemuController extends Controller
                     SUM(clicks) as clicks_l30,
                     AVG(roas) as roas_l30,
                     AVG(in_roas) as in_roas_l30,
-                    MAX(status) as status_l30')
+                    MAX(status) as status_l30,
+                    SUM(COALESCE(base_price_sales, 0)) as ad_sales_l30,
+                    SUM(COALESCE(sub_orders, 0)) as ad_sold_l30')
                 ->groupBy('goods_id')
                 ->get()
                 ->keyBy('goods_id');
@@ -1637,10 +1639,14 @@ class TemuController extends Controller
                 $adClicks = $adDataItem ? $adDataItem->clicks : 0;
                 $target = $adDataItem ? $adDataItem->target : 0;
                 
-                // Get campaign report data (L30) for saved status, in_roas, and out_roas
+                // Get campaign report data (L30) for saved status, in_roas, out_roas, ad_sales, ad_sold
                 $campaignReportItem = $goodsId ? $campaignReportL30->get($goodsId) : null;
                 $inRoasL30 = $campaignReportItem ? round((float)$campaignReportItem->in_roas_l30, 2) : 0;
                 $outRoasL30 = $campaignReportItem ? round((float)$campaignReportItem->roas_l30, 2) : ($netRoas > 0 ? round($netRoas, 2) : 0);
+                $spendL30 = $campaignReportItem ? round((float)($campaignReportItem->spend_l30 ?? 0), 2) : 0;
+                $clicksL30 = $campaignReportItem ? (int)($campaignReportItem->clicks_l30 ?? 0) : 0;
+                $adSalesL30 = $campaignReportItem ? round((float)($campaignReportItem->ad_sales_l30 ?? 0), 2) : 0;
+                $adSoldL30 = $campaignReportItem ? (int)($campaignReportItem->ad_sold_l30 ?? 0) : 0;
                 $campaignStatus = null;
                 // Get campaign report data (L60) for spend, ad sold, ad sales
                 $l60Item = $goodsId ? $campaignReportL60->get($goodsId) : null;
@@ -1786,9 +1792,13 @@ class TemuController extends Controller
                     'listed' => $listed,
                     'buyer_link' => $buyer_link,
                     'seller_link' => $seller_link,
-                    // Add saved campaign data
+                    // Add saved campaign data (L30 from temu_campaign_reports)
                     'in_roas_l30' => $inRoasL30,
                     'out_roas_l30' => $outRoasL30,
+                    'spend_l30' => $spendL30,
+                    'clicks_l30' => $clicksL30,
+                    'ad_sales_l30' => $adSalesL30,
+                    'ad_sold_l30' => $adSoldL30,
                     'campaign_status' => $campaignStatus,
                     'spend_l60' => $spendL60,
                     'ad_sold_l60' => $adSoldL60,
@@ -1807,9 +1817,21 @@ class TemuController extends Controller
                 ->unique()
                 ->count();
 
+            // Compute global L30 totals from temu_campaign_reports (ALL rows, matches all-marketplace-master)
+            $l30Totals = DB::table('temu_campaign_reports')
+                ->where('report_range', 'L30')
+                ->selectRaw('COALESCE(SUM(spend), 0) as total_spend, COALESCE(SUM(clicks), 0) as total_clicks, COALESCE(SUM(base_price_sales), 0) as total_ad_sales, COALESCE(SUM(sub_orders), 0) as total_ad_sold')
+                ->first();
+
             return response()->json([
                 'data' => $processedData,
                 'total_campaign_count' => $totalCampaignCount,
+                'l30_totals' => [
+                    'total_spend' => round((float)($l30Totals->total_spend ?? 0), 2),
+                    'total_clicks' => (int)($l30Totals->total_clicks ?? 0),
+                    'total_ad_sales' => round((float)($l30Totals->total_ad_sales ?? 0), 2),
+                    'total_ad_sold' => (int)($l30Totals->total_ad_sold ?? 0),
+                ],
             ]);
         } catch (\Exception $e) {
             Log::error('Error fetching Temu decrease data: ' . $e->getMessage());

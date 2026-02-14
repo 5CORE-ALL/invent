@@ -46,7 +46,7 @@ class FetchGA4CampaignData extends Command
         $this->info("Date range: {$startDate} to {$endDate}");
 
         // Check if GA4 API is configured
-        if (empty(env('GA4_PROPERTY_ID'))) {
+        if (empty(config('services.ga4.property_id'))) {
             $this->error('GA4 API not configured!');
             $this->info('Please set the following in .env:');
             $this->info('  GA4_PROPERTY_ID=your-property-id');
@@ -76,7 +76,7 @@ class FetchGA4CampaignData extends Command
                 $this->warn('     → Go to GA4 → Admin → Property Access Management');
                 $this->warn('     → Add the OAuth account email with Viewer/Editor role');
                 $this->warn('  2. Property ID: Verify Property ID is correct');
-                $this->warn('     → Current: ' . env('GA4_PROPERTY_ID'));
+                $this->warn('     → Current: ' . config('services.ga4.property_id'));
                 $this->warn('  3. Check storage/logs/laravel.log for detailed errors');
                 $this->info('');
                 return 1;

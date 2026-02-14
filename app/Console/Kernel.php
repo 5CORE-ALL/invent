@@ -89,583 +89,1130 @@ class Kernel extends ConsoleKernel
         FetchShopifyB2CMetrics::class,
         \App\Console\Commands\RunAdvMastersCron::class,
         \App\Console\Commands\CollectWalmartMetrics::class,
-
     ];
 
     /**
+     * Shared scheduler log path for all commands.
+     */
+    protected string $schedulerLog;
+
+    /**
+     * Boot the Kernel – set up scheduler log path once.
+     */
+    public function __construct(\Illuminate\Contracts\Foundation\Application $app, \Illuminate\Contracts\Events\Dispatcher $events)
+    {
+        parent::__construct($app, $events);
+        $this->schedulerLog = storage_path('logs/scheduler.log');
+    }
+
+    /**
      * Define the application's command schedule.
+     *
+     * HARDENING RULES:
+     * - Every command uses ->withoutOverlapping() to prevent duplicate runs.
+     * - Every command uses ->runInBackground() so the scheduler can proceed.
+     * - Every command uses ->appendOutputTo() for debugging.
+     * - No env() calls – only config() used if needed.
      */
     protected function schedule(Schedule $schedule)
     {
+        $log = $this->schedulerLog;
+
         // Test scheduler to verify it's working
         $schedule->call(function () {
-            Log::info('Test scheduler is working at ' . now());
-        })->everyMinute()->name('test-scheduler-log');
+            Log::info('Scheduler heartbeat at ' . now());
+        })->everyMinute()->name('scheduler-heartbeat');
 
-        // Generate Daily Automated Tasks - Run once daily at 12:01 AM IST
+        /*
+        |--------------------------------------------------------------------------
+        | TASK MANAGEMENT
+        |--------------------------------------------------------------------------
+        */
         $schedule->command('tasks:generate-daily-automated')
             ->dailyAt('00:01')
             ->timezone('Asia/Kolkata')
             ->name('generate-daily-automated-tasks')
-            ->withoutOverlapping();
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
 
-        // Mark Missed Automated Tasks - Run twice daily at 6 AM and 6 PM IST
         $schedule->command('tasks:mark-missed-automated')
-            ->twiceDaily(6, 18)  // Runs at 6:00 AM and 6:00 PM
+            ->twiceDaily(6, 18)
             ->timezone('Asia/Kolkata')
             ->name('mark-missed-automated-tasks')
-            ->withoutOverlapping();
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
 
-        // Clear Laravel log after test log
+        // Clear Laravel log periodically
         $schedule->call(function () {
             $logPath = storage_path('logs/laravel.log');
-            if (file_exists($logPath)) {
+            if (file_exists($logPath) && filesize($logPath) > 50 * 1024 * 1024) { // Only if > 50MB
                 file_put_contents($logPath, '');
             }
         })->everyFiveMinutes()->name('clear-laravel-log');
 
-$schedule->command('amazon:sync-inventory')->everySixHours();
-        // All commands running every 5 minutes
-        $schedule->command('shopify:save-daily-inventory')
-            ->everyFiveMinutes()
-            ->timezone('UTC');
-        $schedule->command('app:process-jungle-scout-sheet-data')
-            ->dailyAt('00:30')
-            ->timezone('America/Los_Angeles');
+        /*
+        |--------------------------------------------------------------------------
+        | AMAZON SP-API & INVENTORY
+        |--------------------------------------------------------------------------
+        */
+        $schedule->command('amazon:sync-inventory')
+            ->everySixHours()
+            ->name('amazon-sync-inventory')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
         $schedule->command('app:fetch-amazon-listings')
             ->dailyAt('06:00')
-            ->timezone('America/Los_Angeles');
-        $schedule->command('reverb:fetch')
-            ->everyFiveMinutes()
-            ->timezone('UTC');
-        $schedule->command('app:fetch-ebay-reports')
-            ->hourly()
-            ->timezone('UTC');
-        $schedule->command('app:fetch-macy-products')
-            ->everyFiveMinutes()
-            ->timezone('UTC');
-        $schedule->command('app:fetch-wayfair-data')
-            ->everyFiveMinutes()
-            ->timezone('UTC');
-        // $schedule->command('app:amazon-campaign-reports')
-        //     ->dailyAt('04:00')
-        //     ->timezone('America/Los_Angeles');
+            ->timezone('America/Los_Angeles')
+            ->name('fetch-amazon-listings')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        $schedule->command('app:fetch-amazon-orders --update-periods')
+            ->dailyAt('00:10')
+            ->timezone('Asia/Kolkata')
+            ->name('update-amazon-order-periods')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        $schedule->command('app:fetch-amazon-orders --new-only --limit=300')
+            ->dailyAt('00:15')
+            ->timezone('Asia/Kolkata')
+            ->name('fetch-new-amazon-orders')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        $schedule->command('app:fetch-amazon-orders --fetch-missing-items')
+            ->dailyAt('00:30')
+            ->timezone('Asia/Kolkata')
+            ->name('fetch-missing-amazon-order-items')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        $schedule->command('app:fetch-amazon-orders')
+            ->dailyAt('00:00')
+            ->timezone('Asia/Kolkata')
+            ->name('fetch-amazon-orders')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        $schedule->command('app:fetch-amazon-listing-status')
+            ->dailyAt('01:00')
+            ->timezone('Asia/Kolkata')
+            ->name('fetch-amazon-listing-status')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        $schedule->command('app:fetch-amazon-links')
+            ->dailyAt('02:00')
+            ->timezone('Asia/Kolkata')
+            ->name('fetch-amazon-links')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        /*
+        |--------------------------------------------------------------------------
+        | AMAZON ADS CAMPAIGN REPORTS
+        |--------------------------------------------------------------------------
+        */
         $schedule->command('app:amazon-sp-campaign-reports')
             ->dailyAt('06:00')
-            ->timezone('Asia/Kolkata');
+            ->timezone('Asia/Kolkata')
+            ->name('amazon-sp-campaign-reports')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
         $schedule->command('app:amazon-sb-campaign-reports')
             ->dailyAt('07:00')
-            ->timezone('Asia/Kolkata');
+            ->timezone('Asia/Kolkata')
+            ->name('amazon-sb-campaign-reports')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
         $schedule->command('app:amazon-sd-campaign-reports')
             ->dailyAt('08:00')
-            ->timezone('Asia/Kolkata');
+            ->timezone('Asia/Kolkata')
+            ->name('amazon-sd-campaign-reports')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        /*
+        |--------------------------------------------------------------------------
+        | AMAZON BIDS / BUDGET AUTO-UPDATE (All at 12:00 IST)
+        |--------------------------------------------------------------------------
+        */
+        $schedule->command('amazon:auto-update-over-kw-bids')
+            ->dailyAt('12:00')
+            ->timezone('Asia/Kolkata')
+            ->name('amazon-over-kw-bids')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        $schedule->command('amazon:auto-update-over-pt-bids')
+            ->dailyAt('12:00')
+            ->timezone('Asia/Kolkata')
+            ->name('amazon-over-pt-bids')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        $schedule->command('amazon:auto-update-over-hl-bids')
+            ->dailyAt('12:00')
+            ->timezone('Asia/Kolkata')
+            ->name('amazon-over-hl-bids')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        $schedule->command('amazon:auto-update-under-kw-bids')
+            ->dailyAt('12:00')
+            ->timezone('Asia/Kolkata')
+            ->name('amazon-under-kw-bids')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        $schedule->command('amazon:auto-update-under-pt-bids')
+            ->dailyAt('12:00')
+            ->timezone('Asia/Kolkata')
+            ->name('amazon-under-pt-bids')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        $schedule->command('amazon:auto-update-under-hl-bids')
+            ->dailyAt('12:00')
+            ->timezone('Asia/Kolkata')
+            ->name('amazon-under-hl-bids')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        $schedule->command('amazon:auto-update-amz-bgt-kw')
+            ->dailyAt('12:00')
+            ->timezone('Asia/Kolkata')
+            ->name('amazon-bgt-kw')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        $schedule->command('amazon:auto-update-amz-bgt-pt')
+            ->dailyAt('12:00')
+            ->timezone('Asia/Kolkata')
+            ->name('amazon-bgt-pt')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        $schedule->command('amazon:auto-update-amz-bgt-hl')
+            ->dailyAt('12:00')
+            ->timezone('Asia/Kolkata')
+            ->name('amazon-bgt-hl')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        $schedule->command('amazon:auto-update-pink-dil-kw-ads')
+            ->dailyAt('12:00')
+            ->timezone('Asia/Kolkata')
+            ->name('amazon-pink-dil-kw')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        $schedule->command('amazon:auto-update-pink-dil-pt-ads')
+            ->dailyAt('12:00')
+            ->timezone('Asia/Kolkata')
+            ->name('amazon-pink-dil-pt')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        $schedule->command('amazon:auto-update-pink-dil-hl-ads')
+            ->dailyAt('12:00')
+            ->timezone('Asia/Kolkata')
+            ->name('amazon-pink-dil-hl')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        /*
+        |--------------------------------------------------------------------------
+        | AMAZON FBA
+        |--------------------------------------------------------------------------
+        */
+        $schedule->command('amazon-fba:auto-update-over-kw-bids')
+            ->dailyAt('12:00')
+            ->timezone('Asia/Kolkata')
+            ->name('fba-over-kw-bids')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        $schedule->command('amazon-fba:auto-update-under-kw-bids')
+            ->dailyAt('12:00')
+            ->timezone('Asia/Kolkata')
+            ->name('fba-under-kw-bids')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        $schedule->command('amazon-fba:auto-update-over-pt-bids')
+            ->dailyAt('12:00')
+            ->timezone('Asia/Kolkata')
+            ->name('fba-over-pt-bids')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        $schedule->command('amazon-fba:auto-update-under-pt-bids')
+            ->dailyAt('12:00')
+            ->timezone('Asia/Kolkata')
+            ->name('fba-under-pt-bids')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        $schedule->command('app:fetch-fba-reports')
+            ->dailyAt('13:30')
+            ->timezone('Asia/Kolkata')
+            ->name('fetch-fba-reports')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        $schedule->command('app:fetch-fba-inventory --insert --prices')
+            ->dailyAt('14:00')
+            ->timezone('Asia/Kolkata')
+            ->name('fetch-fba-inventory')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        $schedule->command('app:fetch-fba-monthly-sales')
+            ->dailyAt('14:30')
+            ->timezone('Asia/Kolkata')
+            ->name('fetch-fba-monthly-sales')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        $schedule->command('fba:collect-metrics')
+            ->dailyAt('23:30')
+            ->timezone('UTC')
+            ->name('fba-collect-metrics')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        $schedule->command('fba:sync-shipment-status')
+            ->dailyAt('04:00')
+            ->timezone('Asia/Kolkata')
+            ->name('fba-sync-shipment-status-daily')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        $schedule->command('amazon:auto-pause-enable-fba-campaigns')
+            ->dailyAt('12:30')
+            ->timezone('Asia/Kolkata')
+            ->name('fba-auto-pause-enable')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        $schedule->command('budget:update-amazon-fba-kw')
+            ->dailyAt('00:05')
+            ->timezone('Asia/Kolkata')
+            ->name('budget-fba-kw')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        $schedule->command('budget:update-amazon-fba-pt')
+            ->dailyAt('00:06')
+            ->timezone('Asia/Kolkata')
+            ->name('budget-fba-pt')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        /*
+        |--------------------------------------------------------------------------
+        | AMAZON UTILIZATION & METRICS
+        |--------------------------------------------------------------------------
+        */
+        $schedule->command('amazon:store-utilization-counts')
+            ->dailyAt('00:10')
+            ->timezone('Asia/Kolkata')
+            ->name('amazon-utilization-counts')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        $schedule->command('amazon-fba:store-utilization-counts')
+            ->dailyAt('00:10')
+            ->timezone('Asia/Kolkata')
+            ->name('fba-utilization-counts')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        $schedule->command('amazon:store-listing-daily-metrics')
+            ->dailyAt('00:20')
+            ->timezone('Asia/Kolkata')
+            ->name('amazon-listing-daily-metrics')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        $schedule->command('amazon:collect-metrics')
+            ->dailyAt('23:40')
+            ->timezone('UTC')
+            ->name('amazon-collect-metrics')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        /*
+        |--------------------------------------------------------------------------
+        | EBAY JOBS
+        |--------------------------------------------------------------------------
+        */
+        $schedule->command('app:fetch-ebay-orders')
+            ->dailyAt('00:00')
+            ->timezone('Asia/Kolkata')
+            ->name('fetch-ebay-orders')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        $schedule->command('app:fetch-ebay2-orders')
+            ->dailyAt('23:40')
+            ->timezone('Asia/Kolkata')
+            ->name('fetch-ebay2-orders')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        $schedule->command('ebay3:daily --days=60')
+            ->dailyAt('01:00')
+            ->timezone('Asia/Kolkata')
+            ->name('ebay3-daily')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        $schedule->command('app:fetch-ebay-reports')
+            ->hourly()
+            ->timezone('UTC')
+            ->name('fetch-ebay-reports')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        $schedule->command('app:fetch-ebay-table-data')
+            ->dailyAt('00:00')
+            ->timezone('UTC')
+            ->name('fetch-ebay-table-data')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        $schedule->command('app:fetch-ebay-three-metrics')
+            ->dailyAt('02:00')
+            ->timezone('America/Los_Angeles')
+            ->name('fetch-ebay-three-metrics')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        $schedule->command('app:fetch-ebay-two-metrics')
+            ->dailyAt('01:00')
+            ->timezone('America/Los_Angeles')
+            ->name('fetch-ebay-two-metrics')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        // eBay campaign reports
+        $schedule->command('app:ebay-campaign-reports')
+            ->dailyAt('05:00')
+            ->timezone('UTC')
+            ->name('ebay-campaign-reports')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        $schedule->command('app:ebay2-campaign-reports')
+            ->dailyAt('01:15')
+            ->timezone('America/Los_Angeles')
+            ->name('ebay2-campaign-reports')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        $schedule->command('app:ebay3-campaign-reports')
+            ->dailyAt('04:00')
+            ->timezone('America/Los_Angeles')
+            ->name('ebay3-campaign-reports')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        // eBay bids update
+        $schedule->command('ebay:auto-update-over-bids')
+            ->dailyAt('12:00')
+            ->timezone('Asia/Kolkata')
+            ->name('ebay-over-bids')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        $schedule->command('ebay:auto-update-under-bids')
+            ->dailyAt('12:00')
+            ->timezone('Asia/Kolkata')
+            ->name('ebay-under-bids')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        $schedule->command('ebay2:auto-update-utilized-bids')
+            ->dailyAt('12:00')
+            ->timezone('Asia/Kolkata')
+            ->name('ebay2-utilized-bids')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        $schedule->command('ebay3:auto-update-utilized-bids')
+            ->dailyAt('12:00')
+            ->timezone('Asia/Kolkata')
+            ->name('ebay3-utilized-bids')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        $schedule->command('ebay1:auto-pause-pink-dil-kw-ads')
+            ->dailyAt('12:00')
+            ->timezone('Asia/Kolkata')
+            ->name('ebay1-pink-dil')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        $schedule->command('ebay2:auto-pause-pink-dil-kw-ads')
+            ->dailyAt('12:00')
+            ->timezone('Asia/Kolkata')
+            ->name('ebay2-pink-dil')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        $schedule->command('ebay3:auto-pause-pink-dil-kw-ads')
+            ->dailyAt('12:00')
+            ->timezone('Asia/Kolkata')
+            ->name('ebay3-pink-dil')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        $schedule->command('ebay:update-suggestedbid')
+            ->dailyAt('12:00')
+            ->timezone('Asia/Kolkata')
+            ->name('ebay-suggestedbid')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        $schedule->command('ebay2:update-suggestedbid')
+            ->dailyAt('12:00')
+            ->timezone('Asia/Kolkata')
+            ->name('ebay2-suggestedbid')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        $schedule->command('ebay3:update-suggestedbid')
+            ->dailyAt('12:00')
+            ->timezone('Asia/Kolkata')
+            ->name('ebay3-suggestedbid')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        $schedule->command('ebay1:update-budget')
+            ->dailyAt('12:00')
+            ->timezone('Asia/Kolkata')
+            ->name('ebay1-budget')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        $schedule->command('ebay:collect-metrics')
+            ->dailyAt('23:35')
+            ->timezone('UTC')
+            ->name('ebay-collect-metrics')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        $schedule->command('ebay:store-utilization-counts')
+            ->dailyAt('00:10')
+            ->timezone('Asia/Kolkata')
+            ->name('ebay-utilization-counts')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        /*
+        |--------------------------------------------------------------------------
+        | GOOGLE ADS & SHOPPING
+        |--------------------------------------------------------------------------
+        */
         $schedule->command('app:fetch-google-ads-campaigns')
             ->dailyAt('09:00')
-            ->timezone('Asia/Kolkata');
+            ->timezone('Asia/Kolkata')
+            ->name('fetch-google-ads-campaigns')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
 
-        // Sync Meta (Facebook & Instagram) Ads data from Meta API
+        $schedule->command('sbid:update')
+            ->dailyAt('00:01')
+            ->timezone('Asia/Kolkata')
+            ->name('sbid-update')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        $schedule->command('sbid:update-serp')
+            ->dailyAt('00:02')
+            ->timezone('Asia/Kolkata')
+            ->name('sbid-update-serp')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        $schedule->command('budget:update-shopping')
+            ->dailyAt('00:03')
+            ->timezone('Asia/Kolkata')
+            ->name('budget-shopping')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        $schedule->command('budget:update-serp')
+            ->dailyAt('00:04')
+            ->timezone('Asia/Kolkata')
+            ->name('budget-serp')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        $schedule->command('google:store-shopping-utilization-counts')
+            ->dailyAt('00:15')
+            ->timezone('Asia/Kolkata')
+            ->name('google-shopping-utilization')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        // Reset SBID status daily
+        $schedule->call(function () {
+            try {
+                DB::connection('apicentral')
+                    ->table('google_ads_campaigns')
+                    ->where('id', 1)
+                    ->update(['sbid_status' => 0]);
+            } catch (\Throwable $e) {
+                Log::error('Scheduler: Failed to reset sbid_status - ' . $e->getMessage());
+            }
+        })->dailyAt('00:00')->name('reset-sbid-status');
+
+        /*
+        |--------------------------------------------------------------------------
+        | META / FACEBOOK ADS
+        |--------------------------------------------------------------------------
+        */
         $schedule->command('meta:sync-all-ads')
             ->dailyAt('10:00')
             ->timezone('Asia/Kolkata')
             ->name('meta-ads-sync-daily')
-            ->withoutOverlapping();
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
 
-        // Meta Ads Manager - Full sync (entities + insights)
         $schedule->command('meta-ads:sync')
             ->dailyAt('11:00')
             ->timezone('Asia/Kolkata')
             ->name('meta-ads-manager-full-sync')
-            ->withoutOverlapping();
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
 
-        // Meta Ads Manager - Daily insights sync (faster, runs more frequently)
         $schedule->command('meta-ads:sync --insights-only')
             ->dailyAt('02:00')
             ->timezone('UTC')
             ->name('meta-ads-manager-insights-sync')
-            ->withoutOverlapping();
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
 
-        // Meta Ads Manager - Automation rules execution (runs after insights sync)
         $schedule->command('meta-ads:run-automation')
             ->dailyAt('03:00')
             ->timezone('UTC')
             ->name('meta-ads-automation-rules')
-            ->withoutOverlapping();
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
 
-        $schedule->command('app:ebay-campaign-reports')
-            ->dailyAt('05:00')
-            ->timezone('UTC');
-        // Doba Daily Sales Data - Fetch last 60 days (runs first)
-        $schedule->command('doba:daily --days=60')
-            ->dailyAt('01:50')
-            ->timezone('Asia/Kolkata')
-            ->name('doba-daily')
-            ->withoutOverlapping();
-
-        // Doba Metrics - Calculate L30/L60 from doba_daily_data (runs after doba:daily)
-        $schedule->command('app:fetch-doba-metrics')
-            ->dailyAt('02:00')
-            ->timezone('Asia/Kolkata')
-            ->name('doba-metrics')
-            ->withoutOverlapping();
-
-        // Collect FBA metrics for historical tracking
-
-
-
-
-        // Collect eBay metrics for historical tracking
-        $schedule->command('ebay:collect-metrics')
-            ->dailyAt('23:35')
-            ->timezone('UTC');
-
-        // Collect Walmart metrics for historical tracking
-        $schedule->command('walmart:collect-metrics')
-            ->dailyAt('23:45')
-            ->timezone('UTC');
-
-        // Collect Amazon metrics for historical tracking
-        $schedule->command('amazon:collect-metrics')
-            ->dailyAt('23:40')
-            ->timezone('UTC');
-
-        // Sync Main sheet update command
-        $schedule->command('app:sync-sheet')
-            ->dailyAt('02:10')
-            ->timezone('UTC');
-
-
-        // Sync mercari-w-ship sheet update command
-        $schedule->command('app:sync-mercari-w-ship-sheet')
-            ->dailyAt('02:30')
-            ->timezone('UTC');
-
-        // Sync mercari-wo-ship sheet update command
-        $schedule->command('app:sync-mercari-wo-ship-sheet')
-            ->dailyAt('03:00')
-            ->timezone('UTC');
-
-        // Sync fbshop sheet update command
-        $schedule->command('app:sync-fb-shop-sheet')
-            ->dailyAt('03:00')
-            ->timezone('UTC');
-
-        // Sync fb marketplace sheet update command
-        $schedule->command('app:sync-fb-marketplace-sheet')
-            ->dailyAt('03:00')
-            ->timezone('UTC');
-        // Sync Temu sheet command
-
-
-        $schedule->command('app:fetch-pls-data')->twiceDaily(1, 13);
-
-        $schedule->command('sync:neweegg-sheet')->twiceDaily(1, 13);
-        // Wayfair sheet sync disabled - using API instead
-        // $schedule->command('sync:wayfair-sheet')->twiceDaily(2, 14);
-
-        // Wayfair L30/L60 sync from API - runs daily at 1 PM (13:00) America/Los_Angeles timezone
-        $schedule->command('sync:wayfair-l30-api')
-            ->dailyAt('13:00')
-            ->timezone('Asia/Kolkata')
-            ->name('wayfair-api-sync-daily')
-            ->withoutOverlapping();
-
-
-        $schedule->command('sync:shein-sheet')->twiceDaily(1, 13);
-
-        // Sync Walmart sheet command
-        $schedule->command('sync:walmart-sheet')->twiceDaily(1, 13);
-        $schedule->command('sync:temu-sheet-data')->twiceDaily(1, 13);
-
-
-
-        // Sync Shopify sheet command
-        $schedule->command('sync:shopify-quantity')->twiceDaily(1, 13);
-
-
-        $schedule->command('app:fetch-ebay-three-metrics')
-            ->dailyAt('02:00')
-            ->timezone('America/Los_Angeles');
-
-        $schedule->command('app:ebay3-campaign-reports')
-            ->dailyAt('04:00')
-            ->timezone('America/Los_Angeles');
-        $schedule->command('app:fetch-temu-metrics')
-            ->dailyAt('03:00')
-            ->timezone('America/Los_Angeles');
-
-        // Fetch Temu Ads Data - L30 period
-        $schedule->command('temu:fetch-ads-data --period=L30')
-            ->dailyAt('04:00')
-            ->timezone('America/Los_Angeles')
-            ->name('temu-ads-data-sync-l30')
-            ->withoutOverlapping();
-
-        // Fetch Temu Ads Data - L60 period
-        $schedule->command('temu:fetch-ads-data --period=L60')
-            ->dailyAt('05:00')
-            ->timezone('America/Los_Angeles')
-            ->name('temu-ads-data-sync-l60')
-            ->withoutOverlapping();
-        $schedule->command('app:fetch-ebay-two-metrics')
-            ->dailyAt('01:00')
-            ->timezone('America/Los_Angeles');
-        $schedule->command('app:ebay2-campaign-reports')
-            ->dailyAt('01:15')
-            ->timezone('America/Los_Angeles');
-        // Amazon over and under utilized bids update commands
-        $schedule->command('amazon:auto-update-over-kw-bids')
-            ->dailyAt('12:00')
-            ->timezone('Asia/Kolkata');
-        $schedule->command('amazon:auto-update-over-pt-bids')
-            ->dailyAt('12:00')
-            ->timezone('Asia/Kolkata');
-        $schedule->command('amazon:auto-update-over-hl-bids')
-            ->dailyAt('12:00')
-            ->timezone('Asia/Kolkata');
-        $schedule->command('amazon:auto-update-under-kw-bids')
-            ->dailyAt('12:00')
-            ->timezone('Asia/Kolkata');
-        $schedule->command('amazon:auto-update-under-pt-bids')
-            ->dailyAt('12:00')
-            ->timezone('Asia/Kolkata');
-        $schedule->command('amazon:auto-update-under-hl-bids')
-            ->dailyAt('12:00')
-            ->timezone('Asia/Kolkata');
-        // amazon acos bgt update commands
-        $schedule->command('amazon:auto-update-amz-bgt-kw')
-            ->dailyAt('12:00')
-            ->timezone('Asia/Kolkata');
-        $schedule->command('amazon:auto-update-amz-bgt-pt')
-            ->dailyAt('12:00')
-            ->timezone('Asia/Kolkata');
-        $schedule->command('amazon:auto-update-amz-bgt-hl')
-            ->dailyAt('12:00')
-            ->timezone('Asia/Kolkata');
-        // Pink Dil ads update command
-        $schedule->command('amazon:auto-update-pink-dil-kw-ads')
-            ->dailyAt('12:00')
-            ->timezone('Asia/Kolkata');
-        $schedule->command('amazon:auto-update-pink-dil-pt-ads')
-            ->dailyAt('12:00')
-            ->timezone('Asia/Kolkata');
-        $schedule->command('amazon:auto-update-pink-dil-hl-ads')
-            ->dailyAt('12:00')
-            ->timezone('Asia/Kolkata');
-        // FBA bids update command
-
-        $schedule->command('amazon-fba:auto-update-over-kw-bids')
-            ->dailyAt('12:00')
-            ->timezone('Asia/Kolkata');
-        $schedule->command('amazon-fba:auto-update-under-kw-bids')
-            ->dailyAt('12:00')
-            ->timezone('Asia/Kolkata');
-        $schedule->command('amazon-fba:auto-update-over-pt-bids')
-            ->dailyAt('12:00')
-            ->timezone('Asia/Kolkata');
-        $schedule->command('amazon-fba:auto-update-under-pt-bids')
-            ->dailyAt('12:00')
-            ->timezone('Asia/Kolkata');
-
-        // Ebay bids update command
-        $schedule->command('ebay:auto-update-over-bids')
-            ->dailyAt('12:00')
-            ->timezone('Asia/Kolkata');
-        $schedule->command('ebay:auto-update-under-bids')
-            ->dailyAt('12:00')
-            ->timezone('Asia/Kolkata');
-        $schedule->command('ebay2:auto-update-utilized-bids')
-            ->dailyAt('12:00')
-            ->timezone('Asia/Kolkata');
-        $schedule->command('ebay3:auto-update-utilized-bids')
-            ->dailyAt('12:00')
-            ->timezone('Asia/Kolkata');
-        $schedule->command('ebay1:auto-pause-pink-dil-kw-ads')
-            ->dailyAt('12:00')
-            ->timezone('Asia/Kolkata');
-        
-        $schedule->command('ebay2:auto-pause-pink-dil-kw-ads')
-            ->dailyAt('12:00')
-            ->timezone('Asia/Kolkata');
-        
-        $schedule->command('ebay3:auto-pause-pink-dil-kw-ads')
-            ->dailyAt('12:00')
-            ->timezone('Asia/Kolkata');
-        $schedule->command('ebay:update-suggestedbid')
-            ->dailyAt('12:00')
-            ->timezone('Asia/Kolkata');
-        $schedule->command('ebay2:update-suggestedbid')
-            ->dailyAt('12:00')
-            ->timezone('Asia/Kolkata');
-        $schedule->command('ebay3:update-suggestedbid')
-            ->dailyAt('12:00')
-            ->timezone('Asia/Kolkata');
-        $schedule->command('ebay1:update-budget')
-            ->dailyAt('12:00')
-            ->timezone('Asia/Kolkata');
-        // Walmart ad sheet sync command
-        $schedule->command('sync:walmart-ad-sheet-data')
-            ->dailyAt('12:00')
-            ->timezone('Asia/Kolkata');
-        // end of bids update commands
-        $schedule->command('sync:amazon-prices')->everyMinute();
-        $schedule->command('sync:sync-temu-sip')->everyMinute();
-        $schedule->command('sync:walmart-metrics-data')->everyMinute();
-        $schedule->command('sync:tiktok-sheet-data')->everyMinute();
-        $schedule->command('sync:tiktok-api-data')->daily(); // Sync TikTok API data (price, stock, views) once daily
-        $schedule->command('app:aliexpress-sheet-sync')->everyMinute();
-        $schedule->command('app:fetch-ebay-table-data')->dailyAt('00:00');
-        $schedule->call(function () {
-            DB::connection('apicentral')
-                ->table('google_ads_campaigns')
-                ->where('id', 1)
-                ->update(['sbid_status' => 0]);
-        })->dailyAt('00:00');
-        $schedule->command('sbid:update')
-            ->dailyAt('00:01')
-            ->timezone('Asia/Kolkata');
-
-        // Advertisement Masters Cron - Run every 5 minutes
-        $schedule->command('adv:run-masters-cron')
-            ->everyFiveMinutes()
-            ->timezone('UTC')
-            ->name('advertisement-masters-cron')
-            ->withoutOverlapping();
-
-        // SERP (SEARCH) SBID Update - runs after SHOPPING SBID update
-        $schedule->command('sbid:update-serp')
-            ->dailyAt('00:02')
-            ->timezone('Asia/Kolkata');
-
-        // SHOPPING Budget Update - based on ACOS (L30 data)
-        $schedule->command('budget:update-shopping')
-            ->dailyAt('00:03')
-            ->timezone('Asia/Kolkata');
-
-        // SERP (SEARCH) Budget Update - based on ACOS (L30 data)
-        $schedule->command('budget:update-serp')
-            ->dailyAt('00:04')
-            ->timezone('Asia/Kolkata');
-
-        // Store Amazon Utilization Counts - Daily
-        $schedule->command('amazon:store-utilization-counts')
-            ->dailyAt('00:10')
-            ->timezone('Asia/Kolkata');
-
-        $schedule->command('google:store-shopping-utilization-counts')
-            ->dailyAt('00:15')
-            ->timezone('Asia/Kolkata');
-
-        // Store Amazon FBA Utilization Counts - Daily
-        $schedule->command('amazon-fba:store-utilization-counts')
-            ->dailyAt('00:10')
-            ->timezone('Asia/Kolkata');
-
-        // Store eBay Utilization Counts - Daily
-        $schedule->command('ebay:store-utilization-counts')
-            ->dailyAt('00:10')
-            ->timezone('Asia/Kolkata');
-
-        // Store Amazon Listing Daily Metrics (Missing & INV>0 count) - Daily
-        $schedule->command('amazon:store-listing-daily-metrics')
-            ->dailyAt('00:20')
-            ->timezone('Asia/Kolkata');
-
-        // Amazon FBA Keyword Budget Update - based on ACOS (L30 data)
-        $schedule->command('budget:update-amazon-fba-kw')
-            ->dailyAt('00:05')
-            ->timezone('Asia/Kolkata');
-
-        // Amazon FBA Product Target Budget Update - based on ACOS (L30 data)
-        $schedule->command('budget:update-amazon-fba-pt')
-            ->dailyAt('00:06')
-            ->timezone('Asia/Kolkata');
-
-        $schedule->command('app:sync-cp-master-to-sheet')->hourly();
-        // FBA Commands - Daily Updates (IST)
-
-        $schedule->command('app:fetch-fba-reports')
-            ->dailyAt('13:30'); // 1:30 PM IST
-
-        $schedule->command('app:fetch-fba-inventory --insert --prices')
-            ->dailyAt('14:00'); // 2:00 PM IST
-
-        $schedule->command('app:fetch-fba-monthly-sales')
-            ->dailyAt('14:30'); // 2:30 PM IST
-
-        $schedule->command('fba:collect-metrics')
-            ->dailyAt('23:30'); // 11:30 PM IST
-
-        // Sync FBA Shipment Status - Daily 4 AM IST
-        $schedule->command('fba:sync-shipment-status')
-            ->dailyAt('04:00')
-            ->name('fba-sync-shipment-status-daily')
-            ->withoutOverlapping();
-
-
-        $schedule->command('app:sync-shopify-all-channels-data')->dailyAt('12:00')->timezone('Asia/Kolkata');
-        // Movement Analysis Command for Shopify Order Items (apicentral database)
-        $schedule->command('movement:generate')
-            ->dailyAt('12:00')
-            ->timezone('Asia/Kolkata');
-
-        // Stock Mapping Daily Update with ±1% tolerance (runs automatically for all platforms)
-        $schedule->command('stock:update-mapping-daily')
-            ->dailyAt('01:00')
-            ->timezone('America/Los_Angeles')
-            ->name('stock-mapping-daily-update')
-            ->withoutOverlapping();
-
-        // Shopify Meta Campaigns (Facebook & Instagram) - Fetch daily at 2 AM PST
+        // Shopify Meta Campaigns
         $schedule->command('shopify:fetch-meta-campaigns --channel=both')
             ->dailyAt('02:00')
             ->timezone('America/Los_Angeles')
             ->name('fetch-shopify-fb-campaigns-7-30-60-days')
-            ->withoutOverlapping();
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
 
-        // Meta All Ads - Sync from Google Sheets daily at 3 AM PST
         $schedule->command('meta:sync-all-ads')
             ->dailyAt('03:00')
             ->timezone('America/Los_Angeles')
             ->name('sync-meta-all-ads-from-google-sheets')
-            ->withoutOverlapping();
-
-
-
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
 
         /*
-    |--------------------------------------------------------------------------
-    | AMAZON JOBS (IST)
-    |--------------------------------------------------------------------------
-    */
-
-        // Update Amazon order periods (L30 / L60) – 12:10 AM IST
-        $schedule->command('app:fetch-amazon-orders --update-periods')
-            ->dailyAt('00:10')
+        |--------------------------------------------------------------------------
+        | WALMART
+        |--------------------------------------------------------------------------
+        */
+        $schedule->command('walmart:daily --days=60')
+            ->dailyAt('01:20')
             ->timezone('Asia/Kolkata')
-            ->name('update-amazon-order-periods');
+            ->name('walmart-daily')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
 
-        // Fetch new Amazon orders – 12:15 AM IST
-        $schedule->command('app:fetch-amazon-orders --new-only --limit=300')
-            ->dailyAt('00:15')
+        $schedule->command('walmart:pricing-sales')
+            ->cron('0 */3 * * *')
+            ->timezone('America/Los_Angeles')
+            ->name('walmart-pricing-sales')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        $schedule->command('walmart:fetch-inventory')
+            ->cron('30 */4 * * *')
+            ->timezone('America/Los_Angeles')
+            ->name('walmart-inventory')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        $schedule->command('walmart:collect-metrics')
+            ->dailyAt('23:45')
+            ->timezone('UTC')
+            ->name('walmart-collect-metrics')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        $schedule->command('sync:walmart-ad-sheet-data')
+            ->dailyAt('12:00')
             ->timezone('Asia/Kolkata')
-            ->name('fetch-new-amazon-orders');
+            ->name('walmart-ad-sheet-sync')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
 
-        // Fetch missing Amazon order items – 12:30 AM IST
-        $schedule->command('app:fetch-amazon-orders --fetch-missing-items')
+        /*
+        |--------------------------------------------------------------------------
+        | SHOPIFY
+        |--------------------------------------------------------------------------
+        */
+        $schedule->command('shopify:save-daily-inventory')
+            ->everyFiveMinutes()
+            ->timezone('UTC')
+            ->name('shopify-save-daily-inventory')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        $schedule->command('app:sync-shopify-all-channels-data')
+            ->dailyAt('12:00')
+            ->timezone('Asia/Kolkata')
+            ->name('sync-shopify-all-channels')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        $schedule->command('sync:shopify-quantity')
+            ->twiceDaily(1, 13)
+            ->name('sync-shopify-quantity')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        $schedule->command('app:fetch-shopify-b2b-metrics --days=60')
+            ->twiceDaily(2, 14)
+            ->name('shopify-b2b-metrics')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        $schedule->command('app:fetch-shopify-b2c-metrics --days=60')
+            ->twiceDaily(2, 14)
+            ->name('shopify-b2c-metrics')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        /*
+        |--------------------------------------------------------------------------
+        | WAYFAIR
+        |--------------------------------------------------------------------------
+        */
+        $schedule->command('wayfair:daily --days=60')
+            ->dailyAt('01:30')
+            ->timezone('Asia/Kolkata')
+            ->name('wayfair-daily')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        $schedule->command('sync:wayfair-l30-api')
+            ->dailyAt('13:00')
+            ->timezone('Asia/Kolkata')
+            ->name('wayfair-api-sync-daily')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        /*
+        |--------------------------------------------------------------------------
+        | REVERB
+        |--------------------------------------------------------------------------
+        */
+        $schedule->command('reverb:fetch')
+            ->everyFiveMinutes()
+            ->timezone('UTC')
+            ->name('reverb-fetch')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        $schedule->command('reverb:daily --days=60')
+            ->dailyAt('01:10')
+            ->timezone('Asia/Kolkata')
+            ->name('reverb-daily')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        /*
+        |--------------------------------------------------------------------------
+        | MACY
+        |--------------------------------------------------------------------------
+        */
+        $schedule->command('app:fetch-macy-products')
+            ->everyFiveMinutes()
+            ->timezone('UTC')
+            ->name('fetch-macy-products')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        /*
+        |--------------------------------------------------------------------------
+        | WAYFAIR DATA
+        |--------------------------------------------------------------------------
+        */
+        $schedule->command('app:fetch-wayfair-data')
+            ->everyFiveMinutes()
+            ->timezone('UTC')
+            ->name('fetch-wayfair-data')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        /*
+        |--------------------------------------------------------------------------
+        | MIRAKL
+        |--------------------------------------------------------------------------
+        */
+        $schedule->command('mirakl:daily --days=60')
+            ->dailyAt('01:40')
+            ->timezone('Asia/Kolkata')
+            ->name('mirakl-daily')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        /*
+        |--------------------------------------------------------------------------
+        | TEMU
+        |--------------------------------------------------------------------------
+        */
+        $schedule->command('app:fetch-temu-metrics')
+            ->dailyAt('03:00')
+            ->timezone('America/Los_Angeles')
+            ->name('fetch-temu-metrics')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        $schedule->command('temu:fetch-ads-data --period=L30')
+            ->dailyAt('04:00')
+            ->timezone('America/Los_Angeles')
+            ->name('temu-ads-data-sync-l30')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        $schedule->command('temu:fetch-ads-data --period=L60')
+            ->dailyAt('05:00')
+            ->timezone('America/Los_Angeles')
+            ->name('temu-ads-data-sync-l60')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        /*
+        |--------------------------------------------------------------------------
+        | DOBA
+        |--------------------------------------------------------------------------
+        */
+        $schedule->command('doba:daily --days=60')
+            ->dailyAt('01:50')
+            ->timezone('Asia/Kolkata')
+            ->name('doba-daily')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        $schedule->command('app:fetch-doba-metrics')
+            ->dailyAt('02:00')
+            ->timezone('Asia/Kolkata')
+            ->name('doba-metrics')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        /*
+        |--------------------------------------------------------------------------
+        | SHEET SYNCS (Various marketplaces)
+        |--------------------------------------------------------------------------
+        */
+        $schedule->command('app:sync-sheet')
+            ->dailyAt('02:10')
+            ->timezone('UTC')
+            ->name('sync-main-sheet')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        $schedule->command('app:sync-mercari-w-ship-sheet')
+            ->dailyAt('02:30')
+            ->timezone('UTC')
+            ->name('sync-mercari-w-ship')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        $schedule->command('app:sync-mercari-wo-ship-sheet')
+            ->dailyAt('03:00')
+            ->timezone('UTC')
+            ->name('sync-mercari-wo-ship')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        $schedule->command('app:sync-fb-shop-sheet')
+            ->dailyAt('03:00')
+            ->timezone('UTC')
+            ->name('sync-fb-shop')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        $schedule->command('app:sync-fb-marketplace-sheet')
+            ->dailyAt('03:00')
+            ->timezone('UTC')
+            ->name('sync-fb-marketplace')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        $schedule->command('app:fetch-pls-data')
+            ->twiceDaily(1, 13)
+            ->name('fetch-pls-data')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        $schedule->command('sync:neweegg-sheet')
+            ->twiceDaily(1, 13)
+            ->name('sync-newegg-sheet')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        $schedule->command('sync:shein-sheet')
+            ->twiceDaily(1, 13)
+            ->name('sync-shein-sheet')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        $schedule->command('sync:walmart-sheet')
+            ->twiceDaily(1, 13)
+            ->name('sync-walmart-sheet')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        $schedule->command('sync:temu-sheet-data')
+            ->twiceDaily(1, 13)
+            ->name('sync-temu-sheet')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        $schedule->command('app:sync-cp-master-to-sheet')
+            ->hourly()
+            ->name('sync-cp-master-sheet')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        $schedule->command('app:process-jungle-scout-sheet-data')
             ->dailyAt('00:30')
-            ->timezone('Asia/Kolkata')
-            ->name('fetch-missing-amazon-order-items');
+            ->timezone('America/Los_Angeles')
+            ->name('jungle-scout-sheet')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
 
-        // Full Amazon sync – 12:00 AM IST
-        $schedule->command('app:fetch-amazon-orders')
-            ->dailyAt('00:00')
-            ->timezone('Asia/Kolkata')
-            ->name('fetch-amazon-orders');
+        /*
+        |--------------------------------------------------------------------------
+        | HIGH-FREQUENCY SYNCS (every minute / 5 minutes)
+        |--------------------------------------------------------------------------
+        */
+        $schedule->command('sync:amazon-prices')
+            ->everyMinute()
+            ->name('sync-amazon-prices')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        $schedule->command('sync:sync-temu-sip')
+            ->everyMinute()
+            ->name('sync-temu-sip')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        $schedule->command('sync:walmart-metrics-data')
+            ->everyMinute()
+            ->name('sync-walmart-metrics')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        $schedule->command('sync:tiktok-sheet-data')
+            ->everyMinute()
+            ->name('sync-tiktok-sheet')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        $schedule->command('app:aliexpress-sheet-sync')
+            ->everyMinute()
+            ->name('aliexpress-sheet-sync')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
 
         $schedule->command('app:update-marketplace-daily-metrics')
             ->everyFiveMinutes()
             ->timezone('Asia/Kolkata')
             ->name('update-marketplace-daily-metrics')
-            ->withoutOverlapping();
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        // Advertisement Masters Cron
+        $schedule->command('adv:run-masters-cron')
+            ->everyFiveMinutes()
+            ->timezone('UTC')
+            ->name('advertisement-masters-cron')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
         /*
-    |--------------------------------------------------------------------------
-    | EBAY JOBS (IST)
-    |--------------------------------------------------------------------------
-    */
+        |--------------------------------------------------------------------------
+        | TIKTOK
+        |--------------------------------------------------------------------------
+        */
+        $schedule->command('sync:tiktok-api-data')
+            ->daily()
+            ->name('sync-tiktok-api-data')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
 
-        // eBay legacy
-        $schedule->command('app:fetch-ebay-orders')
-            ->dailyAt('00:00')
+        /*
+        |--------------------------------------------------------------------------
+        | MOVEMENT ANALYSIS & STOCK
+        |--------------------------------------------------------------------------
+        */
+        $schedule->command('movement:generate')
+            ->dailyAt('12:00')
             ->timezone('Asia/Kolkata')
-            ->name('fetch-ebay-orders');
+            ->name('movement-analysis')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
 
-        // eBay v2
-        $schedule->command('app:fetch-ebay2-orders')
-            ->dailyAt('23:40')
-            ->timezone('Asia/Kolkata')
-            ->name('fetch-ebay2-orders');
-
-        // eBay v3 (Last 60 Days)
-        $schedule->command('ebay3:daily --days=60')
+        $schedule->command('stock:update-mapping-daily')
             ->dailyAt('01:00')
-            ->timezone('Asia/Kolkata')
-            ->name('ebay3-daily');
-
-
-        /*
-    |--------------------------------------------------------------------------
-    | OTHER MARKETPLACES (IST)
-    |--------------------------------------------------------------------------
-    */
-
-        // Reverb
-        $schedule->command('reverb:daily --days=60')
-            ->dailyAt('01:10')
-            ->timezone('Asia/Kolkata')
-            ->name('reverb-daily');
-
-        // Walmart - Optimized schedule to avoid rate limits
-        
-        // Walmart Orders - Daily (existing)
-        $schedule->command('walmart:daily --days=60')
-            ->dailyAt('01:20')
-            ->timezone('Asia/Kolkata')
-            ->name('walmart-daily')
-            ->withoutOverlapping();
-        
-        // Walmart Pricing & Listing Quality - Every 3 hours (conservative)
-        $schedule->command('walmart:pricing-sales')
-            ->cron('0 */3 * * *')  // 00:00, 03:00, 06:00, 09:00, 12:00, 15:00, 18:00, 21:00
             ->timezone('America/Los_Angeles')
-            ->name('walmart-pricing-sales')
-            ->withoutOverlapping();
-        
-        // Walmart Inventory - Every 4 hours (offset from pricing)
-        $schedule->command('walmart:fetch-inventory')
-            ->cron('30 */4 * * *')  // 00:30, 04:30, 08:30, 12:30, 16:30, 20:30
-            ->timezone('America/Los_Angeles')
-            ->name('walmart-inventory')
-            ->withoutOverlapping();
-
-        // Wayfair
-        $schedule->command('wayfair:daily --days=60')
-            ->dailyAt('01:30')
-            ->timezone('Asia/Kolkata')
-            ->name('wayfair-daily');
-
-        // Mirakl
-        $schedule->command('mirakl:daily --days=60')
-            ->dailyAt('01:40')
-            ->timezone('Asia/Kolkata')
-            ->name('mirakl-daily');
-
+            ->name('stock-mapping-daily-update')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
 
         /*
-    |--------------------------------------------------------------------------
-    | SHOPIFY B2B METRICS (IST)
-    |--------------------------------------------------------------------------
-    */
-
-        $schedule->command('app:fetch-shopify-b2b-metrics --days=60')
-            ->twiceDaily(2, 14)
-            ->withoutOverlapping()
-            ->name('shopify-b2b-metrics');
-
-        $schedule->command('app:fetch-shopify-b2c-metrics --days=60')
-            ->twiceDaily(2, 14)
-            ->withoutOverlapping()
-            ->name('shopify-b2c-metrics');
-
-        /*
-    |--------------------------------------------------------------------------
-    | AUTO LOGOUT INACTIVE USERS (Every 6 Hours)
-    |--------------------------------------------------------------------------
-    */
+        |--------------------------------------------------------------------------
+        | AUTO LOGOUT INACTIVE USERS
+        |--------------------------------------------------------------------------
+        */
         $schedule->command('users:auto-logout')
             ->everySixHours()
             ->timezone('Asia/Kolkata')
             ->name('auto-logout-users')
-            ->withoutOverlapping();
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
     }
 
     /**

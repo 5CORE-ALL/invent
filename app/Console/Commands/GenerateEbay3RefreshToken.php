@@ -20,8 +20,8 @@ class GenerateEbay3RefreshToken extends Command
         $this->info('=== eBay3 Refresh Token Generator ===');
         $this->newLine();
 
-        $clientId = env('EBAY_3_APP_ID');
-        $clientSecret = env('EBAY_3_CERT_ID');
+        $clientId = config('services.ebay3.app_id');
+        $clientSecret = config('services.ebay3.cert_id');
 
         if (!$clientId || !$clientSecret) {
             $this->error('✗ Missing EBAY_3_APP_ID or EBAY_3_CERT_ID in .env file');

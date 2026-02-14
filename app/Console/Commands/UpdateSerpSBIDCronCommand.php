@@ -38,7 +38,7 @@ class UpdateSerpSBIDCronCommand extends Command
 
             $this->info('Starting SBID update cron for SERP (SEARCH) campaigns (L1/L7 with SKU matching)...');
 
-            $customerId = env('GOOGLE_ADS_LOGIN_CUSTOMER_ID');
+            $customerId = config('services.google_ads.login_customer_id');
             $this->info("Customer ID: {$customerId}");
 
         // Calculate date ranges - same logic as GoogleAdsDateRangeTrait

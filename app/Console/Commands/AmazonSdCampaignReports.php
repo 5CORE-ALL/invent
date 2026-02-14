@@ -14,7 +14,7 @@ class AmazonSdCampaignReports extends Command
 
     public function handle()
     {
-        $profileId = env('AMAZON_ADS_PROFILE_IDS');
+        $profileId = config('services.amazon_ads.profile_ids');
         $adType = 'SPONSORED_DISPLAY';
         $reportTypeId = 'sdCampaigns';
 
@@ -60,7 +60,7 @@ class AmazonSdCampaignReports extends Command
             ->withToken($accessToken)
             ->withHeaders([
                 'Amazon-Advertising-API-Scope' => $profileId,
-                'Amazon-Advertising-API-ClientId' => env('AMAZON_ADS_CLIENT_ID'),
+                'Amazon-Advertising-API-ClientId' => config('services.amazon_ads.client_id'),
                 'Content-Type' => 'application/vnd.createasyncreportrequest.v3+json',
             ])
             ->post('https://advertising-api.amazon.com/reporting/reports', [
@@ -105,7 +105,7 @@ class AmazonSdCampaignReports extends Command
                 ->retry(3, 2000)
                 ->withHeaders([
                     'Authorization' => 'Bearer ' . $token,
-                    'Amazon-Advertising-API-ClientId' => env('AMAZON_ADS_CLIENT_ID'),
+                    'Amazon-Advertising-API-ClientId' => config('services.amazon_ads.client_id'),
                     'Amazon-Advertising-API-Scope' => $profileId,
                     'Content-Type' => 'application/vnd.getasyncreportresponse.v3+json',
                 ])
@@ -190,9 +190,9 @@ class AmazonSdCampaignReports extends Command
 
     private function getAccessToken()
     {
-        $clientId = env('AMAZON_ADS_CLIENT_ID');
-        $clientSecret = env('AMAZON_ADS_CLIENT_SECRET');
-        $refreshToken = env('AMAZON_ADS_REFRESH_TOKEN');
+        $clientId = config('services.amazon_ads.client_id');
+        $clientSecret = config('services.amazon_ads.client_secret');
+        $refreshToken = config('services.amazon_ads.refresh_token');
 
         $tokenResponse = Http::timeout(15)->asForm()->post('https://api.amazon.com/auth/o2/token', [
             'grant_type' => 'refresh_token',

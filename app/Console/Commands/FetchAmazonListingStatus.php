@@ -41,9 +41,9 @@ class FetchAmazonListingStatus extends Command
             return 1;
         }
 
-        $marketplaceId = env('SPAPI_MARKETPLACE_ID');
-        $sellerId = env('AMAZON_SELLER_ID');
-        $endpoint = env('SPAPI_ENDPOINT', 'https://sellingpartnerapi-na.amazon.com');
+        $marketplaceId = config('services.amazon_sp.marketplace_id');
+        $sellerId = config('services.amazon_sp.seller_id');
+        $endpoint = config('services.amazon_sp.endpoint');
         
         $processed = 0;
         $updated = 0;
@@ -490,9 +490,9 @@ class FetchAmazonListingStatus extends Command
 
     private function getAccessToken()
     {
-        $clientId = env('SPAPI_CLIENT_ID');
-        $clientSecret = env('SPAPI_CLIENT_SECRET');
-        $refreshToken = env('SPAPI_REFRESH_TOKEN');
+        $clientId = config('services.amazon_sp.client_id');
+        $clientSecret = config('services.amazon_sp.client_secret');
+        $refreshToken = config('services.amazon_sp.refresh_token');
 
         if (!$clientId || !$clientSecret || !$refreshToken) {
             $this->error('Missing Amazon LWA credentials in .env file');

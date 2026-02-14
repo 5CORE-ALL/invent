@@ -28,9 +28,9 @@ class OutgoingController extends Controller
     public function __construct(ApiController $apiController)
     {
         $this->apiController = $apiController;
-        $this->shopifyDomain = env('SHOPIFY_STORE_URL');
-        $this->shopifyApiKey = env('SHOPIFY_API_KEY');
-        $this->shopifyPassword = env('SHOPIFY_PASSWORD');
+        $this->shopifyDomain = config('services.shopify.store_url');
+        $this->shopifyApiKey = config('services.shopify.api_key');
+        $this->shopifyPassword = config('services.shopify.password');
     }
 
     /**
@@ -268,8 +268,8 @@ class OutgoingController extends Controller
     //         $qty = (int) $validated['qty'];
 
     //         // Shopify credentials
-    //         $shopifyDomain = env('SHOPIFY_STORE_URL');
-    //         $accessToken = env('SHOPIFY_ACCESS_TOKEN');
+    //         $shopifyDomain = config('services.shopify.store_url');
+    //         $accessToken = config('services.shopify.access_token');
 
     //         /** -----------------------------------------------------------------
     //          * Find the Shopify Inventory Item ID (with pagination)

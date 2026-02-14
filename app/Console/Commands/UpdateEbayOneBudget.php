@@ -195,9 +195,9 @@ class UpdateEbayOneBudget extends Command
                 return Cache::get('ebay_access_token');
             }
 
-            $clientId = env('EBAY_APP_ID');
-            $clientSecret = env('EBAY_CERT_ID');
-            $refreshToken = env('EBAY_REFRESH_TOKEN');
+            $clientId = config('services.ebay.app_id');
+            $clientSecret = config('services.ebay.cert_id');
+            $refreshToken = config('services.ebay.refresh_token');
             
             if (!$clientId || !$clientSecret || !$refreshToken) {
                 throw new Exception('Missing eBay API credentials in environment variables');

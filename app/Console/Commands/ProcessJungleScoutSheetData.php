@@ -56,7 +56,7 @@ class ProcessJungleScoutSheetData extends Command
                 info('$asins', [$asins]);
                 $apiResponse = Http::withOptions(['verify' => false])
                     ->withHeaders([
-                        'Authorization' => env('JUNGLESCOUT_API_KEY_WITH_TITLE'),
+                        'Authorization' => config('services.junglescout.key_with_title'),
                         'Content-Type'  => 'application/vnd.api+json',
                         'Accept'        => 'application/vnd.junglescout.v1+json',
                         'X-API-Type'    => 'junglescout',
@@ -125,7 +125,7 @@ class ProcessJungleScoutSheetData extends Command
 
             
             Mail::raw('ASIN process failed: ' . $e->getMessage(), function ($message) {
-                $adminEmail = env('ADMIN_EMAIL');
+                $adminEmail = config('services.admin.email');
                 $message->to($adminEmail)->subject('ASIN Processing Error');
             });
         }        

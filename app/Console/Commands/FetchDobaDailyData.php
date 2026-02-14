@@ -39,8 +39,8 @@ class FetchDobaDailyData extends Command
         $this->info("Fetching Doba Daily Orders Data (Last {$days} days)...");
 
         // Validate credentials
-        $appKey = env('DOBA_APP_KEY');
-        $privateKey = env('DOBA_PRIVATE_KEY');
+        $appKey = config('services.doba.app_key');
+        $privateKey = config('services.doba.private_key');
 
         if (!$appKey || !$privateKey) {
             $this->error('Doba credentials missing in .env (DOBA_APP_KEY, DOBA_PRIVATE_KEY)');
@@ -75,7 +75,7 @@ class FetchDobaDailyData extends Command
      */
     protected function getContent(int $timestamp): string
     {
-        $appKey = env('DOBA_APP_KEY');
+        $appKey = config('services.doba.app_key');
         return "appKey={$appKey}&signType=rsa2&timestamp={$timestamp}";
     }
 
@@ -85,7 +85,7 @@ class FetchDobaDailyData extends Command
     protected function generateSignature(string $content): string
     {
         $privateKeyFormatted = "-----BEGIN RSA PRIVATE KEY-----\n" .
-            wordwrap(env('DOBA_PRIVATE_KEY'), 64, "\n", true) .
+            wordwrap(config('services.doba.private_key'), 64, "\n", true) .
             "\n-----END RSA PRIVATE KEY-----";
 
         $private_key = openssl_pkey_get_private($privateKeyFormatted);
@@ -124,7 +124,7 @@ class FetchDobaDailyData extends Command
             $sign = $this->generateSignature($getContent);
 
             $response = Http::withHeaders([
-                'appKey' => env('DOBA_APP_KEY'),
+                'appKey' => config('services.doba.app_key'),
                 'signType' => 'rsa2',
                 'timestamp' => $timestamp,
                 'sign' => $sign,

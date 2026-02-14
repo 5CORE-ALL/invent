@@ -49,9 +49,9 @@ class UpdatePriceApiController extends Controller
                 'new_price' => $newPrice
             ]);
 
-            $storeUrl = "https://" . env('SHOPIFY_STORE_URL');
+            $storeUrl = "https://" . config('services.shopify.store_url');
             $apiVersion = "2025-01";
-            $accessToken = env('SHOPIFY_PASSWORD');
+            $accessToken = config('services.shopify.password');
 
             if (!$storeUrl || !$accessToken) {
                 Log::error('Shopify credentials missing', [

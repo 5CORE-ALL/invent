@@ -275,7 +275,7 @@ class UpdateEbayTwoSuggestedBid extends Command
         }
 
         $client = new Client([
-            'base_uri' => env('EBAY_BASE_URL', 'https://api.ebay.com/'),
+            'base_uri' => config('services.ebay.base_url'),
             'headers' => [
                 'Authorization' => "Bearer {$accessToken}",
                 'Content-Type' => 'application/json',
@@ -359,9 +359,9 @@ class UpdateEbayTwoSuggestedBid extends Command
                 return Cache::get('ebay2_access_token');
             }
 
-            $clientId = env('EBAY2_APP_ID');
-            $clientSecret = env('EBAY2_CERT_ID');
-            $refreshToken = env('EBAY2_REFRESH_TOKEN');
+            $clientId = config('services.ebay2.app_id');
+            $clientSecret = config('services.ebay2.cert_id');
+            $refreshToken = config('services.ebay2.refresh_token');
             
             if (!$clientId || !$clientSecret || !$refreshToken) {
                 throw new Exception('Missing eBay API credentials in environment variables');

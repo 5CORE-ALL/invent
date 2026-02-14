@@ -29,8 +29,8 @@ class ShopifyApiInventoryController extends Controller
             '',
             config('services.shopify.store_url')
         );
-        $this->shopifyStoreUrlName = env('SHOPIFY_STORE_URL');
-        $this->shopifyAccessToken = env('SHOPIFY_PASSWORD');
+        $this->shopifyStoreUrlName = config('services.shopify.store_url');
+        $this->shopifyAccessToken = config('services.shopify.password');
     }
 
     /**
@@ -371,8 +371,8 @@ class ShopifyApiInventoryController extends Controller
     public function fetchInventoryWithCommitment(): array
     {
         set_time_limit(500);
-        $shopUrl = 'https://' . env('SHOPIFY_STORE_URL');
-        $token = env('SHOPIFY_PASSWORD'); 
+        $shopUrl = 'https://' . config('services.shopify.store_url');
+        $token = config('services.shopify.password'); 
 
         // Step 1: Get Ohio Location ID
         $locationId = null;

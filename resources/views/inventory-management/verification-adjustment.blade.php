@@ -2839,7 +2839,7 @@
                     }
                     
                     // Shopify link icon for non-parent rows
-                    const shopifyDomain = '{{ env("SHOPIFY_STORE_URL") }}';
+                    const shopifyDomain = '{{ config("services.shopify.store_url") }}';
                     const shopifyInventoryUrl = shopifyDomain ? `https://${shopifyDomain}/admin/products/inventory?query=${encodeURIComponent(item.SKU || '')}` : '#';
                     const shopifyLinkIcon = !isParentRow ? `<a href="${shopifyInventoryUrl}" target="_blank" class="shopify-link-icon" title="View in Shopify" style="margin-left: 8px; color: #28a745; text-decoration: none;"><i class="fas fa-external-link-alt"></i></a>` : '';
                     
@@ -3654,7 +3654,7 @@
                         $('#skuHistoryModalLabel').text(`Adjustment History - SKU: ${sku}`);
                         
                         // Update Shopify link
-                        const shopifyDomain = '{{ env("SHOPIFY_STORE_URL") }}';
+                        const shopifyDomain = '{{ config("services.shopify.store_url") }}';
                         const shopifyInventoryUrl = `https://${shopifyDomain}/admin/products/inventory?query=${encodeURIComponent(sku)}`;
                         $('#shopifyInventoryLink').attr('href', shopifyInventoryUrl).show();
                         

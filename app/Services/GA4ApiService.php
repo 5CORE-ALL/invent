@@ -13,7 +13,7 @@ class GA4ApiService
 
     public function __construct()
     {
-        $this->propertyId = env('GA4_PROPERTY_ID');
+        $this->propertyId = config('services.ga4.property_id');
         $this->accessToken = $this->getAccessToken();
     }
 
@@ -28,9 +28,9 @@ class GA4ApiService
             return $cachedToken;
         }
 
-        $clientId = env('GA4_CLIENT_ID');
-        $clientSecret = env('GA4_CLIENT_SECRET');
-        $refreshToken = env('GA4_REFRESH_TOKEN');
+        $clientId = config('services.ga4.client_id');
+        $clientSecret = config('services.ga4.client_secret');
+        $refreshToken = config('services.ga4.refresh_token');
 
         if (empty($clientId) || empty($clientSecret) || empty($refreshToken)) {
             Log::warning('GA4 API credentials not configured');

@@ -15,8 +15,8 @@ class ShopifyController extends Controller
 
     public function __construct()
     {
-        $this->shopifyDomain = env('SHOPIFY_STORE_URL');
-        $this->accessToken = env('SHOPIFY_ACCESS_TOKEN');
+        $this->shopifyDomain = config('services.shopify.store_url');
+        $this->accessToken = config('services.shopify.access_token');
     }
 
    public function getProducts()

@@ -15,9 +15,9 @@ class ShopifyInventoryService
 
     public function __construct()
     {
-        $this->shopifyDomain = env('SHOPIFY_STORE_URL');
-        $this->accessToken = env('SHOPIFY_ACCESS_TOKEN');
-        $this->locationId = env('SHOPIFY_LOCATION_ID');
+        $this->shopifyDomain = config('services.shopify.store_url');
+        $this->accessToken = config('services.shopify.access_token');
+        $this->locationId = config('services.shopify.location_id');
         $this->apiVersion = '2024-01';
     }
 

@@ -32,8 +32,8 @@ class WayfairApiService
     {
         $response = Http::withoutVerifying()->asForm()->post('https://sso.auth.wayfair.com/oauth/token', [
             'grant_type'    => 'client_credentials',
-            'client_id'     => env('WAYFAIR_CLIENT_ID'),
-            'client_secret' => env('WAYFAIR_CLIENT_SECRET'),
+            'client_id'     => config('services.wayfair.client_id'),
+            'client_secret' => config('services.wayfair.client_secret'),
         ]);
 
         if ($response->failed()) {

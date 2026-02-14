@@ -40,11 +40,11 @@ class GoogleAdsSbidService
             return $this->client;
         }
 
-        $developerToken = config('services.google_ads.developer_token') ?? env('GOOGLE_ADS_DEVELOPER_TOKEN');
-        $clientId = config('services.google_ads.client_id') ?? env('GOOGLE_ADS_CLIENT_ID');
-        $clientSecret = config('services.google_ads.client_secret') ?? env('GOOGLE_ADS_CLIENT_SECRET');
-        $refreshToken = config('services.google_ads.refresh_token') ?? env('GOOGLE_ADS_REFRESH_TOKEN');
-        $loginCustomerId = config('services.google_ads.login_customer_id') ?? env('GOOGLE_ADS_LOGIN_CUSTOMER_ID');
+        $developerToken = config('services.google_ads.developer_token');
+        $clientId = config('services.google_ads.client_id');
+        $clientSecret = config('services.google_ads.client_secret');
+        $refreshToken = config('services.google_ads.refresh_token');
+        $loginCustomerId = config('services.google_ads.login_customer_id');
 
         // Validate required credentials
         if (empty($developerToken)) {

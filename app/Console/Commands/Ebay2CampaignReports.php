@@ -554,8 +554,8 @@ class Ebay2CampaignReports extends Command
 
     private function getAccessToken()
     {
-        $clientId = env('EBAY2_APP_ID');
-        $clientSecret = env('EBAY2_CERT_ID');
+        $clientId = config('services.ebay2.app_id');
+        $clientSecret = config('services.ebay2.cert_id');
 
         // For refresh token, scope is optional - the refresh token already contains the granted scopes
         // Only specify scope if you want to request additional scopes
@@ -566,7 +566,7 @@ class Ebay2CampaignReports extends Command
                 ->withBasicAuth($clientId, $clientSecret)
                 ->post('https://api.ebay.com/identity/v1/oauth2/token', [
                     'grant_type' => 'refresh_token',
-                    'refresh_token' => env('EBAY2_REFRESH_TOKEN'),
+                    'refresh_token' => config('services.ebay2.refresh_token'),
                     'scope' => $scope,
                 ]);
 

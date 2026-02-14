@@ -64,8 +64,8 @@ class EventServiceProvider extends ServiceProvider
     private function postStatus(array $payload)
     {
         try {
-            $url = env('TASKMANAGER_URL');
-            $key = env('TASKMANAGER_API_KEY');
+            $url = config('services.taskmanager.url');
+            $key = config('services.taskmanager.api_key');
 
             if (!$url || !$key) {
                 Log::warning('TaskManager URL or API key missing from .env');

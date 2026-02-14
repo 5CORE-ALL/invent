@@ -26,7 +26,7 @@ class AmazonSbCampaignReports extends Command
                 return 1;
             }
 
-            $profileId = env('AMAZON_ADS_PROFILE_IDS');
+            $profileId = config('services.amazon_ads.profile_ids');
             $adType = 'SPONSORED_BRANDS';
             $reportTypeId = 'sbCampaigns';
 
@@ -101,7 +101,7 @@ class AmazonSbCampaignReports extends Command
             ->withToken($accessToken)
             ->withHeaders([
                 'Amazon-Advertising-API-Scope' => $profileId,
-                'Amazon-Advertising-API-ClientId' => env('AMAZON_ADS_CLIENT_ID'),
+                'Amazon-Advertising-API-ClientId' => config('services.amazon_ads.client_id'),
                 'Content-Type' => 'application/vnd.createasyncreportrequest.v3+json',
             ])
             ->post('https://advertising-api.amazon.com/reporting/reports', [
@@ -171,7 +171,7 @@ class AmazonSbCampaignReports extends Command
                 ->retry(3, 2000)
                 ->withHeaders([
                     'Authorization' => 'Bearer ' . $token,
-                    'Amazon-Advertising-API-ClientId' => env('AMAZON_ADS_CLIENT_ID'),
+                    'Amazon-Advertising-API-ClientId' => config('services.amazon_ads.client_id'),
                     'Amazon-Advertising-API-Scope' => $profileId,
                     'Content-Type' => 'application/vnd.getasyncreportresponse.v3+json',
                 ])
@@ -304,9 +304,9 @@ class AmazonSbCampaignReports extends Command
     private function getAccessToken()
     {
         try {
-            $clientId = env('AMAZON_ADS_CLIENT_ID');
-            $clientSecret = env('AMAZON_ADS_CLIENT_SECRET');
-            $refreshToken = env('AMAZON_ADS_REFRESH_TOKEN');
+            $clientId = config('services.amazon_ads.client_id');
+            $clientSecret = config('services.amazon_ads.client_secret');
+            $refreshToken = config('services.amazon_ads.refresh_token');
 
             if (empty($clientId) || empty($clientSecret) || empty($refreshToken)) {
                 $this->error('Amazon Ads credentials are not set in environment.');

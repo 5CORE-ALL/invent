@@ -19,14 +19,14 @@ class SheinApiService
 
     public function __construct()
     {
-        $this->appId     = env('SHEIN_APP_ID');
-        $this->appSecret = env('SHEIN_APP_SECRET');
+        $this->appId     = config('services.shein.app_id');
+        $this->appSecret = config('services.shein.app_secret');
     }
 
   function generateSheinSignature($path, $timestamp, $randomKey)
     {
-        $openKeyId = env('SHEIN_OPEN_KEY_ID');
-        $secretKey = env('SHEIN_SECRET_KEY');
+        $openKeyId = config('services.shein.open_key_id');
+        $secretKey = config('services.shein.secret_key');
 
         $value = $openKeyId . "&" . $timestamp . "&" . $path;
 
@@ -59,7 +59,7 @@ class SheinApiService
 
         $response = Http::withoutVerifying()->withHeaders([
             "Language" => "en-us",
-            "x-lt-openKeyId" => env('SHEIN_OPEN_KEY_ID'),
+            "x-lt-openKeyId" => config('services.shein.open_key_id'),
             "x-lt-timestamp" => $timestamp,
             "x-lt-signature" => $signature,
             "Content-Type" => "application/json",
@@ -99,12 +99,12 @@ class SheinApiService
             ];
             $request= Http::withoutVerifying()->withHeaders([
                 "Language"       => "en-us",
-                "x-lt-openKeyId" => env('SHEIN_OPEN_KEY_ID'),
+                "x-lt-openKeyId" => config('services.shein.open_key_id'),
                 "x-lt-timestamp" => $timestamp,
                 "x-lt-signature" => $signature,
                 "Content-Type"   => "application/json",
             ]);
-            if (env('FILESYSTEM_DRIVER') === 'local') {$request = $request->withoutVerifying();}
+            if (config('filesystems.default') === 'local') {$request = $request->withoutVerifying();}
             $response =$request->post($url, $payload);
 
             if (!$response->successful()) {
@@ -227,7 +227,7 @@ public function getStock(array $skuCodes)
 
         $response = Http::withoutVerifying()->withHeaders([
             "Language" => "en-us",
-            "x-lt-openKeyId" => env('SHEIN_OPEN_KEY_ID'),
+            "x-lt-openKeyId" => config('services.shein.open_key_id'),
             "x-lt-timestamp" => $timestamp,
             "x-lt-signature" => $signature,
             "Content-Type" => "application/json",
@@ -399,7 +399,7 @@ public function getStock(array $skuCodes)
 
         $response = Http::withoutVerifying()->withHeaders([
             "Language" => "en-us",
-            "x-lt-openKeyId" => env('SHEIN_OPEN_KEY_ID'),
+            "x-lt-openKeyId" => config('services.shein.open_key_id'),
             "x-lt-timestamp" => $timestamp,
             "x-lt-signature" => $signature,
             "Content-Type" => "application/json",
@@ -437,7 +437,7 @@ public function getStock(array $skuCodes)
 
         $response = Http::withoutVerifying()->withHeaders([
             "Language" => "en-us",
-            "x-lt-openKeyId" => env('SHEIN_OPEN_KEY_ID'),
+            "x-lt-openKeyId" => config('services.shein.open_key_id'),
             "x-lt-timestamp" => $timestamp,
             "x-lt-signature" => $signature,
             "Content-Type" => "application/json",

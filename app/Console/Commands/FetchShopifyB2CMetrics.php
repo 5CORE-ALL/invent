@@ -46,8 +46,8 @@ class FetchShopifyB2CMetrics extends Command
         $this->info('Starting FetchShopifyB2CMetrics command');
 
         // Initialize Shopify credentials
-        $this->shopifyStoreUrl = env('SHOPIFY_STORE_URL');
-        $this->shopifyAccessToken = env('SHOPIFY_ACCESS_TOKEN');
+        $this->shopifyStoreUrl = config('services.shopify.store_url');
+        $this->shopifyAccessToken = config('services.shopify.access_token');
 
         if (empty($this->shopifyStoreUrl) || empty($this->shopifyAccessToken)) {
             $this->error('Missing Shopify API credentials in .env file');

@@ -30,9 +30,9 @@ class AmzUnderUtilizedBgtController extends Controller
             $response = $client->post('https://api.amazon.com/auth/o2/token', [
                 'form_params' => [
                     'grant_type' => 'refresh_token',
-                    'refresh_token' => env('AMAZON_ADS_REFRESH_TOKEN'),
-                    'client_id' => env('AMAZON_ADS_CLIENT_ID'),
-                    'client_secret' => env('AMAZON_ADS_CLIENT_SECRET'),
+                    'refresh_token' => config('services.amazon_ads.refresh_token'),
+                    'client_id' => config('services.amazon_ads.client_id'),
+                    'client_secret' => config('services.amazon_ads.client_secret'),
                 ]
             ]);
 
@@ -54,7 +54,7 @@ class AmzUnderUtilizedBgtController extends Controller
 
         $response = $client->post($url, [
             'headers' => [
-                'Amazon-Advertising-API-ClientId' => env('AMAZON_ADS_CLIENT_ID'),
+                'Amazon-Advertising-API-ClientId' => config('services.amazon_ads.client_id'),
                 'Authorization' => 'Bearer ' . $accessToken,
                 'Amazon-Advertising-API-Scope' => $this->profileId,
                 'Content-Type' => 'application/vnd.spAdGroup.v3+json',
@@ -79,7 +79,7 @@ class AmzUnderUtilizedBgtController extends Controller
 
         $response = $client->post($url, [
             'headers' => [
-                'Amazon-Advertising-API-ClientId' => env('AMAZON_ADS_CLIENT_ID'),
+                'Amazon-Advertising-API-ClientId' => config('services.amazon_ads.client_id'),
                 'Authorization' => 'Bearer ' . $accessToken,
                 'Amazon-Advertising-API-Scope' => $this->profileId,
                 'Content-Type' => 'application/vnd.spKeyword.v3+json',
@@ -105,7 +105,7 @@ class AmzUnderUtilizedBgtController extends Controller
 
         $response = $client->post('https://advertising-api.amazon.com/sp/targets/list', [
             'headers' => [
-                'Amazon-Advertising-API-ClientId' => env('AMAZON_ADS_CLIENT_ID'),
+                'Amazon-Advertising-API-ClientId' => config('services.amazon_ads.client_id'),
                 'Authorization' => 'Bearer ' . $accessToken,
                 'Amazon-Advertising-API-Scope' => $this->profileId,
                 'Content-Type' => 'application/vnd.spTargetingClause.v3+json',
@@ -180,7 +180,7 @@ class AmzUnderUtilizedBgtController extends Controller
             foreach (array_chunk($allKeywords, 100) as $chunk) {
                 $response = $client->put($url, [
                     'headers' => [
-                        'Amazon-Advertising-API-ClientId' => env('AMAZON_ADS_CLIENT_ID'),
+                        'Amazon-Advertising-API-ClientId' => config('services.amazon_ads.client_id'),
                         'Authorization' => 'Bearer ' . $accessToken,
                         'Amazon-Advertising-API-Scope' => $this->profileId,
                         'Content-Type' => 'application/vnd.spKeyword.v3+json',
@@ -268,7 +268,7 @@ class AmzUnderUtilizedBgtController extends Controller
             foreach ($chunks as $chunk) {
                 $response = $client->put($url, [
                     'headers' => [
-                        'Amazon-Advertising-API-ClientId' => env('AMAZON_ADS_CLIENT_ID'),
+                        'Amazon-Advertising-API-ClientId' => config('services.amazon_ads.client_id'),
                         'Authorization' => 'Bearer ' . $accessToken,
                         'Amazon-Advertising-API-Scope' => $this->profileId,
                         'Content-Type' => 'application/vnd.spTargetingClause.v3+json',

@@ -20,8 +20,8 @@ class GenerateEbay1RefreshToken extends Command
         $this->info('=== eBay1 Refresh Token Generator ===');
         $this->newLine();
 
-        $clientId = env('EBAY_APP_ID');
-        $clientSecret = env('EBAY_CERT_ID');
+        $clientId = config('services.ebay.app_id');
+        $clientSecret = config('services.ebay.cert_id');
 
         if (!$clientId || !$clientSecret) {
             $this->error('✗ Missing EBAY_APP_ID or EBAY_CERT_ID in .env file');

@@ -24,13 +24,13 @@ class AmazonSpApiService
 
     public function __construct()
     {
-        $this->clientId = env('SPAPI_CLIENT_ID');
-        $this->clientSecret = env('SPAPI_CLIENT_SECRET');
-        $this->refreshToken = env('SPAPI_REFRESH_TOKEN');
-        $this->region = env('SPAPI_REGION', 'us-east-1');
-        $this->marketplaceId = env('SPAPI_MARKETPLACE_ID');
-        $this->awsAccessKey = env('AWS_ACCESS_KEY_ID');
-        $this->awsSecretKey = env('AWS_SECRET_ACCESS_KEY');
+        $this->clientId = config('services.amazon_sp.client_id');
+        $this->clientSecret = config('services.amazon_sp.client_secret');
+        $this->refreshToken = config('services.amazon_sp.refresh_token');
+        $this->region = config('services.amazon_sp.region');
+        $this->marketplaceId = config('services.amazon_sp.marketplace_id');
+        $this->awsAccessKey = config('services.amazon_sp.aws_access_key');
+        $this->awsSecretKey = config('services.amazon_sp.aws_secret_key');
         $this->endpoint = 'https://sellingpartnerapi-na.amazon.com';
     }
     
@@ -186,9 +186,9 @@ class AmazonSpApiService
     {
         $res = Http::withoutVerifying()->asForm()->post('https://api.amazon.com/auth/o2/token', [
             'grant_type' => 'refresh_token',
-            'refresh_token' => env('SPAPI_REFRESH_TOKEN'),
-            'client_id' => env('SPAPI_CLIENT_ID'),
-            'client_secret' => env('SPAPI_CLIENT_SECRET'),
+            'refresh_token' => config('services.amazon_sp.refresh_token'),
+            'client_id' => config('services.amazon_sp.client_id'),
+            'client_secret' => config('services.amazon_sp.client_secret'),
         ]);
         return $res['access_token'] ?? null;
     }
@@ -222,7 +222,7 @@ class AmazonSpApiService
         // Round price to 2 decimal places (Amazon requirement)
         $price = round($price, 2);
 
-        $sellerId = env('AMAZON_SELLER_ID');
+        $sellerId = config('services.amazon_sp.seller_id');
         if (empty($sellerId)) {
             Log::error("Amazon Price Update: Seller ID not configured");
             return [
@@ -468,7 +468,7 @@ class AmazonSpApiService
     private function verifyPriceUpdate($amazonSku, $expectedPrice, $accessToken = null)
     {
         try {
-            $sellerId = env('AMAZON_SELLER_ID');
+            $sellerId = config('services.amazon_sp.seller_id');
             if (empty($sellerId)) {
                 Log::warning("Price verification: Seller ID not configured");
                 return null;
@@ -560,7 +560,7 @@ class AmazonSpApiService
     public function getCurrentAmazonPrice($sku)
     {
         try {
-            $sellerId = env('AMAZON_SELLER_ID');
+            $sellerId = config('services.amazon_sp.seller_id');
             if (empty($sellerId)) {
                 return null;
             }
@@ -623,7 +623,7 @@ class AmazonSpApiService
             return null;
         }
 
-        $sellerId = env('AMAZON_SELLER_ID');
+        $sellerId = config('services.amazon_sp.seller_id');
         if (empty($sellerId)) {
             return null;
         }
@@ -712,7 +712,7 @@ class AmazonSpApiService
                 return null;
             }
 
-            $sellerId = env('AMAZON_SELLER_ID');
+            $sellerId = config('services.amazon_sp.seller_id');
             if (empty($sellerId)) {
                 Log::warning("getAmazonProductType: Seller ID not configured");
                 return null;
@@ -781,7 +781,7 @@ class AmazonSpApiService
    $accessToken = $this->getAccessTokenV1();
         info('Access Token', [$accessToken]);
 
-        $marketplaceId = env('SPAPI_MARKETPLACE_ID');
+        $marketplaceId = config('services.amazon_sp.marketplace_id');
 
         // Step 1: Request the report
         $response = Http::withoutVerifying()->withHeaders([

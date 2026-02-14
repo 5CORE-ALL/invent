@@ -559,8 +559,8 @@ class Ebay3CampaignReports extends Command
 
     private function getAccessToken()
     {
-        $clientId = env('EBAY_3_APP_ID');
-        $clientSecret = env('EBAY_3_CERT_ID');
+        $clientId = config('services.ebay3.app_id');
+        $clientSecret = config('services.ebay3.cert_id');
 
         // Don't specify scope - eBay will use all originally granted scopes
         // If you need sell.marketing.readonly, regenerate the refresh token with updated scopes
@@ -569,7 +569,7 @@ class Ebay3CampaignReports extends Command
                 ->withBasicAuth($clientId, $clientSecret)
                 ->post('https://api.ebay.com/identity/v1/oauth2/token', [
                     'grant_type' => 'refresh_token',
-                    'refresh_token' => env('EBAY_3_REFRESH_TOKEN'),
+                    'refresh_token' => config('services.ebay3.refresh_token'),
                     // Scope parameter removed - will use original scopes from token
                 ]);
 

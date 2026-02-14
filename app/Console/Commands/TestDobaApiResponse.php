@@ -16,7 +16,7 @@ class TestDobaApiResponse extends Command
         $targetSku = $this->argument('sku');
         
         // Check if API credentials are configured
-        if (empty(env('DOBA_APP_KEY')) || empty(env('DOBA_PRIVATE_KEY'))) {
+        if (empty(config('services.doba.app_key')) || empty(config('services.doba.private_key'))) {
             $this->error("DOBA_APP_KEY or DOBA_PRIVATE_KEY not configured in .env file");
             return 1;
         }
@@ -37,7 +37,7 @@ class TestDobaApiResponse extends Command
             $sign = $this->generateSignature($getContent);
             
             $response = Http::withoutVerifying()->withHeaders([
-                'appKey' => env('DOBA_APP_KEY'),
+                'appKey' => config('services.doba.app_key'),
                 'signType' => 'rsa2',
                 'timestamp' => $timestamp,
                 'sign' => $sign,
@@ -120,7 +120,7 @@ class TestDobaApiResponse extends Command
     private function generateSignature($content)
     {
         $privateKeyFormatted = "-----BEGIN RSA PRIVATE KEY-----\n" .
-            wordwrap(env('DOBA_PRIVATE_KEY'), 64, "\n", true) .
+            wordwrap(config('services.doba.private_key'), 64, "\n", true) .
             "\n-----END RSA PRIVATE KEY-----";
 
         $private_key = openssl_pkey_get_private($privateKeyFormatted);
@@ -135,7 +135,7 @@ class TestDobaApiResponse extends Command
 
     private function getContent($timestamp)
     {
-        $appKey = env('DOBA_APP_KEY');
+        $appKey = config('services.doba.app_key');
         $contentForSign = "appKey={$appKey}&signType=rsa2&timestamp={$timestamp}";
         return $contentForSign;
     }

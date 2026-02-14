@@ -518,9 +518,9 @@ class ChannelMasterController extends Controller
                 }
 
                 case 'temu': {
+                    // Use temu_campaign_reports L30 (same source for both pages)
                     $row = DB::table('temu_campaign_reports')
                         ->where('report_range', 'L30')
-                        ->whereRaw("(status IS NULL OR status != 'ARCHIVED')")
                         ->selectRaw('COALESCE(SUM(clicks), 0) as c, COALESCE(SUM(base_price_sales), 0) as s, COALESCE(SUM(sub_orders), 0) as u, COALESCE(SUM(spend), 0) as sp')
                         ->first();
                     $c = (int) ($row->c ?? 0); $s = (float) ($row->s ?? 0); $u = (int) ($row->u ?? 0); $sp = (float) ($row->sp ?? 0);
@@ -645,10 +645,10 @@ class ChannelMasterController extends Controller
                 return round($breakdown['kw'] + $breakdown['pmt'], 2);
 
             case 'temu':
+                // Use temu_campaign_reports L30 (same source as temu-decrease page)
                 return round(
                     (float) DB::table('temu_campaign_reports')
                         ->where('report_range', 'L30')
-                        ->whereRaw("(status IS NULL OR status != 'ARCHIVED')")
                         ->sum('spend'),
                     2
                 );

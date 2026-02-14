@@ -201,9 +201,9 @@ class FetchEbay2Metrics extends Command
 
     private function getToken()
     {
-        $id = env('EBAY2_APP_ID');
-        $secret = env('EBAY2_CERT_ID');
-        $rtoken = env('EBAY2_REFRESH_TOKEN');
+        $id = config('services.ebay2.app_id');
+        $secret = config('services.ebay2.cert_id');
+        $rtoken = config('services.ebay2.refresh_token');
 
         $maxRetries = 3;
         $attempt = 0;

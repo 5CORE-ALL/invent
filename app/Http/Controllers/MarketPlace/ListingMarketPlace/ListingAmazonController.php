@@ -509,9 +509,9 @@ class ListingAmazonController extends Controller
     private function fetchLinksForSku($sku)
     {
         try {
-            $sellerId = env('AMAZON_SELLER_ID');
-            $marketplaceId = env('SPAPI_MARKETPLACE_ID', 'ATVPDKIKX0DER');
-            $endpoint = env('SPAPI_ENDPOINT', 'https://sellingpartnerapi-na.amazon.com');
+            $sellerId = config('services.amazon_sp.seller_id');
+            $marketplaceId = config('services.amazon_sp.marketplace_id');
+            $endpoint = config('services.amazon_sp.endpoint');
 
             if (!$sellerId) {
                 return [
@@ -794,9 +794,9 @@ class ListingAmazonController extends Controller
      */
     private function getAccessToken()
     {
-        $clientId = env('SPAPI_CLIENT_ID');
-        $clientSecret = env('SPAPI_CLIENT_SECRET');
-        $refreshToken = env('SPAPI_REFRESH_TOKEN');
+        $clientId = config('services.amazon_sp.client_id');
+        $clientSecret = config('services.amazon_sp.client_secret');
+        $refreshToken = config('services.amazon_sp.refresh_token');
 
         if (!$clientId || !$clientSecret || !$refreshToken) {
             Log::error('Missing Amazon SP-API credentials');

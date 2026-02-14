@@ -399,9 +399,9 @@ class Ebay2PausePinkDilKwAds extends Command
             return Cache::get('ebay2_access_token');
         }
 
-        $clientId = env('EBAY2_APP_ID');
-        $clientSecret = env('EBAY2_CERT_ID');
-        $refreshToken = env('EBAY2_REFRESH_TOKEN');
+        $clientId = config('services.ebay2.app_id');
+        $clientSecret = config('services.ebay2.cert_id');
+        $refreshToken = config('services.ebay2.refresh_token');
         $endpoint = "https://api.ebay.com/identity/v1/oauth2/token";
 
         $postFields = http_build_query([

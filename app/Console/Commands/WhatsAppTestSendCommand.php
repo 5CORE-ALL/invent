@@ -12,7 +12,7 @@ class WhatsAppTestSendCommand extends Command
 
     public function handle(WhatsAppService $wa): int
     {
-        $to = $this->option('to') ?: env('GUPSHUP_TEST_DESTINATION');
+        $to = $this->option('to') ?: config('services.whatsapp.gupshup.test_destination');
         if (!$to) {
             $this->warn('Provide --to=91XXXXXXXXXX or set GUPSHUP_TEST_DESTINATION in .env');
             return self::FAILURE;

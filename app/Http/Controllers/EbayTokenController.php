@@ -37,8 +37,9 @@ class EbayTokenController extends Controller
         }
 
         $envKeys = $this->getEnvKeys($account);
-        $clientId = env($envKeys['app_id']);
-        $clientSecret = env($envKeys['cert_id']);
+        $configKey = $this->getConfigKey($account);
+        $clientId = $configKey ? config("services.{$configKey}.app_id") : null;
+        $clientSecret = $configKey ? config("services.{$configKey}.cert_id") : null;
 
         if (!$clientId || !$clientSecret) {
             return view('ebay-token-generator', [
@@ -125,8 +126,9 @@ class EbayTokenController extends Controller
         }
 
         $envKeys = $this->getEnvKeys($account);
-        $clientId = env($envKeys['app_id']);
-        $clientSecret = env($envKeys['cert_id']);
+        $configKey = $this->getConfigKey($account);
+        $clientId = $configKey ? config("services.{$configKey}.app_id") : null;
+        $clientSecret = $configKey ? config("services.{$configKey}.cert_id") : null;
 
         if (!$clientId || !$clientSecret) {
             return view('ebay-token-result', [

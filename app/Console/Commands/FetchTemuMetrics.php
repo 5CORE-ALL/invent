@@ -72,9 +72,9 @@ class FetchTemuMetrics extends Command
 
     private function verifyCredentials()
     {
-        $appKey = env('TEMU_APP_KEY');
-        $appSecret = env('TEMU_SECRET_KEY');
-        $accessToken = env('TEMU_ACCESS_TOKEN');
+        $appKey = config('services.temu.app_key');
+        $appSecret = config('services.temu.secret_key');
+        $accessToken = config('services.temu.access_token');
 
         if (empty($appKey) || empty($appSecret) || empty($accessToken)) {
             $this->error('Missing Temu API credentials in .env file');
@@ -641,9 +641,9 @@ class FetchTemuMetrics extends Command
     private function generateSignValue($requestBody)
     {
         // Environment/config variables
-        $appKey = env('TEMU_APP_KEY');
-        $appSecret = env('TEMU_SECRET_KEY');
-        $accessToken = env('TEMU_ACCESS_TOKEN');
+        $appKey = config('services.temu.app_key');
+        $appSecret = config('services.temu.secret_key');
+        $accessToken = config('services.temu.access_token');
         $timestamp = time(); // Unix timestamp in seconds
         
         // Top-level params

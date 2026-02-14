@@ -44,7 +44,7 @@ class PauseGoogleShoppingAds extends Command
             
             $this->info('Starting inventory check for Google Shopping campaigns...');
 
-            $customerId = env('GOOGLE_ADS_LOGIN_CUSTOMER_ID');
+            $customerId = config('services.google_ads.login_customer_id');
             if (empty($customerId)) {
                 $this->error("✗ GOOGLE_ADS_LOGIN_CUSTOMER_ID is not configured");
                 return 1;

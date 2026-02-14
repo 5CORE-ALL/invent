@@ -50,8 +50,8 @@ class SyncTikTokApiData extends Command
         
         // Try to load tokens from env if not in cache
         if (!$this->tiktokService->isAuthenticated()) {
-            $accessToken = env('TIKTOK_ACCESS_TOKEN');
-            $refreshToken = env('TIKTOK_REFRESH_TOKEN');
+            $accessToken = config('services.tiktok.access_token');
+            $refreshToken = config('services.tiktok.refresh_token');
             
             if ($accessToken) {
                 $this->info('Loading tokens from environment variables...');
@@ -92,7 +92,7 @@ class SyncTikTokApiData extends Command
         $this->info('✓ Client Key: ' . substr($clientKey, 0, 10) . '...');
         $this->info('✓ Client Secret: ' . (strlen($clientSecret) > 0 ? substr($clientSecret, 0, 10) . '...' : 'MISSING'));
         $this->info('✓ Shop ID: ' . ($shopId ?? 'NOT SET'));
-        $this->info('✓ Access Token: ' . (strlen(env('TIKTOK_ACCESS_TOKEN') ?? '') > 0 ? substr(env('TIKTOK_ACCESS_TOKEN'), 0, 20) . '...' : 'MISSING'));
+        $this->info('✓ Access Token: ' . (strlen(config('services.tiktok.access_token') ?? '') > 0 ? substr(config('services.tiktok.access_token'), 0, 20) . '...' : 'MISSING'));
 
         $this->info('Starting TikTok API data sync...');
 

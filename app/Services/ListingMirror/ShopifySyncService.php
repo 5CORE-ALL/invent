@@ -16,7 +16,7 @@ class ShopifySyncService
     public function __construct()
     {
         $this->shopifyStoreUrl = config('services.shopify.store_url');
-        $this->shopifyAccessToken = env('SHOPIFY_PASSWORD');
+        $this->shopifyAccessToken = config('services.shopify.password');
         $this->amazonService = new AmazonSpApiService();
     }
 

@@ -64,9 +64,9 @@ class FetchEbay3DailyData extends Command
      */
     protected function getAccessToken(): ?string
     {
-        $clientId = env('EBAY_3_APP_ID');
-        $clientSecret = env('EBAY_3_CERT_ID');
-        $refreshToken = env('EBAY_3_REFRESH_TOKEN');
+        $clientId = config('services.ebay3.app_id');
+        $clientSecret = config('services.ebay3.cert_id');
+        $refreshToken = config('services.ebay3.refresh_token');
 
         if (!$clientId || !$clientSecret || !$refreshToken) {
             $this->error('eBay 3 credentials missing in .env');

@@ -38,7 +38,7 @@ class UpdateSerpBudgetCronCommand extends Command
 
             $this->info('Starting budget update cron for SERP (SEARCH) campaigns (ACOS-based)...');
 
-            $customerId = env('GOOGLE_ADS_LOGIN_CUSTOMER_ID');
+            $customerId = config('services.google_ads.login_customer_id');
             $this->info("Customer ID: {$customerId}");
 
         // Calculate date ranges - same logic as GoogleAdsDateRangeTrait

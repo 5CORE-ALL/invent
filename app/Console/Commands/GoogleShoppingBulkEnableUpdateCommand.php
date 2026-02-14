@@ -60,7 +60,7 @@ class GoogleShoppingBulkEnableUpdateCommand extends Command
             return 1;
         }
 
-        $customerId = env('GOOGLE_ADS_LOGIN_CUSTOMER_ID');
+        $customerId = config('services.google_ads.login_customer_id');
         if (empty($customerId)) {
             $this->error('GOOGLE_ADS_LOGIN_CUSTOMER_ID is not set.');
             return 1;

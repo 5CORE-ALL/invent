@@ -559,15 +559,15 @@ class EbayCampaignReports extends Command
 
     private function getAccessToken()
     {
-        $clientId = env('EBAY_APP_ID');
-        $clientSecret = env('EBAY_CERT_ID');
+        $clientId = config('services.ebay.app_id');
+        $clientSecret = config('services.ebay.cert_id');
 
         try {
             $response = Http::asForm()
                 ->withBasicAuth($clientId, $clientSecret)
                 ->post('https://api.ebay.com/identity/v1/oauth2/token', [
                     'grant_type' => 'refresh_token',
-                    'refresh_token' => env('EBAY_REFRESH_TOKEN'),
+                    'refresh_token' => config('services.ebay.refresh_token'),
                 ]);
 
             if ($response->successful()) {

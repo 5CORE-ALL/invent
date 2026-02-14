@@ -17,18 +17,18 @@ class WalmartService
 
     public function __construct()
     {
-        $this->clientId       = env('WALMART_CLIENT_ID');
-        $this->clientSecret   = env('WALMART_CLIENT_SECRET');
-        $this->baseUrl        = env('WALMART_API_ENDPOINT', 'https://marketplace.walmartapis.com');
-        $this->marketplaceId  = env('WALMART_MARKETPLACE_ID', 'WMTMP');
+        $this->clientId       = config('services.walmart.client_id');
+        $this->clientSecret   = config('services.walmart.client_secret');
+        $this->baseUrl        = config('services.walmart.api_endpoint');
+        $this->marketplaceId  = config('services.walmart.marketplace_id');
         $this->token          = $this->getAccessToken();
     }
 
 
     public function getAccessToken()
     {
-        $clientId     = env('WALMART_CLIENT_ID');
-        $clientSecret = env('WALMART_CLIENT_SECRET');
+        $clientId     = config('services.walmart.client_id');
+        $clientSecret = config('services.walmart.client_secret');
 
         $authorization = base64_encode("{$clientId}:{$clientSecret}");
 
@@ -87,8 +87,8 @@ class WalmartService
 
     public function getAccessTokenV1(): ?string
 {
-    $clientId     = env('WALMART_CLIENT_ID');
-    $clientSecret = env('WALMART_CLIENT_SECRET');
+    $clientId     = config('services.walmart.client_id');
+    $clientSecret = config('services.walmart.client_secret');
 
     if (!$clientId || !$clientSecret) {
         Log::error('Walmart credentials missing.');
@@ -146,7 +146,7 @@ public function getinventory(): array
         ];
 
         $request = Http::withHeaders($headers);
-        if (env('FILESYSTEM_DRIVER') === 'local') {
+        if (config('filesystems.default') === 'local') {
             $request = $request->withoutVerifying();
         }
 

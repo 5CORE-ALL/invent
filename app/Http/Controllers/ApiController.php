@@ -54,8 +54,8 @@ class ApiController extends Controller
 
         // Step 1: Find variant by SKU
         $productsResponse = Http::withHeaders([
-            'X-Shopify-Access-Token' => env('SHOPIFY_PASSWORD'),
-        ])->get("https://" . env('SHOPIFY_STORE_URL') . "/admin/api/2025-01/products.json", [
+            'X-Shopify-Access-Token' => config('services.shopify.password'),
+        ])->get("https://" . config('services.shopify.store_url') . "/admin/api/2025-01/products.json", [
             'fields' => 'id,title,variants'
         ]);
 
@@ -66,9 +66,9 @@ class ApiController extends Controller
 
                     // Step 2: Create or update metafield
                     $metafieldResponse = Http::withHeaders([
-                        'X-Shopify-Access-Token' => env('SHOPIFY_PASSWORD'),
+                        'X-Shopify-Access-Token' => config('services.shopify.password'),
                         'Content-Type' => 'application/json'
-                    ])->post("https://" . env('SHOPIFY_STORE_URL') . "/admin/api/2025-01/metafields.json", [
+                    ])->post("https://" . config('services.shopify.store_url') . "/admin/api/2025-01/metafields.json", [
                         'metafield' => [
                             'namespace' => 'custom',
                             'key' => 'verified_stock',

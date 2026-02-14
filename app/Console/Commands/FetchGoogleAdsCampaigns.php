@@ -45,7 +45,7 @@ class FetchGoogleAdsCampaigns extends Command
             $days = (int) $this->option('days');
             
             // Get customer ID from config
-            $customerId = config('services.google_ads.login_customer_id') ?? env('GOOGLE_ADS_LOGIN_CUSTOMER_ID');
+            $customerId = config('services.google_ads.login_customer_id');
             
             if (empty($customerId)) {
                 $this->error('Google Ads Customer ID is not configured');
@@ -591,8 +591,8 @@ class FetchGoogleAdsCampaigns extends Command
     {
         try {
             // Check if GA4 API is configured
-            if (empty(env('GA4_PROPERTY_ID')) || empty(env('GA4_CLIENT_ID')) || 
-                empty(env('GA4_CLIENT_SECRET')) || empty(env('GA4_REFRESH_TOKEN'))) {
+            if (empty(config('services.ga4.property_id')) || empty(config('services.ga4.client_id')) || 
+                empty(config('services.ga4.client_secret')) || empty(config('services.ga4.refresh_token'))) {
                 $this->warn('GA4 API not configured. Skipping GA4 data fetch.');
                 $this->info('To enable GA4 data, configure GA4_PROPERTY_ID, GA4_CLIENT_ID, GA4_CLIENT_SECRET, GA4_REFRESH_TOKEN in .env');
                 return;

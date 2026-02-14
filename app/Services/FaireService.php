@@ -22,9 +22,9 @@ class FaireService
 
     public function __construct()
     {
-        $this->clientId     = env('FAIRE_APP_ID');
-        $this->clientSecret = env('FAIRE_APP_SECRET');
-        $this->redirectUrl  = env('FAIRE_REDIRECT_URL');
+        $this->clientId     = config('services.faire.app_id');
+        $this->clientSecret = config('services.faire.app_secret');
+        $this->redirectUrl  = config('services.faire.redirect_url');
     }
 
     public function getInventory(){

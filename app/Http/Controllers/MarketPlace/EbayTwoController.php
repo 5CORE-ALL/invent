@@ -115,7 +115,7 @@ class EbayTwoController extends Controller
             ->keyBy("sku");
 
         // Fetch ALL ebay2_metrics (including Open Box items not in product_masters)
-        $ebayMetrics = Ebay2Metric::select('sku', 'ebay_price', 'ebay_l30', 'ebay_l60', 'views', 'item_id', 'ebay_stock')
+        $ebayMetrics = Ebay2Metric::select('sku', 'ebay_price', 'ebay_l30', 'ebay_l60', 'views', 'l7_views', 'item_id', 'ebay_stock')
             ->get()
             ->keyBy("sku");
         
@@ -173,6 +173,120 @@ class EbayTwoController extends Controller
             ->where('report_range', 'L30')
             ->pluck('clicks', 'listing_id')
             ->toArray();
+
+        // 3b. Fetch KW campaign data from Ebay2PriorityReport
+        $normalizeSku = function ($sku) {
+            if (empty($sku)) return '';
+            $sku = strtoupper(trim($sku));
+            $sku = preg_replace('/\s+/u', ' ', $sku);
+            $sku = preg_replace('/[^\S\r\n]+/u', ' ', $sku);
+            return trim($sku);
+        };
+
+        $kwCampaignReports = Ebay2PriorityReport::whereIn('report_range', ['L30', 'L7', 'L1'])
+            ->whereIn('campaignStatus', ['RUNNING', 'PAUSED'])
+            ->where('campaign_name', 'NOT LIKE', 'Campaign %')
+            ->where('campaign_name', 'NOT LIKE', 'General - %')
+            ->where('campaign_name', 'NOT LIKE', 'Default%')
+            ->orderByRaw("CASE WHEN campaignStatus = 'RUNNING' THEN 0 ELSE 1 END")
+            ->get();
+
+        // Build KW campaign map by normalized SKU
+        $kwCampaignBySku = [];
+        foreach ($kwCampaignReports as $report) {
+            $campaignName = $normalizeSku($report->campaign_name ?? '');
+            if (empty($campaignName)) continue;
+
+            if (!isset($kwCampaignBySku[$campaignName])) {
+                $kwCampaignBySku[$campaignName] = [
+                    'campaign_id' => $report->campaign_id ?? '',
+                    'campaignBudgetAmount' => $report->campaignBudgetAmount ?? 0,
+                    'campaignStatus' => $report->campaignStatus ?? '',
+                    'L30' => null, 'L7' => null, 'L1' => null,
+                ];
+            }
+
+            $range = $report->report_range;
+            $kwCampaignBySku[$campaignName][$range] = $report;
+        }
+
+        // Fetch last_sbid from day-before-yesterday
+        $dayBeforeYesterday = date('Y-m-d', strtotime('-2 days'));
+        $yesterday = date('Y-m-d', strtotime('-1 day'));
+
+        $lastSbidMap = [];
+        $lastSbidReports = Ebay2PriorityReport::where('report_range', $dayBeforeYesterday)
+            ->where('campaignStatus', 'RUNNING')
+            ->where('campaign_name', 'NOT LIKE', 'Campaign %')
+            ->where('campaign_name', 'NOT LIKE', 'General - %')
+            ->where('campaign_name', 'NOT LIKE', 'Default%')
+            ->get();
+        foreach ($lastSbidReports as $report) {
+            if (!empty($report->campaign_id) && !empty($report->last_sbid)) {
+                $lastSbidMap[$report->campaign_id] = $report->last_sbid;
+            }
+        }
+
+        // Fetch sbid_m from yesterday or L1
+        $sbidMMap = [];
+        $sbidMReports = Ebay2PriorityReport::where(function($q) use ($yesterday) {
+                $q->where('report_range', $yesterday)->orWhere('report_range', 'L1');
+            })
+            ->where('campaignStatus', 'RUNNING')
+            ->where('campaign_name', 'NOT LIKE', 'Campaign %')
+            ->where('campaign_name', 'NOT LIKE', 'General - %')
+            ->where('campaign_name', 'NOT LIKE', 'Default%')
+            ->get()
+            ->sortBy(function($report) use ($yesterday) {
+                return $report->report_range === $yesterday ? 0 : 1;
+            })
+            ->groupBy('campaign_id');
+        foreach ($sbidMReports as $campaignId => $reports) {
+            $report = $reports->first();
+            if (!empty($report->campaign_id) && !empty($report->sbid_m)) {
+                $sbidMMap[$report->campaign_id] = $report->sbid_m;
+            }
+        }
+
+        // Fetch apprSbid
+        $apprSbidMap = [];
+        $apprSbidReports = Ebay2PriorityReport::where(function($q) use ($yesterday) {
+                $q->where('report_range', $yesterday)->orWhere('report_range', 'L1');
+            })
+            ->where('campaignStatus', 'RUNNING')
+            ->where('campaign_name', 'NOT LIKE', 'Campaign %')
+            ->where('campaign_name', 'NOT LIKE', 'General - %')
+            ->where('campaign_name', 'NOT LIKE', 'Default%')
+            ->get()
+            ->sortBy(function($report) use ($yesterday) {
+                return $report->report_range === $yesterday ? 0 : 1;
+            })
+            ->groupBy('campaign_id');
+        foreach ($apprSbidReports as $campaignId => $reports) {
+            $report = $reports->first();
+            if (!empty($report->campaign_id) && !empty($report->apprSbid)) {
+                $apprSbidMap[$report->campaign_id] = $report->apprSbid;
+            }
+        }
+
+        // 3c. Fetch campaign listings (bid_percentage, suggested_bid) for PMT Ads
+        $campaignListings = collect();
+        $itemIds = array_keys($itemIdToSku);
+        if (!empty($itemIds)) {
+            $campaignListings = DB::connection('apicentral')
+                ->table('ebay2_campaign_ads_listings as t')
+                ->join(DB::raw('(SELECT listing_id,
+                                        MAX(CASE WHEN funding_strategy = "COST_PER_SALE" THEN id END) AS max_cps_id,
+                                        MAX(id) AS max_id
+                                 FROM ebay2_campaign_ads_listings
+                                 GROUP BY listing_id) x'),
+                    function($join) {
+                        $join->on('t.id', '=', DB::raw('COALESCE(x.max_cps_id, x.max_id)'));
+                    })
+                ->select('t.listing_id', 't.bid_percentage', 't.suggested_bid')
+                ->get()
+                ->keyBy('listing_id');
+        }
 
         // 4. Fetch General Reports (listing_id → sku)
         $generalReports = Ebay2GeneralReport::whereIn('listing_id', array_keys($itemIdToSku))
@@ -246,6 +360,7 @@ class EbayTwoController extends Controller
             $row["eBay L60"] = $ebayMetric->ebay_l60 ?? 0;
             $row["eBay Price"] = $ebayMetric->ebay_price ?? 0;
             $row['views'] = $ebayMetric->views ?? 0;
+            $row['l7_views'] = $ebayMetric->l7_views ?? 0;
             $row['eBay_item_id'] = $ebayMetric->item_id ?? null;
             $row['E Stock'] = $ebayMetric->ebay_stock ?? 0;
             
@@ -274,11 +389,87 @@ class EbayTwoController extends Controller
             // Calculate AD_Spend_L30 from GENERAL_SPENT (L30)
             $pmt_spend_l30 = $adMetricsBySku[$sku]['L30']['GENERAL_SPENT'] ?? 0;
             $row["AD_Spend_L30"] = round($pmt_spend_l30, 2);
-            $row["spend_l30"] = round($pmt_spend_l30, 2); // Add for frontend compatibility
+            $row["spend_l30"] = round($pmt_spend_l30, 2);
             $row["pmt_spend_L30"] = round($pmt_spend_l30, 2);
-            $row["kw_spend_L30"] = 0; // No keyword campaigns for ebay2
-            $row["AD_Sales_L30"] = 0; // Can be calculated if needed
-            $row["AD_Units_L30"] = 0; // Can be calculated if needed
+
+            // KW Campaign Data
+            $normalizedSku = $normalizeSku($pm->sku);
+            $kwData = $kwCampaignBySku[$normalizedSku] ?? null;
+            if ($kwData) {
+                $kwCampaignId = $kwData['campaign_id'];
+                $row['kw_campaign_id'] = $kwCampaignId;
+                $row['kw_campaignBudgetAmount'] = (float) $kwData['campaignBudgetAmount'];
+                $row['kw_campaignStatus'] = $kwData['campaignStatus'];
+
+                $matchedL30 = $kwData['L30'];
+                $matchedL7 = $kwData['L7'];
+                $matchedL1 = $kwData['L1'];
+
+                $kw_spend_l30 = $matchedL30 ? (float) str_replace(['USD ', ','], '', $matchedL30->cpc_ad_fees_payout_currency ?? '0') : 0;
+                $kw_sales_l30 = $matchedL30 ? (float) str_replace(['USD ', ','], '', $matchedL30->cpc_sale_amount_payout_currency ?? '0') : 0;
+                $kw_clicks_l30 = $matchedL30 ? (int) ($matchedL30->cpc_clicks ?? 0) : 0;
+                $kw_ad_sold = $matchedL30 ? (int) ($matchedL30->cpc_attributed_sales ?? 0) : 0;
+
+                $row['kw_spend_L30'] = round($kw_spend_l30, 2);
+                $row['kw_clicks'] = $kw_clicks_l30;
+                $row['kw_ad_sold'] = $kw_ad_sold;
+                $row['kw_acos'] = $kw_sales_l30 > 0 ? round(($kw_spend_l30 / $kw_sales_l30) * 100, 2) : ($kw_spend_l30 > 0 ? 100 : 0);
+                $row['kw_cvr'] = $kw_clicks_l30 > 0 ? round(($kw_ad_sold / $kw_clicks_l30) * 100, 2) : 0;
+
+                $row['kw_l7_spend'] = $matchedL7 ? round((float) str_replace(['USD ', ','], '', $matchedL7->cpc_ad_fees_payout_currency ?? '0'), 2) : 0;
+                $row['kw_l7_cpc'] = $matchedL7 ? round((float) str_replace(['USD ', ','], '', $matchedL7->cost_per_click ?? '0'), 2) : 0;
+                $row['kw_l1_spend'] = $matchedL1 ? round((float) str_replace(['USD ', ','], '', $matchedL1->cpc_ad_fees_payout_currency ?? '0'), 2) : 0;
+                $row['kw_l1_cpc'] = $matchedL1 ? round((float) str_replace(['USD ', ','], '', $matchedL1->cost_per_click ?? '0'), 2) : 0;
+
+                $row['kw_last_sbid'] = $lastSbidMap[$kwCampaignId] ?? '';
+                $row['kw_sbid_m'] = $sbidMMap[$kwCampaignId] ?? '';
+                $row['kw_apprSbid'] = $apprSbidMap[$kwCampaignId] ?? '';
+            } else {
+                $row['kw_campaign_id'] = '';
+                $row['kw_campaignBudgetAmount'] = 0;
+                $row['kw_campaignStatus'] = '';
+                $row['kw_spend_L30'] = 0;
+                $row['kw_clicks'] = 0;
+                $row['kw_ad_sold'] = 0;
+                $row['kw_acos'] = 0;
+                $row['kw_cvr'] = 0;
+                $row['kw_l7_spend'] = 0;
+                $row['kw_l7_cpc'] = 0;
+                $row['kw_l1_spend'] = 0;
+                $row['kw_l1_cpc'] = 0;
+                $row['kw_last_sbid'] = '';
+                $row['kw_sbid_m'] = '';
+                $row['kw_apprSbid'] = '';
+            }
+
+            // NRL from data view
+            $row['NRL'] = '';
+            if (isset($nrValues[$pm->sku])) {
+                $raw = $nrValues[$pm->sku];
+                if (!is_array($raw)) {
+                    $raw = json_decode($raw, true);
+                }
+                if (is_array($raw)) {
+                    $row['NRL'] = $raw['NRL'] ?? '';
+                }
+            }
+
+            // PMT Ads detail fields (bid_percentage, suggested_bid)
+            if ($ebayMetric && $campaignListings->has($ebayMetric->item_id)) {
+                $listing = $campaignListings->get($ebayMetric->item_id);
+                $row['bid_percentage'] = $listing->bid_percentage ?? null;
+                $row['suggested_bid'] = $listing->suggested_bid ?? null;
+            } else {
+                $row['bid_percentage'] = null;
+                $row['suggested_bid'] = null;
+            }
+
+            // PMT clicks
+            $row['pmt_clicks_l30'] = $row['PmtClkL30'] ?? 0;
+            $row['pmt_clicks_l7'] = $row['PmtClkL7'] ?? 0;
+
+            $row["AD_Sales_L30"] = 0;
+            $row["AD_Units_L30"] = 0;
 
             // Values: LP & Ship
             $values = is_array($pm->Values) ? $pm->Values : (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
@@ -388,6 +579,7 @@ class EbayTwoController extends Controller
                 $row["eBay L60"] = $metric->ebay_l60 ?? 0;
                 $row["eBay Price"] = $metric->ebay_price ?? 0;
                 $row['views'] = $metric->views ?? 0;
+                $row['l7_views'] = $metric->l7_views ?? 0;
                 $row['eBay_item_id'] = $metric->item_id ?? null;
                 $row["E Dil%"] = 0;
                 
@@ -405,6 +597,29 @@ class EbayTwoController extends Controller
                 $row["kw_spend_L30"] = 0;
                 $row["AD_Sales_L30"] = 0;
                 $row["AD_Units_L30"] = 0;
+
+                // KW campaign defaults
+                $row['kw_campaign_id'] = '';
+                $row['kw_campaignBudgetAmount'] = 0;
+                $row['kw_campaignStatus'] = '';
+                $row['kw_clicks'] = 0;
+                $row['kw_ad_sold'] = 0;
+                $row['kw_acos'] = 0;
+                $row['kw_cvr'] = 0;
+                $row['kw_l7_spend'] = 0;
+                $row['kw_l7_cpc'] = 0;
+                $row['kw_l1_spend'] = 0;
+                $row['kw_l1_cpc'] = 0;
+                $row['kw_last_sbid'] = '';
+                $row['kw_sbid_m'] = '';
+                $row['kw_apprSbid'] = '';
+                $row['NRL'] = '';
+
+                // PMT detail defaults
+                $row['bid_percentage'] = null;
+                $row['suggested_bid'] = null;
+                $row['pmt_clicks_l30'] = 0;
+                $row['pmt_clicks_l7'] = 0;
                 
                 $price = floatval($row["eBay Price"] ?? 0);
                 $units_ordered_l30 = floatval($row["eBay L30"] ?? 0);

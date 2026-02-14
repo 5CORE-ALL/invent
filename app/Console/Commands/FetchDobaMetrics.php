@@ -59,7 +59,7 @@ class FetchDobaMetrics extends Command
             $sign = $this->generateSignature($getContent);
             
             $response = Http::withoutVerifying()->withHeaders([
-                'appKey' => env('DOBA_APP_KEY'),
+                'appKey' => config('services.doba.app_key'),
                 'signType' => 'rsa2',
                 'timestamp' => $timestamp,
                 'sign' => $sign,
@@ -225,7 +225,7 @@ class FetchDobaMetrics extends Command
     private function generateSignature($content)
     {
         $privateKeyFormatted = "-----BEGIN RSA PRIVATE KEY-----\n" .
-            wordwrap( env('DOBA_PRIVATE_KEY'), 64, "\n", true) .
+            wordwrap( config('services.doba.private_key'), 64, "\n", true) .
             "\n-----END RSA PRIVATE KEY-----";
 
         $private_key = openssl_pkey_get_private($privateKeyFormatted);
@@ -240,7 +240,7 @@ class FetchDobaMetrics extends Command
 
     private function getContent($timestamp)
     {
-        $appKey = env('DOBA_APP_KEY');
+        $appKey = config('services.doba.app_key');
 		$contentForSign = "appKey={$appKey}&signType=rsa2&timestamp={$timestamp}";
 		return $contentForSign;
     }

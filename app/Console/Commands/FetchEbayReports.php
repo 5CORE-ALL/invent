@@ -306,9 +306,9 @@ class FetchEbayReports extends Command
 
     private function getToken()
     {
-        $id = env('EBAY_APP_ID');
-        $secret = env('EBAY_CERT_ID');
-        $rtoken = env('EBAY_REFRESH_TOKEN');
+        $id = config('services.ebay.app_id');
+        $secret = config('services.ebay.cert_id');
+        $rtoken = config('services.ebay.refresh_token');
 
         $maxRetries = 3;
         $attempt = 0;

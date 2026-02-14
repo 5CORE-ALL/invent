@@ -174,6 +174,14 @@
             <div class="card-body py-3">
                 <h4>eBay2 Data</h4>
                 <div class="d-flex align-items-center flex-wrap gap-2">
+                    <select id="section-filter" class="form-select form-select-sm"
+                        style="width: auto; display: inline-block;">
+                        <option value="all" selected>Section Filter</option>
+                        <option value="pricing">Pricing</option>
+                        <option value="kw_ads">KW Ads</option>
+                        <option value="pmt_ads">PMT Ads</option>
+                    </select>
+
                     <select id="inventory-filter" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;">
                         <option value="all" >All Inventory</option>
@@ -181,14 +189,74 @@
                         <option value="more" selected>More than 0</option>
                     </select>
 
-                    <select id="nrl-filter" class="form-select form-select-sm"
+                    <!-- KW Ads Filter Items (hidden by default) -->
+                    <select id="kw-utilization-filter" class="form-select form-select-sm kw-ads-filter-item"
+                        style="width: auto; display: none;">
+                        <option value="all" selected>Utilization</option>
+                        <option value="green-green">Green + Green (0)</option>
+                        <option value="green-pink">Green + Pink (0)</option>
+                        <option value="green-red">Green + Red (0)</option>
+                        <option value="pink-green">Pink + Green (0)</option>
+                        <option value="pink-pink">Pink + Pink (0)</option>
+                        <option value="pink-red">Pink + Red (0)</option>
+                        <option value="red-green">Red + Green (0)</option>
+                        <option value="red-pink">Red + Pink (0)</option>
+                        <option value="red-red">Red + Red (0)</option>
+                    </select>
+
+                    <select id="kw-status-filter" class="form-select form-select-sm kw-ads-filter-item"
+                        style="width: auto; display: none;">
+                        <option value="all">Campaign Status</option>
+                        <option value="RUNNING">Running</option>
+                        <option value="PAUSED">Paused</option>
+                    </select>
+
+                    <select id="kw-nra-filter" class="form-select form-select-sm kw-ads-filter-item"
+                        style="width: auto; display: none;">
+                        <option value="all">All NRA</option>
+                        <option value="NRA">NRA</option>
+                        <option value="RA">RA</option>
+                        <option value="LATER">LATER</option>
+                    </select>
+
+                    <select id="kw-nrl-filter" class="form-select form-select-sm kw-ads-filter-item"
+                        style="width: auto; display: none;">
+                        <option value="all">All NRL</option>
+                        <option value="NRL">NRL</option>
+                        <option value="REQ">REQ</option>
+                    </select>
+
+                    <select id="kw-sbidm-filter" class="form-select form-select-sm kw-ads-filter-item"
+                        style="width: auto; display: none;">
+                        <option value="all">SBID M</option>
+                        <option value="blank">Blank</option>
+                        <option value="data">Data</option>
+                    </select>
+
+                    <!-- KW Ads Bulk Actions Dropdown -->
+                    <div class="dropdown kw-ads-filter-item" id="kw-bulk-actions-container" style="display: none;">
+                        <button class="btn btn-sm btn-warning dropdown-toggle" type="button"
+                            id="kwBulkActionsDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+                            <i class="fas fa-tasks"></i> Bulk Actions
+                        </button>
+                        <ul class="dropdown-menu" aria-labelledby="kwBulkActionsDropdown">
+                            <li><a class="dropdown-item kw-bulk-action-item" href="#" data-action="NRA">Mark as NRA</a></li>
+                            <li><a class="dropdown-item kw-bulk-action-item" href="#" data-action="RA">Mark as RA</a></li>
+                            <li><a class="dropdown-item kw-bulk-action-item" href="#" data-action="LATER">Mark as LATER</a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item kw-bulk-action-item" href="#" data-action="PAUSE">Pause Campaigns</a></li>
+                            <li><a class="dropdown-item kw-bulk-action-item" href="#" data-action="ACTIVATE">Activate Campaigns</a></li>
+                        </ul>
+                    </div>
+
+                    <select id="nrl-filter" class="form-select form-select-sm pricing-filter-item"
                         style="width: auto; display: inline-block;">
                         <option value="all">All Status</option>
                         <option value="REQ" selected>REQ Only</option>
                         <option value="NR">NR Only</option>
                     </select>
 
-                    <select id="gpft-filter" class="form-select form-select-sm"
+                    <select id="gpft-filter" class="form-select form-select-sm pricing-filter-item"
                         style="width: auto; display: inline-block;">
                         <option value="all">GPFT%</option>
                         <option value="negative">Negative</option>
@@ -201,7 +269,7 @@
                         <option value="60plus">60%+</option>
                     </select>
 
-                    <select id="cvr-filter" class="form-select form-select-sm"
+                    <select id="cvr-filter" class="form-select form-select-sm pricing-filter-item"
                         style="width: auto; display: inline-block;">
                         <option value="all">CVR</option>
                         <option value="0-0">0 to 0.00%</option>
@@ -215,14 +283,14 @@
                         <option value="10plus">10%+</option>
                     </select>
 
-                    <select id="status-filter" class="form-select form-select-sm"
+                    <select id="status-filter" class="form-select form-select-sm pricing-filter-item"
                         style="width: auto; display: inline-block;">
                         <option value="all">Status</option>
                         <option value="REQ">REQ</option>
                         <option value="NR">NR</option>
                     </select>
 
-                    <select id="ads-filter" class="form-select form-select-sm"
+                    <select id="ads-filter" class="form-select form-select-sm pricing-filter-item"
                         style="width: auto; display: inline-block;">
                         <option value="all">AD%</option>
                         <option value="0-10">Below 10%</option>
@@ -233,25 +301,25 @@
                     </select>
 
                     <!-- Unified Range Filter (E L30 & Views) -->
-                    <select id="range-column-select" class="form-select form-select-sm"
+                    <select id="range-column-select" class="form-select form-select-sm pricing-filter-item"
                         style="width: auto; display: inline-block;">
                         <option value="">Select Filter</option>
                         <option value="E_L30">E L30</option>
                         <option value="views">Views</option>
                     </select>
-                    <input type="number" id="range-min" class="form-control form-control-sm" 
+                    <input type="number" id="range-min" class="form-control form-control-sm pricing-filter-item" 
                         placeholder="Min" min="0" style="width: 90px; display: inline-block;">
-                    <input type="number" id="range-max" class="form-control form-control-sm" 
+                    <input type="number" id="range-max" class="form-control form-control-sm pricing-filter-item" 
                         placeholder="Max" min="0" style="width: 90px; display: inline-block;">
-                    <button id="clear-range-filter" class="btn btn-sm btn-outline-secondary" title="Clear Range Filter">
+                    <button id="clear-range-filter" class="btn btn-sm btn-outline-secondary pricing-filter-item" title="Clear Range Filter">
                         <i class="fas fa-times"></i>
                     </button>
-                    <span class="badge bg-info fs-6 p-2" id="range-filter-count-badge" style="color: white; font-weight: bold; display: none;">
+                    <span class="badge bg-info fs-6 p-2 pricing-filter-item" id="range-filter-count-badge" style="color: white; font-weight: bold; display: none;">
                         Filtered: <span id="range-filter-count">0</span>
                     </span>
 
                     <!-- DIL Filter -->
-                    <div class="manual-dropdown-container">
+                    <div class="manual-dropdown-container pricing-filter-item" id="dil-filter-wrapper">
                         <button class="btn btn-light btn-sm dropdown-toggle" type="button" id="dilFilterDropdown">
                             <span class="status-circle default"></span> DIL%
                         </button>
@@ -269,8 +337,138 @@
                         </ul>
                     </div>
 
+                    <!-- PMT Ads Dropdown Filters (inline, hidden by default) -->
+                    <div class="dropdown manual-dropdown-container pmt-ads-filter-item" style="display: none;">
+                        <button class="btn btn-light btn-sm dropdown-toggle" type="button" id="pmt-dilFilterDropdown">
+                            <span class="status-circle default"></span> OV DIL%
+                        </button>
+                        <ul class="dropdown-menu" aria-labelledby="pmt-dilFilterDropdown">
+                            <li><a class="dropdown-item pmt-column-filter" href="#" data-column="pmt_ov_dil" data-color="all">
+                                <span class="status-circle default"></span> All OV DIL</a></li>
+                            <li><a class="dropdown-item pmt-column-filter" href="#" data-column="pmt_ov_dil" data-color="red">
+                                <span class="status-circle red"></span> Red</a></li>
+                            <li><a class="dropdown-item pmt-column-filter" href="#" data-column="pmt_ov_dil" data-color="yellow">
+                                <span class="status-circle yellow"></span> Yellow</a></li>
+                            <li><a class="dropdown-item pmt-column-filter" href="#" data-column="pmt_ov_dil" data-color="green">
+                                <span class="status-circle green"></span> Green</a></li>
+                            <li><a class="dropdown-item pmt-column-filter" href="#" data-column="pmt_ov_dil" data-color="pink">
+                                <span class="status-circle pink"></span> Pink</a></li>
+                        </ul>
+                    </div>
+                    <div class="dropdown manual-dropdown-container pmt-ads-filter-item" style="display: none;">
+                        <button class="btn btn-light btn-sm dropdown-toggle" type="button" id="pmt-eDilFilterDropdown">
+                            <span class="status-circle default"></span> E Dil%
+                        </button>
+                        <ul class="dropdown-menu" aria-labelledby="pmt-eDilFilterDropdown">
+                            <li><a class="dropdown-item pmt-column-filter" href="#" data-column="pmt_e_dil" data-color="all">
+                                <span class="status-circle default"></span> All E Dil</a></li>
+                            <li><a class="dropdown-item pmt-column-filter" href="#" data-column="pmt_e_dil" data-color="red">
+                                <span class="status-circle red"></span> Red</a></li>
+                            <li><a class="dropdown-item pmt-column-filter" href="#" data-column="pmt_e_dil" data-color="yellow">
+                                <span class="status-circle yellow"></span> Yellow</a></li>
+                            <li><a class="dropdown-item pmt-column-filter" href="#" data-column="pmt_e_dil" data-color="green">
+                                <span class="status-circle green"></span> Green</a></li>
+                            <li><a class="dropdown-item pmt-column-filter" href="#" data-column="pmt_e_dil" data-color="pink">
+                                <span class="status-circle pink"></span> Pink</a></li>
+                        </ul>
+                    </div>
+                    <div class="dropdown manual-dropdown-container pmt-ads-filter-item" style="display: none;">
+                        <button class="btn btn-light btn-sm dropdown-toggle" type="button" id="pmt-pmtClkL7FilterDropdown">
+                            <span class="status-circle default"></span> PmtClkL7
+                        </button>
+                        <ul class="dropdown-menu" aria-labelledby="pmt-pmtClkL7FilterDropdown">
+                            <li><a class="dropdown-item pmt-column-filter" href="#" data-column="pmt_clk_l7" data-color="all">
+                                <span class="status-circle default"></span> All PmtClkL7</a></li>
+                            <li><a class="dropdown-item pmt-column-filter" href="#" data-column="pmt_clk_l7" data-color="red">
+                                <span class="status-circle red"></span> Red</a></li>
+                            <li><a class="dropdown-item pmt-column-filter" href="#" data-column="pmt_clk_l7" data-color="green">
+                                <span class="status-circle green"></span> Green</a></li>
+                        </ul>
+                    </div>
+                    <div class="dropdown manual-dropdown-container pmt-ads-filter-item" style="display: none;">
+                        <button class="btn btn-light btn-sm dropdown-toggle" type="button" id="pmt-pmtClkL30FilterDropdown">
+                            <span class="status-circle default"></span> PmtClkL30
+                        </button>
+                        <ul class="dropdown-menu" aria-labelledby="pmt-pmtClkL30FilterDropdown">
+                            <li><a class="dropdown-item pmt-column-filter" href="#" data-column="pmt_clk_l30" data-color="all">
+                                <span class="status-circle default"></span> All PmtClkL30</a></li>
+                            <li><a class="dropdown-item pmt-column-filter" href="#" data-column="pmt_clk_l30" data-color="red">
+                                <span class="status-circle red"></span> Red</a></li>
+                            <li><a class="dropdown-item pmt-column-filter" href="#" data-column="pmt_clk_l30" data-color="green">
+                                <span class="status-circle green"></span> Green</a></li>
+                        </ul>
+                    </div>
+                    <div class="dropdown manual-dropdown-container pmt-ads-filter-item" style="display: none;">
+                        <button class="btn btn-light btn-sm dropdown-toggle" type="button" id="pmt-pftFilterDropdown">
+                            <span class="status-circle default"></span> PFT%
+                        </button>
+                        <ul class="dropdown-menu" aria-labelledby="pmt-pftFilterDropdown">
+                            <li><a class="dropdown-item pmt-column-filter" href="#" data-column="pmt_pft" data-color="all">
+                                <span class="status-circle default"></span> All PFT</a></li>
+                            <li><a class="dropdown-item pmt-column-filter" href="#" data-column="pmt_pft" data-color="red">
+                                <span class="status-circle red"></span> Red</a></li>
+                            <li><a class="dropdown-item pmt-column-filter" href="#" data-column="pmt_pft" data-color="yellow">
+                                <span class="status-circle yellow"></span> Yellow</a></li>
+                            <li><a class="dropdown-item pmt-column-filter" href="#" data-column="pmt_pft" data-color="green">
+                                <span class="status-circle green"></span> Green</a></li>
+                            <li><a class="dropdown-item pmt-column-filter" href="#" data-column="pmt_pft" data-color="pink">
+                                <span class="status-circle pink"></span> Pink</a></li>
+                        </ul>
+                    </div>
+                    <div class="dropdown manual-dropdown-container pmt-ads-filter-item" style="display: none;">
+                        <button class="btn btn-light btn-sm dropdown-toggle" type="button" id="pmt-roiFilterDropdown">
+                            <span class="status-circle default"></span> ROI
+                        </button>
+                        <ul class="dropdown-menu" aria-labelledby="pmt-roiFilterDropdown">
+                            <li><a class="dropdown-item pmt-column-filter" href="#" data-column="pmt_roi" data-color="all">
+                                <span class="status-circle default"></span> All ROI</a></li>
+                            <li><a class="dropdown-item pmt-column-filter" href="#" data-column="pmt_roi" data-color="red">
+                                <span class="status-circle red"></span> Red</a></li>
+                            <li><a class="dropdown-item pmt-column-filter" href="#" data-column="pmt_roi" data-color="yellow">
+                                <span class="status-circle yellow"></span> Yellow</a></li>
+                            <li><a class="dropdown-item pmt-column-filter" href="#" data-column="pmt_roi" data-color="green">
+                                <span class="status-circle green"></span> Green</a></li>
+                            <li><a class="dropdown-item pmt-column-filter" href="#" data-column="pmt_roi" data-color="pink">
+                                <span class="status-circle pink"></span> Pink</a></li>
+                        </ul>
+                    </div>
+                    <div class="dropdown manual-dropdown-container pmt-ads-filter-item" style="display: none;">
+                        <button class="btn btn-light btn-sm dropdown-toggle" type="button" id="pmt-tacosFilterDropdown">
+                            <span class="status-circle default"></span> TACOS
+                        </button>
+                        <ul class="dropdown-menu" aria-labelledby="pmt-tacosFilterDropdown">
+                            <li><a class="dropdown-item pmt-column-filter" href="#" data-column="pmt_tacos" data-color="all">
+                                <span class="status-circle default"></span> All TACOS</a></li>
+                            <li><a class="dropdown-item pmt-column-filter" href="#" data-column="pmt_tacos" data-color="pink">
+                                <span class="status-circle pink"></span> Pink</a></li>
+                            <li><a class="dropdown-item pmt-column-filter" href="#" data-column="pmt_tacos" data-color="green">
+                                <span class="status-circle green"></span> Green</a></li>
+                            <li><a class="dropdown-item pmt-column-filter" href="#" data-column="pmt_tacos" data-color="yellow">
+                                <span class="status-circle yellow"></span> Yellow</a></li>
+                            <li><a class="dropdown-item pmt-column-filter" href="#" data-column="pmt_tacos" data-color="red">
+                                <span class="status-circle red"></span> Red</a></li>
+                        </ul>
+                    </div>
+                    <div class="dropdown manual-dropdown-container pmt-ads-filter-item" style="display: none;">
+                        <button class="btn btn-light btn-sm dropdown-toggle" type="button" id="pmt-scvrFilterDropdown">
+                            <span class="status-circle default"></span> SCVR
+                        </button>
+                        <ul class="dropdown-menu" aria-labelledby="pmt-scvrFilterDropdown">
+                            <li><a class="dropdown-item pmt-column-filter" href="#" data-column="pmt_scvr" data-color="all">
+                                <span class="status-circle default"></span> All SCVR</a></li>
+                            <li><a class="dropdown-item pmt-column-filter" href="#" data-column="pmt_scvr" data-color="red">
+                                <span class="status-circle red"></span> Red</a></li>
+                            <li><a class="dropdown-item pmt-column-filter" href="#" data-column="pmt_scvr" data-color="yellow">
+                                <span class="status-circle yellow"></span> Yellow</a></li>
+                            <li><a class="dropdown-item pmt-column-filter" href="#" data-column="pmt_scvr" data-color="green">
+                                <span class="status-circle green"></span> Green</a></li>
+                            <li><a class="dropdown-item pmt-column-filter" href="#" data-column="pmt_scvr" data-color="pink">
+                                <span class="status-circle pink"></span> Pink</a></li>
+                        </ul>
+                    </div>
+
                     <!-- Column Visibility Dropdown -->
-                    <div class="dropdown d-inline-block">
+                    <div class="dropdown d-inline-block pricing-filter-item">
                         <button class="btn btn-sm btn-secondary dropdown-toggle" type="button"
                             id="columnVisibilityDropdown" data-bs-toggle="dropdown" aria-expanded="false">
                             <i class="fa fa-eye"></i> Columns
@@ -280,29 +478,52 @@
                             <!-- Columns will be populated by JavaScript -->
                         </ul>
                     </div>
-                    <button id="show-all-columns-btn" class="btn btn-sm btn-outline-secondary">
+                    <button id="show-all-columns-btn" class="btn btn-sm btn-outline-secondary pricing-filter-item">
                         <i class="fa fa-eye"></i> Show All
                     </button>
 
-                    <button id="decrease-btn" class="btn btn-sm btn-warning">
+                    <button id="decrease-btn" class="btn btn-sm btn-warning pricing-filter-item">
                         <i class="fas fa-arrow-down"></i> Decrease Mode
                     </button>
                     
-                    <button id="increase-btn" class="btn btn-sm btn-success">
+                    <button id="increase-btn" class="btn btn-sm btn-success pricing-filter-item">
                         <i class="fas fa-arrow-up"></i> Increase Mode
                     </button>
 
-                    <button type="button" class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#exportModal">
+                    <button type="button" class="btn btn-sm btn-success pricing-filter-item" data-bs-toggle="modal" data-bs-target="#exportModal">
                         <i class="fa fa-file-excel"></i> Export
                     </button>
 
-                    <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#importModal">
+                    <button type="button" class="btn btn-sm btn-primary pricing-filter-item" data-bs-toggle="modal" data-bs-target="#importModal">
                         <i class="fas fa-upload"></i> Import Ratings
                     </button>
 
-                    <a href="{{ url('/ebay-ratings-sample') }}" class="btn btn-sm btn-info">
+                    <a href="{{ url('/ebay-ratings-sample') }}" class="btn btn-sm btn-info pricing-filter-item">
                         <i class="fas fa-download"></i> Sample CSV
                     </a>
+                </div>
+
+                <!-- KW Ads Statistics (shown only when KW Ads is selected) -->
+                <div id="kw-ads-stats" class="mt-2 p-3 bg-light rounded" style="display: none;">
+                    <h6 class="mb-3">KW Ads Statistics</h6>
+                    <div class="d-flex flex-wrap gap-2">
+                        <span class="badge bg-success fs-6 p-2" style="color: white; font-weight: bold;">Total SKU: <span id="kw-total-sku-count">0</span></span>
+                        <span class="badge fs-6 p-2" style="background-color: #8b5cf6; color: white; font-weight: bold;">Ebay SKU: <span id="kw-ebay-sku-count">0</span></span>
+                        <span class="badge bg-info fs-6 p-2" id="kw-campaign-card" style="color: white; font-weight: bold; cursor: pointer;">Campaign: <span id="kw-campaign-count">0</span></span>
+                        <span class="badge bg-danger fs-6 p-2" id="kw-missing-card" style="color: white; font-weight: bold; cursor: pointer;">Missing: <span id="kw-missing-count">0</span></span>
+                        <span class="badge fs-6 p-2" id="kw-nra-missing-card" style="background-color: #ffc107; color: black; font-weight: bold; cursor: pointer;">NRA MISSING: <span id="kw-nra-missing-count">0</span></span>
+                        <span class="badge fs-6 p-2" id="kw-zero-inv-card" style="background-color: #f59e0b; color: black; font-weight: bold; cursor: pointer;">Zero INV: <span id="kw-zero-inv-count">0</span></span>
+                        <span class="badge fs-6 p-2" id="kw-nra-card" style="background-color: #ef4444; color: white; font-weight: bold; cursor: pointer;">NRA: <span id="kw-nra-count">0</span></span>
+                        <span class="badge fs-6 p-2" id="kw-nrl-missing-card" style="background-color: #ffc107; color: black; font-weight: bold; cursor: pointer;">NRL MISSING: <span id="kw-nrl-missing-count">0</span></span>
+                        <span class="badge fs-6 p-2" id="kw-nrl-card" style="background-color: #ef4444; color: white; font-weight: bold; cursor: pointer;">NRL: <span id="kw-nrl-count">0</span></span>
+                        <span class="badge fs-6 p-2" id="kw-ra-card" style="background-color: #22c55e; color: white; font-weight: bold; cursor: pointer;">RA: <span id="kw-ra-count">0</span></span>
+                        <span class="badge fs-6 p-2" style="background-color: #14b8a6; color: white; font-weight: bold;">L30 CLICKS: <span id="kw-l30-clicks">0</span></span>
+                        <span class="badge fs-6 p-2" style="background-color: #0ea5e9; color: white; font-weight: bold;">L30 SPEND: <span id="kw-l30-spend">0</span></span>
+                        <span class="badge fs-6 p-2" style="background-color: #f59e0b; color: black; font-weight: bold;">L30 AD SOLD: <span id="kw-l30-ad-sold">0</span></span>
+                        <span class="badge fs-6 p-2" style="background-color: #8b5cf6; color: white; font-weight: bold;">AVG ACOS: <span id="kw-avg-acos">0</span></span>
+                        <span class="badge fs-6 p-2" style="background-color: #10b981; color: white; font-weight: bold;">AVG CVR: <span id="kw-avg-cvr">0</span></span>
+                        <span class="badge bg-danger fs-6 p-2" id="kw-paused-card" style="color: white; font-weight: bold; cursor: pointer;" title="Click to view paused campaigns">PINK DIL PAUSED: <span id="kw-paused-count">0</span></span>
+                    </div>
                 </div>
 
                 <!-- Summary Stats -->
@@ -360,6 +581,139 @@
                         </button>
                     </div>
                 </div>
+                <!-- KW Ads Range Filters + INC/DEC SBID Section (hidden by default) -->
+                <div id="kw-ads-range-section" style="display: none;">
+                    <div class="row g-3 align-items-end pt-2 px-2">
+                        <div class="col-md-2">
+                            <label class="form-label fw-semibold mb-2" style="color: #475569; font-size: 0.8125rem;">1UB% Range</label>
+                            <div class="d-flex gap-2">
+                                <input type="number" id="kw-range-1ub-min" class="form-control form-control-sm" placeholder="Min" step="0.01">
+                                <input type="number" id="kw-range-1ub-max" class="form-control form-control-sm" placeholder="Max" step="0.01">
+                            </div>
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label fw-semibold mb-2" style="color: #475569; font-size: 0.8125rem;">7UB% Range</label>
+                            <div class="d-flex gap-2">
+                                <input type="number" id="kw-range-7ub-min" class="form-control form-control-sm" placeholder="Min" step="0.01">
+                                <input type="number" id="kw-range-7ub-max" class="form-control form-control-sm" placeholder="Max" step="0.01">
+                            </div>
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label fw-semibold mb-2" style="color: #475569; font-size: 0.8125rem;">LBid Range</label>
+                            <div class="d-flex gap-2">
+                                <input type="number" id="kw-range-lbid-min" class="form-control form-control-sm" placeholder="Min" step="0.01">
+                                <input type="number" id="kw-range-lbid-max" class="form-control form-control-sm" placeholder="Max" step="0.01">
+                            </div>
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label fw-semibold mb-2" style="color: #475569; font-size: 0.8125rem;">Acos Range</label>
+                            <div class="d-flex gap-2">
+                                <input type="number" id="kw-range-acos-min" class="form-control form-control-sm" placeholder="Min" step="0.01">
+                                <input type="number" id="kw-range-acos-max" class="form-control form-control-sm" placeholder="Max" step="0.01">
+                            </div>
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label fw-semibold mb-2" style="color: #475569; font-size: 0.8125rem;">Views Range</label>
+                            <div class="d-flex gap-2">
+                                <input type="number" id="kw-range-views-min" class="form-control form-control-sm" placeholder="Min" step="1">
+                                <input type="number" id="kw-range-views-max" class="form-control form-control-sm" placeholder="Max" step="1">
+                            </div>
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label fw-semibold mb-2" style="color: #475569; font-size: 0.8125rem;">L7 Views Range</label>
+                            <div class="d-flex gap-2">
+                                <input type="number" id="kw-range-l7views-min" class="form-control form-control-sm" placeholder="Min" step="1">
+                                <input type="number" id="kw-range-l7views-max" class="form-control form-control-sm" placeholder="Max" step="1">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row g-3 align-items-end pt-3 pb-2 px-2 border-top mt-2">
+                        <div class="col-md-2">
+                            <label class="form-label fw-semibold mb-2" style="color: #475569; font-size: 0.8125rem;">
+                                <i class="fa-solid fa-calculator me-1" style="color: #64748b;"></i>INC/DEC SBID
+                            </label>
+                            <div class="btn-group w-100" role="group">
+                                <button type="button" id="kw-inc-dec-btn" class="btn btn-warning btn-sm dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
+                                    <i class="fa-solid fa-plus-minus me-1"></i>INC/DEC (By Value)
+                                </button>
+                                <ul class="dropdown-menu" id="kw-inc-dec-dropdown">
+                                    <li><a class="dropdown-item" href="#" data-type="value">By Value</a></li>
+                                    <li><a class="dropdown-item" href="#" data-type="percentage">By Percentage</a></li>
+                                </ul>
+                            </div>
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label fw-semibold mb-2" style="color: #475569; font-size: 0.8125rem;">
+                                <span id="kw-inc-dec-label">Value/Percentage</span>
+                            </label>
+                            <input type="number" id="kw-inc-dec-input" class="form-control form-control-sm" placeholder="Enter value (e.g., +0.5 or -0.5)" step="0.01">
+                        </div>
+                        <div class="col-md-2 d-flex gap-2 align-items-end">
+                            <button id="kw-apply-inc-dec-btn" class="btn btn-success btn-sm flex-fill">
+                                <i class="fa-solid fa-check me-1"></i>Apply
+                            </button>
+                            <button id="kw-clear-inc-dec-btn" class="btn btn-secondary btn-sm flex-fill">
+                                <i class="fa-solid fa-times me-1"></i>Clear Input
+                            </button>
+                        </div>
+                        <div class="col-md-2 d-flex align-items-end">
+                            <button id="kw-clear-sbid-m-btn" class="btn btn-danger btn-sm w-100">
+                                <i class="fa-solid fa-trash me-1"></i>Clear SBID M (Selected)
+                            </button>
+                        </div>
+                        <div class="col-md-4 d-flex gap-2 align-items-end" id="kw-sbid-action-btns" style="display: none !important;">
+                            <button id="kw-apr-all-sbid-btn" class="btn btn-info btn-sm flex-fill">
+                                <i class="fa-solid fa-check-double me-1"></i>APR ALL SBID
+                            </button>
+                            <button id="kw-save-all-sbid-m-btn" class="btn btn-success btn-sm flex-fill">
+                                <i class="fa-solid fa-save me-1"></i>SAVE ALL SBID M
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- PMT Ads Range Filters (hidden by default) -->
+                <div id="pmt-ads-filter-section" style="display: none;">
+                    <div class="row g-3 align-items-end pt-2 px-2 pb-2">
+                        <div class="col-md-2">
+                            <label class="form-label fw-semibold mb-2" style="color: #475569; font-size: 0.8125rem;">T VIEWS Range</label>
+                            <div class="d-flex gap-2">
+                                <input type="number" id="pmt-t-views-min" class="form-control form-control-sm" placeholder="Min" step="1">
+                                <input type="number" id="pmt-t-views-max" class="form-control form-control-sm" placeholder="Max" step="1">
+                            </div>
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label fw-semibold mb-2" style="color: #475569; font-size: 0.8125rem;">L7 Views Range</label>
+                            <div class="d-flex gap-2">
+                                <input type="number" id="pmt-l7-views-min" class="form-control form-control-sm" placeholder="Min" step="1">
+                                <input type="number" id="pmt-l7-views-max" class="form-control form-control-sm" placeholder="Max" step="1">
+                            </div>
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label fw-semibold mb-2" style="color: #475569; font-size: 0.8125rem;">CBID Range</label>
+                            <div class="d-flex gap-2">
+                                <input type="number" id="pmt-cbid-min" class="form-control form-control-sm" placeholder="Min" step="0.01">
+                                <input type="number" id="pmt-cbid-max" class="form-control form-control-sm" placeholder="Max" step="0.01">
+                            </div>
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label fw-semibold mb-2" style="color: #475569; font-size: 0.8125rem;">SCVR Range</label>
+                            <div class="d-flex gap-2">
+                                <input type="number" id="pmt-scvr-min" class="form-control form-control-sm" placeholder="Min" step="0.01">
+                                <input type="number" id="pmt-scvr-max" class="form-control form-control-sm" placeholder="Max" step="0.01">
+                            </div>
+                        </div>
+                        <div class="col-md-2 d-flex gap-2 align-items-end">
+                            <button id="pmt-apply-range-btn" class="btn btn-primary btn-sm flex-fill">
+                                <i class="fa-solid fa-filter me-1"></i>Apply
+                            </button>
+                            <button id="pmt-clear-range-btn" class="btn btn-secondary btn-sm flex-fill">
+                                <i class="fa-solid fa-times me-1"></i>Clear
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
                 <div id="ebay2-table-wrapper" style="height: calc(100vh - 200px); display: flex; flex-direction: column;">
                     <!-- SKU Search -->
                     <div class="p-2 bg-light border-bottom">
@@ -556,6 +910,39 @@
         let increaseModeActive = false; // Track increase mode state
         let selectedSkus = new Set(); // Track selected SKUs across all pages
         
+        // KW Ads range filter state
+        let kwRangeFilters = {
+            '1ub': { min: null, max: null },
+            '7ub': { min: null, max: null },
+            'lbid': { min: null, max: null },
+            'acos': { min: null, max: null },
+            'views': { min: null, max: null },
+            'l7_views': { min: null, max: null }
+        };
+        let kwRangeFilterTimeout = null;
+        let kwIncDecType = 'value';
+
+        // PMT Ads dropdown filter state
+        let pmtDropdownFilters = {
+            'pmt_ov_dil': 'all',
+            'pmt_e_dil': 'all',
+            'pmt_clk_l7': 'all',
+            'pmt_clk_l30': 'all',
+            'pmt_pft': 'all',
+            'pmt_roi': 'all',
+            'pmt_tacos': 'all',
+            'pmt_scvr': 'all'
+        };
+
+        // PMT Ads range filter state
+        let pmtRangeFilters = {
+            't_views': { min: null, max: null },
+            'l7_views': { min: null, max: null },
+            'cbid': { min: null, max: null },
+            'scvr': { min: null, max: null }
+        };
+        let pmtRangeFilterTimeout = null;
+
         // Badge filter state variables
         let zeroSoldFilterActive = false;
         let moreSoldFilterActive = false;
@@ -1891,6 +2278,26 @@
                     },
 
                     {
+                        field: "_select",
+                        hozAlign: "center",
+                        headerSort: false,
+                        visible: false,
+                        frozen: true,
+                        width: 50,
+                        titleFormatter: function(column) {
+                            return `<div style="display: flex; align-items: center; justify-content: center; gap: 5px;">
+                                <input type="checkbox" id="select-all-checkbox" style="cursor: pointer;" title="Select All Filtered SKUs">
+                            </div>`;
+                        },
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+                            const sku = rowData['(Child) sku'];
+                            const isSelected = selectedSkus.has(sku);
+                            return `<input type="checkbox" class="sku-select-checkbox" data-sku="${sku}" ${isSelected ? 'checked' : ''} style="cursor: pointer;">`;
+                        }
+                    },
+
+                    {
                         title: "Image",
                         field: "image_path",
                         formatter: function(cell) {
@@ -2030,6 +2437,53 @@
                         width: 50
                     },
                     {
+                        title: "Missing Ad",
+                        field: "kw_hasCampaign",
+                        hozAlign: "center",
+                        visible: false,
+                        formatter: function(cell) {
+                            var row = cell.getRow().getData();
+                            var hasCampaign = row.kw_campaign_id && row.kw_campaign_id !== '';
+                            var nrlValue = row.NRL ? row.NRL.trim() : '';
+
+                            var dotColor, title;
+                            if (nrlValue === 'NRL') {
+                                dotColor = '#ffc107';
+                                title = 'NRL - Not Required';
+                            } else if (hasCampaign) {
+                                dotColor = '#28a745';
+                                title = 'Campaign Exists';
+                            } else {
+                                dotColor = '#dc3545';
+                                title = 'Campaign Missing';
+                            }
+
+                            return '<div style="display: flex; align-items: center; justify-content: center;">' +
+                                '<span style="width: 12px; height: 12px; border-radius: 50%; display: inline-block; background-color: ' + dotColor + ';" title="' + title + '"></span>' +
+                                '</div>';
+                        },
+                        width: 80
+                    },
+                    {
+                        title: "NRL",
+                        field: "NRL",
+                        hozAlign: "center",
+                        headerSort: false,
+                        visible: false,
+                        formatter: function(cell) {
+                            var sku = cell.getRow().getData()['(Child) sku'];
+                            var value = cell.getValue() || 'REQ';
+                            return `<select class="form-select form-select-sm kw-nrl-dropdown" 
+                                        data-sku="${sku}" data-field="NRL"
+                                        style="width: 50px; border: 1px solid gray; padding: 2px; font-size: 20px; text-align: center;">
+                                    <option value="REQ" ${value === 'REQ' ? 'selected' : ''}>🟢</option>
+                                    <option value="NRL" ${value === 'NRL' ? 'selected' : ''}>🔴</option>
+                                    </select>`;
+                        },
+                        cellClick: function(e, cell) { e.stopPropagation(); },
+                        width: 70
+                    },
+                    {
                         title: "E L30",
                         field: "eBay L30",
                         hozAlign: "center",
@@ -2164,7 +2618,30 @@
                         },
                         width: 50
                     },
-
+                    {
+                        title: "L7 VIEWS",
+                        field: "l7_views",
+                        hozAlign: "center",
+                        sorter: "number",
+                        visible: false,
+                        formatter: function(cell) {
+                            var value = parseInt(cell.getValue() || 0);
+                            return value.toLocaleString();
+                        },
+                        width: 70
+                    },
+                    {
+                        title: "CVR",
+                        field: "kw_cvr",
+                        hozAlign: "center",
+                        sorter: "number",
+                        visible: false,
+                        formatter: function(cell) {
+                            var value = parseFloat(cell.getValue() || 0);
+                            return value.toFixed(1) + '%';
+                        },
+                        width: 70
+                    },
 
                      {
                         title: "NR/REQ",
@@ -2422,30 +2899,6 @@
                             return `<strong>${parseFloat(value).toFixed(2)}%</strong>`;
                         },
                         width: 65
-                    },
-                  
-                    {
-                        field: "_select",
-                        hozAlign: "center",
-                        headerSort: false,
-                        visible: false,
-                        titleFormatter: function(column) {
-                            return `<div style="display: flex; align-items: center; justify-content: center; gap: 5px;">
-                                <span>Select</span>
-                                <input type="checkbox" id="select-all-checkbox" style="cursor: pointer;" title="Select All Filtered SKUs">
-                            </div>`;
-                        },
-                        formatter: function(cell) {
-                            const rowData = cell.getRow().getData();
-                            const isParent = rowData.Parent && rowData.Parent.startsWith('PARENT');
-                            // 
-                            // if (isParent) return '';
-                            
-                            const sku = rowData['(Child) sku'];
-                            const isSelected = selectedSkus.has(sku);
-                            
-                            return `<input type="checkbox" class="sku-select-checkbox" data-sku="${sku}" ${isSelected ? 'checked' : ''} style="cursor: pointer;">`;
-                        }
                     },
                     
                     {
@@ -2864,6 +3317,643 @@
                         },
                         width: 70
                     },
+
+                    // ========== KW Ads Section Columns (hidden by default) ==========
+                    {
+                        title: "BGT",
+                        field: "kw_campaignBudgetAmount",
+                        hozAlign: "center",
+                        sorter: "number",
+                        visible: false,
+                        formatter: function(cell) {
+                            return parseFloat(cell.getValue() || 0).toFixed(0);
+                        },
+                        width: 60
+                    },
+                    {
+                        title: "SBGT",
+                        field: "kw_sbgt",
+                        hozAlign: "center",
+                        sorter: "number",
+                        visible: false,
+                        formatter: function(cell) {
+                            var rowData = cell.getRow().getData();
+                            var acos = parseFloat(rowData.kw_acos || 0);
+                            if (isNaN(acos) || acos === 0) {
+                                acos = 100;
+                            }
+                            var suggestedBudget = 0;
+                            if (acos < 4) {
+                                suggestedBudget = 9;
+                            } else if (acos >= 4 && acos < 8) {
+                                suggestedBudget = 6;
+                            } else {
+                                suggestedBudget = 3;
+                            }
+                            return suggestedBudget.toFixed(0);
+                        },
+                        width: 60
+                    },
+                    {
+                        title: "ACOS",
+                        field: "kw_acos",
+                        hozAlign: "center",
+                        sorter: "number",
+                        visible: false,
+                        formatter: function(cell) {
+                            var rowData = cell.getRow().getData();
+                            var kwSpend = parseFloat(rowData.kw_spend_L30 || 0);
+                            var acos = parseFloat(cell.getValue() || 0);
+                            var td = cell.getElement();
+                            td.classList.remove('green-bg', 'pink-bg', 'red-bg');
+                            
+                            if (kwSpend === 0) {
+                                return '<div style="display: flex; align-items: center; justify-content: center; gap: 5px;">-' +
+                                    '<i class="fa-solid fa-info-circle kw-toggle-metrics-btn" style="cursor: pointer; font-size: 12px; margin-left: 5px;" title="Toggle Clicks, Spend, Ad Sold"></i></div>';
+                            }
+                            
+                            var acosValue = "";
+                            if (acos === 0) {
+                                td.classList.add('red-bg');
+                                acosValue = "100%";
+                            } else if (acos < 7) {
+                                td.classList.add('pink-bg');
+                                acosValue = acos.toFixed(0) + "%";
+                            } else if (acos >= 7 && acos <= 14) {
+                                td.classList.add('green-bg');
+                                acosValue = acos.toFixed(0) + "%";
+                            } else {
+                                td.classList.add('red-bg');
+                                acosValue = acos.toFixed(0) + "%";
+                            }
+                            
+                            return '<div style="display: flex; align-items: center; justify-content: center; gap: 5px;">' +
+                                acosValue +
+                                '<i class="fa-solid fa-info-circle kw-toggle-metrics-btn" style="cursor: pointer; font-size: 12px; margin-left: 5px;" title="Toggle Clicks, Spend, Ad Sold"></i></div>';
+                        },
+                        cellClick: function(e, cell) {
+                            if (e.target.classList.contains('kw-toggle-metrics-btn') || e.target.closest('.kw-toggle-metrics-btn')) {
+                                e.stopPropagation();
+                                var clicksVisible = table.getColumn('kw_clicks').isVisible();
+                                var spendVisible = table.getColumn('kw_spend_L30').isVisible();
+                                var adSoldVisible = table.getColumn('kw_ad_sold').isVisible();
+                                
+                                if (clicksVisible || spendVisible || adSoldVisible) {
+                                    table.hideColumn('kw_clicks');
+                                    table.hideColumn('kw_spend_L30');
+                                    table.hideColumn('kw_ad_sold');
+                                } else {
+                                    table.showColumn('kw_clicks');
+                                    table.showColumn('kw_spend_L30');
+                                    table.showColumn('kw_ad_sold');
+                                }
+                            }
+                        },
+                        width: 70
+                    },
+                    {
+                        title: "KW CLICKS",
+                        field: "kw_clicks",
+                        hozAlign: "center",
+                        sorter: "number",
+                        visible: false,
+                        formatter: function(cell) {
+                            return parseInt(cell.getValue() || 0).toLocaleString();
+                        },
+                        width: 70
+                    },
+                    {
+                        title: "KW SPEND L30",
+                        field: "kw_spend_L30",
+                        hozAlign: "center",
+                        sorter: "number",
+                        visible: false,
+                        formatter: function(cell) {
+                            const value = parseFloat(cell.getValue() || 0);
+                            return Math.round(value);
+                        },
+                        bottomCalc: "sum",
+                        bottomCalcFormatter: function(cell) {
+                            const value = cell.getValue();
+                            return `<strong>${Math.round(parseFloat(value))}</strong>`;
+                        },
+                        width: 110
+                    },
+                    {
+                        title: "KW AD SOLD",
+                        field: "kw_ad_sold",
+                        hozAlign: "center",
+                        sorter: "number",
+                        visible: false,
+                        formatter: function(cell) {
+                            return parseInt(cell.getValue() || 0).toLocaleString();
+                        },
+                        width: 70
+                    },
+                    {
+                        title: "7UB%",
+                        field: "kw_l7_spend",
+                        hozAlign: "center",
+                        visible: false,
+                        sorter: function(a, b, aRow, bRow) {
+                            var aData = aRow.getData();
+                            var bData = bRow.getData();
+                            var aUb7 = parseFloat(aData.kw_campaignBudgetAmount) > 0 ? (parseFloat(aData.kw_l7_spend || 0) / (parseFloat(aData.kw_campaignBudgetAmount) * 7)) * 100 : 0;
+                            var bUb7 = parseFloat(bData.kw_campaignBudgetAmount) > 0 ? (parseFloat(bData.kw_l7_spend || 0) / (parseFloat(bData.kw_campaignBudgetAmount) * 7)) * 100 : 0;
+                            return aUb7 - bUb7;
+                        },
+                        formatter: function(cell) {
+                            var row = cell.getRow().getData();
+                            var l7_spend = parseFloat(row.kw_l7_spend) || 0;
+                            var budget = parseFloat(row.kw_campaignBudgetAmount) || 0;
+                            var ub7 = budget > 0 ? (l7_spend / (budget * 7)) * 100 : 0;
+                            var td = cell.getElement();
+                            td.classList.remove('green-bg', 'pink-bg', 'red-bg');
+                            if (ub7 >= 66 && ub7 <= 99) {
+                                td.classList.add('green-bg');
+                            } else if (ub7 > 99) {
+                                td.classList.add('pink-bg');
+                            } else if (ub7 < 66 && budget > 0) {
+                                td.classList.add('red-bg');
+                            }
+                            return ub7.toFixed(0) + '%';
+                        },
+                        width: 70
+                    },
+                    {
+                        title: "1UB%",
+                        field: "kw_l1_spend",
+                        hozAlign: "center",
+                        visible: false,
+                        sorter: function(a, b, aRow, bRow) {
+                            var aData = aRow.getData();
+                            var bData = bRow.getData();
+                            var aUb1 = parseFloat(aData.kw_campaignBudgetAmount) > 0 ? (parseFloat(aData.kw_l1_spend || 0) / parseFloat(aData.kw_campaignBudgetAmount)) * 100 : 0;
+                            var bUb1 = parseFloat(bData.kw_campaignBudgetAmount) > 0 ? (parseFloat(bData.kw_l1_spend || 0) / parseFloat(bData.kw_campaignBudgetAmount)) * 100 : 0;
+                            return aUb1 - bUb1;
+                        },
+                        formatter: function(cell) {
+                            var row = cell.getRow().getData();
+                            var l1_spend = parseFloat(row.kw_l1_spend) || 0;
+                            var budget = parseFloat(row.kw_campaignBudgetAmount) || 0;
+                            var ub1 = budget > 0 ? (l1_spend / budget) * 100 : 0;
+                            var td = cell.getElement();
+                            td.classList.remove('green-bg', 'pink-bg', 'red-bg');
+                            if (ub1 >= 66 && ub1 <= 99) {
+                                td.classList.add('green-bg');
+                            } else if (ub1 > 99) {
+                                td.classList.add('pink-bg');
+                            } else if (ub1 < 66 && budget > 0) {
+                                td.classList.add('red-bg');
+                            }
+                            return ub1.toFixed(0) + '%';
+                        },
+                        width: 70
+                    },
+                    {
+                        title: "L7 CPC",
+                        field: "kw_l7_cpc",
+                        hozAlign: "center",
+                        sorter: "number",
+                        visible: false,
+                        formatter: function(cell) {
+                            var value = parseFloat(cell.getValue() || 0);
+                            return value > 0 ? value.toFixed(2) : '-';
+                        },
+                        width: 70
+                    },
+                    {
+                        title: "L1 CPC",
+                        field: "kw_l1_cpc",
+                        hozAlign: "center",
+                        sorter: "number",
+                        visible: false,
+                        formatter: function(cell) {
+                            var value = parseFloat(cell.getValue() || 0);
+                            return value > 0 ? value.toFixed(2) : '-';
+                        },
+                        width: 70
+                    },
+                    {
+                        title: "LBID",
+                        field: "kw_last_sbid",
+                        hozAlign: "center",
+                        visible: false,
+                        formatter: function(cell) {
+                            var value = cell.getValue();
+                            if (!value || value === '' || value === '0' || value === 0) {
+                                return '-';
+                            }
+                            return parseFloat(value).toFixed(2);
+                        },
+                        width: 70
+                    },
+                    {
+                        title: "SBID",
+                        field: "kw_sbid_calc",
+                        hozAlign: "center",
+                        visible: false,
+                        sorter: function(a, b, aRow, bRow) {
+                            function calcSbid(rowData) {
+                                var l1Cpc = parseFloat(rowData.kw_l1_cpc) || 0;
+                                var l7Cpc = parseFloat(rowData.kw_l7_cpc) || 0;
+                                var budget = parseFloat(rowData.kw_campaignBudgetAmount) || 0;
+                                var inv = parseFloat(rowData.INV || 0);
+                                var price = parseFloat(rowData['eBay Price'] || 0);
+                                var ub7 = budget > 0 ? (parseFloat(rowData.kw_l7_spend) || 0) / (budget * 7) * 100 : 0;
+                                var ub1 = budget > 0 ? (parseFloat(rowData.kw_l1_spend) || 0) / budget * 100 : 0;
+                                var lastSbidRaw = rowData.kw_last_sbid;
+                                var lastSbid = (!lastSbidRaw || lastSbidRaw === '' || lastSbidRaw === '0') ? 0 : parseFloat(lastSbidRaw) || 0;
+
+                                if (ub7 > 99 && ub1 > 99) {
+                                    if (l1Cpc > 1.25) return Math.floor(l1Cpc * 0.80 * 100) / 100;
+                                    if (l1Cpc > 0) return Math.floor(l1Cpc * 0.90 * 100) / 100;
+                                    if (l7Cpc > 0) return Math.floor(l7Cpc * 0.90 * 100) / 100;
+                                    return 0;
+                                }
+                                var isOver = ub7 > 99 && ub1 > 99;
+                                var isUnder = !isOver && budget > 0 && ub7 < 66 && ub1 < 66 && inv > 0;
+                                if (isOver) {
+                                    var sbid = l1Cpc > 1.25 ? Math.floor(l1Cpc * 0.80 * 100) / 100 : (l1Cpc > 0 ? Math.floor(l1Cpc * 0.90 * 100) / 100 : 0);
+                                    if (price < 20 && sbid > 0.20) sbid = 0.20;
+                                    return sbid;
+                                }
+                                if (isUnder) {
+                                    var baseBid = lastSbid > 0 ? lastSbid : (l1Cpc > 0 ? l1Cpc : (l7Cpc > 0 ? l7Cpc : 0));
+                                    if (ub1 < 33) return Math.floor((baseBid + 0.10) * 100) / 100;
+                                    if (ub1 >= 33 && ub1 < 66) return Math.floor(baseBid * 1.10 * 100) / 100;
+                                    return Math.floor(baseBid * 100) / 100;
+                                }
+                                if (l1Cpc > 0) return Math.floor(l1Cpc * 0.90 * 100) / 100;
+                                if (l7Cpc > 0) return Math.floor(l7Cpc * 0.90 * 100) / 100;
+                                return 0;
+                            }
+                            return calcSbid(aRow.getData()) - calcSbid(bRow.getData());
+                        },
+                        formatter: function(cell) {
+                            var rowData = cell.getRow().getData();
+                            
+                            var nrlValue = rowData.NRL ? rowData.NRL.trim() : "";
+                            if (nrlValue === 'NRL') {
+                                return '-';
+                            }
+                            
+                            var l1Cpc = parseFloat(rowData.kw_l1_cpc) || 0;
+                            var l7Cpc = parseFloat(rowData.kw_l7_cpc) || 0;
+                            var budget = parseFloat(rowData.kw_campaignBudgetAmount) || 0;
+                            var inv = parseFloat(rowData.INV || 0);
+                            var price = parseFloat(rowData['eBay Price'] || 0);
+                            var ub7 = budget > 0 ? (parseFloat(rowData.kw_l7_spend) || 0) / (budget * 7) * 100 : 0;
+                            var ub1 = budget > 0 ? (parseFloat(rowData.kw_l1_spend) || 0) / budget * 100 : 0;
+                            var lastSbidRaw = rowData.kw_last_sbid;
+                            var lastSbid = (!lastSbidRaw || lastSbidRaw === '' || lastSbidRaw === '0') ? 0 : parseFloat(lastSbidRaw) || 0;
+
+                            function getUbColor(ub) {
+                                if (ub >= 66 && ub <= 99) return 'green';
+                                if (ub > 99) return 'pink';
+                                return 'red';
+                            }
+                            
+                            var ub7Color = getUbColor(ub7);
+                            var ub1Color = getUbColor(ub1);
+                            
+                            if (ub7Color !== ub1Color) {
+                                return '-';
+                            }
+
+                            var sbid = 0;
+                            
+                            if (ub7 > 99 && ub1 > 99) {
+                                if (l1Cpc > 0) {
+                                    sbid = Math.floor(l1Cpc * 0.90 * 100) / 100;
+                                } else if (l7Cpc > 0) {
+                                    sbid = Math.floor(l7Cpc * 0.90 * 100) / 100;
+                                }
+                                if (sbid === 0) return '-';
+                                return sbid.toFixed(2);
+                            }
+                            
+                            var isOverUtilized = ub7 > 99 && ub1 > 99;
+                            var isUnderUtilized = !isOverUtilized && budget > 0 && ub7 < 66 && ub1 < 66 && inv > 0;
+                            
+                            if (isOverUtilized) {
+                                if (l1Cpc > 1.25) {
+                                    sbid = Math.floor(l1Cpc * 0.80 * 100) / 100;
+                                } else if (l1Cpc > 0) {
+                                    sbid = Math.floor(l1Cpc * 0.90 * 100) / 100;
+                                }
+                                if (price < 20 && sbid > 0.20) sbid = 0.20;
+                            } else if (isUnderUtilized) {
+                                var baseBid = lastSbid > 0 ? lastSbid : (l1Cpc > 0 ? l1Cpc : (l7Cpc > 0 ? l7Cpc : 0));
+                                if (baseBid > 0) {
+                                    if (ub1 < 33) sbid = Math.floor((baseBid + 0.10) * 100) / 100;
+                                    else if (ub1 >= 33 && ub1 < 66) sbid = Math.floor(baseBid * 1.10 * 100) / 100;
+                                    else sbid = Math.floor(baseBid * 100) / 100;
+                                }
+                            } else {
+                                if (l1Cpc > 0) sbid = Math.floor(l1Cpc * 0.90 * 100) / 100;
+                                else if (l7Cpc > 0) sbid = Math.floor(l7Cpc * 0.90 * 100) / 100;
+                            }
+                            
+                            return sbid > 0 ? sbid.toFixed(2) : '-';
+                        },
+                        width: 70
+                    },
+                    {
+                        title: "SBID M",
+                        field: "kw_sbid_m",
+                        hozAlign: "center",
+                        visible: false,
+                        editor: "input",
+                        editorParams: {
+                            elementAttributes: {
+                                maxlength: "10"
+                            }
+                        },
+                        formatter: function(cell) {
+                            var value = cell.getValue();
+                            if (!value || value === '' || value === '0' || value === 0) {
+                                return '-';
+                            }
+                            return parseFloat(value).toFixed(2);
+                        },
+                        width: 70
+                    },
+                    {
+                        title: "APR BID",
+                        field: "kw_apr_bid",
+                        hozAlign: "center",
+                        visible: false,
+                        formatter: function(cell) {
+                            var rowData = cell.getRow().getData();
+                            var apprSbid = rowData.kw_apprSbid || '';
+                            if (apprSbid && apprSbid !== '' && parseFloat(apprSbid) > 0) {
+                                return `<div style="display: flex; justify-content: center; align-items: center;">
+                                    <i class="fa-solid fa-circle-check kw-update-bid-icon" style="color: #28a745; font-size: 20px; cursor: default;" title="Bid pushed: ${apprSbid}"></i>
+                                </div>`;
+                            } else {
+                                return `<div style="display: flex; justify-content: center; align-items: center;">
+                                    <i class="fa-solid fa-check kw-update-bid-icon" style="color: #6c757d; font-size: 18px; cursor: pointer;" title="Click to push bid"></i>
+                                </div>`;
+                            }
+                        },
+                        cellClick: function(e, cell) {
+                            if (e.target.classList.contains("kw-update-bid-icon") || e.target.closest(".kw-update-bid-icon")) {
+                                var rowData = cell.getRow().getData();
+                                
+                                var apprSbid = rowData.kw_apprSbid || '';
+                                if (apprSbid && apprSbid !== '' && parseFloat(apprSbid) > 0) {
+                                    return;
+                                }
+                                
+                                var nrlValue = rowData.NRL ? rowData.NRL.trim() : "";
+                                if (nrlValue === 'NRL') {
+                                    showToast('error', 'Cannot update bid for NRL campaigns');
+                                    return;
+                                }
+                                
+                                var sbidM = parseFloat(rowData.kw_sbid_m) || 0;
+                                
+                                if (sbidM <= 0) {
+                                    showToast('error', 'SBID M value is required. Please save SBID M first.');
+                                    return;
+                                }
+                                
+                                if (!rowData.kw_campaign_id) {
+                                    showToast('error', 'Campaign ID not found');
+                                    return;
+                                }
+                                
+                                kwUpdateBid(sbidM, rowData.kw_campaign_id, cell);
+                            }
+                        },
+                        width: 70
+                    },
+                    {
+                        title: "Status",
+                        field: "kw_campaignStatus",
+                        hozAlign: "center",
+                        visible: false,
+                        formatter: function(cell) {
+                            var row = cell.getRow().getData();
+                            var campaignId = row.kw_campaign_id || '';
+                            var status = row.kw_campaignStatus || 'PAUSED';
+                            var isEnabled = status === 'RUNNING';
+                            
+                            if (!campaignId || campaignId === '' || campaignId === null || campaignId === undefined) {
+                                return '<span style="color: #999;">-</span>';
+                            }
+                            
+                            return `<div class="form-check form-switch d-flex justify-content-center">
+                                <input class="form-check-input kw-campaign-status-toggle" 
+                                       type="checkbox" 
+                                       role="switch" 
+                                       data-campaign-id="${campaignId}"
+                                       ${isEnabled ? 'checked' : ''}
+                                       style="cursor: pointer; width: 3rem; height: 1.5rem;">
+                            </div>`;
+                        },
+                        cellClick: function(e, cell) {
+                            if (e.target.classList.contains('kw-campaign-status-toggle')) {
+                                e.stopPropagation();
+                            }
+                        },
+                        width: 80
+                    },
+
+                    // ========== PMT Ads Section Columns (hidden by default) ==========
+                    {
+                        title: "PMT CBID",
+                        field: "pmt_cbid",
+                        hozAlign: "center",
+                        visible: false,
+                        formatter: function(cell) {
+                            var val = cell.getRow().getData().bid_percentage;
+                            if (val === null || val === undefined || val === '') return '-';
+                            return parseFloat(val).toFixed(2);
+                        },
+                        width: 80
+                    },
+                    {
+                        title: "PMT ES BID",
+                        field: "pmt_es_bid",
+                        hozAlign: "center",
+                        visible: false,
+                        formatter: function(cell) {
+                            var val = cell.getRow().getData().suggested_bid;
+                            if (val === null || val === undefined || val === '') return '-';
+                            return parseFloat(val).toFixed(2);
+                        },
+                        width: 80
+                    },
+                    {
+                        title: "PMT S BID",
+                        field: "pmt_s_bid",
+                        hozAlign: "center",
+                        visible: false,
+                        formatter: function(cell) {
+                            var rd = cell.getRow().getData();
+                            var l7 = parseInt(rd.l7_views) || 0;
+                            var es = parseFloat(rd.suggested_bid) || 0;
+                            var v;
+                            if (l7 >= 0 && l7 < 50) v = es;
+                            else if (l7 >= 50 && l7 < 100) v = 9;
+                            else if (l7 >= 100 && l7 < 150) v = 8;
+                            else if (l7 >= 150 && l7 < 200) v = 7;
+                            else if (l7 >= 200 && l7 < 250) v = 6;
+                            else if (l7 >= 250 && l7 < 300) v = 5;
+                            else if (l7 >= 300 && l7 < 350) v = 4;
+                            else if (l7 >= 350 && l7 < 400) v = 3;
+                            else if (l7 >= 400) v = 2;
+                            else v = es;
+                            v = Math.min(v, 15);
+                            return v > 0 ? v.toFixed(2) : '-';
+                        },
+                        width: 80
+                    },
+                    {
+                        title: "PMT T Views",
+                        field: "pmt_t_views",
+                        hozAlign: "center",
+                        visible: false,
+                        formatter: function(cell) {
+                            var val = cell.getRow().getData().views;
+                            return val ? parseInt(val).toLocaleString() : '0';
+                        },
+                        width: 80
+                    },
+                    {
+                        title: "PMT L7 Views",
+                        field: "pmt_l7_views",
+                        hozAlign: "center",
+                        visible: false,
+                        formatter: function(cell) {
+                            var val = cell.getRow().getData().l7_views;
+                            return val ? parseInt(val).toLocaleString() : '0';
+                        },
+                        width: 80
+                    },
+                    {
+                        title: "PMT SCVR",
+                        field: "pmt_scvr",
+                        hozAlign: "center",
+                        visible: false,
+                        formatter: function(cell) {
+                            var rd = cell.getRow().getData();
+                            var views = parseFloat(rd.views) || 0;
+                            var ebayL30 = parseFloat(rd['eBay L30']) || 0;
+                            if (views <= 0) return '0.00%';
+                            var scvr = (ebayL30 / views) * 100;
+                            var color = '#6c757d';
+                            if (scvr <= 4) color = 'red';
+                            else if (scvr > 4 && scvr <= 7) color = '#daa520';
+                            else if (scvr > 7 && scvr <= 10) color = 'green';
+                            else color = '#E83E8C';
+                            return '<span style="color:' + color + '; font-weight: 600;">' + scvr.toFixed(2) + '%</span>';
+                        },
+                        width: 80
+                    },
+                    {
+                        title: "PMT ClkL7",
+                        field: "pmt_clicks_l7",
+                        hozAlign: "center",
+                        visible: false,
+                        formatter: function(cell) {
+                            var val = cell.getValue();
+                            return val ? parseInt(val).toLocaleString() : '0';
+                        },
+                        width: 80
+                    },
+                    {
+                        title: "PMT Clk30",
+                        field: "pmt_clicks_l30",
+                        hozAlign: "center",
+                        visible: false,
+                        formatter: function(cell) {
+                            var val = cell.getValue();
+                            return val ? parseInt(val).toLocaleString() : '0';
+                        },
+                        width: 80
+                    },
+                    {
+                        title: "PMT PFT",
+                        field: "pmt_pft",
+                        hozAlign: "center",
+                        visible: false,
+                        formatter: function(cell) {
+                            var rd = cell.getRow().getData();
+                            var gpft = parseFloat(rd['GPFT%']) || 0;
+                            var val = gpft / 100;
+                            var color = val >= 0 ? '#198754' : '#dc3545';
+                            return '<span style="color:' + color + '">' + (val * 100).toFixed(2) + '%</span>';
+                        },
+                        width: 70
+                    },
+                    {
+                        title: "PMT ROI",
+                        field: "pmt_roi",
+                        hozAlign: "center",
+                        visible: false,
+                        formatter: function(cell) {
+                            var rd = cell.getRow().getData();
+                            var roi = parseFloat(rd['ROI%']) || 0;
+                            var color = roi >= 0 ? '#198754' : '#dc3545';
+                            return '<span style="color:' + color + '">' + Math.round(roi) + '%</span>';
+                        },
+                        width: 70
+                    },
+                    {
+                        title: "PMT TPFT%",
+                        field: "pmt_tpft",
+                        hozAlign: "center",
+                        visible: false,
+                        formatter: function(cell) {
+                            var rd = cell.getRow().getData();
+                            var gpft = parseFloat(rd['GPFT%']) || 0;
+                            var adUpdates = parseFloat(rd.ad_updates) || 0;
+                            var cbid = parseFloat(rd.bid_percentage) || 0;
+                            var tpft = (gpft / 100) + (adUpdates / 100) - cbid;
+                            var color = tpft >= 0 ? '#198754' : '#dc3545';
+                            return '<span style="color:' + color + '">' + tpft.toFixed(2) + '</span>';
+                        },
+                        width: 80
+                    },
+                    {
+                        title: "PMT TROI%",
+                        field: "pmt_troi",
+                        hozAlign: "center",
+                        visible: false,
+                        formatter: function(cell) {
+                            var rd = cell.getRow().getData();
+                            var roi = parseFloat(rd['ROI%']) || 0;
+                            var adUpdates = parseFloat(rd.ad_updates) || 0;
+                            var cbid = parseFloat(rd.bid_percentage) || 0;
+                            var troi = (roi / 100) + (adUpdates / 100) - cbid;
+                            var color = troi >= 0 ? '#198754' : '#dc3545';
+                            return '<span style="color:' + color + '">' + troi.toFixed(2) + '</span>';
+                        },
+                        width: 80
+                    },
+                    {
+                        title: "PMT NRL",
+                        field: "pmt_nrl",
+                        hozAlign: "center",
+                        visible: false,
+                        formatter: function(cell) {
+                            var sku = cell.getRow().getData()['(Child) sku'];
+                            var value = cell.getRow().getData().NRL || 'REQ';
+                            var bgColor = value === 'NRL' ? '#dc3545' : '#28a745';
+                            var label = value === 'NRL' ? 'NRL' : 'REQ';
+                            return `<select class="form-select form-select-sm pmt-nrl-dropdown" 
+                                        data-sku="${sku}" data-field="NRL"
+                                        style="min-width: 70px; background-color: ${bgColor}; color: #fff; padding: 2px 4px; font-size: 11px; border: none; border-radius: 4px;">
+                                    <option value="REQ" ${value === 'REQ' ? 'selected' : ''}>REQ</option>
+                                    <option value="NRL" ${value === 'NRL' ? 'selected' : ''}>NRL</option>
+                                    </select>`;
+                        },
+                        cellClick: function(e, cell) { e.stopPropagation(); },
+                        width: 80
+                    },
                   
                     // {
                     //     title: "Listed",
@@ -3235,6 +4325,139 @@
                     });
                 }
 
+                // KW Ads filters (only when kw_ads section is selected)
+                var sectionVal = $('#section-filter').val();
+                if (sectionVal === 'kw_ads') {
+                    var kwUtilization = $('#kw-utilization-filter').val();
+                    var kwStatus = $('#kw-status-filter').val();
+                    var kwNra = $('#kw-nra-filter').val();
+                    var kwNrl = $('#kw-nrl-filter').val();
+                    var kwSbidm = $('#kw-sbidm-filter').val();
+
+                    if (kwStatus !== 'all') {
+                        table.addFilter(function(data) {
+                            return data.kw_campaignStatus === kwStatus;
+                        });
+                    }
+                    if (kwNra !== 'all') {
+                        table.addFilter(function(data) {
+                            var nr = data.NR || '';
+                            if (kwNra === 'NRA') return nr === 'NRA';
+                            if (kwNra === 'RA') return nr === 'RA';
+                            if (kwNra === 'LATER') return nr === 'LATER';
+                            return true;
+                        });
+                    }
+                    if (kwNrl !== 'all') {
+                        table.addFilter(function(data) {
+                            var nrl = data.NRL || '';
+                            if (kwNrl === 'NRL') return nrl === 'NRL';
+                            if (kwNrl === 'REQ') return nrl === '' || nrl === 'REQ';
+                            return true;
+                        });
+                    }
+                    if (kwSbidm !== 'all') {
+                        table.addFilter(function(data) {
+                            var sbidm = data.kw_sbid_m || '';
+                            if (kwSbidm === 'blank') return sbidm === '';
+                            if (kwSbidm === 'data') return sbidm !== '';
+                            return true;
+                        });
+                    }
+
+                    // KW Ads range filters
+                    Object.keys(kwRangeFilters).forEach(function(key) {
+                        var filter = kwRangeFilters[key];
+                        if (filter.min !== null || filter.max !== null) {
+                            table.addFilter(function(data) {
+                                var value = 0;
+                                if (key === '1ub') {
+                                    var inv = parseFloat(data.INV || 0);
+                                    var l30 = parseFloat(data.L30 || 0);
+                                    value = inv > 0 ? (l30 / inv) * 100 : 0;
+                                } else if (key === '7ub') {
+                                    var inv = parseFloat(data.INV || 0);
+                                    var l7v = parseFloat(data.l7_views || 0);
+                                    value = inv > 0 ? (l7v / inv) * 100 : 0;
+                                } else if (key === 'lbid') {
+                                    value = parseFloat(data.kw_last_sbid || 0);
+                                } else if (key === 'acos') {
+                                    value = parseFloat(data.kw_acos || 0);
+                                } else if (key === 'views') {
+                                    value = parseFloat(data.views || 0);
+                                } else if (key === 'l7_views') {
+                                    value = parseFloat(data.l7_views || 0);
+                                }
+                                if (filter.min !== null && value < filter.min) return false;
+                                if (filter.max !== null && value > filter.max) return false;
+                                return true;
+                            });
+                        }
+                    });
+                }
+
+                // PMT Ads filters (only when pmt_ads section is selected)
+                if (sectionVal === 'pmt_ads') {
+                    // PMT dropdown filters
+                    Object.keys(pmtDropdownFilters).forEach(function(column) {
+                        var colorFilter = pmtDropdownFilters[column];
+                        if (colorFilter !== 'all') {
+                            table.addFilter(function(data) {
+                                var value = 0;
+                                if (column === 'pmt_ov_dil') {
+                                    var inv = parseFloat(data.INV || 0);
+                                    var l30 = parseFloat(data.L30 || 0);
+                                    value = inv > 0 ? (l30 / inv) * 100 : 0;
+                                } else if (column === 'pmt_e_dil') {
+                                    value = parseFloat(data['E Dil%'] || 0) * 100;
+                                } else if (column === 'pmt_clk_l7') {
+                                    value = parseInt(data.pmt_clicks_l7 || data.PmtClkL7 || 0);
+                                } else if (column === 'pmt_clk_l30') {
+                                    value = parseInt(data.pmt_clicks_l30 || data.PmtClkL30 || 0);
+                                } else if (column === 'pmt_pft') {
+                                    value = parseFloat(data['GPFT%'] || 0);
+                                } else if (column === 'pmt_roi') {
+                                    value = parseFloat(data['ROI%'] || 0);
+                                } else if (column === 'pmt_tacos') {
+                                    value = parseFloat(data.TacosL30 || 0) * 100;
+                                } else if (column === 'pmt_scvr') {
+                                    var views = parseFloat(data.views || 0);
+                                    var el30 = parseFloat(data['eBay L30'] || 0);
+                                    value = views > 0 ? (el30 / views) * 100 : 0;
+                                }
+                                // Color ranges (generic)
+                                if (colorFilter === 'red') return value < 16.66;
+                                if (colorFilter === 'yellow') return value >= 16.66 && value < 25;
+                                if (colorFilter === 'green') return value >= 25 && value < 50;
+                                if (colorFilter === 'pink') return value >= 50;
+                                if (colorFilter === 'blue') return value < 5;
+                                return true;
+                            });
+                        }
+                    });
+
+                    // PMT range filters
+                    Object.keys(pmtRangeFilters).forEach(function(key) {
+                        var filter = pmtRangeFilters[key];
+                        if (filter.min !== null || filter.max !== null) {
+                            table.addFilter(function(data) {
+                                var value = 0;
+                                if (key === 't_views') value = parseFloat(data.views || 0);
+                                else if (key === 'l7_views') value = parseFloat(data.l7_views || 0);
+                                else if (key === 'cbid') value = parseFloat(data.bid_percentage || 0);
+                                else if (key === 'scvr') {
+                                    var views = parseFloat(data.views || 0);
+                                    var el30 = parseFloat(data['eBay L30'] || 0);
+                                    value = views > 0 ? (el30 / views) * 100 : 0;
+                                }
+                                if (filter.min !== null && value < filter.min) return false;
+                                if (filter.max !== null && value > filter.max) return false;
+                                return true;
+                            });
+                        }
+                    });
+                }
+
                 // Update range filter badge
                 updateRangeFilterBadge();
                 
@@ -3249,6 +4472,206 @@
             $('#inventory-filter, #nrl-filter, #gpft-filter, #cvr-filter, #status-filter, #ads-filter').on('change', function() {
                 applyFilters();
             });
+
+            // KW Ads filter change handlers
+            $('#kw-utilization-filter, #kw-status-filter, #kw-nra-filter, #kw-nrl-filter, #kw-sbidm-filter').on('change', function() {
+                applyFilters();
+            });
+
+            // KW Ads range filter debounced input
+            $('#kw-range-1ub-min, #kw-range-1ub-max, #kw-range-7ub-min, #kw-range-7ub-max, #kw-range-lbid-min, #kw-range-lbid-max, #kw-range-acos-min, #kw-range-acos-max, #kw-range-views-min, #kw-range-views-max, #kw-range-l7views-min, #kw-range-l7views-max').on('keyup change', function() {
+                clearTimeout(kwRangeFilterTimeout);
+                kwRangeFilterTimeout = setTimeout(function() {
+                    kwRangeFilters['1ub'] = { min: parseFloat($('#kw-range-1ub-min').val()) || null, max: parseFloat($('#kw-range-1ub-max').val()) || null };
+                    kwRangeFilters['7ub'] = { min: parseFloat($('#kw-range-7ub-min').val()) || null, max: parseFloat($('#kw-range-7ub-max').val()) || null };
+                    kwRangeFilters['lbid'] = { min: parseFloat($('#kw-range-lbid-min').val()) || null, max: parseFloat($('#kw-range-lbid-max').val()) || null };
+                    kwRangeFilters['acos'] = { min: parseFloat($('#kw-range-acos-min').val()) || null, max: parseFloat($('#kw-range-acos-max').val()) || null };
+                    kwRangeFilters['views'] = { min: parseFloat($('#kw-range-views-min').val()) || null, max: parseFloat($('#kw-range-views-max').val()) || null };
+                    kwRangeFilters['l7_views'] = { min: parseFloat($('#kw-range-l7views-min').val()) || null, max: parseFloat($('#kw-range-l7views-max').val()) || null };
+                    applyFilters();
+                }, 300);
+            });
+
+            // PMT Ads manual dropdown toggle
+            $(document).on('click', '.pmt-ads-filter-item .dropdown-toggle', function(e) {
+                e.stopPropagation();
+                var $menu = $(this).siblings('.dropdown-menu');
+                $('.pmt-ads-filter-item .dropdown-menu').not($menu).removeClass('show');
+                $menu.toggleClass('show');
+            });
+            $(document).on('click', function() {
+                $('.pmt-ads-filter-item .dropdown-menu').removeClass('show');
+            });
+
+            // PMT Ads column filter click handler
+            $(document).on('click', '.pmt-column-filter', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                var column = $(this).data('column');
+                var color = $(this).data('color');
+                pmtDropdownFilters[column] = color;
+                var $dropdown = $(this).closest('.pmt-ads-filter-item');
+                var $btn = $dropdown.find('.dropdown-toggle');
+                $btn.find('.status-circle').attr('class', 'status-circle ' + (color === 'all' ? 'default' : color));
+                $dropdown.find('.dropdown-menu').removeClass('show');
+                applyFilters();
+            });
+
+            // PMT Ads range filter apply
+            $('#pmt-apply-range-btn').on('click', function() {
+                pmtRangeFilters['t_views'] = { min: parseFloat($('#pmt-t-views-min').val()) || null, max: parseFloat($('#pmt-t-views-max').val()) || null };
+                pmtRangeFilters['l7_views'] = { min: parseFloat($('#pmt-l7-views-min').val()) || null, max: parseFloat($('#pmt-l7-views-max').val()) || null };
+                pmtRangeFilters['cbid'] = { min: parseFloat($('#pmt-cbid-min').val()) || null, max: parseFloat($('#pmt-cbid-max').val()) || null };
+                pmtRangeFilters['scvr'] = { min: parseFloat($('#pmt-scvr-min').val()) || null, max: parseFloat($('#pmt-scvr-max').val()) || null };
+                applyFilters();
+            });
+
+            // PMT Ads range filter clear
+            $('#pmt-clear-range-btn').on('click', function() {
+                $('#pmt-t-views-min, #pmt-t-views-max, #pmt-l7-views-min, #pmt-l7-views-max, #pmt-cbid-min, #pmt-cbid-max, #pmt-scvr-min, #pmt-scvr-max').val('');
+                pmtRangeFilters = { 't_views': { min: null, max: null }, 'l7_views': { min: null, max: null }, 'cbid': { min: null, max: null }, 'scvr': { min: null, max: null } };
+                applyFilters();
+            });
+
+            // Section Filter: column visibility groups
+            var pricingOnlyColumns = [
+                'image_path', 'Missing', 'E Stock', 'MAP', 'nr_req', 'SCVR',
+                'A Price', 'GPFT%', 'AD%', 'PFT %', 'ROI%',
+                'lmp_price', 'SPRICE', '_accept', 'SGPFT', 'SPFT', 'SROI',
+                'AD_Spend_L30', 'pmt_spend_L30'
+            ];
+            var kwAdsOnlyColumns = [
+                'kw_hasCampaign', 'NRL', 'l7_views', 'kw_cvr',
+                'kw_campaignBudgetAmount', 'kw_sbgt', 'kw_acos', 'kw_clicks',
+                'kw_spend_L30', 'kw_ad_sold', 'kw_l7_spend', 'kw_l1_spend', 'kw_l7_cpc', 'kw_l1_cpc',
+                'kw_last_sbid', 'kw_sbid_calc', 'kw_sbid_m', 'kw_apr_bid', 'kw_campaignStatus'
+            ];
+            var pmtAdsOnlyColumns = [
+                'pmt_cbid', 'pmt_es_bid', 'pmt_s_bid', 'pmt_t_views', 'pmt_l7_views',
+                'pmt_scvr', 'pmt_clicks_l7', 'pmt_clicks_l30',
+                'pmt_pft', 'pmt_roi', 'pmt_tpft', 'pmt_troi', 'pmt_nrl'
+            ];
+            var sharedColumns = [
+                '_select', 'INV', 'L30', 'E Dil%', 'eBay Price', 'eBay L30', 'views'
+            ];
+
+            function applySectionColumnVisibility(sectionVal) {
+                if (sectionVal === 'all' || sectionVal === 'pricing') {
+                    kwAdsOnlyColumns.forEach(function(col) { try { table.hideColumn(col); } catch(e) {} });
+                    pmtAdsOnlyColumns.forEach(function(col) { try { table.hideColumn(col); } catch(e) {} });
+                    pricingOnlyColumns.forEach(function(col) { try { table.showColumn(col); } catch(e) {} });
+                    sharedColumns.forEach(function(col) { try { table.showColumn(col); } catch(e) {} });
+                } else if (sectionVal === 'kw_ads') {
+                    pricingOnlyColumns.forEach(function(col) { try { table.hideColumn(col); } catch(e) {} });
+                    pmtAdsOnlyColumns.forEach(function(col) { try { table.hideColumn(col); } catch(e) {} });
+                    kwAdsOnlyColumns.forEach(function(col) { try { table.showColumn(col); } catch(e) {} });
+                    sharedColumns.forEach(function(col) { try { table.showColumn(col); } catch(e) {} });
+                } else if (sectionVal === 'pmt_ads') {
+                    pricingOnlyColumns.forEach(function(col) { try { table.hideColumn(col); } catch(e) {} });
+                    kwAdsOnlyColumns.forEach(function(col) { try { table.hideColumn(col); } catch(e) {} });
+                    pmtAdsOnlyColumns.forEach(function(col) { try { table.showColumn(col); } catch(e) {} });
+                    sharedColumns.forEach(function(col) { try { table.showColumn(col); } catch(e) {} });
+                }
+                table.redraw(true);
+            }
+
+            $('#section-filter').on('change', function() {
+                var sectionVal = $(this).val();
+                applySectionColumnVisibility(sectionVal);
+
+                if (sectionVal === 'all' || sectionVal === 'pricing') {
+                    $('#kw-ads-stats').hide();
+                    $('#kw-ads-range-section').hide();
+                    $('.kw-ads-filter-item').hide();
+                    $('#pmt-ads-filter-section').hide();
+                    $('.pmt-ads-filter-item').hide();
+                    $('#dil-filter-wrapper').show();
+                    $('.pricing-filter-item').css('display', '');
+                    $('#summary-stats').show();
+                    applyFilters();
+                } else if (sectionVal === 'kw_ads') {
+                    $('#kw-ads-stats').show();
+                    $('#kw-ads-range-section').show();
+                    $('.kw-ads-filter-item').css('display', 'inline-block');
+                    $('#pmt-ads-filter-section').hide();
+                    $('.pmt-ads-filter-item').hide();
+                    $('#dil-filter-wrapper').show();
+                    $('.pricing-filter-item').hide();
+                    $('#summary-stats').hide();
+                    applyFilters();
+                    updateKwAdsStats();
+                } else if (sectionVal === 'pmt_ads') {
+                    $('#kw-ads-stats').hide();
+                    $('#kw-ads-range-section').hide();
+                    $('.kw-ads-filter-item').hide();
+                    $('.pricing-filter-item').hide();
+                    $('#summary-stats').hide();
+                    $('#dil-filter-wrapper').hide();
+                    $('.pmt-ads-filter-item').css('display', 'inline-block');
+                    $('#pmt-ads-filter-section').show();
+                    applyFilters();
+                }
+            });
+
+            // Update KW Ads Statistics
+            function updateKwAdsStats() {
+                if (typeof table === 'undefined' || !table) return;
+                var allData = table.getData('all');
+                var totalSkuCount = 0, ebaySkuCount = 0, campaignCount = 0, missingCount = 0;
+                var nraMissingCount = 0, nrlMissingCount = 0, zeroInvCount = 0, nraCount = 0, nrlCount = 0, raCount = 0;
+                var pausedCount = 0;
+                var totalClicks = 0, totalSpend = 0, totalAdSold = 0, totalAcos = 0, totalCvr = 0, acosC = 0, cvrC = 0;
+
+                allData.forEach(function(row) {
+                    if (row.is_parent_summary) return;
+                    totalSkuCount++;
+                    var hasCampaign = row.kw_campaign_id && row.kw_campaign_id !== '';
+                    var ebayPrice = parseFloat(row['eBay Price'] || 0);
+                    if (ebayPrice > 0 || hasCampaign) ebaySkuCount++;
+                    if (hasCampaign) {
+                        campaignCount++;
+                        var clicks = parseInt(row.kw_clicks || 0);
+                        var spend = parseFloat(row.kw_spend_L30 || 0);
+                        var adSold = parseInt(row.kw_ad_sold || 0);
+                        var acos = parseFloat(row.kw_acos || 0);
+                        var cvr = parseFloat(row.kw_cvr || 0);
+                        totalClicks += clicks;
+                        totalSpend += spend;
+                        totalAdSold += adSold;
+                        if (acos > 0) { totalAcos += acos; acosC++; }
+                        if (cvr > 0) { totalCvr += cvr; cvrC++; }
+                        if (row.kw_campaignStatus === 'PAUSED') pausedCount++;
+                    } else {
+                        var inv = parseInt(row.INV || 0);
+                        if (inv > 0 && ebayPrice > 0) missingCount++;
+                    }
+                    var nrl = row.NRL || '';
+                    if (nrl === 'NRL') nrlCount++;
+                    if (nrl === '' && hasCampaign) nrlMissingCount++;
+                    var nr = row.NR || '';
+                    if (nr === 'NRA') nraCount++;
+                    else if (nr === 'RA') raCount++;
+                    if (nr === '' && hasCampaign) nraMissingCount++;
+                    if (parseInt(row.INV || 0) === 0 && hasCampaign) zeroInvCount++;
+                });
+
+                $('#kw-total-sku-count').text(totalSkuCount);
+                $('#kw-ebay-sku-count').text(ebaySkuCount);
+                $('#kw-campaign-count').text(campaignCount);
+                $('#kw-missing-count').text(missingCount);
+                $('#kw-nra-missing-count').text(nraMissingCount);
+                $('#kw-nrl-missing-count').text(nrlMissingCount);
+                $('#kw-zero-inv-count').text(zeroInvCount);
+                $('#kw-nra-count').text(nraCount);
+                $('#kw-nrl-count').text(nrlCount);
+                $('#kw-ra-count').text(raCount);
+                $('#kw-paused-count').text(pausedCount);
+                $('#kw-l30-clicks').text(totalClicks);
+                $('#kw-l30-spend').text('$' + totalSpend.toFixed(2));
+                $('#kw-l30-ad-sold').text(totalAdSold);
+                $('#kw-avg-acos').text(acosC > 0 ? (totalAcos / acosC).toFixed(2) + '%' : '0%');
+                $('#kw-avg-cvr').text(cvrC > 0 ? (totalCvr / cvrC).toFixed(2) + '%' : '0%');
+            }
 
             // Range filter event listeners (E L30, Views)
             $('#range-min, #range-max, #range-column-select').on('keyup change', function() {

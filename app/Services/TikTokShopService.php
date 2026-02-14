@@ -28,8 +28,8 @@ class TikTokShopService
         $this->shopId = config('services.tiktok.shop_id');
         
         // Get tokens from cache first, then fallback to env
-        $this->accessToken = Cache::get('tiktok_access_token') ?? env('TIKTOK_ACCESS_TOKEN');
-        $this->refreshToken = Cache::get('tiktok_refresh_token') ?? env('TIKTOK_REFRESH_TOKEN');
+        $this->accessToken = Cache::get('tiktok_access_token') ?? config('services.tiktok.access_token');
+        $this->refreshToken = Cache::get('tiktok_refresh_token') ?? config('services.tiktok.refresh_token');
         
         // Initialize the TikTok Shop client library (same as ship_hub)
         $this->client = new Client($this->clientKey, $this->clientSecret);

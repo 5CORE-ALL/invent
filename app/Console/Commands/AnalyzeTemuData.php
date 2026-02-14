@@ -328,9 +328,9 @@ class AnalyzeTemuData extends Command
     private function generateSignValue($requestBody)
     {
         // Environment/config variables
-        $appKey = env('TEMU_APP_KEY');
-        $appSecret = env('TEMU_SECRET_KEY');
-        $accessToken = env('TEMU_ACCESS_TOKEN');
+        $appKey = config('services.temu.app_key');
+        $appSecret = config('services.temu.secret_key');
+        $accessToken = config('services.temu.access_token');
         $timestamp = time();
 
         // Top-level params

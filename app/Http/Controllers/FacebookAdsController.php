@@ -12,8 +12,8 @@ class FacebookAdsController extends Controller
 {
     public function getAds()
     {
-        $accessToken = env('FACEBOOK_ACCESS_TOKEN');
-        $adAccountId = env('FACEBOOK_AD_ACCOUNT_ID');
+        $accessToken = config('services.facebook.access_token');
+        $adAccountId = config('services.facebook.ad_account_id');
 
         // dd($accessToken, $adAccountId);
 
@@ -28,8 +28,8 @@ class FacebookAdsController extends Controller
 
     public function getCampaigns()
     {
-        $accessToken = env('FACEBOOK_ACCESS_TOKEN');
-        $adAccountId = env('FACEBOOK_AD_ACCOUNT_ID');
+        $accessToken = config('services.facebook.access_token');
+        $adAccountId = config('services.facebook.ad_account_id');
 
         $response = Http::get("https://graph.facebook.com/v19.0/{$adAccountId}/campaigns", [
             'access_token' => $accessToken,
@@ -41,8 +41,8 @@ class FacebookAdsController extends Controller
 
     public function getAdSets()
     {
-        $accessToken = env('FACEBOOK_ACCESS_TOKEN');
-        $adAccountId = env('FACEBOOK_AD_ACCOUNT_ID');
+        $accessToken = config('services.facebook.access_token');
+        $adAccountId = config('services.facebook.ad_account_id');
 
         $response = Http::get("https://graph.facebook.com/v19.0/{$adAccountId}/adsets", [
             'access_token' => $accessToken,
@@ -54,8 +54,8 @@ class FacebookAdsController extends Controller
 
     public function getInsights()
     {
-        $accessToken = env('FACEBOOK_ACCESS_TOKEN');
-        $adAccountId = env('FACEBOOK_AD_ACCOUNT_ID');
+        $accessToken = config('services.facebook.access_token');
+        $adAccountId = config('services.facebook.ad_account_id');
 
         $response = Http::get("https://graph.facebook.com/v19.0/{$adAccountId}/insights", [
             'access_token' => $accessToken,

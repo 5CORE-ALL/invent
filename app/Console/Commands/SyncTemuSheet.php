@@ -20,9 +20,9 @@ class SyncTemuSheet extends Command
     public function __construct()
     {
         parent::__construct();
-        $this->apiUrl    = "https://" . env('SHOPIFY_5CORE_DOMAIN') . "/admin/api/2024-10";
-        $this->apiKey    = env('SHOPIFY_5CORE_API_KEY');
-        $this->password  = env('SHOPIFY_5CORE_PASSWORD');
+        $this->apiUrl    = "https://" . config('services.shopify_5core.domain') . "/admin/api/2024-10";
+        $this->apiKey    = config('services.shopify_5core.api_key');
+        $this->password  = config('services.shopify_5core.password');
     }
 
 

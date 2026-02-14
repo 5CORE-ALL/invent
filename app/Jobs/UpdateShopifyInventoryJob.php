@@ -32,9 +32,9 @@ class UpdateShopifyInventoryJob implements ShouldQueue
         $this->logId = $logId;
         $this->sku = $sku;
         $this->adjustment = $adjustment;
-        $this->shopifyDomain = env('SHOPIFY_STORE_URL');
-        $this->shopifyApiKey = env('SHOPIFY_API_KEY');
-        $this->shopifyPassword = env('SHOPIFY_PASSWORD');
+        $this->shopifyDomain = config('services.shopify.store_url');
+        $this->shopifyApiKey = config('services.shopify.api_key');
+        $this->shopifyPassword = config('services.shopify.password');
     }
 
     public function handle(): void

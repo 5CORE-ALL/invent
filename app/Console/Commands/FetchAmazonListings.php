@@ -34,7 +34,7 @@ class FetchAmazonListings extends Command
         $accessToken = $this->getAccessToken();
         info('Access Token', [$accessToken]);
 
-        $marketplaceId = env('SPAPI_MARKETPLACE_ID');
+        $marketplaceId = config('services.amazon_sp.marketplace_id');
 
         // Step 1: Request the report
         $response = Http::withHeaders([
@@ -145,9 +145,9 @@ class FetchAmazonListings extends Command
     {
         $res = Http::asForm()->post('https://api.amazon.com/auth/o2/token', [
             'grant_type' => 'refresh_token',
-            'refresh_token' => env('SPAPI_REFRESH_TOKEN'),
-            'client_id' => env('SPAPI_CLIENT_ID'),
-            'client_secret' => env('SPAPI_CLIENT_SECRET'),
+            'refresh_token' => config('services.amazon_sp.refresh_token'),
+            'client_id' => config('services.amazon_sp.client_id'),
+            'client_secret' => config('services.amazon_sp.client_secret'),
         ]);
 
         return $res['access_token'] ?? null;
@@ -155,7 +155,7 @@ class FetchAmazonListings extends Command
 
     private function getUnitOrderedAndSessionsData(){
         $accessToken = $this->getAccessToken();
-        $marketplaceId = env('SPAPI_MARKETPLACE_ID');
+        $marketplaceId = config('services.amazon_sp.marketplace_id');
 
         $l7End = Carbon::today()->copy()->subDay()->endOfDay();           
         $l7Start = $l7End->copy()->subDays(7)->startOfDay();

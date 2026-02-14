@@ -85,7 +85,7 @@ class TiktokSheetData extends Command
         $skuCountsL30 = [];
         $skuPrices = []; // ['SKU' => ['price' => float, 'date' => Carbon]]
 
-        $baseUrl = 'https://'.env('SHOPIFY_STORE_URL').'/admin/api/2024-10/orders.json';
+        $baseUrl = 'https://'.config('services.shopify.store_url').'/admin/api/2024-10/orders.json';
 
         // initial params: use created_at_min to restrict to last 60 days (server side)
         $params = [
@@ -151,7 +151,7 @@ class TiktokSheetData extends Command
                 $sourceName = strtolower($order['source_name'] ?? '');
                 $sourceIdentifier = strtolower($order['source_identifier'] ?? '');
                 $appId = $order['app_id'] ?? null;
-                $envTiktokAppId = env('TIKTOK_APP_ID');
+                $envTiktokAppId = config('services.tiktok.app_id');
                 
                 // Handle tags - can be array or string
                 $tagsRaw = $order['tags'] ?? null;
@@ -370,7 +370,7 @@ class TiktokSheetData extends Command
             try {
                 $attempt++;
                 $response = Http::withHeaders([
-                    'X-Shopify-Access-Token' => env('SHOPIFY_ACCESS_TOKEN'),
+                    'X-Shopify-Access-Token' => config('services.shopify.access_token'),
                 ])->get($url);
 
                 // If 429 — wait and retry

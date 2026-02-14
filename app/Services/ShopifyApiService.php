@@ -14,8 +14,8 @@ class ShopifyApiService
         $this->shopifyApiKey = config('services.shopify.api_key');
         $this->shopifyPassword = config('services.shopify.password');
         $this->shopifyStoreUrl = str_replace(['https://', 'http://'], '', config('services.shopify.store_url'));
-        $this->shopifyStoreUrlName = env('SHOPIFY_STORE');
-        $this->shopifyAccessToken = env('SHOPIFY_PASSWORD');
+        $this->shopifyStoreUrlName = config('services.shopify.store');
+        $this->shopifyAccessToken = config('services.shopify.password');
     }
 
     public function getInventory()
@@ -58,7 +58,7 @@ class ShopifyApiService
                 'Content-Type' => 'application/json',
             ]);
 
-            if (env('FILESYSTEM_DRIVER') === 'local') {
+            if (config('filesystems.default') === 'local') {
                 $request = $request->withoutVerifying();
             }
 

@@ -222,9 +222,9 @@ class FetchEbay3Metrics extends Command
 
     private function getToken()
     {
-        $id = env('EBAY_3_APP_ID');
-        $secret = env('EBAY_3_CERT_ID');
-        $rtoken = env('EBAY_3_REFRESH_TOKEN');
+        $id = config('services.ebay3.app_id');
+        $secret = config('services.ebay3.cert_id');
+        $rtoken = config('services.ebay3.refresh_token');
 
         $maxRetries = 3;
         $attempt = 0;

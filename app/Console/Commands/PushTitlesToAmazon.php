@@ -35,11 +35,11 @@ class PushTitlesToAmazon extends Command
         $this->warn('Note: This will UPDATE product titles on Amazon Seller Central');
 
         // Get Amazon API configuration from existing .env variables
-        $clientId = env('SPAPI_CLIENT_ID');
-        $clientSecret = env('SPAPI_CLIENT_SECRET');
-        $refreshToken = env('SPAPI_REFRESH_TOKEN');
-        $sellerId = env('AMAZON_SELLER_ID');
-        $marketplaceId = env('SPAPI_MARKETPLACE_ID', 'ATVPDKIKX0DER');
+        $clientId = config('services.amazon_sp.client_id');
+        $clientSecret = config('services.amazon_sp.client_secret');
+        $refreshToken = config('services.amazon_sp.refresh_token');
+        $sellerId = config('services.amazon_sp.seller_id');
+        $marketplaceId = config('services.amazon_sp.marketplace_id');
 
         if (!$clientId || !$clientSecret || !$refreshToken || !$sellerId) {
             $this->error('Amazon SP-API credentials not configured properly in .env file');

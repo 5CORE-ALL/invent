@@ -2207,11 +2207,11 @@
                         }
                     }
                 }
-                totalSpend += spend;
+                // Use temu_campaign_reports L30 data for badge totals (matches all-marketplace-master)
+                totalSpend += parseFloat(row.spend_l30) || 0;
                 totalBudget += parseFloat(row.target) || 0;
-                totalAdClicks += adClicks;
-                const outRoas = parseFloat(row.out_roas_l30) || 0;
-                if (outRoas > 0 && spend > 0) totalAdSales += spend * outRoas;
+                totalAdClicks += parseInt(row.clicks_l30, 10) || 0;
+                totalAdSales += parseFloat(row.ad_sales_l30) || 0;
             });
             const zeroInvCount = zeroInvSkus.size;
             const raCount = Math.max(0, validSkuCount - nraCount);
@@ -2222,6 +2222,13 @@
                 const st = (r.campaign_status || '').trim();
                 if (st === 'Active' || s > 0 || c > 0) uniqueCampaignSkus.add(r.sku);
             });
+            // Use backend L30 totals from temu_campaign_reports (matches all-marketplace-master exactly)
+            if (l30TotalsFromBackend) {
+                totalSpend = parseFloat(l30TotalsFromBackend.total_spend) || totalSpend;
+                totalAdClicks = parseInt(l30TotalsFromBackend.total_clicks, 10) || totalAdClicks;
+                totalAdSales = parseFloat(l30TotalsFromBackend.total_ad_sales) || totalAdSales;
+            }
+
             const avgAcos = totalAdSales > 0 ? (totalSpend / totalAdSales) * 100 : 0;
             const roas = totalSpend > 0 ? totalAdSales / totalSpend : 0;
             const avgClicks = adSkuSet.size > 0 ? totalAdClicks / adSkuSet.size : 0;
@@ -2265,6 +2272,7 @@
         };
 
         let totalCampaignCountFromBackend = 0;
+        let l30TotalsFromBackend = null;
 
         table = new Tabulator("#temu-table", {
             ajaxURL: "/temu-decrease-data",
@@ -2280,6 +2288,7 @@
             ajaxResponse: function(url, params, response) {
                 if (response && Array.isArray(response.data)) {
                     totalCampaignCountFromBackend = parseInt(response.total_campaign_count || 0, 10);
+                    l30TotalsFromBackend = response.l30_totals || null;
                     return response.data;
                 }
                 if (Array.isArray(response)) return response;

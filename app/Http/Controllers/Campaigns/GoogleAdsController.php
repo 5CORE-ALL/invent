@@ -1103,7 +1103,7 @@ class GoogleAdsController extends Controller
             $campaignIds = $request->input('campaign_ids', []);
             $newBids = $request->input('bids', []);
 
-            $customerId = env('GOOGLE_ADS_LOGIN_CUSTOMER_ID');
+            $customerId = config('services.google_ads.login_customer_id');
 
             if (!$customerId) {
                 return response()->json([
@@ -2285,7 +2285,7 @@ class GoogleAdsController extends Controller
                 ], 400);
             }
 
-            $customerId = env('GOOGLE_ADS_LOGIN_CUSTOMER_ID');
+            $customerId = config('services.google_ads.login_customer_id');
             if (empty($customerId)) {
                 return response()->json([
                     'status' => 500,
@@ -2354,7 +2354,7 @@ class GoogleAdsController extends Controller
 
             $campaignIds = array_values(array_filter(array_unique($campaignIds)));
 
-            $customerId = env('GOOGLE_ADS_LOGIN_CUSTOMER_ID');
+            $customerId = config('services.google_ads.login_customer_id');
             if (empty($customerId)) {
                 return response()->json([
                     'status' => 500,

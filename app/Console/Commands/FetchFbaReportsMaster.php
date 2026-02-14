@@ -54,7 +54,7 @@ class FetchFbaReportsMaster extends Command
         
         $this->info("📋 Found " . count($validAsins) . " ASINs, " . count($skuToAsinMap) . " SKU mappings, and " . count($asinToSkuMap) . " ASIN mappings in FBA table");
 
-        $marketplaceIds = env('SPAPI_MARKETPLACE_ID', 'ATVPDKIKX0DER');
+        $marketplaceIds = config('services.amazon_sp.marketplace_id');
         $endpointBase = 'https://sellingpartnerapi-na.amazon.com/reports/2021-06-30/reports';
 
         // 3️⃣ Fetch latest Sales & Traffic report
@@ -281,9 +281,9 @@ class FetchFbaReportsMaster extends Command
     {
         $res = Http::asForm()->post('https://api.amazon.com/auth/o2/token', [
             'grant_type' => 'refresh_token',
-            'refresh_token' => env('SPAPI_REFRESH_TOKEN'),
-            'client_id' => env('SPAPI_CLIENT_ID'),
-            'client_secret' => env('SPAPI_CLIENT_SECRET'),
+            'refresh_token' => config('services.amazon_sp.refresh_token'),
+            'client_id' => config('services.amazon_sp.client_id'),
+            'client_secret' => config('services.amazon_sp.client_secret'),
         ]);
 
         if ($res->failed()) {

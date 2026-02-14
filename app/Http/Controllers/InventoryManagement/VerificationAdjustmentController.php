@@ -32,9 +32,9 @@ class VerificationAdjustmentController extends Controller
     public function __construct(ApiController $apiController)
     {
         $this->apiController = $apiController;
-        $this->shopifyDomain = env('SHOPIFY_STORE_URL');
-        $this->shopifyApiKey = env('SHOPIFY_API_KEY');
-        $this->shopifyPassword = env('SHOPIFY_PASSWORD');
+        $this->shopifyDomain = config('services.shopify.store_url');
+        $this->shopifyApiKey = config('services.shopify.api_key');
+        $this->shopifyPassword = config('services.shopify.password');
     }
 
     /**
@@ -1795,7 +1795,7 @@ class VerificationAdjustmentController extends Controller
 
             // Google Apps Script Web App URL
             // You'll get this URL after deploying the Apps Script
-            $appsScriptUrl = env('GOOGLE_APPS_SCRIPT_EXPORT_URL', '');
+            $appsScriptUrl = config('services.google_apps_script.export_url');
             
             if (empty($appsScriptUrl)) {
                 return response()->json([
@@ -1805,7 +1805,7 @@ class VerificationAdjustmentController extends Controller
             }
 
             // Get the stored spreadsheet ID (if configured to use the same sheet)
-            $spreadsheetId = env('GOOGLE_SHEETS_VERIFICATION_ADJUSTMENT_ID', '');
+            $spreadsheetId = config('services.google_apps_script.verification_adjustment_sheet_id');
 
             // Prepare payload
             $payload = [

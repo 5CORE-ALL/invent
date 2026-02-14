@@ -22,12 +22,12 @@ class EbayApiService
 
     public function __construct()
     {
-        $this->appId       = env('EBAY_APP_ID');
-        $this->certId      = env('EBAY_CERT_ID');
-        $this->devId       = env('EBAY_DEV_ID');
-        $this->endpoint    = env('EBAY_TRADING_API_ENDPOINT', 'https://api.ebay.com/ws/api.dll');
-        $this->siteId      = env('EBAY_SITE_ID', 0); // US = 0
-        $this->compatLevel = env('EBAY_COMPAT_LEVEL', '1189');
+        $this->appId       = config('services.ebay.app_id');
+        $this->certId      = config('services.ebay.cert_id');
+        $this->devId       = config('services.ebay.dev_id');
+        $this->endpoint    = config('services.ebay.trading_api_endpoint');
+        $this->siteId      = config('services.ebay.site_id'); // US = 0
+        $this->compatLevel = config('services.ebay.compat_level');
     }
     // public function generateBearerToken()
     // {
@@ -42,9 +42,9 @@ class EbayApiService
 
 
     //     // 2. Otherwise, request new token from eBay
-    //     $clientId     = env('EBAY_APP_ID');
-    //     $clientSecret = env('EBAY_CERT_ID');
-    //     $refreshToken = env('EBAY_REFRESH_TOKEN');
+    //     $clientId     = config('services.ebay.app_id');
+    //     $clientSecret = config('services.ebay.cert_id');
+    //     $refreshToken = config('services.ebay.refresh_token');
 
     //     $response = Http::asForm()
     //         ->withBasicAuth($clientId, $clientSecret)
@@ -70,9 +70,9 @@ class EbayApiService
     public function generateBearerToken()
     {
 
-        $clientId     = env('EBAY_APP_ID');
-        $clientSecret = env('EBAY_CERT_ID');
-        $refreshToken = env('EBAY_REFRESH_TOKEN');
+        $clientId     = config('services.ebay.app_id');
+        $clientSecret = config('services.ebay.cert_id');
+        $refreshToken = config('services.ebay.refresh_token');
 
         $response = Http::withoutVerifying()->asForm()
             ->withBasicAuth($clientId, $clientSecret)
@@ -567,9 +567,9 @@ class EbayApiService
     private function generateEbayToken(): ?string
     {
        
-       $clientId = env('EBAY_APP_ID');
-        $clientSecret = env('EBAY_CERT_ID');
-        $refreshToken = env('EBAY_REFRESH_TOKEN');
+       $clientId = config('services.ebay.app_id');
+        $clientSecret = config('services.ebay.cert_id');
+        $refreshToken = config('services.ebay.refresh_token');
         $credentials = base64_encode("{$clientId}:{$clientSecret}");
 
         $payload = [
@@ -660,7 +660,7 @@ class EbayApiService
         ])->timeout(60); // Add timeout
 
         // Disable SSL verification if needed (consider security implications)
-        if (env('APP_ENV') === 'local' || env('APP_DEBUG') === true) {
+        if (config('app.env') === 'local' || config('app.debug') === true) {
             $request = $request->withoutVerifying();
         }
 
@@ -704,7 +704,7 @@ class EbayApiService
                 'Authorization' => 'Bearer ' . $token,
             ])->timeout(30);
 
-            if (env('APP_ENV') === 'local' || env('APP_DEBUG') === true) {
+            if (config('app.env') === 'local' || config('app.debug') === true) {
                 $statusRequest = $statusRequest->withoutVerifying();
             }
 
@@ -760,7 +760,7 @@ public function downloadAndParseEbayReport(string $taskId, string $token): array
             'Authorization' => 'Bearer ' . $token,
         ])->timeout(120); // Longer timeout for file download
 
-        if (env('APP_ENV') === 'local' || env('APP_DEBUG') === true) {
+        if (config('app.env') === 'local' || config('app.debug') === true) {
             $request = $request->withoutVerifying();
         }
 
@@ -1017,7 +1017,7 @@ public function downloadAndParseEbayReport(string $taskId, string $token): array
         'Content-Type' => 'application/json',
     ]);
 
-    if (env('FILESYSTEM_DRIVER') === 'local') {
+    if (config('filesystems.default') === 'local') {
         $request = $request->withoutVerifying();
     }
 
@@ -1065,7 +1065,7 @@ public function downloadAndParseEbayReport(string $taskId, string $token): array
             'Authorization' => 'Bearer ' . $token,
         ]);
 
-        if (env('FILESYSTEM_DRIVER') === 'local') {
+        if (config('filesystems.default') === 'local') {
             $statusRequest = $statusRequest->withoutVerifying();
         }
 
@@ -1106,7 +1106,7 @@ public function downloadAndParseEbayReport(string $taskId, string $token): array
             'Authorization' => 'Bearer ' . $token,
         ]);
 
-        if (env('FILESYSTEM_DRIVER') === 'local') {
+        if (config('filesystems.default') === 'local') {
             $downloadRequest = $downloadRequest->withoutVerifying();
         }
 
@@ -1253,7 +1253,7 @@ public function downloadAndParseEbayReport(string $taskId, string $token): array
             'Authorization' => 'Bearer ' . $token,
             'Content-Type' => 'application/json',
         ]);
-         if (env('FILESYSTEM_DRIVER') === 'local') {$request = $request->withoutVerifying();}
+         if (config('filesystems.default') === 'local') {$request = $request->withoutVerifying();}
         $response = $request->post($apiUrl, $payload);
 
         $location = $response->header('Location');
@@ -1280,7 +1280,7 @@ public function downloadAndParseEbayReport(string $taskId, string $token): array
             $request2=Http::withHeaders([
                 'Authorization' => 'Bearer ' . $token,
             ]);
-            if (env('FILESYSTEM_DRIVER') === 'local') {$request2 = $request2->withoutVerifying();}
+            if (config('filesystems.default') === 'local') {$request2 = $request2->withoutVerifying();}
             $statusResponse = $request2->get("https://api.ebay.com/sell/feed/v1/inventory_task/{$taskId}");
         
             $status = $statusResponse['status'] ?? 'PENDING';
@@ -1305,7 +1305,7 @@ public function downloadAndParseEbayReport(string $taskId, string $token): array
         try {
             $request3=Http::withHeaders(['Authorization' => 'Bearer ' . $token,]);
 
-            if (env('FILESYSTEM_DRIVER') === 'local') {$request3 = $request3->withoutVerifying();}
+            if (config('filesystems.default') === 'local') {$request3 = $request3->withoutVerifying();}
 
             $response = $request3->get($baseTaskUrl);
 

@@ -78,9 +78,9 @@ class FetchEbay2Orders extends Command
     private function getToken()
     {
         // eBay 2 credentials (separate from eBay 1)
-        $id = env('EBAY2_APP_ID');
-        $secret = env('EBAY2_CERT_ID');
-        $rtoken = env('EBAY2_REFRESH_TOKEN');
+        $id = config('services.ebay2.app_id');
+        $secret = config('services.ebay2.cert_id');
+        $rtoken = config('services.ebay2.refresh_token');
 
         // If EBAY2 credentials not set, show error
         if (!$id || !$secret || !$rtoken) {
