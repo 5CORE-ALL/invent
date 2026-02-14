@@ -155,7 +155,7 @@ class TaskController extends Controller
             'checklist_link' => 'nullable|string',
             'pl' => 'nullable|string',
             'process' => 'nullable|string',
-            'image' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048',
+            'image' => 'nullable|image|mimes:jpeg,png,jpg,gif,webp|max:10240', // 10MB max
         ]);
 
         // Map to old table field names
@@ -399,7 +399,7 @@ class TaskController extends Controller
             'checklist_link' => 'nullable|string',
             'pl' => 'nullable|string',
             'process' => 'nullable|string',
-            'image' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048',
+            'image' => 'nullable|image|mimes:jpeg,png,jpg,gif,webp|max:10240', // 10MB max
         ]);
 
         // Map to old table field names
@@ -483,6 +483,12 @@ class TaskController extends Controller
         // Check if user can delete this task
         $this->authorize('delete', $task);
         
+        // Delete associated image file if exists
+        if ($task->image && file_exists(public_path('uploads/tasks/' . $task->image))) {
+            unlink(public_path('uploads/tasks/' . $task->image));
+            \Log::info('🗑️ Image deleted for deleted task:', ['task_id' => $task->id, 'image' => $task->image]);
+        }
+        
         // Save task to deleted_tasks before deletion
         $this->saveDeletedTask($task);
         
@@ -529,6 +535,13 @@ class TaskController extends Controller
             if ($task->start_date) {
                 $startDate = \Carbon\Carbon::parse($task->start_date);
                 $task->completion_day = $startDate->diffInDays(now());
+            }
+            
+            // Delete image when task is marked as Done
+            if ($task->image && file_exists(public_path('uploads/tasks/' . $task->image))) {
+                unlink(public_path('uploads/tasks/' . $task->image));
+                \Log::info('🗑️ Image deleted for completed task:', ['task_id' => $task->id, 'image' => $task->image]);
+                $task->image = null; // Clear image field
             }
         }
 
@@ -597,12 +610,23 @@ class TaskController extends Controller
                     ], 403);
                 }
                 
-                // Save all tasks to deleted_tasks before deletion
+                // Delete images and save to deleted_tasks before deletion
+                $imagesDeleted = 0;
                 foreach ($tasksToDelete as $task) {
+                    // Delete image file if exists
+                    if ($task->image && file_exists(public_path('uploads/tasks/' . $task->image))) {
+                        unlink(public_path('uploads/tasks/' . $task->image));
+                        $imagesDeleted++;
+                        \Log::info('🗑️ Image deleted:', ['task_id' => $task->id, 'image' => $task->image]);
+                    }
                     $this->saveDeletedTask($task);
                 }
                 
                 Task::whereIn('id', $tasksToDelete->pluck('id'))->delete();
+                
+                if ($imagesDeleted > 0) {
+                    \Log::info("🗑️ Bulk delete: $imagesDeleted image(s) deleted");
+                }
                 
                 $message = "$deletedCount task(s) deleted successfully!";
                 if ($deletedCount < $requestedCount) {
