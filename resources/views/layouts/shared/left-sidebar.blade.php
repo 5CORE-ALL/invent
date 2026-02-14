@@ -1968,7 +1968,7 @@
                                     </li>
 
                                     <li>
-                                        <a href="{{ url('shopify-pricing-cvr') }}">
+                                        <a href="{{ url('/shopify-b2c-pricing') }}">
                                             Shopify Pricing - CVR</a>
                                     </li>
 
