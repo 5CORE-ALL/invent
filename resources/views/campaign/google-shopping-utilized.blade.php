@@ -92,6 +92,26 @@
             transform: none !important;
         }
 
+        /* Don't rotate SKU header column - keep horizontal */
+        .tabulator .tabulator-header .tabulator-col[tabulator-field="sku"] .tabulator-col-content .tabulator-col-content-holder,
+        .tabulator .tabulator-header .tabulator-col[tabulator-field="sku"] .tabulator-col-title-holder,
+        .tabulator .tabulator-header .tabulator-col[data-field="sku"] .tabulator-col-content .tabulator-col-content-holder,
+        .tabulator .tabulator-header .tabulator-col[data-field="sku"] .tabulator-col-title-holder {
+            writing-mode: initial !important;
+            text-orientation: initial !important;
+            transform: none !important;
+        }
+
+        /* SKU header filter input styling */
+        .tabulator .tabulator-header .tabulator-col .tabulator-header-filter input {
+            padding: 4px 8px;
+            border: 1px solid #cbd5e1;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            width: 100%;
+            background: #fff;
+        }
+
         .select-all-header-cb { cursor: pointer; }
 
         /* Ensure all header cells have consistent height */
@@ -125,6 +145,14 @@
         .tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-content-holder,
         .tabulator .tabulator-header .tabulator-col .tabulator-col-title-holder {
             pointer-events: none;
+        }
+
+        /* Allow pointer events on header filter inputs */
+        .tabulator .tabulator-header .tabulator-col .tabulator-header-filter {
+            pointer-events: auto !important;
+        }
+        .tabulator .tabulator-header .tabulator-col .tabulator-header-filter input {
+            pointer-events: auto !important;
         }
 
         .tabulator .tabulator-header .tabulator-col:hover {
@@ -164,6 +192,7 @@
         .parent-row {
             background-color: #e0eaff !important;
             font-weight: 700;
+            border-top: 2px solid #4285f4;
         }
 
         #budget-under-table .tabulator {
@@ -472,13 +501,13 @@
                     <div class="card border-0 shadow-sm" style="border: 1px solid rgba(0, 0, 0, 0.05) !important;">
                         <div class="card-body">
                             <!-- Filters Row - Top -->
-                            <div class="row g-3 align-items-end mb-3 pb-3 border-bottom">
-                                <div class="col-md-2">
-                                    <label class="form-label fw-semibold mb-2"
-                                        style="color: #475569; font-size: 0.8125rem;">
-                                        <i class="fa-solid fa-filter me-1" style="color: #64748b;"></i>Utilization Type
+                            <div class="row g-2 align-items-end mb-3 pb-3 border-bottom">
+                                <div class="col">
+                                    <label class="form-label fw-semibold mb-1"
+                                        style="color: #475569; font-size: 0.75rem;">
+                                        <i class="fa-solid fa-filter me-1" style="color: #64748b;"></i>Utilization
                                     </label>
-                                    <select id="utilization-type-select" class="form-select form-select-md">
+                                    <select id="utilization-type-select" class="form-select form-select-sm">
                                         <option value="all" selected>All</option>
                                         <option value="gg">Green+Green</option>
                                         <option value="gp">Green+Pink</option>
@@ -491,57 +520,68 @@
                                         <option value="rr">Red+Red</option>
                                     </select>
                                 </div>
-                                <div class="col-md-2">
-                                    <label class="form-label fw-semibold mb-2"
-                                        style="color: #475569; font-size: 0.8125rem;">
+                                <div class="col">
+                                    <label class="form-label fw-semibold mb-1"
+                                        style="color: #475569; font-size: 0.75rem;">
+                                        <i class="fa-solid fa-layer-group me-1" style="color: #64748b;"></i>Row Type
+                                    </label>
+                                    <select id="row-type-filter" class="form-select form-select-sm">
+                                        <option value="all" selected>All</option>
+                                        <option value="sku">SKU Only</option>
+                                        <option value="parent">Parent Only</option>
+                                    </select>
+                                </div>
+                                <div class="col">
+                                    <label class="form-label fw-semibold mb-1"
+                                        style="color: #475569; font-size: 0.75rem;">
                                         <i class="fa-solid fa-toggle-on me-1" style="color: #64748b;"></i>Status
                                     </label>
-                                    <select id="status-filter" class="form-select form-select-md">
+                                    <select id="status-filter" class="form-select form-select-sm">
                                         <option value="">All Status</option>
                                         <option value="ENABLED">Enabled</option>
                                         <option value="PAUSED">Paused</option>
                                         <option value="ARCHIVED">Archived</option>
                                     </select>
                                 </div>
-                                <div class="col-md-2">
-                                    <label class="form-label fw-semibold mb-2"
-                                        style="color: #475569; font-size: 0.8125rem;">
+                                <div class="col">
+                                    <label class="form-label fw-semibold mb-1"
+                                        style="color: #475569; font-size: 0.75rem;">
                                         <i class="fa-solid fa-boxes me-1" style="color: #64748b;"></i>Inventory
                                     </label>
-                                    <select id="inv-filter" class="form-select form-select-md">
+                                    <select id="inv-filter" class="form-select form-select-sm">
                                         <option value="">All Inventory</option>
                                         <option value="INV_GT_0" selected>INV > 0</option>
                                         <option value="INV_0">0 INV</option>
                                     </select>
                                 </div>
-                                <div class="col-md-2">
-                                    <label class="form-label fw-semibold mb-2"
-                                        style="color: #475569; font-size: 0.8125rem;">
+                                <div class="col">
+                                    <label class="form-label fw-semibold mb-1"
+                                        style="color: #475569; font-size: 0.75rem;">
                                         <i class="fa-solid fa-tags me-1" style="color: #64748b;"></i>NRL
                                     </label>
-                                    <select id="nrl-filter" class="form-select form-select-md">
+                                    <select id="nrl-filter" class="form-select form-select-sm">
                                         <option value="">All NRL</option>
                                         <option value="NRL">NRL</option>
                                         <option value="RL">RL</option>
                                     </select>
                                 </div>
-                                <div class="col-md-2">
-                                    <label class="form-label fw-semibold mb-2"
-                                        style="color: #475569; font-size: 0.8125rem;">
+                                <div class="col">
+                                    <label class="form-label fw-semibold mb-1"
+                                        style="color: #475569; font-size: 0.75rem;">
                                         <i class="fa-solid fa-tags me-1" style="color: #64748b;"></i>NRA
                                     </label>
-                                    <select id="nra-filter" class="form-select form-select-md">
+                                    <select id="nra-filter" class="form-select form-select-sm">
                                         <option value="">All NRA</option>
                                         <option value="NRA">NRA</option>
                                         <option value="RA">RA</option>
                                     </select>
                                 </div>
-                                <div class="col-md-2">
-                                    <label class="form-label fw-semibold mb-2"
-                                        style="color: #475569; font-size: 0.8125rem;">
+                                <div class="col">
+                                    <label class="form-label fw-semibold mb-1"
+                                        style="color: #475569; font-size: 0.75rem;">
                                         <i class="fa-solid fa-percent me-1" style="color: #64748b;"></i>ACOS
                                     </label>
-                                    <select id="acos-filter" class="form-select form-select-md">
+                                    <select id="acos-filter" class="form-select form-select-sm">
                                         <option value="">All ACOS</option>
                                         <option value="0-10">&lt; 10%</option>
                                         <option value="10-30">10–30%</option>
@@ -550,11 +590,10 @@
                                         <option value="50-">≥ 50%</option>
                                     </select>
                                 </div>
-                                <div class="col-md-2">
-                                    <label class="form-label fw-semibold mb-2"
-                                        style="color: #475569; font-size: 0.8125rem;">
+                                <div class="col">
+                                    <label class="form-label fw-semibold mb-1"
+                                        style="color: #475569; font-size: 0.75rem;">
                                         <i class="fa-solid fa-check-square me-1" style="color: #64748b;"></i>Bulk
-                                        Actions
                                     </label>
                                     <div class="btn-group w-100" role="group">
                                         <button type="button" id="select-all-rows-btn"
@@ -891,14 +930,26 @@
                 const processedCampaign = new Set();
                 const processedEnabled = new Set();
                 const invFilterValAllSku = $("#inv-filter").val();
+                const rowTypeVal = $("#row-type-filter").val() || "all";
                 fullData.forEach(function(row) {
                     const sku = row.sku || '';
-                    if (!sku || sku.toUpperCase().includes('PARENT')) return;
-                    let inv = parseFloat(row.INV || 0);
-                    let invPass = true;
-                    if (invFilterValAllSku === "INV_GT_0") invPass = inv > 0;
-                    else if (invFilterValAllSku === "INV_0") invPass = inv === 0;
-                    if (invPass && !processedAll.has(sku)) { processedAll.add(sku); allSkuCount++; }
+                    if (!sku) return;
+                    const isParent = row.is_parent || sku.toUpperCase().includes('PARENT');
+
+                    // Respect Row Type filter
+                    if (rowTypeVal === 'parent' && !isParent) return;
+                    if (rowTypeVal === 'sku' && isParent) return;
+
+                    // Count child SKUs for allSkuCount (exclude parents)
+                    if (!isParent) {
+                        let inv = parseFloat(row.INV || 0);
+                        let invPass = true;
+                        if (invFilterValAllSku === "INV_GT_0") invPass = inv > 0;
+                        else if (invFilterValAllSku === "INV_0") invPass = inv === 0;
+                        if (invPass && !processedAll.has(sku)) { processedAll.add(sku); allSkuCount++; }
+                    }
+
+                    // Count campaigns for ALL rows (including parents)
                     const hasCampaign = !!(row.campaign_id && row.campaignName);
                     const st = (row.campaignStatus || '').toUpperCase();
                     if (hasCampaign && (st === 'ENABLED' || st === 'PAUSED' || st === 'ARCHIVED') && statusCounts[st] !== undefined)
@@ -947,12 +998,50 @@
 
                 allData.forEach(function(row) {
                     const sku = row.sku || '';
-                    const isValidSku = sku && !sku.toUpperCase().includes('PARENT');
-
-                    if (!isValidSku) return;
+                    if (!sku) return;
+                    const isParent = row.is_parent || sku.toUpperCase().includes('PARENT');
 
                     let inv = parseFloat(row.INV || 0);
+                    const hasCampaign = !!(row.campaign_id && row.campaignName);
 
+                    // Campaign count: both parent and child
+                    if (hasCampaign) {
+                        if (!processedSkusForCampaign.has(sku)) {
+                            processedSkusForCampaign.add(sku);
+                            totalCampaignCount++;
+                        }
+                    }
+
+                    // Valid row count (both parent and child)
+                    if (!processedSkusForValidCount.has(sku)) {
+                        processedSkusForValidCount.add(sku);
+                        validSkuCount++;
+                    }
+
+                    // UB counts: both parent and child (if they have campaign)
+                    if (hasCampaign) {
+                        let budget = parseFloat(row.campaignBudgetAmount) || 0;
+                        let spend_L7 = parseFloat(row.spend_L7 || 0);
+                        let spend_L1 = parseFloat(row.spend_L1 || 0);
+                        let ub7 = budget > 0 ? (spend_L7 / (budget * 7)) * 100 : 0;
+                        let ub1 = budget > 0 ? (spend_L1 / budget) * 100 : 0;
+                        if (ub7 > 99 && ub1 > 99) overCount++;
+                        else if (ub7 < 66 && ub1 < 66) underCount++;
+                        if (ub7 > 99 || ub7 < 66) count7ub++;
+                        if ((ub7 > 99 && ub1 > 99) || (ub7 < 66 && ub1 < 66)) count7ub1ub++;
+                    }
+
+                    // Skip remaining child-only counts for parent rows
+                    if (isParent) {
+                        // Missing count for parents without campaign
+                        if (!hasCampaign && !processedSkusForMissing.has(sku)) {
+                            processedSkusForMissing.add(sku);
+                            missingCount++;
+                        }
+                        return;
+                    }
+
+                    // Child-only counts below
                     if (inv <= 0 && !processedSkusForZeroInv.has(sku)) {
                         processedSkusForZeroInv.add(sku);
                         zeroInvCount++;
@@ -963,20 +1052,6 @@
                         let rowNra = row.NRA ? row.NRA.trim() : "";
                         if (rowNra === 'NRA') nraCount++;
                         else raCount++;
-                    }
-
-                    const hasCampaign = row.campaign_id && row.campaignName;
-                    let invFilterVal = $("#inv-filter").val();
-                    if (invFilterVal === "INV_0") {
-                        if (inv <= 0 && !processedSkusForCampaign.has(sku)) {
-                            processedSkusForCampaign.add(sku);
-                            totalCampaignCount++;
-                        }
-                    } else if (hasCampaign) {
-                        if (!processedSkusForCampaign.has(sku)) {
-                            processedSkusForCampaign.add(sku);
-                            totalCampaignCount++;
-                        }
                     }
 
                     if (!hasCampaign) {
@@ -993,21 +1068,6 @@
                             }
                         }
                     }
-
-                    if (!processedSkusForValidCount.has(sku)) {
-                        processedSkusForValidCount.add(sku);
-                        validSkuCount++;
-                    }
-
-                    let budget = parseFloat(row.campaignBudgetAmount) || 0;
-                    let spend_L7 = parseFloat(row.spend_L7 || 0);
-                    let spend_L1 = parseFloat(row.spend_L1 || 0);
-                    let ub7 = budget > 0 ? (spend_L7 / (budget * 7)) * 100 : 0;
-                    let ub1 = budget > 0 ? (spend_L1 / budget) * 100 : 0;
-                    if (ub7 > 99 && ub1 > 99) overCount++;
-                    else if (ub7 < 66 && ub1 < 66) underCount++;
-                    if (ub7 > 99 || ub7 < 66) count7ub++;
-                    if ((ub7 > 99 && ub1 > 99) || (ub7 < 66 && ub1 < 66)) count7ub1ub++;
                 });
 
                 function setIfChanged(id, val) {
@@ -1130,9 +1190,7 @@
                 selectableRows: true,
                 rowFormatter: function(row) {
                     const data = row.getData();
-                    const sku = data["sku"] || '';
-
-                    if (sku && sku.toUpperCase().includes("PARENT")) {
+                    if (data.is_parent || (data.sku && data.sku.toUpperCase().includes("PARENT"))) {
                         row.getElement().classList.add("parent-row");
                     }
                 },
@@ -1159,24 +1217,15 @@
                             }
                         }
                     },
-                    {
-                        title: "Parent",
-                        field: "parent",
-                        visible: false
-                    },
+                    
                     {
                         title: "SKU",
                         field: "sku",
                         hozAlign: "left",
-                        cellClick: function(e, cell) {
-                            // Allow copy: prevent row selection when clicking on SKU text (not on toggle/button)
-                            if (e.target.closest('.campaign-toggle-switch') || e.target.closest('.campaign-chart-btn')) return;
-                            e.stopPropagation();
-                            e.preventDefault();
-                        },
                         formatter: function(cell) {
                             let row = cell.getRow().getData();
                             let sku = cell.getValue();
+
                             let campaignId = row.campaign_id || '';
                             let campaignName = row.campaignName || '';
                             let campaignStatus = (row.campaignStatus || '').toUpperCase();
@@ -1184,7 +1233,7 @@
                             
                             return `
                                 <div class="d-flex align-items-center justify-content-between flex-wrap gap-1">
-                                    <span>${sku}</span>
+                                    <span${row.is_parent ? ' style="font-weight:bold;"' : ''}>${sku}</span>
                                     <div class="d-flex align-items-center gap-1">
                                         ${campaignId ? `
                                             <div class="form-check form-switch">
@@ -1211,6 +1260,13 @@
                         hozAlign: "center",
                         formatter: function(cell) {
                             const row = cell.getRow().getData();
+                            if (row.is_parent) {
+                                // Parent: green dot if any child has campaign, red if none
+                                const has = row.hasCampaign;
+                                const color = has ? 'green' : 'red';
+                                const tip = has ? 'Some children have campaigns' : 'No child has campaign';
+                                return '<div style="display:flex;align-items:center;justify-content:center;"><span class="status-dot ' + color + '" title="' + tip + '"></span></div>';
+                            }
                             // Check if campaign exists: hasCampaign field or if campaign_id/campaignName exists
                             const hasCampaign = row.hasCampaign !== undefined ?
                                 row.hasCampaign :
@@ -1944,10 +2000,6 @@
                         field: "campaignName",
                         hozAlign: "left",
                         sorter: "string",
-                        cellClick: function(e, cell) {
-                            e.stopPropagation();
-                            e.preventDefault();
-                        },
                         formatter: function(cell) {
                             var v = cell.getValue();
                             return v != null && v !== "" ? v : "—";
@@ -1964,6 +2016,7 @@
                     if (totalSkuCountEl) {
                         totalSkuCountEl.textContent = totalSkuCountFromBackend;
                     }
+
                     return response.data;
                 }
             });
@@ -2291,6 +2344,25 @@
 
             // ✅ Combined Filter Function (defined outside so it's accessible)
             function combinedFilter(data) {
+                // Row Type filter: sku / parent / all
+                let rowTypeVal = $("#row-type-filter").val() || "all";
+                if (rowTypeVal === "sku" && data.is_parent) return false;
+                if (rowTypeVal === "parent" && !data.is_parent) return false;
+
+                // Parent rows: apply status + search filters, skip utilization/inventory/NRL/NRA filters
+                if (data.is_parent) {
+                    let searchVal = $("#global-search").val()?.toLowerCase() || "";
+                    if (searchVal && !(data.sku?.toLowerCase().includes(searchVal)) && !(data.parent?.toLowerCase().includes(searchVal))) {
+                        return false;
+                    }
+                    // Status filter for parent rows
+                    let statusVal = $("#status-filter").val();
+                    if (statusVal) {
+                        if (!data.campaignStatus || data.campaignStatus !== statusVal) return false;
+                    }
+                    return true;
+                }
+
                 let budget = parseFloat(data.campaignBudgetAmount) || 0;
                 let spend_L7 = parseFloat(data.spend_L7) || 0;
                 let spend_L1 = parseFloat(data.spend_L1) || 0;
@@ -2333,7 +2405,7 @@
 
                 let searchVal = $("#global-search").val()?.toLowerCase() || "";
                 if (searchVal && !(data.campaignName?.toLowerCase().includes(searchVal)) && !(data.sku
-                    ?.toLowerCase().includes(searchVal))) {
+                    ?.toLowerCase().includes(searchVal)) && !(data.parent?.toLowerCase().includes(searchVal))) {
                     return false;
                 }
 
@@ -2592,22 +2664,6 @@
             table.on("tableBuilt", function() {
                 table.setFilter(combinedFilter);
 
-                // Row selection ONLY when clicking checkbox column; any other cell must not select row
-                var tableEl = document.getElementById("budget-under-table");
-                if (tableEl) {
-                    function onlyCheckboxSelect(e) {
-                        var cell = e.target.closest(".tabulator-cell");
-                        if (!cell) return;
-                        var row = cell.closest(".tabulator-row");
-                        if (!row) return;
-                        var firstCell = row.querySelector(".tabulator-cell");
-                        if (cell === firstCell) return; // checkbox column – allow
-                        e.stopPropagation();
-                    }
-                    tableEl.addEventListener("mousedown", onlyCheckboxSelect, true);
-                    tableEl.addEventListener("click", onlyCheckboxSelect, true);
-                }
-
                 let filterTimeout = null;
                 table.on("dataFiltered", function() {
                     if (filterTimeout) clearTimeout(filterTimeout);
@@ -2639,7 +2695,7 @@
                     }, 300);
                 });
 
-                $("#status-filter, #inv-filter, #nrl-filter, #nra-filter, #acos-filter").on("change", function() {
+                $("#status-filter, #inv-filter, #nrl-filter, #nra-filter, #acos-filter, #row-type-filter").on("change", function() {
                     table.setFilter(combinedFilter);
                     setTimeout(updatePaginationCount, 100);
                 });
@@ -3756,8 +3812,7 @@
                 type: "GET",
                 data: {
                     startDate,
-                    endDate,
-                    enabled_only: 1
+                    endDate
                 },
                 success: function(response) {
                     const formattedDates = response.dates.map(d => moment(d).format('MMM DD'));
@@ -3795,14 +3850,25 @@
             });
         }
 
+        // Match PHP calculateDateRanges() logic for consistent data
+        function getAdjustedDateRange() {
+            const currentHour = new Date().getHours();
+            const endDateDaysBack = currentHour < 12 ? 2 : 1;
+            return {
+                endDate: moment().subtract(endDateDaysBack, 'days'),
+                startDate: moment().subtract(endDateDaysBack + 29, 'days')
+            };
+        }
+
         // Campaign chart functions
         function showCampaignChart(campaignName) {
             console.log('Opening modal for campaign:', campaignName);
 
-            // Update modal title with date range
-            const endDate = moment().format('MMM DD, YYYY');
-            const startDate = moment().subtract(29, 'days').format('MMM DD, YYYY');
-            $('#campaignModalLabel').text(campaignName + ' (' + startDate + ' - ' + endDate + ')');
+            // Update modal title with date range (matching table's date range)
+            const dr = getAdjustedDateRange();
+            const endDateDisplay = dr.endDate.format('MMM DD, YYYY');
+            const startDateDisplay = dr.startDate.format('MMM DD, YYYY');
+            $('#campaignModalLabel').text(campaignName + ' (' + startDateDisplay + ' - ' + endDateDisplay + ')');
 
             // Try both jQuery and Bootstrap 5 methods to show modal
             try {
@@ -3828,9 +3894,10 @@
         function fetchCampaignChartData(campaignName) {
             console.log('Fetching campaign chart data for:', campaignName);
 
-            // Default to last 30 days
-            const endDate = moment().format('YYYY-MM-DD');
-            const startDate = moment().subtract(29, 'days').format('YYYY-MM-DD');
+            // Use same date range as table (adjusted for cron timing)
+            const dr = getAdjustedDateRange();
+            const endDate = dr.endDate.format('YYYY-MM-DD');
+            const startDate = dr.startDate.format('YYYY-MM-DD');
 
             $.ajax({
                 url: '/google/shopping/campaign/chart-data',

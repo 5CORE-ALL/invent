@@ -128,4 +128,5 @@ trait GoogleAdsDateRangeTrait
             'ad_sold' => $totalGA4Units,
         ];
     }
+
 }
