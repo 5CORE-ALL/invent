@@ -6,7 +6,6 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use App\Services\GoogleAdsSbidService;
 use App\Models\ProductMaster;
-use App\Models\ShopifySku;
 
 class UpdateSBIDCronCommand extends Command
 {
@@ -83,22 +82,20 @@ class UpdateSBIDCronCommand extends Command
                 return 0;
             }
 
-            // Get all SKUs to fetch Shopify inventory data
-            $skus = $productMasters->pluck('sku')->filter()->unique()->values()->toArray();
+            // Filter to only PARENT SKUs early (since we only process parents now)
+            $parentMasters = $productMasters->filter(function ($pm) {
+                return stripos(strtoupper(trim($pm->sku)), 'PARENT') !== false;
+            });
 
-            if (empty($skus)) {
-                $this->warn("No valid SKUs found!");
+            if ($parentMasters->isEmpty()) {
+                $this->warn("No PARENT product masters found!");
                 DB::connection()->disconnect();
                 return 0;
             }
 
-            $shopifyData = [];
-            if (!empty($skus)) {
-                $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
-            }
             DB::connection()->disconnect();
 
-        $this->info("Found " . $productMasters->count() . " product masters");
+        $this->info("Found " . $parentMasters->count() . " PARENT product masters (out of " . $productMasters->count() . " total)");
 
         // Stream SHOPPING campaigns (L30 range) and aggregate L1/L7 in memory to avoid OOM
         $l30Start = $today->copy()->subDays($endDateDaysBack + 29)->format('Y-m-d');
@@ -154,13 +151,8 @@ class UpdateSBIDCronCommand extends Command
 
         $campaignUpdates = [];
 
-        foreach ($productMasters as $pm) {
+        foreach ($parentMasters as $pm) {
             $sku = strtoupper(trim($pm->sku));
-
-            $shopify = $shopifyData[$pm->sku] ?? null;
-            if ($shopify && $shopify->inv <= 0) {
-                continue;
-            }
 
             $matched = null;
             foreach ($campaignMetrics as $m) {
@@ -176,6 +168,38 @@ class UpdateSBIDCronCommand extends Command
                     break;
                 }
             }
+
+            // For PARENT SKUs: if no match found in campaignMetrics (data has old name),
+            // look up the campaign by current name in the database
+            if (!$matched) {
+                $skuCleaned = rtrim(trim($sku), '.');
+                $parentCampaign = DB::table('google_ads_campaigns')
+                    ->select('campaign_id', 'campaign_name', 'campaign_status', 'budget_amount_micros')
+                    ->where('advertising_channel_type', 'SHOPPING')
+                    ->where('campaign_status', 'ENABLED')
+                    ->where(function($q) use ($sku, $skuCleaned) {
+                        $q->whereRaw('UPPER(TRIM(campaign_name)) = ?', [$sku])
+                          ->orWhereRaw('UPPER(TRIM(campaign_name)) = ?', [$sku . '.'])
+                          ->orWhereRaw('TRIM(TRAILING \'.\' FROM UPPER(TRIM(campaign_name))) = ?', [$skuCleaned]);
+                    })
+                    ->orderBy('date', 'desc')
+                    ->first();
+
+                if ($parentCampaign) {
+                    // Parent campaign exists but metrics are 0 (name just changed, no data under new name yet)
+                    $matched = [
+                        'campaign_id' => $parentCampaign->campaign_id,
+                        'campaign_name' => $parentCampaign->campaign_name,
+                        'campaign_status' => $parentCampaign->campaign_status,
+                        'budget_amount_micros' => $parentCampaign->budget_amount_micros,
+                        'spend_L1' => 0,
+                        'clicks_L1' => 0,
+                        'spend_L7' => 0,
+                        'clicks_L7' => 0,
+                    ];
+                }
+            }
+
             if (!$matched) {
                 continue;
             }
@@ -235,14 +259,15 @@ class UpdateSBIDCronCommand extends Command
                     $action = "RED+RED (increased)";
                 }
 
+                $campaignLabel = $matched['campaign_name'];
                 if ($dryRun) {
-                    $this->info("[DRY RUN] Would update campaign {$campaignId} (SKU: {$pm->sku}): L1CPC=\${$cpc_L1}, L7CPC=\${$cpc_L7}, SBID=\${$sbid}, UB7={$ub7}%, UB1={$ub1}%, Action: {$action}");
+                    $this->info("[DRY RUN] [PARENT] Would update campaign {$campaignId} ({$campaignLabel}, SKU: {$pm->sku}): L1CPC=\${$cpc_L1}, L7CPC=\${$cpc_L7}, SBID=\${$sbid}, UB7={$ub7}%, UB1={$ub1}%, Action: {$action}");
                     $campaignUpdates[$campaignId] = true;
                 } else {
                     try {
                         $this->sbidService->updateCampaignSbids($customerId, $campaignId, $sbid);
                         $campaignUpdates[$campaignId] = true;
-                        $this->info("Updated campaign {$campaignId} (SKU: {$pm->sku}): L1CPC=\${$cpc_L1}, L7CPC=\${$cpc_L7}, SBID=\${$sbid}, UB7={$ub7}%, UB1={$ub1}%, Action: {$action}");
+                        $this->info("[PARENT] Updated campaign {$campaignId} ({$campaignLabel}, SKU: {$pm->sku}): L1CPC=\${$cpc_L1}, L7CPC=\${$cpc_L7}, SBID=\${$sbid}, UB7={$ub7}%, UB1={$ub1}%, Action: {$action}");
                     } catch (\Exception $e) {
                         $this->error("Failed to update campaign {$campaignId}: " . $e->getMessage());
                     }

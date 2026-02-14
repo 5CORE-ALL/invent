@@ -206,23 +206,8 @@ class GoogleAdsController extends Controller
                 $sales = array_map(fn($v) => round($v * $ratio, 2), $sales);
             }
             if ($ordersSum > 0 && $ga4Total['purchases'] > 0) {
-                // Largest-remainder method: per-day integers sum to exact GA4 total
-                $target = (int) $ga4Total['purchases'];
-                $ratio = $target / $ordersSum;
-                $scaled = array_map(fn($v) => $v * $ratio, $orders);
-                $floored = array_map(fn($v) => (int) floor($v), $scaled);
-                $remainders = [];
-                foreach ($scaled as $i => $v) {
-                    $remainders[$i] = $v - $floored[$i];
-                }
-                arsort($remainders);
-                $diff = $target - array_sum($floored);
-                foreach ($remainders as $i => $r) {
-                    if ($diff <= 0) break;
-                    $floored[$i]++;
-                    $diff--;
-                }
-                $orders = $floored;
+                $ratio = $ga4Total['purchases'] / $ordersSum;
+                $orders = array_map(fn($v) => (int) round($v * $ratio), $orders);
             }
         }
 
@@ -698,7 +683,7 @@ class GoogleAdsController extends Controller
         $dateRanges = $this->calculateDateRanges();
         $rangesNeeded = ['L1', 'L7', 'L30'];
 
-        // Only fetch SHOPPING campaigns for Shopping Ads
+        // Only fetch SHOPPING campaigns for Shopping Ads (L30 date range for metrics)
         $googleCampaigns = DB::table('google_ads_campaigns')
             ->select(
                 'campaign_id',
@@ -720,19 +705,120 @@ class GoogleAdsController extends Controller
             ->whereBetween('date', [$dateRanges['L30']['start'], $dateRanges['L30']['end']])
             ->get();
 
+        // Fetch ALL SHOPPING campaigns (latest row per campaign, no date filter)
+        // so parent campaigns without L30 data can still be matched
+        $allCampaignsLatest = DB::table('google_ads_campaigns')
+            ->select('campaign_id', 'campaign_name', 'campaign_status', 'budget_amount_micros', 'mbid', 'date')
+            ->where('advertising_channel_type', 'SHOPPING')
+            ->where('campaign_status', '!=', 'ARCHIVED')
+            ->orderBy('date', 'desc')
+            ->get()
+            ->unique('campaign_id');
+
         $result = [];
         $campaignMap = [];
 
         // Process each SKU (similar to Amazon - loop through SKUs, not campaigns)
         foreach ($productMasters as $pm) {
-            // Skip parent SKUs (similar to Amazon KW/PT)
             $sku = strtoupper(trim($pm->sku));
-            if (stripos($sku, 'PARENT') !== false) {
-                continue;
-            }
-
             $parent = $pm->parent;
             $shopify = $shopifyData[$pm->sku] ?? null;
+            $imageSrc = ($shopify && isset($shopify->image_src)) ? $shopify->image_src : '';
+
+            // Include parent SKUs - also match their own campaign from DB
+            if (stripos($sku, 'PARENT') !== false) {
+                $mapKey = 'PARENT_' . $pm->sku;
+
+                // Match campaign for parent SKU using ALL campaigns (no date range limit)
+                $matchedParentCampaign = $allCampaignsLatest->first(function ($c) use ($sku) {
+                    $campaign = strtoupper(trim($c->campaign_name));
+                    $campaignCleaned = rtrim(trim($campaign), '.');
+                    $skuCleaned = rtrim(trim($sku), '.');
+                    $parts = array_map(function($part) { return rtrim(trim($part), '.'); }, array_map('trim', explode(',', $campaignCleaned)));
+                    return in_array($skuCleaned, $parts) || $campaignCleaned === $skuCleaned;
+                });
+
+                $parentHasCampaign = !empty($matchedParentCampaign);
+                $parentCampaignId = $matchedParentCampaign ? $matchedParentCampaign->campaign_id : null;
+                $parentCampaignName = $matchedParentCampaign ? $matchedParentCampaign->campaign_name : null;
+
+                // BGT and mbid from the matched row (already latest)
+                $parentBudget = 0;
+                $parentMbid = null;
+                if ($matchedParentCampaign) {
+                    if ($matchedParentCampaign->budget_amount_micros) {
+                        $parentBudget = $matchedParentCampaign->budget_amount_micros / 1000000;
+                    }
+                    if (isset($matchedParentCampaign->mbid) && $matchedParentCampaign->mbid !== null) {
+                        $parentMbid = (float) $matchedParentCampaign->mbid;
+                    }
+                }
+
+                $campaignMap[$mapKey] = [
+                    'parent' => $parent,
+                    'sku' => $pm->sku,
+                    'is_parent' => true,
+                    'image_src' => $imageSrc,
+                    'INV' => ($shopify && isset($shopify->inv)) ? (int)$shopify->inv : 0,
+                    'L30' => ($shopify && isset($shopify->quantity)) ? (int)$shopify->quantity : 0,
+                    'campaign_id' => $parentCampaignId,
+                    'campaignName' => $parentCampaignName,
+                    'campaignBudgetAmount' => $parentBudget,
+                    'mbid' => $parentMbid,
+                    'status' => $matchedParentCampaign ? $matchedParentCampaign->campaign_status : null,
+                    'campaignStatus' => $matchedParentCampaign ? $matchedParentCampaign->campaign_status : null,
+                    'price' => ($shopify && isset($shopify->price)) ? (float)$shopify->price : 0,
+                    'NRL' => '',
+                    'NRA' => '',
+                    'hasCampaign' => $parentHasCampaign,
+                    'GPFT' => null, 'PFT' => null, 'roi' => null,
+                    'SPRICE' => null, 'SPFT' => null,
+                    'spend_L1' => 0, 'spend_L7' => 0, 'spend_L30' => 0,
+                    'clicks_L1' => 0, 'clicks_L7' => 0, 'clicks_L30' => 0,
+                    'cpc_L1' => 0, 'cpc_L7' => 0,
+                    'ad_sales_L1' => 0, 'ad_sales_L7' => 0, 'ad_sales_L30' => 0,
+                    'ad_sold_L1' => 0, 'ad_sold_L7' => 0, 'ad_sold_L30' => 0,
+                    'sbid' => 0, 'ub7' => 0, 'ub1' => 0,
+                ];
+
+                // Calculate metrics for matched parent campaign (match by SKU/campaign name)
+                if ($parentHasCampaign) {
+                    $skuForMetrics = strtoupper(trim($pm->sku));
+                    foreach ($rangesNeeded as $rangeName) {
+                        $metrics = $this->aggregateMetricsByRange(
+                            $googleCampaigns, $skuForMetrics, $dateRanges[$rangeName], null
+                        );
+                        $campaignMap[$mapKey]["spend_$rangeName"] = $metrics['spend'];
+                        $campaignMap[$mapKey]["clicks_$rangeName"] = $metrics['clicks'];
+                        $campaignMap[$mapKey]["cpc_$rangeName"] = $metrics['cpc'];
+                        $campaignMap[$mapKey]["ad_sales_$rangeName"] = $metrics['ad_sales'];
+                        $campaignMap[$mapKey]["ad_sold_$rangeName"] = $metrics['ad_sold'];
+                    }
+
+                    // SBID calculation
+                    $budget = $parentBudget;
+                    $spend_L7 = $campaignMap[$mapKey]['spend_L7'] ?? 0;
+                    $spend_L1 = $campaignMap[$mapKey]['spend_L1'] ?? 0;
+                    $cpc_L7 = $campaignMap[$mapKey]['cpc_L7'] ?? 0;
+                    $cpc_L1 = $campaignMap[$mapKey]['cpc_L1'] ?? 0;
+                    $ub7 = $budget > 0 ? ($spend_L7 / ($budget * 7)) * 100 : 0;
+                    $ub1 = $budget > 0 ? ($spend_L1 / $budget) * 100 : 0;
+                    $sbid = 0;
+                    if ($ub7 > 99 && $ub1 > 99) {
+                        $sbid = $cpc_L7 == 0 ? 0.75 : floor($cpc_L7 * 0.90 * 100) / 100;
+                    } elseif ($ub7 < 66 && $ub1 < 66) {
+                        if ($cpc_L1 == 0 && $cpc_L7 == 0) $sbid = 0.75;
+                        elseif ($ub7 < 10 || $cpc_L7 == 0) $sbid = 0.75;
+                        elseif ($cpc_L7 > 0 && $cpc_L7 < 0.30) $sbid = round($cpc_L7 + 0.20, 2);
+                        else $sbid = floor($cpc_L7 * 1.10 * 100) / 100;
+                    }
+                    $campaignMap[$mapKey]['sbid'] = $sbid;
+                    $campaignMap[$mapKey]['ub7'] = $ub7;
+                    $campaignMap[$mapKey]['ub1'] = $ub1;
+                }
+
+                continue;
+            }
 
             // Find matching campaign for this SKU
             $matchedCampaign = $googleCampaigns->first(function ($c) use ($sku) {
@@ -835,6 +921,8 @@ class GoogleAdsController extends Controller
                 $campaignMap[$mapKey] = [
                     'parent' => $parent,
                     'sku' => $pm->sku,
+                    'is_parent' => false,
+                    'image_src' => $imageSrc,
                     'campaign_id' => $campaignId,
                     'campaignName' => $campaignName,
                     'campaignBudgetAmount' => $initialBudget,
@@ -959,13 +1047,37 @@ class GoogleAdsController extends Controller
             $campaignMap[$mapKey]['ub1'] = $ub1;
         }
 
+        // Sum child INV and L30 into parent rows (parent keeps its own campaign data from DB)
+        $parentSums = [];
+        foreach ($campaignMap as $key => $row) {
+            if (!($row['is_parent'] ?? false) && !empty($row['parent'])) {
+                $p = $row['parent'];
+                if (!isset($parentSums[$p])) {
+                    $parentSums[$p] = ['INV' => 0, 'L30' => 0];
+                }
+                $parentSums[$p]['INV'] += (int)($row['INV'] ?? 0);
+                $parentSums[$p]['L30'] += (int)($row['L30'] ?? 0);
+            }
+        }
+        foreach ($campaignMap as $key => &$row) {
+            if (($row['is_parent'] ?? false) && !empty($row['parent']) && isset($parentSums[$row['parent']])) {
+                $row['INV'] = $parentSums[$row['parent']]['INV'];
+                $row['L30'] = $parentSums[$row['parent']]['L30'];
+            }
+        }
+        unset($row);
+
         // Convert campaignMap to result array (all SKUs will be included)
         $result = array_values($campaignMap);
+
+        // Count unique parents (from non-parent rows only)
+        $totalParentCount = collect($result)->where('is_parent', false)->pluck('parent')->unique()->count();
 
         return response()->json([
             'message' => 'Data fetched successfully',
             'data'    => $result,
             'total_sku_count' => $totalSkuCount,
+            'total_parent_count' => $totalParentCount,
             'status'  => 200,
         ]);
     }
@@ -1103,7 +1215,7 @@ class GoogleAdsController extends Controller
             $campaignIds = $request->input('campaign_ids', []);
             $newBids = $request->input('bids', []);
 
-            $customerId = config('services.google_ads.login_customer_id');
+            $customerId = env('GOOGLE_ADS_LOGIN_CUSTOMER_ID');
 
             if (!$customerId) {
                 return response()->json([
@@ -1382,23 +1494,8 @@ class GoogleAdsController extends Controller
                 $sales = array_map(fn($v) => round($v * $ratio, 2), $sales);
             }
             if ($ordersSum > 0 && $ga4Total['purchases'] > 0) {
-                // Largest-remainder method: per-day integers sum to exact GA4 total
-                $target = (int) $ga4Total['purchases'];
-                $ratio = $target / $ordersSum;
-                $scaled = array_map(fn($v) => $v * $ratio, $orders);
-                $floored = array_map(fn($v) => (int) floor($v), $scaled);
-                $remainders = [];
-                foreach ($scaled as $i => $v) {
-                    $remainders[$i] = $v - $floored[$i];
-                }
-                arsort($remainders);
-                $diff = $target - array_sum($floored);
-                foreach ($remainders as $i => $r) {
-                    if ($diff <= 0) break;
-                    $floored[$i]++;
-                    $diff--;
-                }
-                $orders = $floored;
+                $ratio = $ga4Total['purchases'] / $ordersSum;
+                $orders = array_map(fn($v) => (int) round($v * $ratio), $orders);
             }
         }
 
@@ -1448,7 +1545,8 @@ class GoogleAdsController extends Controller
             'campaign_cleaned' => $campaignNameCleaned
         ]);
 
-        // Fetch data with GA4 actual data preference (same as aggregateMetricsByRange)
+        // Fetch data matching campaign name with GA4 actual data preference
+        // Exclude ARCHIVED campaigns to match table data logic
         $data = DB::table('google_ads_campaigns')
             ->selectRaw('
                 date,
@@ -1462,13 +1560,11 @@ class GoogleAdsController extends Controller
             ')
             ->whereNotNull('date')
             ->where('advertising_channel_type', 'SHOPPING')
+            ->where('campaign_status', '!=', 'ARCHIVED')
             ->whereBetween('date', [$startDate, $endDate])
             ->where(function($query) use ($campaignNameUpper, $campaignNameCleaned, $campaignName) {
-                // Exact match (case-insensitive, trimmed)
                 $query->whereRaw('UPPER(TRIM(campaign_name)) = ?', [$campaignNameUpper])
-                      // Or match without period (if campaign name has period)
                       ->orWhereRaw('UPPER(TRIM(campaign_name)) = ?', [$campaignNameCleaned])
-                      // Or partial match
                       ->orWhere('campaign_name', 'LIKE', '%' . trim($campaignName) . '%');
             })
             ->groupBy('date')
@@ -2285,7 +2381,7 @@ class GoogleAdsController extends Controller
                 ], 400);
             }
 
-            $customerId = config('services.google_ads.login_customer_id');
+            $customerId = env('GOOGLE_ADS_LOGIN_CUSTOMER_ID');
             if (empty($customerId)) {
                 return response()->json([
                     'status' => 500,
@@ -2354,7 +2450,7 @@ class GoogleAdsController extends Controller
 
             $campaignIds = array_values(array_filter(array_unique($campaignIds)));
 
-            $customerId = config('services.google_ads.login_customer_id');
+            $customerId = env('GOOGLE_ADS_LOGIN_CUSTOMER_ID');
             if (empty($customerId)) {
                 return response()->json([
                     'status' => 500,
