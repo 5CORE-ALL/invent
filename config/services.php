@@ -397,13 +397,7 @@ return [
             'Marketing' => ['keywords' => ['campaign', 'social media', 'ads', 'content', 'seo', 'brand', 'marketing', 'promotion']],
             'General' => ['keywords' => []],
         ],
-        'senior_emails' => [
-            'IT' => env('FIVECORE_SENIOR_IT', 'it.senior@5core.com'),
-            'Sales' => env('FIVECORE_SENIOR_SALES', 'sales.senior@5core.com'),
-            'Marketing' => env('FIVECORE_SENIOR_MARKETING', 'marketing.senior@5core.com'),
-            'HR' => env('FIVECORE_SENIOR_HR', 'hr.senior@5core.com'),
-            'General' => env('FIVECORE_SENIOR_GENERAL', 'support@5core.com'),
-        ],
+        'senior_email' => env('FIVECORE_SENIOR_EMAIL', 'tech-support@5core.com'),
     ],
 
     /*

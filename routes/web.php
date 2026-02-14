@@ -14,6 +14,7 @@ use App\Http\Controllers\MarketPlace\ListingAuditAmazonController;
 use App\Http\Controllers\MarketPlace\ListingAuditEbayController;
 use App\Http\Controllers\MarketPlace\ListingAuditMacyController;
 use App\Http\Controllers\MarketPlace\ListingAuditNeweggb2cController;
+use App\Http\Controllers\MarketPlace\ListingAuditReverbController;
 use App\Http\Controllers\MarketPlace\ListingAuditShopifyb2cController;
 use App\Http\Controllers\MarketPlace\ListingAuditTemuController;
 use App\Http\Controllers\MarketPlace\ListingAuditWayfairController;
@@ -62,9 +63,11 @@ use App\Http\Controllers\MarketPlace\Neweggb2cLowVisibilityController;
 use App\Http\Controllers\MarketPlace\Neweggb2cZeroController;
 use App\Http\Controllers\MarketPlace\OverallAmazonFbaController;
 use App\Http\Controllers\MarketPlace\OverallAmazonPriceController;
+use App\Http\Controllers\MarketPlace\ReverbLowVisibilityController;
 use App\Http\Controllers\MarketPlace\Shopifyb2cController;
 use App\Http\Controllers\Channels\ChannelMasterController;
 use App\Http\Controllers\Channels\ChannelwiseController;
+use App\Http\Controllers\Channels\ReturnController;
 use App\Http\Controllers\Channels\ExpensesController;
 use App\Http\Controllers\Channels\ReviewController;
 use App\Http\Controllers\Channels\HealthController;
@@ -133,6 +136,7 @@ use Illuminate\Foundation\Console\RouteCacheCommand;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\RoutingController;
 use App\Http\Controllers\MarketPlace\ReverbController;
+use App\Http\Controllers\MarketPlace\ReverbZeroController;
 use App\Http\Controllers\MarketPlace\CvrMasterController;
 use App\Http\Controllers\MarketPlace\TikTokPricingController;
 use App\Http\Controllers\PurchaseMaster\ChinaLoadController;
@@ -183,6 +187,7 @@ use App\Http\Controllers\Campaigns\EbayPinkDilAdController;
 use App\Http\Controllers\Campaigns\EbayPMPAdsController;
 use App\Http\Controllers\Campaigns\EbayRunningAdsController;
 use App\Http\Controllers\Campaigns\GoogleAdsController;
+use App\Http\Controllers\Campaigns\WalmartMissingAdsController;
 use App\Http\Controllers\Campaigns\WalmartUtilisationController;
 use App\Http\Controllers\Channels\ApprovalsChannelMasterController;
 use App\Http\Controllers\EbayDataUpdateController;
@@ -196,7 +201,9 @@ use App\Http\Controllers\Channels\ChannelMovementAnalysisController;
 use App\Http\Controllers\Channels\NewMarketplaceController;
 use App\Http\Controllers\Channels\OpportunityController;
 use App\Http\Controllers\Channels\SetupAccountChannelController;
+use App\Http\Controllers\Channels\ShippingMasterController;
 use App\Http\Controllers\Channels\TrafficMasterController;
+use App\Http\Controllers\Campaigns\EbayMissingAdsController;
 use App\Http\Controllers\Campaigns\TiktokAdsController;
 use App\Http\Controllers\Campaigns\WalmartRunningAdsController;
 
@@ -264,15 +271,25 @@ use App\Http\Controllers\Sales\WayfairSalesController;
 |
 */
 
-
-Route::get('/ai/download-sample-csv', [App\Http\Controllers\Api\AiChatController::class, 'downloadSampleCsv'])
-    ->name('ai.download.sample');
-
-Route::get('/ai/escalation/{id}/reply', [App\Http\Controllers\Ai\AiEscalationController::class, 'showReplyForm'])
-    ->name('ai.escalation.reply');
-
-Route::post('/ai/escalation/{id}/reply', [App\Http\Controllers\Ai\AiEscalationController::class, 'submitReply'])
-    ->name('ai.escalation.submit');
+// 5Core AI routes (must be before any wildcard so /ai/* is not caught by Shopify)
+Route::prefix('ai')->middleware(['auth'])->group(function () {
+    Route::post('/chat', [\App\Http\Controllers\Api\AiChatController::class, 'chat'])->name('ai.chat');
+    Route::post('/feedback', [\App\Http\Controllers\Api\AiChatController::class, 'feedback'])->name('ai.feedback');
+    Route::post('/upload-knowledge', [\App\Http\Controllers\Api\AiChatController::class, 'uploadKnowledge'])->name('ai.upload');
+    Route::get('/check-notifications', [\App\Http\Controllers\Api\AiChatController::class, 'checkNotifications'])->name('ai.check');
+    Route::get('/pending-replies', [\App\Http\Controllers\Api\AiChatController::class, 'getPendingReplies'])->name('ai.pending');
+    Route::post('/mark-replies-read', [\App\Http\Controllers\Api\AiChatController::class, 'markRepliesRead'])->name('ai.mark-read');
+});
+Route::get('/ai/download-sample-csv', [App\Http\Controllers\Api\AiChatController::class, 'downloadSampleCsv'])->name('ai.download.sample');
+Route::get('/ai/escalation/{id}/reply', [App\Http\Controllers\Ai\AiEscalationController::class, 'showReplyForm'])->name('ai.escalation.reply');
+Route::post('/ai/escalation/{id}/reply', [App\Http\Controllers\Ai\AiEscalationController::class, 'submitReply'])->name('ai.escalation.submit');
+Route::prefix('ai-admin')->middleware(['auth', 'isAdmin'])->name('ai.admin.')->group(function () {
+    Route::get('/', [\App\Http\Controllers\Ai\AiAdminController::class, 'index'])->name('index');
+    Route::get('/escalations', [\App\Http\Controllers\Ai\AiAdminController::class, 'escalations'])->name('escalations');
+    Route::get('/training', [\App\Http\Controllers\Ai\AiAdminController::class, 'trainingLogs'])->name('training');
+    Route::post('/training/{id}/approve', [\App\Http\Controllers\Ai\AiAdminController::class, 'approveTraining'])->name('training.approve');
+    Route::get('/files', [\App\Http\Controllers\Ai\AiAdminController::class, 'knowledgeFiles'])->name('files');
+});
 
 /** Start Cron Job Routes **/
 // Consolidated Cron Job - Runs all cron jobs in sequence (Recommended)
@@ -444,6 +461,12 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/setup-account-channel-master/save', 'saveSetupAccountData');
     });
 
+    //Shipping Master
+    Route::controller(ShippingMasterController::class)->group(function () {
+        Route::get('/shipping-master/list', 'index')->name('shipping.master.list');
+        Route::get('/fetch-shipping-rate/data', 'fetchShippingRate');
+        Route::post('/update-shipping-rate', 'storeOrUpdateShippingRate');
+    });
 
     Route::controller(TrafficMasterController::class)->group(function () {
         Route::get('/traffic-master/list', 'index')->name('traffic.master.list');
@@ -504,7 +527,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     //Stock Adjustment
     Route::get('/stock-adjustment-view', [StockAdjustmentController::class, 'index'])->name('stock.adjustment.view');
     Route::post('/stock-adjustment-store', [StockAdjustmentController::class, 'store'])->name('stock.adjustment.store');
-    Route::post('/stock-adjustment-bulk-csv', [StockAdjustmentController::class, 'processBulkCSV'])->name('stock.adjustment.bulk-csv');
     Route::get('/stock-adjustment-data-list', [StockAdjustmentController::class, 'list']);
 
     //Stock Transfer
@@ -713,7 +735,12 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/Wayfaire/view-data', [WayfairZeroController::class, 'getViewWayfairZeroData']);
     Route::get('/Wayfaire/low-visibility/view-data', [WayfairLowVisibilityController::class, 'getViewWayfairLowVisibilityData']);
     Route::get('/Temu/view-data', [TemuZeroController::class, 'getViewTemuZeroData']);
+    Route::get('/reverb/zero/view', [ReverbZeroController::class, 'index'])->name('reverb.zero.view');
+    Route::get('/reverb/low-visibility/view', [ReverbLowVisibilityController::class, 'reverbLowVisibilityview'])->name('reverb.low.visibility.view');
     Route::get('/Temu/low-visibility/view-data', [TemuLowVisibilityController::class, 'getViewTemuLowVisibilityData']);
+    Route::get('/reverb/zero/view-data', [ReverbZeroController::class, 'getZeroViewData']);
+    Route::get('/zero-reverb/view-data', [ReverbZeroController::class, 'getViewReverbZeroData']);
+    Route::get('/reverb/zero-low-visibility/view-data', [ReverbLowVisibilityController::class, 'getViewReverbLowVisibilityData']);
     Route::get('/temu/view-data', [TemuController::class, 'getViewTemuData']);
     Route::post('/temu/upload-daily-data-chunk', [TemuController::class, 'uploadDailyDataChunk']);
     Route::get('/temu/download-daily-data-sample', [TemuController::class, 'downloadDailyDataSample'])->name('temu.daily.sample');
@@ -793,7 +820,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/cvr-master-remark-toggle/{id}', [CvrMasterController::class, 'toggleRemarkSolved'])->name('cvr.master.remark.toggle');
     Route::post('/cvr-master-save-suggested-data', [CvrMasterController::class, 'saveSuggestedData'])->name('cvr.master.save.suggested');
     Route::post('/cvr-master-push-price', [CvrMasterController::class, 'pushPriceToAmazon'])->name('cvr.master.push.price');
-    Route::post('/cvr-master-bulk-change-price', [CvrMasterController::class, 'bulkChangePrice'])->name('cvr.master.bulk.change.price');
 
     // Pricing Master CVR Route (uses CVR Master controller)
     Route::get('/pricing-master-cvr', [CvrMasterController::class, 'pricingMasterCvrView'])->name('pricing.master.cvr');
@@ -1259,7 +1285,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/listing_neweggb2c/view-data', [ListingNeweggB2CController::class, 'getViewListingNeweggB2CData']);
     Route::post('/listing_neweggb2c/save-status', [ListingNeweggB2CController::class, 'saveStatus']);
 
-    //listing reverb
+    //listing audit reverb
     Route::get('/listing-reverb', [ListingReverbController::class, 'listingReverb'])->name('listing.reverb');
     Route::get('/listing_reverb/view-data', [ListingReverbController::class, 'getViewListingReverbData']);
     Route::post('/listing_reverb/save-status', [ListingReverbController::class, 'saveStatus']);
@@ -1268,6 +1294,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/listing_reverb/export', [ListingReverbController::class, 'export'])->name('listing_reverb.export');
     Route::get('/listing_reverb/sample', [ListingReverbController::class, 'downloadSample'])->name('listing_reverb.sample');
     Route::post('/reverb/saveLowProfit', [ReverbController::class, 'saveLowProfit']);
+    Route::get('/reverb/zero/view', [ReverbZeroController::class, 'index'])->name('reverb.zero.view');
+    Route::get('/reverb-low-visiblity-view', [ReverbLowVisibilityController::class, 'reverbLowVisibilityview'])->name('reverb.low.visibility.view');
 
     //listing temu
     Route::get('/listing-temu', [ListingTemuController::class, 'listingTemu'])->name('listing.temu');
@@ -1358,6 +1386,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
 
     //channel master index view routes
+    Route::get('/return-analysis', [ReturnController::class, 'return_master_index'])->name('return.master');
     Route::get('/expenses-analysis', [ExpensesController::class, 'expenses_master_index'])->name('expenses.master');
     Route::get('/review-analysis', [ReviewController::class, 'review_master_index'])->name('review.master');
     Route::get('/health-analysis', [HealthController::class, 'health_master_index'])->name('health.master');
@@ -1407,6 +1436,13 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/dim-wt-master/update', [CategoryController::class, 'updateDimWtMaster'])->name('dim.wt.master.update');
     Route::post('/dim-wt-master/import', [CategoryController::class, 'importDimWtMaster'])->name('dim.wt.master.import');
     Route::post('/dim-wt-master/push-data', [CategoryController::class, 'pushDimWtDataToPlatforms'])->name('dim.wt.master.push');
+    Route::get('/shipping-master', [CategoryController::class, 'shippingMaster'])->name('shipping.master');
+    Route::get('/shipping-master-data-view', [CategoryController::class, 'getShippingMasterData'])->name('shipping.master.data');
+    Route::get('/shipping-master/statuses', [CategoryController::class, 'getShippingMasterStatuses'])->name('shipping.master.statuses');
+    Route::get('/shipping-master/skus', [CategoryController::class, 'getSkusForShippingMaster'])->name('shipping.master.skus');
+    Route::post('/shipping-master/store', [CategoryController::class, 'storeShippingMaster'])->name('shipping.master.store');
+    Route::post('/shipping-master/update', [CategoryController::class, 'updateShippingMaster'])->name('shipping.master.update');
+    Route::post('/shipping-master/import', [CategoryController::class, 'importShippingMaster'])->name('shipping.master.import');
     Route::get('/general-specific-master', [CategoryController::class, 'generalSpecificMaster'])->name('general.specific.master');
     Route::get('/general-specific-master-data-view', [CategoryController::class, 'getGeneralSpecificMasterData'])->name('general.specific.master.data');
     Route::get('/general-specific-master/skus', [CategoryController::class, 'getSkusForDropdown'])->name('general.specific.master.skus');
@@ -1675,8 +1711,13 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/wayfair-low-visibility/reason-action/update', [WayfairLowVisibilityController::class, 'updateReasonAction']);
 
     // Reverb route
+    Route::get('/listing-audit-reverb', [ListingAuditReverbController::class, 'listingAuditReverb'])->name('listing.audit.reverb');
+    Route::get('/listing_audit_reverb/view-data', [ListingAuditReverbController::class, 'getViewListingAuditReverbData']);
     Route::post('/reverb/save-nr', [ReverbController::class, 'saveNrToDatabase']);
     Route::post('/reverb/update-listed-live', [ReverbController::class, 'updateListedLive']);
+    Route::post('/listing_audit_reverb/save-na', [ListingAuditReverbController::class, 'saveAuditToDatabase']);
+    Route::post('/reverb-zero/reason-action/update', [ReverbZeroController::class, 'updateReasonAction']);
+    Route::post('/reverb-low-visibility/reason-action/update', [ReverbLowVisibilityController::class, 'updateReasonAction']);
     Route::post('/reverb-data/import', [ReverbController::class, 'importReverbAnalytics'])->name('reverb.analytics.import');
     Route::get('/reverb-data/export', [ReverbController::class, 'exportReverbAnalytics'])->name('reverb.analytics.export');
     Route::get('/reverb-data/sample', [ReverbController::class, 'downloadSample'])->name('reverb.analytics.sample');
@@ -2659,6 +2700,12 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/adv-ebay/ad-running/save-data', 'getEbayRunningDataSave')->name('adv-ebay.ad-running.save-data');
     });
 
+    Route::controller(EbayMissingAdsController::class)->group(function () {
+        Route::get('/ebay/ad-missing/list', 'index')->name('ebay.missing.ads');
+        Route::get('/ebay/ad-missing/data', 'getEbayMissingAdsData');
+        Route::get('/adv-ebay/missing/save-data', 'getEbayMissingSaveData')->name('adv-ebay.missing.save-data');
+        Route::post('/update-ebay-nrl-data', 'updateNrlData');
+    });
 
     Route::controller(EbayViewsController::class)->group(function () {
         Route::get('/ebay-views/list', 'index')->name('ebay.views.data');
@@ -2777,6 +2824,10 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
     Route::controller(WalmartUtilisationController::class)->group(function () {
         Route::get('/walmart/utilized/bgt', 'bgtUtilisedView')->name('walmart.utilized.bgt');
+        Route::get('/walmart/utilized/kw', 'index')->name('walmart.utilized.kw');
+        Route::get('/walmart/over/utilized', 'overUtilisedView')->name('walmart.over.utilized');
+        Route::get('/walmart/under/utilized', 'underUtilisedView')->name('walmart.under.utilized');
+        Route::get('/walmart/correctly/utilized', 'correctlyUtilisedView')->name('walmart.correctly.utilized');
         Route::get('/walmart/utilized/kw/data', 'getWalmartAdsData');
         Route::get('/walmart/utilized/bgt/7ub-chart-data', 'get7ubChartData');
         Route::get('/walmart/utilized/bgt/combined-7ub-1ub-chart-data', 'getCombined7ub1ubChartData');
@@ -2784,8 +2835,15 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/walmart/utilized/bgt/refresh-campaign-data', 'refreshWalmartCampaignData');
     });
 
+    Route::controller(WalmartMissingAdsController::class)->group(function () {
+        Route::get('/walmart/missing/ads', 'index')->name('walmart.missing.ads');
+        Route::get('/walmart/missing/ads/data', 'getWalmartMissingAdsData');
+    });
+
     Route::controller(WalmartRunningAdsController::class)->group(function () {
+        Route::get('/walmart/running/ads', 'index')->name('walmart.running.ads');
         Route::get('/walmart/running/ads/data', 'getWalmartRunningAdsData');
+        Route::get('/adv-walmart/ad-running/save-data', 'getAdvWalmartRunningSaveData')->name('adv-walmart.ad-running.save-data');
     });
     Route::controller(GoogleAdsController::class)->group(function () {
         Route::get('/google/shopping', 'index')->name('google.shopping');
@@ -2901,28 +2959,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
     Route::post('/channel-promotion/store', [ChannelPromotionMasterController::class, 'storeOrUpdatePromotion']);
 
-
-    Route::prefix('inventory/import')->middleware(['auth'])->name('inventory.import.')->group(function () {
-        Route::get('/shopify-csv', [\App\Http\Controllers\Inventory\ShopifyInventoryImportController::class, 'index'])->name('index');
-        Route::post('/shopify-csv', [\App\Http\Controllers\Inventory\ShopifyInventoryImportController::class, 'importCSV'])->name('shopify-csv');
-        Route::get('/batch/{batchId}/status', [\App\Http\Controllers\Inventory\ShopifyInventoryImportController::class, 'getBatchStatus'])->name('batch.status');
-        Route::get('/batch/{batchId}/errors', [\App\Http\Controllers\Inventory\ShopifyInventoryImportController::class, 'getBatchErrors'])->name('batch.errors');
-        Route::get('/batch/{batchId}/download-errors', [\App\Http\Controllers\Inventory\ShopifyInventoryImportController::class, 'downloadErrorReport'])->name('batch.download-errors');
-        Route::post('/batch/{batchId}/retry', [\App\Http\Controllers\Inventory\ShopifyInventoryImportController::class, 'retryBatch'])->name('batch.retry');
-        Route::delete('/batch/{batchId}', [\App\Http\Controllers\Inventory\ShopifyInventoryImportController::class, 'deleteBatch'])->name('batch.delete');
-    });
-
-    // Inventory Management Routes (View & Manage SKUs with Shopify Sync)
-    Route::prefix('inventory/manage')->middleware(['auth'])->name('inventory.manage.')->group(function () {
-        Route::get('/', [\App\Http\Controllers\Inventory\InventoryManagementController::class, 'index'])->name('index');
-        Route::post('/update-quantity', [\App\Http\Controllers\Inventory\InventoryManagementController::class, 'updateQuantity'])->name('update');
-        Route::get('/{inventoryId}/logs', [\App\Http\Controllers\Inventory\InventoryManagementController::class, 'getLogs'])->name('logs');
-        Route::get('/export', [\App\Http\Controllers\Inventory\InventoryManagementController::class, 'export'])->name('export');
-        Route::get('/export-shopify', [\App\Http\Controllers\Inventory\InventoryManagementController::class, 'exportWithShopify'])->name('export-shopify');
-        Route::post('/sync-shopify', [\App\Http\Controllers\Inventory\InventoryManagementController::class, 'syncToShopify'])->name('sync');
-    });
-
-
     // eBay Refresh Token Generation Routes (must be before catch-all routes)
     // Unified route for all eBay accounts (eBay1, eBay2, eBay3)
     Route::get('/ebay/generate-token', [\App\Http\Controllers\EbayTokenController::class, 'generate'])->name('ebay.token.generate');
@@ -2952,7 +2988,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/tasks/{id}/update-status', [\App\Http\Controllers\TaskController::class, 'updateStatus'])->name('tasks.updateStatus');
 
     Route::get('', [RoutingController::class, 'index'])->name('root');
-    Route::get('{firstShop}/{secondShop}', [ShopifyController::class, 'shopifyView'])->name('shopify');
     Route::get('{first}/{second}', [RoutingController::class, 'secondLevel'])->name('second');
     Route::get('/.well-known/{file}', function ($file) {
         $allowedFiles = ['assetlinks.json', 'apple-app-site-association', 'com.chrome.devtools.json'];
@@ -3000,21 +3035,6 @@ Route::get('/products/inventory', [ShopifyController::class, 'shopifyView'])
     ->defaults('second', 'inventory')
     ->name('second');  // ← YEH LINE ADD KARO!
 
-// Ya agar 'second' generic route chahiye to:
-Route::get('/{first}/{second}', [ShopifyController::class, 'shopifyView'])->name('second');
-
-
-
-
-// 5Core AI Internal Support (auth + 5Core members only enforced in controller)
-Route::prefix('ai')->middleware(['auth'])->group(function () {
-    Route::post('/chat', [\App\Http\Controllers\Api\AiChatController::class, 'chat'])->name('ai.chat');
-    Route::post('/feedback', [\App\Http\Controllers\Api\AiChatController::class, 'feedback'])->name('ai.feedback');
-    Route::post('/upload-knowledge', [\App\Http\Controllers\Api\AiChatController::class, 'uploadKnowledge'])->name('ai.upload');
-    Route::get('/check-notifications', [\App\Http\Controllers\Api\AiChatController::class, 'checkNotifications'])->name('ai.check');
-    Route::get('/pending-replies', [\App\Http\Controllers\Api\AiChatController::class, 'getPendingReplies'])->name('ai.pending');
-    Route::post('/mark-replies-read', [\App\Http\Controllers\Api\AiChatController::class, 'markRepliesRead'])->name('ai.mark-read');
-});
 
 
 
@@ -3022,19 +3042,11 @@ Route::prefix('ai')->middleware(['auth'])->group(function () {
 
 
 
-// Inventory Import Routes (Shopify CSV Import & Push)
 
 
-// AI Admin (auth + isAdmin + 5Core member in controller)
-Route::prefix('ai-admin')->middleware(['auth', 'isAdmin'])->name('ai.admin.')->group(function () {
-    Route::get('/', [\App\Http\Controllers\Ai\AiAdminController::class, 'index'])->name('index');
-    Route::get('/escalations', [\App\Http\Controllers\Ai\AiAdminController::class, 'escalations'])->name('escalations');
-    Route::get('/training', [\App\Http\Controllers\Ai\AiAdminController::class, 'trainingLogs'])->name('training');
-    Route::post('/training/{id}/approve', [\App\Http\Controllers\Ai\AiAdminController::class, 'approveTraining'])->name('training.approve');
-    Route::get('/files', [\App\Http\Controllers\Ai\AiAdminController::class, 'knowledgeFiles'])->name('files');
-});
-
-Route::get('/{first}/{second}', [ShopifyController::class, 'shopifyView']);
 
 
 // AI Title Manager Routes
+
+// Shopify wildcard (must be last so it does not catch /ai/*, /ai-admin/*, etc.)
+Route::get('/{first}/{second}', [ShopifyController::class, 'shopifyView']);
