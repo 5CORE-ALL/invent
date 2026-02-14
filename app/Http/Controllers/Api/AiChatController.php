@@ -300,8 +300,7 @@ class AiChatController extends Controller
 
     private function getSeniorEmailByDomain(string $domain): string
     {
-        $emails = config('services.5core.senior_emails', []);
-        return $emails[$domain] ?? $emails['General'] ?? 'support@5core.com';
+        return config('services.5core.senior_email', 'president@5core.com');
     }
 
     /** FIX 3: System prompt with accurate 5Core product/company info for consistent answers. */
@@ -478,7 +477,16 @@ class AiChatController extends Controller
                 'status' => 'pending',
             ]);
 
-            $replyLink = url('/ai/escalation/' . $escalation->id . '/reply');
+            $baseUrl = config('services.5core.reply_base_url');
+            $replyLink = $baseUrl
+                ? rtrim($baseUrl, '/') . '/ai/escalation/' . $escalation->id . '/reply'
+                : url('/ai/escalation/' . $escalation->id . '/reply');
+
+            Log::info('AI escalation: sending mail', [
+                'to' => $seniorEmail,
+                'domain' => $domain,
+                'escalation_id' => $escalation->id,
+            ]);
 
             try {
                 Mail::to($seniorEmail)->send(new EscalationMail(
@@ -489,7 +497,12 @@ class AiChatController extends Controller
                     $domain,
                     $replyLink
                 ));
+                Log::info('AI escalation: mail sent successfully', ['to' => $seniorEmail]);
             } catch (\Exception $e) {
+                Log::error('AI escalation: mail failed', [
+                    'to' => $seniorEmail,
+                    'error' => $e->getMessage(),
+                ]);
             }
 
             $answer = "I don't have this information. Your question has been escalated to the {$domain} team senior. You will be notified when they respond.";

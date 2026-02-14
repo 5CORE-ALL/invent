@@ -376,10 +376,7 @@
                     wrap.className = 'ai-chat-msg ' + role;
                     const safe = escapeHtml(content);
                     let inner = safe.replace(/\n/g, '<br>');
-                    if (isEscalation) {
-                        inner +=
-                            '<div class="ai-chat-escalation-info">Your question has been escalated. You will be notified when a senior responds.</div>';
-                    }
+                    // Backend already includes full escalation message in content; do not append duplicate text
                     if (role === 'assistant' && recordId) {
                         inner += '<div class="ai-chat-feedback" data-id="' + escapeHtml(String(recordId)) + '">';
                         inner += '<button type="button" class="ai-feedback-btn" data-helpful="1">Helpful</button>';
