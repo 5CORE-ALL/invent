@@ -1,6 +1,6 @@
 @auth
     @if (auth()->user()->is5CoreMember())
-        <div id="ai-chat-widget" class="ai-chat-widget">
+        <div id="ai-chat-widget" class="ai-chat-widget" data-user-email="{{ e(auth()->user()->email) }}" data-user-id="{{ auth()->id() }}" data-pusher-key="{{ config('broadcasting.connections.pusher.key', '') }}" data-pusher-cluster="{{ config('broadcasting.connections.pusher.options.cluster', 'ap2') }}">
             <button type="button" id="ai-chat-toggle" class="ai-chat-toggle" aria-label="Open 5Core AI chat">
                 <img src="{{ asset('images/chat-icon.png') }}" alt="5Core AI Chat" class="ai-chat-icon">
                 <span id="ai-chat-notification-badge" class="ai-chat-notification-badge" style="display: none;">0</span>
@@ -11,6 +11,7 @@
                     <div class="ai-chat-header-actions">
                         <a href="{{ route('ai.download.sample') }}" id="ai-sample-csv-btn" class="ai-header-link"
                             title="Download sample CSV format">📥 Sample CSV</a>
+                        <button type="button" id="ai-chat-clear-history" class="ai-header-link" title="Clear chat history">Clear History</button>
                         <button type="button" id="ai-chat-close" class="ai-chat-close"
                             aria-label="Close chat">&times;</button>
                     </div>
@@ -326,8 +327,28 @@
                 opacity: 0.6;
                 cursor: not-allowed;
             }
+
+            .ai-chat-toast {
+                position: fixed;
+                bottom: 100px;
+                right: 24px;
+                max-width: 360px;
+                padding: 12px 16px;
+                background: #405189;
+                color: #fff;
+                border-radius: 8px;
+                box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+                z-index: 10000;
+                font-size: 0.9rem;
+                animation: ai-toast-in 0.3s ease;
+            }
+            @keyframes ai-toast-in {
+                from { opacity: 0; transform: translateY(10px); }
+                to { opacity: 1; transform: translateY(0); }
+            }
         </style>
 
+        <script src="https://js.pusher.com/8.4.0/pusher.min.js"></script>
         <script>
             (function() {
                 const toggle = document.getElementById('ai-chat-toggle');
@@ -339,6 +360,13 @@
                 const badgeEl = document.getElementById('ai-chat-notification-badge');
                 const fileInput = document.getElementById('ai-file-upload');
                 const attachBtn = document.getElementById('ai-attach-btn');
+                const widget = document.getElementById('ai-chat-widget');
+                const userEmail = (widget && widget.getAttribute('data-user-email')) || '';
+                const userId = widget && widget.getAttribute('data-user-id');
+                const pusherKey = (widget && widget.getAttribute('data-pusher-key')) || '';
+                const pusherCluster = (widget && widget.getAttribute('data-pusher-cluster')) || 'ap2';
+                const STORAGE_KEY = '5core_chat_' + userEmail.replace(/[^a-zA-Z0-9@._-]/g, '_');
+                let chatMessages = [];
                 const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
                 const routes = {
                     chat: '{{ route('ai.chat') }}',
@@ -350,6 +378,80 @@
                 };
 
                 if (!toggle || !panel) return;
+
+                function showSeniorReplyToast(message) {
+                    var existing = document.getElementById('ai-chat-toast');
+                    if (existing) existing.remove();
+                    var toast = document.createElement('div');
+                    toast.id = 'ai-chat-toast';
+                    toast.className = 'ai-chat-toast';
+                    toast.textContent = message;
+                    document.body.appendChild(toast);
+                    setTimeout(function() { toast.remove(); }, 5000);
+                }
+
+                if (pusherKey && userId && typeof Pusher !== 'undefined') {
+                    try {
+                        var pusher = new Pusher(pusherKey, {
+                            cluster: pusherCluster,
+                            authEndpoint: '{{ url("/broadcasting/auth") }}',
+                            auth: {
+                                headers: {
+                                    'X-CSRF-TOKEN': csrfToken || '',
+                                    'Accept': 'application/json'
+                                }
+                            }
+                        });
+                        var channel = pusher.subscribe('private-user.' + userId);
+                        channel.bind('SeniorReplied', function(data) {
+                            var text = '🔔 Senior replied to your question:\n\n' + (data.reply || '') + '\n\nYour question: ' + (data.question || '');
+                            appendMessage('assistant', text, null, false);
+                            showSeniorReplyToast('Senior replied to your escalated question.');
+                            if (badgeEl) {
+                                var n = parseInt(badgeEl.textContent || '0', 10) + 1;
+                                badgeEl.textContent = n > 99 ? '99+' : n;
+                                badgeEl.style.display = 'flex';
+                            }
+                            if (toggle) toggle.classList.add('has-notification');
+                            if (typeof checkNotifications === 'function') checkNotifications();
+                        });
+                    } catch (e) {}
+                }
+
+                function saveToStorage() {
+                    try {
+                        localStorage.setItem(STORAGE_KEY, JSON.stringify(chatMessages));
+                    } catch (e) {}
+                }
+
+                function loadFromStorage() {
+                    try {
+                        const raw = localStorage.getItem(STORAGE_KEY);
+                        if (raw) {
+                            const parsed = JSON.parse(raw);
+                            return Array.isArray(parsed) ? parsed : [];
+                        }
+                    } catch (e) {}
+                    return [];
+                }
+
+                function clearHistory() {
+                    try {
+                        localStorage.removeItem(STORAGE_KEY);
+                    } catch (e) {}
+                    chatMessages = [];
+                    messagesEl.innerHTML = '';
+                }
+
+                function renderStoredMessages() {
+                    const stored = loadFromStorage();
+                    chatMessages = stored;
+                    stored.forEach(function(m) {
+                        const role = (m.role === 'user' || m.role === 'assistant') ? m.role : 'assistant';
+                        const content = (m.content != null) ? String(m.content) : '';
+                        appendMessage(role, content, null, false, true);
+                    });
+                }
 
                 function openPanel() {
                     panel.classList.add('is-open');
@@ -364,6 +466,12 @@
                 }
                 toggle.addEventListener('click', openPanel);
                 closeBtn.addEventListener('click', closePanel);
+                const clearHistoryBtn = document.getElementById('ai-chat-clear-history');
+                if (clearHistoryBtn) {
+                    clearHistoryBtn.addEventListener('click', function() {
+                        clearHistory();
+                    });
+                }
 
                 function escapeHtml(text) {
                     const div = document.createElement('div');
@@ -371,7 +479,7 @@
                     return div.innerHTML;
                 }
 
-                function appendMessage(role, content, recordId, isEscalation) {
+                function appendMessage(role, content, recordId, isEscalation, skipSave) {
                     const wrap = document.createElement('div');
                     wrap.className = 'ai-chat-msg ' + role;
                     const safe = escapeHtml(content);
@@ -381,7 +489,7 @@
                         inner += '<div class="ai-chat-feedback" data-id="' + escapeHtml(String(recordId)) + '">';
                         inner += '<button type="button" class="ai-feedback-btn" data-helpful="1">Helpful</button>';
                         inner +=
-                        '<button type="button" class="ai-feedback-btn" data-helpful="0">Not helpful</button></div>';
+                            '<button type="button" class="ai-feedback-btn" data-helpful="0">Not helpful</button></div>';
                     }
                     wrap.innerHTML = inner;
                     messagesEl.appendChild(wrap);
@@ -392,6 +500,10 @@
                                 sendFeedback(recordId, this.getAttribute('data-helpful') === '1', wrap);
                             });
                         });
+                    }
+                    if (!skipSave) {
+                        chatMessages.push({ role: role, content: content, timestamp: Date.now() });
+                        saveToStorage();
                     }
                 }
 
@@ -599,6 +711,8 @@
                             appendMessage('assistant', 'Something went wrong. Please try again.', null, false);
                         });
                 }
+
+                renderStoredMessages();
             })
             ();
         </script>

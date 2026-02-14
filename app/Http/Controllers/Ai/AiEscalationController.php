@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Ai;
 
+use App\Events\SeniorReplied;
 use App\Http\Controllers\Controller;
 use App\Mail\JuniorNotificationMail;
 use App\Models\AiEscalation;
@@ -69,6 +70,13 @@ class AiEscalationController extends Controller
             'escalation_id' => $escalation->id,
             'is_approved' => false,
         ]);
+
+        // Real-time: broadcast to junior so chat widget can show reply instantly
+        try {
+            event(new SeniorReplied($escalation));
+        } catch (\Throwable $e) {
+            Log::warning('SeniorReplied broadcast failed', ['escalation_id' => $escalation->id, 'error' => $e->getMessage()]);
+        }
 
         // Send email notification to junior (user offline scenario)
         if (!$escalation->email_notification_sent && $escalation->user) {

@@ -938,7 +938,7 @@
                     //     }
                     // },
                     {
-                        title: "N Map",
+                        title: "Missing Map",
                         field: "NMap",
                         hozAlign: "center",
                         sorter: "number",
@@ -967,14 +967,40 @@
                         }
                     },
                     {
-                        title: "Sheet",
-                        field: "sheet_link",
+                        title: "L Missing Ads",
+                        field: "Missing Ads",
                         hozAlign: "center",
+                        sorter: "number",
+                        width: 110,
                         visible: true,
                         formatter: function(cell) {
-                            const link = cell.getValue();
-                            if (!link) return '-';
-                            return `<a href="${link}" target="_blank" class="btn btn-sm btn-success">🔗</a>`;
+                            const value = parseNumber(cell.getValue());
+                            const rowData = cell.getRow().getData();
+                            const channel = (rowData['Channel '] || '').trim();
+
+                            if (!value || value === 0) return '-';
+
+                            // Add info icon for channels that might have PT/KW/HL breakdown
+                            const infoIcon = `<i class="fas fa-info-circle missing-info-icon ms-1" 
+                                data-channel="${channel}" 
+                                style="cursor:pointer;color:#dc3545;font-size:12px;" 
+                                title="View L Missing Ads Breakdown"></i>`;
+
+                            return `<span style="font-weight:600;color:#dc3545;">${value.toLocaleString('en-US')}</span>${infoIcon}`;
+                        },
+                        cellClick: function(e, cell) {
+                            if (e.target.classList.contains('missing-info-icon')) {
+                                e.stopPropagation();
+                                const channelName = $(e.target).data('channel');
+                                showMissingAdsBreakdown(
+                                channelName); // Show Missing Ads specific modal
+                            }
+                        },
+                        bottomCalc: "sum",
+                        bottomCalcFormatter: function(cell) {
+                            const value = cell.getValue();
+                            if (!value || value === 0) return '<strong>-</strong>';
+                            return `<strong style="color:#dc3545;">${parseNumber(value).toLocaleString('en-US')}</strong>`;
                         }
                     },
                     {
@@ -2110,43 +2136,6 @@
                         }
                     },
                     {
-                        title: "L Missing Ads",
-                        field: "Missing Ads",
-                        hozAlign: "center",
-                        sorter: "number",
-                        width: 110,
-                        visible: true,
-                        formatter: function(cell) {
-                            const value = parseNumber(cell.getValue());
-                            const rowData = cell.getRow().getData();
-                            const channel = (rowData['Channel '] || '').trim();
-
-                            if (!value || value === 0) return '-';
-
-                            // Add info icon for channels that might have PT/KW/HL breakdown
-                            const infoIcon = `<i class="fas fa-info-circle missing-info-icon ms-1" 
-                                data-channel="${channel}" 
-                                style="cursor:pointer;color:#dc3545;font-size:12px;" 
-                                title="View L Missing Ads Breakdown"></i>`;
-
-                            return `<span style="font-weight:600;color:#dc3545;">${value.toLocaleString('en-US')}</span>${infoIcon}`;
-                        },
-                        cellClick: function(e, cell) {
-                            if (e.target.classList.contains('missing-info-icon')) {
-                                e.stopPropagation();
-                                const channelName = $(e.target).data('channel');
-                                showMissingAdsBreakdown(
-                                channelName); // Show Missing Ads specific modal
-                            }
-                        },
-                        bottomCalc: "sum",
-                        bottomCalcFormatter: function(cell) {
-                            const value = cell.getValue();
-                            if (!value || value === 0) return '<strong>-</strong>';
-                            return `<strong style="color:#dc3545;">${parseNumber(value).toLocaleString('en-US')}</strong>`;
-                        }
-                    },
-                    {
                         title: "L30 Orders",
                         field: "L30 Orders",
                         hozAlign: "center",
@@ -2493,6 +2482,17 @@
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
                             return `<span>$${value.toFixed(0)}</span>`;
+                        }
+                    },
+                    {
+                        title: "Sheet",
+                        field: "sheet_link",
+                        hozAlign: "center",
+                        visible: true,
+                        formatter: function(cell) {
+                            const link = cell.getValue();
+                            if (!link) return '-';
+                            return `<a href="${link}" target="_blank" class="btn btn-sm btn-success">🔗</a>`;
                         }
                     },
                 ]

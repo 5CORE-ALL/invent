@@ -15,8 +15,8 @@ class ShopifyController extends Controller
 
     public function __construct()
     {
-        $this->shopifyDomain = config('services.shopify.store_url');
-        $this->accessToken = config('services.shopify.access_token');
+        $this->shopifyDomain = env('SHOPIFY_STORE_URL');
+        $this->accessToken = env('SHOPIFY_ACCESS_TOKEN');
     }
 
    public function getProducts()
@@ -70,14 +70,10 @@ class ShopifyController extends Controller
 
     public function shopifyView(Request $request, $first, $second)
     {
-        // 🚨🚨🚨 IMPORTANT: AI ROUTES KO IGNORE KARO 🚨🚨🚨
         if ($first === 'ai' || $first === 'ai-admin') {
-            // YEH AI CHATBOT KA ROUTE HAI - 404 do ya redirect
-            abort(404, 'Route not found in ShopifyController');
-            // YA
-            // return response()->json(['error' => 'Not found'], 404);
+            abort(404, 'Route not found');
         }
-        
+
         // Agar assets hai to redirect
         if ($first == "assets") {
             return redirect('home');
