@@ -271,15 +271,25 @@ use App\Http\Controllers\Sales\WayfairSalesController;
 |
 */
 
-
-Route::get('/ai/download-sample-csv', [App\Http\Controllers\Api\AiChatController::class, 'downloadSampleCsv'])
-    ->name('ai.download.sample');
-
-Route::get('/ai/escalation/{id}/reply', [App\Http\Controllers\Ai\AiEscalationController::class, 'showReplyForm'])
-    ->name('ai.escalation.reply');
-
-Route::post('/ai/escalation/{id}/reply', [App\Http\Controllers\Ai\AiEscalationController::class, 'submitReply'])
-    ->name('ai.escalation.submit');
+// 5Core AI routes (must be before any wildcard so /ai/* is not caught by Shopify)
+Route::prefix('ai')->middleware(['auth'])->group(function () {
+    Route::post('/chat', [\App\Http\Controllers\Api\AiChatController::class, 'chat'])->name('ai.chat');
+    Route::post('/feedback', [\App\Http\Controllers\Api\AiChatController::class, 'feedback'])->name('ai.feedback');
+    Route::post('/upload-knowledge', [\App\Http\Controllers\Api\AiChatController::class, 'uploadKnowledge'])->name('ai.upload');
+    Route::get('/check-notifications', [\App\Http\Controllers\Api\AiChatController::class, 'checkNotifications'])->name('ai.check');
+    Route::get('/pending-replies', [\App\Http\Controllers\Api\AiChatController::class, 'getPendingReplies'])->name('ai.pending');
+    Route::post('/mark-replies-read', [\App\Http\Controllers\Api\AiChatController::class, 'markRepliesRead'])->name('ai.mark-read');
+});
+Route::get('/ai/download-sample-csv', [App\Http\Controllers\Api\AiChatController::class, 'downloadSampleCsv'])->name('ai.download.sample');
+Route::get('/ai/escalation/{id}/reply', [App\Http\Controllers\Ai\AiEscalationController::class, 'showReplyForm'])->name('ai.escalation.reply');
+Route::post('/ai/escalation/{id}/reply', [App\Http\Controllers\Ai\AiEscalationController::class, 'submitReply'])->name('ai.escalation.submit');
+Route::prefix('ai-admin')->middleware(['auth', 'isAdmin'])->name('ai.admin.')->group(function () {
+    Route::get('/', [\App\Http\Controllers\Ai\AiAdminController::class, 'index'])->name('index');
+    Route::get('/escalations', [\App\Http\Controllers\Ai\AiAdminController::class, 'escalations'])->name('escalations');
+    Route::get('/training', [\App\Http\Controllers\Ai\AiAdminController::class, 'trainingLogs'])->name('training');
+    Route::post('/training/{id}/approve', [\App\Http\Controllers\Ai\AiAdminController::class, 'approveTraining'])->name('training.approve');
+    Route::get('/files', [\App\Http\Controllers\Ai\AiAdminController::class, 'knowledgeFiles'])->name('files');
+});
 
 /** Start Cron Job Routes **/
 // Consolidated Cron Job - Runs all cron jobs in sequence (Recommended)
@@ -2978,7 +2988,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/tasks/{id}/update-status', [\App\Http\Controllers\TaskController::class, 'updateStatus'])->name('tasks.updateStatus');
 
     Route::get('', [RoutingController::class, 'index'])->name('root');
-    Route::get('{firstShop}/{secondShop}', [ShopifyController::class, 'shopifyView'])->name('shopify');
     Route::get('{first}/{second}', [RoutingController::class, 'secondLevel'])->name('second');
     Route::get('/.well-known/{file}', function ($file) {
         $allowedFiles = ['assetlinks.json', 'apple-app-site-association', 'com.chrome.devtools.json'];
@@ -3026,21 +3035,6 @@ Route::get('/products/inventory', [ShopifyController::class, 'shopifyView'])
     ->defaults('second', 'inventory')
     ->name('second');  // ← YEH LINE ADD KARO!
 
-// Ya agar 'second' generic route chahiye to:
-Route::get('/{first}/{second}', [ShopifyController::class, 'shopifyView'])->name('second');
-
-
-
-
-// 5Core AI Internal Support (auth + 5Core members only enforced in controller)
-Route::prefix('ai')->middleware(['auth'])->group(function () {
-    Route::post('/chat', [\App\Http\Controllers\Api\AiChatController::class, 'chat'])->name('ai.chat');
-    Route::post('/feedback', [\App\Http\Controllers\Api\AiChatController::class, 'feedback'])->name('ai.feedback');
-    Route::post('/upload-knowledge', [\App\Http\Controllers\Api\AiChatController::class, 'uploadKnowledge'])->name('ai.upload');
-    Route::get('/check-notifications', [\App\Http\Controllers\Api\AiChatController::class, 'checkNotifications'])->name('ai.check');
-    Route::get('/pending-replies', [\App\Http\Controllers\Api\AiChatController::class, 'getPendingReplies'])->name('ai.pending');
-    Route::post('/mark-replies-read', [\App\Http\Controllers\Api\AiChatController::class, 'markRepliesRead'])->name('ai.mark-read');
-});
 
 
 
@@ -3048,16 +3042,11 @@ Route::prefix('ai')->middleware(['auth'])->group(function () {
 
 
 
-// AI Admin (auth + isAdmin + 5Core member in controller)
-Route::prefix('ai-admin')->middleware(['auth', 'isAdmin'])->name('ai.admin.')->group(function () {
-    Route::get('/', [\App\Http\Controllers\Ai\AiAdminController::class, 'index'])->name('index');
-    Route::get('/escalations', [\App\Http\Controllers\Ai\AiAdminController::class, 'escalations'])->name('escalations');
-    Route::get('/training', [\App\Http\Controllers\Ai\AiAdminController::class, 'trainingLogs'])->name('training');
-    Route::post('/training/{id}/approve', [\App\Http\Controllers\Ai\AiAdminController::class, 'approveTraining'])->name('training.approve');
-    Route::get('/files', [\App\Http\Controllers\Ai\AiAdminController::class, 'knowledgeFiles'])->name('files');
-});
 
-Route::get('/{first}/{second}', [ShopifyController::class, 'shopifyView']);
+
 
 
 // AI Title Manager Routes
+
+// Shopify wildcard (must be last so it does not catch /ai/*, /ai-admin/*, etc.)
+Route::get('/{first}/{second}', [ShopifyController::class, 'shopifyView']);

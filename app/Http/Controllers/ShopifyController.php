@@ -70,14 +70,10 @@ class ShopifyController extends Controller
 
     public function shopifyView(Request $request, $first, $second)
     {
-        // 🚨🚨🚨 IMPORTANT: AI ROUTES KO IGNORE KARO 🚨🚨🚨
         if ($first === 'ai' || $first === 'ai-admin') {
-            // YEH AI CHATBOT KA ROUTE HAI - 404 do ya redirect
-            abort(404, 'Route not found in ShopifyController');
-            // YA
-            // return response()->json(['error' => 'Not found'], 404);
+            abort(404, 'Route not found');
         }
-        
+
         // Agar assets hai to redirect
         if ($first == "assets") {
             return redirect('home');

@@ -223,8 +223,15 @@ class AiChatController extends Controller
     {
         $q = strtolower(trim($question));
         $myPatterns = [
-            'my tasks', 'my pending tasks', 'tasks assigned to me', 'my task list',
-            'what are my tasks', 'show my tasks', 'my task', 'show me tasks', 'show tasks',
+            'my tasks',
+            'my pending tasks',
+            'tasks assigned to me',
+            'my task list',
+            'what are my tasks',
+            'show my tasks',
+            'my task',
+            'show me tasks',
+            'show tasks',
         ];
         foreach ($myPatterns as $p) {
             if (str_contains($q, $p)) {
@@ -313,14 +320,40 @@ class AiChatController extends Controller
     }
 
     /** Minimum score to accept a KB match; avoids false matches from common/short words. */
-    private const KNOWLEDGE_BASE_MIN_SCORE = 10;
+    private const KNOWLEDGE_BASE_MIN_SCORE = 5;
 
     /** Common words to skip when scoring (reduce false matches like "where to manage things" → Task). */
     private const KB_STOP_WORDS = [
-        'where', 'what', 'how', 'to', 'the', 'a', 'an', 'is', 'are', 'can', 'i', 'you',
-        'do', 'does', 'for', 'with', 'at', 'in', 'on', 'by', 'from', 'of', 'and', 'or',
+        'where',
+        'what',
+        'how',
+        'to',
+        'the',
+        'a',
+        'an',
+        'is',
+        'are',
+        'can',
+        'i',
+        'you',
+        'do',
+        'does',
+        'for',
+        'with',
+        'at',
+        'in',
+        'on',
+        'by',
+        'from',
+        'of',
+        'and',
+        'or',
     ];
 
+    /**
+     * Search KB by question. Remove fake login/Google entries via tinker:
+     * \App\Models\AiKnowledgeBase::where('category', 'Login')->orWhere('question_pattern', 'like', '%Google%')->delete();
+     */
     private function searchKnowledgeBase(string $question): ?AiKnowledgeBase
     {
         try {
@@ -359,7 +392,7 @@ class AiChatController extends Controller
                 $wordScore = 0;
                 foreach ($words as $word) {
                     if (str_contains($pattern, $word)) {
-                        $wordScore += 3; // pattern match
+                        $wordScore += 5; // pattern match (increased so product/address entries rank higher)
                         continue;
                     }
                     foreach ($tags as $tag) {
@@ -391,8 +424,21 @@ class AiChatController extends Controller
 
                 $score = $wordScore + $tagFullScore + $similarityScore + $categoryScore;
 
+                // Boost Website category entries
+                if ($category === 'website') {
+                    $score += 2;
+                }
+
+                // Penalize login/Google-like entries so "products" / "address" queries match product/address entries
+                $entryText = $pattern . ' ' . implode(' ', $tags);
+                if (str_contains($entryText, 'login') || str_contains($entryText, 'google')) {
+                    $score -= 4;
+                }
+
                 Log::debug('KB ENTRY SCORE', [
+                    'question' => $question,
                     'pattern' => $entry->question_pattern,
+                    'category' => $entry->category,
                     'score' => $score,
                     'wordScore' => $wordScore,
                     'tagFullScore' => $tagFullScore,
@@ -408,7 +454,9 @@ class AiChatController extends Controller
 
             if ($best !== null) {
                 Log::debug('KB BEST MATCH', [
+                    'question' => $question,
                     'pattern' => $best->question_pattern,
+                    'category' => $best->category,
                     'score' => $bestScore,
                 ]);
             } else {
@@ -422,29 +470,31 @@ class AiChatController extends Controller
         }
     }
 
-    private function formatAnswerSteps($answerSteps, ?string $videoLink = null): string
+    private function formatAnswerSteps($answerSteps, ?string $videoLink = null, ?string $sourceUrl = null): string
     {
         $steps = is_array($answerSteps) ? $answerSteps : (is_string($answerSteps) ? json_decode($answerSteps, true) : []);
-        
+
         if (!is_array($steps)) {
             $steps = [$steps];
         }
-        
-        // 🔥 FIX: Check if steps already have numbers (1., 2., etc.)
+
         $formattedSteps = [];
         foreach ($steps as $index => $step) {
-            // Remove existing numbers if present
             $cleanStep = preg_replace('/^\d+\.\s*/', '', trim($step));
-            // Add single number
             $formattedSteps[] = ($index + 1) . '. ' . $cleanStep;
         }
-        
+
         $out = implode("\n", $formattedSteps);
-        
+
         if ($videoLink) {
             $out .= "\n\n📹 Video tutorial: " . $videoLink;
         }
-        
+
+        // Add source URL if available (for website entries)
+        if ($sourceUrl) {
+            $out .= "\n\n🔗 Source: " . $sourceUrl;
+        }
+
         return $out;
     }
 
@@ -468,10 +518,10 @@ class AiChatController extends Controller
         return 'General';
     }
 
+    /** All escalations use the single senior email (domain is kept for logging only). */
     private function getSeniorEmailByDomain(string $domain): string
     {
-        $emails = config('services.5core.senior_emails', []);
-        return $emails[$domain] ?? $emails['General'] ?? 'support@5core.com';
+        return config('services.5core.senior_email', 'tech-support@5core.com');
     }
 
     private const CLAUDE_SYSTEM_PROMPT = "You are 5Core AI Assistant, an internal support agent for 5Core team members. "
@@ -650,6 +700,8 @@ class AiChatController extends Controller
 
             $replyLink = url('/ai/escalation/' . $escalation->id . '/reply');
 
+            Log::info('📧 Sending escalation email to', ['to' => $seniorEmail, 'escalation_id' => $escalation->id]);
+
             try {
                 Mail::to($seniorEmail)->send(new EscalationMail(
                     $user->name ?? $user->email,
@@ -659,7 +711,9 @@ class AiChatController extends Controller
                     $domain,
                     $replyLink
                 ));
+                Log::info('📧 AI escalation: mail sent successfully', ['to' => $seniorEmail]);
             } catch (\Exception $e) {
+                Log::warning('Escalation email send failed', ['to' => $seniorEmail, 'error' => $e->getMessage()]);
             }
 
             $answer = "I don't have this information. Your question has been escalated to the {$domain} team senior. You will be notified when they respond.";
