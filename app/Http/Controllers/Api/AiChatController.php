@@ -48,10 +48,11 @@ class AiChatController extends Controller
             Log::info('🚀 CHAT REQUEST', ['user' => $user->email, 'question' => $question]);
             Log::info('🌐 ENV CHECK', ['APP_ENV' => config('app.env'), 'APP_URL' => config('app.url')]);
 
-            $taskResponse = $this->handleTaskQuery($question, $user);
-            if ($taskResponse) {
-                return $taskResponse;
-            }
+            // Task assign feature commented out
+            // $taskResponse = $this->handleTaskQuery($question, $user);
+            // if ($taskResponse) {
+            //     return $taskResponse;
+            // }
 
             Log::info('🔍 KB SEARCH', ['question' => $question]);
             Log::info('📊 KB COUNT', ['count' => \Illuminate\Support\Facades\Schema::hasTable('ai_knowledge_base') ? AiKnowledgeBase::count() : 0]);
@@ -119,9 +120,12 @@ class AiChatController extends Controller
 
     /**
      * Handle task inquiry questions. Returns JsonResponse if it's a task question, null otherwise.
+     * TASK ASSIGN FEATURE COMMENTED OUT - body disabled, returns null.
      */
     private function handleTaskQuery(string $question, $user): ?JsonResponse
     {
+        return null; // Task assign feature commented out
+        /*
         $keywords = [
             'task', 'tasks', 'assign', 'assigned', 'pending', 'assign to',
             'task list', 'my tasks', 'tasks of', 'tasks for', 'working on',
@@ -212,6 +216,7 @@ class AiChatController extends Controller
         } catch (\Throwable $e) {
             return null;
         }
+        */
     }
 
     private function resolveTargetUserFromQuestion(string $question, $currentUser): ?User
@@ -307,11 +312,28 @@ class AiChatController extends Controller
         ]);
     }
 
+    /** Minimum score to accept a KB match; avoids false matches from common/short words. */
+    private const KNOWLEDGE_BASE_MIN_SCORE = 10;
+
+    /** Common words to skip when scoring (reduce false matches like "where to manage things" → Task). */
+    private const KB_STOP_WORDS = [
+        'where', 'what', 'how', 'to', 'the', 'a', 'an', 'is', 'are', 'can', 'i', 'you',
+        'do', 'does', 'for', 'with', 'at', 'in', 'on', 'by', 'from', 'of', 'and', 'or',
+    ];
+
     private function searchKnowledgeBase(string $question): ?AiKnowledgeBase
     {
         try {
-            $words = preg_split('/\s+/', strtolower($question), -1, PREG_SPLIT_NO_EMPTY);
+            $qLower = strtolower(trim($question));
+            $allWords = preg_split('/\s+/', $qLower, -1, PREG_SPLIT_NO_EMPTY);
+            $stopWords = array_fill_keys(array_map('strtolower', self::KB_STOP_WORDS), true);
+            // Only score words that are at least 3 chars and not stop words
+            $words = array_values(array_filter($allWords, function ($w) use ($stopWords) {
+                return strlen($w) >= 3 && !isset($stopWords[$w]);
+            }));
+
             if (empty($words)) {
+                Log::debug('KB SEARCH: no significant words after filter', ['question' => $question]);
                 return null;
             }
 
@@ -328,30 +350,74 @@ class AiChatController extends Controller
             $bestScore = 0;
 
             foreach ($entries as $entry) {
-                $pattern = strtolower($entry->question_pattern);
+                $pattern = strtolower(trim($entry->question_pattern ?? ''));
                 $tags = $entry->tags ?? [];
-                $allTerms = array_merge([$pattern], is_array($tags) ? $tags : []);
+                $tags = is_array($tags) ? array_map('strtolower', array_filter($tags, 'is_string')) : [];
+                $category = strtolower(trim($entry->category ?? ''));
+                $subcategory = strtolower(trim($entry->subcategory ?? ''));
 
-                $score = 0;
+                $wordScore = 0;
                 foreach ($words as $word) {
-                    if (strlen($word) < 2) continue;
-
-                    foreach ($allTerms as $term) {
-                        if (is_string($term) && str_contains($term, $word)) {
-                            $score++;
+                    if (str_contains($pattern, $word)) {
+                        $wordScore += 3; // pattern match
+                        continue;
+                    }
+                    foreach ($tags as $tag) {
+                        if (str_contains($tag, $word) || str_contains($word, $tag)) {
+                            $wordScore += 2; // tag partial match
                             break;
                         }
                     }
                 }
 
-                if ($score > $bestScore && $score >= 1) {
+                $tagFullScore = 0;
+                foreach ($tags as $tag) {
+                    if ($tag === '' || strlen($tag) < 3) continue;
+                    if (str_contains($qLower, $tag)) {
+                        $tagFullScore += 3;
+                    }
+                }
+                $tagFullScore = min(9, $tagFullScore);
+
+                $similarityScore = 0;
+                if ($pattern !== '') {
+                    similar_text($qLower, $pattern, $percent);
+                    $similarityScore = min(5, (int) round((float) $percent / 20));
+                }
+
+                $categoryScore = 0;
+                if ($category !== '' && str_contains($qLower, $category)) $categoryScore += 1;
+                if ($subcategory !== '' && str_contains($qLower, $subcategory)) $categoryScore += 1;
+
+                $score = $wordScore + $tagFullScore + $similarityScore + $categoryScore;
+
+                Log::debug('KB ENTRY SCORE', [
+                    'pattern' => $entry->question_pattern,
+                    'score' => $score,
+                    'wordScore' => $wordScore,
+                    'tagFullScore' => $tagFullScore,
+                    'similarityScore' => $similarityScore,
+                    'categoryScore' => $categoryScore,
+                ]);
+
+                if ($score > $bestScore && $score >= self::KNOWLEDGE_BASE_MIN_SCORE) {
                     $bestScore = $score;
                     $best = $entry;
                 }
             }
 
+            if ($best !== null) {
+                Log::debug('KB BEST MATCH', [
+                    'pattern' => $best->question_pattern,
+                    'score' => $bestScore,
+                ]);
+            } else {
+                Log::debug('KB NO MATCH', ['question' => $question, 'minScore' => self::KNOWLEDGE_BASE_MIN_SCORE]);
+            }
+
             return $best;
         } catch (\Throwable $e) {
+            Log::debug('KB SEARCH ERROR', ['message' => $e->getMessage()]);
             return null;
         }
     }
@@ -408,14 +474,10 @@ class AiChatController extends Controller
         return $emails[$domain] ?? $emails['General'] ?? 'support@5core.com';
     }
 
-    private const CLAUDE_SYSTEM_PROMPT = "You are 5Core AI Assistant, an internal support agent for 5Core team members. " .
-        "Answer questions about 5Core products, processes, and workflows. " .
-        "For greetings like 'hi', 'hello', 'hey', 'thanks', 'good morning' - respond politely and warmly. " .
-        "Keep responses professional, friendly, and concise in English. " .
-        "IMPORTANT: If you don't know the answer or the question is about IT, VPN, server, network, or anything outside 5Core scope, " .
-        "you MUST say: 'I don't have this information.' Do NOT give long explanations or recommendations to contact IT. " .
-        "Just say 'I don't have this information.' and the system will escalate. " .
-        "Do NOT say 'I'm afraid' or 'I recommend checking with IT' - just say you don't have the information.";
+    private const CLAUDE_SYSTEM_PROMPT = "You are 5Core AI Assistant, an internal support agent for 5Core team members. "
+        . "ABOUT 5CORE: 5Core is a company that provides integrated business solutions. "
+        . "We have products across audio equipment (speakers, microphones, stands), e-commerce platforms, and business management tools. "
+        . "IMPORTANT: If you don't know the answer, say 'I don't have this information.' and the system will escalate to a senior team member.";
 
     /**
      * Call OpenAI Chat API. Returns ['answer' => string, 'confident' => bool] or null on failure.
