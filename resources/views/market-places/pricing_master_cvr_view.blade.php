@@ -305,17 +305,9 @@
                                     <th class="text-center">Push</th>
                                     <th class="text-center">Pushed By</th>
                                 </tr>
-                            </thead>
-                            <tbody id="ovl30DetailsTableBody">
-                                <!-- Table rows will be populated dynamically -->
-                                <tr>
-                                    <td colspan="9" class="text-center text-muted py-4">No data available</td>
-                                </tr>
-                            </tbody>
-                            <tfoot class="table-secondary">
-                                <tr>
+                                <tr class="table-secondary">
+                                    <th><img id="modal-product-image" src="" alt="" style="width: 50px; height: 50px; object-fit: cover; display: none;"></th>
                                     <th>Total</th>
-                                    <th></th>
                                     <th class="text-end" id="modal-total-price">$0.00</th>
                                     <th class="text-end" id="modal-total-views">0</th>
                                     <th class="text-end" id="modal-total-l30">0</th>
@@ -330,7 +322,13 @@
                                     <th></th>
                                     <th></th>
                                 </tr>
-                            </tfoot>
+                            </thead>
+                            <tbody id="ovl30DetailsTableBody">
+                                <!-- Table rows will be populated dynamically -->
+                                <tr>
+                                    <td colspan="9" class="text-center text-muted py-4">No data available</td>
+                                </tr>
+                            </tbody>
                         </table>
                     </div>
                 </div>
@@ -507,11 +505,23 @@
         $(document).on('click', '.ovl30-info-icon', function(e) {
             e.stopPropagation();
             const sku = $(this).data('sku');
-            loadMarketplaceBreakdown(sku);
+            const imagePath = $(this).data('image') || '';
+            loadMarketplaceBreakdown(sku, imagePath);
         });
 
-        function loadMarketplaceBreakdown(sku) {
+        function loadMarketplaceBreakdown(sku, imagePath) {
             $('#modalSkuName').text(sku);
+            
+            // Set product image in modal totals row
+            const imgElement = $('#modal-product-image');
+            if (imagePath) {
+                imgElement.attr('src', imagePath);
+                imgElement.attr('alt', sku);
+                imgElement.show();
+            } else {
+                imgElement.hide();
+            }
+            
             showModalLoading(sku);
             
             const modal = new bootstrap.Modal(document.getElementById('ovl30DetailsModal'));
@@ -764,7 +774,7 @@
             paginationSize: 100,
             paginationSizeSelector: [10, 25, 50, 100, 200],
             paginationCounter: "rows",
-            columnCalcs: "both",
+            columnCalcs: "top",
             langs: {
                 "default": {
                     "pagination": {
@@ -885,6 +895,7 @@
                         const value = parseFloat(cell.getValue() || 0);
                         const rowData = cell.getRow().getData();
                         const sku = rowData.sku;
+                        const imagePath = rowData.image_path || '';
                         
                         // Don't show info icon for parent rows
                         if (rowData.is_parent_summary === true) {
@@ -896,6 +907,7 @@
                             <i class="fas fa-info-circle text-info ovl30-info-icon" 
                                style="cursor: pointer; font-size: 12px; margin-left: 6px;" 
                                data-sku="${sku}"
+                               data-image="${imagePath}"
                                title="View breakdown for ${sku}"></i>
                         `;
                     }
@@ -1196,7 +1208,8 @@
                         // Reload modal data to show pushed_by info
                         setTimeout(() => {
                             const currentSku = $('#modalSkuName').text();
-                            loadMarketplaceBreakdown(currentSku);
+                            const currentImage = $('#modal-product-image').attr('src');
+                            loadMarketplaceBreakdown(currentSku, currentImage);
                         }, 1500);
                     } else {
                         showToast(response.message || 'Failed to push price', 'error');
