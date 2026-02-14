@@ -93,15 +93,14 @@
                             @enderror
                         </div>
 
-                        <!-- Assign To (Required) -->
+                        <!-- Assign To (Required on Mobile) -->
                         <div class="mb-3">
                             <label for="assignee_id" class="form-label fw-bold">
                                 Assign To <span class="text-danger">*</span>
                             </label>
                             <select class="form-select form-select-lg @error('assignee_id') is-invalid @enderror" 
                                     id="assignee_id" 
-                                    name="assignee_id"
-                                    required>
+                                    name="assignee_id">
                                 <option value="">Select Person</option>
                                 @foreach($users as $user)
                                     <option value="{{ $user->id }}" {{ old('assignee_id') == $user->id ? 'selected' : '' }}>
@@ -815,8 +814,14 @@
                 }
             });
             
-            // Form validation - ensure at least one assignee selected
+            // Form validation - MOBILE ONLY - ensure at least one assignee selected
             $('form').on('submit', function(e) {
+                // Only validate on mobile view
+                if (window.innerWidth >= 768) {
+                    console.log('Desktop view - skipping mobile validation');
+                    return true; // Skip validation for desktop
+                }
+                
                 const multipleEnabled = $('#enable_multiple_assign').is(':checked');
                 
                 if (multipleEnabled) {
@@ -837,7 +842,7 @@
                     }
                 }
                 
-                console.log('✅ Form validation passed - has assignee(s)');
+                console.log('✅ Mobile form validation passed - has assignee(s)');
                 return true;
             });
             
