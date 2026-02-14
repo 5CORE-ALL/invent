@@ -299,6 +299,7 @@
                         <span class="badge fs-6 p-2 temu-ads-badge" id="temu-total-spend-badge" data-ads-filter="total-spend" style="color: black; font-weight: bold; background-color: #9ec5fe; cursor: pointer;" title="Click to filter: has spend">Total Spend: $0</span>
                         <span class="badge fs-6 p-2 temu-ads-badge" id="temu-total-budget-badge" data-ads-filter="budget" style="color: black; font-weight: bold; background-color: #ced4da; cursor: pointer;" title="Click to filter: has target/budget">Budget: $0</span>
                         <span class="badge fs-6 p-2 temu-ads-badge" id="temu-total-ad-sales-badge" data-ads-filter="ad-sales" style="color: black; font-weight: bold; background-color: #9eeaf9; cursor: pointer;" title="Click to filter: has ad sales">Ad Sales: $0</span>
+                        <span class="badge fs-6 p-2" id="temu-total-ad-sold-badge" style="color: black; font-weight: bold; background-color: #f8b4d9;" title="Total L30 Ad Sold">Total L30 Ad Sold: 0</span>
                         <span class="badge fs-6 p-2 temu-ads-badge" id="temu-total-ad-clicks-badge" data-ads-filter="ad-clicks" style="color: black; font-weight: bold; background-color: #a5d6e8; cursor: pointer;" title="Click to filter: has ad clicks">Ad Clicks: 0</span>
                         <span class="badge fs-6 p-2" id="temu-total-clicks-badge" style="color: black; font-weight: bold; background-color: #a5d6e8;" title="Sum of clicks - Temu">Total Clicks: 0</span>
                         <span class="badge fs-6 p-2" id="temu-avg-clicks-badge" style="color: black; font-weight: bold; background-color: #a5d6e8;" title="Total clicks / Total Ad SKU - Temu">Avg Clicks: 0</span>
@@ -2175,7 +2176,7 @@
             const zeroInvSkus = new Set();
             const adSkuSet = new Set();
             let validSkuCount = 0, missingCount = 0, nraMissingCount = 0, nraCount = 0;
-            let totalSpend = 0, totalAdSales = 0, totalBudget = 0, totalAdClicks = 0;
+            let totalSpend = 0, totalAdSales = 0, totalBudget = 0, totalAdClicks = 0, totalAdSold = 0;
 
             data.forEach(row => {
                 const sku = row.sku || '';
@@ -2207,11 +2208,12 @@
                         }
                     }
                 }
-                // Use temu_campaign_reports L30 data for badge totals (matches all-marketplace-master)
+                // Use temu_campaign_reports L30 data for badge totals (matches sheet export & all-marketplace-master)
                 totalSpend += parseFloat(row.spend_l30) || 0;
                 totalBudget += parseFloat(row.target) || 0;
                 totalAdClicks += parseInt(row.clicks_l30, 10) || 0;
                 totalAdSales += parseFloat(row.ad_sales_l30) || 0;
+                totalAdSold += parseInt(row.ad_sold_l30, 10) || 0;
             });
             const zeroInvCount = zeroInvSkus.size;
             const raCount = Math.max(0, validSkuCount - nraCount);
@@ -2222,13 +2224,6 @@
                 const st = (r.campaign_status || '').trim();
                 if (st === 'Active' || s > 0 || c > 0) uniqueCampaignSkus.add(r.sku);
             });
-            // Use backend L30 totals from temu_campaign_reports (matches all-marketplace-master exactly)
-            if (l30TotalsFromBackend) {
-                totalSpend = parseFloat(l30TotalsFromBackend.total_spend) || totalSpend;
-                totalAdClicks = parseInt(l30TotalsFromBackend.total_clicks, 10) || totalAdClicks;
-                totalAdSales = parseFloat(l30TotalsFromBackend.total_ad_sales) || totalAdSales;
-            }
-
             const avgAcos = totalAdSales > 0 ? (totalSpend / totalAdSales) * 100 : 0;
             const roas = totalSpend > 0 ? totalAdSales / totalSpend : 0;
             const avgClicks = adSkuSet.size > 0 ? totalAdClicks / adSkuSet.size : 0;
@@ -2246,6 +2241,7 @@
             $('#temu-total-spend-badge').text('Total Spend: $' + Math.round(totalSpend).toLocaleString());
             $('#temu-total-budget-badge').text('Budget: $' + totalBudget.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
             $('#temu-total-ad-sales-badge').text('Ad Sales: $' + Math.round(totalAdSales).toLocaleString());
+            $('#temu-total-ad-sold-badge').text('Total L30 Ad Sold: ' + totalAdSold.toLocaleString());
             $('#temu-total-ad-clicks-badge').text('Ad Clicks: ' + totalAdClicks.toLocaleString());
             $('#temu-total-clicks-badge').text('Total Clicks: ' + totalAdClicks.toLocaleString());
             $('#temu-avg-clicks-badge').text('Avg Clicks: ' + (avgClicks % 1 === 0 ? Math.round(avgClicks).toLocaleString() : avgClicks.toFixed(1)));
@@ -2272,7 +2268,6 @@
         };
 
         let totalCampaignCountFromBackend = 0;
-        let l30TotalsFromBackend = null;
 
         table = new Tabulator("#temu-table", {
             ajaxURL: "/temu-decrease-data",
@@ -2288,7 +2283,6 @@
             ajaxResponse: function(url, params, response) {
                 if (response && Array.isArray(response.data)) {
                     totalCampaignCountFromBackend = parseInt(response.total_campaign_count || 0, 10);
-                    l30TotalsFromBackend = response.l30_totals || null;
                     return response.data;
                 }
                 if (Array.isArray(response)) return response;

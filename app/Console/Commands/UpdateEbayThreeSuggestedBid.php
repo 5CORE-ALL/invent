@@ -164,22 +164,18 @@ class UpdateEbayThreeSuggestedBid extends Command
                         $esbid = (float) ($listing->suggested_bid ?? 0);
                         
                         // Calculate SBID based on L7_VIEWS ranges
-                        $newBid = 2; // Default minimum
+                        $newBid = 3; // Default minimum
                         
                         if ($l7Views >= 0 && $l7Views < 50) {
                             // 0-50: use ESBID
                             $newBid = $esbid;
                         } elseif ($l7Views >= 50 && $l7Views < 100) {
-                            $newBid = 10;
-                        } elseif ($l7Views >= 100 && $l7Views < 150) {
-                            $newBid = 9;
-                        } elseif ($l7Views >= 150 && $l7Views < 200) {
                             $newBid = 8;
-                        } elseif ($l7Views >= 200 && $l7Views < 250) {
+                        } elseif ($l7Views >= 100 && $l7Views < 150) {
                             $newBid = 7;
-                        } elseif ($l7Views >= 250 && $l7Views < 300) {
+                        } elseif ($l7Views >= 150 && $l7Views < 200) {
                             $newBid = 6;
-                        } elseif ($l7Views >= 300 && $l7Views < 350) {
+                        } elseif ($l7Views >= 200 && $l7Views < 350) {
                             $newBid = 5;
                         } elseif ($l7Views >= 350 && $l7Views < 400) {
                             $newBid = 4;

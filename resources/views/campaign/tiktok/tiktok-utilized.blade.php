@@ -269,6 +269,16 @@
                                                     style="font-size: 1.1rem;">$0.00</span>
                                             </div>
                                             <div class="badge-count-item"
+                                                style="background: linear-gradient(135deg, #ec4899 0%, #db2777 100%); padding: 8px 16px; border-radius: 8px; color: white; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                                                <span style="font-size: 0.75rem; display: block; margin-bottom: 2px;">Total L30 Ad Sold</span>
+                                                <span class="fw-bold" id="total-ad-sold" style="font-size: 1.1rem;">0</span>
+                                            </div>
+                                            <div class="badge-count-item"
+                                                style="background: linear-gradient(135deg, #06b6d4 0%, #0891b2 100%); padding: 8px 16px; border-radius: 8px; color: white; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                                                <span style="font-size: 0.75rem; display: block; margin-bottom: 2px;">Total L30 Clicks</span>
+                                                <span class="fw-bold" id="total-clicks" style="font-size: 1.1rem;">0</span>
+                                            </div>
+                                            <div class="badge-count-item"
                                                 style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); padding: 8px 16px; border-radius: 8px; color: white; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
                                                 <span style="font-size: 0.75rem; display: block; margin-bottom: 2px;">Avg ACOS</span>
                                                 <span class="fw-bold" id="avg-acos"
@@ -526,15 +536,19 @@
                     nraMissingCountEl.textContent = nraMissingCount;
                 }
 
-                // Calculate Total Spend, Total Sales, and Average ACOS
+                // Calculate Total Spend, Total Sales, Ad Sold, Clicks, and Average ACOS
                 let totalSpend = 0;
                 let totalSales = 0;
+                let totalAdSold = 0;
+                let totalClicks = 0;
 
                 allData.forEach(function(row) {
                     const spend = parseFloat(row.spend || 0);
                     const outRoas = parseFloat(row.out_roas || 0);
 
                     totalSpend += spend;
+                    totalAdSold += parseInt(row.ad_sold || 0);
+                    totalClicks += parseInt(row.ad_clicks || 0);
                     
                     // Calculate sales from spend and ROAS: revenue = spend * ROAS
                     if (outRoas > 0 && spend > 0) {
@@ -552,6 +566,18 @@
                 const totalSalesEl = document.getElementById('total-sales');
                 if (totalSalesEl) {
                     totalSalesEl.textContent = '$' + Math.round(totalSales).toLocaleString();
+                }
+
+                // Update Total L30 Ad Sold
+                const totalAdSoldEl = document.getElementById('total-ad-sold');
+                if (totalAdSoldEl) {
+                    totalAdSoldEl.textContent = totalAdSold.toLocaleString();
+                }
+
+                // Update Total L30 Clicks
+                const totalClicksEl = document.getElementById('total-clicks');
+                if (totalClicksEl) {
+                    totalClicksEl.textContent = totalClicks.toLocaleString();
                 }
 
                 // Update Average ACOS: (Total Spend / Total Sales) * 100

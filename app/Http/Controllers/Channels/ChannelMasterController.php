@@ -518,12 +518,20 @@ class ChannelMasterController extends Controller
                 }
 
                 case 'temu': {
-                    // Use temu_campaign_reports L30 (same source for both pages)
-                    $row = DB::table('temu_campaign_reports')
-                        ->where('report_range', 'L30')
-                        ->selectRaw('COALESCE(SUM(clicks), 0) as c, COALESCE(SUM(base_price_sales), 0) as s, COALESCE(SUM(sub_orders), 0) as u, COALESCE(SUM(spend), 0) as sp')
-                        ->first();
-                    $c = (int) ($row->c ?? 0); $s = (float) ($row->s ?? 0); $u = (int) ($row->u ?? 0); $sp = (float) ($row->sp ?? 0);
+                    // Compute totals exactly like temu-decrease endpoint + frontend
+                    $request = \Illuminate\Http\Request::create('/temu-decrease-data', 'GET');
+                    $temuCtrl = app(\App\Http\Controllers\MarketPlace\TemuController::class);
+                    $response = $temuCtrl->getTemuDecreaseData();
+                    $responseData = json_decode($response->getContent(), true);
+                    $rows = $responseData['data'] ?? [];
+                    $sp = 0; $c = 0; $s = 0; $u = 0;
+                    foreach ($rows as $row) {
+                        if (empty($row['sku'])) continue;
+                        $sp += round((float) ($row['spend_l30'] ?? 0), 2);
+                        $c += (int) ($row['clicks_l30'] ?? 0);
+                        $s += round((float) ($row['ad_sales_l30'] ?? 0), 2);
+                        $u += (int) ($row['ad_sold_l30'] ?? 0);
+                    }
                     return array_merge($defaults, [
                         'clicks' => $c, 'ad_sales' => round($s, 2), 'ad_sold' => $u,
                         'KW Clicks' => $c, 'KW Sales' => round($s, 2), 'KW Sold' => $u,
@@ -585,22 +593,20 @@ class ChannelMasterController extends Controller
                 }
 
                 case 'tiktokshop': {
-                    $productSkusUpper = ProductMaster::whereRaw("LOWER(sku) NOT LIKE '%parent%'")
-                        ->pluck('sku')->map(fn ($s) => strtoupper(trim($s)))->unique()->values()->toArray();
-                    if (empty($productSkusUpper)) return $defaults;
-                    $placeholders = implode(',', array_fill(0, count($productSkusUpper), '?'));
-                    $row = DB::table('tiktok_campaign_reports')
-                        ->whereIn('report_range', ['L30', 'L7'])
-                        ->where('creative_type', 'Product card')
-                        ->where(function ($q) {
-                            $q->whereNull('status')->orWhere('status', '!=', 'ARCHIVED');
-                        })
-                        ->whereNotNull('campaign_name')->where('campaign_name', '!=', '')
-                        ->whereNotNull('product_id')->where('product_id', '!=', '')
-                        ->whereRaw('UPPER(TRIM(campaign_name)) IN (' . $placeholders . ')', $productSkusUpper)
-                        ->selectRaw('COALESCE(SUM(product_ad_clicks), 0) as c, COALESCE(SUM(gross_revenue), 0) as s, COALESCE(SUM(sku_orders), 0) as u, COALESCE(SUM(spend), 0) as sp')
-                        ->first();
-                    $c = (int) ($row->c ?? 0); $s = (float) ($row->s ?? 0); $u = (int) ($row->u ?? 0); $sp = (float) ($row->sp ?? 0);
+                    // Compute totals from tiktok/utilized endpoint (matches tiktok-pricing & tiktok/utilized pages)
+                    $ttCtrl = app(\App\Http\Controllers\Campaigns\TiktokAdsController::class);
+                    $ttReq = \Illuminate\Http\Request::create('/tiktok/utilized/data', 'GET');
+                    $ttResp = $ttCtrl->getUtilizedData($ttReq);
+                    $ttRows = json_decode($ttResp->getContent(), true)['data'] ?? [];
+                    $sp = 0; $c = 0; $s = 0; $u = 0;
+                    foreach ($ttRows as $tr) {
+                        $spend = (float) ($tr['spend'] ?? 0);
+                        $outRoas = (float) ($tr['out_roas'] ?? 0);
+                        $sp += $spend;
+                        $c += (int) ($tr['ad_clicks'] ?? 0);
+                        $u += (int) ($tr['ad_sold'] ?? 0);
+                        if ($outRoas > 0 && $spend > 0) $s += $spend * $outRoas;
+                    }
                     return array_merge($defaults, [
                         'clicks' => $c, 'ad_sales' => round($s, 2), 'ad_sold' => $u,
                         'KW Clicks' => $c, 'KW Sales' => round($s, 2), 'KW Sold' => $u,
@@ -645,13 +651,9 @@ class ChannelMasterController extends Controller
                 return round($breakdown['kw'] + $breakdown['pmt'], 2);
 
             case 'temu':
-                // Use temu_campaign_reports L30 (same source as temu-decrease page)
-                return round(
-                    (float) DB::table('temu_campaign_reports')
-                        ->where('report_range', 'L30')
-                        ->sum('spend'),
-                    2
-                );
+                // Use same logic as temu-decrease endpoint
+                $metrics = $this->fetchAdMetricsFromTables('temu');
+                return round((float) ($metrics['Total Ad Spend'] ?? 0), 2);
 
             case 'walmart':
                 $walmartSpentData = DB::table('walmart_campaign_reports')
@@ -679,28 +681,9 @@ class ChannelMasterController extends Controller
                 );
 
             case 'tiktokshop':
-                $productSkusUpper = ProductMaster::whereRaw("LOWER(sku) NOT LIKE '%parent%'")
-                    ->pluck('sku')
-                    ->map(fn ($s) => strtoupper(trim($s)))
-                    ->unique()
-                    ->values()
-                    ->toArray();
-                if (empty($productSkusUpper)) {
-                    return 0.0;
-                }
-                $placeholders = implode(',', array_fill(0, count($productSkusUpper), '?'));
-                return round(
-                    (float) TiktokCampaignReport::whereIn('report_range', ['L30', 'L7'])
-                        ->where('creative_type', 'Product card')
-                        ->where(function ($q) {
-                            $q->whereNull('status')->orWhere('status', '!=', 'ARCHIVED');
-                        })
-                        ->whereNotNull('campaign_name')->where('campaign_name', '!=', '')
-                        ->whereNotNull('product_id')->where('product_id', '!=', '')
-                        ->whereRaw('UPPER(TRIM(campaign_name)) IN (' . $placeholders . ')', $productSkusUpper)
-                        ->sum('cost'),
-                    2
-                );
+                // Use same logic as fetchAdMetricsFromTables for consistency
+                $metrics = $this->fetchAdMetricsFromTables('tiktokshop');
+                return $metrics['Total Ad Spend'] ?? 0.0;
 
             default:
                 return 0.0;
