@@ -716,8 +716,12 @@
 
                 <div id="ebay2-table-wrapper" style="height: calc(100vh - 200px); display: flex; flex-direction: column;">
                     <!-- SKU Search -->
-                    <div class="p-2 bg-light border-bottom">
-                        <input type="text" id="sku-search" class="form-control" placeholder="Search SKU...">
+                    <div style="display: flex; align-items: center; padding: 8px 12px; background: #fff; border-bottom: 1px solid #e5e7eb;">
+                        <div style="flex: 1; position: relative;">
+                            <i class="fa fa-search" style="position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: #aaa; font-size: 13px;"></i>
+                            <input type="text" id="sku-search" class="form-control form-control-sm" style="padding-left: 32px; border: 1px solid #e5e7eb; border-radius: 6px; font-size: 13px;" placeholder="Search by SKU...">
+                        </div>
+                        <span id="custom-pagination-counter" style="font-size: 13px; color: #555; white-space: nowrap; margin-left: 16px;"></span>
                     </div>
                     <!-- Table body (scrollable section) -->
                     <div id="ebay2-table" style="flex: 1;"></div>
@@ -2247,7 +2251,13 @@
                 pagination: true,
                 paginationSize: 100,
                 paginationSizeSelector: [10, 25, 50, 100, 200],
-                paginationCounter: "rows",
+                paginationCounter: function(pageSize, currentRow, currentPage, totalRows, totalPages) {
+                    var start = currentRow;
+                    var end = Math.min(currentRow + pageSize - 1, totalRows);
+                    var text = "Showing " + start + "-" + end + " of " + totalRows + " rows";
+                    $('#custom-pagination-counter').text(text);
+                    return "";
+                },
                 columnCalcs: "both",
                 langs: {
                     "default": {
@@ -3797,14 +3807,12 @@
                             var es = parseFloat(rd.suggested_bid) || 0;
                             var v;
                             if (l7 >= 0 && l7 < 50) v = es;
-                            else if (l7 >= 50 && l7 < 100) v = 9;
-                            else if (l7 >= 100 && l7 < 150) v = 8;
-                            else if (l7 >= 150 && l7 < 200) v = 7;
-                            else if (l7 >= 200 && l7 < 250) v = 6;
-                            else if (l7 >= 250 && l7 < 300) v = 5;
-                            else if (l7 >= 300 && l7 < 350) v = 4;
-                            else if (l7 >= 350 && l7 < 400) v = 3;
-                            else if (l7 >= 400) v = 2;
+                            else if (l7 >= 50 && l7 < 100) v = 8;
+                            else if (l7 >= 100 && l7 < 150) v = 7;
+                            else if (l7 >= 150 && l7 < 200) v = 6;
+                            else if (l7 >= 200 && l7 < 350) v = 5;
+                            else if (l7 >= 350 && l7 < 400) v = 4;
+                            else if (l7 >= 400) v = 3;
                             else v = es;
                             v = Math.min(v, 15);
                             return v > 0 ? v.toFixed(2) : '-';
@@ -3882,10 +3890,10 @@
                         visible: false,
                         formatter: function(cell) {
                             var rd = cell.getRow().getData();
-                            var gpft = parseFloat(rd['GPFT%']) || 0;
-                            var val = gpft / 100;
-                            var color = val >= 0 ? '#198754' : '#dc3545';
-                            return '<span style="color:' + color + '">' + (val * 100).toFixed(2) + '%</span>';
+                            var pft = parseFloat(rd.pmt_pft_val || 0);
+                            var pftPercent = Math.round(pft * 100);
+                            var color = pftPercent >= 0 ? '#198754' : '#dc3545';
+                            return '<span style="color:' + color + '">' + pftPercent + '%</span>';
                         },
                         width: 70
                     },
@@ -3896,9 +3904,10 @@
                         visible: false,
                         formatter: function(cell) {
                             var rd = cell.getRow().getData();
-                            var roi = parseFloat(rd['ROI%']) || 0;
-                            var color = roi >= 0 ? '#198754' : '#dc3545';
-                            return '<span style="color:' + color + '">' + Math.round(roi) + '%</span>';
+                            var roi = parseFloat(rd.pmt_roi_val || 0);
+                            var roiPercent = Math.round(roi * 100);
+                            var color = roiPercent >= 0 ? '#198754' : '#dc3545';
+                            return '<span style="color:' + color + '">' + roiPercent + '%</span>';
                         },
                         width: 70
                     },
@@ -3909,10 +3918,7 @@
                         visible: false,
                         formatter: function(cell) {
                             var rd = cell.getRow().getData();
-                            var gpft = parseFloat(rd['GPFT%']) || 0;
-                            var adUpdates = parseFloat(rd.ad_updates) || 0;
-                            var cbid = parseFloat(rd.bid_percentage) || 0;
-                            var tpft = (gpft / 100) + (adUpdates / 100) - cbid;
+                            var tpft = parseFloat(rd.pmt_tpft_val || 0);
                             var color = tpft >= 0 ? '#198754' : '#dc3545';
                             return '<span style="color:' + color + '">' + tpft.toFixed(2) + '</span>';
                         },
@@ -3925,10 +3931,7 @@
                         visible: false,
                         formatter: function(cell) {
                             var rd = cell.getRow().getData();
-                            var roi = parseFloat(rd['ROI%']) || 0;
-                            var adUpdates = parseFloat(rd.ad_updates) || 0;
-                            var cbid = parseFloat(rd.bid_percentage) || 0;
-                            var troi = (roi / 100) + (adUpdates / 100) - cbid;
+                            var troi = parseFloat(rd.pmt_troi_val || 0);
                             var color = troi >= 0 ? '#198754' : '#dc3545';
                             return '<span style="color:' + color + '">' + troi.toFixed(2) + '</span>';
                         },
@@ -4334,6 +4337,29 @@
                     var kwNrl = $('#kw-nrl-filter').val();
                     var kwSbidm = $('#kw-sbidm-filter').val();
 
+                    // Utilization color combination filter (7UB color + 1UB color)
+                    if (kwUtilization !== 'all') {
+                        table.addFilter(function(data) {
+                            var hasCampaign = data.kw_campaign_id && data.kw_campaign_id !== '';
+                            if (!hasCampaign) return false;
+
+                            var budget = parseFloat(data.kw_campaignBudgetAmount) || 0;
+                            if (budget <= 0) return false;
+
+                            var l7Spend = parseFloat(data.kw_l7_spend) || 0;
+                            var l1Spend = parseFloat(data.kw_l1_spend) || 0;
+                            var ub7 = (l7Spend / (budget * 7)) * 100;
+                            var ub1 = (l1Spend / budget) * 100;
+
+                            // Determine colors: green=66-99, pink=>99, red=<66
+                            var ub7Color = ub7 >= 66 && ub7 <= 99 ? 'green' : (ub7 > 99 ? 'pink' : 'red');
+                            var ub1Color = ub1 >= 66 && ub1 <= 99 ? 'green' : (ub1 > 99 ? 'pink' : 'red');
+                            var combo = ub7Color + '-' + ub1Color;
+
+                            return combo === kwUtilization;
+                        });
+                    }
+
                     if (kwStatus !== 'all') {
                         table.addFilter(function(data) {
                             return data.kw_campaignStatus === kwStatus;
@@ -4616,61 +4642,202 @@
             // Update KW Ads Statistics
             function updateKwAdsStats() {
                 if (typeof table === 'undefined' || !table) return;
+                
                 var allData = table.getData('all');
-                var totalSkuCount = 0, ebaySkuCount = 0, campaignCount = 0, missingCount = 0;
-                var nraMissingCount = 0, nrlMissingCount = 0, zeroInvCount = 0, nraCount = 0, nrlCount = 0, raCount = 0;
+                var totalSkuCount = 0;
+                var ebaySkuCount = 0;
+                var campaignCount = 0;
+                var missingCount = 0;
+                var nraMissingCount = 0;
+                var nrlMissingCount = 0;
+                var zeroInvCount = 0;
+                var nraCount = 0;
+                var nrlCount = 0;
+                var raCount = 0;
+                var ub7Count = 0;
+                var ub7Ub1Count = 0;
                 var pausedCount = 0;
-                var totalClicks = 0, totalSpend = 0, totalAdSold = 0, totalAcos = 0, totalCvr = 0, acosC = 0, cvrC = 0;
+                var totalClicks = 0;
+                var totalSpend = 0;
+                var totalAdSold = 0;
+                var totalAcos = 0;
+                var acosItems = 0;
+                var totalCvr = 0;
+                var cvrItems = 0;
+
+                // Color combination counts for utilization filter
+                var comboCounts = {
+                    'green-green': 0, 'green-pink': 0, 'green-red': 0,
+                    'pink-green': 0, 'pink-pink': 0, 'pink-red': 0,
+                    'red-green': 0, 'red-pink': 0, 'red-red': 0
+                };
+                var processedSkusForCombo = new Set();
+
+                var processedSkusTotal = new Set();
+                var processedSkusEbay = new Set();
+                var processedSkusForNra = new Set();
+                var processedSkusForNrl = new Set();
+                var processedSkusForCampaign = new Set();
+                var processedSkusForMissing = new Set();
+                var processedSkusForNraMissing = new Set();
+                var processedSkusForNrlMissing = new Set();
+                var processedSkusForZeroInv = new Set();
+
+                // Get current inventory filter value
+                var invFilterVal = $('#inventory-filter').val() || 'more';
 
                 allData.forEach(function(row) {
                     if (row.is_parent_summary) return;
-                    totalSkuCount++;
-                    var hasCampaign = row.kw_campaign_id && row.kw_campaign_id !== '';
+                    var sku = row['(Child) sku'] || '';
+                    if (!sku) return;
+
+                    var inv = parseFloat(row.INV || 0);
                     var ebayPrice = parseFloat(row['eBay Price'] || 0);
-                    if (ebayPrice > 0 || hasCampaign) ebaySkuCount++;
-                    if (hasCampaign) {
-                        campaignCount++;
-                        var clicks = parseInt(row.kw_clicks || 0);
-                        var spend = parseFloat(row.kw_spend_L30 || 0);
-                        var adSold = parseInt(row.kw_ad_sold || 0);
-                        var acos = parseFloat(row.kw_acos || 0);
-                        var cvr = parseFloat(row.kw_cvr || 0);
-                        totalClicks += clicks;
-                        totalSpend += spend;
-                        totalAdSold += adSold;
-                        if (acos > 0) { totalAcos += acos; acosC++; }
-                        if (cvr > 0) { totalCvr += cvr; cvrC++; }
-                        if (row.kw_campaignStatus === 'PAUSED') pausedCount++;
-                    } else {
-                        var inv = parseInt(row.INV || 0);
-                        if (inv > 0 && ebayPrice > 0) missingCount++;
+                    var ebayItemId = row.eBay_item_id || '';
+                    var hasCampaign = row.kw_campaign_id && row.kw_campaign_id !== '';
+                    var nrlValue = row.NRL ? row.NRL.trim() : '';
+
+                    // === Counts from ALL data (before inventory filter) ===
+                    
+                    // Total SKU count (unique)
+                    if (!processedSkusTotal.has(sku)) {
+                        processedSkusTotal.add(sku);
+                        totalSkuCount++;
                     }
-                    var nrl = row.NRL || '';
-                    if (nrl === 'NRL') nrlCount++;
-                    if (nrl === '' && hasCampaign) nrlMissingCount++;
-                    var nr = row.NR || '';
-                    if (nr === 'NRA') nraCount++;
-                    else if (nr === 'RA') raCount++;
-                    if (nr === '' && hasCampaign) nraMissingCount++;
-                    if (parseInt(row.INV || 0) === 0 && hasCampaign) zeroInvCount++;
+
+                    // eBay SKU (has eBay listing)
+                    if (!processedSkusEbay.has(sku)) {
+                        processedSkusEbay.add(sku);
+                        if (ebayItemId || ebayPrice > 0) {
+                            ebaySkuCount++;
+                        }
+                    }
+
+                    // Zero INV (unique per SKU)
+                    if (inv <= 0 && !processedSkusForZeroInv.has(sku)) {
+                        processedSkusForZeroInv.add(sku);
+                        zeroInvCount++;
+                    }
+
+                    // === Apply inventory filter for remaining counts ===
+                    if (invFilterVal === 'zero') {
+                        if (inv > 0) return;
+                    } else if (invFilterVal === 'more') {
+                        if (inv <= 0) return;
+                    }
+
+                    // NRL count (unique per SKU)
+                    if (!processedSkusForNrl.has(sku)) {
+                        processedSkusForNrl.add(sku);
+                        if (nrlValue === 'NRL') {
+                            nrlCount++;
+                        }
+                    }
+
+                    // Campaign / Missing counts (unique per SKU)
+                    if (hasCampaign) {
+                        if (!processedSkusForCampaign.has(sku)) {
+                            processedSkusForCampaign.add(sku);
+                            campaignCount++;
+
+                            // UB calculations
+                            var budget = parseFloat(row.kw_campaignBudgetAmount) || 0;
+                            var l7Spend = parseFloat(row.kw_l7_spend) || 0;
+                            var l1Spend = parseFloat(row.kw_l1_spend) || 0;
+                            var ub7 = budget > 0 ? (l7Spend / (budget * 7)) * 100 : 0;
+                            var ub1 = budget > 0 ? (l1Spend / budget) * 100 : 0;
+
+                            if (ub7 >= 66 && ub7 <= 99) ub7Count++;
+                            if (ub7 >= 66 && ub7 <= 99 && ub1 >= 66 && ub1 <= 99) ub7Ub1Count++;
+
+                            // Color combination count (unique per SKU)
+                            if (!processedSkusForCombo.has(sku) && budget > 0) {
+                                processedSkusForCombo.add(sku);
+                                var ub7Color = ub7 >= 66 && ub7 <= 99 ? 'green' : (ub7 > 99 ? 'pink' : 'red');
+                                var ub1Color = ub1 >= 66 && ub1 <= 99 ? 'green' : (ub1 > 99 ? 'pink' : 'red');
+                                var combo = ub7Color + '-' + ub1Color;
+                                if (comboCounts.hasOwnProperty(combo)) {
+                                    comboCounts[combo]++;
+                                }
+                            }
+
+                            // Paused campaigns
+                            var status = row.kw_campaignStatus || '';
+                            if (status === 'PAUSED') pausedCount++;
+
+                            // L30 totals
+                            totalClicks += parseInt(row.kw_clicks || 0);
+                            totalSpend += parseFloat(row.kw_spend_L30 || 0);
+                            totalAdSold += parseInt(row.kw_ad_sold || 0);
+
+                            // ACOS average (only for items with spend)
+                            var kwSpend = parseFloat(row.kw_spend_L30 || 0);
+                            if (kwSpend > 0) {
+                                var acos = parseFloat(row.kw_acos || 0);
+                                totalAcos += acos;
+                                acosItems++;
+                            }
+
+                            // CVR average (only for items with clicks)
+                            var clicks = parseInt(row.kw_clicks || 0);
+                            if (clicks > 0) {
+                                var cvr = parseFloat(row.kw_cvr || 0);
+                                totalCvr += cvr;
+                                cvrItems++;
+                            }
+                        }
+                    } else {
+                        // Missing campaign (unique per SKU)
+                        if (!processedSkusForMissing.has(sku)) {
+                            processedSkusForMissing.add(sku);
+                            if (nrlValue !== 'NRL') {
+                                missingCount++;
+                            } else {
+                                if (!processedSkusForNrlMissing.has(sku)) {
+                                    processedSkusForNrlMissing.add(sku);
+                                    nrlMissingCount++;
+                                }
+                            }
+                        }
+                    }
                 });
 
-                $('#kw-total-sku-count').text(totalSkuCount);
-                $('#kw-ebay-sku-count').text(ebaySkuCount);
-                $('#kw-campaign-count').text(campaignCount);
-                $('#kw-missing-count').text(missingCount);
-                $('#kw-nra-missing-count').text(nraMissingCount);
-                $('#kw-nrl-missing-count').text(nrlMissingCount);
-                $('#kw-zero-inv-count').text(zeroInvCount);
-                $('#kw-nra-count').text(nraCount);
-                $('#kw-nrl-count').text(nrlCount);
-                $('#kw-ra-count').text(raCount);
-                $('#kw-paused-count').text(pausedCount);
-                $('#kw-l30-clicks').text(totalClicks);
-                $('#kw-l30-spend').text('$' + totalSpend.toFixed(2));
-                $('#kw-l30-ad-sold').text(totalAdSold);
-                $('#kw-avg-acos').text(acosC > 0 ? (totalAcos / acosC).toFixed(2) + '%' : '0%');
-                $('#kw-avg-cvr').text(cvrC > 0 ? (totalCvr / cvrC).toFixed(2) + '%' : '0%');
+                // Update DOM
+                $('#kw-total-sku-count').text(totalSkuCount.toLocaleString());
+                $('#kw-ebay-sku-count').text(ebaySkuCount.toLocaleString());
+                $('#kw-campaign-count').text(campaignCount.toLocaleString());
+                $('#kw-missing-count').text(missingCount.toLocaleString());
+                $('#kw-nra-missing-count').text(nraMissingCount.toLocaleString());
+                $('#kw-nrl-missing-count').text(nrlMissingCount.toLocaleString());
+                $('#kw-zero-inv-count').text(zeroInvCount.toLocaleString());
+                $('#kw-nra-count').text(nraCount.toLocaleString());
+                $('#kw-nrl-count').text(nrlCount.toLocaleString());
+                $('#kw-ra-count').text(raCount.toLocaleString());
+                $('#kw-paused-count').text(pausedCount.toLocaleString());
+                $('#kw-l30-clicks').text(totalClicks.toLocaleString());
+                $('#kw-l30-spend').text(Math.round(totalSpend).toLocaleString());
+                $('#kw-l30-ad-sold').text(totalAdSold.toLocaleString());
+                $('#kw-avg-acos').text(acosItems > 0 ? (totalAcos / acosItems).toFixed(2) + '%' : '0%');
+                $('#kw-avg-cvr').text(cvrItems > 0 ? (totalCvr / cvrItems).toFixed(2) + '%' : '0%');
+
+                // Update utilization filter dropdown with counts
+                var comboLabels = {
+                    'green-green': 'Green + Green',
+                    'green-pink': 'Green + Pink',
+                    'green-red': 'Green + Red',
+                    'pink-green': 'Pink + Green',
+                    'pink-pink': 'Pink + Pink',
+                    'pink-red': 'Pink + Red',
+                    'red-green': 'Red + Green',
+                    'red-pink': 'Red + Pink',
+                    'red-red': 'Red + Red'
+                };
+                $('#kw-utilization-filter option').each(function() {
+                    var val = $(this).val();
+                    if (val !== 'all' && comboLabels[val] !== undefined) {
+                        $(this).text(comboLabels[val] + ' (' + comboCounts[val] + ')');
+                    }
+                });
             }
 
             // Range filter event listeners (E L30, Views)
