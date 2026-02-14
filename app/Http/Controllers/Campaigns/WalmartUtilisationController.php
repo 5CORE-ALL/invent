@@ -13,30 +13,13 @@ use App\Models\Walmart7ubDailyCount;
 use App\Models\MarketplacePercentage;
 use App\Models\WalmartListingStatus;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Log;
 use Carbon\Carbon;
 
 class WalmartUtilisationController extends Controller
 {
-    public function index(){
-        return view('campaign.walmart-utilized-kw-ads');
-    }
-
     public function bgtUtilisedView(){
         return view('campaign.walmart-bgt-util');
-    }
-
-    public function overUtilisedView(){
-        return view('campaign.walmart-over-utili');
-    }
-
-    public function underUtilisedView(){
-        return view('campaign.walmart-under-utili');
-    }
-
-    public function correctlyUtilisedView(){
-        return view('campaign.walmart-correctly-utili');
     }
 
     public function getWalmartAdsData()
@@ -442,6 +425,45 @@ class WalmartUtilisationController extends Controller
     }
 
     /**
+     * Get list of campaign names currently in Google Sheet (L30 data only)
+     * This ensures we only sum data that exists in the current Google Sheet
+     */
+    private function getCurrentGoogleSheetCampaigns()
+    {
+        try {
+            $url = "https://script.google.com/macros/s/AKfycbxWwC98yCcPDcXjXfKpbE0dMC74L0YfF0fx2HdG_i3G7BzSjuhD8H9X98byGQymFNbx/exec";
+            
+            $response = \Illuminate\Support\Facades\Http::timeout(10)->get($url);
+            
+            if (!$response->ok()) {
+                Log::warning('Failed to fetch current Google Sheet data for totals calculation');
+                return [];
+            }
+            
+            $json = $response->json();
+            
+            // Get L30 data only
+            if (!isset($json['L30']['data'])) {
+                return [];
+            }
+            
+            // Extract unique campaign names from current Google Sheet
+            $campaignNames = [];
+            foreach ($json['L30']['data'] as $row) {
+                $campaignName = $row['campaign_name'] ?? null;
+                if ($campaignName && !empty(trim($campaignName))) {
+                    $campaignNames[] = trim($campaignName);
+                }
+            }
+            
+            return array_unique($campaignNames);
+        } catch (\Exception $e) {
+            Log::error('Error fetching current Google Sheet campaigns: ' . $e->getMessage());
+            return [];
+        }
+    }
+
+    /**
      * Get 7UB chart data (7UB only)
      */
     public function get7ubChartData()
@@ -688,45 +710,6 @@ class WalmartUtilisationController extends Controller
     private function toIntOrNull($value)
     {
         return is_numeric($value) ? (int)$value : null;
-    }
-
-    /**
-     * Get list of campaign names currently in Google Sheet (L30 data only)
-     * This ensures we only sum data that exists in the current Google Sheet
-     */
-    private function getCurrentGoogleSheetCampaigns()
-    {
-        try {
-            $url = "https://script.google.com/macros/s/AKfycbxWwC98yCcPDcXjXfKpbE0dMC74L0YfF0fx2HdG_i3G7BzSjuhD8H9X98byGQymFNbx/exec";
-            
-            $response = \Illuminate\Support\Facades\Http::timeout(10)->get($url);
-            
-            if (!$response->ok()) {
-                Log::warning('Failed to fetch current Google Sheet data for totals calculation');
-                return [];
-            }
-            
-            $json = $response->json();
-            
-            // Get L30 data only
-            if (!isset($json['L30']['data'])) {
-                return [];
-            }
-            
-            // Extract unique campaign names from current Google Sheet
-            $campaignNames = [];
-            foreach ($json['L30']['data'] as $row) {
-                $campaignName = $row['campaign_name'] ?? null;
-                if ($campaignName && !empty(trim($campaignName))) {
-                    $campaignNames[] = trim($campaignName);
-                }
-            }
-            
-            return array_unique($campaignNames);
-        } catch (\Exception $e) {
-            Log::error('Error fetching current Google Sheet campaigns: ' . $e->getMessage());
-            return [];
-        }
     }
 
 }

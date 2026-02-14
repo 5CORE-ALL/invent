@@ -7,22 +7,10 @@ use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use App\Models\WalmartCampaignReport;
 use App\Models\WalmartDataView;
-use App\Models\ADVMastersData;
 use App\Models\WalmartProductSheet;
-use Illuminate\Http\Request;
 
 class WalmartRunningAdsController extends Controller
 {
-    public function index()
-    {
-        return view('campaign.walmart-running-ads');
-    }
-
-    public function getAdvWalmartRunningSaveData(Request $request)
-    {
-        return ADVMastersData::getAdvWalmartRunningSaveDataProceed($request);
-    }
-
     public function getWalmartRunningAdsData()
     {
         $normalizeSku = fn($sku) => strtoupper(trim($sku));

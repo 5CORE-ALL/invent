@@ -1939,9 +1939,6 @@
                                         <a href="{{ route('ebay.keywords.ads.less-than-twenty') }}">Ebay Ads <
                                                 $30</a>
                                     </li> --}}
-                                    <li>
-                                        <a href="{{ route('ebay.missing.ads') }}">Ebay MISSING ADS</a>
-                                    </li>
                                     {{-- <li>
                                         <a href="{{ route('ebay-make-new-campaign-kw') }}">Ebay MAKE CAMP. KW</a>
                                     </li> --}}
@@ -2370,25 +2367,6 @@
 
                         <li>
                             <a href="{{ route('walmart.utilized.bgt') }}">Walmart BGT Util.</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('walmart.utilized.kw') }}">Walmart Kw Ads Report</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('walmart.over.utilized') }}">Walmart Over Utili.</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('walmart.under.utilized') }}">Walmart Under Utili.</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('walmart.correctly.utilized') }}">Walmart Correctly
-                                Utili.</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('walmart.missing.ads') }}">Walmart Missing Ads</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('walmart.running.ads') }}">Walmart Running Ads</a>
                         </li>
                     </ul>
                 </div>

@@ -187,7 +187,6 @@ use App\Http\Controllers\Campaigns\EbayPinkDilAdController;
 use App\Http\Controllers\Campaigns\EbayPMPAdsController;
 use App\Http\Controllers\Campaigns\EbayRunningAdsController;
 use App\Http\Controllers\Campaigns\GoogleAdsController;
-use App\Http\Controllers\Campaigns\WalmartMissingAdsController;
 use App\Http\Controllers\Campaigns\WalmartUtilisationController;
 use App\Http\Controllers\Channels\ApprovalsChannelMasterController;
 use App\Http\Controllers\EbayDataUpdateController;
@@ -203,7 +202,6 @@ use App\Http\Controllers\Channels\OpportunityController;
 use App\Http\Controllers\Channels\SetupAccountChannelController;
 use App\Http\Controllers\Channels\ShippingMasterController;
 use App\Http\Controllers\Channels\TrafficMasterController;
-use App\Http\Controllers\Campaigns\EbayMissingAdsController;
 use App\Http\Controllers\Campaigns\TiktokAdsController;
 use App\Http\Controllers\Campaigns\WalmartRunningAdsController;
 
@@ -2692,12 +2690,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/adv-ebay/ad-running/save-data', 'getEbayRunningDataSave')->name('adv-ebay.ad-running.save-data');
     });
 
-    Route::controller(EbayMissingAdsController::class)->group(function () {
-        Route::get('/ebay/ad-missing/list', 'index')->name('ebay.missing.ads');
-        Route::get('/ebay/ad-missing/data', 'getEbayMissingAdsData');
-        Route::get('/adv-ebay/missing/save-data', 'getEbayMissingSaveData')->name('adv-ebay.missing.save-data');
-        Route::post('/update-ebay-nrl-data', 'updateNrlData');
-    });
 
     Route::controller(EbayViewsController::class)->group(function () {
         Route::get('/ebay-views/list', 'index')->name('ebay.views.data');
@@ -2816,10 +2808,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
     Route::controller(WalmartUtilisationController::class)->group(function () {
         Route::get('/walmart/utilized/bgt', 'bgtUtilisedView')->name('walmart.utilized.bgt');
-        Route::get('/walmart/utilized/kw', 'index')->name('walmart.utilized.kw');
-        Route::get('/walmart/over/utilized', 'overUtilisedView')->name('walmart.over.utilized');
-        Route::get('/walmart/under/utilized', 'underUtilisedView')->name('walmart.under.utilized');
-        Route::get('/walmart/correctly/utilized', 'correctlyUtilisedView')->name('walmart.correctly.utilized');
         Route::get('/walmart/utilized/kw/data', 'getWalmartAdsData');
         Route::get('/walmart/utilized/bgt/7ub-chart-data', 'get7ubChartData');
         Route::get('/walmart/utilized/bgt/combined-7ub-1ub-chart-data', 'getCombined7ub1ubChartData');
@@ -2827,15 +2815,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/walmart/utilized/bgt/refresh-campaign-data', 'refreshWalmartCampaignData');
     });
 
-    Route::controller(WalmartMissingAdsController::class)->group(function () {
-        Route::get('/walmart/missing/ads', 'index')->name('walmart.missing.ads');
-        Route::get('/walmart/missing/ads/data', 'getWalmartMissingAdsData');
-    });
-
     Route::controller(WalmartRunningAdsController::class)->group(function () {
-        Route::get('/walmart/running/ads', 'index')->name('walmart.running.ads');
         Route::get('/walmart/running/ads/data', 'getWalmartRunningAdsData');
-        Route::get('/adv-walmart/ad-running/save-data', 'getAdvWalmartRunningSaveData')->name('adv-walmart.ad-running.save-data');
     });
     Route::controller(GoogleAdsController::class)->group(function () {
         Route::get('/google/shopping', 'index')->name('google.shopping');
