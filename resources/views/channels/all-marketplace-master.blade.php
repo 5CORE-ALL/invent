@@ -132,7 +132,7 @@
 
 @section('content')
     @include('layouts.shared.page-title', [
-        'page_title' => 'All Marketplace Master',
+        'page_title' => 'Active Channel Master',
         'sub_title' => 'Comprehensive Marketplace Analytics',
     ])
 
@@ -143,6 +143,46 @@
             <div class="card-body py-3">
 
                 <div class="d-flex align-items-center flex-wrap gap-2">
+                    <!-- Section Filter Dropdown -->
+                    <div class="btn-group">
+                        <button type="button" class="btn btn-sm btn-primary dropdown-toggle" data-bs-toggle="dropdown">
+                            <i class="fas fa-layer-group"></i> <span id="current-section">All Sections</span>
+                        </button>
+                        <ul class="dropdown-menu" id="section-dropdown">
+                            <li><a class="dropdown-item section-option" href="#" data-section="all">
+                                <i class="fas fa-th"></i> All Sections
+                            </a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item section-option" href="#" data-section="ads">
+                                <i class="fas fa-ad"></i> ADS
+                            </a></li>
+                            <li><a class="dropdown-item section-option" href="#" data-section="inv">
+                                <i class="fas fa-boxes"></i> INVENTORY
+                            </a></li>
+                            <li><a class="dropdown-item section-option" href="#" data-section="margins">
+                                <i class="fas fa-percentage"></i> MARGINS
+                            </a></li>
+                            <li><a class="dropdown-item section-option" href="#" data-section="movement">
+                                <i class="fas fa-truck"></i> MOVEMENT
+                            </a></li>
+                            <li><a class="dropdown-item section-option" href="#" data-section="returns">
+                                <i class="fas fa-undo"></i> RETURNS
+                            </a></li>
+                            <li><a class="dropdown-item section-option" href="#" data-section="ah">
+                                <i class="fas fa-heartbeat"></i> ACCOUNT HEALTH
+                            </a></li>
+                            <li><a class="dropdown-item section-option" href="#" data-section="expenses">
+                                <i class="fas fa-dollar-sign"></i> EXPENSES
+                            </a></li>
+                            <li><a class="dropdown-item section-option" href="#" data-section="traffic">
+                                <i class="fas fa-chart-line"></i> TRAFFIC
+                            </a></li>
+                            <li><a class="dropdown-item section-option" href="#" data-section="reviews">
+                                <i class="fas fa-star"></i> REVIEWS
+                            </a></li>
+                        </ul>
+                    </div>
+                    
                     <!-- Search -->
                     <input type="text" id="channel-search" class="form-control form-control-sm"
                         placeholder="Search Channel..." style="width: 150px; display: inline-block;">
@@ -185,9 +225,6 @@
                         <i class="fas fa-plus-circle"></i> Add Channel
                     </button>
 
-                    <button id="toggleAdColumnsBtn" class="btn btn-sm btn-outline-secondary">
-                        <i class="fas fa-ad"></i> Show Ads Data
-                    </button>
                 </div>
 
                 <!-- Summary Stats -->
@@ -204,7 +241,7 @@
                             L30 Orders: <span id="total-l30-orders">0</span>
                         </span>
                         <span class="badge bg-primary fs-6 p-2 badge-chart-link" data-metric="qty" style="color: white; font-weight: bold; cursor:pointer;" title="View trend">
-                            Total Qty: <span id="total-qty">0</span>
+                            Total Qty items: <span id="total-qty">0</span>
                         </span>
                         <span class="badge bg-warning fs-6 p-2 badge-chart-link" data-metric="gprofit" style="color: black; font-weight: bold; cursor:pointer;" title="View trend">
                             Avg Gprofit%: <span id="avg-gprofit">0%</span>
@@ -352,7 +389,7 @@
                                     <th>Date</th>
                                     <th class="text-end">L30 Sales</th>
                                     <th class="text-end">L30 Orders</th>
-                                    <th class="text-end">Total Qty</th>
+                                    <th class="text-end">Total Qty items</th>
                                     <th class="text-end">Clicks</th>
                                     <th class="text-end">Gprofit%</th>
                                     <th class="text-end">NPFT%</th>
@@ -933,7 +970,7 @@
                         title: "Sheet",
                         field: "sheet_link",
                         hozAlign: "center",
-                        visible: false,
+                        visible: true,
                         formatter: function(cell) {
                             const link = cell.getValue();
                             if (!link) return '-';
@@ -969,7 +1006,7 @@
                         field: "Total Ad Spend",
                         hozAlign: "center",
                         sorter: "number",
-                        visible: false,
+                        visible: true,
                         formatter: function(cell) {
                             const totalSpent = parseNumber(cell.getValue() || 0);
                             const channel = (cell.getRow().getData()['Channel '] || '').trim();
@@ -999,7 +1036,7 @@
                         title: "KW",
                         field: "KW Spent",
                         hozAlign: "center",
-                        visible: false,
+                        visible: true,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
                             const rowData = cell.getRow().getData();
@@ -1026,7 +1063,7 @@
                         title: "PT",
                         field: "PT Spent",
                         hozAlign: "center",
-                        visible: false,
+                        visible: true,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
                             const rowData = cell.getRow().getData();
@@ -1053,7 +1090,7 @@
                         title: "HL",
                         field: "HL Spent",
                         hozAlign: "center",
-                        visible: false,
+                        visible: true,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
                             const rowData = cell.getRow().getData();
@@ -1080,7 +1117,7 @@
                         title: "PMT",
                         field: "PMT Spent",
                         hozAlign: "center",
-                        visible: false,
+                        visible: true,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
                             const rowData = cell.getRow().getData();
@@ -1107,7 +1144,7 @@
                         title: "G-SHOP",
                         field: "Shopping Spent",
                         hozAlign: "center",
-                        visible: false,
+                        visible: true,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
                             const rowData = cell.getRow().getData();
@@ -1134,7 +1171,7 @@
                         title: "G-SERP",
                         field: "SERP Spent",
                         hozAlign: "center",
-                        visible: false,
+                        visible: true,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
                             const rowData = cell.getRow().getData();
@@ -1162,7 +1199,7 @@
                         field: "clicks",
                         hozAlign: "center",
                         sorter: "number",
-                        visible: false,
+                        visible: true,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
                             const channel = (cell.getRow().getData()['Channel '] || '').trim();
@@ -1193,7 +1230,7 @@
                         title: "KW",
                         field: "KW Clicks",
                         hozAlign: "center",
-                        visible: false,
+                        visible: true,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
                             const rowData = cell.getRow().getData();
@@ -1219,7 +1256,7 @@
                         title: "PT",
                         field: "PT Clicks",
                         hozAlign: "center",
-                        visible: false,
+                        visible: true,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
                             const rowData = cell.getRow().getData();
@@ -1245,7 +1282,7 @@
                         title: "HL",
                         field: "HL Clicks",
                         hozAlign: "center",
-                        visible: false,
+                        visible: true,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
                             const rowData = cell.getRow().getData();
@@ -1271,7 +1308,7 @@
                         title: "PMT",
                         field: "PMT Clicks",
                         hozAlign: "center",
-                        visible: false,
+                        visible: true,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
                             const rowData = cell.getRow().getData();
@@ -1297,7 +1334,7 @@
                         title: "G-SHOP",
                         field: "Shopping Clicks",
                         hozAlign: "center",
-                        visible: false,
+                        visible: true,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
                             const rowData = cell.getRow().getData();
@@ -1323,7 +1360,7 @@
                         title: "G-SERP",
                         field: "SERP Clicks",
                         hozAlign: "center",
-                        visible: false,
+                        visible: true,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
                             const rowData = cell.getRow().getData();
@@ -1351,7 +1388,7 @@
                         hozAlign: "center",
                         sorter: "number",
                         width: 120,
-                        visible: false,
+                        visible: true,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
                             const channel = (cell.getRow().getData()['Channel '] || '').trim();
@@ -1383,7 +1420,7 @@
                         title: "KW",
                         field: "KW Sales",
                         hozAlign: "center",
-                        visible: false,
+                        visible: true,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
                             const rowData = cell.getRow().getData();
@@ -1409,7 +1446,7 @@
                         title: "PT",
                         field: "PT Sales",
                         hozAlign: "center",
-                        visible: false,
+                        visible: true,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
                             const rowData = cell.getRow().getData();
@@ -1435,7 +1472,7 @@
                         title: "HL",
                         field: "HL Sales",
                         hozAlign: "center",
-                        visible: false,
+                        visible: true,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
                             const rowData = cell.getRow().getData();
@@ -1461,7 +1498,7 @@
                         title: "PMT",
                         field: "PMT Sales",
                         hozAlign: "center",
-                        visible: false,
+                        visible: true,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
                             const rowData = cell.getRow().getData();
@@ -1487,7 +1524,7 @@
                         title: "G-SHOP",
                         field: "Shopping Sales",
                         hozAlign: "center",
-                        visible: false,
+                        visible: true,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
                             const rowData = cell.getRow().getData();
@@ -1513,7 +1550,7 @@
                         title: "G-SERP",
                         field: "SERP Sales",
                         hozAlign: "center",
-                        visible: false,
+                        visible: true,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
                             const rowData = cell.getRow().getData();
@@ -1541,7 +1578,7 @@
                         hozAlign: "center",
                         sorter: "number",
                         width: 100,
-                        visible: false,
+                        visible: true,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
                             const channel = (cell.getRow().getData()['Channel '] || '').trim();
@@ -1572,7 +1609,7 @@
                         title: "KW",
                         field: "KW Sold",
                         hozAlign: "center",
-                        visible: false,
+                        visible: true,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
                             const rowData = cell.getRow().getData();
@@ -1598,7 +1635,7 @@
                         title: "PT",
                         field: "PT Sold",
                         hozAlign: "center",
-                        visible: false,
+                        visible: true,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
                             const rowData = cell.getRow().getData();
@@ -1624,7 +1661,7 @@
                         title: "HL",
                         field: "HL Sold",
                         hozAlign: "center",
-                        visible: false,
+                        visible: true,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
                             const rowData = cell.getRow().getData();
@@ -1650,7 +1687,7 @@
                         title: "PMT",
                         field: "PMT Sold",
                         hozAlign: "center",
-                        visible: false,
+                        visible: true,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
                             const rowData = cell.getRow().getData();
@@ -1676,7 +1713,7 @@
                         title: "G-SHOP",
                         field: "Shopping Sold",
                         hozAlign: "center",
-                        visible: false,
+                        visible: true,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
                             const rowData = cell.getRow().getData();
@@ -1702,7 +1739,7 @@
                         title: "G-SERP",
                         field: "SERP Sold",
                         hozAlign: "center",
-                        visible: false,
+                        visible: true,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
                             const rowData = cell.getRow().getData();
@@ -1730,7 +1767,7 @@
                         hozAlign: "center",
                         sorter: "number",
                         width: 90,
-                        visible: false,
+                        visible: true,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
                             const channel = (cell.getRow().getData()['Channel '] || '').trim();
@@ -1770,7 +1807,7 @@
                         title: "KW",
                         field: "KW ACOS",
                         hozAlign: "center",
-                        visible: false,
+                        visible: true,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
                             const rowData = cell.getRow().getData();
@@ -1792,7 +1829,7 @@
                         title: "PT",
                         field: "PT ACOS",
                         hozAlign: "center",
-                        visible: false,
+                        visible: true,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
                             const rowData = cell.getRow().getData();
@@ -1814,7 +1851,7 @@
                         title: "HL",
                         field: "HL ACOS",
                         hozAlign: "center",
-                        visible: false,
+                        visible: true,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
                             const rowData = cell.getRow().getData();
@@ -1836,7 +1873,7 @@
                         title: "PMT",
                         field: "PMT ACOS",
                         hozAlign: "center",
-                        visible: false,
+                        visible: true,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
                             const rowData = cell.getRow().getData();
@@ -1858,7 +1895,7 @@
                         title: "G-SHOP",
                         field: "Shopping ACOS",
                         hozAlign: "center",
-                        visible: false,
+                        visible: true,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
                             const rowData = cell.getRow().getData();
@@ -1880,7 +1917,7 @@
                         title: "G-SERP",
                         field: "SERP ACOS",
                         hozAlign: "center",
-                        visible: false,
+                        visible: true,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
                             const rowData = cell.getRow().getData();
@@ -1904,7 +1941,7 @@
                         hozAlign: "center",
                         sorter: "number",
                         width: 100,
-                        visible: false,
+                        visible: true,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
                             const channel = (cell.getRow().getData()['Channel '] || '').trim();
@@ -1944,7 +1981,7 @@
                         title: "KW",
                         field: "KW CVR",
                         hozAlign: "center",
-                        visible: false,
+                        visible: true,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
                             const rowData = cell.getRow().getData();
@@ -1966,7 +2003,7 @@
                         title: "PT",
                         field: "PT CVR",
                         hozAlign: "center",
-                        visible: false,
+                        visible: true,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
                             const rowData = cell.getRow().getData();
@@ -1988,7 +2025,7 @@
                         title: "HL",
                         field: "HL CVR",
                         hozAlign: "center",
-                        visible: false,
+                        visible: true,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
                             const rowData = cell.getRow().getData();
@@ -2010,7 +2047,7 @@
                         title: "PMT",
                         field: "PMT CVR",
                         hozAlign: "center",
-                        visible: false,
+                        visible: true,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
                             const rowData = cell.getRow().getData();
@@ -2032,7 +2069,7 @@
                         title: "G-SHOP",
                         field: "Shopping CVR",
                         hozAlign: "center",
-                        visible: false,
+                        visible: true,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
                             const rowData = cell.getRow().getData();
@@ -2054,7 +2091,7 @@
                         title: "G-SERP",
                         field: "SERP CVR",
                         hozAlign: "center",
-                        visible: false,
+                        visible: true,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
                             const rowData = cell.getRow().getData();
@@ -2078,7 +2115,7 @@
                         hozAlign: "center",
                         sorter: "number",
                         width: 110,
-                        visible: false,
+                        visible: true,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
                             const rowData = cell.getRow().getData();
@@ -2134,7 +2171,7 @@
                         }
                     },
                     {
-                        title: "Qty",
+                        title: "Qty items",
                         field: "Qty",
                         hozAlign: "center",
                         sorter: "number",
@@ -2223,7 +2260,7 @@
                     },
 
                     {
-                        title: "Ads%",
+                        title: "TAcos %",
                         field: "Ads%",
                         hozAlign: "center",
                         sorter: "number",
@@ -2437,7 +2474,7 @@
                         field: "Total PFT",
                         hozAlign: "center",
                         sorter: "number",
-                        visible: false,
+                        visible: true,
                         formatter: function(cell) {
                             // Calculate Total PFT from L30 Sales × NPFT%
                             const rowData = cell.getRow().getData();
@@ -2452,7 +2489,7 @@
                         field: "cogs",
                         hozAlign: "center",
                         sorter: "number",
-                        visible: false,
+                        visible: true,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
                             return `<span>$${value.toFixed(0)}</span>`;
@@ -2525,10 +2562,10 @@
                 const avgGprofit = totalL30Sales > 0 ? (totalPft / totalL30Sales) * 100 : 0;
                 const avgGroi = totalCogs > 0 ? (totalPft / totalCogs) * 100 : 0;
 
-                // Calculate average Ads% = Total Ad Spend / Total L30 Sales (same as channel-masters)
+                // Calculate average TAcos % = Total Ad Spend / Total L30 Sales (same as channel-masters)
                 const avgAdsPercent = totalL30Sales > 0 ? (totalAdSpend / totalL30Sales) * 100 : 0;
 
-                // N PFT = G PFT - Ads% (same as channel-masters)
+                // N PFT = G PFT - TAcos % (same as channel-masters)
                 const avgNpft = avgGprofit - avgAdsPercent;
 
                 // N ROI = (Net Profit / COGS) * 100 where Net Profit = Total PFT - Total Ad Spend (same as channel-masters)
@@ -2620,9 +2657,59 @@
                 table.setData();
             });
 
-            // Toggle Ad Columns (from Total Ad Spend to Missing Ads)
-            document.getElementById("toggleAdColumnsBtn").addEventListener("click", function() {
-                toggleMainAdColumns();
+            // ==========================================
+            // SECTION FILTER - Show/Hide Column Groups
+            // ==========================================
+            
+            const sectionColumns = {
+                'all': 'ALL', // Show all columns
+                'ads': ['Total Ad Spend', 'KW Spent', 'PT Spent', 'HL Spent', 'PMT Spent', 'Shopping Spent', 'SERP Spent', 'clicks', 'Ad Sales', 'ad_sold', 'ACOS', 'Ads CVR', 'TAcos %', 'Missing Ads'],
+                'inv': ['Avl', 'Res', 'Inb', 'Unf', 'Wrk', 'Total Inv', 'Allocated'],
+                'margins': ['G PFT%', 'G ROI%', 'N PFT%', 'N ROI%', 'COGS', 'Total Ad Spend', 'TAcos %'],
+                'movement': ['L30 Sales', 'L30 Orders', 'Qty items', 'Velocity'],
+                'returns': ['Return Rate', 'Return Units', 'Return Value'],
+                'ah': ['AH Score', 'Policy Violations', 'Customer Complaints'],
+                'expenses': ['Total Ad Spend', 'Shipping Cost', 'FBA Fees', 'Storage Fees'],
+                'traffic': ['clicks', 'Sessions', 'Page Views', 'Conversion Rate'],
+                'reviews': ['Total Reviews', 'Avg Rating', '5-Star', '4-Star', '1-Star']
+            };
+            
+            $('.section-option').on('click', function(e) {
+                e.preventDefault();
+                const section = $(this).data('section');
+                const sectionName = $(this).text().trim();
+                
+                console.log('Section selected:', section);
+                $('#current-section').text(sectionName);
+                
+                if (section === 'all') {
+                    // Show all columns
+                    table.getColumns().forEach(col => {
+                        if (col.getField() !== 'Channel ') { // Keep channel column always visible
+                            col.show();
+                        }
+                    });
+                    console.log('✓ All columns visible');
+                } else {
+                    // Hide all columns first
+                    table.getColumns().forEach(col => {
+                        const field = col.getField();
+                        if (field !== 'Channel ') { // Keep channel column
+                            col.hide();
+                        }
+                    });
+                    
+                    // Show only selected section columns
+                    const columnsToShow = sectionColumns[section] || [];
+                    columnsToShow.forEach(field => {
+                        const column = table.getColumn(field);
+                        if (column) {
+                            column.show();
+                        }
+                    });
+                    
+                    console.log(`✓ Showing ${section.toUpperCase()} columns:`, columnsToShow);
+                }
             });
 
             // Table built event
@@ -3133,7 +3220,7 @@
                 'qty': 'Qty',
                 'gprofit': 'Gprofit%',
                 'groi': 'G ROI%',
-                'ads_pct': 'Ads%',
+                'ads_pct': 'TAcos %',
                 'pft': 'Total Pft',
                 'npft': 'N PFT%',
                 'nroi': 'N ROI%',
@@ -3236,14 +3323,14 @@
                 document.getElementById('adChartMedian').textContent = fmtVal(median);
                 document.getElementById('adChartLowest').textContent = fmtVal(dataMin);
 
-                // --- Dot colors: green=UP red=DOWN, but INVERTED for ACOS & Ads% (lower is better) ---
+                // --- Dot colors: green=UP red=DOWN, but INVERTED for ACOS & TAcos % (lower is better) ---
                 const invertedMetrics = ['acos', 'ads_pct'];
                 const isInverted = invertedMetrics.includes(currentChartMetric);
                 const dotColors = values.map((v, i) => {
                     if (i === 0) return '#6c757d';           // neutral for first point
                     if (isInverted) {
-                        return v < values[i - 1] ? '#28a745' :   // green = lower (good for ACOS/Ads%)
-                               v > values[i - 1] ? '#dc3545' :   // red   = higher (bad for ACOS/Ads%)
+                        return v < values[i - 1] ? '#28a745' :   // green = lower (good for ACOS/TAcos %)
+                               v > values[i - 1] ? '#dc3545' :   // red   = higher (bad for ACOS/TAcos %)
                                '#6c757d';
                     }
                     return v > values[i - 1] ? '#28a745' :   // green = higher than yesterday (UP)
@@ -3612,7 +3699,7 @@
 
                 // Prepare data for Google Charts
                 const chartData = [
-                    ['Date', 'L30 Sales', 'L30 Orders', 'Total Qty', 'Clicks', 'Gprofit%', 'NPFT%']
+                    ['Date', 'L30 Sales', 'L30 Orders', 'Total Qty items', 'Clicks', 'Gprofit%', 'NPFT%']
                 ];
 
                 const reversedData = [...data].reverse();

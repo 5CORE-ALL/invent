@@ -65,7 +65,6 @@ use App\Http\Controllers\MarketPlace\OverallAmazonPriceController;
 use App\Http\Controllers\MarketPlace\Shopifyb2cController;
 use App\Http\Controllers\Channels\ChannelMasterController;
 use App\Http\Controllers\Channels\ChannelwiseController;
-use App\Http\Controllers\Channels\ReturnController;
 use App\Http\Controllers\Channels\ExpensesController;
 use App\Http\Controllers\Channels\ReviewController;
 use App\Http\Controllers\Channels\HealthController;
@@ -197,7 +196,6 @@ use App\Http\Controllers\Channels\ChannelMovementAnalysisController;
 use App\Http\Controllers\Channels\NewMarketplaceController;
 use App\Http\Controllers\Channels\OpportunityController;
 use App\Http\Controllers\Channels\SetupAccountChannelController;
-use App\Http\Controllers\Channels\ShippingMasterController;
 use App\Http\Controllers\Channels\TrafficMasterController;
 use App\Http\Controllers\Campaigns\TiktokAdsController;
 use App\Http\Controllers\Campaigns\WalmartRunningAdsController;
@@ -446,12 +444,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/setup-account-channel-master/save', 'saveSetupAccountData');
     });
 
-    //Shipping Master
-    Route::controller(ShippingMasterController::class)->group(function () {
-        Route::get('/shipping-master/list', 'index')->name('shipping.master.list');
-        Route::get('/fetch-shipping-rate/data', 'fetchShippingRate');
-        Route::post('/update-shipping-rate', 'storeOrUpdateShippingRate');
-    });
 
     Route::controller(TrafficMasterController::class)->group(function () {
         Route::get('/traffic-master/list', 'index')->name('traffic.master.list');
@@ -1366,7 +1358,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
 
     //channel master index view routes
-    Route::get('/return-analysis', [ReturnController::class, 'return_master_index'])->name('return.master');
     Route::get('/expenses-analysis', [ExpensesController::class, 'expenses_master_index'])->name('expenses.master');
     Route::get('/review-analysis', [ReviewController::class, 'review_master_index'])->name('review.master');
     Route::get('/health-analysis', [HealthController::class, 'health_master_index'])->name('health.master');
@@ -1416,13 +1407,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/dim-wt-master/update', [CategoryController::class, 'updateDimWtMaster'])->name('dim.wt.master.update');
     Route::post('/dim-wt-master/import', [CategoryController::class, 'importDimWtMaster'])->name('dim.wt.master.import');
     Route::post('/dim-wt-master/push-data', [CategoryController::class, 'pushDimWtDataToPlatforms'])->name('dim.wt.master.push');
-    Route::get('/shipping-master', [CategoryController::class, 'shippingMaster'])->name('shipping.master');
-    Route::get('/shipping-master-data-view', [CategoryController::class, 'getShippingMasterData'])->name('shipping.master.data');
-    Route::get('/shipping-master/statuses', [CategoryController::class, 'getShippingMasterStatuses'])->name('shipping.master.statuses');
-    Route::get('/shipping-master/skus', [CategoryController::class, 'getSkusForShippingMaster'])->name('shipping.master.skus');
-    Route::post('/shipping-master/store', [CategoryController::class, 'storeShippingMaster'])->name('shipping.master.store');
-    Route::post('/shipping-master/update', [CategoryController::class, 'updateShippingMaster'])->name('shipping.master.update');
-    Route::post('/shipping-master/import', [CategoryController::class, 'importShippingMaster'])->name('shipping.master.import');
     Route::get('/general-specific-master', [CategoryController::class, 'generalSpecificMaster'])->name('general.specific.master');
     Route::get('/general-specific-master-data-view', [CategoryController::class, 'getGeneralSpecificMasterData'])->name('general.specific.master.data');
     Route::get('/general-specific-master/skus', [CategoryController::class, 'getSkusForDropdown'])->name('general.specific.master.skus');
