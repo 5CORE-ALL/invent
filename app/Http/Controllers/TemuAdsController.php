@@ -77,10 +77,8 @@ class TemuAdsController extends Controller
         // Fetch NRA from TemuDataView (where it's actually stored)
         $temuDataViews = TemuDataView::whereIn("sku", $skus)->get()->keyBy("sku");
 
-        // Fetch goods_id mapping from TemuPricing
+        // Fetch goods_id mapping from TemuPricing (same query as temu-decrease for consistency)
         $temuPricing = TemuPricing::whereIn("sku", $skus)
-            ->whereNotNull('goods_id')
-            ->select('sku', 'goods_id')
             ->get()
             ->keyBy('sku');
 
@@ -94,6 +92,7 @@ class TemuAdsController extends Controller
                 SUM(spend) as spend_l30,
                 SUM(clicks) as clicks_l30,
                 SUM(base_price_sales) as base_price_sales_l30,
+                SUM(COALESCE(sub_orders,0)) as ad_sold_l30,
                 AVG(acos_ad) as acos_l30,
                 AVG(roas) as roas_l30,
                 AVG(in_roas) as in_roas_l30,
@@ -212,6 +211,7 @@ class TemuAdsController extends Controller
                 'spend_l30' => $adL30 ? round((float)$adL30->spend_l30, 2) : 0,
                 'clicks_l30' => $adL30 ? (int)$adL30->clicks_l30 : 0,
                 'base_price_sales_l30' => $adL30 ? round((float)$adL30->base_price_sales_l30, 2) : 0,
+                'ad_sold_l30' => $adL30 ? (int)$adL30->ad_sold_l30 : 0,
                 'acos_l30' => $adL30 && $adL30->roas_l30 > 0 ? round((100 / (float)$adL30->roas_l30), 2) : 0,
                 'in_roas_l30' => $adL30 ? round((float)$adL30->in_roas_l30, 2) : 0,
                 'out_roas_l30' => $adL30 ? round((float)$adL30->roas_l30, 2) : 0,
@@ -236,11 +236,30 @@ class TemuAdsController extends Controller
             ->unique()
             ->count();
 
+        // Compute authoritative L30 totals from temu-decrease endpoint (uses normalized SKU matching)
+        $temuCtrl = app(\App\Http\Controllers\MarketPlace\TemuController::class);
+        $temuResponse = $temuCtrl->getTemuDecreaseData();
+        $temuRows = json_decode($temuResponse->getContent(), true)['data'] ?? [];
+        $l30Spend = 0; $l30Sales = 0; $l30Sold = 0; $l30Clicks = 0;
+        foreach ($temuRows as $tr) {
+            if (empty($tr['sku'])) continue;
+            $l30Spend += round((float) ($tr['spend_l30'] ?? 0), 2);
+            $l30Sales += round((float) ($tr['ad_sales_l30'] ?? 0), 2);
+            $l30Sold += (int) ($tr['ad_sold_l30'] ?? 0);
+            $l30Clicks += (int) ($tr['clicks_l30'] ?? 0);
+        }
+
         return response()->json([
             'data' => $data,
             'total_sku_count' => $totalSkuCount,
             'zero_inv_count' => $zeroInvCount,
-            'total_campaign_count' => $totalCampaignCount
+            'total_campaign_count' => $totalCampaignCount,
+            'l30_totals' => [
+                'spend' => round($l30Spend, 2),
+                'ad_sales' => round($l30Sales, 2),
+                'ad_sold' => $l30Sold,
+                'clicks' => $l30Clicks,
+            ],
         ]);
     }
 

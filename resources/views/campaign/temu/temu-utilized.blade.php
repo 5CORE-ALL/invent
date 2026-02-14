@@ -264,6 +264,16 @@
                                                 <span class="fw-bold" id="total-sales" style="font-size: 1.1rem;">$0</span>
                                             </div>
                                             <div class="badge-count-item"
+                                                style="background: linear-gradient(135deg, #ec4899 0%, #db2777 100%); padding: 8px 16px; border-radius: 8px; color: white; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                                                <span style="font-size: 0.75rem; display: block; margin-bottom: 2px;">Total L30 Ad Sold</span>
+                                                <span class="fw-bold" id="total-ad-sold" style="font-size: 1.1rem;">0</span>
+                                            </div>
+                                            <div class="badge-count-item"
+                                                style="background: linear-gradient(135deg, #06b6d4 0%, #0891b2 100%); padding: 8px 16px; border-radius: 8px; color: white; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                                                <span style="font-size: 0.75rem; display: block; margin-bottom: 2px;">Total L30 Clicks</span>
+                                                <span class="fw-bold" id="total-clicks" style="font-size: 1.1rem;">0</span>
+                                            </div>
+                                            <div class="badge-count-item"
                                                 style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); padding: 8px 16px; border-radius: 8px; color: white; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
                                                 <span style="font-size: 0.75rem; display: block; margin-bottom: 2px;">Avg ACOS</span>
                                                 <span class="fw-bold" id="avg-acos" style="font-size: 1.1rem;">0%</span>
@@ -385,6 +395,7 @@
             let totalSkuCountFromBackend = 0;
             let zeroInvCountFromBackend = 0;
             let totalCampaignCountFromBackend = 0;
+            let l30TotalsFromBackend = null;
 
             const getDilColor = (value) => {
                 const percent = parseFloat(value) * 100;
@@ -535,9 +546,11 @@
                     nraMissingCountEl.textContent = nraMissingCount;
                 }
 
-                // Calculate Total Spend, Total Sales, and Average ACOS
+                // Calculate Total Spend, Total Sales, Ad Sold, Clicks, and Average ACOS
                 let totalSpend = 0;
                 let totalSales = 0;
+                let totalAdSold = 0;
+                let totalClicks = 0;
                 let totalAcos = 0;
                 let acosCount = 0;
 
@@ -550,6 +563,14 @@
                     const salesL30 = parseFloat(row.base_price_sales_l30 || 0);
                     totalSales += salesL30;
 
+                    // Sum ad sold from L30
+                    const adSoldL30 = parseInt(row.ad_sold_l30 || 0);
+                    totalAdSold += adSoldL30;
+
+                    // Sum clicks from L30
+                    const clicksL30 = parseInt(row.clicks_l30 || 0);
+                    totalClicks += clicksL30;
+
                     // Calculate average ACOS from L30
                     const acosL30 = parseFloat(row.acos_l30 || 0);
                     if (acosL30 > 0) {
@@ -558,22 +579,40 @@
                     }
                 });
 
+                // Use authoritative L30 totals from backend if available (matches temu-decrease & all-marketplace-master)
+                const finalSpend = l30TotalsFromBackend ? l30TotalsFromBackend.spend : totalSpend;
+                const finalSales = l30TotalsFromBackend ? l30TotalsFromBackend.ad_sales : totalSales;
+                const finalAdSold = l30TotalsFromBackend ? l30TotalsFromBackend.ad_sold : totalAdSold;
+                const finalClicks = l30TotalsFromBackend ? l30TotalsFromBackend.clicks : totalClicks;
+
                 // Update Total Spend
                 const totalSpendEl = document.getElementById('total-spend');
                 if (totalSpendEl) {
-                    totalSpendEl.textContent = '$' + Math.round(totalSpend).toLocaleString('en-US');
+                    totalSpendEl.textContent = '$' + Math.round(finalSpend).toLocaleString('en-US');
                 }
 
                 // Update Total Sales
                 const totalSalesEl = document.getElementById('total-sales');
                 if (totalSalesEl) {
-                    totalSalesEl.textContent = '$' + Math.round(totalSales).toLocaleString('en-US');
+                    totalSalesEl.textContent = '$' + Math.round(finalSales).toLocaleString('en-US');
                 }
 
-                // Update Average ACOS
+                // Update Total L30 Ad Sold
+                const totalAdSoldEl = document.getElementById('total-ad-sold');
+                if (totalAdSoldEl) {
+                    totalAdSoldEl.textContent = finalAdSold.toLocaleString('en-US');
+                }
+
+                // Update Total L30 Clicks
+                const totalClicksEl = document.getElementById('total-clicks');
+                if (totalClicksEl) {
+                    totalClicksEl.textContent = finalClicks.toLocaleString('en-US');
+                }
+
+                // Update Average ACOS (use authoritative totals for ACOS too)
                 const avgAcosEl = document.getElementById('avg-acos');
                 if (avgAcosEl) {
-                    const avgAcos = acosCount > 0 ? (totalAcos / acosCount) : 0;
+                    const avgAcos = finalSales > 0 ? (finalSpend / finalSales) * 100 : (acosCount > 0 ? (totalAcos / acosCount) : 0);
                     avgAcosEl.textContent = Math.round(avgAcos) + '%';
                 }
             }
@@ -932,6 +971,8 @@
                         zeroInvCountFromBackend = parseInt(response.zero_inv_count || 0);
                         // Get total campaign count from backend (unique goods_id)
                         totalCampaignCountFromBackend = parseInt(response.total_campaign_count || 0);
+                        // Get authoritative L30 totals from backend (computed from temu-decrease for consistency)
+                        l30TotalsFromBackend = response.l30_totals || null;
                         // Return the data array for Tabulator
                         return response.data;
                     }

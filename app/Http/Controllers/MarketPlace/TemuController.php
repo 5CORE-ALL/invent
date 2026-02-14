@@ -1817,21 +1817,9 @@ class TemuController extends Controller
                 ->unique()
                 ->count();
 
-            // Compute global L30 totals from temu_campaign_reports (ALL rows, matches all-marketplace-master)
-            $l30Totals = DB::table('temu_campaign_reports')
-                ->where('report_range', 'L30')
-                ->selectRaw('COALESCE(SUM(spend), 0) as total_spend, COALESCE(SUM(clicks), 0) as total_clicks, COALESCE(SUM(base_price_sales), 0) as total_ad_sales, COALESCE(SUM(sub_orders), 0) as total_ad_sold')
-                ->first();
-
             return response()->json([
                 'data' => $processedData,
                 'total_campaign_count' => $totalCampaignCount,
-                'l30_totals' => [
-                    'total_spend' => round((float)($l30Totals->total_spend ?? 0), 2),
-                    'total_clicks' => (int)($l30Totals->total_clicks ?? 0),
-                    'total_ad_sales' => round((float)($l30Totals->total_ad_sales ?? 0), 2),
-                    'total_ad_sold' => (int)($l30Totals->total_ad_sold ?? 0),
-                ],
             ]);
         } catch (\Exception $e) {
             Log::error('Error fetching Temu decrease data: ' . $e->getMessage());

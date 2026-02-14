@@ -272,6 +272,7 @@
                         <span class="badge fs-6 p-2 ads-section-badge" id="total-spend-l7-badge" data-ads-filter="total-spend-l7" style="color: black; font-weight: bold; background-color: #b8cfe5; cursor: pointer;" title="Click to filter: has L7 spend">L7 Spend: $0</span>
                         <span class="badge fs-6 p-2 ads-section-badge" id="total-budget-badge" data-ads-filter="budget" style="color: black; font-weight: bold; background-color: #ced4da; cursor: pointer;" title="Click to filter: has budget">Budget: $0</span>
                         <span class="badge fs-6 p-2 ads-section-badge" id="total-ad-sales-badge" data-ads-filter="ad-sales" style="color: black; font-weight: bold; background-color: #9eeaf9; cursor: pointer;" title="Click to filter: has ad sales">Ad Sales: $0</span>
+                        <span class="badge fs-6 p-2" id="total-ad-sold-badge" style="color: black; font-weight: bold; background-color: #f8b4d9;" title="Total L30 Ad Sold">Total L30 Ad Sold: 0</span>
                         <span class="badge fs-6 p-2 ads-section-badge" id="total-ad-clicks-badge" data-ads-filter="ad-clicks" style="color: black; font-weight: bold; background-color: #a5d6e8; cursor: pointer;" title="Click to filter: has ad clicks">Ad Clicks: 0</span>
                         <span class="badge fs-6 p-2 ads-section-badge" id="avg-clicks-badge" style="color: black; font-weight: bold; background-color: #b8d4e3;" title="Avg Clicks = Total Clicks / Total Ad SKU">Avg Clicks: 0</span>
                         <span class="badge fs-6 p-2 ads-section-badge" id="avg-acos-badge" data-ads-filter="avg-acos" style="color: black; font-weight: bold; background-color: #ffe69c; cursor: pointer;" title="Click to filter: has spend/sales">Avg ACOS: 0%</span>
@@ -2090,7 +2091,7 @@
             const zeroInvSkus = new Set();
             const adSkuSet = new Set(); // SKU active in ads (hasCampaign) with >0 inventory
             let validSkuCount = 0, missingCount = 0, nraMissingCount = 0, nraCount = 0;
-            let totalSpend = 0, totalSpendL30 = 0, totalSpendL7 = 0, totalAdSales = 0, totalBudget = 0, totalAdClicks = 0;
+            let totalSpend = 0, totalSpendL30 = 0, totalSpendL7 = 0, totalAdSales = 0, totalBudget = 0, totalAdClicks = 0, totalAdSold = 0;
 
             data.forEach(row => {
                 const sku = row['(Child) sku'] || '';
@@ -2124,6 +2125,7 @@
                 totalSpendL7 += parseFloat(row.spend_l7) || 0;
                 totalBudget += parseFloat(row.budget) || 0;
                 totalAdClicks += parseInt(row.ad_clicks, 10) || 0;
+                totalAdSold += parseInt(row.ad_sold, 10) || 0;
                 const outRoas = parseFloat(row.out_roas) || 0;
                 const spend = parseFloat(row.spend) || 0;
                 if (outRoas > 0 && spend > 0) totalAdSales += spend * outRoas;
@@ -2147,6 +2149,7 @@
             $('#total-spend-l7-badge').text('L7 Spend: $' + Math.round(totalSpendL7).toLocaleString());
             $('#total-budget-badge').text('Budget: $' + totalBudget.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
             $('#total-ad-sales-badge').text('Ad Sales: $' + Math.round(totalAdSales).toLocaleString());
+            $('#total-ad-sold-badge').text('Total L30 Ad Sold: ' + totalAdSold.toLocaleString());
             $('#total-ad-clicks-badge').text('Ad Clicks: ' + totalAdClicks.toLocaleString());
             $('#avg-clicks-badge').text('Avg Clicks: ' + Math.round(avgClicks).toLocaleString());
             $('#avg-acos-badge').text('Avg ACOS: ' + Math.round(avgAcos) + '%');
