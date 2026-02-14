@@ -17,6 +17,7 @@ use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Validation\ValidationException;
+use Illuminate\Support\Facades\Log;
 
 class AiChatController extends Controller
 {
@@ -41,11 +42,11 @@ class AiChatController extends Controller
             $question = $this->sanitizeInput($validated['question']);
             $user = $request->user();
 
-<<<<<<< Updated upstream
-            $taskResponse = $this->handleTaskQuery($question, $user);
-            if ($taskResponse) {
-                return $taskResponse;
-=======
+
+            Log::info('🚀 CHAT REQUEST', ['user' => $user->email, 'question' => $question]);
+            Log::info('🌐 ENV CHECK', ['APP_ENV' => config('app.env'), 'APP_URL' => config('app.url')]);
+
+
             // FIX 1: Hardcoded answers for company/product queries
             $hardcodedAnswer = $this->getHardcodedCompanyAnswer($question);
             if ($hardcodedAnswer !== null) {
@@ -65,7 +66,6 @@ class AiChatController extends Controller
                     'id' => $record?->id,
                     'status' => 'answered',
                 ]);
->>>>>>> Stashed changes
             }
 
             $kbMatch = $this->searchKnowledgeBase($question);
@@ -125,207 +125,6 @@ class AiChatController extends Controller
         }
     }
 
-<<<<<<< Updated upstream
-    /**
-     * Handle task inquiry questions. Returns JsonResponse if it's a task question, null otherwise.
-     */
-    private function handleTaskQuery(string $question, $user): ?JsonResponse
-    {
-        $keywords = [
-            'task', 'tasks', 'assign', 'assigned', 'pending', 'assign to',
-            'task list', 'my tasks', 'tasks of', 'tasks for', 'working on',
-            'how many', 'does', 'have',
-        ];
-        $q = strtolower(trim($question));
-        $hasKeyword = false;
-        foreach ($keywords as $kw) {
-            if (str_contains($q, $kw)) {
-                $hasKeyword = true;
-                break;
-            }
-        }
-        if (!$hasKeyword) {
-            return null;
-        }
-
-        try {
-            if (!\Illuminate\Support\Facades\Schema::hasTable('tasks')) {
-                return null;
-            }
-
-            $targetUser = $this->resolveTargetUserFromQuestion($question, $user);
-            if (!$targetUser) {
-                $extracted = $this->extractNameFromQuestion($question);
-                $answer = $extracted
-                    ? "I couldn't find any team member with name \"{$extracted}\". Please check the spelling or try with full name/email."
-                    : "I couldn't identify which team member you're asking about. Try: \"Tasks assigned to [name]\" or \"My tasks\".";
-                return $this->taskQueryResponse($answer, $user, $question);
-            }
-
-            $tasksQuery = $this->buildTasksQueryForUser($targetUser);
-            $total = $tasksQuery->count();
-            $pendingStatuses = ['pending', 'in_progress', 'Todo', 'Working', 'Need Help', 'Need Approval', 'Dependent', 'Approved', 'Hold', 'Rework'];
-            $pendingTasks = (clone $tasksQuery)->whereIn('status', $pendingStatuses)->get();
-            $pendingCount = $pendingTasks->count();
-
-            $isCurrentUser = $targetUser->id === $user->id;
-            $displayName = $targetUser->name ?: $targetUser->email;
-
-            if ($total === 0) {
-                $answer = $isCurrentUser
-                    ? "You have no tasks assigned."
-                    : "{$displayName} has no tasks assigned.";
-                return $this->taskQueryResponse($answer, $user, $question);
-            }
-
-            if ($pendingCount === 0) {
-                $answer = $isCurrentUser
-                    ? "You have no pending tasks. All assigned tasks are completed."
-                    : "{$displayName} has no pending tasks. All assigned tasks are completed.";
-                return $this->taskQueryResponse($answer, $user, $question);
-            }
-
-            $lines = [];
-            if ($isCurrentUser) {
-                $lines[] = "You have {$pendingCount} pending task" . ($pendingCount !== 1 ? 's' : '') . ":";
-            } else {
-                $lines[] = "{$displayName} has {$pendingCount} pending task" . ($pendingCount !== 1 ? 's' : '') . " out of {$total} total assigned tasks:";
-            }
-
-            $emojiByPriority = ['high' => '🔴', 'normal' => '🔵', 'low' => '🟢'];
-            foreach ($pendingTasks->take(20) as $i => $t) {
-                $due = $t->due_date ?? $t->start_date ?? $t->tid ?? null;
-                $dueStr = $due ? $this->formatDueDate($due) : 'No due date';
-                $prio = strtolower($t->priority ?? 'normal');
-                $emoji = $emojiByPriority[$prio] ?? '🟡';
-                $lines[] = ($i + 1) . ". {$emoji} " . ($t->title ?: 'Untitled') . " (Due: {$dueStr})";
-            }
-            if ($pendingTasks->count() > 20) {
-                $lines[] = '... and ' . ($pendingTasks->count() - 20) . ' more.';
-            }
-
-            $statusCounts = (clone $tasksQuery)->selectRaw('status, count(*) as c')->groupBy('status')->pluck('c', 'status');
-            $inProgress = ($statusCounts['in_progress'] ?? 0) + ($statusCounts['Working'] ?? 0);
-            $completed = ($statusCounts['completed'] ?? 0) + ($statusCounts['Done'] ?? 0);
-            $summary = [];
-            if ($pendingCount > 0) $summary[] = "{$pendingCount} pending";
-            if ($inProgress > 0) $summary[] = "{$inProgress} in progress";
-            if ($completed > 0) $summary[] = "{$completed} completed";
-            if (!empty($summary)) {
-                $lines[] = '';
-                $lines[] = 'Total assigned: ' . $total . ' tasks (' . implode(', ', $summary) . ')';
-            }
-
-            $answer = implode("\n", $lines);
-            return $this->taskQueryResponse($answer, $user, $question);
-        } catch (\Throwable $e) {
-            return null;
-        }
-    }
-
-    private function resolveTargetUserFromQuestion(string $question, $currentUser): ?User
-    {
-        $q = strtolower(trim($question));
-        $myPatterns = [
-            'my tasks', 'my pending tasks', 'tasks assigned to me', 'my task list',
-            'what are my tasks', 'show my tasks', 'my task', 'show me tasks', 'show tasks',
-        ];
-        foreach ($myPatterns as $p) {
-            if (str_contains($q, $p)) {
-                return $currentUser;
-            }
-        }
-
-        $name = $this->extractNameFromQuestion($question);
-        if ($name !== null && $name !== '') {
-            $found = User::where('name', 'like', '%' . $name . '%')
-                ->orWhere('email', 'like', '%' . $name . '%')
-                ->first();
-            return $found;
-        }
-
-        if (preg_match('/\b[\w._%+-]+@[\w.-]+\.\w+\b/', $question, $m)) {
-            return User::where('email', $m[0])->first();
-        }
-
-        return null;
-    }
-
-    private function extractNameFromQuestion(string $question): ?string
-    {
-        $patterns = [
-            '/tasks?\s+assigned\s+to\s+([^?.!]+)/i',
-            '/tasks?\s+of\s+([^?.!]+)/i',
-            '/tasks?\s+for\s+([^?.!]+)/i',
-            '/pending\s+tasks?\s+(?:of|for)\s+([^?.!]+)/i',
-            '/task\s+list\s+of\s+([^?.!]+)/i',
-            '/what\s+is\s+([^?\s]+(?:\s+[^?\s]+)?)\s+working\s+on/i',
-            '/how\s+many\s+tasks?\s+(?:does\s+)?([^?]+?)\s+have/i',
-            '/show\s+tasks?\s+of\s+([^?.!]+)/i',
-        ];
-        foreach ($patterns as $pat) {
-            if (preg_match($pat, $question, $m)) {
-                return trim($m[1], " \t\n\r\0\x0B\"'");
-            }
-        }
-        return null;
-    }
-
-    private function buildTasksQueryForUser(User $targetUser)
-    {
-        if (\Illuminate\Support\Facades\Schema::hasColumn('tasks', 'assignee_id')) {
-            return Task::where('assignee_id', $targetUser->id);
-        }
-        $email = $targetUser->email;
-        return Task::where(function ($q) use ($email) {
-            $q->where('assign_to', $email)
-                ->orWhere('assign_to', 'like', $email . ',%')
-                ->orWhere('assign_to', 'like', '%,' . $email)
-                ->orWhere('assign_to', 'like', '%,' . $email . ',%');
-        });
-    }
-
-    private function formatDueDate($date): string
-    {
-        if (!$date) return 'No due date';
-        $d = \Carbon\Carbon::parse($date);
-        $tomorrow = \Carbon\Carbon::tomorrow();
-        if ($d->isSameDay($tomorrow)) {
-            return 'Tomorrow';
-        }
-        return $d->format('Y-m-d');
-    }
-
-    private function taskQueryResponse(string $answer, $user, string $question): JsonResponse
-    {
-        $record = null;
-        try {
-            if (\Illuminate\Support\Facades\Schema::hasTable('ai_questions')) {
-                $record = AiQuestion::create([
-                    'user_id' => $user->id,
-                    'question' => $question,
-                    'ai_answer' => $answer,
-                ]);
-            }
-        } catch (\Exception $e) {
-        }
-        return response()->json([
-            'answer' => $answer,
-            'id' => $record?->id,
-            'status' => 'answered',
-        ]);
-    }
-
-    private function searchKnowledgeBase(string $question): ?AiKnowledgeBase
-    {
-        try {
-            $words = preg_split('/\s+/', strtolower($question), -1, PREG_SPLIT_NO_EMPTY);
-            if (empty($words)) {
-                return null;
-            }
-
-=======
-    /** Minimum score (FIX 5) to accept a KB match and avoid wrong/mixed responses. */
     private const KNOWLEDGE_BASE_MIN_SCORE = 5;
 
     private function searchKnowledgeBase(string $question): ?AiKnowledgeBase
@@ -339,7 +138,6 @@ class AiChatController extends Controller
                 return null;
             }
 
->>>>>>> Stashed changes
             if (!\Illuminate\Support\Facades\Schema::hasTable('ai_knowledge_base')) {
                 return null;
             }
@@ -424,22 +222,26 @@ class AiChatController extends Controller
         $q = trim($q);
 
         // 5Core / 5 Core
-        if (preg_match('/\b(what|who|tell me about)\s+is\s+(5\s*core|5core)\b/i', $q)
+        if (
+            preg_match('/\b(what|who|tell me about)\s+is\s+(5\s*core|5core)\b/i', $q)
             || preg_match('/\b(5\s*core|5core)\s*[?\s]*(what|who|about)/i', $q)
             || $q === 'what is 5 core'
             || $q === 'what is 5core'
             || $q === 'who is 5core'
             || str_contains($q, 'what is 5 core')
-            || str_contains($q, 'what is 5core')) {
+            || str_contains($q, 'what is 5core')
+        ) {
             return "5Core is our company and product platform. It provides integrated solutions for business operations including tasks, HR, sales, invoicing, and workflows. For specific how-to steps, ask a detailed question or check the knowledge base.";
         }
 
         // Oops (OOP / product name – adjust wording to your actual product)
-        if (preg_match('/\b(what|who|tell me about)\s+is\s+(oops?|oop)\b/i', $q)
+        if (
+            preg_match('/\b(what|who|tell me about)\s+is\s+(oops?|oop)\b/i', $q)
             || $q === 'what is oops'
             || $q === 'what is oop'
             || str_contains($q, 'what is oops')
-            || str_contains($q, 'what is oop')) {
+            || str_contains($q, 'what is oop')
+        ) {
             return "Oops (OOP) in our context refers to Object-Oriented Programming principles used in our systems, or the related product/module name. For feature-specific steps, ask a detailed question (e.g. how to create an invoice, how to apply leave).";
         }
 
@@ -449,11 +251,11 @@ class AiChatController extends Controller
     private function formatAnswerSteps($answerSteps, ?string $videoLink = null): string
     {
         $steps = is_array($answerSteps) ? $answerSteps : (is_string($answerSteps) ? json_decode($answerSteps, true) : []);
-        
+
         if (!is_array($steps)) {
             $steps = [$steps];
         }
-        
+
         // 🔥 FIX: Check if steps already have numbers (1., 2., etc.)
         $formattedSteps = [];
         foreach ($steps as $index => $step) {
@@ -462,13 +264,13 @@ class AiChatController extends Controller
             // Add single number
             $formattedSteps[] = ($index + 1) . '. ' . $cleanStep;
         }
-        
+
         $out = implode("\n", $formattedSteps);
-        
+
         if ($videoLink) {
             $out .= "\n\n📹 Video tutorial: " . $videoLink;
         }
-        
+
         return $out;
     }
 
@@ -515,7 +317,7 @@ class AiChatController extends Controller
         . "Just say 'I don't have this information.' and the system will escalate. "
         . "Do NOT say 'I'm afraid' or 'I recommend checking with IT' - just say you don't have the information.";
 
-    
+
     private function callClaude(string $question): ?array
     {
         $apiKey = config('services.anthropic.key');
@@ -655,7 +457,7 @@ class AiChatController extends Controller
             return true;
         }
 
-        return false; 
+        return false;
     }
 
     private function escalateToSenior(string $question, $user): JsonResponse
@@ -716,12 +518,6 @@ class AiChatController extends Controller
         ]);
 
         try {
-<<<<<<< Updated upstream
-            $this->processCSVTraining(storage_path('app/' . $path), $record->id);
-            $record->update(['status' => 'processed', 'processed_at' => now()]);
-
-            return response()->json(['success' => true, 'message' => 'File uploaded and processed successfully.']);
-=======
             $entriesAdded = $this->processCSVTraining(storage_path('app/' . $path), $record->id);
             $record->update(['status' => 'processed', 'processed_at' => now()]);
 
@@ -730,7 +526,6 @@ class AiChatController extends Controller
                 'message' => 'File uploaded and processed successfully.',
                 'entries_added' => $entriesAdded,
             ]);
->>>>>>> Stashed changes
         } catch (\Throwable $e) {
             $record->update(['status' => 'failed']);
 
@@ -753,10 +548,6 @@ class AiChatController extends Controller
             $content = substr($content, 3);
             file_put_contents($filePath, $content);
         }
-<<<<<<< Updated upstream
-=======
-
->>>>>>> Stashed changes
         $content = str_replace("\0", '', $content);
         file_put_contents($filePath, $content);
 
@@ -795,10 +586,7 @@ class AiChatController extends Controller
             throw new \RuntimeException('CSV must have a question_pattern column.');
         }
 
-<<<<<<< Updated upstream
-=======
         $entriesAdded = 0;
->>>>>>> Stashed changes
         while (($row = fgetcsv($handle)) !== false) {
             try {
                 $category = isset($map['category']) ? trim($row[$map['category']] ?? '') : 'General';
@@ -827,20 +615,14 @@ class AiChatController extends Controller
                     'video_link' => $video_link ?: null,
                     'tags' => $tags,
                 ]);
-<<<<<<< Updated upstream
-=======
                 $entriesAdded++;
->>>>>>> Stashed changes
             } catch (\Throwable $e) {
                 throw $e;
             }
         }
 
         fclose($handle);
-<<<<<<< Updated upstream
-=======
         return $entriesAdded;
->>>>>>> Stashed changes
     }
     public function checkNotifications(Request $request): JsonResponse
     {
@@ -889,7 +671,7 @@ class AiChatController extends Controller
         return response()->json(['success' => true]);
     }
 
-  
+
     public function downloadSampleCsv()
     {
         $headers = [

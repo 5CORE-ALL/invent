@@ -1,18 +1,31 @@
 const CACHE_NAME = 'invent-v1';
 const urlsToCache = [
-  '/',
-  '/css/app.css',
-  '/js/app.js'
+  '/'
 ];
 
-// Install service worker
+// Install service worker with error handling
 self.addEventListener('install', function(event) {
   console.log('Service Worker installing...');
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then(function(cache) {
         console.log('Opened cache');
-        return cache.addAll(urlsToCache);
+        // Cache URLs one by one with error handling
+        return Promise.allSettled(
+          urlsToCache.map(url => 
+            cache.add(url).catch(err => {
+              console.warn('Failed to cache:', url, err);
+              return Promise.resolve();
+            })
+          )
+        );
+      })
+      .then(() => {
+        console.log('Service Worker installed successfully');
+        self.skipWaiting(); // Activate immediately
+      })
+      .catch(err => {
+        console.error('Service Worker installation failed:', err);
       })
   );
 });

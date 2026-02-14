@@ -24,10 +24,10 @@ class TaskController extends Controller
         
         if (!$isAdmin) {
             // Normal user: only see tasks they created OR tasks assigned to them
-            // Old table uses email fields
+            // Handle comma-separated assignees with LIKE
             $tasksQuery->where(function($query) use ($user) {
                 $query->where('assignor', $user->email)
-                      ->orWhere('assign_to', $user->email);
+                      ->orWhere('assign_to', 'LIKE', '%' . $user->email . '%');
             });
         }
 
@@ -47,8 +47,8 @@ class TaskController extends Controller
             'done_atc' => (clone $tasksQuery)->where('status', 'Done')->sum('etc_done') ?? 0,
         ];
 
-        // Get all users for filter dropdowns
-        $users = User::select('id', 'name')->orderBy('name')->get();
+        // Get all users for filter dropdowns (include email for bulk assign!)
+        $users = User::select('id', 'name', 'email')->orderBy('name')->get();
 
         return view('tasks.index', compact('stats', 'isAdmin', 'users'));
     }
@@ -62,10 +62,10 @@ class TaskController extends Controller
         
         if (!$isAdmin) {
             // Normal user: only see tasks they created OR tasks assigned to them
-            // Old table uses email fields
+            // Handle comma-separated assignees with LIKE
             $tasksQuery->where(function($query) use ($user) {
                 $query->where('assignor', $user->email)
-                      ->orWhere('assign_to', $user->email);
+                      ->orWhere('assign_to', 'LIKE', '%' . $user->email . '%');
             });
         }
 
@@ -174,19 +174,36 @@ class TaskController extends Controller
         $assigneeEmail = null;
         $assigneeIds = $request->assignee_ids ?? [];
         
+        \Log::info('📝 Assignee Processing:', [
+            'has_assignee_id' => $request->has('assignee_id'),
+            'assignee_id_value' => $request->assignee_id,
+            'has_assignee_ids' => !empty($assigneeIds),
+            'assignee_ids_value' => $assigneeIds,
+            'validated_assignee_id' => $validated['assignee_id'] ?? null
+        ]);
+        
         if (!empty($assigneeIds) && count($assigneeIds) > 0) {
             // Multiple assignees - store as comma-separated emails
             $assigneeEmails = User::whereIn('id', $assigneeIds)->pluck('email')->toArray();
             $assigneeEmail = implode(', ', $assigneeEmails);
-            \Log::info('Multiple assignees:', ['ids' => $assigneeIds, 'emails' => $assigneeEmail]);
+            \Log::info('✅ Multiple assignees selected:', [
+                'count' => count($assigneeIds),
+                'ids' => $assigneeIds, 
+                'emails' => $assigneeEmail
+            ]);
         } elseif ($request->has('assignee_id') && $validated['assignee_id']) {
             // Single assignee
             $assigneeUser = User::find($validated['assignee_id']);
             $assigneeEmail = $assigneeUser ? $assigneeUser->email : null;
-            \Log::info('Single assignee:', ['id' => $validated['assignee_id'], 'email' => $assigneeEmail]);
+            \Log::info('✅ Single assignee selected:', [
+                'id' => $validated['assignee_id'], 
+                'email' => $assigneeEmail
+            ]);
         } else {
-            \Log::warning('No assignee provided');
+            \Log::warning('⚠️ No assignee provided - task will be unassigned');
         }
+        
+        \Log::info('💾 Final assignee to save:', ['assign_to' => $assigneeEmail]);
         
         // Handle image upload
         $imageName = null;
@@ -493,6 +510,18 @@ class TaskController extends Controller
         if ($validated['status'] === 'Done') {
             if (isset($validated['atc'])) {
                 $task->etc_done = $validated['atc']; // Map to old column name
+                
+                // Log ATC for all assignees (comma-separated)
+                if ($task->assign_to && str_contains($task->assign_to, ',')) {
+                    $assigneeEmails = array_map('trim', explode(',', $task->assign_to));
+                    \Log::info('✅ Task completed - ATC credited to ALL assignees:', [
+                        'task_id' => $task->id,
+                        'atc_minutes' => $validated['atc'],
+                        'assignees' => $assigneeEmails,
+                        'count' => count($assigneeEmails),
+                        'note' => 'Each assignee gets credit for ' . $validated['atc'] . ' minutes'
+                    ]);
+                }
             }
             $task->completion_date = now(); // Map to old column name
             
@@ -634,11 +663,30 @@ class TaskController extends Controller
                 // Bulk assign assignee(s) - comma-separated for multiple
                 $count = count($taskIds);
                 $assigneeEmails = $request->assignee;
-                Task::whereIn('id', $taskIds)->update(['assign_to' => $assigneeEmails]);
-                \Log::info("Bulk assigned assignee(s) to $count tasks: $assigneeEmails");
+                
+                \Log::info("🔍 Bulk Assign Assignee Debug:", [
+                    'task_ids_count' => $count,
+                    'task_ids' => $taskIds,
+                    'assignee_emails' => $assigneeEmails,
+                    'request_all' => $request->all()
+                ]);
+                
+                if (empty($assigneeEmails)) {
+                    \Log::error("❌ No assignee emails provided!");
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'No assignee provided!'
+                    ], 400);
+                }
+                
+                // Update ONLY the specified tasks
+                $updated = Task::whereIn('id', $taskIds)->update(['assign_to' => $assigneeEmails]);
+                
+                \Log::info("✅ Updated $updated tasks with assignee: $assigneeEmails");
+                
                 return response()->json([
                     'success' => true,
-                    'message' => "$count task(s) assignee updated!"
+                    'message' => "$updated task(s) assignee updated to: " . substr($assigneeEmails, 0, 50) . "..."
                 ]);
             
             case 'assign_assignor':
@@ -649,13 +697,32 @@ class TaskController extends Controller
                         'message' => 'Only admins can change assignor'
                     ], 403);
                 }
+                
                 $count = count($taskIds);
                 $assignorEmail = $request->assignor;
-                Task::whereIn('id', $taskIds)->update(['assignor' => $assignorEmail]);
-                \Log::info("Bulk assigned assignor to $count tasks: $assignorEmail");
+                
+                \Log::info("🔍 Bulk Assign Assignor Debug:", [
+                    'task_ids_count' => $count,
+                    'task_ids' => $taskIds,
+                    'assignor_email' => $assignorEmail,
+                    'request_all' => $request->all()
+                ]);
+                
+                if (empty($assignorEmail)) {
+                    \Log::error("❌ No assignor email provided!");
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'No assignor provided!'
+                    ], 400);
+                }
+                
+                $updated = Task::whereIn('id', $taskIds)->update(['assignor' => $assignorEmail]);
+                
+                \Log::info("✅ Updated $updated tasks with assignor: $assignorEmail");
+                
                 return response()->json([
                     'success' => true,
-                    'message' => "$count task(s) assignor updated!"
+                    'message' => "$updated task(s) assignor updated to: $assignorEmail"
                 ]);
 
             default:
