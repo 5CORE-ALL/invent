@@ -8,7 +8,6 @@ use App\Models\AiEscalation;
 use App\Models\AiKnowledgeBase;
 use App\Models\AiKnowledgeFile;
 use App\Models\AiQuestion;
-use App\Models\Task;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -16,8 +15,8 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Support\Facades\Http;
-use Illuminate\Validation\ValidationException;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\ValidationException;
 
 class AiChatController extends Controller
 {
@@ -46,11 +45,32 @@ class AiChatController extends Controller
             Log::info('🚀 CHAT REQUEST', ['user' => $user->email, 'question' => $question]);
             Log::info('🌐 ENV CHECK', ['APP_ENV' => config('app.env'), 'APP_URL' => config('app.url')]);
 
-            // Task assign feature commented out
+            // Task query feature disabled — "How do I assign a task?" goes to Claude / KB / escalate
             // $taskResponse = $this->handleTaskQuery($question, $user);
             // if ($taskResponse) {
             //     return $taskResponse;
             // }
+
+            // FIX 1: Hardcoded answers for company/product queries
+            $hardcodedAnswer = $this->getHardcodedCompanyAnswer($question);
+            if ($hardcodedAnswer !== null) {
+                $record = null;
+                try {
+                    if (\Illuminate\Support\Facades\Schema::hasTable('ai_questions')) {
+                        $record = AiQuestion::create([
+                            'user_id' => $user->id,
+                            'question' => $question,
+                            'ai_answer' => $hardcodedAnswer,
+                        ]);
+                    }
+                } catch (\Exception $e) {
+                }
+                return response()->json([
+                    'answer' => $hardcodedAnswer,
+                    'id' => $record?->id,
+                    'status' => 'answered',
+                ]);
+            }
 
             $kbMatch = $this->searchKnowledgeBase($question);
 
@@ -109,222 +129,16 @@ class AiChatController extends Controller
         }
     }
 
-    /**
-     * Handle task inquiry questions. Returns JsonResponse if it's a task question, null otherwise.
-     * TASK ASSIGN FEATURE COMMENTED OUT - body disabled, returns null.
-     */
-    private function handleTaskQuery(string $question, $user): ?JsonResponse
-    {
-        return null; // Task assign feature commented out
-        /*
-        $keywords = [
-            'task', 'tasks', 'assign', 'assigned', 'pending', 'assign to',
-            'task list', 'my tasks', 'tasks of', 'tasks for', 'working on',
-            'how many', 'does', 'have',
-        ];
-        $q = strtolower(trim($question));
-        $hasKeyword = false;
-        foreach ($keywords as $kw) {
-            if (str_contains($q, $kw)) {
-                $hasKeyword = true;
-                break;
-            }
-        }
-        if (!$hasKeyword) {
-            return null;
-        }
-
-        try {
-            if (!\Illuminate\Support\Facades\Schema::hasTable('tasks')) {
-                return null;
-            }
-
-            $targetUser = $this->resolveTargetUserFromQuestion($question, $user);
-            if (!$targetUser) {
-                $extracted = $this->extractNameFromQuestion($question);
-                $answer = $extracted
-                    ? "I couldn't find any team member with name \"{$extracted}\". Please check the spelling or try with full name/email."
-                    : "I couldn't identify which team member you're asking about. Try: \"Tasks assigned to [name]\" or \"My tasks\".";
-                return $this->taskQueryResponse($answer, $user, $question);
-            }
-
-            $tasksQuery = $this->buildTasksQueryForUser($targetUser);
-            $total = $tasksQuery->count();
-            $pendingStatuses = ['pending', 'in_progress', 'Todo', 'Working', 'Need Help', 'Need Approval', 'Dependent', 'Approved', 'Hold', 'Rework'];
-            $pendingTasks = (clone $tasksQuery)->whereIn('status', $pendingStatuses)->get();
-            $pendingCount = $pendingTasks->count();
-
-            $isCurrentUser = $targetUser->id === $user->id;
-            $displayName = $targetUser->name ?: $targetUser->email;
-
-            if ($total === 0) {
-                $answer = $isCurrentUser
-                    ? "You have no tasks assigned."
-                    : "{$displayName} has no tasks assigned.";
-                return $this->taskQueryResponse($answer, $user, $question);
-            }
-
-            if ($pendingCount === 0) {
-                $answer = $isCurrentUser
-                    ? "You have no pending tasks. All assigned tasks are completed."
-                    : "{$displayName} has no pending tasks. All assigned tasks are completed.";
-                return $this->taskQueryResponse($answer, $user, $question);
-            }
-
-            $lines = [];
-            if ($isCurrentUser) {
-                $lines[] = "You have {$pendingCount} pending task" . ($pendingCount !== 1 ? 's' : '') . ":";
-            } else {
-                $lines[] = "{$displayName} has {$pendingCount} pending task" . ($pendingCount !== 1 ? 's' : '') . " out of {$total} total assigned tasks:";
-            }
-
-            $emojiByPriority = ['high' => '🔴', 'normal' => '🔵', 'low' => '🟢'];
-            foreach ($pendingTasks->take(20) as $i => $t) {
-                $due = $t->due_date ?? $t->start_date ?? $t->tid ?? null;
-                $dueStr = $due ? $this->formatDueDate($due) : 'No due date';
-                $prio = strtolower($t->priority ?? 'normal');
-                $emoji = $emojiByPriority[$prio] ?? '🟡';
-                $lines[] = ($i + 1) . ". {$emoji} " . ($t->title ?: 'Untitled') . " (Due: {$dueStr})";
-            }
-            if ($pendingTasks->count() > 20) {
-                $lines[] = '... and ' . ($pendingTasks->count() - 20) . ' more.';
-            }
-
-            $statusCounts = (clone $tasksQuery)->selectRaw('status, count(*) as c')->groupBy('status')->pluck('c', 'status');
-            $inProgress = ($statusCounts['in_progress'] ?? 0) + ($statusCounts['Working'] ?? 0);
-            $completed = ($statusCounts['completed'] ?? 0) + ($statusCounts['Done'] ?? 0);
-            $summary = [];
-            if ($pendingCount > 0) $summary[] = "{$pendingCount} pending";
-            if ($inProgress > 0) $summary[] = "{$inProgress} in progress";
-            if ($completed > 0) $summary[] = "{$completed} completed";
-            if (!empty($summary)) {
-                $lines[] = '';
-                $lines[] = 'Total assigned: ' . $total . ' tasks (' . implode(', ', $summary) . ')';
-            }
-
-            $answer = implode("\n", $lines);
-            return $this->taskQueryResponse($answer, $user, $question);
-        } catch (\Throwable $e) {
-            return null;
-        }
-        */
-    }
-
-    private function resolveTargetUserFromQuestion(string $question, $currentUser): ?User
-    {
-        $q = strtolower(trim($question));
-        $myPatterns = [
-            'my tasks', 'my pending tasks', 'tasks assigned to me', 'my task list',
-            'what are my tasks', 'show my tasks', 'my task', 'show me tasks', 'show tasks',
-        ];
-        foreach ($myPatterns as $p) {
-            if (str_contains($q, $p)) {
-                return $currentUser;
-            }
-        }
-
-        $name = $this->extractNameFromQuestion($question);
-        if ($name !== null && $name !== '') {
-            $found = User::where('name', 'like', '%' . $name . '%')
-                ->orWhere('email', 'like', '%' . $name . '%')
-                ->first();
-            return $found;
-        }
-
-        if (preg_match('/\b[\w._%+-]+@[\w.-]+\.\w+\b/', $question, $m)) {
-            return User::where('email', $m[0])->first();
-        }
-
-        return null;
-    }
-
-    private function extractNameFromQuestion(string $question): ?string
-    {
-        $patterns = [
-            '/tasks?\s+assigned\s+to\s+([^?.!]+)/i',
-            '/tasks?\s+of\s+([^?.!]+)/i',
-            '/tasks?\s+for\s+([^?.!]+)/i',
-            '/pending\s+tasks?\s+(?:of|for)\s+([^?.!]+)/i',
-            '/task\s+list\s+of\s+([^?.!]+)/i',
-            '/what\s+is\s+([^?\s]+(?:\s+[^?\s]+)?)\s+working\s+on/i',
-            '/how\s+many\s+tasks?\s+(?:does\s+)?([^?]+?)\s+have/i',
-            '/show\s+tasks?\s+of\s+([^?.!]+)/i',
-        ];
-        foreach ($patterns as $pat) {
-            if (preg_match($pat, $question, $m)) {
-                return trim($m[1], " \t\n\r\0\x0B\"'");
-            }
-        }
-        return null;
-    }
-
-    private function buildTasksQueryForUser(User $targetUser)
-    {
-        if (\Illuminate\Support\Facades\Schema::hasColumn('tasks', 'assignee_id')) {
-            return Task::where('assignee_id', $targetUser->id);
-        }
-        $email = $targetUser->email;
-        return Task::where(function ($q) use ($email) {
-            $q->where('assign_to', $email)
-                ->orWhere('assign_to', 'like', $email . ',%')
-                ->orWhere('assign_to', 'like', '%,' . $email)
-                ->orWhere('assign_to', 'like', '%,' . $email . ',%');
-        });
-    }
-
-    private function formatDueDate($date): string
-    {
-        if (!$date) return 'No due date';
-        $d = \Carbon\Carbon::parse($date);
-        $tomorrow = \Carbon\Carbon::tomorrow();
-        if ($d->isSameDay($tomorrow)) {
-            return 'Tomorrow';
-        }
-        return $d->format('Y-m-d');
-    }
-
-    private function taskQueryResponse(string $answer, $user, string $question): JsonResponse
-    {
-        $record = null;
-        try {
-            if (\Illuminate\Support\Facades\Schema::hasTable('ai_questions')) {
-                $record = AiQuestion::create([
-                    'user_id' => $user->id,
-                    'question' => $question,
-                    'ai_answer' => $answer,
-                ]);
-            }
-        } catch (\Exception $e) {
-        }
-        return response()->json([
-            'answer' => $answer,
-            'id' => $record?->id,
-            'status' => 'answered',
-        ]);
-    }
-
-    /** Minimum score to accept a KB match; avoids false matches from common/short words. */
-    private const KNOWLEDGE_BASE_MIN_SCORE = 10;
-
-    /** Common words to skip when scoring (reduce false matches like "where to manage things" → Task). */
-    private const KB_STOP_WORDS = [
-        'where', 'what', 'how', 'to', 'the', 'a', 'an', 'is', 'are', 'can', 'i', 'you',
-        'do', 'does', 'for', 'with', 'at', 'in', 'on', 'by', 'from', 'of', 'and', 'or',
-    ];
+    private const KNOWLEDGE_BASE_MIN_SCORE = 5;
 
     private function searchKnowledgeBase(string $question): ?AiKnowledgeBase
     {
         try {
             $qLower = strtolower(trim($question));
-            $allWords = preg_split('/\s+/', $qLower, -1, PREG_SPLIT_NO_EMPTY);
-            $stopWords = array_fill_keys(array_map('strtolower', self::KB_STOP_WORDS), true);
-            // Only score words that are at least 3 chars and not stop words
-            $words = array_values(array_filter($allWords, function ($w) use ($stopWords) {
-                return strlen($w) >= 3 && !isset($stopWords[$w]);
-            }));
+            $words = preg_split('/\s+/', $qLower, -1, PREG_SPLIT_NO_EMPTY);
+            $words = array_values(array_filter($words, fn($w) => strlen($w) >= 2));
 
             if (empty($words)) {
-                Log::debug('KB SEARCH: no significant words after filter', ['question' => $question]);
                 return null;
             }
 
@@ -347,49 +161,49 @@ class AiChatController extends Controller
                 $category = strtolower(trim($entry->category ?? ''));
                 $subcategory = strtolower(trim($entry->subcategory ?? ''));
 
+                // Word match: question words found in pattern or tags
                 $wordScore = 0;
                 foreach ($words as $word) {
                     if (str_contains($pattern, $word)) {
-                        $wordScore += 3; // pattern match
+                        $wordScore += 2; // pattern match weighted higher
                         continue;
                     }
                     foreach ($tags as $tag) {
                         if (str_contains($tag, $word) || str_contains($word, $tag)) {
-                            $wordScore += 2; // tag partial match
+                            $wordScore += 1;
                             break;
                         }
                     }
                 }
 
-                $tagFullScore = 0;
-                foreach ($tags as $tag) {
-                    if ($tag === '' || strlen($tag) < 3) continue;
-                    if (str_contains($qLower, $tag)) {
-                        $tagFullScore += 3;
-                    }
-                }
-                $tagFullScore = min(9, $tagFullScore);
-
-                $similarityScore = 0;
+                // similar_text: 0–100, scale to 0–5 points (FIX 2)
+                $similarity = 0;
                 if ($pattern !== '') {
                     similar_text($qLower, $pattern, $percent);
-                    $similarityScore = min(5, (int) round((float) $percent / 20));
+                    $similarity = (float) $percent;
+                }
+                $similarityScore = min(5, round($similarity / 20)); // 100% => 5, 40% => 2
+
+                // Tag match: question contains a full tag (e.g. "invoice" in question)
+                $tagMatchScore = 0;
+                foreach ($tags as $tag) {
+                    if ($tag === '' || strlen($tag) < 2) continue;
+                    if (str_contains($qLower, $tag)) {
+                        $tagMatchScore += 2;
+                    }
+                }
+                $tagMatchScore = min(5, $tagMatchScore);
+
+                // Category/subcategory in question (bonus)
+                $categoryScore = 0;
+                if ($category !== '' && str_contains($qLower, $category)) {
+                    $categoryScore += 1;
+                }
+                if ($subcategory !== '' && str_contains($qLower, $subcategory)) {
+                    $categoryScore += 1;
                 }
 
-                $categoryScore = 0;
-                if ($category !== '' && str_contains($qLower, $category)) $categoryScore += 1;
-                if ($subcategory !== '' && str_contains($qLower, $subcategory)) $categoryScore += 1;
-
-                $score = $wordScore + $tagFullScore + $similarityScore + $categoryScore;
-
-                Log::debug('KB ENTRY SCORE', [
-                    'pattern' => $entry->question_pattern,
-                    'score' => $score,
-                    'wordScore' => $wordScore,
-                    'tagFullScore' => $tagFullScore,
-                    'similarityScore' => $similarityScore,
-                    'categoryScore' => $categoryScore,
-                ]);
+                $score = $wordScore + $similarityScore + $tagMatchScore + $categoryScore;
 
                 if ($score > $bestScore && $score >= self::KNOWLEDGE_BASE_MIN_SCORE) {
                     $bestScore = $score;
@@ -397,18 +211,8 @@ class AiChatController extends Controller
                 }
             }
 
-            if ($best !== null) {
-                Log::debug('KB BEST MATCH', [
-                    'pattern' => $best->question_pattern,
-                    'score' => $bestScore,
-                ]);
-            } else {
-                Log::debug('KB NO MATCH', ['question' => $question, 'minScore' => self::KNOWLEDGE_BASE_MIN_SCORE]);
-            }
-
             return $best;
         } catch (\Throwable $e) {
-            Log::debug('KB SEARCH ERROR', ['message' => $e->getMessage()]);
             return null;
         }
     }
@@ -500,10 +304,22 @@ class AiChatController extends Controller
         return $emails[$domain] ?? $emails['General'] ?? 'support@5core.com';
     }
 
+    /** FIX 3: System prompt with accurate 5Core product/company info for consistent answers. */
     private const CLAUDE_SYSTEM_PROMPT = "You are 5Core AI Assistant, an internal support agent for 5Core team members. "
-        . "ABOUT 5CORE: 5Core is a company that provides integrated business solutions. "
-        . "We have products across audio equipment (speakers, microphones, stands), e-commerce platforms, and business management tools. "
-        . "IMPORTANT: If you don't know the answer, say 'I don't have this information.' and the system will escalate to a senior team member.";
+
+        . "ABOUT 5CORE: 5Core is the company and product platform. It provides integrated business solutions: Tasks (assignment, due dates, dashboard), HR (leave, attendance), Sales (invoicing, billing, clients), and general workflows. "
+
+        . "When users ask 'What is 5Core' or 'What is 5 Core', answer: 5Core is our company and product platform that provides integrated solutions for tasks, HR, sales, invoicing, and workflows. Keep it to 1-2 sentences unless they ask for more. "
+
+        . "When users ask about 'Oops' or 'OOP', clarify: in our context it can mean Object-Oriented Programming in our systems or a related product/module; suggest they ask a specific how-to question if they need steps. "
+
+        . "Answer questions about 5Core products, processes, and workflows using the above. For greetings like 'hi', 'hello', 'hey', 'thanks', 'good morning' - respond politely and warmly. "
+        . "Keep responses professional, friendly, and concise in English. "
+
+        . "IMPORTANT: If you don't know the answer or the question is about IT, VPN, server, network, or anything outside 5Core scope, "
+        . "you MUST say: 'I don't have this information.' Do NOT give long explanations or recommendations to contact IT. "
+        . "Just say 'I don't have this information.' and the system will escalate. "
+        . "Do NOT say 'I'm afraid' or 'I recommend checking with IT' - just say you don't have the information.";
 
 
     private function callClaude(string $question): ?array

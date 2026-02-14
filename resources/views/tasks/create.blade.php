@@ -93,15 +93,15 @@
                             @enderror
                         </div>
 
-                        <!-- Assign To (Simple Dropdown - Works with existing backend) -->
+                        <!-- Assign To (Required on Mobile) -->
                         <div class="mb-3">
                             <label for="assignee_id" class="form-label fw-bold">
-                                Assign To
+                                Assign To <span class="text-danger">*</span>
                             </label>
                             <select class="form-select form-select-lg @error('assignee_id') is-invalid @enderror" 
                                     id="assignee_id" 
                                     name="assignee_id">
-                                <option value="">Select Person (Optional)</option>
+                                <option value="">Select Person</option>
                                 @foreach($users as $user)
                                     <option value="{{ $user->id }}" {{ old('assignee_id') == $user->id ? 'selected' : '' }}>
                                         {{ $user->name }}
@@ -116,7 +116,7 @@
                             <div class="form-check mt-2">
                                 <input class="form-check-input" type="checkbox" id="enable_multiple_assign" style="width: 18px; height: 18px;">
                                 <label class="form-check-label" for="enable_multiple_assign" style="margin-left: 8px;">
-                                    <small>Assign to multiple users (creates separate tasks)</small>
+                                    <small>Or assign to multiple users</small>
                                 </label>
                             </div>
                             
@@ -800,18 +800,50 @@
             // ==========================================
             $('#enable_multiple_assign').on('change', function() {
                 if ($(this).is(':checked')) {
-                    // Show multiple selection
+                    // Show multiple selection, make single optional
                     $('#multiple-assignees-section').slideDown();
-                    $('#assignee_id').prop('disabled', true).val('');
-                    console.log('✓ Multiple assignee mode enabled');
+                    $('#assignee_id').prop('disabled', true).prop('required', false).val('');
+                    console.log('✓ Multiple assignee mode - single dropdown not required');
                 } else {
-                    // Show single selection
+                    // Show single selection, make it required again
                     $('#multiple-assignees-section').slideUp();
-                    $('#assignee_id').prop('disabled', false);
+                    $('#assignee_id').prop('disabled', false).prop('required', true);
                     $('.multi-assignee-check').prop('checked', false);
                     $('#multi-selected-count').html('');
-                    console.log('✓ Single assignee mode');
+                    console.log('✓ Single assignee mode - dropdown required');
                 }
+            });
+            
+            // Form validation - MOBILE ONLY - ensure at least one assignee selected
+            $('form').on('submit', function(e) {
+                // Only validate on mobile view
+                if (window.innerWidth >= 768) {
+                    console.log('Desktop view - skipping mobile validation');
+                    return true; // Skip validation for desktop
+                }
+                
+                const multipleEnabled = $('#enable_multiple_assign').is(':checked');
+                
+                if (multipleEnabled) {
+                    // Check if at least one checkbox is checked
+                    const selectedCount = $('.multi-assignee-check:checked').length;
+                    if (selectedCount === 0) {
+                        e.preventDefault();
+                        alert('❌ Please select at least one assignee!\n\nCheck the boxes next to user names.');
+                        return false;
+                    }
+                } else {
+                    // Check if single dropdown has value
+                    const singleAssignee = $('#assignee_id').val();
+                    if (!singleAssignee) {
+                        e.preventDefault();
+                        alert('❌ Please select an assignee!\n\nOr check "Assign to multiple users" to select multiple people.');
+                        return false;
+                    }
+                }
+                
+                console.log('✅ Mobile form validation passed - has assignee(s)');
+                return true;
             });
             
             // Multiple assignee selection counter
