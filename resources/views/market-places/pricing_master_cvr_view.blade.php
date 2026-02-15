@@ -37,6 +37,28 @@
             margin-right: 5px;
         }
 
+        /* Vertical headers for modal table */
+        #ovl30DetailsModal .modal-vertical-header th {
+            writing-mode: vertical-rl;
+            text-orientation: mixed;
+            white-space: nowrap;
+            transform: rotate(180deg);
+            height: 80px;
+            vertical-align: middle;
+            font-size: 11px;
+            font-weight: 600;
+            padding: 5px;
+        }
+        
+        /* Exception for M and SKU columns - keep them horizontal */
+        #ovl30DetailsModal .modal-vertical-header th:nth-child(1),
+        #ovl30DetailsModal .modal-vertical-header th:nth-child(2) {
+            writing-mode: horizontal-tb;
+            transform: none;
+            height: auto;
+            min-height: 80px;
+        }
+
         /* ========== STATUS INDICATORS ========== */
         .status-circle {
             display: inline-block;
@@ -69,6 +91,25 @@
 
         .status-circle.pink {
             background-color: #e83e8c;
+        }
+        
+        /* Totals row styling - bold text with dark background */
+        #ovl30DetailsModal .modal-totals-row {
+            background-color: #172426d1 !important;
+            font-weight: bold !important;
+            color: #000 !important;
+        }
+        
+        #ovl30DetailsModal .modal-totals-row th {
+            font-weight: bold !important;
+        }
+        
+        /* White text for specific total columns (Price, Views, L30, SPRICE) */
+        #ovl30DetailsModal .modal-totals-row #modal-total-price,
+        #ovl30DetailsModal .modal-totals-row #modal-total-views,
+        #ovl30DetailsModal .modal-totals-row #modal-total-l30,
+        #ovl30DetailsModal .modal-totals-row #modal-avg-sprice {
+            color: white !important;
         }
 
         /* ========== DROPDOWN STYLING ========== */
@@ -278,34 +319,51 @@
         <div class="modal-dialog modal-xxl modal-dialog-centered">
             <div class="modal-content">
                 <div class="modal-header" style="background-color: #17a2b8;">
-                    <h5 class="modal-title text-white">
-                        <i class="fas fa-mouse-pointer me-2"></i> 
-                        <span id="modalSkuName">SKU</span> - Advertising Breakdown
-                    </h5>
+                    <div class="modal-title text-white d-flex align-items-center justify-content-between w-100" style="font-size: 2em;">
+                        <div class="d-flex align-items-center gap-3">
+                            <i class="fas fa-mouse-pointer me-2"></i> 
+                            <span id="modalSkuName" style="font-weight: bold;">SKU</span>
+                        </div>
+                        <div class="d-flex align-items-center gap-5">
+                            <span>
+                                <strong>Total INV:</strong> <span id="modal-header-inv">0</span>
+                            </span>
+                            <span>
+                                <strong>L30 Sold:</strong> <span id="modal-header-l30">0</span>
+                            </span>
+                            <span>
+                                <strong>Dil %:</strong> <span id="modal-header-dil">0%</span>
+                            </span>
+                            <span id="modal-header-lmp-link" style="cursor: pointer; text-decoration: underline;" title="Click to view LMP competitors">
+                                <i class="fas fa-search me-2"></i><strong>LMP</strong>
+                            </span>
+                        </div>
+                    </div>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
                     <div class="table-responsive">
                         <table class="table table-bordered table-hover mb-0">
                             <thead style="background-color: #17a2b8; color: white;">
-                                <tr>
+                                <tr class="modal-vertical-header">
                                     <th>M</th>
                                     <th>SKU</th>
-                                    <th class="text-end">Price</th>
-                                    <th class="text-end">Views</th>
-                                    <th class="text-end">L30</th>
-                                    <th class="text-end">CVR%</th>
-                                    <th class="text-end">GPFT%</th>
-                                    <th class="text-end">AD%</th>
-                                    <th class="text-end">NPFT%</th>
-                                    <th class="text-end">SPRICE</th>
-                                    <th class="text-end">SGPFT%</th>
-                                    <th class="text-end">SPFT%</th>
-                                    <th class="text-end">SROI%</th>
-                                    <th class="text-center">Push</th>
-                                    <th class="text-center">Pushed By</th>
+                                    <th>Price</th>
+                                    <th>Views</th>
+                                    <th>L30</th>
+                                    <th>CVR%</th>
+                                    <th>GPFT%</th>
+                                    <th>AD%</th>
+                                    <th>NPFT%</th>
+                                    <th>LMP</th>
+                                    <th>SPRICE</th>
+                                    <th>SGPFT%</th>
+                                    <th>SPFT%</th>
+                                    <th>SROI%</th>
+                                    <th>Push</th>
+                                    <th>Pushed By</th>
                                 </tr>
-                                <tr class="table-secondary">
+                                <tr class="modal-totals-row">
                                     <th><img id="modal-product-image" src="" alt="" style="width: 50px; height: 50px; object-fit: cover; display: none;"></th>
                                     <th>Total</th>
                                     <th class="text-end" id="modal-total-price">$0.00</th>
@@ -315,6 +373,7 @@
                                     <th class="text-end" id="modal-avg-gpft">0%</th>
                                     <th class="text-end" id="modal-avg-ad">0%</th>
                                     <th class="text-end" id="modal-avg-npft">0%</th>
+                                    <th></th>
                                     <th class="text-end" id="modal-avg-sprice">$0.00</th>
                                     <th class="text-end" id="modal-avg-sgpft">0%</th>
                                     <th class="text-end" id="modal-avg-spft">0%</th>
@@ -506,10 +565,30 @@
             e.stopPropagation();
             const sku = $(this).data('sku');
             const imagePath = $(this).data('image') || '';
-            loadMarketplaceBreakdown(sku, imagePath);
+            const inv = $(this).data('inv') || 0;
+            const l30 = $(this).data('l30') || 0;
+            const dil = $(this).data('dil') || 0;
+            loadMarketplaceBreakdown(sku, imagePath, inv, l30, dil);
+        });
+        
+        // LMP Info Icon Click Handler (from modal breakdown)
+        $(document).on('click', '.lmp-info-icon', function(e) {
+            e.stopPropagation();
+            const sku = $(this).data('sku');
+            const marketplace = $(this).data('marketplace');
+            console.log('Opening LMP modal for:', sku, 'marketplace:', marketplace);
+            loadLmpCompetitorsModal(sku);
+        });
+        
+        // LMP Header Link Click Handler (from modal header)
+        $(document).on('click', '#modal-header-lmp-link', function(e) {
+            e.stopPropagation();
+            const sku = $('#modalSkuName').text();
+            console.log('Opening LMP modal from header for:', sku);
+            loadLmpCompetitorsModal(sku);
         });
 
-        function loadMarketplaceBreakdown(sku, imagePath) {
+        function loadMarketplaceBreakdown(sku, imagePath, inv, l30, dil) {
             $('#modalSkuName').text(sku);
             
             // Set product image in modal totals row
@@ -521,6 +600,22 @@
             } else {
                 imgElement.hide();
             }
+            
+            // Update header stats with color formatting
+            $('#modal-header-inv').text(inv.toLocaleString());
+            $('#modal-header-l30').text(l30.toLocaleString());
+            
+            // Apply color formatting to Dil %
+            let dilColor = '';
+            const dilValue = parseFloat(dil);
+            if (dilValue >= 50) dilColor = '#a00211'; // Dark red
+            else if (dilValue >= 30 && dilValue < 50) dilColor = '#dc3545'; // Red
+            else if (dilValue >= 20 && dilValue < 30) dilColor = '#ffc107'; // Yellow
+            else if (dilValue >= 10 && dilValue < 20) dilColor = '#3591dc'; // Blue
+            else if (dilValue >= 5 && dilValue < 10) dilColor = '#28a745'; // Green
+            else dilColor = '#e83e8c'; // Pink
+            
+            $('#modal-header-dil').html(`<span style="color: ${dilColor}; font-weight: 600;">${dilValue.toFixed(1)}%</span>`);
             
             showModalLoading(sku);
             
@@ -573,23 +668,29 @@
                 showModalEmpty($('#modalSkuName').text());
                 return;
             }
+            
+            // Sort data by L30 in descending order (highest to lowest)
+            data.sort((a, b) => {
+                const l30A = parseInt(a.l30 || 0);
+                const l30B = parseInt(b.l30 || 0);
+                return l30B - l30A;
+            });
 
             let html = '';
             let totalPrice = 0;
             let totalViews = 0;
             let totalL30 = 0;
             let totalCVR = 0;
-            let totalGPFT = 0;
+            let totalPftAmount = 0; // Sum of PFT amounts
+            let totalNpftAmount = 0; // Sum of NPFT amounts
+            let totalSalesAmount = 0; // Sum of sales amounts
             let totalAD = 0;
-            let totalNPFT = 0;
             let totalSPRICE = 0;
             let totalSGPFT = 0;
             let totalSPFT = 0;
             let totalSROI = 0;
             let cvrCount = 0;
-            let gpftCount = 0;
             let adCount = 0;
-            let npftCount = 0;
             let spriceCount = 0;
             let sgpftCount = 0;
             let spftCount = 0;
@@ -655,26 +756,54 @@
                 else if (npft >= 20 && npft <= 40) npftColor = '#28a745';
                 else npftColor = '#e83e8c';
                 
+                // Color coding for SGPFT%, SPFT%, SROI%
+                let sgpftColor = '';
+                if (sgpft < 0) sgpftColor = '#a00211';
+                else if (sgpft >= 0 && sgpft < 10) sgpftColor = '#ffc107';
+                else if (sgpft >= 10 && sgpft < 20) sgpftColor = '#3591dc';
+                else if (sgpft >= 20 && sgpft <= 40) sgpftColor = '#28a745';
+                else sgpftColor = '#e83e8c';
+                
+                let spftColor = '';
+                if (spft < 0) spftColor = '#a00211';
+                else if (spft >= 0 && spft < 10) spftColor = '#ffc107';
+                else if (spft >= 10 && spft < 20) spftColor = '#3591dc';
+                else if (spft >= 20 && spft <= 40) spftColor = '#28a745';
+                else spftColor = '#e83e8c';
+                
+                let sroiColor = '';
+                if (sroi < 0) sroiColor = '#a00211';
+                else if (sroi >= 0 && sroi < 50) sroiColor = '#ffc107';
+                else if (sroi >= 50 && sroi < 100) sroiColor = '#3591dc';
+                else if (sroi >= 100 && sroi <= 150) sroiColor = '#28a745';
+                else sroiColor = '#e83e8c';
+                
                 // Add to totals only if listed
                 if (isListed) {
-                    totalPrice += parseFloat(item.price || 0);
+                    // Calculate sold amount = price × L30 qty
+                    const price = parseFloat(item.price || 0);
+                    const soldAmount = price * l30;
+                    totalPrice += soldAmount;
                     totalViews += views;
                     totalL30 += l30;
+                    
+                    // Calculate PFT amount = Sales Amount × GPFT%
+                    const pftAmount = soldAmount * (gpft / 100);
+                    totalPftAmount += pftAmount;
+                    
+                    // Calculate NPFT amount = Sales Amount × NPFT%
+                    const npftAmount = soldAmount * (npft / 100);
+                    totalNpftAmount += npftAmount;
+                    
+                    totalSalesAmount += soldAmount;
+                    
                     if (cvr > 0) {
                         totalCVR += cvr;
                         cvrCount++;
                     }
-                    if (gpft !== 0) {
-                        totalGPFT += gpft;
-                        gpftCount++;
-                    }
                     // Always count AD% for average (even if 0)
                     totalAD += ad;
                     adCount++;
-                    if (npft !== 0) {
-                        totalNPFT += npft;
-                        npftCount++;
-                    }
                     if (sprice > 0) {
                         totalSPRICE += sprice;
                         spriceCount++;
@@ -708,19 +837,27 @@
                         <td class="text-end ${textClass}">${isListed && gpft !== 0 ? '<span style="color: ' + gpftColor + '; font-weight: 600;">' + Math.round(gpft) + '%</span>' : '-'}</td>
                         <td class="text-end ${textClass}">${isListed ? '<span style="color: ' + adColor + '; font-weight: 600;">' + ad.toFixed(1) + '%</span>' : '-'}</td>
                         <td class="text-end ${textClass}">${isListed && npft !== 0 ? '<span style="color: ' + npftColor + '; font-weight: 600;">' + Math.round(npft) + '%</span>' : '-'}</td>
+                        <td class="text-center ${textClass}">
+                            ${isListed ? 
+                                '<i class="fas fa-circle lmp-info-icon" style="cursor: pointer; color: #17a2b8; font-size: 10px;" ' +
+                                'data-marketplace="' + item.marketplace + '" ' +
+                                'data-sku="' + item.sku + '" ' +
+                                'title="View LMP Data for ' + item.marketplace + '"></i>' 
+                                : '-'}
+                        </td>
                         <td class="text-end ${textClass}">
                             ${isEditable && isListed ? 
                                 '<input type="number" class="form-control form-control-sm editable-sprice" value="' + sprice.toFixed(2) + '" step="0.01" style="width:80px;">' 
                                 : (sprice > 0 ? '$' + sprice.toFixed(2) : '-')}
                         </td>
                         <td class="text-end ${textClass}">
-                            <span class="calculated-sgpft">${Math.round(sgpft)}%</span>
+                            <span class="calculated-sgpft" style="color: ${sgpftColor}; font-weight: 600;">${Math.round(sgpft)}%</span>
                         </td>
                         <td class="text-end ${textClass}">
-                            <span class="calculated-spft">${Math.round(spft)}%</span>
+                            <span class="calculated-spft" style="color: ${spftColor}; font-weight: 600;">${Math.round(spft)}%</span>
                         </td>
                         <td class="text-end ${textClass}">
-                            <span class="calculated-sroi">${Math.round(sroi)}%</span>
+                            <span class="calculated-sroi" style="color: ${sroiColor}; font-weight: 600;">${Math.round(sroi)}%</span>
                         </td>
                         <td class="text-center ${textClass}">
                             ${canPushPrice ? 
@@ -746,22 +883,83 @@
             // Calculate averages
             // Avg CVR using CVR formula: (Total L30 / Total Views) × 100
             const avgCVR = totalViews > 0 ? (totalL30 / totalViews) * 100 : 0;
-            const avgGPFT = gpftCount > 0 ? totalGPFT / gpftCount : 0;
+            // Avg GPFT% = (Total PFT Amount / Total Sales Amount) × 100
+            const avgGPFT = totalSalesAmount > 0 ? (totalPftAmount / totalSalesAmount) * 100 : 0;
             const avgAD = adCount > 0 ? totalAD / adCount : 0;
-            const avgNPFT = npftCount > 0 ? totalNPFT / npftCount : 0;
+            // Avg NPFT% = (Total NPFT Amount / Total Sales Amount) × 100
+            const avgNPFT = totalSalesAmount > 0 ? (totalNpftAmount / totalSalesAmount) * 100 : 0;
+            const avgSGPFT = sgpftCount > 0 ? totalSGPFT / sgpftCount : 0;
+            const avgSPFT = spftCount > 0 ? totalSPFT / spftCount : 0;
+            const avgSROI = sroiCount > 0 ? totalSROI / sroiCount : 0;
             
-            // Update totals in footer
-            $('#modal-total-price').text('$' + totalPrice.toFixed(2));
+            // Apply color formatting for totals row
+            // CVR% color
+            let cvrColorTotal = '';
+            if (avgCVR < 1) cvrColorTotal = '#a00211';
+            else if (avgCVR >= 1 && avgCVR < 3) cvrColorTotal = '#ffc107';
+            else if (avgCVR >= 3 && avgCVR < 5) cvrColorTotal = '#28a745';
+            else cvrColorTotal = '#e83e8c';
+            
+            // GPFT%, NPFT%, SGPFT%, SPFT% color
+            let gpftColorTotal = '';
+            if (avgGPFT < 0) gpftColorTotal = '#a00211';
+            else if (avgGPFT >= 0 && avgGPFT < 10) gpftColorTotal = '#ffc107';
+            else if (avgGPFT >= 10 && avgGPFT < 20) gpftColorTotal = '#3591dc';
+            else if (avgGPFT >= 20 && avgGPFT <= 40) gpftColorTotal = '#28a745';
+            else gpftColorTotal = '#e83e8c';
+            
+            let npftColorTotal = '';
+            if (avgNPFT < 0) npftColorTotal = '#a00211';
+            else if (avgNPFT >= 0 && avgNPFT < 10) npftColorTotal = '#ffc107';
+            else if (avgNPFT >= 10 && avgNPFT < 20) npftColorTotal = '#3591dc';
+            else if (avgNPFT >= 20 && avgNPFT <= 40) npftColorTotal = '#28a745';
+            else npftColorTotal = '#e83e8c';
+            
+            let sgpftColorTotal = '';
+            if (avgSGPFT < 0) sgpftColorTotal = '#a00211';
+            else if (avgSGPFT >= 0 && avgSGPFT < 10) sgpftColorTotal = '#ffc107';
+            else if (avgSGPFT >= 10 && avgSGPFT < 20) sgpftColorTotal = '#3591dc';
+            else if (avgSGPFT >= 20 && avgSGPFT <= 40) sgpftColorTotal = '#28a745';
+            else sgpftColorTotal = '#e83e8c';
+            
+            let spftColorTotal = '';
+            if (avgSPFT < 0) spftColorTotal = '#a00211';
+            else if (avgSPFT >= 0 && avgSPFT < 10) spftColorTotal = '#ffc107';
+            else if (avgSPFT >= 10 && avgSPFT < 20) spftColorTotal = '#3591dc';
+            else if (avgSPFT >= 20 && avgSPFT <= 40) spftColorTotal = '#28a745';
+            else spftColorTotal = '#e83e8c';
+            
+            // AD% color (lower is better)
+            let adColorTotal = '';
+            if (avgAD >= 100) adColorTotal = '#a00211';
+            else if (avgAD >= 50) adColorTotal = '#dc3545';
+            else if (avgAD >= 20) adColorTotal = '#ffc107';
+            else if (avgAD >= 10) adColorTotal = '#3591dc';
+            else if (avgAD > 0) adColorTotal = '#28a745';
+            else adColorTotal = '#6c757d';
+            
+            // SROI% color
+            let sroiColorTotal = '';
+            if (avgSROI < 0) sroiColorTotal = '#a00211';
+            else if (avgSROI >= 0 && avgSROI < 50) sroiColorTotal = '#ffc107';
+            else if (avgSROI >= 50 && avgSROI < 100) sroiColorTotal = '#3591dc';
+            else if (avgSROI >= 100 && avgSROI <= 150) sroiColorTotal = '#28a745';
+            else sroiColorTotal = '#e83e8c';
+            
+            // Update totals with color formatting
+            // Calculate average price = Total Sold Amount / Total Sold Qty (L30)
+            const avgPrice = totalL30 > 0 ? totalPrice / totalL30 : 0;
+            $('#modal-total-price').text('$' + avgPrice.toFixed(2));
             $('#modal-total-views').text(totalViews.toLocaleString());
             $('#modal-total-l30').text(totalL30.toLocaleString());
-            $('#modal-avg-cvr').text(avgCVR.toFixed(1) + '%');
-            $('#modal-avg-gpft').text(avgGPFT.toFixed(1) + '%');
-            $('#modal-avg-ad').text(avgAD.toFixed(1) + '%');
-            $('#modal-avg-npft').text(avgNPFT.toFixed(1) + '%');
+            $('#modal-avg-cvr').html(`<span style="color: ${cvrColorTotal}; font-weight: 600;">${avgCVR.toFixed(1)}%</span>`);
+            $('#modal-avg-gpft').html(`<span style="color: ${gpftColorTotal}; font-weight: 600;">${avgGPFT.toFixed(1)}%</span>`);
+            $('#modal-avg-ad').html(`<span style="color: ${adColorTotal}; font-weight: 600;">${avgAD.toFixed(1)}%</span>`);
+            $('#modal-avg-npft').html(`<span style="color: ${npftColorTotal}; font-weight: 600;">${avgNPFT.toFixed(1)}%</span>`);
             $('#modal-avg-sprice').text('$' + (spriceCount > 0 ? totalSPRICE / spriceCount : 0).toFixed(2));
-            $('#modal-avg-sgpft').text((sgpftCount > 0 ? totalSGPFT / sgpftCount : 0).toFixed(1) + '%');
-            $('#modal-avg-spft').text((spftCount > 0 ? totalSPFT / spftCount : 0).toFixed(1) + '%');
-            $('#modal-avg-sroi').text((sroiCount > 0 ? totalSROI / sroiCount : 0).toFixed(1) + '%');
+            $('#modal-avg-sgpft').html(`<span style="color: ${sgpftColorTotal}; font-weight: 600;">${avgSGPFT.toFixed(1)}%</span>`);
+            $('#modal-avg-spft').html(`<span style="color: ${spftColorTotal}; font-weight: 600;">${avgSPFT.toFixed(1)}%</span>`);
+            $('#modal-avg-sroi').html(`<span style="color: ${sroiColorTotal}; font-weight: 600;">${avgSROI.toFixed(1)}%</span>`);
         }
 
         // ==================== TABULATOR INITIALIZATION ====================
@@ -896,6 +1094,8 @@
                         const rowData = cell.getRow().getData();
                         const sku = rowData.sku;
                         const imagePath = rowData.image_path || '';
+                        const inv = rowData.inv || 0;
+                        const dilPercent = rowData.dil_percent || 0;
                         
                         // Don't show info icon for parent rows
                         if (rowData.is_parent_summary === true) {
@@ -908,6 +1108,9 @@
                                style="cursor: pointer; font-size: 12px; margin-left: 6px;" 
                                data-sku="${sku}"
                                data-image="${imagePath}"
+                               data-inv="${inv}"
+                               data-l30="${value}"
+                               data-dil="${dilPercent}"
                                title="View breakdown for ${sku}"></i>
                         `;
                     }
@@ -1209,7 +1412,10 @@
                         setTimeout(() => {
                             const currentSku = $('#modalSkuName').text();
                             const currentImage = $('#modal-product-image').attr('src');
-                            loadMarketplaceBreakdown(currentSku, currentImage);
+                            const currentInv = $('#modal-header-inv').text().replace(/,/g, '');
+                            const currentL30 = $('#modal-header-l30').text().replace(/,/g, '');
+                            const currentDil = parseFloat($('#modal-header-dil').text());
+                            loadMarketplaceBreakdown(currentSku, currentImage, currentInv, currentL30, currentDil);
                         }, 1500);
                     } else {
                         showToast(response.message || 'Failed to push price', 'error');
