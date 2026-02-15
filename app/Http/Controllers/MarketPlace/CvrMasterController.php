@@ -49,6 +49,7 @@ use App\Models\ViewsPullData;
 use App\Models\TemuViewData;
 use App\Models\TemuAdData;
 use App\Models\MarketplacePercentage;
+use App\Models\MarketplaceDailyMetric;
 use App\Models\AmazonSpCampaignReport;
 use App\Models\AmazonSkuCompetitor;
 use App\Models\EbaySkuCompetitor;
@@ -928,6 +929,37 @@ class CvrMasterController extends Controller
             $breakdownData = [];
 
             Log::info('Fetching breakdown data for SKU: ' . $sku);
+            
+            // Get all channel TACOS% data from marketplace_daily_metrics (latest date)
+            $channelTacosData = [];
+            $dailyMetrics = MarketplaceDailyMetric::selectRaw('channel, MAX(date) as max_date')
+                ->groupBy('channel')
+                ->get();
+            
+            foreach ($dailyMetrics as $row) {
+                $metric = MarketplaceDailyMetric::where('channel', $row->channel)
+                    ->where('date', $row->max_date)
+                    ->first();
+                
+                if ($metric) {
+                    $channelTacosData[strtolower($metric->channel)] = $metric->tacos_percentage ?? 0;
+                }
+            }
+            
+            // Helper function to get TACOS% for a channel
+            $getChannelTACOS = function($channelName) use ($channelTacosData) {
+                // Map marketplace names to channel names in marketplace_daily_metrics
+                $channelMap = [
+                    'shopifyb2c' => 'shopify b2c',
+                    'shopifyb2b' => 'shopify b2b',
+                    'ebaytwo' => 'ebay 2',
+                    'ebaythree' => 'ebay 3',
+                    'bestbuy' => 'best buy usa',
+                ];
+                
+                $mappedName = $channelMap[strtolower($channelName)] ?? strtolower($channelName);
+                return $channelTacosData[$mappedName] ?? 0;
+            };
 
             // First, get the full SKU from ProductMaster (in case shortened SKU is passed)
             $productMaster = ProductMaster::where('sku', $sku)
@@ -1101,6 +1133,7 @@ class CvrMasterController extends Controller
                 'l30' => $ebay1L30,
                 'gpft' => $ebay1GPFT,
                 'ad' => $ebay1AD,
+                'tacos_ch' => $getChannelTACOS('Ebay'),
                 'npft' => $ebay1NPFT,
                 'is_listed' => $ebayData ? true : false,
                 'sprice' => $ebay1Suggested['sprice'],
@@ -1646,6 +1679,7 @@ class CvrMasterController extends Controller
                 'l30' => $sb2cL30,
                 'gpft' => $sb2cGPFT,
                 'ad' => 0,
+                'tacos_ch' => $getChannelTACOS('ShopifyB2C'),
                 'npft' => $sb2cNPFT,
                 'is_listed' => true, // Always true - never "Not Listed"
                 'sprice' => $sb2cSuggested['sprice'],
@@ -1700,6 +1734,7 @@ class CvrMasterController extends Controller
                 'l30' => $sb2bL30,
                 'gpft' => $sb2bGPFT,
                 'ad' => 0,
+                'tacos_ch' => $getChannelTACOS('ShopifyB2B'),
                 'npft' => $sb2bNPFT,
                 'is_listed' => true,
                 'sprice' => $sb2bSuggested['sprice'],

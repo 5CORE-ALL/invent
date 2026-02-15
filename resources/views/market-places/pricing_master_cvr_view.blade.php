@@ -334,6 +334,9 @@
                             <span>
                                 <strong>Dil %:</strong> <span id="modal-header-dil">0%</span>
                             </span>
+                            <span>
+                                <strong>TACOS CH:</strong> <span id="modal-header-tacos">0%</span>
+                            </span>
                             <span id="modal-header-lmp-link" style="cursor: pointer; text-decoration: underline;" title="Click to view LMP competitors">
                                 <i class="fas fa-search me-2"></i><strong>LMP</strong>
                             </span>
@@ -354,6 +357,7 @@
                                     <th>CVR%</th>
                                     <th>GPFT%</th>
                                     <th>AD%</th>
+                                    <th>TACOS CH</th>
                                     <th>NPFT%</th>
                                     <th>LMP</th>
                                     <th>SPRICE</th>
@@ -372,6 +376,7 @@
                                     <th class="text-end" id="modal-avg-cvr">0%</th>
                                     <th class="text-end" id="modal-avg-gpft">0%</th>
                                     <th class="text-end" id="modal-avg-ad">0%</th>
+                                    <th class="text-end" id="modal-avg-tacos">0%</th>
                                     <th class="text-end" id="modal-avg-npft">0%</th>
                                     <th></th>
                                     <th class="text-end" id="modal-avg-sprice">$0.00</th>
@@ -685,12 +690,14 @@
             let totalNpftAmount = 0; // Sum of NPFT amounts
             let totalSalesAmount = 0; // Sum of sales amounts
             let totalAD = 0;
+            let totalTACOS = 0;
             let totalSPRICE = 0;
             let totalSGPFT = 0;
             let totalSPFT = 0;
             let totalSROI = 0;
             let cvrCount = 0;
             let adCount = 0;
+            let tacosCount = 0;
             let spriceCount = 0;
             let sgpftCount = 0;
             let spftCount = 0;
@@ -707,6 +714,7 @@
                 const cvr = views > 0 ? (l30 / views) * 100 : 0;
                 const gpft = parseFloat(item.gpft || 0);
                 const ad = parseFloat(item.ad || 0);
+                const tacosCh = parseFloat(item.tacos_ch || 0);
                 const npft = parseFloat(item.npft || 0);
                 
                 // SPRICE and calculated values
@@ -749,6 +757,15 @@
                 else if (ad >= 10) adColor = '#3591dc'; // Blue
                 else if (ad > 0) adColor = '#28a745'; // Green (low is good)
                 else adColor = '#6c757d'; // Gray for 0
+                
+                // TACOS CH color: lower is better (same as AD%)
+                let tacosColor = '';
+                if (tacosCh >= 100) tacosColor = '#a00211';
+                else if (tacosCh >= 50) tacosColor = '#dc3545';
+                else if (tacosCh >= 20) tacosColor = '#ffc107';
+                else if (tacosCh >= 10) tacosColor = '#3591dc';
+                else if (tacosCh > 0) tacosColor = '#28a745';
+                else tacosColor = '#6c757d';
                 
                 if (npft < 0) npftColor = '#a00211';
                 else if (npft >= 0 && npft < 10) npftColor = '#ffc107';
@@ -804,6 +821,11 @@
                     // Always count AD% for average (even if 0)
                     totalAD += ad;
                     adCount++;
+                    // Count TACOS CH% if present
+                    if (tacosCh !== 0) {
+                        totalTACOS += tacosCh;
+                        tacosCount++;
+                    }
                     if (sprice > 0) {
                         totalSPRICE += sprice;
                         spriceCount++;
@@ -836,6 +858,9 @@
                         <td class="text-end ${textClass}">${isListed && views > 0 ? '<span style="color: ' + cvrColor + '; font-weight: 600;">' + cvr.toFixed(1) + '%</span>' : '-'}</td>
                         <td class="text-end ${textClass}">${isListed && gpft !== 0 ? '<span style="color: ' + gpftColor + '; font-weight: 600;">' + Math.round(gpft) + '%</span>' : '-'}</td>
                         <td class="text-end ${textClass}">${isListed ? '<span style="color: ' + adColor + '; font-weight: 600;">' + ad.toFixed(1) + '%</span>' : '-'}</td>
+                        <td class="text-end ${textClass}">
+                            ${isListed && tacosCh !== 0 ? '<span style="color: ' + tacosColor + '; font-weight: 600;">' + tacosCh.toFixed(1) + '%</span>' : '-'}
+                        </td>
                         <td class="text-end ${textClass}">${isListed && npft !== 0 ? '<span style="color: ' + npftColor + '; font-weight: 600;">' + Math.round(npft) + '%</span>' : '-'}</td>
                         <td class="text-center ${textClass}">
                             ${isListed ? 
@@ -886,6 +911,7 @@
             // Avg GPFT% = (Total PFT Amount / Total Sales Amount) × 100
             const avgGPFT = totalSalesAmount > 0 ? (totalPftAmount / totalSalesAmount) * 100 : 0;
             const avgAD = adCount > 0 ? totalAD / adCount : 0;
+            const avgTACOS = tacosCount > 0 ? totalTACOS / tacosCount : 0;
             // Avg NPFT% = (Total NPFT Amount / Total Sales Amount) × 100
             const avgNPFT = totalSalesAmount > 0 ? (totalNpftAmount / totalSalesAmount) * 100 : 0;
             const avgSGPFT = sgpftCount > 0 ? totalSGPFT / sgpftCount : 0;
@@ -938,6 +964,15 @@
             else if (avgAD > 0) adColorTotal = '#28a745';
             else adColorTotal = '#6c757d';
             
+            // TACOS CH color (lower is better, same as AD%)
+            let tacosColorTotal = '';
+            if (avgTACOS >= 100) tacosColorTotal = '#a00211';
+            else if (avgTACOS >= 50) tacosColorTotal = '#dc3545';
+            else if (avgTACOS >= 20) tacosColorTotal = '#ffc107';
+            else if (avgTACOS >= 10) tacosColorTotal = '#3591dc';
+            else if (avgTACOS > 0) tacosColorTotal = '#28a745';
+            else tacosColorTotal = '#6c757d';
+            
             // SROI% color
             let sroiColorTotal = '';
             if (avgSROI < 0) sroiColorTotal = '#a00211';
@@ -955,7 +990,11 @@
             $('#modal-avg-cvr').html(`<span style="color: ${cvrColorTotal}; font-weight: 600;">${avgCVR.toFixed(1)}%</span>`);
             $('#modal-avg-gpft').html(`<span style="color: ${gpftColorTotal}; font-weight: 600;">${avgGPFT.toFixed(1)}%</span>`);
             $('#modal-avg-ad').html(`<span style="color: ${adColorTotal}; font-weight: 600;">${avgAD.toFixed(1)}%</span>`);
+            $('#modal-avg-tacos').html(`<span style="color: ${tacosColorTotal}; font-weight: 600;">${avgTACOS.toFixed(1)}%</span>`);
             $('#modal-avg-npft').html(`<span style="color: ${npftColorTotal}; font-weight: 600;">${avgNPFT.toFixed(1)}%</span>`);
+            
+            // Update header TACOS CH with color formatting
+            $('#modal-header-tacos').html(`<span style="color: ${tacosColorTotal}; font-weight: 600;">${avgTACOS.toFixed(1)}%</span>`);
             $('#modal-avg-sprice').text('$' + (spriceCount > 0 ? totalSPRICE / spriceCount : 0).toFixed(2));
             $('#modal-avg-sgpft').html(`<span style="color: ${sgpftColorTotal}; font-weight: 600;">${avgSGPFT.toFixed(1)}%</span>`);
             $('#modal-avg-spft').html(`<span style="color: ${spftColorTotal}; font-weight: 600;">${avgSPFT.toFixed(1)}%</span>`);
