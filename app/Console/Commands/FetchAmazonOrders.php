@@ -767,12 +767,29 @@ class FetchAmazonOrders extends Command
             
             if (count($items) > 0) {
                 foreach ($items as $item) {
-                    // Safely extract ItemPrice - it may not exist for some items
+                    // Calculate total price including all components (matches Amazon Seller Central "Ordered product sales")
                     $itemPrice = 0;
                     $itemCurrency = 'USD';
+                    
+                    // ItemPrice (base product price × quantity)
                     if (isset($item['ItemPrice']) && is_array($item['ItemPrice'])) {
-                        $itemPrice = floatval($item['ItemPrice']['Amount'] ?? 0);
+                        $itemPrice += floatval($item['ItemPrice']['Amount'] ?? 0);
                         $itemCurrency = $item['ItemPrice']['CurrencyCode'] ?? 'USD';
+                    }
+                    
+                    // ShippingPrice (shipping charged to customer)
+                    if (isset($item['ShippingPrice']) && is_array($item['ShippingPrice'])) {
+                        $itemPrice += floatval($item['ShippingPrice']['Amount'] ?? 0);
+                    }
+                    
+                    // GiftWrapPrice (gift wrap fees)
+                    if (isset($item['GiftWrapPrice']) && is_array($item['GiftWrapPrice'])) {
+                        $itemPrice += floatval($item['GiftWrapPrice']['Amount'] ?? 0);
+                    }
+                    
+                    // Subtract PromotionDiscount (discounts reduce the total)
+                    if (isset($item['PromotionDiscount']) && is_array($item['PromotionDiscount'])) {
+                        $itemPrice -= floatval($item['PromotionDiscount']['Amount'] ?? 0);
                     }
                     
                     AmazonOrderItem::updateOrCreate(

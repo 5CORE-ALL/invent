@@ -65,11 +65,13 @@ class AmazonSalesController extends Controller
         // LAST 30 DAYS - MATCHING AMAZON'S DATE RANGE
         // Amazon shows yesterday and previous 29 days (30 days total)
         // Example: Today Feb 14 → Show Jan 15 to Feb 13 (30 days)
+        // CRITICAL: Must use Pacific Time to match Amazon Seller Central
         // ============================================================
     
         // Use yesterday as the end date (Amazon doesn't include today)
-        $yesterday = \Carbon\Carbon::yesterday();
-        $endDateCarbon = $yesterday->endOfDay(); // Yesterday 23:59:59
+        // FIXED: Use Pacific Time to match Amazon Seller Central
+        $yesterday = \Carbon\Carbon::yesterday('America/Los_Angeles');
+        $endDateCarbon = $yesterday->endOfDay(); // Yesterday 23:59:59 PT
         $startDateCarbon = $yesterday->copy()->subDays(29)->startOfDay(); // 30 days total (yesterday - 29 days = 30 days)
     
         $startDateStr = $startDateCarbon->format('Y-m-d');
@@ -296,7 +298,8 @@ class AmazonSalesController extends Controller
     {
         // Use the SAME date calculation as getData() method
         // Amazon shows yesterday and previous 29 days (30 days total)
-        $yesterday = \Carbon\Carbon::yesterday();
+        // FIXED: Use Pacific Time to match Amazon Seller Central
+        $yesterday = \Carbon\Carbon::yesterday('America/Los_Angeles');
         $endDateCarbon = $yesterday->endOfDay();
         $startDateCarbon = $yesterday->copy()->subDays(29)->startOfDay(); // 30 days total
         

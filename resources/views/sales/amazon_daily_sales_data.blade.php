@@ -77,7 +77,8 @@
     <div class="row">
         <div class="card shadow-sm">
             <div class="card-body py-3">
-                <h4>Amazon Daily Sales Data (L31)</h4>
+                <h4>Amazon Daily Sales Data (L30 - Last 30 Days)</h4>
+                <p class="text-muted small mb-2" id="date-range-info">Date Range: Loading...</p>
                 <div class="d-flex align-items-center flex-wrap gap-2 mb-3">
                     <!-- Column Visibility Dropdown -->
                     <div class="dropdown d-inline-block">
@@ -195,6 +196,14 @@
                     console.log("Number of records:", response.length);
                     if (response.length > 0) {
                         console.log("First record:", response[0]);
+                        // Extract and display date range
+                        const dates = response.map(r => r.order_date).filter(d => d);
+                        if (dates.length > 0) {
+                            dates.sort();
+                            const startDate = new Date(dates[0]).toLocaleDateString();
+                            const endDate = new Date(dates[dates.length - 1]).toLocaleDateString();
+                            $('#date-range-info').text(`Date Range: ${startDate} to ${endDate} (Pacific Time)`);
+                        }
                     }
                 }
                 // Return the response as-is (should be an array)
