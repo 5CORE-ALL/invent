@@ -119,6 +119,7 @@ $orderItems = DB::table('amazon_orders as o')
         $query->whereNull('o.status')
             ->orWhere('o.status', '!=', 'Canceled');
     })
+    ->where('i.quantity', '>', 0) // Exclude cancelled/returned items
     ->count();
 
 $totalQuantity = DB::table('amazon_orders as o')
@@ -129,6 +130,7 @@ $totalQuantity = DB::table('amazon_orders as o')
         $query->whereNull('o.status')
             ->orWhere('o.status', '!=', 'Canceled');
     })
+    ->where('i.quantity', '>', 0) // Exclude cancelled/returned items
     ->sum('i.quantity');
 
 $totalSales = DB::table('amazon_orders as o')
@@ -139,6 +141,7 @@ $totalSales = DB::table('amazon_orders as o')
         $query->whereNull('o.status')
             ->orWhere('o.status', '!=', 'Canceled');
     })
+    ->where('i.quantity', '>', 0) // Exclude cancelled/returned items
     ->sum('i.price');
 
 echo "4. ORDER ITEMS & SALES\n";

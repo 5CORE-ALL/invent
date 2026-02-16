@@ -91,6 +91,7 @@ class AmazonSalesController extends Controller
                 $query->whereNull('o.status')
                     ->orWhere('o.status', '!=', 'Canceled');
             })
+            ->where('i.quantity', '>', 0) // Exclude cancelled/returned items (qty=0)
             ->select([
                 'o.amazon_order_id as order_id',
                 'o.order_date',
@@ -389,6 +390,7 @@ class AmazonSalesController extends Controller
                 $query->whereNull('o.status')
                     ->orWhere('o.status', '!=', 'Canceled');
             })
+            ->where('i.quantity', '>', 0) // Exclude cancelled/returned items
             ->count();
         $debug['total_order_items_joined'] = $itemCount;
         
@@ -401,6 +403,7 @@ class AmazonSalesController extends Controller
                 $query->whereNull('o.status')
                     ->orWhere('o.status', '!=', 'Canceled');
             })
+            ->where('i.quantity', '>', 0) // Exclude cancelled/returned items
             ->sum('i.quantity');
         $debug['total_quantity_from_items'] = $totalQty;
         
@@ -413,6 +416,7 @@ class AmazonSalesController extends Controller
                 $query->whereNull('o.status')
                     ->orWhere('o.status', '!=', 'Canceled');
             })
+            ->where('i.quantity', '>', 0) // Exclude cancelled/returned items
             ->sum('i.price');
         $debug['total_sales_from_item_prices'] = round($totalSales, 2);
         

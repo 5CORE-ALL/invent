@@ -89,13 +89,14 @@ class UpdateMarketplaceDailyMetrics extends Command
 
     private function calculateAmazonMetrics($date)
     {
-        // 31 days: Amazon Seller Central uses yesterday as end date (not today)
-        // Calculate 31-day range: (today - 1 day) going back 30 more days
+        // 30 days: Amazon Seller Central uses yesterday as end date (not today)
+        // Calculate 30-day range: yesterday going back 29 more days (30 days total)
         // This matches Amazon Seller Central's L30 range exactly
         
         // Use yesterday as end date to match Amazon Seller Central
-        $endDateCarbon = Carbon::now('America/Los_Angeles')->subDay()->endOfDay();
-        $startDateCarbon = $endDateCarbon->copy()->subDays(30)->startOfDay(); // 31 days total
+        // FIXED: Must use Pacific Time to match Amazon Seller Central
+        $endDateCarbon = Carbon::yesterday('America/Los_Angeles')->endOfDay();
+        $startDateCarbon = $endDateCarbon->copy()->subDays(29)->startOfDay(); // 30 days total
         
         // For debugging: log the date range being used
         \Log::info("Amazon metrics date range: {$startDateCarbon->format('Y-m-d')} to {$endDateCarbon->format('Y-m-d')}");
@@ -105,9 +106,11 @@ class UpdateMarketplaceDailyMetrics extends Command
             ->join('amazon_order_items as i', 'o.id', '=', 'i.amazon_order_id')
             ->whereBetween('o.order_date', [$startDateCarbon, $endDateCarbon])
             ->where(function($query) {
-                $query->where('o.status', '!=', 'Canceled')
-                      ->orWhereNull('o.status');
+                // Only exclude if status is explicitly 'Canceled'
+                $query->whereNull('o.status')
+                      ->orWhere('o.status', '!=', 'Canceled');
             })
+            ->where('i.quantity', '>', 0) // Exclude cancelled/returned items (qty=0)
             ->select([
                 'o.amazon_order_id as order_id',
                 'o.order_date',
@@ -149,12 +152,13 @@ class UpdateMarketplaceDailyMetrics extends Command
             $totalOrders++;
             
             $quantity = (int) ($item->quantity ?? 1);
-            // Price in inventory database is per-unit price
+            // IMPORTANT: $item->price is TOTAL price for all quantity (not per-unit)
+            // It includes: ItemPrice + ShippingPrice + GiftWrapPrice - PromotionDiscount
             $totalPrice = (float) ($item->price ?? 0);
             $unitPrice = $quantity > 0 ? $totalPrice / $quantity : 0;
             
             $totalQuantity += $quantity;
-            $totalRevenue += $totalPrice; // Use total price directly
+            $totalRevenue += $totalPrice; // Total price for this item (all quantity)
 
             if ($quantity > 0 && $unitPrice > 0) {
                 $totalWeightedPrice += $unitPrice * $quantity;
