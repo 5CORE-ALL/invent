@@ -179,4 +179,143 @@ class ShopifyApiService
         }
         return null;
     }
+
+    /**
+     * Build map of SKU => { title, description, image_src } from Shopify products (for Reverb sync product list).
+     */
+    public function getProductDetailsBySkuMap(array $limitToSkus = []): array
+    {
+        $map = [];
+        $pageInfo = null;
+        $hasMore = true;
+        $limitToLookup = $limitToSkus ? array_flip(array_map('trim', $limitToSkus)) : null;
+
+        while ($hasMore) {
+            $queryParams = [
+                'limit' => 250,
+                'fields' => 'id,title,body_html,vendor,product_type,variants,image,images',
+            ];
+            if ($pageInfo) {
+                $queryParams['page_info'] = $pageInfo;
+            }
+
+            $request = Http::withHeaders([
+                'X-Shopify-Access-Token' => $this->shopifyAccessToken,
+                'Content-Type' => 'application/json',
+            ]);
+            if (env('FILESYSTEM_DRIVER') === 'local') {
+                $request = $request->withoutVerifying();
+            }
+
+            $response = $request->timeout(120)->get(
+                "https://{$this->shopifyStoreUrl}/admin/api/2025-01/products.json",
+                $queryParams
+            );
+
+            if (! $response->successful()) {
+                break;
+            }
+
+            $products = $response->json()['products'] ?? [];
+            foreach ($products as $product) {
+                $imageUrl = $this->sanitizeImageUrl(
+                    $product['image']['src'] ?? (! empty($product['images']) ? $product['images'][0]['src'] : null),
+                    ''
+                );
+                $title = $product['title'] ?? '';
+                $description = isset($product['body_html']) ? strip_tags($product['body_html']) : '';
+                $description = strlen($description) > 500 ? substr($description, 0, 497) . '...' : $description;
+                $brand = $product['vendor'] ?? '';
+                $productType = $product['product_type'] ?? '';
+
+                foreach ($product['variants'] ?? [] as $variant) {
+                    $sku = trim((string) ($variant['sku'] ?? ''));
+                    if ($sku === '' || stripos($sku, 'PARENT') !== false) {
+                        continue;
+                    }
+                    if ($limitToLookup !== null && ! isset($limitToLookup[$sku])) {
+                        continue;
+                    }
+                    $variantTitle = trim((string) ($variant['title'] ?? ''));
+                    $model = ($variantTitle !== '' && $variantTitle !== 'Default Title') ? $variantTitle : $productType;
+                    $map[$sku] = [
+                        'title' => $title,
+                        'description' => $description,
+                        'image_src' => $imageUrl,
+                        'upc' => $variant['barcode'] ?? '',
+                        'brand' => $brand,
+                        'model' => $model,
+                    ];
+                }
+            }
+
+            $pageInfo = $this->getNextPageInfo($response);
+            $hasMore = (bool) $pageInfo;
+            if ($hasMore) {
+                usleep(300000);
+            }
+        }
+
+        return $map;
+    }
+
+    /**
+     * Return map SKU => inventory quantity from Shopify (no DB writes). Used for Reverb inventory sync.
+     */
+    public function getInventoryQuantitiesBySku(array $limitToSkus = []): array
+    {
+        $map = [];
+        $pageInfo = null;
+        $hasMore = true;
+        $limitToLookup = $limitToSkus ? array_flip(array_map('trim', $limitToSkus)) : null;
+
+        while ($hasMore) {
+            $queryParams = [
+                'limit' => 250,
+                'fields' => 'id,variants',
+            ];
+            if ($pageInfo) {
+                $queryParams['page_info'] = $pageInfo;
+            }
+
+            $request = Http::withHeaders([
+                'X-Shopify-Access-Token' => $this->shopifyAccessToken,
+                'Content-Type' => 'application/json',
+            ]);
+            if (env('FILESYSTEM_DRIVER') === 'local') {
+                $request = $request->withoutVerifying();
+            }
+
+            $response = $request->timeout(120)->get(
+                "https://{$this->shopifyStoreUrl}/admin/api/2025-01/products.json",
+                $queryParams
+            );
+
+            if (! $response->successful()) {
+                break;
+            }
+
+            $products = $response->json()['products'] ?? [];
+            foreach ($products as $product) {
+                foreach ($product['variants'] ?? [] as $variant) {
+                    $sku = trim((string) ($variant['sku'] ?? ''));
+                    if ($sku === '' || stripos($sku, 'PARENT') !== false) {
+                        continue;
+                    }
+                    if ($limitToLookup !== null && ! isset($limitToLookup[$sku])) {
+                        continue;
+                    }
+                    $map[$sku] = (int) ($variant['inventory_quantity'] ?? 0);
+                }
+            }
+
+            $pageInfo = $this->getNextPageInfo($response);
+            $hasMore = (bool) $pageInfo;
+            if ($hasMore) {
+                usleep(300000);
+            }
+        }
+
+        return $map;
+    }
 }

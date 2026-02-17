@@ -13,6 +13,9 @@ class ReverbProduct extends Model
 
     protected $fillable = [
         'sku',
+        'reverb_listing_id',
+        'listing_state',
+        'product_title',
         'r_l30',
         'r_l60',
         'price',

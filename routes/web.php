@@ -423,6 +423,16 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/channel-metric-chart-data', [ChannelMasterController::class, 'getChannelMetricChartData']);
     Route::post('/channel-archive', [ChannelMasterController::class, 'archiveChannel'])->name('channel.archive');
     Route::get('/all-marketplace-master', [ChannelMasterController::class, 'allMarketplaceMaster'])->name('all.marketplace.master');
+
+    // Marketplace Sync: dynamic routes per marketplace (reverb, amazon, ebay, walmart)
+    Route::prefix('marketplace/{marketplace}')->where(['marketplace' => 'reverb|amazon|ebay|walmart'])->group(function () {
+        Route::get('/products', [\App\Http\Controllers\MarketplaceController::class, 'products'])->name('marketplace.products');
+        Route::get('/orders', [\App\Http\Controllers\MarketplaceController::class, 'orders'])->name('marketplace.orders');
+        Route::get('/settings', [\App\Http\Controllers\MarketplaceController::class, 'settings'])->name('marketplace.settings');
+        Route::post('/settings', [\App\Http\Controllers\MarketplaceController::class, 'saveSettings'])->name('marketplace.settings.save');
+        Route::post('/orders/push', [\App\Http\Controllers\MarketplaceController::class, 'pushOrderToShopify'])->name('marketplace.orders.push');
+    });
+
     // Route::get('/get-channel-sales-data', [ChannelMasterController::class, 'getChannelSalesData']);
     Route::get('/sales-trend-data', [ChannelMasterController::class, 'getSalesTrendData']);
     Route::get('/dashboard-metrics', [ChannelMasterController::class, 'getDashboardMetrics']);
