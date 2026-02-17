@@ -93,10 +93,10 @@
             </div>
             <div class="row">
                 <div class="col-12 text-center">
-                    <p class="text-dark-emphasis">Don't have an account? <a
+                    {{-- <p class="text-dark-emphasis">Don't have an account? <a
                             href="{{ route('second', ['auth', 'register']) }}"
                             class="text-dark fw-bold ms-1 link-offset-3 text-decoration-underline"><b>Sign up</b></a>
-                    </p>
+                    </p> --}}
                 </div> <!-- end col -->
             </div>
             <!-- end row -->
