@@ -2788,7 +2788,7 @@
 
                     {
                         title: "GROI%",
-                        field: "ROI_percentage",
+                        field: "GROI%",
                         hozAlign: "center",
                         formatter: function(cell) {
                             const value = cell.getValue();
@@ -2796,7 +2796,7 @@
                             const percent = parseFloat(value);
                             let color = '';
                             
-                            // getRoiColor logic from inc/dec page (same as eBay)
+                            // Color logic for GROI (Gross ROI)
                             if (percent < 50) color = '#a00211'; // red
                             else if (percent >= 50 && percent < 75) color = '#ffc107'; // yellow
                             else if (percent >= 75 && percent <= 125) color = '#28a745'; // green
@@ -5688,6 +5688,8 @@
                     'A DIL %',          // A DIL %
                     'NRL',              // NRL
                     'price',            // Price
+                    'GPFT%',            // GPFT%
+                    'GROI%',            // GROI%
                     'l7_spend',         // 7 UB%
                     'l1_spend',         // 1 UB%
                     'avg_cpc',          // AVG CPC
@@ -5723,7 +5725,9 @@
                     'active_toggle',        // 14. Active
                     'missing_ad',           // 15. Missing AD
                     'price',                // 16. Price
-                    'pt_campaignBudgetAmount', // 17. PT BGT
+                    'GPFT%',                // 17. GPFT%
+                    'GROI%',                // 18. GROI%
+                    'pt_campaignBudgetAmount', // 19. PT BGT
                     'pt_sbgt',              // 18. PT SBGT
                     'pt_clicks_L7',         // 19. PT Clicks L7
                     'pt_spend_L7',          // 20. PT Spend L7
@@ -5760,7 +5764,9 @@
                     'active_toggle',            // 14. Active
                     'missing_ad',               // 15. Missing AD
                     'price',                    // 16. Price
-                    'hl_campaignBudgetAmount',  // 17. HL BGT
+                    'GPFT%',                    // 17. GPFT%
+                    'GROI%',                    // 18. GROI%
+                    'hl_campaignBudgetAmount',  // 19. HL BGT
                     'hl_sbgt',                  // 18. HL SBGT
                     'hl_clicks_L7',             // 19. HL Clicks L7
                     'hl_spend_L7',              // 20. HL Spend L7
