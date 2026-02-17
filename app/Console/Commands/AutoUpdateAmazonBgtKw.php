@@ -53,10 +53,45 @@ class AutoUpdateAmazonBgtKw extends Command
                 return 0;
             }
 
+            // Load bid caps from database
+            $bidCapsData = \App\Models\AmazonBidCap::all()->keyBy('sku');
+
+            // Track campaigns skipped due to bid cap
+            $skippedDueToCap = [];
+
             // Filter out campaigns with empty/null campaign_id or invalid sbgt
-            $validCampaigns = collect($campaigns)->filter(function ($campaign) {
-                return !empty($campaign->campaign_id) && isset($campaign->sbgt) && $campaign->sbgt > 0;
+            // Also filter out if SBGT > Bid Cap (cap protection)
+            $validCampaigns = collect($campaigns)->filter(function ($campaign) use ($bidCapsData, &$skippedDueToCap) {
+                if (empty($campaign->campaign_id) || !isset($campaign->sbgt) || $campaign->sbgt <= 0) {
+                    return false;
+                }
+                
+                // Check if bid cap exists for this SKU
+                $sku = strtoupper($campaign->campaignName ?? '');
+                if ($bidCapsData->has($sku)) {
+                    $bidCap = $bidCapsData[$sku]->bid_cap;
+                    // If SBGT exceeds bid cap, skip this campaign
+                    if ($bidCap > 0 && $campaign->sbgt > $bidCap) {
+                        $skippedDueToCap[] = [
+                            'campaign' => $campaign->campaignName,
+                            'sbgt' => $campaign->sbgt,
+                            'cap' => $bidCap
+                        ];
+                        return false; // Skip - SBGT exceeds cap
+                    }
+                }
+                
+                return true;
             })->values();
+
+            // Show campaigns skipped due to bid cap
+            if (count($skippedDueToCap) > 0) {
+                $this->warn("\n⚠️  Campaigns SKIPPED due to Bid Cap protection:");
+                foreach ($skippedDueToCap as $skipped) {
+                    $this->warn("  - {$skipped['campaign']}: SBGT \${$skipped['sbgt']} > Cap \${$skipped['cap']}");
+                }
+                $this->warn("");
+            }
 
             if ($validCampaigns->isEmpty()) {
                 $this->warn("No valid campaigns found (all have empty campaign_id or invalid budget).");

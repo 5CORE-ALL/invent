@@ -1637,6 +1637,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/amazon/update-listed-live', [OverallAmazonController::class, 'updateListedLive']);
 
     Route::post('/amazon/save-sprice', [OverallAmazonController::class, 'saveSpriceToDatabase'])->name('amazon.save-sprice');
+    Route::post('/save-bid-cap', [OverallAmazonController::class, 'saveBidCap'])->name('amazon.save-bid-cap');
 
     Route::post('/listing_audit_amazon/save-na', [ListingAuditAmazonController::class, 'saveAuditToDatabase']);
     Route::post('/amazon-zero/reason-action/update', [AmazonZeroController::class, 'updateReasonAction']);

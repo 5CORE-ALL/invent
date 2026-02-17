@@ -4367,6 +4367,37 @@
                         }
                     },
                     {
+                        title: "Bid Cap",
+                        field: "bid_cap",
+                        hozAlign: "center",
+                        visible: true,
+                        minWidth: 100,
+                        editor: "input",
+                        formatter: function(cell) {
+                            var value = cell.getValue();
+                            var rowData = cell.getRow().getData();
+                            var user = rowData.bid_cap_user;
+                            var updatedAt = rowData.bid_cap_updated_at;
+                            
+                            if (!value || value === '' || value === '0' || value === 0) {
+                                return '<span style="color: #999;">-</span>';
+                            }
+                            
+                            var displayValue = '$' + parseFloat(value).toFixed(2);
+                            
+                            // Add tooltip with user and timestamp if available
+                            if (user || updatedAt) {
+                                var tooltip = 'Bid Cap: $' + parseFloat(value).toFixed(2);
+                                if (user) tooltip += '\\nUpdated by: ' + user;
+                                if (updatedAt) tooltip += '\\nLast updated: ' + updatedAt;
+                                
+                                return '<span title="' + tooltip + '" style="cursor: help; border-bottom: 1px dotted #666;">' + displayValue + '</span>';
+                            }
+                            
+                            return displayValue;
+                        }
+                    },
+                    {
                         title: "KW SBID",
                         field: "sbid",
                         hozAlign: "center",
@@ -4786,7 +4817,40 @@
                 var field = cell.getColumn().getField();
                 var value = cell.getValue();
 
-                if (field === 'SPRICE') {
+                if (field === 'bid_cap') {
+                    const sku = data['(Child) sku'];
+                    const bidCapValue = parseFloat(value) || 0;
+                    
+                    $.ajax({
+                        url: '/save-bid-cap',
+                        method: 'POST',
+                        headers: {
+                            'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                        },
+                        data: {
+                            sku: sku,
+                            bid_cap: bidCapValue
+                        },
+                        success: function(response) {
+                            if (response.success) {
+                                showToast('success', 'Bid Cap $' + bidCapValue.toFixed(2) + ' saved for ' + sku + ' by ' + (response.user_name || 'you'));
+                                // Update row data with user info
+                                row.update({
+                                    'bid_cap': bidCapValue,
+                                    'bid_cap_user': response.user_name,
+                                    'bid_cap_updated_at': response.updated_at
+                                });
+                            } else {
+                                showToast('error', 'Failed to save Bid Cap: ' + (response.message || 'Unknown error'));
+                            }
+                        },
+                        error: function(xhr) {
+                            var errorMsg = xhr.responseJSON?.message || 'Error saving Bid Cap';
+                            showToast('error', errorMsg);
+                            console.error('Bid Cap save error:', xhr);
+                        }
+                    });
+                } else if (field === 'SPRICE') {
                     const sku = data['(Child) sku'];
                     $.ajax({
                         url: '/save-amazon-sprice',

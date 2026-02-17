@@ -3843,12 +3843,9 @@
                             else if (l7 >= 100 && l7 < 150) v = 8;
                             else if (l7 >= 150 && l7 < 200) v = 7;
                             else if (l7 >= 200 && l7 < 250) v = 6;
-                            else if (l7 >= 250 && l7 < 300) v = 5;
-                            else if (l7 >= 300 && l7 < 350) v = 4;
-                            else if (l7 >= 350 && l7 < 400) v = 3;
-                            else if (l7 >= 400) v = 2;
+                            else if (l7 >= 250) v = 5;
                             else v = es;
-                            v = Math.min(v, 15);
+                            v = Math.min(v, 12);
                             return v > 0 ? v.toFixed(2) : '-';
                         },
                         width: 80

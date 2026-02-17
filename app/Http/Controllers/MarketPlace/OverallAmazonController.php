@@ -7,6 +7,7 @@ use Illuminate\Http\Request;
 use App\Models\ProductMaster;
 use App\Models\ProductStockMapping;
 use App\Models\AmazonDataView;
+use App\Models\AmazonBidCap;
 use Illuminate\Support\Facades\Log;
 use App\Http\Controllers\Controller;
 use App\Services\AmazonSpApiService;
@@ -1559,6 +1560,12 @@ class OverallAmazonController extends Controller
         // Keep loading other data from AmazonDataView for backward compatibility
         $nrValues = AmazonDataView::whereIn('sku', $skus)->pluck('value', 'sku', 'fba');
 
+        // Load Bid Caps from dedicated table
+        $bidCaps = AmazonBidCap::whereIn('sku', $skus)
+            ->with('user')
+            ->get()
+            ->keyBy('sku');
+
         // Fetch LMP data from amazon_sku_competitors table
         $lmpLowestLookup = collect();
         $lmpDetailsLookup = collect();
@@ -2095,6 +2102,7 @@ class OverallAmazonController extends Controller
             $row['APlus'] = null;
             $row['js_comp_manual_api_link'] = null;
             $row['js_comp_manual_link'] = null;
+            $row['bid_cap'] = null;
 
             // LMP data - lowest entry plus all competitors
             // Use uppercase and trimmed SKU for lookup (case-insensitive)
@@ -2603,6 +2611,28 @@ class OverallAmazonController extends Controller
                     $row['SPRICE_STATUS'] = $raw['SPRICE_STATUS'] ?? null; // Status: 'pushed', 'applied', 'error'
                     $row['Listed'] = isset($raw['Listed']) ? filter_var($raw['Listed'], FILTER_VALIDATE_BOOLEAN) : null;
                     $row['Live'] = isset($raw['Live']) ? filter_var($raw['Live'], FILTER_VALIDATE_BOOLEAN) : null;
+                }
+            }
+
+            // Load Bid Cap from dedicated table
+            if (isset($bidCaps[$pm->sku])) {
+                $bidCapRecord = $bidCaps[$pm->sku];
+                $row['bid_cap'] = $bidCapRecord->bid_cap;
+                $row['bid_cap_user'] = $bidCapRecord->user ? $bidCapRecord->user->name : null;
+                $row['bid_cap_updated_at'] = $bidCapRecord->last_updated_at ? $bidCapRecord->last_updated_at->format('Y-m-d H:i:s') : null;
+            } else {
+                $row['bid_cap'] = null;
+                $row['bid_cap_user'] = null;
+                $row['bid_cap_updated_at'] = null;
+            }
+
+            // Continue with other fields
+            if (isset($nrValues[$pm->sku])) {
+                $raw = $nrValues[$pm->sku];
+                if (!is_array($raw)) {
+                    $raw = json_decode($raw, true);
+                }
+                if (is_array($raw)) {
                     $row['APlus'] = isset($raw['APlus']) ? filter_var($raw['APlus'], FILTER_VALIDATE_BOOLEAN) : null;
                     $row['js_comp_manual_api_link'] = $raw['js_comp_manual_api_link'] ?? '';
                     $row['js_comp_manual_link'] = $raw['js_comp_manual_link'] ?? '';
@@ -3410,6 +3440,64 @@ class OverallAmazonController extends Controller
         }
 
         return response()->json(['success' => true, 'data' => $amazonDataView, 'message' => $message]);
+    }
+
+    public function saveBidCap(Request $request)
+    {
+        Log::info('saveBidCap called', [
+            'all_input' => $request->all(),
+            'sku' => $request->input('sku'),
+            'bid_cap' => $request->input('bid_cap')
+        ]);
+
+        $sku = $request->input('sku') ? strtoupper($request->input('sku')) : null;
+        $bidCap = $request->input('bid_cap');
+        $userId = auth()->id();
+
+        if (!$sku) {
+            Log::warning('saveBidCap: SKU is missing', ['request' => $request->all()]);
+            return response()->json(['success' => false, 'message' => 'SKU is required. Received: ' . json_encode($request->all())], 400);
+        }
+
+        try {
+            // Use dedicated amazon_bid_caps table
+            $amazonBidCap = AmazonBidCap::updateOrCreate(
+                ['sku' => $sku],
+                [
+                    'bid_cap' => $bidCap !== null && $bidCap !== '' ? floatval($bidCap) : null,
+                    'user_id' => $userId,
+                    'last_updated_at' => now()
+                ]
+            );
+
+            // Get user name for response
+            $userName = $userId ? ($amazonBidCap->user->name ?? 'Unknown') : 'Guest';
+
+            Log::info('Bid Cap saved', [
+                'sku' => $sku, 
+                'bid_cap' => $bidCap,
+                'user_id' => $userId,
+                'user_name' => $userName
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Bid Cap saved successfully',
+                'bid_cap' => $bidCap,
+                'user_name' => $userName,
+                'updated_at' => $amazonBidCap->last_updated_at->format('Y-m-d H:i:s')
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error saving Bid Cap', [
+                'sku' => $sku,
+                'error' => $e->getMessage()
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Error saving Bid Cap: ' . $e->getMessage()
+            ], 500);
+        }
     }
 
     public function saveSpriceToDatabase(Request $request)
