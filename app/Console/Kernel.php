@@ -166,65 +166,28 @@ class Kernel extends ConsoleKernel
 
         $schedule->command('app:fetch-amazon-listings')
             ->dailyAt('06:00')
-            ->timezone('America/Los_Angeles')
-            ->name('fetch-amazon-listings')
-            ->withoutOverlapping()
-            ->runInBackground()
-            ->appendOutputTo($log);
-
-        $schedule->command('app:fetch-amazon-orders --update-periods')
-            ->dailyAt('00:10')
-            ->timezone('Asia/Kolkata')
-            ->name('update-amazon-order-periods')
-            ->withoutOverlapping()
-            ->runInBackground()
-            ->appendOutputTo($log);
-
-        $schedule->command('app:fetch-amazon-orders --new-only --limit=300')
-            ->dailyAt('00:15')
-            ->timezone('Asia/Kolkata')
-            ->name('fetch-new-amazon-orders')
-            ->withoutOverlapping()
-            ->runInBackground()
-            ->appendOutputTo($log);
-
-        $schedule->command('app:fetch-amazon-orders --fetch-missing-items')
-            ->dailyAt('00:30')
-            ->timezone('Asia/Kolkata')
-            ->name('fetch-missing-amazon-order-items')
-            ->withoutOverlapping()
-            ->runInBackground()
-            ->appendOutputTo($log);
-
-        $schedule->command('app:fetch-amazon-orders')
-            ->dailyAt('00:00')
-            ->timezone('Asia/Kolkata')
-            ->name('fetch-amazon-orders')
-            ->withoutOverlapping()
-            ->runInBackground()
-            ->appendOutputTo($log);
-
-        $schedule->command('app:fetch-amazon-listing-status')
-            ->dailyAt('01:00')
-            ->timezone('Asia/Kolkata')
-            ->name('fetch-amazon-listing-status')
-            ->withoutOverlapping()
-            ->runInBackground()
-            ->appendOutputTo($log);
-
-        $schedule->command('app:fetch-amazon-links')
-            ->dailyAt('02:00')
-            ->timezone('Asia/Kolkata')
-            ->name('fetch-amazon-links')
-            ->withoutOverlapping()
-            ->runInBackground()
-            ->appendOutputTo($log);
-
-        /*
-        |--------------------------------------------------------------------------
-        | AMAZON ADS CAMPAIGN REPORTS
-        |--------------------------------------------------------------------------
-        */
+            ->timezone('America/Los_Angeles');
+        $schedule->command('reverb:fetch')
+            ->everyFiveMinutes()
+            ->timezone('UTC');
+        // Sync Reverb listing inventory from Shopify (bridge: Shopify as source of truth)
+        $schedule->command('reverb:sync-inventory-from-shopify')
+            ->everyThirtyMinutes()
+            ->timezone('UTC')
+            ->name('reverb-sync-inventory-from-shopify')
+            ->withoutOverlapping();
+        $schedule->command('app:fetch-ebay-reports')
+            ->hourly()
+            ->timezone('UTC');
+        $schedule->command('app:fetch-macy-products')
+            ->everyFiveMinutes()
+            ->timezone('UTC');
+        $schedule->command('app:fetch-wayfair-data')
+            ->everyFiveMinutes()
+            ->timezone('UTC');
+        // $schedule->command('app:amazon-campaign-reports')
+        //     ->dailyAt('04:00')
+        //     ->timezone('America/Los_Angeles');
         $schedule->command('app:amazon-sp-campaign-reports')
             ->dailyAt('06:00')
             ->timezone('Asia/Kolkata')
