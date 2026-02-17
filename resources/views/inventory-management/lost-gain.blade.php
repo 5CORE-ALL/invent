@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Lost/Gain', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
+@extends('layouts.vertical', ['title' => 'Loss/Gain', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
 <meta name="csrf-token" content="{{ csrf_token() }}">
 
 @section('css')
@@ -32,10 +32,10 @@
         .loss-gain-column {
             text-align: center !important;
         }
-        .loss-gain-header {
+        .loss-gain-header, .date-header {
             cursor: pointer;
         }
-        .loss-gain-header:hover {
+        .loss-gain-header:hover, .date-header:hover {
             background-color: #f0f0f0;
         }
         .sort-arrow {
@@ -74,13 +74,13 @@
 @endsection
 
 @section('content')
-    @include('layouts.shared/page-title', ['page_title' => 'Inventory Management', 'sub_title' => 'Lost/Gain'])
+    @include('layouts.shared/page-title', ['page_title' => 'Lost Gain', 'sub_title' => 'Loss/Gain'])
     
     <div class="row">
         <div class="col-12">
             <div class="card">
                 <div class="card-body">
-                    <h4 class="header-title">Lost/Gain</h4>
+                    <h4 class="header-title">Loss/Gain</h4>
 
                     <div class="mb-3">
                         <div class="row g-3 mb-3">
@@ -160,14 +160,16 @@
                                     </th>
                                     <th>Parent</th>
                                     <th>SKU</th>
-                                    <th>Verified Stock</th>
+                                    <th>Veri-Stock</th>
                                     <th class="text-center">Adjusted</th>
                                     <th class="loss-gain-column loss-gain-header" data-sort="loss_gain">
                                         Loss/Gain <span class="sort-arrow">↓</span>
                                     </th>
                                     <th>Reason</th>
-                                    <th>Approved By</th>
-                                    <th>Approved At (Ohio)</th>
+                                    <th>Appr By</th>
+                                    <th class="date-header" data-sort="approved_at">
+                                        Approved <span class="sort-arrow"></span>
+                                    </th>
                                     <th>Remarks</th>
                                     <th>Actions</th>
                                 </tr>
@@ -206,6 +208,7 @@
         $(document).ready(function() {
             let tableRows = [];
             let currentSort = { field: null, direction: -1 }; // -1 for descending (highest to lowest)
+            let currentDateSort = { direction: 0 }; // 0 for no sort, -1 for descending, 1 for ascending
             let iaRows = new Set(); // Track rows marked as I&A by index
             let showIARows = true; // Toggle state for I&A rows visibility
             
@@ -584,6 +587,7 @@
             }
 
             function initSort() {
+                // Loss/Gain column sort
                 $('#lostGainTable thead th.loss-gain-header').off('click').on('click', function(e) {
                     e.preventDefault();
                     e.stopPropagation();
@@ -596,6 +600,10 @@
                         currentSort.direction = -1; // Start with descending (highest to lowest)
                     }
                     
+                    // Clear date sort
+                    currentDateSort.direction = 0;
+                    $('.date-header .sort-arrow').text('');
+                    
                     // Update sort arrow
                     const arrowText = currentSort.direction === -1 ? '↓' : '↑';
                     $(this).find('.sort-arrow').text(arrowText);
@@ -603,6 +611,46 @@
                     // Sort tableRows
                     tableRows.sort((a, b) => {
                         return (b.loss_gain - a.loss_gain) * currentSort.direction;
+                    });
+                    
+                    // Re-render table
+                    renderTableRows(tableRows);
+                    
+                    // Update totals
+                    updateTotals();
+                });
+                
+                // Date column sort
+                $('#lostGainTable thead th.date-header').off('click').on('click', function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    
+                    // Toggle sort direction
+                    if (currentDateSort.direction === 0) {
+                        currentDateSort.direction = -1; // Start with descending (newest first)
+                    } else {
+                        currentDateSort.direction *= -1;
+                    }
+                    
+                    // Clear loss/gain sort
+                    currentSort.field = null;
+                    $('.loss-gain-header .sort-arrow').text('');
+                    
+                    // Update sort arrow
+                    const arrowText = currentDateSort.direction === -1 ? '↓' : '↑';
+                    $(this).find('.sort-arrow').text(arrowText);
+                    
+                    // Sort tableRows by date
+                    tableRows.sort((a, b) => {
+                        const dateA = a.approved_at === '-' ? null : new Date(a.approved_at);
+                        const dateB = b.approved_at === '-' ? null : new Date(b.approved_at);
+                        
+                        // Handle null/invalid dates (put them at the end)
+                        if (!dateA && !dateB) return 0;
+                        if (!dateA) return 1;
+                        if (!dateB) return -1;
+                        
+                        return (dateB - dateA) * currentDateSort.direction;
                     });
                     
                     // Re-render table
