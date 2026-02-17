@@ -287,7 +287,7 @@ Route::prefix('ai')->middleware(['auth'])->group(function () {
 });
 
 // STEP 2: PUBLIC AI ROUTES (no auth)
-Route::get('/ai/download-sample-csv', [App\Http\Controllers\Api\AiChatController::class, 'downloadSampleCsv'])->name('ai.download.sample');
+// Route::get('/ai/download-sample-csv', [App\Http\Controllers\Api\AiChatController::class, 'downloadSampleCsv'])->name('ai.download.sample'); // temporarily disabled
 
 // CRITICAL: Escalation reply routes – no auth so senior can open link from email; must be before any wildcard
 Route::get('/ai/escalation/{id}/reply', [App\Http\Controllers\Ai\AiEscalationController::class, 'showReplyForm'])->name('ai.escalation.reply');

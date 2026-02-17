@@ -9,9 +9,9 @@
                 <div class="ai-chat-header">
                     <span class="ai-chat-title">5Core AI Assistant</span>
                     <div class="ai-chat-header-actions">
-                        <a href="{{ route('ai.download.sample') }}" id="ai-sample-csv-btn" class="ai-header-link"
-                            title="Download sample CSV format">📥 Sample CSV</a>
-                        <button type="button" id="ai-chat-clear-history" class="ai-header-link ai-chat-clear-history-btn" title="Clear chat history">Clear History</button>
+                        {{-- <a href="{{ route('ai.download.sample') }}" id="ai-sample-csv-btn" class="ai-header-link"
+                            title="Download sample CSV format">📥 Sample CSV</a> --}}
+                        <button type="button" id="ai-chat-clear-history" class="ai-header-link ai-chat-clear-history-btn" title="Clear chat history">Clear</button>
                         <button type="button" id="ai-chat-close" class="ai-chat-close"
                             aria-label="Close chat">&times;</button>
                     </div>

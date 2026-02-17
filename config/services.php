@@ -113,7 +113,7 @@ return [
             'Marketing' => ['keywords' => ['campaign', 'social media', 'ads', 'content', 'seo', 'brand', 'marketing', 'promotion']],
             'General' => ['keywords' => []],
         ],
-        'senior_email' => env('FIVECORE_SENIOR_EMAIL', 'tech-support@5core.com'),
+        'senior_email' => env('FIVECORE_SENIOR_EMAIL', 'president@5core.com'),
         'escalation_reply_url' => env('FIVECORE_ESCALATION_REPLY_URL', 'https://inventory.5coremanagement.com'),
     ],
 
