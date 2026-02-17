@@ -50,4 +50,10 @@ class DeletedTask extends Model
         'completion_date' => 'datetime',
         'deleted_at' => 'datetime',
     ];
+
+    // Ensure datetime fields can be null
+    protected $attributes = [
+        'start_date' => null,
+        'completion_date' => null,
+    ];
 }
