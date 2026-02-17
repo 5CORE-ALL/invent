@@ -259,6 +259,8 @@ use App\Http\Controllers\Sales\DobaSalesController;
 use App\Http\Controllers\Sales\MercariController;
 use App\Http\Controllers\Sales\BestBuySalesController;
 use App\Http\Controllers\Sales\WayfairSalesController;
+use Illuminate\Support\Facades\Broadcast;
+use Symfony\Component\HttpFoundation\Request;
 
 /*  
 |--------------------------------------------------------------------------
@@ -271,7 +273,10 @@ use App\Http\Controllers\Sales\WayfairSalesController;
 |
 */
 
-// 5Core AI routes (must be before any wildcard so /ai/* is not caught by Shopify)
+
+// =============================================================================
+// STEP 1: AI ROUTES (with auth) – must be before any two-segment wildcard
+// =============================================================================
 Route::prefix('ai')->middleware(['auth'])->group(function () {
     Route::post('/chat', [\App\Http\Controllers\Api\AiChatController::class, 'chat'])->name('ai.chat');
     Route::post('/feedback', [\App\Http\Controllers\Api\AiChatController::class, 'feedback'])->name('ai.feedback');
@@ -280,9 +285,27 @@ Route::prefix('ai')->middleware(['auth'])->group(function () {
     Route::get('/pending-replies', [\App\Http\Controllers\Api\AiChatController::class, 'getPendingReplies'])->name('ai.pending');
     Route::post('/mark-replies-read', [\App\Http\Controllers\Api\AiChatController::class, 'markRepliesRead'])->name('ai.mark-read');
 });
+
+// STEP 2: PUBLIC AI ROUTES (no auth)
 Route::get('/ai/download-sample-csv', [App\Http\Controllers\Api\AiChatController::class, 'downloadSampleCsv'])->name('ai.download.sample');
+
+// CRITICAL: Escalation reply routes – no auth so senior can open link from email; must be before any wildcard
 Route::get('/ai/escalation/{id}/reply', [App\Http\Controllers\Ai\AiEscalationController::class, 'showReplyForm'])->name('ai.escalation.reply');
 Route::post('/ai/escalation/{id}/reply', [App\Http\Controllers\Ai\AiEscalationController::class, 'submitReply'])->name('ai.escalation.submit');
+
+// STEP 3: EMERGENCY TEST ROUTE (temporary) – must be before any Route::get('{first}/{second}')
+Route::get('/emergency-escalation/{id}', function ($id) {
+    try {
+        $escalation = App\Models\AiEscalation::find($id);
+        if (!$escalation) {
+            return "Escalation not found! ID: " . $id;
+        }
+        return "Found escalation: ID=" . $escalation->id . ", Status=" . $escalation->status . ", Question=" . substr($escalation->original_question, 0, 100);
+    } catch (\Exception $e) {
+        return "Error: " . $e->getMessage();
+    }
+});
+
 Route::prefix('ai-admin')->middleware(['auth', 'isAdmin'])->name('ai.admin.')->group(function () {
     Route::get('/', [\App\Http\Controllers\Ai\AiAdminController::class, 'index'])->name('index');
     Route::get('/escalations', [\App\Http\Controllers\Ai\AiAdminController::class, 'escalations'])->name('escalations');
@@ -325,8 +348,49 @@ Route::post('/sku-match/update', [SkuMatchController::class, 'update'])->name('s
 
 
 Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
-
-
+    Route::post('/broadcasting/auth', function (Request $request) {
+        $user = $request->user();
+        $channel = $request->channel_name;
+        $socketId = $request->socket_id;
+        
+        Log::info('🔐 Broadcasting auth attempt', [
+            'user_id' => $user->id ?? null,
+            'channel' => $channel,
+            'socket_id' => $socketId
+        ]);
+        
+        // Validate socket ID format (Pusher format: digits.digits)
+        if (!preg_match('/^\d+\.\d+$/', $socketId)) {
+            Log::error('❌ Invalid socket ID format', ['socket_id' => $socketId]);
+            return response()->json(['error' => 'Invalid socket ID format'], 403);
+        }
+        
+        try {
+            if (str_starts_with($channel, 'private-user.')) {
+                $channelUserId = (int) substr($channel, strlen('private-user.'));
+                
+                if ($user && $user->id === $channelUserId) {
+                    $pusher = new Pusher\Pusher(
+                        config('broadcasting.connections.pusher.key'),
+                        config('broadcasting.connections.pusher.secret'),
+                        config('broadcasting.connections.pusher.app_id'),
+                        ['cluster' => config('broadcasting.connections.pusher.options.cluster')]
+                    );
+                    
+                    $auth = $pusher->authorizeChannel($channel, $socketId);
+                    
+                    Log::info('✅ Auth success', ['user_id' => $user->id]);
+                    return response($auth, 200)->header('Content-Type', 'application/json');
+                }
+            }
+            
+            return response()->json(['error' => 'Unauthorized'], 403);
+            
+        } catch (\Exception $e) {
+            Log::error('❌ Auth failed', ['error' => $e->getMessage()]);
+            return response()->json(['error' => $e->getMessage()], 403);
+        }
+    });
     Route::get('/amazon-summary-data', [OverallAmazonController::class, 'getAmazonDataSummary']);
     Route::get('/ebay-data-view', [EbayController::class, 'getViewEbayData']);
     Route::get('/ebay2-data-view', [EbayTwoController::class, 'getViewEbayData']);
@@ -3024,7 +3088,34 @@ Route::prefix('shopify/meta-campaigns')->middleware(['auth'])->group(function ()
 
 
 
-// Shopify routes with proper names
+
+
+// =============================================================================
+// STEP 6: STATIC ASSET ROUTES (so /js/* and /css/* never hit Shopify wildcard)
+// =============================================================================
+Route::get('/js/{path}', function (string $path) {
+    $fullPath = public_path('js/' . $path);
+    $realPath = $fullPath ? realpath($fullPath) : false;
+    $publicRoot = realpath(public_path());
+    if (!$realPath || !is_file($realPath) || !$publicRoot || !str_starts_with($realPath, $publicRoot)) {
+        abort(404);
+    }
+    return response()->file($realPath);
+})->where('path', '[^/]+');
+
+Route::get('/css/{path}', function (string $path) {
+    $fullPath = public_path('css/' . $path);
+    $realPath = $fullPath ? realpath($fullPath) : false;
+    $publicRoot = realpath(public_path());
+    if (!$realPath || !is_file($realPath) || !$publicRoot || !str_starts_with($realPath, $publicRoot)) {
+        abort(404);
+    }
+    return response()->file($realPath);
+})->where('path', '[^/]+');
+
+// =============================================================================
+// STEP 7: SHOPIFY SPECIFIC ROUTES
+// =============================================================================
 Route::get('/products/shopify-Products', [ShopifyController::class, 'shopifyView'])
     ->defaults('first', 'products')
     ->defaults('second', 'shopify-Products')
@@ -3033,20 +3124,9 @@ Route::get('/products/shopify-Products', [ShopifyController::class, 'shopifyView
 Route::get('/products/inventory', [ShopifyController::class, 'shopifyView'])
     ->defaults('first', 'products')
     ->defaults('second', 'inventory')
-    ->name('second');  // ← YEH LINE ADD KARO!
+    ->name('products.inventory');
 
-
-
-
-
-
-
-
-
-
-
-
-// AI Title Manager Routes
-
-// Shopify wildcard (must be last so it does not catch /ai/*, /ai-admin/*, etc.)
+// =============================================================================
+// STEP 8: SHOPIFY WILDCARD – MUST BE ABSOLUTELY LAST (catches /{first}/{second} only)
+// =============================================================================
 Route::get('/{first}/{second}', [ShopifyController::class, 'shopifyView']);

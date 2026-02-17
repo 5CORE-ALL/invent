@@ -518,10 +518,10 @@ class AiChatController extends Controller
         return 'General';
     }
 
-    /** All escalations use the single senior email (domain is kept for logging only). */
+    /** All escalations use the single senior email (tech-support@5core.com). */
     private function getSeniorEmailByDomain(string $domain): string
     {
-        return config('services.5core.senior_email', 'tech-support@5core.com');
+        return 'tech-support@5core.com';
     }
 
     private const CLAUDE_SYSTEM_PROMPT = "You are 5Core AI Assistant, an internal support agent for 5Core team members. "
@@ -698,9 +698,10 @@ class AiChatController extends Controller
                 'status' => 'pending',
             ]);
 
-            $replyLink = url('/ai/escalation/' . $escalation->id . '/reply');
+            $baseUrl = rtrim(config('services.5core.escalation_reply_url', 'https://inventory.5coremanagement.com'), '/');
+            $replyLink = $baseUrl . '/ai/escalation/' . $escalation->id . '/reply';
 
-            Log::info('📧 Sending escalation email to', ['to' => $seniorEmail, 'escalation_id' => $escalation->id]);
+            Log::info('📧 Sending escalation email', ['to' => $seniorEmail, 'escalation_id' => $escalation->id, 'link' => $replyLink]);
 
             try {
                 Mail::to($seniorEmail)->send(new EscalationMail(
@@ -716,7 +717,7 @@ class AiChatController extends Controller
                 Log::warning('Escalation email send failed', ['to' => $seniorEmail, 'error' => $e->getMessage()]);
             }
 
-            $answer = "I don't have this information. Your question has been escalated to the {$domain} team senior. You will be notified when they respond.";
+            $answer = "I don't have this information.";
 
             return response()->json([
                 'answer' => $answer,
