@@ -4,6 +4,7 @@ namespace App\Mail;
 
 use Illuminate\Bus\Queueable;
 use Illuminate\Mail\Mailable;
+use Illuminate\Mail\Mailables\Address;
 use Illuminate\Mail\Mailables\Content;
 use Illuminate\Mail\Mailables\Envelope;
 use Illuminate\Queue\SerializesModels;
@@ -21,7 +22,12 @@ class JuniorNotificationMail extends Mailable
 
     public function envelope(): Envelope
     {
+        $seniorEmail = config('services.5core.senior_email', 'tech-support@5core.com');
+        $fromName = config('mail.from.name', '5Core AI Assistant');
+
         return new Envelope(
+            from: new Address($seniorEmail, $fromName),
+            replyTo: [new Address($seniorEmail, $fromName)],
             subject: '5Core AI: Senior replied to your question',
         );
     }

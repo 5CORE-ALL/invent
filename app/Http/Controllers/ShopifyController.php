@@ -74,13 +74,25 @@ class ShopifyController extends Controller
             abort(404, 'Route not found');
         }
 
-        // Agar assets hai to redirect
+        // Don't treat js/css as Blade view names (e.g. /js/app.js, /css/app.css would become view 'js.app.js' which doesn't exist)
+        if ($first === 'js' || $first === 'css') {
+            $subPath = $first . '/' . $second;
+            $path = public_path($subPath);
+            $realPath = $path ? realpath($path) : null;
+            $publicReal = realpath(public_path());
+            if ($realPath && is_file($realPath) && $publicReal && str_starts_with($realPath, $publicReal)) {
+                return response()->file($realPath);
+            }
+            abort(404, 'Asset not found');
+        }
+
+  
         if ($first == "assets") {
             return redirect('home');
         }
-    
+
         $products = $this->getProducts();
-        
+
         $productList = isset($products['products']) ?
             array_map(function ($product) {
                 return [
@@ -91,14 +103,22 @@ class ShopifyController extends Controller
                     'vendor' => $product['vendor'],
                     'inventory' => isset($product['variants'][0]['inventory_quantity']) ? $product['variants'][0]['inventory_quantity'] : null,
                     'sku' => isset($product['variants'][0]['sku']) ? $product['variants'][0]['sku'] : null,
-                    'image' => isset($product['image']['src']) ? $product['image']['src'] : null,                 
+                    'image' => isset($product['image']['src']) ? $product['image']['src'] : null,
                 ];
             }, $products['products']) : [];
-    
+
         $mode = $request->query('mode');
         $demo = $request->query('demo');
-    
-        return view($first . '.' . $second, [
+
+        $viewName = $first . '.' . $second;
+        if ($first === 'js' || $first === 'css' || str_ends_with($second ?? '', '.js') || str_ends_with($second ?? '', '.css')) {
+            abort(404, 'Asset not found');
+        }
+        if (!view()->exists($viewName)) {
+            abort(404, 'Page not found');
+        }
+
+        return view($viewName, [
             'mode' => $mode,
             'demo' => $demo,
             'products' => $productList
@@ -111,7 +131,6 @@ class ShopifyController extends Controller
         $sku = $request->sku;
         $toAdjust = (int) $request->to_adjust;
 
-        // Step 1: Get inventory_item_id from products.json by SKU
         $product = $this->getProductBySKU($sku);
         if (!$product) {
             return response()->json(['success' => false, 'message' => 'Product not found for SKU']);
@@ -125,7 +144,6 @@ class ShopifyController extends Controller
             return response()->json(['success' => false, 'message' => 'Location ID not found']);
         }
 
-        // Step 3: Adjust inventory
         $adjusted = $this->adjustInventory($inventoryItemId, $locationId, $toAdjust);
         if (!$adjusted) {
             return response()->json(['success' => false, 'message' => 'Failed to adjust inventory']);

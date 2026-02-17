@@ -11,7 +11,7 @@
                     <div class="ai-chat-header-actions">
                         <a href="{{ route('ai.download.sample') }}" id="ai-sample-csv-btn" class="ai-header-link"
                             title="Download sample CSV format">📥 Sample CSV</a>
-                        <button type="button" id="ai-chat-clear-history" class="ai-header-link" title="Clear chat history">Clear History</button>
+                        <button type="button" id="ai-chat-clear-history" class="ai-header-link ai-chat-clear-history-btn" title="Clear chat history">Clear History</button>
                         <button type="button" id="ai-chat-close" class="ai-chat-close"
                             aria-label="Close chat">&times;</button>
                     </div>
@@ -40,8 +40,8 @@
 
             .ai-chat-toggle {
                 position: relative;
-                width: 288px;
-                height: 288px;
+                width: 144px;
+                height: 144px;
                 border-radius: 50%;
                 background: transparent;
                 border: none;
@@ -138,7 +138,7 @@
             .ai-chat-panel {
                 display: none;
                 position: absolute;
-                bottom: 72px;
+                bottom: 144px;
                 right: 0;
                 width: 380px;
                 max-width: calc(100vw - 48px);
@@ -186,6 +186,25 @@
             .ai-header-link:hover {
                 color: #fff;
                 background: rgba(255, 255, 255, 0.15);
+            }
+
+            /* Clear History: small, visible, overrides global button styles */
+            .ai-chat-clear-history-btn {
+                font-size: 0.65rem !important;
+                padding: 3px 6px !important;
+                min-height: unset;
+                line-height: 1.2;
+                border: 1px solid rgba(255, 255, 255, 0.5) !important;
+                background: rgba(255, 255, 255, 0.2) !important;
+                color: #fff !important;
+                font-weight: 500;
+                white-space: nowrap;
+            }
+
+            .ai-chat-clear-history-btn:hover {
+                background: rgba(255, 255, 255, 0.35) !important;
+                color: #fff !important;
+                border-color: rgba(255, 255, 255, 0.7) !important;
             }
 
             .ai-chat-close {
@@ -390,33 +409,69 @@
                     setTimeout(function() { toast.remove(); }, 5000);
                 }
 
-                if (pusherKey && userId && typeof Pusher !== 'undefined') {
-                    try {
-                        var pusher = new Pusher(pusherKey, {
-                            cluster: pusherCluster,
-                            authEndpoint: '{{ url("/broadcasting/auth") }}',
-                            auth: {
-                                headers: {
-                                    'X-CSRF-TOKEN': csrfToken || '',
-                                    'Accept': 'application/json'
-                                }
-                            }
-                        });
-                        var channel = pusher.subscribe('private-user.' + userId);
-                        channel.bind('SeniorReplied', function(data) {
-                            var text = '🔔 Senior replied to your question:\n\n' + (data.reply || '') + '\n\nYour question: ' + (data.question || '');
-                            appendMessage('assistant', text, null, false);
-                            showSeniorReplyToast('Senior replied to your escalated question.');
-                            if (badgeEl) {
-                                var n = parseInt(badgeEl.textContent || '0', 10) + 1;
-                                badgeEl.textContent = n > 99 ? '99+' : n;
-                                badgeEl.style.display = 'flex';
-                            }
-                            if (toggle) toggle.classList.add('has-notification');
-                            if (typeof checkNotifications === 'function') checkNotifications();
-                        });
-                    } catch (e) {}
+              // ... upar ka code ...
+
+if (pusherKey && userId && typeof Pusher !== 'undefined') {
+    try {
+        var pusher = new Pusher(pusherKey, {
+            cluster: pusherCluster,
+            authEndpoint: '{{ url("/broadcasting/auth") }}',
+            auth: {
+                headers: {
+                    'X-CSRF-TOKEN': csrfToken || '',
+                    'Accept': 'application/json'
                 }
+            }
+        });
+
+        // 🔥 NAYA CODE YAHAN AAYEGA
+        pusher.connection.bind('connecting', function() {
+            console.log('🟡 Connecting to Pusher...');
+        });
+
+        pusher.connection.bind('connected', function() {
+            console.log('✅ Connected to Pusher! Socket ID:', pusher.connection.socket_id);
+            
+            var channel = pusher.subscribe('private-user.' + userId);
+            
+            channel.bind('pusher:subscription_succeeded', function() {
+                console.log('✅ Subscribed to private-user.' + userId);
+            });
+            
+            channel.bind('pusher:subscription_error', function(err) {
+                console.error('❌ Subscription error:', err);
+            });
+            
+            channel.bind('SeniorReplied', function(data) {
+                console.log('📨 Received SeniorReplied:', data);
+                var text = '🔔 Senior replied to your question:\n\n' + 
+                           (data.reply || '') + 
+                           '\n\nYour question: ' + (data.question || '');
+                appendMessage('assistant', text, null, false);
+                showSeniorReplyToast('Senior replied to your escalated question.');
+                
+                if (badgeEl) {
+                    var n = parseInt(badgeEl.textContent || '0', 10) + 1;
+                    badgeEl.textContent = n > 99 ? '99+' : n;
+                    badgeEl.style.display = 'flex';
+                }
+                if (toggle) toggle.classList.add('has-notification');
+                checkNotifications();
+            });
+        });
+
+        pusher.connection.bind('failed', function() {
+            console.error('❌ Failed to connect to Pusher');
+        });
+
+        pusher.connection.bind('error', function(err) {
+            console.error('❌ Pusher error:', err);
+        });
+
+    } catch (e) {
+        console.error('❌ Error initializing Pusher:', e);
+    }
+}
 
                 function saveToStorage() {
                     try {
