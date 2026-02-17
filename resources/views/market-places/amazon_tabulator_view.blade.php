@@ -3395,6 +3395,12 @@
                             var hasCampaign = row.pt_campaignName || row.pt_spend_L30 > 0;
                             if (!hasCampaign) return '-';
                             
+                            // Check if PT campaign is PAUSED - don't show SBID for paused campaigns
+                            var ptStatus = (row.pt_campaign_status || '').toUpperCase();
+                            if (ptStatus === 'PAUSED') {
+                                return '<span style="color: #999;">-</span>';
+                            }
+                            
                             // Calculate SBID same as amazon-utilized-pt page
                             var l1_cpc = parseFloat(row.pt_l1_cpc) || 0;
                             var l7_cpc = parseFloat(row.pt_l7_cpc) || 0;
@@ -3806,6 +3812,12 @@
                             var row = cell.getRow().getData();
                             var hasCampaign = row.hl_campaignName || row.hl_spend_L30 > 0;
                             if (!hasCampaign) return '-';
+                            
+                            // Check if HL campaign is PAUSED - don't show SBID for paused campaigns
+                            var hlStatus = (row.hl_campaign_status || '').toUpperCase();
+                            if (hlStatus === 'PAUSED') {
+                                return '<span style="color: #999;">-</span>';
+                            }
                             
                             var l1_cpc = parseFloat(row.hl_l1_cpc) || 0;
                             var l7_cpc = parseFloat(row.hl_l7_cpc) || 0;
@@ -4414,6 +4426,12 @@
                             var hasCampaign = row.hasCampaign !== undefined ? row.hasCampaign : (row.campaign_id && row.campaignName);
                             if (!hasCampaign) return '-';
                             
+                            // Check if campaign is PAUSED - don't show SBID for paused campaigns
+                            var kwStatus = (row.kw_campaign_status || row.campaignStatus || '').toUpperCase();
+                            if (kwStatus === 'PAUSED') {
+                                return '<span style="color: #999;">-</span>';
+                            }
+                            
                             // Calculate SBID dynamically like KW page
                             var l1Cpc = parseFloat(row.l1_cpc) || 0;
                             var l7Cpc = parseFloat(row.l7_cpc) || 0;
@@ -4539,10 +4557,9 @@
                                 var ptStatus = (row.pt_campaign_status || '').toUpperCase();
                                 isEnabled = ptStatus === 'ENABLED';
                             } else {
-                                // KW Ads or default: check KW status
+                                // KW Ads or default: check KW status ONLY (not PT)
                                 var kwStatus = (row.kw_campaign_status || row.campaignStatus || '').toUpperCase();
-                                var ptStatus = (row.pt_campaign_status || '').toUpperCase();
-                                isEnabled = kwStatus === 'ENABLED' || ptStatus === 'ENABLED';
+                                isEnabled = kwStatus === 'ENABLED';
                             }
                             
                             return `
