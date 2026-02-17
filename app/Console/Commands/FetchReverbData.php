@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use Illuminate\Console\Command;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\DB;
 use App\Models\ReverbProduct;
@@ -74,14 +75,22 @@ class FetchReverbData extends Command
         foreach ($listingMap as $sku => $listing) {
             $r30 = $rL30[$sku] ?? 0;
             $r60 = $rL60[$sku] ?? 0;
-            
+
             $price = $listing['price']['amount'] ?? null;
             $views = $listing['stats']['views'] ?? null;
             $remainingInventory = $listing['inventory'] ?? null;
             $bumpBid = $bumpBidBySku[$sku] ?? null;
+            $listingId = $listing['id'] ?? null;
+            $state = $listing['state'] ?? null;
+            if (is_array($state)) {
+                $state = $state['slug'] ?? $state['name'] ?? null;
+            }
+            $listingState = $state ? strtolower((string) $state) : null;
 
             $bulkData[] = [
                 'sku' => $sku,
+                'reverb_listing_id' => $listingId,
+                'listing_state' => $listingState,
                 'r_l30' => $r30,
                 'r_l60' => $r60,
                 'price' => $price,
@@ -105,7 +114,7 @@ class FetchReverbData extends Command
     protected function fetchAllListings(): array
     {
         $listings = [];
-        $url = 'https://api.reverb.com/api/my/listings';
+        $url = 'https://api.reverb.com/api/my/listings?state=all';
 
         do {
             $response = Http::withHeaders([
@@ -154,7 +163,20 @@ class FetchReverbData extends Command
                 $this->info("  Bump bid: {$index}/{$total}...");
             }
 
-            $response = Http::withHeaders($headers)->get("https://api.reverb.com/api/listings/{$listingId}/bump");
+            try {
+                $response = Http::withHeaders($headers)
+                    ->timeout(30)
+                    ->retry(3, 2000, throw: false)
+                    ->get("https://api.reverb.com/api/listings/{$listingId}/bump");
+            } catch (ConnectionException $e) {
+                $this->warn("  Connection reset at {$index}/{$total} (listing {$listingId}), skipping bump bid for this listing.");
+                usleep(500000); // 0.5s pause after connection error
+                continue;
+            } catch (\Throwable $e) {
+                $this->warn("  Bump bid request failed for listing {$listingId}: " . $e->getMessage());
+                continue;
+            }
+
             if ($response->failed()) {
                 continue;
             }
