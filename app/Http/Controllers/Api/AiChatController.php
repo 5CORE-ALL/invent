@@ -721,7 +721,7 @@ class AiChatController extends Controller
                 Log::warning('Escalation email send failed', ['to' => $seniorEmail, 'error' => $e->getMessage()]);
             }
 
-            $answer = "I don't have this information.";
+            $answer = "I don't have this information. Your question has been escalated to the General team senior. You will be notified when they respond.";
 
             return response()->json([
                 'answer' => $answer,
