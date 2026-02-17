@@ -1328,7 +1328,7 @@
                             <a href="{{ route('shopify', ['products', 'shopify-Products']) }}">Products</a>
                         </li>
                         <li>
-                            <a href="{{ route('second', ['products', 'inventory']) }}">Inventory</a>
+                            <a href="{{ route('products.inventory') }}">Inventory</a>
                         </li>
                     </ul>
                 </div>

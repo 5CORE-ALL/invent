@@ -18,15 +18,22 @@ class MetaApiService
         $this->adAccountId = config('services.meta.ad_account_id');
         $this->apiVersion = config('services.meta.api_version', 'v21.0');
         $this->baseUrl = "https://graph.facebook.com/{$this->apiVersion}";
-
+    
+        // Temporarily comment out this exception
+        // if (!$this->accessToken || !$this->adAccountId) {
+        //     throw new \Exception('Meta API credentials not configured. Please set META_ACCESS_TOKEN and META_AD_ACCOUNT_ID in .env');
+        // }
+    
+        // Just log a warning instead
         if (!$this->accessToken || !$this->adAccountId) {
-            throw new \Exception('Meta API credentials not configured. Please set META_ACCESS_TOKEN and META_AD_ACCOUNT_ID in .env');
+            Log::warning('Meta API credentials not configured. Meta API features will be disabled.');
         }
-
+    
         // Normalize ad account ID - remove 'act_' prefix if it exists, we'll add it when needed
-        $this->adAccountId = preg_replace('/^act_/i', '', $this->adAccountId);
+        if ($this->adAccountId) {
+            $this->adAccountId = preg_replace('/^act_/i', '', $this->adAccountId);
+        }
     }
-
     /**
      * Fetch campaigns data for last 30 days (L30)
      * Includes both Facebook and Instagram campaigns
