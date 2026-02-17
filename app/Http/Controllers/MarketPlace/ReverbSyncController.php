@@ -9,8 +9,10 @@ use App\Models\ReverbSyncSettings;
 use App\Services\ShopifyApiService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\View\View;
 
 class ReverbSyncController extends Controller
@@ -24,86 +26,160 @@ class ReverbSyncController extends Controller
      */
     public function syncProducts(Request $request): View
     {
-        $searchName = $request->input('search_name');
-        $searchSku = $request->input('search_sku');
-        $stateTab = $request->input('state', 'all');
-
-        $baseQuery = ReverbProduct::query()
-            ->whereNotNull('sku')
-            ->where('sku', 'not like', '%Parent%');
-
-        // Tab filter: map UI state to listing_state (Reverb may return 'live' or 'active')
-        if ($stateTab === 'drafts') {
-            $baseQuery->where('listing_state', 'draft');
-        } elseif ($stateTab === 'active') {
-            $baseQuery->whereIn('listing_state', ['live', 'active']);
-        } elseif ($stateTab === 'ended') {
-            $baseQuery->where('listing_state', 'ended');
-        } elseif ($stateTab === 'sold') {
-            $baseQuery->where('listing_state', 'sold');
-        }
-
-        if ($searchSku !== null && $searchSku !== '') {
-            $baseQuery->where('sku', 'like', '%' . trim($searchSku) . '%');
-        }
-        if ($searchName !== null && $searchName !== '') {
-            $baseQuery->where(function ($q) use ($searchName) {
-                $q->where('product_title', 'like', '%' . trim($searchName) . '%')
-                    ->orWhere('sku', 'like', '%' . trim($searchName) . '%');
-            });
-        }
-
-        $products = $baseQuery->orderBy('sku')->paginate(50)->withQueryString();
-
-        // Counts for tabs (same base filters, no search)
-        $countBase = ReverbProduct::query()
-            ->whereNotNull('sku')
-            ->where('sku', 'not like', '%Parent%');
-        $counts = [
-            'all' => (clone $countBase)->count(),
-            'drafts' => (clone $countBase)->where('listing_state', 'draft')->count(),
-            'active' => (clone $countBase)->whereIn('listing_state', ['live', 'active'])->count(),
-            'ended' => (clone $countBase)->where('listing_state', 'ended')->count(),
-            'sold' => (clone $countBase)->where('listing_state', 'sold')->count(),
-        ];
-
-        $skus = $products->pluck('sku')->filter()->values()->all();
-        $shopifyDetails = $skus ? $this->shopifyApi->getProductDetailsBySkuMap($skus) : [];
-        $enriched = $products->getCollection()->map(function ($p) use ($shopifyDetails) {
-            $d = $shopifyDetails[$p->sku] ?? null;
-            $title = $d['title'] ?? $p->product_title ?? $p->sku;
-            return (object) [
-                'sku' => $p->sku,
-                'reverb_listing_id' => $p->reverb_listing_id,
-                'image_src' => $d['image_src'] ?? null,
-                'title' => $title,
-                'description' => $d['description'] ?? '',
-                'upc' => $d['upc'] ?? '',
-                'quantity' => (int) ($p->remaining_inventory ?? 0),
-                'price' => $p->price,
-                'brand' => $d['brand'] ?? '',
-                'model' => $d['model'] ?? '',
-                'status_has_link' => ! empty($p->reverb_listing_id),
-                'status_has_alert' => empty($p->reverb_listing_id) || (int) ($p->remaining_inventory ?? 0) <= 0,
-            ];
-        });
-        $products->setCollection($enriched);
-
-        // Cache product_title from Shopify for search-by-name
-        foreach ($shopifyDetails as $sku => $d) {
-            if (isset($d['title']) && $d['title'] !== '') {
-                ReverbProduct::where('sku', $sku)->update(['product_title' => $d['title']]);
-            }
-        }
-
-        return view('marketplace.reverb.products', [
-            'products' => $products,
-            'title' => 'Reverb - Products (Listed)',
-            'counts' => $counts,
-            'stateTab' => $stateTab,
-            'searchName' => $searchName,
-            'searchSku' => $searchSku,
+        Log::info('=== Reverb Sync Started ===', [
+            'search_name' => $request->input('search_name'),
+            'search_sku' => $request->input('search_sku'),
+            'state_tab' => $request->input('state', 'all'),
         ]);
+
+        try {
+            // Database connection check
+            try {
+                DB::connection()->getPdo();
+                Log::info('Database connected: ' . DB::connection()->getDatabaseName());
+            } catch (\Exception $e) {
+                Log::error('Database connection failed: ' . $e->getMessage());
+                throw $e;
+            }
+
+            // Table existence
+            $tables = ['reverb_products', 'reverb_order_metrics', 'reverb_sync_settings'];
+            foreach ($tables as $table) {
+                $exists = Schema::hasTable($table);
+                Log::info("Table {$table} exists: " . ($exists ? 'YES' : 'NO'));
+            }
+            if (! Schema::hasTable('reverb_products')) {
+                throw new \RuntimeException('Table reverb_products does not exist. Run: php artisan migrate');
+            }
+
+            // Column existence (defensive: avoid 500 if migrations not run on server)
+            $columns = Schema::getColumnListing('reverb_products');
+            Log::info('reverb_products columns: ' . implode(', ', $columns));
+            $hasListingState = in_array('listing_state', $columns);
+            $hasProductTitle = in_array('product_title', $columns);
+            $hasReverbListingId = in_array('reverb_listing_id', $columns);
+            Log::info('Column listing_state: ' . ($hasListingState ? 'YES' : 'NO'));
+            Log::info('Column product_title: ' . ($hasProductTitle ? 'YES' : 'NO'));
+            Log::info('Column reverb_listing_id: ' . ($hasReverbListingId ? 'YES' : 'NO'));
+
+            $searchName = $request->input('search_name');
+            $searchSku = $request->input('search_sku');
+            $stateTab = $request->input('state', 'all');
+
+            $baseQuery = ReverbProduct::query()
+                ->whereNotNull('sku')
+                ->where('sku', 'not like', '%Parent%');
+
+            Log::info('Base query count: ' . $baseQuery->count());
+
+            // Tab filter (only if listing_state column exists)
+            if ($hasListingState) {
+                if ($stateTab === 'drafts') {
+                    $baseQuery->where('listing_state', 'draft');
+                } elseif ($stateTab === 'active') {
+                    $baseQuery->whereIn('listing_state', ['live', 'active']);
+                } elseif ($stateTab === 'ended') {
+                    $baseQuery->where('listing_state', 'ended');
+                } elseif ($stateTab === 'sold') {
+                    $baseQuery->where('listing_state', 'sold');
+                }
+            }
+
+            Log::info('After tab filter count: ' . $baseQuery->count());
+
+            if ($searchSku !== null && $searchSku !== '') {
+                $baseQuery->where('sku', 'like', '%' . trim($searchSku) . '%');
+            }
+            if ($searchName !== null && $searchName !== '') {
+                if ($hasProductTitle) {
+                    $baseQuery->where(function ($q) use ($searchName) {
+                        $q->where('product_title', 'like', '%' . trim($searchName) . '%')
+                            ->orWhere('sku', 'like', '%' . trim($searchName) . '%');
+                    });
+                } else {
+                    $baseQuery->where('sku', 'like', '%' . trim($searchName) . '%');
+                }
+            }
+
+            Log::info('After search filter count: ' . $baseQuery->count());
+
+            $products = $baseQuery->orderBy('sku')->paginate(50)->withQueryString();
+            Log::info('Products pagination: ', ['total' => $products->total(), 'per_page' => $products->perPage()]);
+
+            // Counts for tabs (only if listing_state exists)
+            $countBase = ReverbProduct::query()
+                ->whereNotNull('sku')
+                ->where('sku', 'not like', '%Parent%');
+            if ($hasListingState) {
+                $counts = [
+                    'all' => (clone $countBase)->count(),
+                    'drafts' => (clone $countBase)->where('listing_state', 'draft')->count(),
+                    'active' => (clone $countBase)->whereIn('listing_state', ['live', 'active'])->count(),
+                    'ended' => (clone $countBase)->where('listing_state', 'ended')->count(),
+                    'sold' => (clone $countBase)->where('listing_state', 'sold')->count(),
+                ];
+            } else {
+                $allCount = (clone $countBase)->count();
+                $counts = [
+                    'all' => $allCount,
+                    'drafts' => 0,
+                    'active' => $allCount,
+                    'ended' => 0,
+                    'sold' => 0,
+                ];
+            }
+
+            $skus = $products->pluck('sku')->filter()->values()->all();
+            Log::info('Fetching Shopify details for SKUs: ' . count($skus));
+            $shopifyDetails = $skus ? $this->shopifyApi->getProductDetailsBySkuMap($skus) : [];
+
+            $enriched = $products->getCollection()->map(function ($p) use ($shopifyDetails, $hasProductTitle) {
+                $d = $shopifyDetails[$p->sku] ?? null;
+                $title = $d['title'] ?? ($hasProductTitle ? ($p->product_title ?? $p->sku) : $p->sku);
+                return (object) [
+                    'sku' => $p->sku,
+                    'reverb_listing_id' => $p->reverb_listing_id ?? null,
+                    'image_src' => $d['image_src'] ?? null,
+                    'title' => $title,
+                    'description' => $d['description'] ?? '',
+                    'upc' => $d['upc'] ?? '',
+                    'quantity' => (int) ($p->remaining_inventory ?? 0),
+                    'price' => $p->price,
+                    'brand' => $d['brand'] ?? '',
+                    'model' => $d['model'] ?? '',
+                    'status_has_link' => ! empty($p->reverb_listing_id),
+                    'status_has_alert' => empty($p->reverb_listing_id) || (int) ($p->remaining_inventory ?? 0) <= 0,
+                ];
+            });
+            $products->setCollection($enriched);
+
+            // Cache product_title from Shopify (only if column exists)
+            if ($hasProductTitle) {
+                foreach ($shopifyDetails as $sku => $d) {
+                    if (isset($d['title']) && $d['title'] !== '') {
+                        ReverbProduct::where('sku', $sku)->update(['product_title' => $d['title']]);
+                    }
+                }
+            }
+
+            Log::info('=== Reverb Sync Completed Successfully ===');
+            return view('marketplace.reverb.products', [
+                'products' => $products,
+                'title' => 'Reverb - Products (Listed)',
+                'counts' => $counts,
+                'stateTab' => $stateTab,
+                'searchName' => $searchName,
+                'searchSku' => $searchSku,
+            ]);
+        } catch (\Exception $e) {
+            Log::error('!!! EXCEPTION IN syncProducts !!!', [
+                'message' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            throw $e;
+        }
     }
 
     /**
