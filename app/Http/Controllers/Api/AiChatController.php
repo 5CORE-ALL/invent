@@ -712,7 +712,11 @@ class AiChatController extends Controller
                     $domain,
                     $replyLink
                 ));
-                Log::info('📧 AI escalation: mail sent successfully', ['to' => $seniorEmail]);
+
+                // Mark email as sent in database
+                $escalation->update(['email_notification_sent' => true]);
+
+                Log::info('📧 AI escalation: mail sent successfully', ['to' => $seniorEmail, 'escalation_id' => $escalation->id]);
             } catch (\Exception $e) {
                 Log::warning('Escalation email send failed', ['to' => $seniorEmail, 'error' => $e->getMessage()]);
             }
