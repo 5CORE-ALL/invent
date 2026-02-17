@@ -2948,13 +2948,15 @@
                         minWidth: 60,
                         mutator: function (value, data) {
                             var acos = parseFloat(data.acos || data.ACOS || 0);
-                            // ACOS-based SBGT rules
-                            if (acos > 25) return 1;
-                            if (acos >= 20) return 2;
-                            if (acos >= 15) return 4;
-                            if (acos >= 10) return 6;
-                            if (acos >= 5) return 8;
-                            return 10; // Less than 5
+                            // ACOS-based SBGT rules (updated to match AutoUpdateAmazonBgtKw.php)
+                            if (acos > 35) return 1;
+                            if (acos >= 30) return 3;
+                            if (acos >= 25) return 5;
+                            if (acos >= 20) return 10;
+                            if (acos >= 15) return 15;
+                            if (acos >= 10) return 20;
+                            if (acos >= 5) return 25;
+                            return 30; // Less than 5
                         },
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
@@ -3146,13 +3148,15 @@
                             var spend = parseFloat(data.pt_spend_L30 || 0);
                             var sales = parseFloat(data.pt_sales_L30 || 0);
                             var acos = sales > 0 ? (spend / sales) * 100 : 0;
-                            // ACOS-based SBGT rules
-                            if (acos > 25) return 1;
-                            if (acos >= 20) return 2;
-                            if (acos >= 15) return 4;
-                            if (acos >= 10) return 6;
-                            if (acos >= 5) return 8;
-                            return 10; // Less than 5
+                            // ACOS-based SBGT rules (updated to match AutoUpdateAmazonBgtKw.php)
+                            if (acos > 35) return 1;
+                            if (acos >= 30) return 3;
+                            if (acos >= 25) return 5;
+                            if (acos >= 20) return 10;
+                            if (acos >= 15) return 15;
+                            if (acos >= 10) return 20;
+                            if (acos >= 5) return 25;
+                            return 30; // Less than 5
                         },
                         formatter: function(cell) {
                             return cell.getValue();
@@ -3561,13 +3565,15 @@
                             var sales = parseFloat(data.hl_sales_L30 || 0);
                             // Match HL utilized page: spend > 0 && sales == 0 → ACOS = 100%
                             var acos = (spend > 0 && sales > 0) ? (spend / sales) * 100 : (spend > 0 ? 100 : 0);
-                            // ACOS-based SBGT rules
-                            if (acos > 25) return 1;
-                            if (acos >= 20) return 2;
-                            if (acos >= 15) return 4;
-                            if (acos >= 10) return 6;
-                            if (acos >= 5) return 8;
-                            return 10; // Less than 5
+                            // ACOS-based SBGT rules (updated to match AutoUpdateAmazonBgtKw.php)
+                            if (acos > 35) return 1;
+                            if (acos >= 30) return 3;
+                            if (acos >= 25) return 5;
+                            if (acos >= 20) return 10;
+                            if (acos >= 15) return 15;
+                            if (acos >= 10) return 20;
+                            if (acos >= 5) return 25;
+                            return 30; // Less than 5
                         },
                         formatter: function(cell) {
                             return cell.getValue();

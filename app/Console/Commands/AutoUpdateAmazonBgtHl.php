@@ -55,10 +55,45 @@ class AutoUpdateAmazonBgtHl extends Command
                 return 0;
             }
 
+            // Load bid caps from database
+            $bidCapsData = \App\Models\AmazonBidCap::all()->keyBy('sku');
+
+            // Track campaigns skipped due to bid cap
+            $skippedDueToCap = [];
+
             // Filter out campaigns with empty/null campaign_id or invalid sbgt
-            $validCampaigns = collect($campaigns)->filter(function ($campaign) {
-                return !empty($campaign->campaign_id) && isset($campaign->sbgt) && $campaign->sbgt > 0;
+            // Also filter out if SBGT > Bid Cap (cap protection)
+            $validCampaigns = collect($campaigns)->filter(function ($campaign) use ($bidCapsData, &$skippedDueToCap) {
+                if (empty($campaign->campaign_id) || !isset($campaign->sbgt) || $campaign->sbgt <= 0) {
+                    return false;
+                }
+                
+                // Check if bid cap exists for this SKU
+                $sku = strtoupper($campaign->campaignName ?? '');
+                if ($bidCapsData->has($sku)) {
+                    $bidCap = $bidCapsData[$sku]->bid_cap;
+                    // If SBGT exceeds bid cap, skip this campaign
+                    if ($bidCap > 0 && $campaign->sbgt > $bidCap) {
+                        $skippedDueToCap[] = [
+                            'campaign' => $campaign->campaignName,
+                            'sbgt' => $campaign->sbgt,
+                            'cap' => $bidCap
+                        ];
+                        return false; // Skip - SBGT exceeds cap
+                    }
+                }
+                
+                return true;
             })->values();
+
+            // Show campaigns skipped due to bid cap
+            if (count($skippedDueToCap) > 0) {
+                $this->warn("\n⚠️  HL Campaigns SKIPPED due to Bid Cap protection:");
+                foreach ($skippedDueToCap as $skipped) {
+                    $this->warn("  - {$skipped['campaign']}: SBGT \${$skipped['sbgt']} > Cap \${$skipped['cap']}");
+                }
+                $this->warn("");
+            }
 
             if ($validCampaigns->isEmpty()) {
                 $this->warn("No valid campaigns found (all have empty campaign_id or invalid budget).");
@@ -265,18 +300,22 @@ class AutoUpdateAmazonBgtHl extends Command
                 $sales = (float) ($row['ad_sales_l30'] ?? 0);
 
                 // ACOS-based SBGT rules
-                if ($acos > 25) {
+                if ($acos > 35) {
                     $sbgt = 1;
+                } elseif ($acos >= 30) {
+                    $sbgt = 3;
+                } elseif ($acos >= 25) {
+                    $sbgt = 5;
                 } elseif ($acos >= 20) {
-                    $sbgt = 2;
+                    $sbgt = 10;
                 } elseif ($acos >= 15) {
-                    $sbgt = 4;
+                    $sbgt = 15;
                 } elseif ($acos >= 10) {
-                    $sbgt = 6;
+                    $sbgt = 20;
                 } elseif ($acos >= 5) {
-                    $sbgt = 8;
+                    $sbgt = 25;
                 } else {
-                    $sbgt = 10; // Less than 5
+                    $sbgt = 30; // Less than 5
                 }
 
                 $row['sbgt'] = $sbgt;
