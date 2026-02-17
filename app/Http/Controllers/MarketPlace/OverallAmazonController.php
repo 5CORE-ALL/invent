@@ -2570,15 +2570,22 @@ class OverallAmazonController extends Controller
                 ? round((($price * 0.80 - $ship - $lp) / $price) * 100, 2)
                 : 0;
 
+            // GROI% (Gross ROI) = ((price × 0.80 - ship - lp) / lp) × 100
+            // Same numerator as GPFT, divided by LP instead of Price
+            $row['GROI%'] = $lp > 0
+                ? round((($price * 0.80 - $ship - $lp) / $lp) * 100, 2)
+                : 0;
+
             // PFT% = GPFT% - AD%
             $row['PFT%'] = round($row['GPFT%'] - $row['AD%'], 2);
 
-            // ROI% = ((price * (0.80 - AD%/100) - ship - lp) / lp) * 100
+            // NROI% (Net ROI) = ((price * (0.80 - AD%/100) - ship - lp) / lp) * 100
             $adDecimal = $row['AD%'] / 100;
             $row['ROI_percentage'] = round(
                 $lp > 0 ? (($price * (0.80 - $adDecimal) - $ship - $lp) / $lp) * 100 : 0,
                 2
             );
+            $row['NROI%'] = $row['ROI_percentage']; // Alias for clarity
 
             // Load NR field from AmazonDataView (where ListingAmazonController saves it)
             if (isset($nrValues[$pm->sku])) {
@@ -2791,6 +2798,8 @@ class OverallAmazonController extends Controller
                 'AD_Spend_L30' => round($rows->sum('AD_Spend_L30'), 2),
                 'AD%' => 0, // Parent summary AD% not calculated
                 'GPFT%' => $rows->count() > 0 ? round($rows->avg('GPFT%'), 2) : 0,
+                'GROI%' => $rows->count() > 0 ? round($rows->avg('GROI%'), 2) : 0,
+                'ROI_percentage' => $rows->count() > 0 ? round($rows->avg('ROI_percentage'), 2) : 0,
                 'PFT%' => $rows->count() > 0 ? round($rows->avg('PFT%'), 2) : 0,
                 'is_parent_summary' => true,
                 'ad_updates' => $adUpdates
