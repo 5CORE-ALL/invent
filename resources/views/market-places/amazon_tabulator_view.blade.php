@@ -2766,6 +2766,21 @@
                     },
 
                     {
+                        title: "Info",
+                        field: "campaign_info_icon",
+                        hozAlign: "center",
+                        visible: true,
+                        frozen: true,
+                        width: 50,
+                        headerSort: false,
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+                            const sku = rowData['(Child) sku'] || '';
+                            return `<i class="fas fa-info-circle campaign-info-btn" data-sku="${sku}" style="color: #ffc107; cursor: pointer; font-size: 16px;" title="Click to view KW, PT, HL details"></i>`;
+                        }
+                    },
+
+                    {
                         title: "GPFT %",
                         field: "GPFT%",
                         hozAlign: "center",
@@ -5688,6 +5703,7 @@
                     'A DIL %',          // A DIL %
                     'NRL',              // NRL
                     'price',            // Price
+                    'campaign_info_icon', // Info Icon
                     'GPFT%',            // GPFT%
                     'GROI%',            // GROI%
                     'l7_spend',         // 7 UB%
@@ -5704,7 +5720,7 @@
                 ];
                 
                 var pricingColumns = [
-                    '(Child) sku', 'price', 'c_price', 'actual_cost', 'buy_box_price', 
+                    '(Child) sku', 'price', 'campaign_info_icon', 'c_price', 'actual_cost', 'buy_box_price', 
                     'GPFT%', 'PFT%', 'ROI_percentage', 'cost', 'margin', 'INV', 'A_L30'
                 ];
                 // PT Ads columns - PT campaign specific (SAME sequence as KW Ads)
@@ -5725,8 +5741,9 @@
                     'active_toggle',        // 14. Active
                     'missing_ad',           // 15. Missing AD
                     'price',                // 16. Price
-                    'GPFT%',                // 17. GPFT%
-                    'GROI%',                // 18. GROI%
+                    'campaign_info_icon',   // 17. Info Icon
+                    'GPFT%',                // 18. GPFT%
+                    'GROI%',                // 19. GROI%
                     'pt_campaignBudgetAmount', // 19. PT BGT
                     'pt_sbgt',              // 18. PT SBGT
                     'pt_clicks_L7',         // 19. PT Clicks L7
@@ -5764,8 +5781,9 @@
                     'active_toggle',            // 14. Active
                     'missing_ad',               // 15. Missing AD
                     'price',                    // 16. Price
-                    'GPFT%',                    // 17. GPFT%
-                    'GROI%',                    // 18. GROI%
+                    'campaign_info_icon',       // 17. Info Icon
+                    'GPFT%',                    // 18. GPFT%
+                    'GROI%',                    // 19. GROI%
                     'hl_campaignBudgetAmount',  // 19. HL BGT
                     'hl_sbgt',                  // 18. HL SBGT
                     'hl_clicks_L7',             // 19. HL Clicks L7
@@ -7524,4 +7542,109 @@
             </div>
         </div>
     </div>
+
+    <!-- Campaign Comparison Modal -->
+    <div class="modal fade" id="campaignSummaryModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header bg-warning">
+                    <h5 class="modal-title">
+                        <i class="fas fa-info-circle"></i> Campaign Details - <span id="modal-sku-name"></span>
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <table class="table table-bordered table-sm">
+                        <thead class="table-dark">
+                            <tr>
+                                <th>Type</th>
+                                <th>AD SPEND</th>
+                                <th>AD SALES</th>
+                                <th>ACOS</th>
+                                <th>CLICKS</th>
+                                <th>AD SOLD</th>
+                                <th>CVR</th>
+                                <th>7UB</th>
+                                <th>1UB</th>
+                            </tr>
+                        </thead>
+                        <tbody id="campaign-comparison-tbody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Delegated event handler for campaign info icon click
+        $(document).on('click', '.campaign-info-btn', function(e) {
+            e.stopPropagation();
+            const sku = $(this).data('sku');
+            
+            // Find the row data
+            if (!table) return;
+            const allData = table.getData();
+            const rowData = allData.find(row => row['(Child) sku'] === sku);
+            
+            if (rowData) {
+                showCampaignDetailsForSku(rowData);
+            }
+        });
+        
+        function showCampaignDetailsForSku(rowData) {
+            const sku = rowData['(Child) sku'] || '';
+            $('#modal-sku-name').text(sku);
+            
+            const tbody = $('#campaign-comparison-tbody');
+            tbody.empty();
+            
+            // KW, PT, HL rows
+            const campaignTypes = [
+                { type: 'KW', bgClass: 'table-primary', fields: {
+                    spend: 'l30_spend', sales: 'l30_sales', clicks: 'l30_clicks', sold: 'l30_purchases',
+                    l7Spend: 'l7_spend', l1Spend: 'l1_spend', budget: 'campaignBudgetAmount'
+                }},
+                { type: 'PT', bgClass: 'table-info', fields: {
+                    spend: 'pt_spend_L30', sales: 'pt_sales_L30', clicks: 'pt_clicks_L30', sold: 'pt_sold_L30',
+                    l7Spend: 'pt_spend_L7', l1Spend: 'pt_spend_L1', budget: 'pt_campaignBudgetAmount'
+                }},
+                { type: 'HL', bgClass: 'table-warning', fields: {
+                    spend: 'hl_spend_L30', sales: 'hl_sales_L30', clicks: 'hl_clicks_L30', sold: 'hl_sold_L30',
+                    l7Spend: 'hl_spend_L7', l1Spend: 'hl_spend_L1', budget: 'hl_campaignBudgetAmount'
+                }}
+            ];
+            
+            campaignTypes.forEach(({type, bgClass, fields}) => {
+                const spend = parseFloat(rowData[fields.spend] || 0);
+                const sales = parseFloat(rowData[fields.sales] || 0);
+                const clicks = parseFloat(rowData[fields.clicks] || 0);
+                const sold = parseFloat(rowData[fields.sold] || 0);
+                const l7Spend = parseFloat(rowData[fields.l7Spend] || 0);
+                const l1Spend = parseFloat(rowData[fields.l1Spend] || 0);
+                const budget = parseFloat(rowData[fields.budget] || 0);
+                
+                const acos = sales > 0 ? ((spend / sales) * 100).toFixed(1) : '-';
+                const cvr = clicks > 0 ? ((sold / clicks) * 100).toFixed(1) : '-';
+                const ub7 = budget > 0 ? ((l7Spend / (budget * 7)) * 100).toFixed(0) : '-';
+                const ub1 = budget > 0 ? ((l1Spend / budget) * 100).toFixed(0) : '-';
+                
+                tbody.append(`
+                    <tr class="${bgClass}">
+                        <td class="fw-bold">${type}</td>
+                        <td class="text-end">${spend > 0 ? '$' + spend.toFixed(2) : '-'}</td>
+                        <td class="text-end">${sales > 0 ? '$' + sales.toFixed(2) : '-'}</td>
+                        <td class="text-center">${acos !== '-' ? acos + '%' : '-'}</td>
+                        <td class="text-center">${clicks > 0 ? clicks.toLocaleString() : '-'}</td>
+                        <td class="text-center">${sold > 0 ? sold.toLocaleString() : '-'}</td>
+                        <td class="text-center">${cvr !== '-' ? cvr + '%' : '-'}</td>
+                        <td class="text-center">${ub7 !== '-' ? ub7 + '%' : '-'}</td>
+                        <td class="text-center">${ub1 !== '-' ? ub1 + '%' : '-'}</td>
+                    </tr>
+                `);
+            });
+            
+            // Open the modal
+            $('#campaignSummaryModal').modal('show');
+        }
+    </script>
 @endsection
