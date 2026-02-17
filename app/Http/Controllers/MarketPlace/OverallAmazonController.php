@@ -2236,16 +2236,18 @@ class OverallAmazonController extends Controller
                 return strtoupper(trim(rtrim($cn, '.')));
             };
             
-            // Match L7 campaign - exact SKU match (same as KW page)
+            // Match L7 campaign - exact SKU match (supports " KW" suffix like PT supports " PT")
             $matchedCampaignL7 = $amazonSpCampaignReportsL7->first(function ($item) use ($cleanSku, $normalizeCampaignNameForMatch) {
                 $campaignName = $normalizeCampaignNameForMatch($item->campaignName);
-                return $campaignName === $cleanSku;
+                // Match exact SKU or SKU with " KW" suffix
+                return $campaignName === $cleanSku || $campaignName === $cleanSku . ' KW';
             });
             
-            // Match L1 campaign - exact SKU match (same as KW page)
+            // Match L1 campaign - exact SKU match (supports " KW" suffix like PT supports " PT")
             $matchedCampaignL1 = $amazonSpCampaignReportsL1->first(function ($item) use ($cleanSku, $normalizeCampaignNameForMatch) {
                 $campaignName = $normalizeCampaignNameForMatch($item->campaignName);
-                return $campaignName === $cleanSku;
+                // Match exact SKU or SKU with " KW" suffix
+                return $campaignName === $cleanSku || $campaignName === $cleanSku . ' KW';
             });
             
             // Match L90 campaign - exact SKU match
@@ -2254,10 +2256,11 @@ class OverallAmazonController extends Controller
                 return $campaignName === $cleanSku;
             });
             
-            // Also get L30 campaign for ACOS calculation (same as KW page)
+            // Also get L30 campaign for ACOS calculation (supports " KW" suffix)
             $matchedCampaignL30ForAcos = $amazonSpCampaignReportsL30->first(function ($item) use ($cleanSku, $normalizeCampaignNameForMatch) {
                 $campaignName = $normalizeCampaignNameForMatch($item->campaignName);
-                return $campaignName === $cleanSku;
+                // Match exact SKU or SKU with " KW" suffix
+                return $campaignName === $cleanSku || $campaignName === $cleanSku . ' KW';
             });
             
             // KW page fields for utilization - prioritize L30 data, fallback to L7/L1
@@ -2807,21 +2810,26 @@ class OverallAmazonController extends Controller
                 return strtoupper(trim(rtrim($cn, '.')));
             };
             
-            // Match L7 campaign for parent - EXACT match only (no partial/prefix matching)
-            // For parent rows, campaign should be exactly "PARENT {parent}" or "{parent}"
+            // Match L7 campaign for parent - supports " KW" suffix
+            // For parent rows, campaign should be exactly "PARENT {parent}" or "{parent}" or with " KW"
             // Do NOT match child campaigns like "DS CH BLK" when parent is "DS CH"
             $parentCampaignL7 = $amazonSpCampaignReportsL7->first(function ($item) use ($parentCampaignName, $parentCampaignNameNoDot, $normalizeCampaignName) {
                 $campaignName = $normalizeCampaignName($item->campaignName);
-                // Only match exact "PARENT {parent}" campaign, not child SKU campaigns
+                // Match exact "PARENT {parent}" campaign or with " KW" suffix
                 return $campaignName === $parentCampaignName 
-                    || $campaignName === $parentCampaignNameNoDot;
+                    || $campaignName === $parentCampaignNameNoDot
+                    || $campaignName === $parentCampaignName . ' KW'
+                    || $campaignName === $parentCampaignNameNoDot . ' KW';
             });
             
-            // Match L1 campaign for parent
+            // Match L1 campaign for parent - supports " KW" suffix
             $parentCampaignL1 = $amazonSpCampaignReportsL1->first(function ($item) use ($parentCampaignName, $parentCampaignNameNoDot, $normalizeCampaignName) {
                 $campaignName = $normalizeCampaignName($item->campaignName);
+                // Match exact "PARENT {parent}" campaign or with " KW" suffix
                 return $campaignName === $parentCampaignName 
-                    || $campaignName === $parentCampaignNameNoDot;
+                    || $campaignName === $parentCampaignNameNoDot
+                    || $campaignName === $parentCampaignName . ' KW'
+                    || $campaignName === $parentCampaignNameNoDot . ' KW';
             });
             
             // Match L90 campaign for parent (for budget)

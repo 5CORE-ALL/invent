@@ -273,7 +273,8 @@ class AutoUpdateAmazonBgtKw extends Command
                 $matchedCampaignL30 = $amazonSpCampaignReportsL30->first(function ($item) use ($sku) {
                     $campaignName = strtoupper(trim(rtrim($item->campaignName ?? '', '.')));
                     $cleanSku = strtoupper(trim(rtrim($sku, '.')));
-                    return $campaignName === $cleanSku;
+                    // Match campaign with or without " KW" suffix (like PT matches " PT")
+                    return $campaignName === $cleanSku || $campaignName === $cleanSku . ' KW';
                 });
 
                 if (!$matchedCampaignL30) {
