@@ -332,7 +332,7 @@ class AutoUpdateAmzUnderPtBids extends Command
 
             // Get price from AmazonDatasheet
             $amazonSheet = $amazonDatasheets[strtoupper($pm->sku)] ?? null;
-            $price = ($amazonSheet && isset($amazonSheet->price)) ? floatval($amazonSheet->price) : 0;
+            $price = ($amazonSheet && isset($amazonSheet->price) && $amazonSheet->price > 0) ? floatval($amazonSheet->price) : 0;
             // For parent SKU rows: use average of child SKUs' prices when direct price is 0
             if (($price === 0 || $price === null) && stripos($pm->sku ?? '', 'PARENT') !== false && !empty($avgPriceByParent)) {
                 $normSku = strtoupper(trim(preg_replace('/\s+/', ' ', str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $sku))));
@@ -424,7 +424,16 @@ class AutoUpdateAmzUnderPtBids extends Command
                     } else if ($avgCpc > 0) {
                         $row['sbid'] = floor($avgCpc * 1.10 * 100) / 100;
                     } else {
-                        $row['sbid'] = 1.00;
+                        // Use price-based default when no CPC data (same as UB=0% logic)
+                        if ($price < 50) {
+                            $row['sbid'] = 0.50;
+                        } else if ($price >= 50 && $price < 100) {
+                            $row['sbid'] = 1.00;
+                        } else if ($price >= 100 && $price < 200) {
+                            $row['sbid'] = 1.50;
+                        } else {
+                            $row['sbid'] = 2.00;
+                        }
                     }
                 }
                 
