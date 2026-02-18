@@ -89,6 +89,10 @@ class Kernel extends ConsoleKernel
         FetchShopifyB2CMetrics::class,
         \App\Console\Commands\RunAdvMastersCron::class,
         \App\Console\Commands\CollectWalmartMetrics::class,
+        \App\Console\Commands\UpdateEbayCompetitorPrices::class,
+        \App\Console\Commands\UpdateEbaySkuCompetitorPrices::class,
+        \App\Console\Commands\UpdateAmazonCompetitorPrices::class,
+        \App\Console\Commands\UpdateAmazonSkuCompetitorPrices::class,
     ];
 
     /**
@@ -638,6 +642,56 @@ class Kernel extends ConsoleKernel
             ->dailyAt('00:10')
             ->timezone('Asia/Kolkata')
             ->name('ebay-utilization-counts')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        /*
+        |--------------------------------------------------------------------------
+        | EBAY COMPETITOR PRICE UPDATES (Weekly)
+        |--------------------------------------------------------------------------
+        */
+        $schedule->command('ebay:update-prices')
+            ->weekly()
+            ->sundays()
+            ->at('03:00')
+            ->timezone('Asia/Kolkata')
+            ->name('ebay-competitor-prices-weekly')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        $schedule->command('ebay:update-sku-prices')
+            ->weekly()
+            ->sundays()
+            ->at('06:00')
+            ->timezone('Asia/Kolkata')
+            ->name('ebay-sku-competitor-prices-weekly')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        /*
+        |--------------------------------------------------------------------------
+        | AMAZON COMPETITOR PRICE UPDATES (Weekly)
+        |--------------------------------------------------------------------------
+        */
+        $schedule->command('amazon:update-prices')
+            ->weekly()
+            ->mondays()
+            ->at('03:00')
+            ->timezone('Asia/Kolkata')
+            ->name('amazon-competitor-prices-weekly')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        $schedule->command('amazon:update-sku-prices')
+            ->weekly()
+            ->mondays()
+            ->at('06:00')
+            ->timezone('Asia/Kolkata')
+            ->name('amazon-sku-competitor-prices-weekly')
             ->withoutOverlapping()
             ->runInBackground()
             ->appendOutputTo($log);

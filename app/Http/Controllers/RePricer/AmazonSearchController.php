@@ -27,6 +27,7 @@ class AmazonSearchController extends Controller
         $validator = Validator::make($request->all(), [
             'query' => 'required|string|max:255',
             'marketplace' => 'nullable|string|max:50',
+            'max_pages' => 'nullable|integer|min:1|max:50',
         ]);
 
         if ($validator->fails()) {
@@ -38,6 +39,7 @@ class AmazonSearchController extends Controller
 
         $searchQuery = $request->input('query');
         $marketplace = $request->input('marketplace', 'amazon');
+        $maxPages = $request->input('max_pages', 20);
         
         // Hardcoded API key
         $serpApiKey = '1ce23be0f3d775e0d631854b4856791aefa6e003415b28e33eb99b5a9c6a83c9';
@@ -50,7 +52,7 @@ class AmazonSearchController extends Controller
         }
 
         $collectedAsins = [];
-        $maxPages = 5;
+        $categoryInfo = null;
 
         try {
             // Fetch up to 5 pages of results
@@ -153,11 +155,20 @@ class AmazonSearchController extends Controller
                 ->orderBy('position', 'asc')
                 ->get();
 
+            // Calculate price statistics
+            $priceStats = $this->calculatePriceStats($results);
+
             return response()->json([
                 'success' => true,
                 'message' => 'Search completed successfully',
                 'query' => $searchQuery,
                 'total_results' => $results->count(),
+                'category_info' => $categoryInfo,
+                'price_stats' => [
+                    'min_price' => $priceStats['min_price'],
+                    'max_price' => $priceStats['max_price'],
+                    'avg_price' => $priceStats['avg_price'],
+                ],
                 'data' => $results
             ]);
 
@@ -207,7 +218,7 @@ class AmazonSearchController extends Controller
     }
 
     /**
-     * Get results for a specific search query
+     * Get results for a specific search query with filtering and sorting
      *
      * @param Request $request
      * @return \Illuminate\Http\JsonResponse
@@ -223,15 +234,166 @@ class AmazonSearchController extends Controller
             ], 422);
         }
 
-        $results = AmazonCompetitorAsin::where('search_query', $searchQuery)
-            ->orderBy('position', 'asc')
-            ->get();
+        // Start building the query
+        $query = AmazonCompetitorAsin::where('search_query', $searchQuery);
+
+        // Apply price filters (item price only)
+        if ($request->has('min_price') && $request->input('min_price') !== null) {
+            $query->where('price', '>=', floatval($request->input('min_price')));
+        }
+
+        if ($request->has('max_price') && $request->input('max_price') !== null) {
+            $query->where('price', '<=', floatval($request->input('max_price')));
+        }
+
+        // Apply rating filter
+        if ($request->has('min_rating') && $request->input('min_rating') !== null) {
+            $query->where('rating', '>=', floatval($request->input('min_rating')));
+        }
+
+        // Apply sorting
+        $sortBy = $request->input('sort_by', 'position');
+        $sortOrder = $request->input('sort_order', 'asc');
+
+        // Validate sort order
+        if (!in_array($sortOrder, ['asc', 'desc'])) {
+            $sortOrder = 'asc';
+        }
+
+        // Apply sorting based on sort_by parameter
+        switch ($sortBy) {
+            case 'price_low_high':
+            case 'price_lowest':
+            case 'lowest':
+            case 'low_to_high':
+                $query->orderByRaw('CASE WHEN price IS NULL THEN 1 ELSE 0 END, price ASC, position ASC');
+                break;
+            case 'price_high_low':
+            case 'price_highest':
+            case 'highest':
+            case 'high_to_low':
+                $query->orderByRaw('CASE WHEN price IS NULL THEN 1 ELSE 0 END, price DESC, position ASC');
+                break;
+            case 'rating_high_low':
+                $query->orderByRaw('CASE WHEN rating IS NULL THEN 1 ELSE 0 END, rating DESC, position ASC');
+                break;
+            case 'rating_low_high':
+                $query->orderByRaw('CASE WHEN rating IS NULL THEN 1 ELSE 0 END, rating ASC, position ASC');
+                break;
+            case 'reviews_high_low':
+                $query->orderByRaw('CASE WHEN reviews IS NULL THEN 1 ELSE 0 END, reviews DESC, position ASC');
+                break;
+            case 'position':
+                $query->orderBy('position', $sortOrder);
+                break;
+            case 'price':
+                if ($sortOrder === 'asc') {
+                    $query->orderByRaw('CASE WHEN price IS NULL THEN 1 ELSE 0 END, price ASC, position ASC');
+                } else {
+                    $query->orderByRaw('CASE WHEN price IS NULL THEN 1 ELSE 0 END, price DESC, position ASC');
+                }
+                break;
+            default:
+                $query->orderBy('position', 'asc');
+                break;
+        }
+
+        // Get all results (no pagination limit)
+        $results = $query->get();
+
+        // Calculate price statistics (item price only)
+        $priceStats = $this->calculatePriceStats($results);
 
         return response()->json([
             'success' => true,
             'query' => $searchQuery,
             'total_results' => $results->count(),
+            'filters_applied' => [
+                'min_price' => $request->input('min_price'),
+                'max_price' => $request->input('max_price'),
+                'min_rating' => $request->input('min_rating'),
+                'sort_by' => $sortBy,
+                'sort_order' => $sortOrder,
+            ],
+            'price_stats' => [
+                'min_price' => $priceStats['min_price'],
+                'max_price' => $priceStats['max_price'],
+                'avg_price' => $priceStats['avg_price'],
+            ],
             'data' => $results
+        ]);
+    }
+
+    /**
+     * Calculate price statistics from results
+     *
+     * @param \Illuminate\Database\Eloquent\Collection $results
+     * @return array
+     */
+    private function calculatePriceStats($results)
+    {
+        if ($results->isEmpty()) {
+            return [
+                'min_price' => 0,
+                'max_price' => 0,
+                'avg_price' => 0,
+            ];
+        }
+
+        $prices = $results->pluck('price')->filter()->values();
+
+        return [
+            'min_price' => $prices->min() ?? 0,
+            'max_price' => $prices->max() ?? 0,
+            'avg_price' => round($prices->avg() ?? 0, 2),
+        ];
+    }
+
+    /**
+     * Get filter options for a search query
+     *
+     * @param Request $request
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function getFilterOptions(Request $request)
+    {
+        $searchQuery = $request->input('query');
+
+        if (!$searchQuery) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Query parameter is required'
+            ], 422);
+        }
+
+        $results = AmazonCompetitorAsin::where('search_query', $searchQuery)->get();
+
+        if ($results->isEmpty()) {
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'price_range' => ['min' => 0, 'max' => 0],
+                    'rating_range' => ['min' => 0, 'max' => 5],
+                ]
+            ]);
+        }
+
+        // Get price ranges (item price only)
+        $prices = $results->pluck('price')->filter();
+        $ratings = $results->pluck('rating')->filter();
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'price_range' => [
+                    'min' => $prices->min() ?? 0,
+                    'max' => $prices->max() ?? 0,
+                ],
+                'rating_range' => [
+                    'min' => $ratings->min() ?? 0,
+                    'max' => $ratings->max() ?? 5,
+                ],
+            ]
         ]);
     }
 
@@ -268,39 +430,68 @@ class AmazonSearchController extends Controller
      */
     public function storeCompetitors(Request $request)
     {
-        $validator = Validator::make($request->all(), [
+        // Support both JSON and form-encoded requests
+        $input = $request->all();
+        if (empty($input['competitors']) && $request->getContent()) {
+            $decoded = json_decode($request->getContent(), true);
+            if (is_array($decoded)) {
+                $input = $decoded;
+            }
+        }
+
+        $validator = Validator::make($input, [
             'competitors' => 'required|array',
             'competitors.*.asin' => 'required|string',
             'competitors.*.sku' => 'required|string',
             'competitors.*.marketplace' => 'nullable|string',
             'competitors.*.product_title' => 'nullable|string',
             'competitors.*.product_link' => 'nullable|string',
+            'competitors.*.image' => 'nullable|string',
             'competitors.*.price' => 'nullable|numeric',
         ]);
 
         if ($validator->fails()) {
+            Log::warning('AmazonSearchController storeCompetitors validation failed', [
+                'errors' => $validator->errors()->toArray(),
+                'input_keys' => array_keys($input),
+            ]);
             return response()->json([
                 'success' => false,
+                'message' => 'Validation failed',
                 'errors' => $validator->errors()
             ], 422);
         }
 
-        $competitors = $request->input('competitors');
+        $competitors = $input['competitors'];
         $created = 0;
         $updated = 0;
 
+        DB::beginTransaction();
+        
         try {
             foreach ($competitors as $competitor) {
+                $price = floatval($competitor['price'] ?? 0);
+                $sku = trim($competitor['sku']);
+                $asin = trim($competitor['asin']);
+
+                if (empty($sku) || empty($asin)) {
+                    Log::warning('AmazonSearchController storeCompetitors: skipping empty sku/asin', [
+                        'competitor' => $competitor,
+                    ]);
+                    continue;
+                }
+
                 $result = AmazonSkuCompetitor::updateOrCreate(
                     [
-                        'sku' => $competitor['sku'],
-                        'asin' => $competitor['asin'],
+                        'sku' => $sku,
+                        'asin' => $asin,
                     ],
                     [
                         'marketplace' => $competitor['marketplace'] ?? 'amazon',
                         'product_title' => $competitor['product_title'] ?? null,
                         'product_link' => $competitor['product_link'] ?? null,
-                        'price' => $competitor['price'] ?? null,
+                        'image' => $competitor['image'] ?? null,
+                        'price' => $price,
                     ]
                 );
 
@@ -311,6 +502,8 @@ class AmazonSearchController extends Controller
                 }
             }
 
+            DB::commit();
+
             return response()->json([
                 'success' => true,
                 'message' => "Created {$created} new mappings, updated {$updated} existing mappings",
@@ -319,15 +512,20 @@ class AmazonSearchController extends Controller
             ]);
 
         } catch (\Exception $e) {
-            Log::error('Store Competitors Error', [
+            DB::rollBack();
+            
+            Log::error('Store Amazon Competitors Error', [
                 'message' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
+                'trace' => $e->getTraceAsString(),
+                'input' => $competitors ?? []
             ]);
 
             return response()->json([
                 'success' => false,
                 'message' => 'Error storing competitor mappings',
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
+                'line' => $e->getLine(),
+                'file' => basename($e->getFile())
             ], 500);
         }
     }

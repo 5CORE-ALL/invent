@@ -12,7 +12,9 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('suppliers', function (Blueprint $table) {
-            $table->string('zone')->nullable()->after('city');
+            if (!Schema::hasColumn('suppliers', 'zone')) {
+                $table->string('zone')->nullable()->after('city');
+            }
         });
     }
 

@@ -2982,6 +2982,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/search', [\App\Http\Controllers\RePricer\AmazonSearchController::class, 'search']);
         Route::get('/history', [\App\Http\Controllers\RePricer\AmazonSearchController::class, 'getSearchHistory']);
         Route::get('/results', [\App\Http\Controllers\RePricer\AmazonSearchController::class, 'getResults']);
+        Route::get('/filter-options', [\App\Http\Controllers\RePricer\AmazonSearchController::class, 'getFilterOptions']);
         Route::get('/skus', [\App\Http\Controllers\RePricer\AmazonSearchController::class, 'getSkus']);
         Route::post('/store-competitors', [\App\Http\Controllers\RePricer\AmazonSearchController::class, 'storeCompetitors']);
     });
@@ -2991,6 +2992,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/search', [\App\Http\Controllers\RePricer\EbaySearchController::class, 'search']);
         Route::get('/history', [\App\Http\Controllers\RePricer\EbaySearchController::class, 'getSearchHistory']);
         Route::get('/results', [\App\Http\Controllers\RePricer\EbaySearchController::class, 'getResults']);
+        Route::get('/filter-options', [\App\Http\Controllers\RePricer\EbaySearchController::class, 'getFilterOptions']);
         Route::get('/skus', [\App\Http\Controllers\RePricer\EbaySearchController::class, 'getSkus']);
         Route::post('/store-competitors', [\App\Http\Controllers\RePricer\EbaySearchController::class, 'storeCompetitors']);
     });

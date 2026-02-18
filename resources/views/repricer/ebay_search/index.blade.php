@@ -277,6 +277,46 @@
                     
                     <div class="stats-container mb-4" id="statsContainer"></div>
                     
+                    <!-- Sorting and Filtering Controls -->
+                    <div class="card bg-light mb-4" id="sortFilterContainer" style="display: none;">
+                        <div class="card-body">
+                            <div class="row g-3">
+                                <div class="col-md-3">
+                                    <label class="form-label fw-bold">Sort By</label>
+                                    <select class="form-select" id="sortBy">
+                                        <option value="position">eBay Position (Default)</option>
+                                        <option value="price_low_high">Price: Low to High</option>
+                                        <option value="price_high_low">Price: High to Low</option>
+                                        <option value="condition">Condition</option>
+                                        <option value="seller_rating">Seller Rating</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label fw-bold">Min Price</label>
+                                    <input type="number" class="form-control" id="minPrice" placeholder="$0.00" step="0.01" min="0">
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label fw-bold">Max Price</label>
+                                    <input type="number" class="form-control" id="maxPrice" placeholder="$999.99" step="0.01" min="0">
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label fw-bold">Condition</label>
+                                    <select class="form-select" id="conditionFilter">
+                                        <option value="">All Conditions</option>
+                                    </select>
+                                </div>
+                                <div class="col-12 text-center">
+                                    <button type="button" class="btn btn-primary" id="applyFiltersBtn">
+                                        <i class="mdi mdi-filter me-2"></i>Apply Filters & Sort
+                                    </button>
+                                    <button type="button" class="btn btn-secondary" id="resetFiltersBtn">
+                                        <i class="mdi mdi-refresh me-2"></i>Reset
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
                     <div class="mb-4" id="bulkActionsContainer" style="display: none;">
                         <div class="card bg-light">
                             <div class="card-body">
@@ -370,6 +410,8 @@
 <script>
 $(document).ready(function() {
     let availableSkus = [];
+    let currentSearchQuery = '';
+    let currentMarketplace = 'ebay';
     
     // Initialize Select2 for bulk SKU dropdown
     function initializeSelect2() {
@@ -423,8 +465,25 @@ $(document).ready(function() {
         $('.competitor-checkbox').prop('checked', isChecked);
     });
     
+    // Apply filters and sorting
+    $('#applyFiltersBtn').on('click', function() {
+        applyFiltersAndSort();
+    });
+    
+    // Reset filters
+    $('#resetFiltersBtn').on('click', function() {
+        $('#sortBy').val('position');
+        $('#minPrice').val('');
+        $('#maxPrice').val('');
+        $('#conditionFilter').val('');
+        applyFiltersAndSort();
+    });
+    
     // Perform search
     function performSearch(query, marketplace) {
+        currentSearchQuery = query;
+        currentMarketplace = marketplace;
+        
         $('#loadingSpinner').show();
         $('#resultsContainer').hide();
         
@@ -441,6 +500,7 @@ $(document).ready(function() {
                 
                 if (response.success) {
                     displayResults(response);
+                    loadFilterOptions(query);
                 } else {
                     let errorDetails = response.message || 'Unknown error';
                     if (response.error) {
@@ -469,6 +529,74 @@ $(document).ready(function() {
                 
                 alert('Error: ' + errorMsg);
                 console.error('AJAX Error:', xhr.responseJSON || xhr.responseText);
+            }
+        });
+    }
+    
+    // Apply filters and sorting
+    function applyFiltersAndSort() {
+        if (!currentSearchQuery) {
+            alert('Please perform a search first');
+            return;
+        }
+        
+        const sortBy = $('#sortBy').val();
+        const minPrice = $('#minPrice').val();
+        const maxPrice = $('#maxPrice').val();
+        const condition = $('#conditionFilter').val();
+        
+        $('#loadingSpinner').show();
+        
+        $.ajax({
+            url: '/repricer/ebay-search/results',
+            method: 'GET',
+            data: {
+                query: currentSearchQuery,
+                sort_by: sortBy,
+                min_price: minPrice,
+                max_price: maxPrice,
+                condition: condition
+            },
+            success: function(response) {
+                $('#loadingSpinner').hide();
+                
+                if (response.success) {
+                    displayResults(response);
+                } else {
+                    alert('Error: ' + (response.message || 'Failed to apply filters'));
+                }
+            },
+            error: function(xhr) {
+                $('#loadingSpinner').hide();
+                alert('Error: Failed to apply filters');
+                console.error('Filter Error:', xhr.responseJSON || xhr.responseText);
+            }
+        });
+    }
+    
+    // Load filter options
+    function loadFilterOptions(query) {
+        $.ajax({
+            url: '/repricer/ebay-search/filter-options',
+            method: 'GET',
+            data: { query: query },
+            success: function(response) {
+                if (response.success && response.data) {
+                    // Populate condition filter
+                    let conditionOptions = '<option value="">All Conditions</option>';
+                    if (response.data.conditions && response.data.conditions.length > 0) {
+                        response.data.conditions.forEach(function(condition) {
+                            conditionOptions += `<option value="${condition}">${condition}</option>`;
+                        });
+                    }
+                    $('#conditionFilter').html(conditionOptions);
+                    
+                    // Show sort/filter container
+                    $('#sortFilterContainer').show();
+                }
+            },
+            error: function() {
+                console.error('Failed to load filter options');
             }
         });
     }

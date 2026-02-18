@@ -502,7 +502,7 @@
         <!-- Statistics Cards -->
         <div class="row mb-4">
             <!-- Total Tasks -->
-            <div class="col-xl-3 col-md-6">
+            <div class="col-xl col-lg col-md-4 col-sm-6">
                 <div class="stat-card stat-card-blue">
                     <div class="stat-icon">
                         <i class="mdi mdi-format-list-bulleted"></i>
@@ -515,7 +515,7 @@
             </div>
 
             <!-- Daily Tasks -->
-            <div class="col-xl-3 col-md-6">
+            <div class="col-xl col-lg col-md-4 col-sm-6">
                 <div class="stat-card stat-card-cyan">
                     <div class="stat-icon">
                         <i class="mdi mdi-calendar-today"></i>
@@ -528,7 +528,7 @@
             </div>
 
             <!-- Weekly Tasks -->
-            <div class="col-xl-3 col-md-6">
+            <div class="col-xl col-lg col-md-4 col-sm-6">
                 <div class="stat-card stat-card-purple">
                     <div class="stat-icon">
                         <i class="mdi mdi-calendar-week"></i>
@@ -541,7 +541,7 @@
             </div>
 
             <!-- Monthly Tasks -->
-            <div class="col-xl-3 col-md-6">
+            <div class="col-xl col-lg col-md-4 col-sm-6">
                 <div class="stat-card stat-card-orange">
                     <div class="stat-icon">
                         <i class="mdi mdi-calendar-month"></i>
@@ -552,11 +552,9 @@
                     </div>
                 </div>
             </div>
-        </div>
 
-        <!-- Active Tasks -->
-        <div class="row mb-4">
-            <div class="col-xl-3 col-md-6">
+            <!-- Active Tasks -->
+            <div class="col-xl col-lg col-md-4 col-sm-6">
                 <div class="stat-card stat-card-green">
                     <div class="stat-icon">
                         <i class="mdi mdi-play-circle"></i>
@@ -957,55 +955,44 @@
                     
                     // Column Order: FLAG RAISED, GROUP, TITLE, ASSIGNER, ASSIGNEE, ETC(MIN), STATUS, L1&L2, TL, VL, FORMS, FR, CL, TYPE, ACTION
                     
-                    // FLAG RAISED
-                    cols.push({
-                        title: "FLAG RAISED?", 
-                        field: "flag_raise",
-                        width: 60,
-                        hozAlign: "center",
-                        formatter: function(cell) {
-                            var value = cell.getValue();
-                            return value == 1 ? '<i class="mdi mdi-flag text-danger" style="font-size: 18px;"></i>' : '-';
-                        }
-                    });
+                    // FLAG RAISED - HIDDEN
+                    // cols.push({
+                    //     title: "FLAG RAISED?", 
+                    //     field: "flag_raise",
+                    //     width: 60,
+                    //     hozAlign: "center",
+                    //     formatter: function(cell) {
+                    //         var value = cell.getValue();
+                    //         return value == 1 ? '<i class="mdi mdi-flag text-danger" style="font-size: 18px;"></i>' : '-';
+                    //     }
+                    // });
                     
                     // GROUP
                     cols.push({
                         title: "GROUP", 
                         field: "group", 
-                        minWidth: 120, 
+                        width: 250,
+                        widthGrow: 1,
                         formatter: function(cell) {
                             var value = cell.getValue();
                             return value ? '<span style="color: #6c757d;">' + value + '</span>' : '<span style="color: #adb5bd;">-</span>';
                         }
                     });
                     
-                    // TITLE - Multi-line with word wrap (no info icon)
+                    // TITLE - Multi-line with word wrap (no alert icon)
                     cols.push({
                         title: "TITLE", 
                         field: "title", 
-                        width: 300,
+                        width: 400,
+                        widthGrow: 2,
                         variableHeight: true, // Allow row height to expand
                         formatter: function(cell) {
                             var rowData = cell.getRow().getData();
                             var title = cell.getValue() || '';
-                            var taskId = rowData.id;
-                            var isOverdue = false;
-                            
-                            var startDate = rowData.start_date;
-                            if (startDate && !['Done', 'Archived'].includes(rowData.status)) {
-                                var tidDate = new Date(startDate);
-                                var overdueDate = new Date(tidDate);
-                                overdueDate.setDate(overdueDate.getDate() + 10);
-                                isOverdue = overdueDate < new Date();
-                            }
-                            
-                            var overdueIcon = isOverdue ? '<i class="mdi mdi-alert-circle text-danger me-1" style="font-size: 14px;"></i>' : '';
                             var htmlTitle = String(title).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
                             
-                            // Multi-line title display with word wrap
+                            // Multi-line title display with word wrap (no alert icon)
                             return '<div style="display: flex; align-items: flex-start; gap: 4px; padding: 4px 0;">' + 
-                                   overdueIcon + 
                                    '<div class="title-cell-content"><strong>' + htmlTitle + '</strong></div>' +
                                    '</div>';
                         }
@@ -1053,278 +1040,285 @@
                         }
                     });
                     
-                    // TID (Task Initiation Date) - BLUE COLOR
-                    cols.push({
-                        title: "TID", 
-                        field: "start_date", 
-                        width: 120,
-                        formatter: function(cell) {
-                            var value = cell.getValue();
-                            if (value) {
-                                var date = new Date(value);
-                                var day = String(date.getDate()).padStart(2, '0');
-                                var month = date.toLocaleString('default', { month: 'short' });
-                                return '<span style="color: #0d6efd; font-weight: 600;">' + day + '-' + month + '</span>';
-                            }
-                            return '<span style="color: #adb5bd;">-</span>';
-                        }
-                    });
+                    // TID (Task Initiation Date) - HIDDEN
+                    // cols.push({
+                    //     title: "TID", 
+                    //     field: "start_date", 
+                    //     width: 120,
+                    //     formatter: function(cell) {
+                    //         var value = cell.getValue();
+                    //         if (value) {
+                    //             var date = new Date(value);
+                    //             var day = String(date.getDate()).padStart(2, '0');
+                    //             var month = date.toLocaleString('default', { month: 'short' });
+                    //             return '<span style="color: #0d6efd; font-weight: 600;">' + day + '-' + month + '</span>';
+                    //         }
+                    //         return '<span style="color: #adb5bd;">-</span>';
+                    //     }
+                    // });
                     
-                    // O DATE (Due Date) - Red=overdue, Orange=due soon, Green=future
-                    cols.push({
-                        title: "O DATE", 
-                        field: "due_date", 
-                        width: 120,
-                        formatter: function(cell) {
-                            var value = cell.getValue();
-                            if (value) {
-                                var dueDate = new Date(value);
-                                var day = String(dueDate.getDate()).padStart(2, '0');
-                                var month = dueDate.toLocaleString('default', { month: 'short' });
-                                
-                                var now = new Date();
-                                now.setHours(0, 0, 0, 0);
-                                var dueDateOnly = new Date(dueDate);
-                                dueDateOnly.setHours(0, 0, 0, 0);
-                                
-                                var diffDays = Math.ceil((dueDateOnly - now) / (1000 * 60 * 60 * 24));
-                                
-                                var color = diffDays < 0 ? '#dc3545' : (diffDays <= 1 ? '#fd7e14' : '#28a745');
-                                
-                                return '<span style="color: ' + color + '; font-weight: 600;">' + day + '-' + month + '</span>';
-                            }
-                            return '<span style="color: #adb5bd;">-</span>';
-                        }
-                    });
+                    // O DATE (Due Date) - HIDDEN
+                    // cols.push({
+                    //     title: "O DATE", 
+                    //     field: "due_date", 
+                    //     width: 120,
+                    //     formatter: function(cell) {
+                    //         var value = cell.getValue();
+                    //         if (value) {
+                    //             var dueDate = new Date(value);
+                    //             var day = String(dueDate.getDate()).padStart(2, '0');
+                    //             var month = dueDate.toLocaleString('default', { month: 'short' });
+                    //             
+                    //             var now = new Date();
+                    //             now.setHours(0, 0, 0, 0);
+                    //             var dueDateOnly = new Date(dueDate);
+                    //             dueDateOnly.setHours(0, 0, 0, 0);
+                    //             
+                    //             var diffDays = Math.ceil((dueDateOnly - now) / (1000 * 60 * 60 * 24));
+                    //             
+                    //             var color = diffDays < 0 ? '#dc3545' : (diffDays <= 1 ? '#fd7e14' : '#28a745');
+                    //             
+                    //             return '<span style="color: ' + color + '; font-weight: 600;">' + day + '-' + month + '</span>';
+                    //         }
+                    //         return '<span style="color: #adb5bd;">-</span>';
+                    //     }
+                    // });
                     
-                    // ETC (Estimated Time)
-                    cols.push({
-                        title: "ETC", 
-                        field: "eta_time", 
-                        width: 90,
-                        hozAlign: "center",
-                        formatter: function(cell) {
-                            var value = cell.getValue();
-                            return value ? value : '<span style="color: #adb5bd;">-</span>';
-                        }
-                    });
+                    // ETC (Estimated Time) - HIDDEN
+                    // cols.push({
+                    //     title: "ETC", 
+                    //     field: "eta_time", 
+                    //     width: 90,
+                    //     hozAlign: "center",
+                    //     formatter: function(cell) {
+                    //         var value = cell.getValue();
+                    //         return value ? value : '<span style="color: #adb5bd;">-</span>';
+                    //     }
+                    // });
                     
-                    // ATC (Actual Time)
-                    cols.push({
-                        title: "ATC", 
-                        field: "etc_done", 
-                        width: 90,
-                        hozAlign: "center",
-                        formatter: function(cell) {
-                            var value = cell.getValue();
-                            return value ? '<strong style="color: #28a745;">' + value + '</strong>' : '<span style="color: #adb5bd;">0</span>';
-                        }
-                    });
+                    // ATC (Actual Time) - HIDDEN
+                    // cols.push({
+                    //     title: "ATC", 
+                    //     field: "etc_done", 
+                    //     width: 90,
+                    //     hozAlign: "center",
+                    //     formatter: function(cell) {
+                    //         var value = cell.getValue();
+                    //         return value ? '<strong style="color: #28a745;">' + value + '</strong>' : '<span style="color: #adb5bd;">0</span>';
+                    //     }
+                    // });
                     
-                    // C DAY (Days since completion)
-                    cols.push({
-                        title: "C DAY", 
-                        field: "completion_day", 
-                        width: 90,
-                        hozAlign: "center",
-                        formatter: function(cell) {
-                            var rowData = cell.getRow().getData();
-                            var value = cell.getValue();
-                            if (rowData.status === 'Done' && rowData.completion_date) {
-                                try {
-                                    var completed = new Date(rowData.completion_date);
-                                    var now = new Date();
-                                    var diffDays = Math.ceil((now - completed) / (1000 * 60 * 60 * 24));
-                                    return '<strong style="color: #6610f2;">' + diffDays + '</strong>';
-                                } catch(e) {
-                                    return value ? '<strong style="color: #6610f2;">' + value + '</strong>' : '<span style="color: #adb5bd;">-</span>';
-                                }
-                            }
-                            return '<span style="color: #adb5bd;">-</span>';
-                        }
-                    });
+                    // C DAY (Days since completion) - HIDDEN
+                    // cols.push({
+                    //     title: "C DAY", 
+                    //     field: "completion_day", 
+                    //     width: 90,
+                    //     hozAlign: "center",
+                    //     formatter: function(cell) {
+                    //         var rowData = cell.getRow().getData();
+                    //         var value = cell.getValue();
+                    //         if (rowData.status === 'Done' && rowData.completion_date) {
+                    //             try {
+                    //                 var completed = new Date(rowData.completion_date);
+                    //                 var now = new Date();
+                    //                 var diffDays = Math.ceil((now - completed) / (1000 * 60 * 60 * 24));
+                    //                 return '<strong style="color: #6610f2;">' + diffDays + '</strong>';
+                    //             } catch(e) {
+                    //                 return value ? '<strong style="color: #6610f2;">' + value + '</strong>' : '<span style="color: #adb5bd;">-</span>';
+                    //             }
+                    //         }
+                    //         return '<span style="color: #adb5bd;">-</span>';
+                    //     }
+                    // });
                     
-                    // STATUS
-                    cols.push({
-                        title: "STATUS", 
-                        field: "status", 
-                        width: 100,
-                        hozAlign: "center",
-                        formatter: function(cell) {
-                            var rowData = cell.getRow().getData();
-                            var value = cell.getValue();
-                            var taskId = rowData.id;
-                            var assignorId = rowData.assignor_id;
-                            var assigneeId = rowData.assignee_id;
-                            
-                            // Check if user can update status
-                            var canUpdateStatus = isAdmin || assignorId === currentUserId || assigneeId === currentUserId;
-                            
-                            var statuses = {
-                                'Todo': {color: '#0dcaf0'},
-                                'Working': {color: '#ffc107'},
-                                'Archived': {color: '#6c757d'},
-                                'Done': {color: '#28a745'},
-                                'Need Help': {color: '#fd7e14'},
-                                'Need Approval': {color: '#6610f2'},
-                                'Dependent': {color: '#d63384'},
-                                'Approved': {color: '#20c997'},
-                                'Hold': {color: '#495057'},
-                                'Rework': {color: '#f5576c'}
-                            };
-                            var currentStatus = statuses[value] || {color: '#6c757d'};
-                            
-                            // Always show as badge (read-only - no status changes)
-                            return '<span style="background: ' + currentStatus.color + '; color: #fff; padding: 6px 14px; border-radius: 20px; font-size: 12px; font-weight: 600;">' + value + '</span>';
-                        }
-                    });
+                    // STATUS - HIDDEN
+                    // cols.push({
+                    //     title: "STATUS", 
+                    //     field: "status", 
+                    //     width: 100,
+                    //     hozAlign: "center",
+                    //     formatter: function(cell) {
+                    //         var rowData = cell.getRow().getData();
+                    //         var value = cell.getValue();
+                    //         var taskId = rowData.id;
+                    //         var assignorId = rowData.assignor_id;
+                    //         var assigneeId = rowData.assignee_id;
+                    //         
+                    //         // Check if user can update status
+                    //         var canUpdateStatus = isAdmin || assignorId === currentUserId || assigneeId === currentUserId;
+                    //         
+                    //         var statuses = {
+                    //             'Todo': {color: '#0dcaf0'},
+                    //             'Working': {color: '#ffc107'},
+                    //             'Archived': {color: '#6c757d'},
+                    //             'Done': {color: '#28a745'},
+                    //             'Need Help': {color: '#fd7e14'},
+                    //             'Need Approval': {color: '#6610f2'},
+                    //             'Dependent': {color: '#d63384'},
+                    //             'Approved': {color: '#20c997'},
+                    //             'Hold': {color: '#495057'},
+                    //             'Rework': {color: '#f5576c'}
+                    //         };
+                    //         var currentStatus = statuses[value] || {color: '#6c757d'};
+                    //         
+                    //         // Always show as badge (read-only - no status changes)
+                    //         return '<span style="background: ' + currentStatus.color + '; color: #fff; padding: 6px 14px; border-radius: 20px; font-size: 12px; font-weight: 600;">' + value + '</span>';
+                    //     }
+                    // });
                     
-                    // L1 & L2
-                    cols.push({
-                        title: "L1 & L2", 
-                        field: "link1",
-                        width: 80,
-                        hozAlign: "center",
-                        formatter: function(cell) {
-                            var rowData = cell.getRow().getData();
-                            var link1 = rowData.link1;
-                            var link2 = rowData.link2;
-                            if (link1 || link2) {
-                                return '<i class="mdi mdi-link text-primary" style="font-size: 18px; cursor: pointer;" title="Has links"></i>';
-                            }
-                            return '-';
-                        }
-                    });
+                    // L1 & L2 - HIDDEN
+                    // cols.push({
+                    //     title: "L1 & L2", 
+                    //     field: "link1",
+                    //     width: 80,
+                    //     hozAlign: "center",
+                    //     formatter: function(cell) {
+                    //         var rowData = cell.getRow().getData();
+                    //         var link1 = rowData.link1;
+                    //         var link2 = rowData.link2;
+                    //         if (link1 || link2) {
+                    //             return '<i class="mdi mdi-link text-primary" style="font-size: 18px; cursor: pointer;" title="Has links"></i>';
+                    //         }
+                    //         return '-';
+                    //     }
+                    // });
                     
-                    // TL (Training Link)
-                    cols.push({
-                        title: "TL",
-                        field: "link3",
-                        width: 60,
-                        hozAlign: "center",
-                        formatter: function(cell) {
-                            var value = cell.getValue();
-                            return value ? '<a href="' + value + '" target="_blank"><i class="mdi mdi-link text-info" style="font-size: 18px;"></i></a>' : '-';
-                        }
-                    });
+                    // TL (Training Link) - HIDDEN
+                    // cols.push({
+                    //     title: "TL",
+                    //     field: "link3",
+                    //     width: 60,
+                    //     hozAlign: "center",
+                    //     formatter: function(cell) {
+                    //         var value = cell.getValue();
+                    //         return value ? '<a href="' + value + '" target="_blank"><i class="mdi mdi-link text-info" style="font-size: 18px;"></i></a>' : '-';
+                    //     }
+                    // });
                     
-                    // VL (Video Link)
-                    cols.push({
-                        title: "VL",
-                        field: "link4",
-                        width: 60,
-                        hozAlign: "center",
-                        formatter: function(cell) {
-                            var value = cell.getValue();
-                            return value ? '<a href="' + value + '" target="_blank"><i class="mdi mdi-link text-danger" style="font-size: 18px;"></i></a>' : '-';
-                        }
-                    });
+                    // VL (Video Link) - HIDDEN
+                    // cols.push({
+                    //     title: "VL",
+                    //     field: "link4",
+                    //     width: 60,
+                    //     hozAlign: "center",
+                    //     formatter: function(cell) {
+                    //         var value = cell.getValue();
+                    //         return value ? '<a href="' + value + '" target="_blank"><i class="mdi mdi-link text-danger" style="font-size: 18px;"></i></a>' : '-';
+                    //     }
+                    // });
                     
-                    // FORMS
-                    cols.push({
-                        title: "FORMS",
-                        field: "link5",
-                        width: 80,
-                        hozAlign: "center",
-                        formatter: function(cell) {
-                            var value = cell.getValue();
-                            return value ? '<a href="' + value + '" target="_blank"><i class="mdi mdi-link text-success" style="font-size: 18px;"></i></a>' : '-';
-                        }
-                    });
+                    // FORMS - HIDDEN
+                    // cols.push({
+                    //     title: "FORMS",
+                    //     field: "link5",
+                    //     width: 80,
+                    //     hozAlign: "center",
+                    //     formatter: function(cell) {
+                    //         var value = cell.getValue();
+                    //         return value ? '<a href="' + value + '" target="_blank"><i class="mdi mdi-link text-success" style="font-size: 18px;"></i></a>' : '-';
+                    //     }
+                    // });
                     
-                    // FR (Form Report)
-                    cols.push({
-                        title: "FR",
-                        field: "link6",
-                        width: 60,
-                        hozAlign: "center",
-                        formatter: function(cell) {
-                            var value = cell.getValue();
-                            return value ? '<a href="' + value + '" target="_blank"><i class="mdi mdi-link text-warning" style="font-size: 18px;"></i></a>' : '-';
-                        }
-                    });
+                    // FR (Form Report) - HIDDEN
+                    // cols.push({
+                    //     title: "FR",
+                    //     field: "link6",
+                    //     width: 60,
+                    //     hozAlign: "center",
+                    //     formatter: function(cell) {
+                    //         var value = cell.getValue();
+                    //         return value ? '<a href="' + value + '" target="_blank"><i class="mdi mdi-link text-warning" style="font-size: 18px;"></i></a>' : '-';
+                    //     }
+                    // });
                     
-                    // CL (Checklist)
-                    cols.push({
-                        title: "CL",
-                        field: "link7",
-                        width: 60,
-                        hozAlign: "center",
-                        formatter: function(cell) {
-                            var value = cell.getValue();
-                            return value ? '<a href="' + value + '" target="_blank"><i class="mdi mdi-link text-secondary" style="font-size: 18px;"></i></a>' : '-';
-                        }
-                    });
+                    // CL (Checklist) - HIDDEN
+                    // cols.push({
+                    //     title: "CL",
+                    //     field: "link7",
+                    //     width: 60,
+                    //     hozAlign: "center",
+                    //     formatter: function(cell) {
+                    //         var value = cell.getValue();
+                    //         return value ? '<a href="' + value + '" target="_blank"><i class="mdi mdi-link text-secondary" style="font-size: 18px;"></i></a>' : '-';
+                    //     }
+                    // });
                     
-                    // TYPE (Schedule Type)
+                    // FREQ (Frequency) - Show abbreviations
                     cols.push({
-                        title: "TYPE", 
+                        title: "FREQ", 
                         field: "schedule_type", 
-                        width: 100,
+                        width: 80,
                         hozAlign: "center",
                         formatter: function(cell) {
                             var value = cell.getValue() || '-';
-                            return '<strong style="color: #6c757d;">' + value + '</strong>';
-                        }
-                    });
-                    
-                    // PRIORITY (Dark colored backgrounds)
-                    cols.push({
-                        title: "PRIORITY", 
-                        field: "priority", 
-                        width: 110, 
-                        hozAlign: "center",
-                        formatter: function(cell) {
-                            var value = cell.getValue() || 'Normal';
-                            var styles = {
-                                'Low': {bg: '#6c757d', color: '#fff'},
-                                'Normal': {bg: '#0d6efd', color: '#fff'},
-                                'High': {bg: '#fd7e14', color: '#fff'},
-                                'Urgent': {bg: '#dc3545', color: '#fff'},
-                                'Take your time': {bg: '#20c997', color: '#fff'}
-                            };
-                            var style = styles[value] || styles['Normal'];
-                            return '<span style="background: ' + style.bg + '; color: ' + style.color + '; padding: 5px 12px; border-radius: 20px; font-size: 11px; font-weight: 600; text-transform: uppercase;">' + value + '</span>';
-                        }
-                    });
-                    
-                    // IMAGE
-                    cols.push({
-                        title: "IMAGE", 
-                        field: "image", 
-                        width: 90,
-                        hozAlign: "center",
-                        formatter: function(cell) {
-                            var value = cell.getValue();
-                            if (value) {
-                                return `<a href="/uploads/tasks/${value}" target="_blank" title="View Image">
-                                    <i class="mdi mdi-image text-info" style="font-size: 20px; cursor: pointer;"></i>
-                                </a>`;
-                            }
-                            return '<span style="color: #adb5bd;">-</span>';
-                        }
-                    });
-                    
-                    // LINKS
-                    cols.push({
-                        title: "LINKS", 
-                        field: "id", 
-                        width: 90,
-                        hozAlign: "center",
-                        headerSort: false,
-                        formatter: function(cell) {
-                            var rowData = cell.getRow().getData();
-                            var hasLinks = rowData.training_link || rowData.video_link || rowData.form_link || 
-                                          rowData.form_report_link || rowData.checklist_link || rowData.pl || rowData.process;
+                            var abbrev = value;
                             
-                            if (hasLinks) {
-                                return `<button class="btn btn-sm btn-link view-links" data-id="${cell.getValue()}" title="View Links">
-                                    <i class="mdi mdi-link-variant text-primary" style="font-size: 20px; cursor: pointer;"></i>
-                                </button>`;
-                            }
-                            return '<span style="color: #adb5bd;">-</span>';
+                            // Convert to abbreviations
+                            if (value === 'daily') abbrev = 'D';
+                            else if (value === 'weekly') abbrev = 'W';
+                            else if (value === 'monthly') abbrev = 'M';
+                            
+                            return '<strong style="color: #6c757d;">' + abbrev + '</strong>';
                         }
                     });
+                    
+                    // PRIORITY - HIDDEN
+                    // cols.push({
+                    //     title: "PRIORITY", 
+                    //     field: "priority", 
+                    //     width: 110, 
+                    //     hozAlign: "center",
+                    //     formatter: function(cell) {
+                    //         var value = cell.getValue() || 'Normal';
+                    //         var styles = {
+                    //             'Low': {bg: '#6c757d', color: '#fff'},
+                    //             'Normal': {bg: '#0d6efd', color: '#fff'},
+                    //             'High': {bg: '#fd7e14', color: '#fff'},
+                    //             'Urgent': {bg: '#dc3545', color: '#fff'},
+                    //             'Take your time': {bg: '#20c997', color: '#fff'}
+                    //         };
+                    //         var style = styles[value] || styles['Normal'];
+                    //         return '<span style="background: ' + style.bg + '; color: ' + style.color + '; padding: 5px 12px; border-radius: 20px; font-size: 11px; font-weight: 600; text-transform: uppercase;">' + value + '</span>';
+                    //     }
+                    // });
+                    
+                    // IMAGE - HIDDEN
+                    // cols.push({
+                    //     title: "IMAGE", 
+                    //     field: "image", 
+                    //     width: 90,
+                    //     hozAlign: "center",
+                    //     formatter: function(cell) {
+                    //         var value = cell.getValue();
+                    //         if (value) {
+                    //             return `<a href="/uploads/tasks/${value}" target="_blank" title="View Image">
+                    //                 <i class="mdi mdi-image text-info" style="font-size: 20px; cursor: pointer;"></i>
+                    //             </a>`;
+                    //         }
+                    //         return '<span style="color: #adb5bd;">-</span>';
+                    //     }
+                    // });
+                    
+                    // LINKS - HIDDEN
+                    // cols.push({
+                    //     title: "LINKS", 
+                    //     field: "id", 
+                    //     width: 90,
+                    //     hozAlign: "center",
+                    //     headerSort: false,
+                    //     formatter: function(cell) {
+                    //         var rowData = cell.getRow().getData();
+                    //         var hasLinks = rowData.training_link || rowData.video_link || rowData.form_link || 
+                    //                       rowData.form_report_link || rowData.checklist_link || rowData.pl || rowData.process;
+                    //         
+                    //         if (hasLinks) {
+                    //             return `<button class="btn btn-sm btn-link view-links" data-id="${cell.getValue()}" title="View Links">
+                    //                 <i class="mdi mdi-link-variant text-primary" style="font-size: 20px; cursor: pointer;"></i>
+                    //             </button>`;
+                    //         }
+                    //         return '<span style="color: #adb5bd;">-</span>';
+                    //     }
+                    // });
                     
                     // ACTION
                     cols.push({

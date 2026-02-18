@@ -263,28 +263,123 @@
                     
                     <div class="stats-container mb-4" id="statsContainer"></div>
                     
+                    <!-- Sorting and Filtering Controls -->
+                    <div class="card bg-light mb-4" id="sortFilterContainer" style="display: none;">
+                        <div class="card-body">
+                            <div class="row g-3">
+                                <div class="col-md-3">
+                                    <label class="form-label fw-bold">Sort By</label>
+                                    <select class="form-select" id="sortBy">
+                                        <option value="position">Amazon Position (Default)</option>
+                                        <option value="price_low_high">Price: Low to High</option>
+                                        <option value="price_high_low">Price: High to Low</option>
+                                        <option value="rating_high_low">Rating: High to Low</option>
+                                        <option value="reviews_high_low">Reviews: Most First</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-2">
+                                    <label class="form-label fw-bold">Min Price</label>
+                                    <input type="number" class="form-control" id="minPrice" placeholder="$0.00" step="0.01" min="0">
+                                </div>
+                                <div class="col-md-2">
+                                    <label class="form-label fw-bold">Max Price</label>
+                                    <input type="number" class="form-control" id="maxPrice" placeholder="$999.99" step="0.01" min="0">
+                                </div>
+                                <div class="col-md-2">
+                                    <label class="form-label fw-bold">Min Rating</label>
+                                    <select class="form-select" id="minRating">
+                                        <option value="">All Ratings</option>
+                                        <option value="4">4★ & Up</option>
+                                        <option value="3">3★ & Up</option>
+                                        <option value="2">2★ & Up</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-3 d-flex align-items-end">
+                                    <button type="button" class="btn btn-primary me-2" id="applyFiltersBtn">
+                                        <i class="mdi mdi-filter me-2"></i>Apply
+                                    </button>
+                                    <button type="button" class="btn btn-secondary" id="resetFiltersBtn">
+                                        <i class="mdi mdi-refresh me-2"></i>Reset
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
                     <div class="mb-4" id="bulkActionsContainer" style="display: none;">
                         <div class="card bg-light">
                             <div class="card-body">
-                                <div class="row align-items-center g-3">
-                                    <div class="col-auto">
+                                <div class="row g-3">
+                                    <!-- Select All Checkbox -->
+                                    <div class="col-12">
                                         <div class="form-check">
                                             <input type="checkbox" class="form-check-input" id="selectAllCheckbox" style="width: 22px; height: 22px; cursor: pointer;">
                                             <label class="form-check-label ms-2 fw-bold" for="selectAllCheckbox">
-                                                Select All
+                                                <i class="mdi mdi-checkbox-multiple-marked"></i> Select All Products
                                             </label>
                                         </div>
                                     </div>
-                                    <div class="col-md-4">
-                                        <label for="bulkSkuSelect" class="form-label mb-1 fw-bold">Bulk SKU Assignment:</label>
-                                        <select class="form-select select2-bulk-sku" id="bulkSkuSelect">
-                                            <option value="">Select SKU for all checked products</option>
-                                        </select>
+                                    
+                                    <!-- Quick Single SKU Assignment -->
+                                    <div class="col-md-6">
+                                        <div class="card h-100">
+                                            <div class="card-header bg-info text-white py-2">
+                                                <h6 class="mb-0"><i class="mdi mdi-lightning-bolt"></i> Quick Single SKU Assignment</h6>
+                                            </div>
+                                            <div class="card-body">
+                                                <label for="bulkSkuSelect" class="form-label mb-2">Select one SKU:</label>
+                                                <select class="form-select select2-bulk-sku" id="bulkSkuSelect">
+                                                    <option value="">Choose a SKU...</option>
+                                                </select>
+                                            </div>
+                                        </div>
                                     </div>
-                                    <div class="col-auto ms-auto">
-                                        <button type="button" class="btn btn-success btn-lg" id="saveCompetitorsBtn">
+                                    
+                                    <!-- Multiple SKU Assignment with Checkboxes -->
+                                    <div class="col-md-6">
+                                        <div class="card h-100">
+                                            <div class="card-header bg-warning text-dark py-2">
+                                                <div class="d-flex justify-content-between align-items-center">
+                                                    <h6 class="mb-0"><i class="mdi mdi-checkbox-multiple-marked-outline"></i> Multiple SKU Assignment</h6>
+                                                    <button type="button" class="btn btn-sm btn-light" id="toggleSkuList">
+                                                        <i class="mdi mdi-chevron-down"></i> Show SKUs
+                                                    </button>
+                                                </div>
+                                            </div>
+                                            <div class="card-body" id="skuCheckboxContainer" style="display: none;">
+                                                <div class="mb-2 d-flex gap-2">
+                                                    <button type="button" class="btn btn-sm btn-outline-primary" id="selectAllSkus">
+                                                        <i class="mdi mdi-checkbox-marked"></i> Select All
+                                                    </button>
+                                                    <button type="button" class="btn btn-sm btn-outline-secondary" id="deselectAllSkus">
+                                                        <i class="mdi mdi-checkbox-blank-outline"></i> Deselect All
+                                                    </button>
+                                                    <input type="text" class="form-control form-control-sm" id="skuSearchInput" placeholder="Search SKUs...">
+                                                </div>
+                                                <div id="skuCheckboxList" style="max-height: 300px; overflow-y: auto; border: 1px solid #ddd; border-radius: 4px; padding: 10px;">
+                                                    <p class="text-muted">Loading SKUs...</p>
+                                                </div>
+                                                <div class="mt-2">
+                                                    <small class="text-muted">
+                                                        <i class="mdi mdi-information"></i> 
+                                                        Selected: <span id="selectedSkuCount" class="fw-bold text-primary">0</span> SKU(s)
+                                                    </small>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <!-- Save Button -->
+                                    <div class="col-12 text-center">
+                                        <button type="button" class="btn btn-success btn-lg px-5" id="saveCompetitorsBtn">
                                             <i class="mdi mdi-content-save me-2"></i>Save Selected Competitors
                                         </button>
+                                        <div class="mt-2">
+                                            <small class="text-muted">
+                                                <i class="mdi mdi-information-outline"></i> 
+                                                Competitors will be assigned to all selected or checked SKUs
+                                            </small>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -304,6 +399,8 @@
 <script>
 $(document).ready(function() {
     let availableSkus = [];
+    let currentSearchQuery = '';
+    let currentMarketplace = 'amazon';
     
     // Initialize Select2 for bulk SKU dropdown
     function initializeSelect2() {
@@ -357,13 +454,74 @@ $(document).ready(function() {
         $('.competitor-checkbox').prop('checked', isChecked);
     });
     
-    // Bulk SKU dropdown - no need to set individual dropdowns since we removed them
-    $('#bulkSkuSelect').on('change', function() {
-        // SKU will be applied to all checked items on save
+    // Toggle SKU list
+    $('#toggleSkuList').on('click', function() {
+        const $container = $('#skuCheckboxContainer');
+        const $icon = $(this).find('i');
+        
+        if ($container.is(':visible')) {
+            $container.slideUp();
+            $icon.removeClass('mdi-chevron-up').addClass('mdi-chevron-down');
+            $(this).html('<i class="mdi mdi-chevron-down"></i> Show SKUs');
+        } else {
+            $container.slideDown();
+            $icon.removeClass('mdi-chevron-down').addClass('mdi-chevron-up');
+            $(this).html('<i class="mdi mdi-chevron-up"></i> Hide SKUs');
+        }
+    });
+    
+    // Select all SKUs
+    $('#selectAllSkus').on('click', function() {
+        $('.sku-checkbox:visible').prop('checked', true);
+        updateSelectedSkuCount();
+    });
+    
+    // Deselect all SKUs
+    $('#deselectAllSkus').on('click', function() {
+        $('.sku-checkbox').prop('checked', false);
+        updateSelectedSkuCount();
+    });
+    
+    // Search SKUs
+    $('#skuSearchInput').on('input', function() {
+        const searchTerm = $(this).val().toLowerCase();
+        $('.sku-checkbox').each(function() {
+            const $checkbox = $(this);
+            const sku = $checkbox.val().toLowerCase();
+            const $parent = $checkbox.closest('.form-check');
+            
+            if (sku.includes(searchTerm)) {
+                $parent.show();
+            } else {
+                $parent.hide();
+            }
+        });
+    });
+    
+    // Update count when checkboxes change
+    $(document).on('change', '.sku-checkbox', function() {
+        updateSelectedSkuCount();
+    });
+    
+    // Apply filters and sorting
+    $('#applyFiltersBtn').on('click', function() {
+        applyFiltersAndSort();
+    });
+    
+    // Reset filters
+    $('#resetFiltersBtn').on('click', function() {
+        $('#sortBy').val('position');
+        $('#minPrice').val('');
+        $('#maxPrice').val('');
+        $('#minRating').val('');
+        applyFiltersAndSort();
     });
     
     // Perform search
     function performSearch(query, marketplace) {
+        currentSearchQuery = query;
+        currentMarketplace = marketplace;
+        
         $('#loadingSpinner').show();
         $('#resultsContainer').hide();
         
@@ -380,6 +538,7 @@ $(document).ready(function() {
                 
                 if (response.success) {
                     displayResults(response);
+                    loadFilterOptions(query);
                 } else {
                     let errorDetails = response.message || 'Unknown error';
                     if (response.error) {
@@ -489,7 +648,8 @@ $(document).ready(function() {
                                    data-marketplace="${item.marketplace}"
                                    data-title="${(item.title || '').replace(/"/g, '&quot;')}"
                                    data-price="${priceValue}"
-                                   data-link="${productLink}">
+                                   data-link="${productLink}"
+                                   data-image="${(item.image || '').replace(/"/g, '&quot;')}">
                             
                             <div class="product-image-container">
                                 <img src="${image}" 
@@ -561,6 +721,7 @@ $(document).ready(function() {
                 if (response.success) {
                     availableSkus = response.data || [];
                     console.log('Loaded ' + availableSkus.length + ' SKUs');
+                    populateSkuCheckboxes();
                 }
             },
             error: function() {
@@ -569,66 +730,220 @@ $(document).ready(function() {
         });
     }
     
+    // Populate SKU checkboxes
+    function populateSkuCheckboxes() {
+        let html = '';
+        
+        // Filter out parent SKUs
+        const filteredSkus = availableSkus.filter(function(sku) {
+            return !sku.toUpperCase().startsWith('PARENT');
+        });
+        
+        if (filteredSkus.length === 0) {
+            html = '<p class="text-muted">No SKUs available</p>';
+        } else {
+            filteredSkus.forEach(function(sku) {
+                html += `
+                    <div class="form-check mb-2">
+                        <input class="form-check-input sku-checkbox" type="checkbox" value="${sku}" id="sku-${sku.replace(/[^a-zA-Z0-9]/g, '_')}">
+                        <label class="form-check-label" for="sku-${sku.replace(/[^a-zA-Z0-9]/g, '_')}" style="cursor: pointer;">
+                            ${sku}
+                        </label>
+                    </div>
+                `;
+            });
+        }
+        $('#skuCheckboxList').html(html);
+        updateSelectedSkuCount();
+    }
+    
+    // Update selected SKU count
+    function updateSelectedSkuCount() {
+        const count = $('.sku-checkbox:checked').length;
+        $('#selectedSkuCount').text(count);
+    }
+    
     // Save selected competitors
     function saveSelectedCompetitors() {
-        // Get bulk SKU
+        // Get selected SKUs (from dropdown or checkboxes)
         const bulkSku = $('#bulkSkuSelect').val();
+        const checkedSkus = $('.sku-checkbox:checked').map(function() {
+            return $(this).val();
+        }).get();
         
-        if (!bulkSku) {
-            alert('Please select a SKU from the Bulk SKU dropdown');
+        // Combine both sources of SKUs
+        let selectedSkus = [];
+        if (bulkSku) {
+            selectedSkus.push(bulkSku);
+        }
+        checkedSkus.forEach(function(sku) {
+            if (!selectedSkus.includes(sku)) {
+                selectedSkus.push(sku);
+            }
+        });
+        
+        // Validate SKU selection
+        if (selectedSkus.length === 0) {
+            alert('Please select at least one SKU:\n- Use the dropdown for quick single SKU assignment, OR\n- Check SKUs in the Multiple SKU Assignment section');
             return;
         }
         
+        // Get selected competitors
+        const checkedCompetitors = $('.competitor-checkbox:checked');
+        if (checkedCompetitors.length === 0) {
+            alert('Please select at least one competitor (check the product boxes)');
+            return;
+        }
+        
+        // Build competitors array for all SKU combinations
         const competitors = [];
         
-        $('.competitor-checkbox:checked').each(function() {
+        checkedCompetitors.each(function() {
             const checkbox = $(this);
             const asin = checkbox.data('asin');
             const marketplace = checkbox.data('marketplace');
             const productTitle = checkbox.data('title');
             const productLink = checkbox.data('link');
+            const image = checkbox.data('image');
             const price = checkbox.data('price');
             
-            competitors.push({
-                asin: asin,
-                sku: bulkSku, // Use bulk SKU for all checked items
-                marketplace: marketplace,
-                product_title: productTitle,
-                product_link: productLink,
-                price: price
+            // Create a competitor entry for EACH selected SKU
+            selectedSkus.forEach(function(sku) {
+                competitors.push({
+                    asin: String(asin || ''),
+                    sku: String(sku || '').trim(),
+                    marketplace: marketplace || 'amazon',
+                    product_title: productTitle || null,
+                    product_link: productLink || null,
+                    image: image || null,
+                    price: parseFloat(price) || 0
+                });
             });
         });
         
-        if (competitors.length === 0) {
-            alert('Please select at least one competitor (check the boxes)');
+        // Confirm before saving
+        const totalMappings = competitors.length;
+        const competitorCount = checkedCompetitors.length;
+        const skuCount = selectedSkus.length;
+        
+        const confirmMsg = `You are about to create ${totalMappings} competitor mapping(s):\n\n` +
+                          `• ${competitorCount} competitor(s)\n` +
+                          `• ${skuCount} SKU(s)\n` +
+                          `• Total mappings: ${competitorCount} × ${skuCount} = ${totalMappings}\n\n` +
+                          `Selected SKUs:\n${selectedSkus.slice(0, 10).join('\n')}` +
+                          (selectedSkus.length > 10 ? `\n...and ${selectedSkus.length - 10} more` : '') +
+                          `\n\nContinue?`;
+        
+        if (!confirm(confirmMsg)) {
             return;
         }
         
-        // Confirm before saving
-        if (!confirm(`Save ${competitors.length} competitor mapping(s)?`)) {
-            return;
-        }
+        // Show loading state
+        const $btn = $('#saveCompetitorsBtn');
+        const originalHtml = $btn.html();
+        $btn.prop('disabled', true).html('<i class="mdi mdi-loading mdi-spin me-2"></i>Saving...');
         
         $.ajax({
             url: '/repricer/amazon-search/store-competitors',
             method: 'POST',
-            data: {
+            contentType: 'application/json',
+            headers: {
+                'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                'Accept': 'application/json'
+            },
+            data: JSON.stringify({
                 competitors: competitors,
                 _token: '{{ csrf_token() }}'
-            },
+            }),
             success: function(response) {
                 if (response.success) {
-                    alert(response.message);
+                    alert(`✅ Success!\n\n${response.message}\n\nMappings created: ${totalMappings}`);
+                    
                     // Uncheck saved items
                     $('.competitor-checkbox:checked').prop('checked', false);
+                    $('#selectAllCheckbox').prop('checked', false);
+                    
+                    // Optionally clear SKU selections
+                    $('#bulkSkuSelect').val('').trigger('change');
+                    $('.sku-checkbox').prop('checked', false);
+                    updateSelectedSkuCount();
                 } else {
                     alert('Error: ' + (response.message || 'Failed to save competitors'));
                 }
             },
             error: function(xhr) {
-                const errorMsg = xhr.responseJSON?.message || 'Failed to save competitors';
+                let errorMsg = 'Failed to save competitors';
+                if (xhr.responseJSON) {
+                    if (xhr.responseJSON.errors) {
+                        errorMsg = 'Validation failed:\n' + Object.values(xhr.responseJSON.errors).flat().join('\n');
+                    } else if (xhr.responseJSON.message) {
+                        errorMsg = xhr.responseJSON.message;
+                    }
+                }
                 alert('Error: ' + errorMsg);
                 console.error('Save Error:', xhr.responseJSON || xhr.responseText);
+            },
+            complete: function() {
+                $btn.prop('disabled', false).html(originalHtml);
+            }
+        });
+    }
+    
+    // Apply filters and sorting
+    function applyFiltersAndSort() {
+        if (!currentSearchQuery) {
+            alert('Please perform a search first');
+            return;
+        }
+        
+        const sortBy = $('#sortBy').val();
+        const minPrice = $('#minPrice').val();
+        const maxPrice = $('#maxPrice').val();
+        const minRating = $('#minRating').val();
+        
+        $('#loadingSpinner').show();
+        
+        $.ajax({
+            url: '/repricer/amazon-search/results',
+            method: 'GET',
+            data: {
+                query: currentSearchQuery,
+                sort_by: sortBy,
+                min_price: minPrice,
+                max_price: maxPrice,
+                min_rating: minRating
+            },
+            success: function(response) {
+                $('#loadingSpinner').hide();
+                
+                if (response.success) {
+                    displayResults(response);
+                } else {
+                    alert('Error: ' + (response.message || 'Failed to apply filters'));
+                }
+            },
+            error: function(xhr) {
+                $('#loadingSpinner').hide();
+                alert('Error: Failed to apply filters');
+                console.error('Filter Error:', xhr.responseJSON || xhr.responseText);
+            }
+        });
+    }
+    
+    // Load filter options
+    function loadFilterOptions(query) {
+        $.ajax({
+            url: '/repricer/amazon-search/filter-options',
+            method: 'GET',
+            data: { query: query },
+            success: function(response) {
+                if (response.success && response.data) {
+                    // Show sort/filter container
+                    $('#sortFilterContainer').show();
+                }
+            },
+            error: function() {
+                console.error('Failed to load filter options');
             }
         });
     }
