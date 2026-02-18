@@ -290,8 +290,8 @@ class AutoUpdateAmazonPinkDilKwAds extends Command
                 $campaignName = strtoupper(trim(rtrim($campaignName, '.')));
                 $cleanSku = strtoupper(trim(rtrim($sku, '.')));
                 
-                // Exact match (same as utilized pages)
-                return $campaignName === $cleanSku;
+                // Match campaign with or without " KW" suffix
+                return $campaignName === $cleanSku || $campaignName === $cleanSku . ' KW';
             });
             
             $matchedCampaignL7 = $amazonSpCampaignReportsL7->first(function ($item) use ($sku) {
@@ -301,8 +301,8 @@ class AutoUpdateAmazonPinkDilKwAds extends Command
                 $campaignName = strtoupper(trim(rtrim($campaignName, '.')));
                 $cleanSku = strtoupper(trim(rtrim($sku, '.')));
                 
-                // Exact match (same as utilized pages)
-                return $campaignName === $cleanSku;
+                // Match campaign with or without " KW" suffix
+                return $campaignName === $cleanSku || $campaignName === $cleanSku . ' KW';
             });
             
             $matchedCampaignL1 = $amazonSpCampaignReportsL1->first(function ($item) use ($sku) {
@@ -312,8 +312,8 @@ class AutoUpdateAmazonPinkDilKwAds extends Command
                 $campaignName = strtoupper(trim(rtrim($campaignName, '.')));
                 $cleanSku = strtoupper(trim(rtrim($sku, '.')));
                 
-                // Exact match (same as utilized pages)
-                return $campaignName === $cleanSku;
+                // Match campaign with or without " KW" suffix
+                return $campaignName === $cleanSku || $campaignName === $cleanSku . ' KW';
             });
             
             // Skip if no campaign found in any range
