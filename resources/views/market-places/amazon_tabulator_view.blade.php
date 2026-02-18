@@ -408,6 +408,10 @@
                         <i class="fas fa-file-csv"></i> Export
                     </a>
 
+                    <button id="section-export-btn" class="btn btn-sm btn-primary">
+                        <i class="fas fa-download"></i> Section Export
+                    </button>
+
                     <a href="{{ url('/amazon-export-sprice-upload') }}" class="btn btn-sm btn-info">
                         <i class="fas fa-download"></i> SPRICE N Upload
                     </a>
@@ -7646,5 +7650,94 @@
             // Open the modal
             $('#campaignSummaryModal').modal('show');
         }
+
+        // Section Export - Export data based on current section filter
+        $('#section-export-btn').on('click', function() {
+            if (!table) {
+                alert('Table not loaded');
+                return;
+            }
+            
+            // Get current section
+            const currentSection = $('#section-filter').val() || 'all';
+            const sectionLabel = currentSection === 'kw-ads' ? 'KW_Ads' : 
+                                currentSection === 'pt-ads' ? 'PT_Ads' : 
+                                currentSection === 'hl-ads' ? 'HL_Ads' : 
+                                currentSection === 'pricing' ? 'Pricing' : 'All';
+            
+            // Get filtered data
+            const data = table.getData("active");
+            
+            if (data.length === 0) {
+                alert('No data to export');
+                return;
+            }
+            
+            // Define columns to export based on section
+            let columnsToExport = [];
+            
+            if (currentSection === 'kw-ads') {
+                columnsToExport = [
+                    '(Child) sku', 'acos', 'l30_spend', 'l30_clicks', 'ad_cvr', 'rating',
+                    'campaignBudgetAmount', 'sbgt', 'NRA', 'campaignName', 'campaignStatus',
+                    'l30_sales', 'l30_purchases', 'INV', 'L30', 'price', 'GPFT%', 'GROI%',
+                    'l7_cpc', 'l1_cpc', 'last_sbid', 'sbid', 'sbid_m', 'TPFT', 'bid_cap'
+                ];
+            } else if (currentSection === 'pt-ads') {
+                columnsToExport = [
+                    '(Child) sku', 'pt_acos', 'pt_spend_L30', 'pt_clicks_L30', 'pt_ad_cvr', 'rating',
+                    'pt_campaignBudgetAmount', 'pt_sbgt', 'NRA', 'pt_campaignName', 'pt_campaign_status',
+                    'pt_sales_L30', 'pt_sold_L30', 'INV', 'L30', 'price', 'GPFT%', 'GROI%',
+                    'pt_l7_cpc', 'pt_l1_cpc', 'pt_last_sbid', 'pt_sbid', 'pt_sbid_m', 'TPFT'
+                ];
+            } else if (currentSection === 'hl-ads') {
+                columnsToExport = [
+                    '(Child) sku', 'hl_acos', 'hl_spend_L30', 'hl_clicks_L30', 'hl_ad_cvr', 'rating',
+                    'hl_campaignBudgetAmount', 'hl_sbgt', 'NRA', 'hl_campaignName', 'hl_campaign_status',
+                    'hl_sales_L30', 'hl_sold_L30', 'INV', 'L30', 'price', 'GPFT%', 'GROI%',
+                    'hl_l7_cpc', 'hl_l1_cpc', 'hl_last_sbid', 'hl_sbid', 'hl_sbid_m', 'TPFT'
+                ];
+            } else {
+                // Pricing/All - export main columns
+                columnsToExport = [
+                    '(Child) sku', 'price', 'INV', 'L30', 'A_L30', 'GPFT%', 'GROI%', 'PFT%',
+                    'ROI_percentage', 'NRL', 'NRA', 'rating', 'lmp_price'
+                ];
+            }
+            
+            // Build CSV
+            let csv = '';
+            
+            // Header row
+            csv += columnsToExport.join(',') + '\n';
+            
+            // Data rows
+            data.forEach(row => {
+                const values = columnsToExport.map(col => {
+                    let value = row[col];
+                    if (value === null || value === undefined) value = '';
+                    // Escape commas and quotes
+                    value = String(value).replace(/"/g, '""');
+                    if (String(value).includes(',')) {
+                        value = '"' + value + '"';
+                    }
+                    return value;
+                });
+                csv += values.join(',') + '\n';
+            });
+            
+            // Download CSV
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'Amazon_' + sectionLabel + '_Export_' + new Date().toISOString().split('T')[0] + '.csv';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
+            
+            showToast('success', 'Exported ' + data.length + ' rows from ' + sectionLabel + ' section');
+        });
     </script>
 @endsection
