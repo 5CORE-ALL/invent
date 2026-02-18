@@ -621,7 +621,8 @@
                             <div class="col-md-2 mb-2">
                                 <label class="form-label fw-bold">Assignor</label>
                                 <select id="filter-assignor" class="form-select form-select-sm">
-                                    <option value="">Select assignor</option>
+                                    <option value="">All Assignors</option>
+                                    <option value="__NULL__" style="color: #dc3545; font-weight: bold;">🔴 No Assignor</option>
                                     @foreach($users ?? [] as $user)
                                         <option value="{{ $user->name }}">{{ $user->name }}</option>
                                     @endforeach
@@ -630,35 +631,11 @@
                             <div class="col-md-2 mb-2">
                                 <label class="form-label fw-bold">Assignee</label>
                                 <select id="filter-assignee" class="form-select form-select-sm">
-                                    <option value="">Select Assignee</option>
+                                    <option value="">All Assignees</option>
+                                    <option value="__NULL__" style="color: #dc3545; font-weight: bold;">🔴 No Assignee</option>
                                     @foreach($users ?? [] as $user)
                                         <option value="{{ $user->name }}">{{ $user->name }}</option>
                                     @endforeach
-                                </select>
-                            </div>
-                            <div class="col-md-1 mb-2">
-                                <label class="form-label fw-bold">Status</label>
-                                <select id="filter-status" class="form-select form-select-sm">
-                                    <option value="">All</option>
-                                    <option value="Todo">Todo</option>
-                                    <option value="Working">Working</option>
-                                    <option value="Archived">Archived</option>
-                                    <option value="Done">Done</option>
-                                    <option value="Need Help">Need Help</option>
-                                    <option value="Need Approval">Need Approval</option>
-                                    <option value="Dependent">Dependent</option>
-                                    <option value="Approved">Approved</option>
-                                    <option value="Hold">Hold</option>
-                                    <option value="Rework">Rework</option>
-                                </select>
-                            </div>
-                            <div class="col-md-1 mb-2">
-                                <label class="form-label fw-bold">Priority</label>
-                                <select id="filter-priority" class="form-select form-select-sm">
-                                    <option value="">All</option>
-                                    <option value="low">Low</option>
-                                    <option value="normal">Normal</option>
-                                    <option value="high">High</option>
                                 </select>
                             </div>
                         </div>
@@ -792,21 +769,25 @@
                 </p>
 
                 <div class="list-group">
+                    <a href="#" class="list-group-item list-group-item-action" id="bulk-duplicate-btn">
+                        <i class="mdi mdi-content-copy text-info me-2"></i>
+                        <strong>Duplicate Tasks</strong>
+                    </a>
                     <a href="#" class="list-group-item list-group-item-action" id="bulk-delete-btn">
                         <i class="mdi mdi-delete text-danger me-2"></i>
                         <strong>Delete Selected Tasks</strong>
                     </a>
-                    <a href="#" class="list-group-item list-group-item-action" id="bulk-priority-btn">
-                        <i class="mdi mdi-flag text-warning me-2"></i>
-                        <strong>Change Priority</strong>
-                    </a>
-                    <a href="#" class="list-group-item list-group-item-action" id="bulk-tid-btn">
-                        <i class="mdi mdi-calendar text-info me-2"></i>
-                        <strong>Change TID Date</strong>
+                    <a href="#" class="list-group-item list-group-item-action" id="bulk-assignor-btn">
+                        <i class="mdi mdi-account-arrow-left text-warning me-2"></i>
+                        <strong>Change Assignor</strong>
                     </a>
                     <a href="#" class="list-group-item list-group-item-action" id="bulk-assignee-btn">
                         <i class="mdi mdi-account-arrow-right text-success me-2"></i>
                         <strong>Change Assignee</strong>
+                    </a>
+                    <a href="#" class="list-group-item list-group-item-action" id="bulk-freq-btn">
+                        <i class="mdi mdi-calendar-clock text-info me-2"></i>
+                        <strong>Change Freq (Type)</strong>
                     </a>
                     <a href="#" class="list-group-item list-group-item-action" id="bulk-etc-btn">
                         <i class="mdi mdi-clock-outline text-primary me-2"></i>
@@ -971,8 +952,8 @@
                     cols.push({
                         title: "GROUP", 
                         field: "group", 
-                        width: 250,
-                        widthGrow: 1,
+                        widthGrow: 1.5,
+                        minWidth: 150,
                         formatter: function(cell) {
                             var value = cell.getValue();
                             return value ? '<span style="color: #6c757d;">' + value + '</span>' : '<span style="color: #adb5bd;">-</span>';
@@ -1382,17 +1363,35 @@
                 var taskValue = $('#filter-task').val();
                 if (taskValue) filters.push({field:"title", type:"like", value:taskValue});
                 
+                // Assignor filter (including NULL check)
                 var assignorValue = $('#filter-assignor').val();
-                if (assignorValue) filters.push({field:"assignor_name", type:"=", value:assignorValue});
+                if (assignorValue) {
+                    if (assignorValue === '__NULL__') {
+                        // Custom filter for tasks with NO assignor
+                        table.setFilter(function(data) {
+                            return !data.assignor_name || data.assignor_name === '-' || data.assignor_name === '';
+                        });
+                        updateStatistics();
+                        return; // Skip other filters
+                    } else {
+                        filters.push({field:"assignor_name", type:"=", value:assignorValue});
+                    }
+                }
                 
+                // Assignee filter (including NULL check)
                 var assigneeValue = $('#filter-assignee').val();
-                if (assigneeValue) filters.push({field:"assignee_name", type:"=", value:assigneeValue});
-                
-                var statusValue = $('#filter-status').val();
-                if (statusValue) filters.push({field:"status", type:"=", value:statusValue});
-                
-                var priorityValue = $('#filter-priority').val();
-                if (priorityValue) filters.push({field:"priority", type:"=", value:priorityValue});
+                if (assigneeValue) {
+                    if (assigneeValue === '__NULL__') {
+                        // Custom filter for tasks with NO assignee
+                        table.setFilter(function(data) {
+                            return !data.assignee_name || data.assignee_name === '-' || data.assignee_name === '';
+                        });
+                        updateStatistics();
+                        return; // Skip other filters
+                    } else {
+                        filters.push({field:"assignee_name", type:"=", value:assigneeValue});
+                    }
+                }
                 
                 // Search filter (OR logic - add last)
                 var searchValue = $('#filter-search').val();
@@ -1421,8 +1420,6 @@
             $('#filter-task').on('keyup', applyFilters);
             $('#filter-assignor').on('change', applyFilters);
             $('#filter-assignee').on('change', applyFilters);
-            $('#filter-status').on('change', applyFilters);
-            $('#filter-priority').on('change', applyFilters);
 
             // Handle Row Selection
             table.on("rowSelectionChanged", function(data, rows) {
@@ -1530,42 +1527,48 @@
                 $('#bulkActionsModal').modal('show');
             });
 
-            // Bulk Delete (no confirmation)
-            $('#bulk-delete-btn').on('click', function(e) {
+            // Bulk Duplicate
+            $('#bulk-duplicate-btn').on('click', function(e) {
                 e.preventDefault();
-                bulkUpdate('delete', {});
+                
+                if (confirm(`Are you sure you want to duplicate ${selectedTasks.length} task(s)?\n\nThis will create exact copies of the selected automated tasks.`)) {
+                    bulkUpdate('duplicate', {});
+                }
             });
 
-            // Bulk Change Priority
-            $('#bulk-priority-btn').on('click', function(e) {
+            // Bulk Delete
+            $('#bulk-delete-btn').on('click', function(e) {
                 e.preventDefault();
-                bulkActionType = 'priority';
+                
+                console.log('Delete clicked, selectedTasks:', selectedTasks);
+                
+                if (selectedTasks.length === 0) {
+                    alert('Please select at least one task to delete');
+                    return;
+                }
+                
+                if (confirm(`Are you sure you want to delete ${selectedTasks.length} automated task(s)?\n\nThis action cannot be undone.`)) {
+                    console.log('Delete confirmed, calling bulkUpdate');
+                    bulkUpdate('delete', {});
+                }
+            });
+
+            // Bulk Change Assignor
+            $('#bulk-assignor-btn').on('click', function(e) {
+                e.preventDefault();
+                bulkActionType = 'assignor';
+                
                 var html = `
-                    <p class="mb-3"><strong>Select new priority for ${selectedTasks.length} task(s):</strong></p>
+                    <p class="mb-3"><strong>Change assignor for ${selectedTasks.length} task(s):</strong></p>
                     <div class="mb-3">
-                        <label for="bulk-priority-select" class="form-label">Priority:</label>
-                        <select class="form-select" id="bulk-priority-select">
-                            <option value="low">Low</option>
-                            <option value="normal" selected>Normal</option>
-                            <option value="high">High</option>
+                        <label for="bulk-assignor-select" class="form-label">Assignor:</label>
+                        <select class="form-select" id="bulk-assignor-select">
+                            <option value="">Loading users...</option>
                         </select>
                     </div>
                 `;
-                showBulkUpdateForm('Change Priority', html);
-            });
-
-            // Bulk Change TID
-            $('#bulk-tid-btn').on('click', function(e) {
-                e.preventDefault();
-                bulkActionType = 'tid';
-                var html = `
-                    <p class="mb-3"><strong>Set new TID date for ${selectedTasks.length} task(s):</strong></p>
-                    <div class="mb-3">
-                        <label for="bulk-tid-input" class="form-label">TID (Task Initiation Date):</label>
-                        <input type="datetime-local" class="form-control" id="bulk-tid-input" required>
-                    </div>
-                `;
-                showBulkUpdateForm('Change TID Date', html);
+                showBulkUpdateForm('Change Assignor', html);
+                loadUsersForBulkAssignor();
             });
 
             // Bulk Change Assignee
@@ -1610,6 +1613,24 @@
                 showBulkUpdateForm('Update ETC', html);
             });
 
+            // Bulk Change Freq (Type)
+            $('#bulk-freq-btn').on('click', function(e) {
+                e.preventDefault();
+                bulkActionType = 'freq';
+                var html = `
+                    <p class="mb-3"><strong>Change frequency for ${selectedTasks.length} task(s):</strong></p>
+                    <div class="mb-3">
+                        <label for="bulk-freq-select" class="form-label">Frequency (Type):</label>
+                        <select class="form-select" id="bulk-freq-select">
+                            <option value="daily">Daily</option>
+                            <option value="weekly">Weekly</option>
+                            <option value="monthly">Monthly</option>
+                        </select>
+                    </div>
+                `;
+                showBulkUpdateForm('Change Freq (Type)', html);
+            });
+
             // Show Bulk Update Form
             function showBulkUpdateForm(title, content) {
                 $('#bulkActionsModal').modal('hide');
@@ -1623,13 +1644,10 @@
                 var data = {};
                 
                 switch(bulkActionType) {
-                    case 'priority':
-                        data.priority = $('#bulk-priority-select').val();
-                        break;
-                    case 'tid':
-                        data.tid = $('#bulk-tid-input').val();
-                        if (!data.tid) {
-                            alert('Please select a date and time');
+                    case 'assignor':
+                        data.assignor_id = $('#bulk-assignor-select').val();
+                        if (!data.assignor_id) {
+                            alert('Please select an assignor');
                             return;
                         }
                         break;
@@ -1637,6 +1655,13 @@
                         data.assignee_id = $('#bulk-assignee-select').val();
                         if (!data.assignee_id) {
                             alert('Please select an assignee');
+                            return;
+                        }
+                        break;
+                    case 'freq':
+                        data.freq = $('#bulk-freq-select').val();
+                        if (!data.freq) {
+                            alert('Please select a frequency');
                             return;
                         }
                         break;
@@ -1654,6 +1679,13 @@
 
             // Bulk Update Function
             function bulkUpdate(action, data) {
+                console.log('bulkUpdate called with:', {
+                    action: action,
+                    task_ids: selectedTasks,
+                    is_automated: 1,
+                    data: data
+                });
+                
                 $.ajax({
                     url: '/tasks/bulk-update',
                     type: 'POST',
@@ -1661,9 +1693,11 @@
                         _token: '{{ csrf_token() }}',
                         action: action,
                         task_ids: selectedTasks,
+                        is_automated: 1,
                         ...data
                     },
                     success: function(response) {
+                        console.log('Bulk update success:', response);
                         $('#bulkUpdateModal').modal('hide');
                         $('#bulkActionsModal').modal('hide');
                         table.deselectRow();
@@ -1682,7 +1716,14 @@
                         }, 3000);
                     },
                     error: function(xhr) {
-                        alert('Error: ' + (xhr.responseJSON?.message || 'Something went wrong'));
+                        console.error('Bulk update error:', xhr);
+                        var errorMsg = 'Something went wrong';
+                        if (xhr.responseJSON?.message) {
+                            errorMsg = xhr.responseJSON.message;
+                        } else if (xhr.responseJSON?.errors) {
+                            errorMsg = Object.values(xhr.responseJSON.errors).flat().join('\n');
+                        }
+                        alert('Error: ' + errorMsg);
                     }
                 });
             }
@@ -1698,6 +1739,21 @@
                             options += `<option value="${user.id}">${user.name}</option>`;
                         });
                         $('#bulk-assignee-select').html(options);
+                    }
+                });
+            }
+
+            // Load Users for Bulk Assignor Change
+            function loadUsersForBulkAssignor() {
+                $.ajax({
+                    url: '/tasks/users-list',
+                    type: 'GET',
+                    success: function(users) {
+                        var options = '<option value="">Please Select</option>';
+                        users.forEach(function(user) {
+                            options += `<option value="${user.id}">${user.name}</option>`;
+                        });
+                        $('#bulk-assignor-select').html(options);
                     }
                 });
             }

@@ -578,16 +578,23 @@ class TaskController extends Controller
         $user = Auth::user();
         $isAdmin = strtolower($user->role ?? '') === 'admin';
 
+        // Check if this is for automated tasks
+        // Either based on is_automated flag or specific actions only for automated tasks
+        $isAutomatedTask = $request->boolean('is_automated') || in_array($request->action, ['duplicate', 'freq', 'assignor']);
+        
         $validated = $request->validate([
-            'action' => 'required|in:delete,priority,tid,assignee,etc,assign_assignee,assign_assignor',
+            'action' => 'required|in:delete,priority,tid,assignee,etc,assign_assignee,assign_assignor,duplicate,assignor,freq',
             'task_ids' => 'required|array',
-            'task_ids.*' => 'exists:tasks,id',
+            'task_ids.*' => $isAutomatedTask ? 'integer' : 'exists:tasks,id',
+            'is_automated' => 'nullable|boolean',
             'priority' => 'nullable|in:low,normal,high',
             'tid' => 'nullable|date',
             'assignee_id' => 'nullable|exists:users,id',
+            'assignor_id' => 'nullable|exists:users,id',
             'assignee' => 'nullable|string',
             'assignor' => 'nullable|string',
             'etc_minutes' => 'nullable|integer|min:1',
+            'freq' => 'nullable|in:daily,weekly,monthly',
         ]);
 
         $taskIds = $validated['task_ids'];
@@ -595,49 +602,61 @@ class TaskController extends Controller
 
         switch ($action) {
             case 'delete':
-                // Only allow deletion of tasks where user is the assignor
-                $tasksToDelete = Task::whereIn('id', $taskIds)
-                    ->where('assignor', $user->email)
-                    ->get();
-                
-                $deletedCount = $tasksToDelete->count();
-                $requestedCount = count($taskIds);
-                
-                if ($deletedCount === 0) {
+                if ($isAutomatedTask) {
+                    // Delete automated tasks from automate_tasks table
+                    $deletedCount = \DB::table('automate_tasks')
+                        ->whereIn('id', $taskIds)
+                        ->delete();
+                    
                     return response()->json([
-                        'success' => false,
-                        'message' => 'You can only delete tasks you created. None of the selected tasks belong to you.'
-                    ], 403);
-                }
-                
-                // Delete images and save to deleted_tasks before deletion
-                $imagesDeleted = 0;
-                foreach ($tasksToDelete as $task) {
-                    // Delete image file if exists
-                    if ($task->image && file_exists(public_path('uploads/tasks/' . $task->image))) {
-                        unlink(public_path('uploads/tasks/' . $task->image));
-                        $imagesDeleted++;
-                        \Log::info('🗑️ Image deleted:', ['task_id' => $task->id, 'image' => $task->image]);
+                        'success' => true,
+                        'message' => "$deletedCount automated task(s) deleted successfully!"
+                    ]);
+                } else {
+                    // Only allow deletion of tasks where user is the assignor
+                    $tasksToDelete = Task::whereIn('id', $taskIds)
+                        ->where('assignor', $user->email)
+                        ->get();
+                    
+                    $deletedCount = $tasksToDelete->count();
+                    $requestedCount = count($taskIds);
+                    
+                    if ($deletedCount === 0) {
+                        return response()->json([
+                            'success' => false,
+                            'message' => 'You can only delete tasks you created. None of the selected tasks belong to you.'
+                        ], 403);
                     }
-                    $this->saveDeletedTask($task);
+                    
+                    // Delete images and save to deleted_tasks before deletion
+                    $imagesDeleted = 0;
+                    foreach ($tasksToDelete as $task) {
+                        // Delete image file if exists
+                        if ($task->image && file_exists(public_path('uploads/tasks/' . $task->image))) {
+                            unlink(public_path('uploads/tasks/' . $task->image));
+                            $imagesDeleted++;
+                            \Log::info('🗑️ Image deleted:', ['task_id' => $task->id, 'image' => $task->image]);
+                        }
+                        $this->saveDeletedTask($task);
+                    }
+                    
+                    Task::whereIn('id', $tasksToDelete->pluck('id'))->delete();
+                    
+                    if ($imagesDeleted > 0) {
+                        \Log::info("🗑️ Bulk delete: $imagesDeleted image(s) deleted");
+                    }
+                    
+                    $message = "$deletedCount task(s) deleted successfully!";
+                    if ($deletedCount < $requestedCount) {
+                        $skipped = $requestedCount - $deletedCount;
+                        $message .= " ($skipped task(s) skipped - you can only delete tasks you created)";
+                    }
+                    
+                    return response()->json([
+                        'success' => true,
+                        'message' => $message
+                    ]);
                 }
-                
-                Task::whereIn('id', $tasksToDelete->pluck('id'))->delete();
-                
-                if ($imagesDeleted > 0) {
-                    \Log::info("🗑️ Bulk delete: $imagesDeleted image(s) deleted");
-                }
-                
-                $message = "$deletedCount task(s) deleted successfully!";
-                if ($deletedCount < $requestedCount) {
-                    $skipped = $requestedCount - $deletedCount;
-                    $message .= " ($skipped task(s) skipped - you can only delete tasks you created)";
-                }
-                
-                return response()->json([
-                    'success' => true,
-                    'message' => $message
-                ]);
 
             case 'priority':
             case 'tid':
@@ -666,20 +685,45 @@ class TaskController extends Controller
                         'message' => "$count task(s) TID date updated!"
                     ]);
                 } elseif ($action === 'assignee') {
-                    $assigneeUser = User::find($validated['assignee_id']);
-                    if ($assigneeUser) {
-                        Task::whereIn('id', $taskIds)->update(['assign_to' => $assigneeUser->email]);
+                    if ($isAutomatedTask) {
+                        // Update assignee for automated tasks
+                        $assigneeUser = User::find($validated['assignee_id']);
+                        if ($assigneeUser) {
+                            \DB::table('automate_tasks')
+                                ->whereIn('id', $taskIds)
+                                ->update(['assign_to' => $assigneeUser->email, 'updated_at' => now()]);
+                        }
+                        return response()->json([
+                            'success' => true,
+                            'message' => "$count automated task(s) assignee updated!"
+                        ]);
+                    } else {
+                        $assigneeUser = User::find($validated['assignee_id']);
+                        if ($assigneeUser) {
+                            Task::whereIn('id', $taskIds)->update(['assign_to' => $assigneeUser->email]);
+                        }
+                        return response()->json([
+                            'success' => true,
+                            'message' => "$count task(s) assignee updated!"
+                        ]);
                     }
-                    return response()->json([
-                        'success' => true,
-                        'message' => "$count task(s) assignee updated!"
-                    ]);
                 } elseif ($action === 'etc') {
-                    Task::whereIn('id', $taskIds)->update(['eta_time' => $validated['etc_minutes']]);
-                    return response()->json([
-                        'success' => true,
-                        'message' => "$count task(s) ETC updated!"
-                    ]);
+                    if ($isAutomatedTask) {
+                        // Update ETC for automated tasks
+                        \DB::table('automate_tasks')
+                            ->whereIn('id', $taskIds)
+                            ->update(['eta_time' => $validated['etc_minutes'], 'updated_at' => now()]);
+                        return response()->json([
+                            'success' => true,
+                            'message' => "$count automated task(s) ETC updated!"
+                        ]);
+                    } else {
+                        Task::whereIn('id', $taskIds)->update(['eta_time' => $validated['etc_minutes']]);
+                        return response()->json([
+                            'success' => true,
+                            'message' => "$count task(s) ETC updated!"
+                        ]);
+                    }
                 }
                 break;
             
@@ -747,6 +791,77 @@ class TaskController extends Controller
                 return response()->json([
                     'success' => true,
                     'message' => "$updated task(s) assignor updated to: $assignorEmail"
+                ]);
+            
+            case 'duplicate':
+                // Duplicate automated tasks from automate_tasks table
+                $tasksToDuplicate = \DB::table('automate_tasks')->whereIn('id', $taskIds)->get();
+                
+                if ($tasksToDuplicate->isEmpty()) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'No tasks found to duplicate'
+                    ], 404);
+                }
+                
+                $duplicatedCount = 0;
+                foreach ($tasksToDuplicate as $task) {
+                    $taskArray = (array) $task;
+                    unset($taskArray['id']); // Remove ID so a new one is created
+                    $taskArray['created_at'] = now();
+                    $taskArray['updated_at'] = now();
+                    
+                    \DB::table('automate_tasks')->insert($taskArray);
+                    $duplicatedCount++;
+                }
+                
+                return response()->json([
+                    'success' => true,
+                    'message' => "$duplicatedCount task(s) duplicated successfully!"
+                ]);
+            
+            case 'assignor':
+                // Bulk update assignor for automated tasks
+                if (!$isAdmin) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Only admins can change assignor'
+                    ], 403);
+                }
+                
+                $assignorUser = User::find($validated['assignor_id']);
+                if (!$assignorUser) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Assignor not found'
+                    ], 404);
+                }
+                
+                $updated = \DB::table('automate_tasks')
+                    ->whereIn('id', $taskIds)
+                    ->update(['assignor' => $assignorUser->email, 'updated_at' => now()]);
+                
+                return response()->json([
+                    'success' => true,
+                    'message' => "$updated automated task(s) assignor updated!"
+                ]);
+            
+            case 'freq':
+                // Bulk update frequency (schedule_type) for automated tasks
+                if (!$isAdmin) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Only admins can change frequency'
+                    ], 403);
+                }
+                
+                $updated = \DB::table('automate_tasks')
+                    ->whereIn('id', $taskIds)
+                    ->update(['schedule_type' => $validated['freq'], 'updated_at' => now()]);
+                
+                return response()->json([
+                    'success' => true,
+                    'message' => "$updated automated task(s) frequency updated to: " . $validated['freq']
                 ]);
 
             default:
