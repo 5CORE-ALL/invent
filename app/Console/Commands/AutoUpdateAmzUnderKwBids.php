@@ -303,13 +303,17 @@ class AutoUpdateAmzUnderKwBids extends Command
             $matchedCampaignL7 = $amazonSpCampaignReportsL7->first(function ($item) use ($sku) {
                 $campaignName = strtoupper(trim(rtrim($item->campaignName, '.')));
                 $cleanSku = strtoupper(trim(rtrim($sku, '.')));
-                return $campaignName === $cleanSku && strtoupper($item->campaignStatus ?? '') === 'ENABLED';
+                // Match campaign with or without " KW" suffix
+                return ($campaignName === $cleanSku || $campaignName === $cleanSku . ' KW') 
+                    && strtoupper($item->campaignStatus ?? '') === 'ENABLED';
             });
 
             $matchedCampaignL1 = $amazonSpCampaignReportsL1->first(function ($item) use ($sku) {
                 $campaignName = strtoupper(trim(rtrim($item->campaignName, '.')));
                 $cleanSku = strtoupper(trim(rtrim($sku, '.')));
-                return $campaignName === $cleanSku && strtoupper($item->campaignStatus ?? '') === 'ENABLED';
+                // Match campaign with or without " KW" suffix
+                return ($campaignName === $cleanSku || $campaignName === $cleanSku . ' KW') 
+                    && strtoupper($item->campaignStatus ?? '') === 'ENABLED';
             });
 
             if (!$matchedCampaignL7 && !$matchedCampaignL1) {

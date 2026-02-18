@@ -225,7 +225,6 @@ class Kernel extends ConsoleKernel
         | AMAZON ADS CAMPAIGN REPORTS
         |--------------------------------------------------------------------------
         */
-            ->timezone('America/Los_Angeles');
         $schedule->command('reverb:fetch')
             ->everyFiveMinutes()
             ->timezone('UTC');

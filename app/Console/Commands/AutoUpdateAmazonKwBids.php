@@ -375,14 +375,16 @@ class AutoUpdateAmazonKwBids extends Command
                 // Normalize spaces: replace multiple spaces with single space
                 $campaignName = preg_replace('/\s+/', ' ', strtoupper(trim(rtrim($item->campaignName, '.'))));
                 $cleanSku = preg_replace('/\s+/', ' ', strtoupper(trim(rtrim($sku, '.'))));
-                return $campaignName === $cleanSku;
+                // Match campaign with or without " KW" suffix
+                return $campaignName === $cleanSku || $campaignName === $cleanSku . ' KW';
             });
 
             $matchedCampaignL1 = $amazonSpCampaignReportsL1->first(function ($item) use ($sku) {
                 // Normalize spaces: replace multiple spaces with single space
                 $campaignName = preg_replace('/\s+/', ' ', strtoupper(trim(rtrim($item->campaignName, '.'))));
                 $cleanSku = preg_replace('/\s+/', ' ', strtoupper(trim(rtrim($sku, '.'))));
-                return $campaignName === $cleanSku;
+                // Match campaign with or without " KW" suffix
+                return $campaignName === $cleanSku || $campaignName === $cleanSku . ' KW';
             });
 
             if (!$matchedCampaignL7 && !$matchedCampaignL1) {
