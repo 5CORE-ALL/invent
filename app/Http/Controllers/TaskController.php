@@ -599,6 +599,13 @@ class TaskController extends Controller
 
         $taskIds = $validated['task_ids'];
         $action = $validated['action'];
+        
+        \Log::info('🔵 Bulk Update Request:', [
+            'action' => $action,
+            'task_ids' => $taskIds,
+            'is_automated' => $isAutomatedTask,
+            'count' => count($taskIds)
+        ]);
 
         switch ($action) {
             case 'delete':
@@ -1105,7 +1112,7 @@ class TaskController extends Controller
         $validated = $request->validate([
             'title' => 'required|string',
             'group' => 'nullable|string',
-            'priority' => 'required|in:Low,Normal,High,Urgent',
+            'priority' => 'nullable|in:Low,Normal,High,Urgent',
             'assignor_id' => 'nullable|exists:users,id',
             'assignee_id' => 'nullable|exists:users,id',
             'etc_minutes' => 'nullable|integer',
@@ -1122,6 +1129,9 @@ class TaskController extends Controller
             'checklist_link' => 'nullable|string',
             'description' => 'nullable|string',
         ]);
+        
+        // Set default priority to Normal if not provided
+        $validated['priority'] = $validated['priority'] ?? 'Normal';
 
         $user = Auth::user();
         $isAdmin = strtolower($user->role ?? '') === 'admin';
@@ -1244,12 +1254,15 @@ class TaskController extends Controller
         $validated = $request->validate([
             'title' => 'required|string',
             'group' => 'nullable|string',
-            'priority' => 'required|in:Low,Normal,High,Urgent',
+            'priority' => 'nullable|in:Low,Normal,High,Urgent',
             'etc_minutes' => 'nullable|integer',
             'schedule_type' => 'required|in:daily,weekly,monthly',
             'schedule_days' => 'nullable|string',
             'schedule_time' => 'nullable',
         ]);
+        
+        // Set default priority to Normal if not provided
+        $validated['priority'] = $validated['priority'] ?? 'Normal';
 
         // Update automate_tasks table
         \DB::table('automate_tasks')->where('id', $id)->update([

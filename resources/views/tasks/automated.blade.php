@@ -499,70 +499,90 @@
         </div>     
         <!-- end page title --> 
 
-        <!-- Statistics Cards -->
-        <div class="row mb-4">
-            <!-- Total Tasks -->
-            <div class="col-xl col-lg col-md-4 col-sm-6">
-                <div class="stat-card stat-card-blue">
-                    <div class="stat-icon">
-                        <i class="mdi mdi-format-list-bulleted"></i>
+        <!-- Statistics Cards & Actions in One Line -->
+        <div class="row mb-3">
+            <div class="col-12">
+                <div class="d-flex gap-2 flex-wrap">
+                    <!-- Total Tasks -->
+                    <div class="stat-card stat-card-blue" style="flex: 1; min-width: 110px; padding: 10px 12px; margin-bottom: 0;">
+                        <div class="d-flex align-items-center">
+                            <div class="stat-icon" style="width: 36px; height: 36px; font-size: 18px; margin-right: 8px;">
+                                <i class="mdi mdi-format-list-bulleted"></i>
+                            </div>
+                            <div class="stat-content">
+                                <div class="stat-label" style="font-size: 9px;">TOTAL</div>
+                                <div class="stat-value" style="font-size: 20px;">{{ $stats['total'] }}</div>
+                            </div>
+                        </div>
                     </div>
-                    <div class="stat-content">
-                        <div class="stat-label">TOTAL</div>
-                        <div class="stat-value">{{ $stats['total'] }}</div>
-                    </div>
-                </div>
-            </div>
 
-            <!-- Daily Tasks -->
-            <div class="col-xl col-lg col-md-4 col-sm-6">
-                <div class="stat-card stat-card-cyan">
-                    <div class="stat-icon">
-                        <i class="mdi mdi-calendar-today"></i>
+                    <!-- Daily Tasks -->
+                    <div class="stat-card stat-card-cyan" style="flex: 1; min-width: 110px; padding: 10px 12px; margin-bottom: 0;">
+                        <div class="d-flex align-items-center">
+                            <div class="stat-icon" style="width: 36px; height: 36px; font-size: 18px; margin-right: 8px;">
+                                <i class="mdi mdi-calendar-today"></i>
+                            </div>
+                            <div class="stat-content">
+                                <div class="stat-label" style="font-size: 9px;">DAILY</div>
+                                <div class="stat-value" style="font-size: 20px;">{{ $stats['daily'] }}</div>
+                            </div>
+                        </div>
                     </div>
-                    <div class="stat-content">
-                        <div class="stat-label">DAILY</div>
-                        <div class="stat-value">{{ $stats['daily'] }}</div>
-                    </div>
-                </div>
-            </div>
 
-            <!-- Weekly Tasks -->
-            <div class="col-xl col-lg col-md-4 col-sm-6">
-                <div class="stat-card stat-card-purple">
-                    <div class="stat-icon">
-                        <i class="mdi mdi-calendar-week"></i>
+                    <!-- Weekly Tasks -->
+                    <div class="stat-card stat-card-purple" style="flex: 1; min-width: 110px; padding: 10px 12px; margin-bottom: 0;">
+                        <div class="d-flex align-items-center">
+                            <div class="stat-icon" style="width: 36px; height: 36px; font-size: 18px; margin-right: 8px;">
+                                <i class="mdi mdi-calendar-week"></i>
+                            </div>
+                            <div class="stat-content">
+                                <div class="stat-label" style="font-size: 9px;">WEEKLY</div>
+                                <div class="stat-value" style="font-size: 20px;">{{ $stats['weekly'] }}</div>
+                            </div>
+                        </div>
                     </div>
-                    <div class="stat-content">
-                        <div class="stat-label">WEEKLY</div>
-                        <div class="stat-value">{{ $stats['weekly'] }}</div>
-                    </div>
-                </div>
-            </div>
 
-            <!-- Monthly Tasks -->
-            <div class="col-xl col-lg col-md-4 col-sm-6">
-                <div class="stat-card stat-card-orange">
-                    <div class="stat-icon">
-                        <i class="mdi mdi-calendar-month"></i>
+                    <!-- Monthly Tasks -->
+                    <div class="stat-card stat-card-orange" style="flex: 1; min-width: 110px; padding: 10px 12px; margin-bottom: 0;">
+                        <div class="d-flex align-items-center">
+                            <div class="stat-icon" style="width: 36px; height: 36px; font-size: 18px; margin-right: 8px;">
+                                <i class="mdi mdi-calendar-month"></i>
+                            </div>
+                            <div class="stat-content">
+                                <div class="stat-label" style="font-size: 9px;">MONTHLY</div>
+                                <div class="stat-value" style="font-size: 20px;">{{ $stats['monthly'] }}</div>
+                            </div>
+                        </div>
                     </div>
-                    <div class="stat-content">
-                        <div class="stat-label">MONTHLY</div>
-                        <div class="stat-value">{{ $stats['monthly'] }}</div>
-                    </div>
-                </div>
-            </div>
 
-            <!-- Active Tasks -->
-            <div class="col-xl col-lg col-md-4 col-sm-6">
-                <div class="stat-card stat-card-green">
-                    <div class="stat-icon">
-                        <i class="mdi mdi-play-circle"></i>
-                    </div>
-                    <div class="stat-content">
-                        <div class="stat-label">ACTIVE</div>
-                        <div class="stat-value">{{ $stats['active'] }}</div>
-                    </div>
+                    <!-- Manual Task Button -->
+                    <a href="{{ route('tasks.index') }}" class="stat-card stat-card-blue" style="flex: 1; min-width: 110px; padding: 10px 12px; margin-bottom: 0; text-decoration: none; display: flex; align-items: center; justify-content: center; background: linear-gradient(135deg, #6c757d 0%, #495057 100%) !important; border-left-color: #495057;">
+                        <div class="text-center">
+                            <i class="mdi mdi-arrow-left" style="font-size: 18px; color: white;"></i>
+                            <div style="font-size: 10px; font-weight: 600; color: white; margin-top: 2px;">MANUAL</div>
+                        </div>
+                    </a>
+
+                    <!-- Create A-Task Button -->
+                    <a href="{{ route('tasks.automatedCreate') }}" class="stat-card stat-card-blue" style="flex: 1; min-width: 110px; padding: 10px 12px; margin-bottom: 0; text-decoration: none; display: flex; align-items: center; justify-content: center; background: linear-gradient(135deg, #dc3545 0%, #c82333 100%) !important; border-left-color: #c82333;">
+                        <div class="text-center">
+                            <i class="mdi mdi-plus-circle" style="font-size: 18px; color: white;"></i>
+                            <div style="font-size: 10px; font-weight: 600; color: white; margin-top: 2px;">CREATE</div>
+                        </div>
+                    </a>
+
+                    <!-- Bulk Actions Button -->
+                    @if($isAdmin)
+                    <button type="button" class="stat-card stat-card-blue border-0" style="flex: 1; min-width: 110px; padding: 10px 12px; margin-bottom: 0; cursor: pointer; display: flex; align-items: center; justify-content: center; background: linear-gradient(135deg, #0dcaf0 0%, #0891b2 100%) !important; border-left-color: #0891b2;" id="bulk-actions-btn">
+                        <div class="text-center">
+                            <i class="mdi mdi-format-list-checks" style="font-size: 18px; color: white;"></i>
+                            <div style="font-size: 10px; font-weight: 600; color: white; margin-top: 2px;">BULK</div>
+                        </div>
+                    </button>
+                    <span id="selected-count" class="text-muted align-self-center ms-2" style="display: none;">
+                        <strong id="count-number">0</strong> selected
+                    </span>
+                    @endif
                 </div>
             </div>
         </div>
@@ -571,31 +591,6 @@
             <div class="col-12">
                 <div class="card task-card">
                     <div class="card-body">
-                        <div class="row mb-3">
-                            <div class="col-sm-12 d-flex justify-content-between align-items-center">
-                                <div>
-                                    <a href="{{ route('tasks.index') }}" class="btn btn-secondary">
-                                        <i class="mdi mdi-arrow-left me-2"></i> Back to Manual Tasks
-                                    </a>
-                                    
-                                    <a href="{{ route('tasks.automatedCreate') }}" class="btn btn-danger ms-2">
-                                        <i class="mdi mdi-plus-circle me-2"></i> Create Automated Task
-                                    </a>
-                                    
-                                    @if($isAdmin)
-                                    <button type="button" class="btn btn-info ms-2" id="bulk-actions-btn">
-                                        <i class="mdi mdi-format-list-checks me-2"></i> Bulk Actions
-                                    </button>
-                                    @endif
-                                </div>
-                                
-                                <div>
-                                    <span id="selected-count" class="text-muted" style="display: none;">
-                                        <strong id="count-number">0</strong> task(s) selected
-                                    </span>
-                                </div>
-                            </div>
-                        </div>
 
                         @if(session('success'))
                             <div class="alert alert-success alert-dismissible fade show" role="alert">
@@ -636,6 +631,16 @@
                                     @foreach($users ?? [] as $user)
                                         <option value="{{ $user->name }}">{{ $user->name }}</option>
                                     @endforeach
+                                </select>
+                            </div>
+                            <div class="col-md-2 mb-2">
+                                <label class="form-label fw-bold">Freq</label>
+                                <select id="filter-freq" class="form-select form-select-sm">
+                                    <option value="">All Frequencies</option>
+                                    <option value="__NULL__" style="color: #dc3545; font-weight: bold;">🔴 No Freq</option>
+                                    <option value="daily">Daily</option>
+                                    <option value="weekly">Weekly</option>
+                                    <option value="monthly">Monthly</option>
                                 </select>
                             </div>
                         </div>
@@ -890,6 +895,11 @@
             // Initialize Tabulator
             var table = new Tabulator("#tasks-table", {
                 selectable: isAdmin,
+                selectableRangeMode: "click",
+                selectableCheck: function(row) {
+                    // Only allow selection of visible/filtered rows
+                    return true;
+                },
                 ajaxURL: "{{ route('tasks.automatedData') }}",
                 ajaxParams: {},
                 ajaxContentType: "json",
@@ -924,7 +934,27 @@
                     if (isAdmin) {
                         cols.push({
                             formatter: "rowSelection", 
-                            titleFormatter: "rowSelection", 
+                            titleFormatter: function(cell, formatterParams, onRendered) {
+                                // Custom header checkbox that only selects filtered rows
+                                var checkbox = document.createElement("input");
+                                checkbox.type = "checkbox";
+                                checkbox.style.cursor = "pointer";
+                                
+                                checkbox.addEventListener("click", function(e) {
+                                    e.stopPropagation();
+                                    if (this.checked) {
+                                        // Select only visible/filtered rows
+                                        table.getRows("active").forEach(function(row) {
+                                            row.select();
+                                        });
+                                    } else {
+                                        // Deselect all
+                                        table.deselectRow();
+                                    }
+                                });
+                                
+                                return checkbox;
+                            },
                             hozAlign: "center", 
                             headerSort: false, 
                             width: 60,
@@ -960,12 +990,12 @@
                         }
                     });
                     
-                    // TITLE - Multi-line with word wrap (no alert icon)
+                    // TASK - Multi-line with word wrap (no alert icon)
                     cols.push({
-                        title: "TITLE", 
+                        title: "TASK", 
                         field: "title", 
-                        width: 400,
-                        widthGrow: 2,
+                        widthGrow: 3,
+                        minWidth: 200,
                         variableHeight: true, // Allow row height to expand
                         formatter: function(cell) {
                             var rowData = cell.getRow().getData();
@@ -1393,6 +1423,21 @@
                     }
                 }
                 
+                // Freq filter (including NULL check)
+                var freqValue = $('#filter-freq').val();
+                if (freqValue) {
+                    if (freqValue === '__NULL__') {
+                        // Custom filter for tasks with NO frequency/schedule_type
+                        table.setFilter(function(data) {
+                            return !data.schedule_type || data.schedule_type === '' || data.schedule_type === null || data.schedule_type === '-';
+                        });
+                        updateStatistics();
+                        return; // Skip other filters
+                    } else {
+                        filters.push({field:"schedule_type", type:"=", value:freqValue});
+                    }
+                }
+                
                 // Search filter (OR logic - add last)
                 var searchValue = $('#filter-search').val();
                 if (searchValue) {
@@ -1420,19 +1465,34 @@
             $('#filter-task').on('keyup', applyFilters);
             $('#filter-assignor').on('change', applyFilters);
             $('#filter-assignee').on('change', applyFilters);
+            $('#filter-freq').on('change', applyFilters);
 
             // Handle Row Selection
             table.on("rowSelectionChanged", function(data, rows) {
                 selectedTasks = data.map(task => task.id);
                 var count = selectedTasks.length;
                 
+                console.log('🔵 Row selection changed:', {
+                    count: count,
+                    selectedTasks: selectedTasks,
+                    rowData: data
+                });
+                
                 if (count > 0) {
                     $('#selected-count').show();
                     $('#count-number').text(count);
-                    $('#bulk-actions-btn').removeClass('btn-info').addClass('btn-success');
+                    // Update bulk button style
+                    $('#bulk-actions-btn').css({
+                        'background': 'linear-gradient(135deg, #28a745 0%, #20c997 100%)',
+                        'border-left-color': '#20c997'
+                    });
                 } else {
                     $('#selected-count').hide();
-                    $('#bulk-actions-btn').removeClass('btn-success').addClass('btn-info');
+                    // Reset bulk button style
+                    $('#bulk-actions-btn').css({
+                        'background': 'linear-gradient(135deg, #0dcaf0 0%, #0891b2 100%)',
+                        'border-left-color': '#0891b2'
+                    });
                 }
             });
 
