@@ -51,7 +51,70 @@
                 </a>
             </li>
 
-
+            {{-- Marketplace Sync (Reverb, Amazon, eBay, Walmart) --}}
+            <li class="side-nav-item">
+                <a data-bs-toggle="collapse" href="#sidebarMarketplaceSync" aria-expanded="false" aria-controls="sidebarMarketplaceSync" class="side-nav-link">
+                    <i class="ri-store-2-line"></i>
+                    <span>Marketplace Sync</span>
+                    <span class="menu-arrow"></span>
+                </a>
+                <div class="collapse" id="sidebarMarketplaceSync">
+                    <ul class="side-nav-second-level">
+                        <li class="side-nav-item">
+                            <a data-bs-toggle="collapse" href="#sidebarMarketplaceReverb" aria-expanded="false" aria-controls="sidebarMarketplaceReverb">
+                                <span>Reverb</span>
+                                <span class="menu-arrow"></span>
+                            </a>
+                            <div class="collapse" id="sidebarMarketplaceReverb">
+                                <ul class="side-nav-third-level">
+                                    <li><a href="{{ route('marketplace.products', 'reverb') }}">Products</a></li>
+                                    <li><a href="{{ route('marketplace.orders', 'reverb') }}">Orders</a></li>
+                                    <li><a href="{{ route('marketplace.settings', 'reverb') }}">Settings</a></li>
+                                </ul>
+                            </div>
+                        </li>
+                        <li class="side-nav-item">
+                            <a data-bs-toggle="collapse" href="#sidebarMarketplaceAmazon" aria-expanded="false" aria-controls="sidebarMarketplaceAmazon">
+                                <span>Amazon</span>
+                                <span class="menu-arrow"></span>
+                            </a>
+                            <div class="collapse" id="sidebarMarketplaceAmazon">
+                                <ul class="side-nav-third-level">
+                                    <li><a href="{{ route('marketplace.products', 'amazon') }}">Products</a></li>
+                                    <li><a href="{{ route('marketplace.orders', 'amazon') }}">Orders</a></li>
+                                    <li><a href="{{ route('marketplace.settings', 'amazon') }}">Settings</a></li>
+                                </ul>
+                            </div>
+                        </li>
+                        <li class="side-nav-item">
+                            <a data-bs-toggle="collapse" href="#sidebarMarketplaceEbay" aria-expanded="false" aria-controls="sidebarMarketplaceEbay">
+                                <span>eBay</span>
+                                <span class="menu-arrow"></span>
+                            </a>
+                            <div class="collapse" id="sidebarMarketplaceEbay">
+                                <ul class="side-nav-third-level">
+                                    <li><a href="{{ route('marketplace.products', 'ebay') }}">Products</a></li>
+                                    <li><a href="{{ route('marketplace.orders', 'ebay') }}">Orders</a></li>
+                                    <li><a href="{{ route('marketplace.settings', 'ebay') }}">Settings</a></li>
+                                </ul>
+                            </div>
+                        </li>
+                        <li class="side-nav-item">
+                            <a data-bs-toggle="collapse" href="#sidebarMarketplaceWalmart" aria-expanded="false" aria-controls="sidebarMarketplaceWalmart">
+                                <span>Walmart</span>
+                                <span class="menu-arrow"></span>
+                            </a>
+                            <div class="collapse" id="sidebarMarketplaceWalmart">
+                                <ul class="side-nav-third-level">
+                                    <li><a href="{{ route('marketplace.products', 'walmart') }}">Products</a></li>
+                                    <li><a href="{{ route('marketplace.orders', 'walmart') }}">Orders</a></li>
+                                    <li><a href="{{ route('marketplace.settings', 'walmart') }}">Settings</a></li>
+                                </ul>
+                            </div>
+                        </li>
+                    </ul>
+                </div>
+            </li>
 
             {{-- User --}}
 

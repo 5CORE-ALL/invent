@@ -518,10 +518,10 @@ class AiChatController extends Controller
         return 'General';
     }
 
-    /** All escalations use the single senior email (tech-support@5core.com). */
+    /** All escalations use the single senior email (president@5core.com). */
     private function getSeniorEmailByDomain(string $domain): string
     {
-        return 'tech-support@5core.com';
+        return 'president@5core.com';
     }
 
     private const CLAUDE_SYSTEM_PROMPT = "You are 5Core AI Assistant, an internal support agent for 5Core team members. "

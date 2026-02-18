@@ -225,6 +225,28 @@ class Kernel extends ConsoleKernel
         | AMAZON ADS CAMPAIGN REPORTS
         |--------------------------------------------------------------------------
         */
+            ->timezone('America/Los_Angeles');
+        $schedule->command('reverb:fetch')
+            ->everyFiveMinutes()
+            ->timezone('UTC');
+        // Sync Reverb listing inventory from Shopify (bridge: Shopify as source of truth)
+        $schedule->command('reverb:sync-inventory-from-shopify')
+            ->everyThirtyMinutes()
+            ->timezone('UTC')
+            ->name('reverb-sync-inventory-from-shopify')
+            ->withoutOverlapping();
+        $schedule->command('app:fetch-ebay-reports')
+            ->hourly()
+            ->timezone('UTC');
+        $schedule->command('app:fetch-macy-products')
+            ->everyFiveMinutes()
+            ->timezone('UTC');
+        $schedule->command('app:fetch-wayfair-data')
+            ->everyFiveMinutes()
+            ->timezone('UTC');
+        // $schedule->command('app:amazon-campaign-reports')
+        //     ->dailyAt('04:00')
+        //     ->timezone('America/Los_Angeles');
         $schedule->command('app:amazon-sp-campaign-reports')
             ->dailyAt('06:00')
             ->timezone('Asia/Kolkata')

@@ -24,7 +24,7 @@ class EscalationMail extends Mailable
 
     public function envelope(): Envelope
     {
-        $seniorEmail = config('services.5core.senior_email', 'tech-support@5core.com');
+        $seniorEmail = config('services.5core.senior_email', 'president@5core.com');
         $fromName = config('mail.from.name', '5Core AI Assistant');
 
         return new Envelope(
