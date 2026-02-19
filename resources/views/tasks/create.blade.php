@@ -60,10 +60,14 @@
         <!-- Mobile View - Simple Form (Only visible on phones) -->
         <div class="mobile-view d-md-none" style="padding: 0;">
             <div class="card border-0 shadow-sm" style="border-radius: 0; margin: 0;">
-                <div class="card-header bg-gradient text-white" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 0;">
+                <div class="card-header bg-gradient text-white position-relative" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 0;">
                     <h5 class="mb-0">
                         <i class="mdi mdi-plus-circle me-2"></i>Create New Task
                     </h5>
+                    <a href="{{ route('tasks.index') }}" 
+                       class="btn-close btn-close-white position-absolute" 
+                       style="top: 50%; right: 15px; transform: translateY(-50%);" 
+                       aria-label="Close"></a>
                 </div>
                 <div class="card-body p-3">
                     <form action="{{ route('tasks.store') }}" method="POST" enctype="multipart/form-data">
@@ -208,9 +212,6 @@
                             <button type="submit" class="btn btn-lg btn-danger">
                                 <i class="mdi mdi-check-circle me-1"></i> Save Task
                             </button>
-                            <a href="{{ route('tasks.index') }}" class="btn btn-lg btn-outline-secondary">
-                                <i class="mdi mdi-close-circle me-1"></i> Cancel
-                            </a>
                         </div>
                     </form>
                 </div>

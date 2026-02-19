@@ -29,10 +29,15 @@
         <div class="row justify-content-end">
             <div class="col-md-4">
                 <div class="card" style="border: 2px solid #28a745; box-shadow: 0 4px 15px rgba(40, 167, 69, 0.15); position: sticky; top: 20px;">
-                    <div class="card-header" style="background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); color: white; padding: 10px 15px;">
+                    <div class="card-header position-relative" style="background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); color: white; padding: 10px 15px;">
                         <h6 class="mb-0">
                             <i class="mdi mdi-pencil me-1"></i>Edit Task
                         </h6>
+                        <button type="button" 
+                                onclick="window.location.href='{{ route('tasks.index') }}'" 
+                                class="btn-close btn-close-white position-absolute" 
+                                style="top: 50%; right: 15px; transform: translateY(-50%);" 
+                                aria-label="Close"></button>
                     </div>
                     <div class="card-body" style="padding: 15px;">
                         <form action="{{ route('tasks.update', $task->id) }}" method="POST" enctype="multipart/form-data">
@@ -170,9 +175,6 @@
 
                             <div class="row mt-3">
                                 <div class="col-12">
-                                    <button type="button" class="btn btn-sm btn-secondary w-100 mb-1" onclick="window.location.href='{{ route('tasks.index') }}'">
-                                        <i class="mdi mdi-arrow-left me-1"></i> Cancel
-                                    </button>
                                     <button type="submit" class="btn btn-sm btn-success w-100">
                                         <i class="mdi mdi-check-circle me-1"></i> Update Task
                                     </button>

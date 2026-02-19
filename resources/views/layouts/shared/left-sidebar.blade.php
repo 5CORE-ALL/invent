@@ -158,7 +158,7 @@
                             </a>
                         </li>
                         <li>
-                            <a href="{{ url('tasks/create') }}">
+                            <a href="{{ url('tasks') }}">
                                 <i class="ri-task-line me-2"></i>Task Manager
                             </a>
                         </li>

@@ -94,31 +94,25 @@
                                          z-index: 1050; 
                                          overflow-y: auto; 
                                          transition: right 0.3s ease;
-                                         padding: 8px;">
+                                         padding: 0;">
         
-        <button type="button" 
-                id="close-task-form-btn"
-                style="position: absolute; 
-                       top: 5px; 
-                       right: 5px; 
-                       background: #dc3545; 
-                       border: none; 
-                       font-size: 14px; 
-                       color: white; 
-                       cursor: pointer; 
-                       z-index: 10;
-                       padding: 2px;
-                       width: 22px;
-                       height: 22px;
-                       line-height: 1;
-                       border-radius: 50%;
-                       transition: all 0.2s ease;">
-            <i class="mdi mdi-close"></i>
-        </button>
-        
-        <div style="font-size: 11px; font-weight: bold; margin-bottom: 6px; padding-right: 25px;">
-            <i class="mdi mdi-plus-circle" style="font-size: 12px;"></i> Create Task
+        <!-- Header with close button -->
+        <div class="position-relative" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 10px 15px;">
+            <div style="font-size: 13px; font-weight: bold; padding-right: 25px;">
+                <i class="mdi mdi-plus-circle me-1"></i> Create Task
+            </div>
+            <button type="button" 
+                    id="close-task-form-btn"
+                    class="btn-close btn-close-white position-absolute"
+                    style="top: 50%; 
+                           right: 10px; 
+                           transform: translateY(-50%);"
+                    aria-label="Close">
+            </button>
         </div>
+        
+        <!-- Form body with padding -->
+        <div style="padding: 8px;">
 
         <form id="quick-task-form" action="{{ route('tasks.store') }}" method="POST" enctype="multipart/form-data">
             @csrf
@@ -217,6 +211,7 @@
                 <i class="mdi mdi-check-circle me-1" style="font-size: 11px;"></i> Create
             </button>
         </form>
+        </div>
     </div>
 
     <!-- Backdrop Overlay -->
@@ -327,7 +322,7 @@
 
     @vite(['resources/js/layout.js', 'resources/js/main.js'])
 
-    {{-- @include('components.ai-chat-widget') --}}
+    @include('components.ai-chat-widget')
     
     <!-- PWA Service Worker Registration with Error Handling -->
     <script>

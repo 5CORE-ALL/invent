@@ -30,10 +30,15 @@
         <div class="row">
             <div class="col-12">
                 <div class="card" style="border: 2px solid #fd7e14; box-shadow: 0 4px 15px rgba(253, 126, 20, 0.15);">
-                    <div class="card-header" style="background: linear-gradient(135deg, #f7b733 0%, #fc4a1a 100%); color: white;">
+                    <div class="card-header position-relative" style="background: linear-gradient(135deg, #f7b733 0%, #fc4a1a 100%); color: white;">
                         <h5 class="mb-0">
                             <i class="mdi mdi-robot me-2"></i>Automated Task Information
                         </h5>
+                        <button type="button" 
+                                onclick="window.location.href='{{ route('tasks.automated') }}'" 
+                                class="btn-close btn-close-white position-absolute" 
+                                style="top: 50%; right: 15px; transform: translateY(-50%);" 
+                                aria-label="Close"></button>
                     </div>
                     <div class="card-body" style="padding: 30px;">
                         <form action="{{ route('tasks.automatedStore') }}" method="POST" enctype="multipart/form-data">
@@ -43,10 +48,7 @@
                             <!-- Action Buttons at Top Right -->
                             <div class="row mb-4">
                                 <div class="col-12 text-end">
-                                    <button type="button" class="btn btn-secondary" onclick="window.location.href='{{ route('tasks.automated') }}'">
-                                        <i class="mdi mdi-arrow-left me-1"></i> Cancel
-                                    </button>
-                                    <button type="submit" class="btn btn-danger ms-2">
+                                    <button type="submit" class="btn btn-danger">
                                         <i class="mdi mdi-check-circle me-1"></i> Create
                                     </button>
                                 </div>

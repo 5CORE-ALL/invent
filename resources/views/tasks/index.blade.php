@@ -916,6 +916,19 @@
             background-color: #bb2d3b;
         }
 
+        .action-btn-delete-disabled {
+            background-color: #e9ecef !important;
+            color: #adb5bd !important;
+            opacity: 0.5 !important;
+            cursor: not-allowed !important;
+            pointer-events: none;
+        }
+
+        .action-btn-delete-disabled:hover {
+            transform: none !important;
+            box-shadow: none !important;
+        }
+
         /* Pagination */
         .tabulator-footer {
             background: #f8f9fa !important;
@@ -1064,19 +1077,6 @@
                 </div>
             </div>
 
-            <!-- Pending Tasks -->
-            <div class="col-xl-3 col-md-6">
-                <div class="stat-card stat-card-cyan">
-                    <div class="stat-icon">
-                        <i class="mdi mdi-clock-outline"></i>
-                    </div>
-                    <div class="stat-content">
-                        <div class="stat-label">PENDING</div>
-                        <div class="stat-value">{{ $stats['pending'] }}</div>
-                    </div>
-                </div>
-            </div>
-
             <!-- Overdue Tasks -->
             <div class="col-xl-3 col-md-6">
                 <div class="stat-card stat-card-red">
@@ -1090,22 +1090,6 @@
                 </div>
             </div>
 
-            <!-- Done Tasks -->
-            <div class="col-xl-3 col-md-6">
-                <div class="stat-card stat-card-green">
-                    <div class="stat-icon">
-                        <i class="mdi mdi-check-circle"></i>
-                    </div>
-                    <div class="stat-content">
-                        <div class="stat-label">DONE</div>
-                        <div class="stat-value">{{ $stats['done'] }}</div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Time Statistics Cards (Hidden on mobile) -->
-        <div class="row mb-4 stats-row d-none d-md-flex">
             <!-- Total ETC -->
             <div class="col-xl-3 col-md-6">
                 <div class="stat-card stat-card-yellow">
@@ -1133,34 +1117,6 @@
                     </div>
                 </div>
             </div>
-
-            <!-- Done ETC -->
-            <div class="col-xl-3 col-md-6">
-                <div class="stat-card stat-card-orange">
-                    <div class="stat-icon">
-                        <i class="mdi mdi-clipboard-check"></i>
-                    </div>
-                    <div class="stat-content">
-                        <div class="stat-label">DONE ETC</div>
-                        <div class="stat-value">{{ number_format($stats['done_etc'] / 60, 1) }}</div>
-                        <div class="stat-unit">hours</div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Done ATC -->
-            <div class="col-xl-3 col-md-6">
-                <div class="stat-card stat-card-purple">
-                    <div class="stat-icon">
-                        <i class="mdi mdi-check-all"></i>
-                    </div>
-                    <div class="stat-content">
-                        <div class="stat-label">DONE ATC</div>
-                        <div class="stat-value">{{ number_format($stats['done_atc'] / 60, 1) }}</div>
-                        <div class="stat-unit">hours</div>
-                    </div>
-                </div>
-            </div>
         </div>
 
         <div class="row">
@@ -1172,24 +1128,16 @@
                                 <!-- Desktop Action Buttons -->
                                 <div class="d-none d-md-flex justify-content-between align-items-center">
                                     <div>
-                                        <a href="{{ route('tasks.create') }}" class="btn btn-danger btn-create-task">
-                                            <i class="mdi mdi-plus-circle me-2"></i> Create Task
-                                        </a>
-                                        
-                                        <button type="button" class="btn btn-success ms-2" id="upload-csv-btn">
-                                            <i class="mdi mdi-file-upload me-2"></i> Upload CSV
+                                        <button type="button" class="btn btn-success" id="upload-csv-btn">
+                                            <i class="mdi mdi-file-upload me-2"></i> CSV
                                         </button>
-                                        
-                                        <a href="{{ route('tasks.automated') }}" class="btn btn-warning ms-2">
-                                            <i class="mdi mdi-robot me-2"></i> Automated Tasks
-                                        </a>
-                                        
+
                                         <a href="{{ route('tasks.deleted') }}" class="btn btn-secondary ms-2">
-                                            <i class="mdi mdi-delete-forever me-2"></i> Deletion Record
+                                            <i class="mdi mdi-archive me-2"></i> Archived
                                         </a>
                                         
                                         <button type="button" class="btn btn-info ms-2" id="bulk-actions-btn">
-                                            <i class="mdi mdi-format-list-checks me-2"></i> Bulk Actions
+                                            <i class="mdi mdi-format-list-checks me-2"></i> Bulk
                                         </button>
                                     </div>
                                     
@@ -1202,29 +1150,19 @@
                                 
                                 <!-- Mobile Action Buttons Grid -->
                                 <div class="d-md-none mobile-action-buttons">
-                                    <a href="{{ route('tasks.create') }}" class="mobile-action-btn btn-primary">
-                                        <i class="mdi mdi-plus-circle"></i>
-                                        <span>Create Task</span>
-                                    </a>
-                                    
                                     <button type="button" class="mobile-action-btn btn-success" id="upload-csv-btn-mobile">
                                         <i class="mdi mdi-file-upload"></i>
-                                        <span>Upload CSV</span>
+                                        <span>CSV</span>
                                     </button>
-                                    
-                                    <a href="{{ route('tasks.automated') }}" class="mobile-action-btn btn-warning">
-                                        <i class="mdi mdi-robot"></i>
-                                        <span>Automated</span>
-                                    </a>
-                                    
+
                                     <a href="{{ route('tasks.deleted') }}" class="mobile-action-btn btn-secondary">
-                                        <i class="mdi mdi-delete-forever"></i>
-                                        <span>Deleted</span>
+                                        <i class="mdi mdi-archive"></i>
+                                        <span>Archived</span>
                                     </a>
                                     
                                     <button type="button" class="mobile-action-btn btn-info" id="bulk-actions-btn-mobile">
                                         <i class="mdi mdi-format-list-checks"></i>
-                                        <span>Bulk Actions</span>
+                                        <span>Bulk</span>
                                     </button>
                                 </div>
                             </div>
@@ -1428,7 +1366,6 @@
                 </div>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                 <button type="button" class="btn btn-success" id="confirm-done-btn">
                     <i class="mdi mdi-check me-1"></i>Mark as Done
                 </button>
@@ -1459,7 +1396,6 @@
                 </div>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                 <button type="button" class="btn btn-primary" id="confirm-status-change-btn">
                     <i class="mdi mdi-check me-1"></i>Confirm Change
                 </button>
@@ -1559,7 +1495,6 @@
                 <!-- Dynamic content will be loaded here -->
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                 <button type="button" class="btn btn-primary" id="confirm-bulk-update-btn">
                     <i class="mdi mdi-check me-1"></i>Update
                 </button>
@@ -1610,7 +1545,6 @@
                     <div id="upload-result" style="display: none;"></div>
                 </div>
                 <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                     <button type="submit" class="btn btn-success" id="upload-csv-submit">
                         <i class="mdi mdi-upload me-1"></i> Upload & Import
                     </button>
@@ -1651,7 +1585,6 @@
                 </div>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                 <button type="button" class="btn btn-success" id="confirm-bulk-assignee-btn">
                     <i class="mdi mdi-check me-1"></i>Assign to Tasks
                 </button>
@@ -1684,7 +1617,6 @@
                 </div>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                 <button type="button" class="btn btn-primary" id="confirm-bulk-assignor-btn">
                     <i class="mdi mdi-check me-1"></i>Assign as Assignor
                 </button>
@@ -2083,7 +2015,7 @@
                     cols.push({
                         title: "TASK", 
                         field: "title", 
-                        width: 280,
+                        width: 560,
                         formatter: function(cell) {
                             var rowData = cell.getRow().getData();
                             var title = cell.getValue() || '';
@@ -2126,16 +2058,17 @@
                         }
                     });
                     
-                    // ASSIGNEE (first name only)
+                    // ASSIGNEE (limited to 12 characters)
                     cols.push({
                         title: "ASSIGNEE", 
                         field: "assignee_name", 
-                        width: 200, 
+                        width: 130, 
                         formatter: function(cell) {
                             var value = cell.getValue();
                             if (value && value !== '-') {
-                                // Show ALL assignees, comma-separated
-                                return '<strong style="font-size: 11px; line-height: 1.4;">' + value + '</strong>';
+                                // Truncate to 12 characters
+                                var displayValue = value.length > 12 ? value.substring(0, 12) + '...' : value;
+                                return '<strong style="font-size: 11px; line-height: 1.4;">' + displayValue + '</strong>';
                             }
                             return '<span style="color: #adb5bd;">-</span>';
                         },
@@ -2148,30 +2081,29 @@
                         }
                     });
                     
-                    // TID (Task Initiation Date) - Yellow background for automated tasks
+                    // TID (Task Initiation Date) - Limited to 5 characters (DD/MM)
                     cols.push({
                         title: "TID", 
                         field: "start_date", 
-                        width: 120,
+                        width: 80,
+                        hozAlign: "center",
                         formatter: function(cell) {
                             var rowData = cell.getRow().getData();
                             var value = cell.getValue();
                             
                             if (value) {
                                 // Parse MySQL datetime correctly (YYYY-MM-DD HH:mm:ss)
-                                // Extract date components directly to avoid timezone issues
-                                var parts = value.split(/[- :]/); // Split by - or :
+                                var parts = value.split(/[- :]/);
                                 var year = parseInt(parts[0]);
                                 var month = parseInt(parts[1]);
                                 var day = parseInt(parts[2]);
                                 
-                                // Create date with exact values
-                                var date = new Date(year, month - 1, day); // month is 0-indexed
+                                // Format as DD/MM (5 characters max)
                                 var dayStr = String(day).padStart(2, '0');
-                                var monthStr = date.toLocaleString('default', { month: 'short' });
+                                var monthStr = String(month).padStart(2, '0');
                                 
-                                // Calculate days from TID (Day 0 = issue date)
-                                var tidDate = new Date(value);
+                                // Calculate days from TID for color
+                                var tidDate = new Date(year, month - 1, day);
                                 tidDate.setHours(0, 0, 0, 0);
                                 var now = new Date();
                                 now.setHours(0, 0, 0, 0);
@@ -2179,45 +2111,50 @@
                                 
                                 var textColor = '#0d6efd'; // Default blue
                                 
-                                // Color logic based on task age (skip for Done/Archived)
+                                // Color logic based on task age
                                 if (rowData.status !== 'Done' && rowData.status !== 'Archived') {
                                     if (daysSinceTID >= 2) {
-                                        // Day 2+ = RED text
-                                        textColor = '#dc3545';
+                                        textColor = '#dc3545'; // Red
                                     } else if (daysSinceTID === 1) {
-                                        // Day 1 = ORANGE text
-                                        textColor = '#fd7e14';
+                                        textColor = '#fd7e14'; // Orange
                                     }
-                                    // Day 0 = Blue (default)
                                 }
                                 
-                                return '<span style="color: ' + textColor + '; font-weight: 600;">' + dayStr + '-' + monthStr + '</span>';
+                                return '<span style="color: ' + textColor + '; font-weight: 600; font-size: 11px;" title="' + dayStr + '/' + monthStr + '/' + year + '">' + dayStr + '/' + monthStr + '</span>';
                             }
                             return '<span style="color: #adb5bd;">-</span>';
                         }
                     });
                     
-                    // ETC (Estimated Time)
+                    // ETC (Estimated Time) - Limited to 3 characters
                     cols.push({
                         title: "ETC", 
                         field: "eta_time", 
-                        width: 90,
+                        width: 60,
                         hozAlign: "center",
                         formatter: function(cell) {
                             var value = cell.getValue();
-                            return value ? value : '<span style="color: #adb5bd;">-</span>';
+                            if (value) {
+                                var displayValue = String(value).substring(0, 3);
+                                return '<span style="font-size: 11px;" title="' + value + ' minutes">' + displayValue + '</span>';
+                            }
+                            return '<span style="color: #adb5bd;">-</span>';
                         }
                     });
                     
-                    // ATC (Actual Time)
+                    // ATC (Actual Time) - Limited to 3 characters
                     cols.push({
                         title: "ATC", 
                         field: "etc_done", 
-                        width: 90,
+                        width: 60,
                         hozAlign: "center",
                         formatter: function(cell) {
                             var value = cell.getValue();
-                            return value ? '<strong style="color: #28a745;">' + value + '</strong>' : '<span style="color: #adb5bd;">0</span>';
+                            if (value) {
+                                var displayValue = String(value).substring(0, 3);
+                                return '<strong style="color: #28a745; font-size: 11px;" title="' + value + ' minutes">' + displayValue + '</strong>';
+                            }
+                            return '<span style="color: #adb5bd;">0</span>';
                         }
                     });
                     
@@ -2306,32 +2243,34 @@
                         }
                     });
                     
-                    // PRIORITY (Dark colored backgrounds)
+                    // PRIORITY (Colored dots)
                     cols.push({
                         title: "PRIORITY", 
                         field: "priority", 
-                        width: 110, 
+                        width: 90, 
                         hozAlign: "center",
                         formatter: function(cell) {
-                            var value = cell.getValue() || 'Normal';
-                            var styles = {
-                                'Low': {bg: '#6c757d', color: '#fff'},
-                                'Normal': {bg: '#0d6efd', color: '#fff'},
-                                'High': {bg: '#fd7e14', color: '#fff'},
-                                'Urgent': {bg: '#dc3545', color: '#fff'},
-                                'Take your time': {bg: '#20c997', color: '#fff'}
+                            var value = cell.getValue() || 'normal';
+                            var dotColors = {
+                                'low': '#9ca3af',        // Gray
+                                'normal': '#fbbf24',     // Yellow
+                                'high': '#fb923c',       // Orange
+                                'urgent': '#ef4444'      // Red
                             };
-                            var style = styles[value] || styles['Normal'];
-                            return '<span style="background: ' + style.bg + '; color: ' + style.color + '; padding: 5px 12px; border-radius: 20px; font-size: 11px; font-weight: 600; text-transform: uppercase;">' + value + '</span>';
+                            var color = dotColors[value.toLowerCase()] || dotColors['normal'];
+                            return '<div style="display: flex; align-items: center; justify-content: center;">' +
+                                   '<span style="display: inline-block; width: 16px; height: 16px; border-radius: 50%; background: ' + color + '; box-shadow: 0 2px 4px rgba(0,0,0,0.2);" title="' + value.toUpperCase() + '"></span>' +
+                                   '</div>';
                         }
                     });
                     
-                    // IMG (Screenshot/Image)
+                    // IMG (Screenshot/Image) - Hidden
                     cols.push({
                         title: "IMG", 
                         field: "image", 
                         width: 60,
                         hozAlign: "center",
+                        visible: false,
                         formatter: function(cell) {
                             var value = cell.getValue();
                             if (value) {
@@ -2343,13 +2282,14 @@
                         }
                     });
                     
-                    // LINKS
+                    // LINKS - Hidden
                     cols.push({
                         title: "LINKS", 
                         field: "id", 
                         width: 90,
                         hozAlign: "center",
                         headerSort: false,
+                        visible: false,
                         formatter: function(cell) {
                             var rowData = cell.getRow().getData();
                             // Check all link fields (link1-9)
@@ -2401,9 +2341,18 @@
                                 `;
                             }
                             
+                            // Always show delete button for symmetry, but disable when no permission
                             if (canDelete) {
                                 buttons += `
                                     <button class="action-btn-icon action-btn-delete delete-task" data-id="${id}" title="Delete">
+                                        <i class="mdi mdi-delete"></i>
+                                    </button>
+                                `;
+                            } else {
+                                buttons += `
+                                    <button class="action-btn-icon action-btn-delete-disabled" 
+                                            title="Only task creator can delete"
+                                            disabled>
                                         <i class="mdi mdi-delete"></i>
                                     </button>
                                 `;
@@ -3178,51 +3127,7 @@
                             <div style="padding: 10px;">
                                 <table class="table table-borderless">
                                     <tr>
-                                        <th width="200" style="color: #6c757d; font-weight: 600;">Title:</th>
-                                        <td><strong>${response.title}</strong></td>
-                                    </tr>
-                                    <tr>
-                                        <th style="color: #6c757d; font-weight: 600;">Description:</th>
-                                        <td>${response.description || '<span style="color: #adb5bd;">-</span>'}</td>
-                                    </tr>
-                                    <tr>
-                                        <th style="color: #6c757d; font-weight: 600;">Group:</th>
-                                        <td>${response.group || '<span style="color: #adb5bd;">-</span>'}</td>
-                                    </tr>
-                                    <tr>
-                                        <th style="color: #6c757d; font-weight: 600;">Priority:</th>
-                                        <td><span class="priority-badge priority-${response.priority}">${response.priority}</span></td>
-                                    </tr>
-                                    <tr>
-                                        <th style="color: #6c757d; font-weight: 600;">Assignor:</th>
-                                        <td>${response.assignor ? response.assignor.name : '<span style="color: #adb5bd;">-</span>'}</td>
-                                    </tr>
-                                    <tr>
-                                        <th style="color: #6c757d; font-weight: 600;">Assignee:</th>
-                                        <td>${response.assignee ? response.assignee.name : '<span style="color: #adb5bd;">-</span>'}</td>
-                                    </tr>
-                                    <tr>
-                                        <th style="color: #6c757d; font-weight: 600;">Split Tasks:</th>
-                                        <td>${response.split_tasks ? '<span class="badge bg-success">Yes</span>' : '<span class="badge bg-secondary">No</span>'}</td>
-                                    </tr>
-                                    <tr>
-                                        <th style="color: #6c757d; font-weight: 600;">Flag Raise:</th>
-                                        <td>${response.flag_raise ? '<span class="badge bg-success">Yes</span>' : '<span class="badge bg-secondary">No</span>'}</td>
-                                    </tr>
-                                    <tr>
-                                        <th style="color: #6c757d; font-weight: 600;">Status:</th>
-                                        <td><span class="status-badge status-${response.status}">${response.status}</span></td>
-                                    </tr>
-                                    <tr>
-                                        <th style="color: #6c757d; font-weight: 600;">ETC (Minutes):</th>
-                                        <td>${response.etc_minutes ? response.etc_minutes + ' min' : '<span style="color: #adb5bd;">-</span>'}</td>
-                                    </tr>
-                                    <tr>
-                                        <th style="color: #6c757d; font-weight: 600;">TID:</th>
-                                        <td>${response.tid || '<span style="color: #adb5bd;">-</span>'}</td>
-                                    </tr>
-                                    <tr>
-                                        <th style="color: #6c757d; font-weight: 600;">L1:</th>
+                                        <th width="200" style="color: #6c757d; font-weight: 600;">L1:</th>
                                         <td>${response.l1 || '<span style="color: #adb5bd;">-</span>'}</td>
                                     </tr>
                                     <tr>
@@ -3253,15 +3158,7 @@
                                         <th style="color: #6c757d; font-weight: 600;">PL:</th>
                                         <td>${response.pl || '<span style="color: #adb5bd;">-</span>'}</td>
                                     </tr>
-                                    <tr>
-                                        <th style="color: #6c757d; font-weight: 600;">Process:</th>
-                                        <td>${response.process || '<span style="color: #adb5bd;">-</span>'}</td>
-                                    </tr>
                                     ${response.image ? '<tr><th style="color: #6c757d; font-weight: 600;">Image:</th><td><img src="/uploads/tasks/' + response.image + '" class="img-thumbnail" style="max-width: 300px; border-radius: 8px;"></td></tr>' : ''}
-                                    <tr>
-                                        <th style="color: #6c757d; font-weight: 600;">Created At:</th>
-                                        <td>${response.created_at}</td>
-                                    </tr>
                                 </table>
                             </div>
                         `;
