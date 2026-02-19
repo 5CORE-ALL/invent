@@ -163,31 +163,29 @@ class UpdateEbayThreeSuggestedBid extends Command
                         // Get ESBID (suggested bid from bid_percentage in campaign listing)
                         $esbid = (float) ($listing->suggested_bid ?? 0);
                         
-                        // Calculate SBID based on L7_VIEWS ranges
-                        $newBid = 3; // Default minimum
+                        // Calculate SBID based on L7_VIEWS ranges (matching blade view logic)
+                        $newBid = $esbid; // Default: use ESBID
                         
                         if ($l7Views >= 0 && $l7Views < 50) {
                             // 0-50: use ESBID
                             $newBid = $esbid;
                         } elseif ($l7Views >= 50 && $l7Views < 100) {
-                            $newBid = 8;
+                            $newBid = 9;
                         } elseif ($l7Views >= 100 && $l7Views < 150) {
-                            $newBid = 7;
+                            $newBid = 8;
                         } elseif ($l7Views >= 150 && $l7Views < 200) {
+                            $newBid = 7;
+                        } elseif ($l7Views >= 200 && $l7Views < 250) {
                             $newBid = 6;
-                        } elseif ($l7Views >= 200 && $l7Views < 350) {
+                        } elseif ($l7Views >= 250) {
                             $newBid = 5;
-                        } elseif ($l7Views >= 350 && $l7Views < 400) {
-                            $newBid = 4;
-                        } elseif ($l7Views >= 400) {
-                            $newBid = 3;
                         } else {
                             // Fallback: use ESBID
                             $newBid = $esbid;
                         }
 
-                        // Cap newBid to maximum of 15
-                        $newBid = min($newBid, 15);
+                        // Cap newBid to maximum of 12 (matching blade view)
+                        $newBid = min($newBid, 12);
                         
                         $listing->new_bid = $newBid;
                         $listing->sku = $pm->sku; // Store SKU for logging
