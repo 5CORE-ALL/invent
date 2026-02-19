@@ -2004,7 +2004,8 @@
                     cols.push({
                         title: "GROUP", 
                         field: "group", 
-                        minWidth: 120, 
+                        minWidth: 120,
+                        hozAlign: "left",
                         formatter: function(cell) {
                             var value = cell.getValue();
                             return value ? '<span style="color: #6c757d;">' + value + '</span>' : '<span style="color: #adb5bd;">-</span>';
@@ -2016,6 +2017,7 @@
                         title: "TASK", 
                         field: "title", 
                         width: 560,
+                        hozAlign: "left",
                         formatter: function(cell) {
                             var rowData = cell.getRow().getData();
                             var title = cell.getValue() || '';
@@ -2023,22 +2025,11 @@
                             // Remove [Auto: DD-MMM-YY] suffix from automated task titles
                             title = title.replace(/\s*\[Auto:\s*\d{1,2}-[A-Za-z]{3}-\d{2}\]\s*$/i, '');
                             
-                            var isOverdue = false;
-                            
-                            var startDate = rowData.start_date;
-                            if (startDate && !['Done', 'Archived'].includes(rowData.status)) {
-                                var tidDate = new Date(startDate);
-                                var overdueDate = new Date(tidDate);
-                                overdueDate.setDate(overdueDate.getDate() + 10);
-                                isOverdue = overdueDate < new Date();
-                            }
-                            
-                            var overdueIcon = isOverdue ? '<i class="mdi mdi-alert-circle text-danger me-1" style="font-size: 14px;"></i>' : '';
                             var htmlTitle = String(title).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
                             
                             // Show full text with auto wrapping (no line limit)
-                            return '<div style="word-wrap: break-word; overflow-wrap: break-word; white-space: normal; line-height: 1.4;">' + 
-                                   overdueIcon + '<strong style="font-size: 13px;">' + htmlTitle + '</strong>' + 
+                            return '<div style="word-wrap: break-word; overflow-wrap: break-word; white-space: normal; line-height: 1.4; text-align: left;">' + 
+                                   '<strong style="font-size: 13px;">' + htmlTitle + '</strong>' + 
                                    '</div>';
                         }
                     });
@@ -2047,7 +2038,8 @@
                     cols.push({
                         title: "ASSIGNOR", 
                         field: "assignor_name", 
-                        width: 100, 
+                        width: 100,
+                        hozAlign: "center",
                         formatter: function(cell) {
                             var value = cell.getValue();
                             if (value && value !== '-') {
@@ -2062,7 +2054,8 @@
                     cols.push({
                         title: "ASSIGNEE", 
                         field: "assignee_name", 
-                        width: 130, 
+                        width: 130,
+                        hozAlign: "center",
                         formatter: function(cell) {
                             var value = cell.getValue();
                             if (value && value !== '-') {
