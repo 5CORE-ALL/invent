@@ -24,7 +24,7 @@ class ImportReverbOrderToShopify implements ShouldQueue
     public function __construct(
         protected int $reverbOrderMetricId
     ) {
-        $this->onQueue('default');
+        $this->onQueue('reverb');
     }
 
     public function handle(ReverbOrderPushService $pushService): void

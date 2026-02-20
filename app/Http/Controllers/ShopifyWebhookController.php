@@ -33,7 +33,7 @@ class ShopifyWebhookController extends Controller
 
         Log::info('ShopifyWebhookController: inventory update received, dispatching SyncInventoryToReverb');
 
-        SyncInventoryToReverb::dispatch();
+        SyncInventoryToReverb::dispatch()->onQueue('reverb');
 
         return response()->json(['ok' => true]);
     }

@@ -20,7 +20,7 @@ class SyncInventoryToReverb implements ShouldQueue
 
     public function __construct()
     {
-        $this->onQueue('default');
+        $this->onQueue('reverb');
     }
 
     public function handle(): void

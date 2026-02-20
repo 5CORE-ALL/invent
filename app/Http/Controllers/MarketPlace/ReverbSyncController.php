@@ -253,7 +253,7 @@ class ReverbSyncController extends Controller
             ], 422);
         }
 
-        ImportReverbOrderToShopify::dispatch($order->id);
+        ImportReverbOrderToShopify::dispatch($order->id)->onQueue('reverb');
         return response()->json([
             'success' => true,
             'message' => 'Import job dispatched. Order will be processed by the queue worker.',

@@ -305,7 +305,7 @@ class FetchReverbData extends Command
                         if ($debugAutoPush) {
                             \Illuminate\Support\Facades\Log::info('Auto-import (chunk): dispatching job for order #' . $order->order_number);
                         }
-                        ImportReverbOrderToShopify::dispatch($order->id);
+                        ImportReverbOrderToShopify::dispatch($order->id)->onQueue('reverb');
                         $jobsDispatched++;
                         $this->info("  Dispatched import job for Reverb order #{$order->order_number}");
                     }
@@ -340,7 +340,7 @@ class FetchReverbData extends Command
                 $toImport = $query->orderBy('order_date')->orderBy('id')->get();
 
                 foreach ($toImport as $order) {
-                    ImportReverbOrderToShopify::dispatch($order->id);
+                    ImportReverbOrderToShopify::dispatch($order->id)->onQueue('reverb');
                     $jobsDispatched++;
                     $this->info("  Dispatched import job for Reverb order #{$order->order_number}");
                 }
@@ -351,7 +351,7 @@ class FetchReverbData extends Command
             \Illuminate\Support\Facades\Log::info('Auto-import: no last_sync yet; only dispatched orders from current fetch chunks.');
         }
         if ($jobsDispatched > 0) {
-            $this->info("  Total import jobs dispatched: {$jobsDispatched}. Ensure queue worker is running: php artisan queue:work");
+            $this->info("  Total import jobs dispatched: {$jobsDispatched}. Run: php artisan queue:work --queue=reverb");
         }
 
         if (\Illuminate\Support\Facades\Schema::hasTable('reverb_sync_states')) {
