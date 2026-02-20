@@ -26,21 +26,30 @@ class AmazonACOSController extends Controller
 
     public function getAccessToken()
     {
-        return cache()->remember('amazon_ads_access_token', 55 * 60, function () {
+        $fetchToken = function () {
             $client = new Client();
-
             $response = $client->post('https://api.amazon.com/auth/o2/token', [
                 'form_params' => [
                     'grant_type' => 'refresh_token',
                     'refresh_token' => config('services.amazon_ads.refresh_token'),
                     'client_id' => config('services.amazon_ads.client_id'),
                     'client_secret' => config('services.amazon_ads.client_secret'),
-                ]
+                ],
             ]);
-
             $data = json_decode($response->getBody(), true);
             return $data['access_token'];
-        });
+        };
+
+        try {
+            return cache()->remember('amazon_ads_access_token', 55 * 60, $fetchToken);
+        } catch (\Throwable $e) {
+            $msg = $e->getMessage();
+            if (str_contains($msg, 'Failed to open stream') || str_contains($msg, 'No such file or directory')) {
+                Log::warning('Amazon Ads: cache write failed (storage dir missing?). Fetching token without cache. Fix: php artisan storage:ensure --fix', ['error' => $msg]);
+                return $fetchToken();
+            }
+            throw $e;
+        }
     }
 
     public function updateAutoAmazonCampaignBgt(array $campaignIds, array $newBgts)
