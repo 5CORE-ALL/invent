@@ -4621,24 +4621,21 @@
                                 return '<span style="display: inline-block; width: 20px; height: 20px; border-radius: 50%; background-color: #ffc107;"></span>';
                             }
                             
-                            // Check if has campaign - section-aware
-                            var hasCampaign = false;
+                            // Missing AD: green only when THIS SKU has its own campaign (not parent-only)
+                            var hasOwnCampaign = false;
                             if (currentSection === 'hl-ads') {
-                                // HL Ads: check HL campaign existence
-                                hasCampaign = row.hl_campaignName || row.hl_spend_L30 > 0 || (row.hl_campaign_status && row.hl_campaign_status !== '');
+                                hasOwnCampaign = !!row.has_own_hl_campaign && !!(row.hl_campaign_id || row.hl_campaignName);
                             } else if (currentSection === 'pt-ads') {
-                                // PT Ads: check PT campaign existence
-                                hasCampaign = row.pt_campaignName || row.pt_spend_L30 > 0 || (row.pt_campaign_status && row.pt_campaign_status !== '');
+                                hasOwnCampaign = !!row.has_own_pt_campaign && !!(row.pt_campaign_id || row.pt_campaignName);
                             } else {
-                                // KW Ads or default: check KW campaign existence
-                                hasCampaign = row.hasCampaign !== undefined ? row.hasCampaign : (row.campaign_id && row.campaignName);
+                                hasOwnCampaign = (!!row.has_own_kw_campaign || !!row.has_own_pt_campaign) && !!(row.campaign_id || row.campaignName || row.pt_campaign_id || row.pt_campaignName);
                             }
                             
-                            if (hasCampaign) {
-                                // Has campaign and not NRA - Green dot
+                            if (hasOwnCampaign) {
+                                // Has own campaign and not NRA - Green dot
                                 return '<span style="display: inline-block; width: 20px; height: 20px; border-radius: 50%; background-color: #28a745;"></span>';
                             } else {
-                                // No campaign and not NRA - Missing - Red dot
+                                // No own campaign and not NRA - Missing - Red dot
                                 return '<span style="display: inline-block; width: 20px; height: 20px; border-radius: 50%; background-color: #dc3545;"></span>';
                             }
                         }
