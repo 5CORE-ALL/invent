@@ -942,6 +942,14 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
+        $schedule->command('shopify:retry-pending-orders')
+            ->hourly()
+            ->timezone('UTC')
+            ->name('shopify-retry-pending-orders')
+            ->withoutOverlapping(30)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
         /*
         |--------------------------------------------------------------------------
         | MACY

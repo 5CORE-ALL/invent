@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\PendingShopifyOrder;
 use App\Models\ReverbOrderMetric;
 use App\Models\ReverbSyncSettings;
 use Illuminate\Support\Facades\Http;
@@ -9,6 +10,11 @@ use Illuminate\Support\Facades\Log;
 
 class ReverbOrderPushService
 {
+    /** Backoff in seconds for 429 / timeout retries */
+    public const API_BACKOFF = [30, 60, 120, 240, 480];
+
+    /** Max retries for timeout/connection errors */
+    public const MAX_RETRIES = 5;
     /**
      * Push a single Reverb order to Shopify. Returns Shopify order ID or null on failure.
      */
@@ -51,9 +57,8 @@ class ReverbOrderPushService
     }
 
     /**
-     * Create a REAL Shopify order from a Reverb order (used by automatic import).
-     * Tries variant by SKU first; falls back to custom line item if SKU not found or inventory zero.
-     * Returns Shopify order ID or null on failure.
+     * Create a Shopify order from a Reverb order. NEVER throws – returns Shopify order ID or null.
+     * Tries variant first; falls back to custom line item; on total API failure stores in pending_shopify_orders.
      */
     public function createOrderFromMarketplace(ReverbOrderMetric $order): ?string
     {
@@ -61,54 +66,56 @@ class ReverbOrderPushService
         $quantity = (int) ($order->quantity ?: 1);
 
         if (!$variantId) {
-            Log::info('ReverbOrderPushService: SKU not found, creating order with custom line item', [
+            Log::info('ReverbOrderPushService: fallback=SKU_NOT_FOUND', [
                 'order_number' => $order->order_number,
                 'sku' => $order->sku,
             ]);
-            return $this->createShopifyOrderWithCustomItem($order, 'SKU not found in Shopify - added as custom item', ['SKU Missing']);
+            $result = $this->createOrderWithCustomItem($order, 'SKU [' . ($order->sku ?? 'N/A') . '] not found in Shopify - created as custom item', ['SKU Missing']);
+            if ($result !== null) {
+                return $result;
+            }
+            $this->storeInPending($order, 'Custom item creation failed after retries (SKU not found)');
+            return null;
         }
 
-        $inventoryQty = $this->getVariantInventoryQuantity($variantId);
-        if ($inventoryQty !== null && $inventoryQty < 1) {
-            Log::info('ReverbOrderPushService: inventory zero, falling back to custom line item', [
+        $inventoryQty = $this->getInventoryLevel($variantId);
+        $lowInventoryNote = null;
+        $tags = ['Reverb Order'];
+        if ($inventoryQty !== null && ($inventoryQty < 1 || $inventoryQty < $quantity)) {
+            $tags[] = 'Low Inventory Warning';
+            $lowInventoryNote = 'Inventory was low (available: ' . $inventoryQty . ', ordered: ' . $quantity . ')';
+            Log::warning('ReverbOrderPushService: low inventory, creating with variant', [
                 'order_number' => $order->order_number,
-                'sku' => $order->sku,
-            ]);
-            return $this->createShopifyOrderWithCustomItem($order, 'Inventory zero - added as custom item', ['SKU Missing', 'Inventory Zero']);
-        }
-        if ($inventoryQty !== null && $inventoryQty < $quantity) {
-            Log::warning('ReverbOrderPushService: low inventory, proceeding with variant', [
-                'order_number' => $order->order_number,
-                'sku' => $order->sku,
                 'available' => $inventoryQty,
                 'requested' => $quantity,
             ]);
         }
 
-        try {
-            return $this->createShopifyOrderWithVariant($order, (int) $variantId);
-        } catch (\Throwable $e) {
-            $body = $e->getMessage();
-            $isInventoryError = (
-                stripos($body, 'inventory') !== false ||
-                stripos($body, 'Unable to reserve') !== false ||
-                stripos($body, 'variant') !== false
-            );
-            if ($isInventoryError) {
-                Log::warning('ReverbOrderPushService: Shopify inventory error, falling back to custom line item', [
-                    'order_number' => $order->order_number,
-                    'error' => $body,
-                ]);
-                return $this->createShopifyOrderWithCustomItem($order, 'Shopify inventory error - added as custom item: ' . substr($body, 0, 100), ['SKU Missing', 'Inventory Error']);
-            }
-            throw $e;
+        $variantResult = $this->createOrderWithVariant($order, (int) $variantId, $tags, $lowInventoryNote);
+        if ($variantResult !== null) {
+            return $variantResult;
         }
+
+        $errorCode = $this->lastApiErrorCode ?? 'Unknown';
+        Log::info('ReverbOrderPushService: fallback=VARIANT_ERROR', [
+            'order_number' => $order->order_number,
+            'error_code' => $errorCode,
+        ]);
+        $result = $this->createOrderWithCustomItem($order, 'Fallback - ' . $errorCode, ['SKU Missing', 'Fallback - ' . $errorCode]);
+        if ($result !== null) {
+            return $result;
+        }
+
+        $this->storeInPending($order, 'Variant and custom item creation both failed');
+        return null;
     }
 
+    protected ?string $lastApiErrorCode = null;
+
     /**
-     * Create Shopify order using variant_id (decrements inventory). Throws on API error.
+     * Create order using variant_id. Handles 429/timeout with retries. Returns Shopify order ID or null.
      */
-    protected function createShopifyOrderWithVariant(ReverbOrderMetric $order, int $variantId): ?string
+    protected function createOrderWithVariant(ReverbOrderMetric $order, int $variantId, array $extraTags = [], ?string $extraNote = null): ?string
     {
         $storeUrl = str_replace(['https://', 'http://'], '', config('services.shopify.store_url'));
         $token = config('services.shopify.password') ?: env('SHOPIFY_PASSWORD');
@@ -119,58 +126,35 @@ class ReverbOrderPushService
 
         $payload = [
             'order' => [
-                'line_items' => [
-                    [
-                        'variant_id' => $variantId,
-                        'quantity' => $quantity,
-                        'price' => $price,
-                    ],
-                ],
+                'line_items' => [['variant_id' => $variantId, 'quantity' => $quantity, 'price' => $price]],
                 'financial_status' => 'paid',
                 'inventory_behaviour' => 'decrement_obeying_policy',
-                'tags' => 'Reverb Order',
-                'note' => 'Imported from Reverb Order #' . $orderNumber,
+                'tags' => implode(', ', array_values(array_unique(array_merge(['Reverb Order'], $extraTags)))),
+                'note' => 'Imported from Reverb Order #' . $orderNumber . ($extraNote ? "\n" . $extraNote : ''),
                 'source_name' => 'reverb',
-                'note_attributes' => [
-                    ['name' => 'reverb_order_number', 'value' => $orderNumber],
-                ],
+                'note_attributes' => [['name' => 'reverb_order_number', 'value' => $orderNumber]],
             ],
         ];
 
         $reverbDetails = $this->enrichOrderPayloadFromReverb($payload['order'], $order);
-        $response = Http::withHeaders([
-            'X-Shopify-Access-Token' => $token,
-            'Content-Type' => 'application/json',
-        ])->timeout(60)->post("https://{$storeUrl}/admin/api/2024-01/orders.json", $payload);
-
-        if (!$response->successful()) {
-            throw new \RuntimeException('Shopify API error: ' . $response->body());
+        $response = $this->postOrderWithRetry($storeUrl, $token, $payload);
+        if ($response === null) {
+            return null;
         }
 
         $data = $response->json();
         $shopifyOrderId = (string) ($data['order']['id'] ?? '');
-
         if ($shopifyOrderId && $reverbDetails && !empty($reverbDetails['shipping_code']) && in_array($reverbDetails['status'] ?? '', ['shipped', 'delivered'], true)) {
             $trackingUrl = $reverbDetails['_links']['web_tracking']['href'] ?? null;
-            $this->addShopifyFulfillmentWithTracking(
-                $storeUrl,
-                $token,
-                (int) $shopifyOrderId,
-                (string) $reverbDetails['shipping_code'],
-                (string) ($reverbDetails['shipping_provider'] ?? ''),
-                $reverbDetails['shipped_at'] ?? null,
-                is_string($trackingUrl) ? $trackingUrl : null
-            );
+            $this->addShopifyFulfillmentWithTracking($storeUrl, $token, (int) $shopifyOrderId, (string) $reverbDetails['shipping_code'], (string) ($reverbDetails['shipping_provider'] ?? ''), $reverbDetails['shipped_at'] ?? null, is_string($trackingUrl) ? $trackingUrl : null);
         }
-
         return $shopifyOrderId;
     }
 
     /**
-     * Create Shopify order with custom line item (title, price, quantity) when variant/SKU unavailable.
-     * Does not decrement inventory.
+     * Create order with custom line item only. Never throws – returns Shopify order ID or null.
      */
-    public function createShopifyOrderWithCustomItem(ReverbOrderMetric $order, string $reasonNote, array $extraTags = []): ?string
+    public function createOrderWithCustomItem(ReverbOrderMetric $order, string $reasonNote, array $extraTags = []): ?string
     {
         $storeUrl = str_replace(['https://', 'http://'], '', config('services.shopify.store_url'));
         $token = config('services.shopify.password') ?: env('SHOPIFY_PASSWORD');
@@ -179,8 +163,9 @@ class ReverbOrderPushService
         $baseTags = ['Reverb Order', 'SKU Missing'];
         $tags = implode(', ', array_values(array_unique(array_merge($baseTags, $extraTags))));
 
+        $productName = (string) ($order->display_sku ?? $order->sku ?? 'Reverb order item');
         $lineItem = [
-            'title' => (string) ($order->display_sku ?? $order->sku ?? 'Reverb order item'),
+            'title' => $productName,
             'price' => (string) number_format((float) ($order->amount ?? 0), 2, '.', ''),
             'quantity' => (int) ($order->quantity ?: 1),
         ];
@@ -196,39 +181,128 @@ class ReverbOrderPushService
                 'tags' => $tags,
                 'note' => 'Imported from Reverb Order #' . $orderNumber . "\n" . $reasonNote,
                 'source_name' => 'reverb',
-                'note_attributes' => [
-                    ['name' => 'reverb_order_number', 'value' => $orderNumber],
-                ],
+                'note_attributes' => [['name' => 'reverb_order_number', 'value' => $orderNumber]],
             ],
         ];
 
         $reverbDetails = $this->enrichOrderPayloadFromReverb($payload['order'], $order);
-
-        $response = Http::withHeaders([
-            'X-Shopify-Access-Token' => $token,
-            'Content-Type' => 'application/json',
-        ])->timeout(60)->post("https://{$storeUrl}/admin/api/2024-01/orders.json", $payload);
-
-        if (!$response->successful()) {
-            throw new \RuntimeException('Shopify API error: ' . $response->body());
+        $response = $this->postOrderWithRetry($storeUrl, $token, $payload);
+        if ($response === null) {
+            return null;
         }
 
         $data = $response->json();
         $shopifyOrderId = (string) ($data['order']['id'] ?? '');
         if ($shopifyOrderId && $reverbDetails && !empty($reverbDetails['shipping_code']) && in_array($reverbDetails['status'] ?? '', ['shipped', 'delivered'], true)) {
             $trackingUrl = $reverbDetails['_links']['web_tracking']['href'] ?? null;
-            $this->addShopifyFulfillmentWithTracking(
-                $storeUrl,
-                $token,
-                (int) $shopifyOrderId,
-                (string) $reverbDetails['shipping_code'],
-                (string) ($reverbDetails['shipping_provider'] ?? ''),
-                $reverbDetails['shipped_at'] ?? null,
-                is_string($trackingUrl) ? $trackingUrl : null
-            );
+            $this->addShopifyFulfillmentWithTracking($storeUrl, $token, (int) $shopifyOrderId, (string) $reverbDetails['shipping_code'], (string) ($reverbDetails['shipping_provider'] ?? ''), $reverbDetails['shipped_at'] ?? null, is_string($trackingUrl) ? $trackingUrl : null);
         }
-
         return $shopifyOrderId;
+    }
+
+    /**
+     * POST order to Shopify with 429 and timeout retries. Returns response or null on failure.
+     */
+    protected function postOrderWithRetry(string $storeUrl, string $token, array $payload): ?\Illuminate\Http\Client\Response
+    {
+        $url = "https://{$storeUrl}/admin/api/2024-01/orders.json";
+        $attempt = 0;
+        $backoffIndex = 0;
+
+        while (true) {
+            $attempt++;
+            $response = Http::withHeaders([
+                'X-Shopify-Access-Token' => $token,
+                'Content-Type' => 'application/json',
+            ])->timeout(60)->post($url, $payload);
+
+            if ($response->successful()) {
+                return $response;
+            }
+
+            $status = $response->status();
+            $body = $response->body();
+            $this->lastApiErrorCode = (string) $status . ' ' . substr(preg_replace('/\s+/', ' ', $body), 0, 80);
+
+            $handling = $this->handleApiError($status, $body, $response->toException());
+            if ($handling['retry'] && $attempt < self::MAX_RETRIES) {
+                $wait = self::API_BACKOFF[$backoffIndex % count(self::API_BACKOFF)];
+                Log::warning('ReverbOrderPushService: API error, retrying', ['attempt' => $attempt, 'wait' => $wait, 'status' => $status]);
+                sleep($wait);
+                $backoffIndex++;
+                continue;
+            }
+
+            return null;
+        }
+    }
+
+    /**
+     * Categorize API error and decide action.
+     * @return array{retry: bool, fallback_to_custom: bool, error_code: string}
+     */
+    public function handleApiError(int $status, string $body, ?\Throwable $exception = null): array
+    {
+        $errorCode = (string) $status . ' ' . substr(preg_replace('/\s+/', ' ', $body), 0, 100);
+        $message = $body . ($exception ? ' ' . $exception->getMessage() : '');
+
+        if ($status === 429) {
+            return ['retry' => true, 'fallback_to_custom' => true, 'error_code' => '429 Rate Limit'];
+        }
+        if ($status >= 500 || $status === 0) {
+            return ['retry' => true, 'fallback_to_custom' => true, 'error_code' => $errorCode];
+        }
+        if (stripos($message, 'timeout') !== false || stripos($message, 'connection') !== false || stripos($message, 'Connection') !== false) {
+            return ['retry' => true, 'fallback_to_custom' => true, 'error_code' => 'Timeout/Connection'];
+        }
+        return ['retry' => false, 'fallback_to_custom' => true, 'error_code' => $errorCode];
+    }
+
+    public function shouldRetry(int $status, string $body): bool
+    {
+        return $this->handleApiError($status, $body)['retry'];
+    }
+
+    /**
+     * Get inventory level for variant. Alias for getVariantInventoryQuantity.
+     */
+    public function getInventoryLevel(string $variantId): ?int
+    {
+        return $this->getVariantInventoryQuantity($variantId);
+    }
+
+    /**
+     * Store order in pending_shopify_orders for later retry. Sends admin alert.
+     */
+    public function storeInPending(ReverbOrderMetric $order, string $reason): void
+    {
+        PendingShopifyOrder::create([
+            'reverb_order_metric_id' => $order->id,
+            'order_data' => [
+                'reverb_order_metric_id' => $order->id,
+                'order_number' => $order->order_number,
+                'sku' => $order->sku,
+                'amount' => $order->amount,
+                'quantity' => $order->quantity,
+                'display_sku' => $order->display_sku,
+            ],
+            'attempts' => 0,
+            'last_error' => $reason,
+        ]);
+
+        Log::critical('ReverbOrderPushService: Shopify order stored in pending_shopify_orders – Shopify API unavailable', [
+            'reverb_order_metric_id' => $order->id,
+            'order_number' => $order->order_number,
+            'reason' => $reason,
+        ]);
+    }
+
+    /**
+     * Legacy: Create Shopify order with custom line item (can throw). Prefer createOrderWithCustomItem for never-fail flow.
+     */
+    public function createShopifyOrderWithCustomItem(ReverbOrderMetric $order, string $reasonNote, array $extraTags = []): ?string
+    {
+        return $this->createOrderWithCustomItem($order, $reasonNote, $extraTags);
     }
 
     /**
