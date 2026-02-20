@@ -279,6 +279,7 @@
                         <option value="ALL">All</option>
                         <option value="ENABLED">Active</option>
                         <option value="PAUSED">Paused</option>
+                        <option value="MISSING">Missing Camp</option>
                     </select>
 
                     <select id="nra-filter" class="form-select form-select-sm"
@@ -869,9 +870,11 @@
             showAmzMetricChart($(this).data('metric'));
         });
 
-        // Hover-to-chart for filter-toggle badges (500ms delay to avoid accidental triggers)
+        // Hover-to-chart for badges (500ms delay). Filter badges: no hover chart so click = filter only.
         let amzHoverTimer = null;
+        var amzHoverChartFilterBadgeSelector = '.sold-filter-badge, .map-filter-badge, .missing-amz-filter-badge, .price-filter-badge, .missing-campaign-badge';
         $(document).on('mouseenter', '.amz-hover-chart', function() {
+            if ($(this).is(amzHoverChartFilterBadgeSelector)) return; // filter badges: click applies filter, never open chart on hover
             const metric = $(this).data('metric');
             if (!metric) return;
             amzHoverTimer = setTimeout(() => {
@@ -879,6 +882,9 @@
             }, 500);
         });
         $(document).on('mouseleave', '.amz-hover-chart', function() {
+            if (amzHoverTimer) { clearTimeout(amzHoverTimer); amzHoverTimer = null; }
+        });
+        $(document).on('mousedown', '.amz-hover-chart', function() {
             if (amzHoverTimer) { clearTimeout(amzHoverTimer); amzHoverTimer = null; }
         });
 
@@ -1292,9 +1298,9 @@
                 applyFilters();
             });
 
-            // Missing Amazon filter badge click handler
+            // Missing Amazon filter badge click handler (delegated so it works when table re-renders)
             let missingAmazonFilterActive = false;
-            $('.missing-amz-filter-badge').on('click', function() {
+            $(document).on('click', '.missing-amz-filter-badge', function() {
                 missingAmazonFilterActive = !missingAmazonFilterActive;
                 
                 // Update badge appearance
@@ -1315,6 +1321,17 @@
                 }
                 
                 // Re-apply filters
+                applyFilters();
+            });
+
+            // Missing Camp filter badge click handler: set Active Filter to "Missing Camp" and apply
+            $(document).on('click', '.missing-campaign-badge', function() {
+                var $sel = $('#campaign-status-filter');
+                if ($sel.val() === 'MISSING') {
+                    $sel.val('');
+                } else {
+                    $sel.val('MISSING');
+                }
                 applyFilters();
             });
 
@@ -5358,7 +5375,7 @@
                     });
                 }
 
-                // Campaign Status filter (Active Filter) - section-aware, same logic as Active toggle column (apply to child and parent rows)
+                // Campaign Status filter (Active Filter) - section-aware, same logic as badge count and Active toggle column
                 if (campaignStatusFilter && campaignStatusFilter !== '' && campaignStatusFilter !== 'ALL') {
                     table.addFilter(function(data) {
                         var currentSection = $('#section-filter').val();
@@ -5374,9 +5391,15 @@
                             hasCampaignInSection = !!(data.pt_campaignName || data.pt_spend_L30 > 0 || data.pt_campaign_status);
                             isEnabled = ptStatus === 'ENABLED';
                         } else {
-                            // KW Ads or default: check KW status only (same as Active toggle column)
+                            // KW Ads or default: same logic as missing-campaign badge count (KW = campaign name ends with ' KW')
+                            var campaignName = (data.campaignName || '').trim();
+                            var isKwCampaign = campaignName.endsWith(' KW') || campaignName.endsWith(' KW.');
+                            if (currentSection === 'kw-ads') {
+                                hasCampaignInSection = isKwCampaign && (data.hasCampaign !== undefined ? !!data.hasCampaign : !!(data.campaign_id && campaignName));
+                            } else {
+                                hasCampaignInSection = data.hasCampaign !== undefined ? !!data.hasCampaign : !!(data.campaign_id && campaignName);
+                            }
                             var kwStatus = (data.kw_campaign_status || data.campaignStatus || '').toUpperCase();
-                            hasCampaignInSection = !!(data.hasCampaign || (data.campaign_id && data.campaignName));
                             isEnabled = kwStatus === 'ENABLED';
                         }
                         
@@ -5384,6 +5407,8 @@
                             return isEnabled;
                         } else if (campaignStatusFilter === 'PAUSED') {
                             return hasCampaignInSection && !isEnabled; // Has campaign in this section but not enabled
+                        } else if (campaignStatusFilter === 'MISSING') {
+                            return !hasCampaignInSection; // No campaign in this section (matches Missing Camp badge count)
                         }
                         
                         return true;
@@ -5607,6 +5632,14 @@
                 updateCalcValues();
                 updateSummary();
                 updateSeoCount();
+                // Sync Missing Camp badge appearance when Active Filter is "Missing Camp"
+                var campFilterVal = $('#campaign-status-filter').val();
+                var $missingCampBadge = $('.missing-campaign-badge');
+                if (campFilterVal === 'MISSING') {
+                    $missingCampBadge.addClass('bg-info').css('background', '');
+                } else {
+                    $missingCampBadge.removeClass('bg-info').css('background', 'linear-gradient(135deg, #dc3545 0%, #c82333 100%)');
+                }
                 // Update select all checkbox after filter is applied
                 setTimeout(function() {
                     updateSelectAllCheckbox();
