@@ -173,7 +173,7 @@ class Kernel extends ConsoleKernel
             ->timezone('America/Los_Angeles');
         // Reverb: full sync (orders + Shopify→Reverb inventory) every 5 minutes
         $schedule->command('reverb:sync-all')
-            ->everyFiveMinutes()
+            ->everyThirtyMinutes()
             ->timezone('UTC')
             ->name('reverb-sync-all')
             ->withoutOverlapping(15);
