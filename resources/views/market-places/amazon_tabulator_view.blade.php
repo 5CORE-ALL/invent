@@ -6918,14 +6918,15 @@
                         })
                     })
                     .then(function(res) {
-                        if (!res.ok) {
-                            return res.json().then(function(d) {
-                                throw new Error(d.message || 'Request failed (' + res.status + ')');
-                            }).catch(function() {
-                                throw new Error('Request failed (' + res.status + ')');
-                            });
-                        }
-                        return res.json();
+                        return res.text().then(function(text) {
+                            var data = null;
+                            try { data = text ? JSON.parse(text) : {}; } catch (e) {}
+                            if (!res.ok) {
+                                var msg = (data && (data.error || data.message)) || text || ('Request failed (' + res.status + ')');
+                                throw new Error(msg);
+                            }
+                            return data || {};
+                        });
                     })
                     .then(function(data) {
                         if (data.status === 200 && typeof table !== 'undefined' && table) {

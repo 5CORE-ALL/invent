@@ -1126,21 +1126,46 @@ class AmazonACOSController extends Controller
         $campaignId = $request->input('campaign_id');
         $status = $request->input('status'); // ENABLED or PAUSED
 
-        if (empty($campaignId) || empty($status)) {
+        if ($campaignId === null || $campaignId === '' || empty($status)) {
             return response()->json([
                 'message' => 'Campaign ID and status are required',
-                'status' => 400
-            ]);
+                'status' => 400,
+            ], 400);
         }
 
         if (!in_array($status, ['ENABLED', 'PAUSED'])) {
             return response()->json([
                 'message' => 'Status must be ENABLED or PAUSED',
-                'status' => 400
-            ]);
+                'status' => 400,
+            ], 400);
         }
 
-        $accessToken = $this->getAccessToken();
+        $campaignId = is_scalar($campaignId) ? (string) $campaignId : '';
+        $profileId = $this->profileId;
+        if (is_array($profileId)) {
+            $profileId = !empty($profileId) ? (string) reset($profileId) : '';
+        } else {
+            $profileId = (string) $profileId;
+        }
+        if ($profileId === '') {
+            Log::warning('Amazon Ads: AMAZON_ADS_PROFILE_IDS not set or empty');
+            return response()->json([
+                'message' => 'Amazon Ads profile is not configured. Set AMAZON_ADS_PROFILE_IDS on the server.',
+                'status' => 500,
+            ], 500);
+        }
+
+        try {
+            $accessToken = $this->getAccessToken();
+        } catch (\Exception $e) {
+            Log::error('Amazon Ads token error: ' . $e->getMessage());
+            return response()->json([
+                'message' => 'Amazon Ads credentials error. Check AMAZON_ADS_CLIENT_ID, CLIENT_SECRET, REFRESH_TOKEN.',
+                'error' => $e->getMessage(),
+                'status' => 500,
+            ], 500);
+        }
+
         $client = new Client();
         $url = 'https://advertising-api.amazon.com/sp/campaigns';
 
@@ -1149,7 +1174,7 @@ class AmazonACOSController extends Controller
                 'headers' => [
                     'Amazon-Advertising-API-ClientId' => config('services.amazon_ads.client_id'),
                     'Authorization' => 'Bearer ' . $accessToken,
-                    'Amazon-Advertising-API-Scope' => $this->profileId,
+                    'Amazon-Advertising-API-Scope' => $profileId,
                     'Content-Type' => 'application/vnd.spCampaign.v3+json',
                     'Accept' => 'application/vnd.spCampaign.v3+json',
                 ],
@@ -1157,48 +1182,57 @@ class AmazonACOSController extends Controller
                     'campaigns' => [
                         [
                             'campaignId' => $campaignId,
-                            'state' => $status
-                        ]
-                    ]
+                            'state' => $status,
+                        ],
+                    ],
                 ],
                 'timeout' => 60,
                 'connect_timeout' => 30,
             ]);
 
             $result = json_decode($response->getBody(), true);
-            
-            // Update database after successful API call
+
             try {
                 $updateData = ['campaignStatus' => $status];
-                
-                // Update pink_dil_paused_at based on status
                 if ($status === 'PAUSED') {
                     $updateData['pink_dil_paused_at'] = now();
                 } else {
-                    // When enabling, clear pink_dil_paused_at
                     $updateData['pink_dil_paused_at'] = null;
                 }
-                
-                AmazonSpCampaignReport::where('campaign_id', $campaignId)
-                    ->update($updateData);
+                AmazonSpCampaignReport::where('campaign_id', $campaignId)->update($updateData);
             } catch (\Exception $dbError) {
                 Log::warning('Error updating SP campaign status in database: ' . $dbError->getMessage());
-                // Continue even if DB update fails
             }
-            
+
             return response()->json([
                 'message' => 'Campaign status updated successfully',
                 'data' => $result,
                 'status' => 200,
             ]);
-
+        } catch (\GuzzleHttp\Exception\RequestException $e) {
+            $msg = $e->getMessage();
+            if ($e->hasResponse()) {
+                $body = (string) $e->getResponse()->getBody();
+                $decoded = json_decode($body, true);
+                if (isset($decoded['message'])) {
+                    $msg = $decoded['message'];
+                } elseif ($body !== '') {
+                    $msg = $body;
+                }
+            }
+            Log::error('Error toggling SP campaign status: ' . $msg);
+            return response()->json([
+                'message' => 'Error updating campaign status',
+                'error' => $msg,
+                'status' => 500,
+            ], 500);
         } catch (\Exception $e) {
             Log::error('Error toggling SP campaign status: ' . $e->getMessage());
             return response()->json([
                 'message' => 'Error updating campaign status',
                 'error' => $e->getMessage(),
                 'status' => 500,
-            ]);
+            ], 500);
         }
     }
 
