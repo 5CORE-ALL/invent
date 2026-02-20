@@ -4558,20 +4558,24 @@
                                 return '<span style="color: #999;">-</span>';
                             }
                             
-                            // Section-aware campaign status check
+                            // Section-aware campaign status and campaign ID
                             var isEnabled = false;
+                            var campaignId = '';
+                            var sectionKey = 'kw';
                             if (currentSection === 'hl-ads') {
-                                // HL Ads section: only check HL campaign status
                                 var hlStatus = (row.hl_campaign_status || '').toUpperCase();
                                 isEnabled = hlStatus === 'ENABLED';
+                                campaignId = row.hl_campaign_id || '';
+                                sectionKey = 'hl';
                             } else if (currentSection === 'pt-ads') {
-                                // PT Ads section: only check PT campaign status (same as amazon-utilized-pt page)
                                 var ptStatus = (row.pt_campaign_status || '').toUpperCase();
                                 isEnabled = ptStatus === 'ENABLED';
+                                campaignId = row.pt_campaign_id || '';
+                                sectionKey = 'pt';
                             } else {
-                                // KW Ads or default: check KW status ONLY (not PT)
                                 var kwStatus = (row.kw_campaign_status || row.campaignStatus || '').toUpperCase();
                                 isEnabled = kwStatus === 'ENABLED';
+                                campaignId = row.campaign_id || '';
                             }
                             
                             return `
@@ -4580,7 +4584,8 @@
                                            type="checkbox" 
                                            role="switch" 
                                            data-sku="${sku}"
-                                           data-campaign-id="${row.campaign_id || ''}"
+                                           data-campaign-id="${campaignId}"
+                                           data-section="${sectionKey}"
                                            ${isEnabled ? 'checked' : ''}
                                            style="cursor: pointer; width: 3rem; height: 1.5rem;">
                                 </div>
@@ -4602,19 +4607,7 @@
                             var row = cell.getRow().getData();
                             var currentSection = $('#section-filter').val();
                             
-                            // First check NRA status (from KW NRA column)
-                            var nraValue = (row.NRA || '').toString().trim();
-                            if (!nraValue) {
-                                var nrlValue = (row.NRL || 'REQ').toString().trim();
-                                nraValue = (nrlValue === 'NRL') ? 'NRA' : 'RA';
-                            }
-                            
-                            // If NRA (red dot in KW NRA) - show Yellow dot
-                            if (nraValue === 'NRA') {
-                                return '<span style="display: inline-block; width: 20px; height: 20px; border-radius: 50%; background-color: #ffc107;"></span>';
-                            }
-                            
-                            // Missing AD: green only when THIS SKU has its own campaign (not parent-only)
+                            // Missing AD dots: campaign exists = green; no campaign + NRA green (RA) = red; no campaign + NRA red (NRA) = yellow
                             var hasOwnCampaign = false;
                             if (currentSection === 'hl-ads') {
                                 hasOwnCampaign = !!row.has_own_hl_campaign && !!(row.hl_campaign_id || row.hl_campaignName);
@@ -4625,12 +4618,18 @@
                             }
                             
                             if (hasOwnCampaign) {
-                                // Has own campaign and not NRA - Green dot
                                 return '<span style="display: inline-block; width: 20px; height: 20px; border-radius: 50%; background-color: #28a745;"></span>';
-                            } else {
-                                // No own campaign and not NRA - Missing - Red dot
-                                return '<span style="display: inline-block; width: 20px; height: 20px; border-radius: 50%; background-color: #dc3545;"></span>';
                             }
+                            
+                            var nraValue = (row.NRA || '').toString().trim();
+                            if (!nraValue) {
+                                var nrlValue = (row.NRL || 'REQ').toString().trim();
+                                nraValue = (nrlValue === 'NRL') ? 'NRA' : 'RA';
+                            }
+                            if (nraValue === 'NRA') {
+                                return '<span style="display: inline-block; width: 20px; height: 20px; border-radius: 50%; background-color: #ffc107;"></span>';
+                            }
+                            return '<span style="display: inline-block; width: 20px; height: 20px; border-radius: 50%; background-color: #dc3545;"></span>';
                         }
                     },
                     {
@@ -6885,61 +6884,79 @@
                 saveColumnVisibilityToServer();
             });
 
-            // Handle campaign status toggle
+            // Handle campaign status toggle (Active column) – section-aware KW/PT/HL
             document.addEventListener("change", function(e) {
-                if(e.target.classList.contains("campaign-status-toggle")) {
-                    let campaignId = e.target.getAttribute("data-campaign-id");
-                    let isEnabled = e.target.checked;
-                    let newStatus = isEnabled ? 'ENABLED' : 'PAUSED';
+                if (e.target.classList.contains("campaign-status-toggle")) {
+                    var campaignId = e.target.getAttribute("data-campaign-id");
+                    var sectionKey = e.target.getAttribute("data-section") || 'kw';
+                    var isEnabled = e.target.checked;
+                    var newStatus = isEnabled ? 'ENABLED' : 'PAUSED';
                     
-                    if(!campaignId) {
-                        alert("Campaign ID not found!");
-                        e.target.checked = !isEnabled; // Revert toggle
+                    if (!campaignId) {
+                        alert("Campaign ID not found for this section.");
+                        e.target.checked = !isEnabled;
                         return;
                     }
                     
-                    const overlay = document.getElementById("progress-overlay");
-                    if (overlay) {
-                        overlay.style.display = "flex";
-                    }
+                    var overlay = document.getElementById("progress-overlay");
+                    if (overlay) overlay.style.display = "flex";
                     
-                    fetch('/toggle-amazon-sp-campaign-status', {
+                    var toggleUrl = "{{ url('toggle-amazon-sp-campaign-status') }}";
+                    var csrfMeta = document.querySelector('meta[name="csrf-token"]');
+                    var csrfToken = csrfMeta ? csrfMeta.getAttribute('content') : '';
+                    
+                    fetch(toggleUrl, {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
-                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+                            'Accept': 'application/json',
+                            'X-CSRF-TOKEN': csrfToken
                         },
                         body: JSON.stringify({
                             campaign_id: campaignId,
                             status: newStatus
                         })
                     })
-                    .then(res => res.json())
-                    .then(data => {
-                        if(data.status === 200){
-                            // Update the row data
-                            let rows = table.getRows();
-                            for(let i = 0; i < rows.length; i++) {
-                                let rowData = rows[i].getData();
-                                if(rowData.campaign_id === campaignId) {
-                                    rows[i].update({campaignStatus: newStatus});
+                    .then(function(res) {
+                        if (!res.ok) {
+                            return res.json().then(function(d) {
+                                throw new Error(d.message || 'Request failed (' + res.status + ')');
+                            }).catch(function() {
+                                throw new Error('Request failed (' + res.status + ')');
+                            });
+                        }
+                        return res.json();
+                    })
+                    .then(function(data) {
+                        if (data.status === 200 && typeof table !== 'undefined' && table) {
+                            var rows = table.getRows();
+                            var campaignIdStr = String(campaignId);
+                            for (var i = 0; i < rows.length; i++) {
+                                var rowData = rows[i].getData();
+                                var match = (sectionKey === 'hl' && String(rowData.hl_campaign_id || '') === campaignIdStr) ||
+                                    (sectionKey === 'pt' && String(rowData.pt_campaign_id || '') === campaignIdStr) ||
+                                    (sectionKey !== 'hl' && sectionKey !== 'pt' && String(rowData.campaign_id || '') === campaignIdStr);
+                                if (match) {
+                                    var update = {};
+                                    if (sectionKey === 'hl') update.hl_campaign_status = newStatus;
+                                    else if (sectionKey === 'pt') update.pt_campaign_status = newStatus;
+                                    else { update.campaignStatus = newStatus; update.kw_campaign_status = newStatus; }
+                                    rows[i].update(update);
                                     break;
                                 }
                             }
+                            if (typeof showToast === 'function') showToast('success', 'Campaign ' + (isEnabled ? 'enabled' : 'paused'));
                         } else {
-                            alert("Error: " + (data.message || "Failed to update campaign status"));
-                            e.target.checked = !isEnabled; // Revert toggle
+                            throw new Error(data.message || 'Failed to update campaign status');
                         }
                     })
-                    .catch(err => {
-                        console.error(err);
-                        alert("Request failed: " + err.message);
-                        e.target.checked = !isEnabled; // Revert toggle
+                    .catch(function(err) {
+                        console.error('Toggle campaign status:', err);
+                        e.target.checked = !isEnabled;
+                        alert(err.message || 'Request failed');
                     })
-                    .finally(() => {
-                        if (overlay) {
-                            overlay.style.display = "none";
-                        }
+                    .finally(function() {
+                        if (overlay) overlay.style.display = 'none';
                     });
                 }
             });
