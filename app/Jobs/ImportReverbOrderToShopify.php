@@ -8,18 +8,20 @@ use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
+use Illuminate\Queue\Middleware\WithoutOverlapping;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 
 class ImportReverbOrderToShopify implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    public int $tries = 3;
+    public int $tries = 5;
 
     public int $timeout = 120;
 
-    public array $backoff = [60, 300, 900];
+    public array $backoff = [60, 120, 300, 900, 1800];
 
     public function __construct(
         protected int $reverbOrderMetricId
@@ -27,8 +29,25 @@ class ImportReverbOrderToShopify implements ShouldQueue
         $this->onQueue('reverb');
     }
 
+    public function middleware(): array
+    {
+        return [
+            (new WithoutOverlapping("reverb_import:{$this->reverbOrderMetricId}"))
+                ->releaseAfter(120)
+                ->expireAfter(600),
+        ];
+    }
+
     public function handle(ReverbOrderPushService $pushService): void
     {
+        if (Cache::has('reverb_sync_running')) {
+            $this->release(120);
+            Log::info('ImportReverbOrderToShopify: sync in progress, releasing job to retry in 2 min', [
+                'order_id' => $this->reverbOrderMetricId,
+            ]);
+            return;
+        }
+
         $order = ReverbOrderMetric::find($this->reverbOrderMetricId);
 
         if (!$order) {

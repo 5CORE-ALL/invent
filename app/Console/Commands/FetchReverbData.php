@@ -6,10 +6,8 @@ use Illuminate\Console\Command;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\DB;
-use App\Jobs\ImportReverbOrderToShopify;
 use App\Models\ReverbOrderMetric;
 use App\Models\ReverbProduct;
-use App\Models\ReverbSyncSettings;
 use App\Models\ReverbSyncState;
 use Carbon\Carbon;
 
@@ -233,15 +231,6 @@ class FetchReverbData extends Command
         $maxRetries = 5;
         $timeoutSeconds = 60;
 
-        $settings = ReverbSyncSettings::getForReverb();
-        $autoImportOrders = $settings['order']['import_orders_to_main_store'] ?? false;
-        $skipShipped = $settings['order']['skip_shipped_orders'] ?? false;
-        $debugAutoPush = config('services.reverb.auto_push_debug', false) || env('REVERB_AUTO_PUSH_DEBUG', false);
-        $lastSyncForPush = \Illuminate\Support\Facades\Schema::hasTable('reverb_sync_states')
-            ? ReverbSyncState::getLastSync(ReverbSyncState::KEY_ORDERS_LAST_SYNC)
-            : null;
-        $jobsDispatched = 0;
-
         do {
             $pageCount++;
             $response = $this->fetchWithRetry($url, $maxRetries, $timeoutSeconds, $pageCount);
@@ -280,36 +269,11 @@ class FetchReverbData extends Command
                 ];
             }
 
-            // Bulk insert in chunks of 100 to avoid memory issues
+            // Bulk insert in chunks of 100 to avoid memory issues (jobs dispatched by SyncAllReverb after full sync)
             if (count($bulkOrders) >= 100) {
                 $chunkToInsert = $bulkOrders;
                 $this->bulkUpsertOrders($chunkToInsert);
-                $chunkNumbers = array_column($chunkToInsert, 'order_number');
                 $bulkOrders = [];
-
-                // Dispatch ImportReverbOrderToShopify jobs (skip on first run to avoid full history import)
-                if ($autoImportOrders && $lastSyncForPush && !empty($chunkNumbers)) {
-                    $query = ReverbOrderMetric::query()
-                        ->whereNull('shopify_order_id')
-                        ->whereIn('order_number', $chunkNumbers)
-                        ->whereNotNull('order_paid_at');
-                    if ($lastSyncForPush) {
-                        $query->where('order_paid_at', '>', $lastSyncForPush);
-                    }
-                    if ($skipShipped) {
-                        $query->whereNotIn('status', ['shipped', 'delivered']);
-                    }
-                    $toImport = $query->orderBy('order_date')->orderBy('id')->get();
-
-                    foreach ($toImport as $order) {
-                        if ($debugAutoPush) {
-                            \Illuminate\Support\Facades\Log::info('Auto-import (chunk): dispatching job for order #' . $order->order_number);
-                        }
-                        ImportReverbOrderToShopify::dispatch($order->id)->onQueue('reverb');
-                        $jobsDispatched++;
-                        $this->info("  Dispatched import job for Reverb order #{$order->order_number}");
-                    }
-                }
             }
 
             $url = isset($data['_links']['next']['href']) ? trim($data['_links']['next']['href']) : null;
@@ -320,38 +284,9 @@ class FetchReverbData extends Command
             }
         } while ($url);
 
-        // Insert remaining orders
+        // Insert remaining orders (jobs dispatched by SyncAllReverb after full sync completes)
         if (!empty($bulkOrders)) {
             $this->bulkUpsertOrders($bulkOrders);
-            $chunkNumbers = array_column($bulkOrders, 'order_number');
-
-            // Dispatch ImportReverbOrderToShopify jobs for remaining chunk
-            if ($autoImportOrders && $lastSyncForPush && !empty($chunkNumbers)) {
-                $query = ReverbOrderMetric::query()
-                    ->whereNull('shopify_order_id')
-                    ->whereIn('order_number', $chunkNumbers)
-                    ->whereNotNull('order_paid_at');
-                if ($lastSyncForPush) {
-                    $query->where('order_paid_at', '>', $lastSyncForPush);
-                }
-                if ($skipShipped) {
-                    $query->whereNotIn('status', ['shipped', 'delivered']);
-                }
-                $toImport = $query->orderBy('order_date')->orderBy('id')->get();
-
-                foreach ($toImport as $order) {
-                    ImportReverbOrderToShopify::dispatch($order->id)->onQueue('reverb');
-                    $jobsDispatched++;
-                    $this->info("  Dispatched import job for Reverb order #{$order->order_number}");
-                }
-            }
-        }
-
-        if ($autoImportOrders && !$lastSyncForPush && $debugAutoPush) {
-            \Illuminate\Support\Facades\Log::info('Auto-import: no last_sync yet; only dispatched orders from current fetch chunks.');
-        }
-        if ($jobsDispatched > 0) {
-            $this->info("  Total import jobs dispatched: {$jobsDispatched}. Run: php artisan queue:work --queue=reverb");
         }
 
         if (\Illuminate\Support\Facades\Schema::hasTable('reverb_sync_states')) {
