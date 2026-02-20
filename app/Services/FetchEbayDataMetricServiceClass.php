@@ -277,8 +277,8 @@ class FetchEbayDataMetricServiceClass
 
     private function generateEbayToken(): ?string
     {
-        $clientId = config('services.ebay.app_id');
-        $clientSecret = config('services.ebay.cert_id');
+        $clientId = env('EBAY_APP_ID');
+        $clientSecret = env('EBAY_CERT_ID');
 
         $scope = implode(' ', [
             'https://api.ebay.com/oauth/api_scope',
@@ -293,7 +293,7 @@ class FetchEbayDataMetricServiceClass
                 ->withBasicAuth($clientId, $clientSecret)
                 ->post('https://api.ebay.com/identity/v1/oauth2/token', [
                     'grant_type' => 'refresh_token',
-                    'refresh_token' => config('services.ebay.refresh_token'),
+                    'refresh_token' => env('EBAY_REFRESH_TOKEN'),
                     'scope' => $scope,
                 ]);
 

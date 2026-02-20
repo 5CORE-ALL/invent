@@ -85,3 +85,9 @@ Route::get('/l30-total-sales', [ChannelMasterController::class, 'getViewChannelD
 // TikTok Shop Webhook
 // Route::post('/webhooks/tiktok/orders', [App\Http\Controllers\Api\TiktokWebhookController::class, 'handleOrderWebhook']);
 // Route::get('/webhooks/tiktok/test', [App\Http\Controllers\Api\TiktokWebhookController::class, 'testWebhook']);
+
+// Reverb Webhook (order.placed, order.shipped, listing.updated)
+Route::post('/webhooks/reverb', [App\Http\Controllers\ReverbWebhookController::class, 'handle'])->name('webhooks.reverb');
+
+// Shopify Inventory Webhook - sync updated inventory to Reverb when Shopify fires
+Route::post('/webhooks/shopify/inventory-update', [App\Http\Controllers\ShopifyWebhookController::class, 'inventoryUpdate'])->name('webhooks.shopify.inventory-update');

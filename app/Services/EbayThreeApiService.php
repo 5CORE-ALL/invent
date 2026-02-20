@@ -19,18 +19,18 @@ class EbayThreeApiService
 
     public function __construct()
     {
-        $this->appId       = config('services.ebay3.app_id');
-        $this->certId      = config('services.ebay3.cert_id');
-        $this->devId       = config('services.ebay3.dev_id');
-        $this->endpoint    = config('services.ebay.trading_api_endpoint');
-        $this->siteId      = config('services.ebay.site_id'); // US = 0
-        $this->compatLevel = config('services.ebay.compat_level');
+        $this->appId       = env('EBAY_3_APP_ID');
+        $this->certId      = env('EBAY_3_CERT_ID');
+        $this->devId       = env('EBAY_3_DEV_ID');
+        $this->endpoint    = env('EBAY_TRADING_API_ENDPOINT', 'https://api.ebay.com/ws/api.dll');
+        $this->siteId      = env('EBAY_SITE_ID', 0); // US = 0
+        $this->compatLevel = env('EBAY_COMPAT_LEVEL', '1189');
     }
     public function generateBearerToken()
     {
-        $clientId     = config('services.ebay3.app_id');
-        $clientSecret = config('services.ebay3.cert_id');
-        $refreshToken = config('services.ebay3.refresh_token');
+        $clientId     = env('EBAY_3_APP_ID');
+        $clientSecret = env('EBAY_3_CERT_ID');
+        $refreshToken = env('EBAY_3_REFRESH_TOKEN');
 
         $response = Http::withoutVerifying()->asForm()
             ->withBasicAuth($clientId, $clientSecret)
@@ -873,8 +873,8 @@ class EbayThreeApiService
             return Cache::get($cacheKey);
         }
 
-        $clientId = config('services.ebay3.app_id');
-        $clientSecret = config('services.ebay3.cert_id');
+        $clientId = env('EBAY_3_APP_ID');
+        $clientSecret = env('EBAY_3_CERT_ID');
 
         try {
             $response = Http::asForm()

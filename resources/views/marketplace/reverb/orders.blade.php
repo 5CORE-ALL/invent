@@ -9,7 +9,7 @@
                     <span class="badge bg-primary">{{ $orders->total() }} orders</span>
                 </div>
                 <div class="card-body">
-                    <p class="text-muted">All Reverb orders. Push to Shopify to create orders in your store with tags (e.g. reverb, reverb-{order_number}).</p>
+                    <p class="text-muted">All Reverb orders. New orders are automatically imported to Shopify when "Import orders to main store" is enabled in Settings. Ensure queue worker is running: <code>php artisan queue:work</code></p>
                     <div class="table-responsive">
                         <table class="table table-bordered table-hover mb-0">
                             <thead class="table-light">
@@ -44,10 +44,12 @@
                                             @endif
                                         </td>
                                         <td>
-                                            @if(!$o->shopify_order_id)
-                                                <button type="button" class="btn btn-sm btn-primary btn-push-order" data-id="{{ $o->id }}">Push to Shopify</button>
-                                            @else
+                                            @if($o->shopify_order_id)
                                                 —
+                                            @elseif(($o->import_status ?? '') === 'import_failed')
+                                                <button type="button" class="btn btn-sm btn-warning btn-push-order" data-id="{{ $o->id }}">Retry import</button>
+                                            @else
+                                                <span class="text-muted small">Queued / pending</span>
                                             @endif
                                         </td>
                                     </tr>
@@ -91,11 +93,9 @@
                 .then(function(r) { return r.json(); })
                 .then(function(data) {
                     if (data.success) {
-                        cell.innerHTML = '<span class="badge bg-success">Pushed</span>';
-                        var shopifyCell = row.querySelector('td:nth-child(8)');
-                        if (shopifyCell) {
-                            shopifyCell.innerHTML = '<span class="badge bg-success">Pushed</span>';
-                        }
+                        cell.innerHTML = '<span class="badge bg-info">Import queued</span>';
+                        btn.disabled = true;
+                        btn.remove();
                     } else {
                         btn.disabled = false;
                         btn.textContent = 'Push to Shopify';

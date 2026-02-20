@@ -29,6 +29,7 @@ class Kernel extends ConsoleKernel
 {
     protected $commands = [
         FetchReverbData::class,
+        \App\Console\Commands\ProcessPendingReverbOrders::class,
         FetchMacyProducts::class,
         FetchWayfairData::class,
         SyncFbMarketplaceSheet::class,
@@ -171,15 +172,12 @@ class Kernel extends ConsoleKernel
         $schedule->command('app:fetch-amazon-listings')
             ->dailyAt('06:00')
             ->timezone('America/Los_Angeles');
-        $schedule->command('reverb:fetch')
-            ->everyFiveMinutes()
-            ->timezone('UTC');
-        // Sync Reverb listing inventory from Shopify (bridge: Shopify as source of truth)
-        $schedule->command('reverb:sync-inventory-from-shopify')
+        // Reverb: full sync (orders + Shopify→Reverb inventory) every 5 minutes
+        $schedule->command('reverb:sync-all')
             ->everyThirtyMinutes()
             ->timezone('UTC')
-            ->name('reverb-sync-inventory-from-shopify')
-            ->withoutOverlapping();
+            ->name('reverb-sync-all')
+            ->withoutOverlapping(15);
         $schedule->command('app:fetch-ebay-reports')
             ->hourly()
             ->timezone('UTC');
