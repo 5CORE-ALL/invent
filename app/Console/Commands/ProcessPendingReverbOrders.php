@@ -42,6 +42,9 @@ class ProcessPendingReverbOrders extends Command
         $baseQuery = ReverbOrderMetric::query()
             ->whereNull('shopify_order_id')
             ->whereNotNull('order_paid_at')
+            ->where(function ($q) {
+                $q->whereNull('import_status')->orWhere('import_status', '!=', 'pending_shopify');
+            })
             ->orderBy('order_date')
             ->orderBy('id');
 

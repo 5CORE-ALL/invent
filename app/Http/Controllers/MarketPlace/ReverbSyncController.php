@@ -4,6 +4,7 @@ namespace App\Http\Controllers\MarketPlace;
 
 use App\Http\Controllers\Controller;
 use App\Jobs\ImportReverbOrderToShopify;
+use App\Models\PendingShopifyOrder;
 use App\Models\ReverbOrderMetric;
 use App\Models\ReverbProduct;
 use App\Models\ReverbSyncSettings;
@@ -349,5 +350,22 @@ class ReverbSyncController extends Controller
         }
         $locations = $response->json()['locations'] ?? [];
         return array_map(fn ($l) => ['id' => $l['id'], 'name' => $l['name'] ?? 'Location ' . $l['id']], $locations);
+    }
+
+    /**
+     * Fallback stats dashboard: pending Shopify orders with reasons.
+     */
+    public function fallbackStats(): View
+    {
+        $pendingOrders = PendingShopifyOrder::query()
+            ->orderBy('last_attempt_at', 'desc')
+            ->orderBy('id')
+            ->limit(100)
+            ->get();
+
+        return view('reverb.fallback-stats', [
+            'pendingCount' => PendingShopifyOrder::count(),
+            'pendingOrders' => $pendingOrders,
+        ]);
     }
 }
