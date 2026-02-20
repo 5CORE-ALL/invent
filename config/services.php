@@ -46,10 +46,8 @@ return [
         'api_key' => env('SHOPIFY_API_KEY'),
         'password' => env('SHOPIFY_PASSWORD'),
         'store_url' => env('SHOPIFY_STORE_URL'),
-        'access_token' => env('SHOPIFY_ACCESS_TOKEN'),
-        'location_id' => env('SHOPIFY_LOCATION_ID'),
-        'store' => env('SHOPIFY_STORE'),
-        'domain' => env('SHOPIFY_DOMAIN'),
+        'inventory_location_id' => env('SHOPIFY_INVENTORY_LOCATION_ID'),
+        'webhook_secret' => env('SHOPIFY_WEBHOOK_SECRET'),
     ],
 
     /*
@@ -95,11 +93,24 @@ return [
         'redirect' => env('GOOGLE_REDIRECT_URI'),
     ],
 
-    /*
-    |--------------------------------------------------------------------------
-    | Google Ads
-    |--------------------------------------------------------------------------
-    */
+    'reverb' => [
+        'token' => env('REVERB_TOKEN'),
+        'auto_push_debug' => env('REVERB_AUTO_PUSH_DEBUG', false),
+        'webhook_secret' => env('REVERB_WEBHOOK_SECRET'),
+    ],
+
+    'macy' => [
+        'client_id' => env('MACY_CLIENT_ID'),
+        'client_secret' => env('MACY_CLIENT_SECRET'),
+        'company_id' => env('MACY_COMPANY_ID'),
+    ],
+
+    'wayfair' => [
+        'client_id' => env('WAYFAIR_CLIENT_ID'),
+        'client_secret' => env('WAYFAIR_CLIENT_SECRET'),
+        'audience' => env('WAYFAIR_AUDIENCE'),
+    ],
+
     'google_ads' => [
         'developer_token' => env('GOOGLE_ADS_DEVELOPER_TOKEN'),
         'client_id' => env('GOOGLE_ADS_CLIENT_ID'),

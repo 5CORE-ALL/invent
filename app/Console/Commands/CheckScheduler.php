@@ -29,7 +29,6 @@ class CheckScheduler extends Command
             $this->warn('No crontab found (or Windows). Ensure cron runs: php artisan schedule:run');
         }
 
-        // Remind about reverb:fetch
         $this->info('To run Reverb fetch manually: php artisan reverb:fetch');
         $this->info('Schedule definition is in app/Console/Kernel.php (reverb:fetch every 5 min).');
 
