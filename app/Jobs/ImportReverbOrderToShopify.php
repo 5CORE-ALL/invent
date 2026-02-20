@@ -17,11 +17,11 @@ class ImportReverbOrderToShopify implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    public int $tries = 5;
+    public int $tries = 3;
 
     public int $timeout = 120;
 
-    public array $backoff = [60, 120, 300, 900, 1800];
+    public array $backoff = [60, 300, 900];
 
     public function __construct(
         protected int $reverbOrderMetricId
@@ -91,12 +91,11 @@ class ImportReverbOrderToShopify implements ShouldQueue
                 $this->markImportFailed($order, 'Shopify order creation returned null');
             }
         } catch (\Throwable $e) {
-            $this->markImportFailed($order, $e->getMessage());
-            Log::error('ImportReverbOrderToShopify: import failed', [
+            Log::error('ImportReverbOrderToShopify: import failed (will retry up to ' . $this->tries . ' times)', [
                 'order_id' => $order->id,
                 'order_number' => $order->order_number,
+                'attempt' => $this->attempts(),
                 'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
             ]);
             throw $e;
         }

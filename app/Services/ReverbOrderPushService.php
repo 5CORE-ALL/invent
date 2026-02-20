@@ -52,21 +52,64 @@ class ReverbOrderPushService
 
     /**
      * Create a REAL Shopify order from a Reverb order (used by automatic import).
-     * Uses variant_id, decrements inventory, and marks order as paid.
-     * Returns Shopify order ID or null on failure. Throws if variant_id not found.
+     * Tries variant by SKU first; falls back to custom line item if SKU not found or inventory zero.
+     * Returns Shopify order ID or null on failure.
      */
     public function createOrderFromMarketplace(ReverbOrderMetric $order): ?string
     {
         $variantId = $order->sku ? $this->findShopifyVariantIdBySku($order->sku) : null;
+        $quantity = (int) ($order->quantity ?: 1);
 
         if (!$variantId) {
-            throw new \RuntimeException(
-                'Shopify variant not found for SKU: ' . ($order->sku ?? 'N/A') .
-                '. Order #' . ($order->order_number ?? $order->id) .
-                ' cannot import without variant_id (inventory would not deduct).'
-            );
+            Log::info('ReverbOrderPushService: SKU not found, creating order with custom line item', [
+                'order_number' => $order->order_number,
+                'sku' => $order->sku,
+            ]);
+            return $this->createShopifyOrderWithCustomItem($order, 'SKU not found in Shopify - added as custom item', ['SKU Missing']);
         }
 
+        $inventoryQty = $this->getVariantInventoryQuantity($variantId);
+        if ($inventoryQty !== null && $inventoryQty < 1) {
+            Log::info('ReverbOrderPushService: inventory zero, falling back to custom line item', [
+                'order_number' => $order->order_number,
+                'sku' => $order->sku,
+            ]);
+            return $this->createShopifyOrderWithCustomItem($order, 'Inventory zero - added as custom item', ['SKU Missing', 'Inventory Zero']);
+        }
+        if ($inventoryQty !== null && $inventoryQty < $quantity) {
+            Log::warning('ReverbOrderPushService: low inventory, proceeding with variant', [
+                'order_number' => $order->order_number,
+                'sku' => $order->sku,
+                'available' => $inventoryQty,
+                'requested' => $quantity,
+            ]);
+        }
+
+        try {
+            return $this->createShopifyOrderWithVariant($order, (int) $variantId);
+        } catch (\Throwable $e) {
+            $body = $e->getMessage();
+            $isInventoryError = (
+                stripos($body, 'inventory') !== false ||
+                stripos($body, 'Unable to reserve') !== false ||
+                stripos($body, 'variant') !== false
+            );
+            if ($isInventoryError) {
+                Log::warning('ReverbOrderPushService: Shopify inventory error, falling back to custom line item', [
+                    'order_number' => $order->order_number,
+                    'error' => $body,
+                ]);
+                return $this->createShopifyOrderWithCustomItem($order, 'Shopify inventory error - added as custom item: ' . substr($body, 0, 100), ['SKU Missing', 'Inventory Error']);
+            }
+            throw $e;
+        }
+    }
+
+    /**
+     * Create Shopify order using variant_id (decrements inventory). Throws on API error.
+     */
+    protected function createShopifyOrderWithVariant(ReverbOrderMetric $order, int $variantId): ?string
+    {
         $storeUrl = str_replace(['https://', 'http://'], '', config('services.shopify.store_url'));
         $token = config('services.shopify.password') ?: env('SHOPIFY_PASSWORD');
 
@@ -78,7 +121,7 @@ class ReverbOrderPushService
             'order' => [
                 'line_items' => [
                     [
-                        'variant_id' => (int) $variantId,
+                        'variant_id' => $variantId,
                         'quantity' => $quantity,
                         'price' => $price,
                     ],
@@ -94,43 +137,7 @@ class ReverbOrderPushService
             ],
         ];
 
-        $reverbDetails = $this->fetchReverbOrderDetails((string) $order->order_number);
-        if ($reverbDetails) {
-            $buyerName = $reverbDetails['buyer_name'] ?? null;
-            $buyerFirst = $reverbDetails['buyer_first_name'] ?? null;
-            $buyerLast = $reverbDetails['buyer_last_name'] ?? null;
-            $buyerEmail = $reverbDetails['buyer_email'] ?? $reverbDetails['email'] ?? null;
-            if (!$buyerFirst && $buyerName) {
-                $parts = explode(' ', trim($buyerName), 2);
-                $buyerFirst = $parts[0] ?? '';
-                $buyerLast = $parts[1] ?? '';
-            }
-            $payload['order']['customer'] = [
-                'first_name' => (string) ($buyerFirst ?? ''),
-                'last_name' => (string) ($buyerLast ?? ''),
-            ];
-            if ($buyerEmail) {
-                $payload['order']['customer']['email'] = (string) $buyerEmail;
-            }
-            $addr = $reverbDetails['shipping_address'] ?? null;
-            if (is_array($addr) && !empty($addr['street_address'])) {
-                $name = $addr['name'] ?? $buyerName ?? trim(($buyerFirst ?? '') . ' ' . ($buyerLast ?? ''));
-                $shippingAddr = [
-                    'first_name' => $buyerFirst ?? $name,
-                    'last_name' => $buyerLast ?? '',
-                    'address1' => (string) ($addr['street_address'] ?? ''),
-                    'address2' => (string) ($addr['extended_address'] ?? ''),
-                    'city' => (string) ($addr['locality'] ?? ''),
-                    'province_code' => (string) ($addr['region'] ?? ''),
-                    'country_code' => (string) ($addr['country_code'] ?? 'US'),
-                    'zip' => (string) ($addr['postal_code'] ?? ''),
-                    'phone' => (string) ($addr['unformatted_phone'] ?? $addr['phone'] ?? ''),
-                ];
-                $payload['order']['shipping_address'] = $shippingAddr;
-                $payload['order']['billing_address'] = array_merge($shippingAddr, ['name' => $name ?: trim(($buyerFirst ?? '') . ' ' . ($buyerLast ?? ''))]);
-            }
-        }
-
+        $reverbDetails = $this->enrichOrderPayloadFromReverb($payload['order'], $order);
         $response = Http::withHeaders([
             'X-Shopify-Access-Token' => $token,
             'Content-Type' => 'application/json',
@@ -157,6 +164,141 @@ class ReverbOrderPushService
         }
 
         return $shopifyOrderId;
+    }
+
+    /**
+     * Create Shopify order with custom line item (title, price, quantity) when variant/SKU unavailable.
+     * Does not decrement inventory.
+     */
+    public function createShopifyOrderWithCustomItem(ReverbOrderMetric $order, string $reasonNote, array $extraTags = []): ?string
+    {
+        $storeUrl = str_replace(['https://', 'http://'], '', config('services.shopify.store_url'));
+        $token = config('services.shopify.password') ?: env('SHOPIFY_PASSWORD');
+
+        $orderNumber = (string) ($order->order_number ?? $order->id);
+        $baseTags = ['Reverb Order', 'SKU Missing'];
+        $tags = implode(', ', array_values(array_unique(array_merge($baseTags, $extraTags))));
+
+        $lineItem = [
+            'title' => (string) ($order->display_sku ?? $order->sku ?? 'Reverb order item'),
+            'price' => (string) number_format((float) ($order->amount ?? 0), 2, '.', ''),
+            'quantity' => (int) ($order->quantity ?: 1),
+        ];
+        if ($order->sku) {
+            $lineItem['properties'] = [['name' => 'SKU', 'value' => (string) $order->sku]];
+        }
+
+        $payload = [
+            'order' => [
+                'line_items' => [$lineItem],
+                'financial_status' => 'paid',
+                'inventory_behaviour' => 'bypass',
+                'tags' => $tags,
+                'note' => 'Imported from Reverb Order #' . $orderNumber . "\n" . $reasonNote,
+                'source_name' => 'reverb',
+                'note_attributes' => [
+                    ['name' => 'reverb_order_number', 'value' => $orderNumber],
+                ],
+            ],
+        ];
+
+        $reverbDetails = $this->enrichOrderPayloadFromReverb($payload['order'], $order);
+
+        $response = Http::withHeaders([
+            'X-Shopify-Access-Token' => $token,
+            'Content-Type' => 'application/json',
+        ])->timeout(60)->post("https://{$storeUrl}/admin/api/2024-01/orders.json", $payload);
+
+        if (!$response->successful()) {
+            throw new \RuntimeException('Shopify API error: ' . $response->body());
+        }
+
+        $data = $response->json();
+        $shopifyOrderId = (string) ($data['order']['id'] ?? '');
+        if ($shopifyOrderId && $reverbDetails && !empty($reverbDetails['shipping_code']) && in_array($reverbDetails['status'] ?? '', ['shipped', 'delivered'], true)) {
+            $trackingUrl = $reverbDetails['_links']['web_tracking']['href'] ?? null;
+            $this->addShopifyFulfillmentWithTracking(
+                $storeUrl,
+                $token,
+                (int) $shopifyOrderId,
+                (string) $reverbDetails['shipping_code'],
+                (string) ($reverbDetails['shipping_provider'] ?? ''),
+                $reverbDetails['shipped_at'] ?? null,
+                is_string($trackingUrl) ? $trackingUrl : null
+            );
+        }
+
+        return $shopifyOrderId;
+    }
+
+    /**
+     * Add customer and shipping from Reverb order details. Returns reverb details array or null.
+     */
+    protected function enrichOrderPayloadFromReverb(array &$orderPayload, ReverbOrderMetric $order): ?array
+    {
+        $reverbDetails = $this->fetchReverbOrderDetails((string) $order->order_number);
+        if (!$reverbDetails) {
+            return null;
+        }
+        $buyerName = $reverbDetails['buyer_name'] ?? null;
+        $buyerFirst = $reverbDetails['buyer_first_name'] ?? null;
+        $buyerLast = $reverbDetails['buyer_last_name'] ?? null;
+        $buyerEmail = $reverbDetails['buyer_email'] ?? $reverbDetails['email'] ?? null;
+        if (!$buyerFirst && $buyerName) {
+            $parts = explode(' ', trim($buyerName), 2);
+            $buyerFirst = $parts[0] ?? '';
+            $buyerLast = $parts[1] ?? '';
+        }
+        $orderPayload['customer'] = [
+            'first_name' => (string) ($buyerFirst ?? ''),
+            'last_name' => (string) ($buyerLast ?? ''),
+        ];
+        if ($buyerEmail) {
+            $orderPayload['customer']['email'] = (string) $buyerEmail;
+        }
+        $addr = $reverbDetails['shipping_address'] ?? null;
+        if (is_array($addr) && !empty($addr['street_address'])) {
+            $name = $addr['name'] ?? $buyerName ?? trim(($buyerFirst ?? '') . ' ' . ($buyerLast ?? ''));
+            $shippingAddr = [
+                'first_name' => $buyerFirst ?? $name,
+                'last_name' => $buyerLast ?? '',
+                'address1' => (string) ($addr['street_address'] ?? ''),
+                'address2' => (string) ($addr['extended_address'] ?? ''),
+                'city' => (string) ($addr['locality'] ?? ''),
+                'province_code' => (string) ($addr['region'] ?? ''),
+                'country_code' => (string) ($addr['country_code'] ?? 'US'),
+                'zip' => (string) ($addr['postal_code'] ?? ''),
+                'phone' => (string) ($addr['unformatted_phone'] ?? $addr['phone'] ?? ''),
+            ];
+            $orderPayload['shipping_address'] = $shippingAddr;
+            $orderPayload['billing_address'] = array_merge($shippingAddr, ['name' => $name ?: trim(($buyerFirst ?? '') . ' ' . ($buyerLast ?? ''))]);
+        }
+        return $reverbDetails;
+    }
+
+    /**
+     * Get available inventory quantity for a Shopify variant. Returns null if unable to determine.
+     */
+    protected function getVariantInventoryQuantity(string $variantId): ?int
+    {
+        $storeUrl = str_replace(['https://', 'http://'], '', config('services.shopify.store_url'));
+        $token = config('services.shopify.password') ?: env('SHOPIFY_PASSWORD');
+
+        $response = Http::withHeaders([
+            'X-Shopify-Access-Token' => $token,
+            'Content-Type' => 'application/json',
+        ])->timeout(15)->get("https://{$storeUrl}/admin/api/2024-01/variants/{$variantId}.json", [
+            'fields' => 'id,inventory_quantity,inventory_item_id',
+        ]);
+
+        if (!$response->successful()) {
+            return null;
+        }
+        $variant = $response->json('variant');
+        if (!is_array($variant)) {
+            return null;
+        }
+        return isset($variant['inventory_quantity']) ? (int) $variant['inventory_quantity'] : null;
     }
 
     /**
