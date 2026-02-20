@@ -45,6 +45,8 @@ return [
         'api_key' => env('SHOPIFY_API_KEY'),
         'password' => env('SHOPIFY_PASSWORD'),
         'store_url' => env('SHOPIFY_STORE_URL'),
+        'inventory_location_id' => env('SHOPIFY_INVENTORY_LOCATION_ID'),
+        'webhook_secret' => env('SHOPIFY_WEBHOOK_SECRET'),
     ],
 
     'google' => [
@@ -55,6 +57,8 @@ return [
 
     'reverb' => [
         'token' => env('REVERB_TOKEN'),
+        'auto_push_debug' => env('REVERB_AUTO_PUSH_DEBUG', false),
+        'webhook_secret' => env('REVERB_WEBHOOK_SECRET'),
     ],
 
     'macy' => [

@@ -11,6 +11,7 @@ class ReverbOrderMetric extends Model
 
     protected $fillable = [
         'order_date',
+        'order_paid_at',
         'status',
         'amount',
         'display_sku',
@@ -19,9 +20,11 @@ class ReverbOrderMetric extends Model
         'order_number',
         'shopify_order_id',
         'pushed_to_shopify_at',
+        'import_status',
     ];
 
     protected $casts = [
+        'order_paid_at' => 'datetime',
         'pushed_to_shopify_at' => 'datetime',
     ];
 }

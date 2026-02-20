@@ -6,8 +6,11 @@ use Illuminate\Console\Command;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\DB;
-use App\Models\ReverbProduct;
+use App\Jobs\ImportReverbOrderToShopify;
 use App\Models\ReverbOrderMetric;
+use App\Models\ReverbProduct;
+use App\Models\ReverbSyncSettings;
+use App\Models\ReverbSyncState;
 use Carbon\Carbon;
 
 class FetchReverbData extends Command
@@ -17,7 +20,7 @@ class FetchReverbData extends Command
      *
      * @var string
      */
-    protected $signature = 'reverb:fetch';
+    protected $signature = 'reverb:fetch {--force : Force full orders fetch (ignore last_sync)}';
 
     /**
      * The console command description.
@@ -81,11 +84,17 @@ class FetchReverbData extends Command
             $remainingInventory = $listing['inventory'] ?? null;
             $bumpBid = $bumpBidBySku[$sku] ?? null;
             $listingId = $listing['id'] ?? null;
-            $state = $listing['state'] ?? null;
+            // Reverb API may return state as object { slug: 'live' }, or 'status', or _embedded.state
+            $state = $listing['state'] ?? $listing['status'] ?? null;
             if (is_array($state)) {
-                $state = $state['slug'] ?? $state['name'] ?? null;
+                $state = $state['slug'] ?? $state['name'] ?? $state['title'] ?? null;
             }
-            $listingState = $state ? strtolower((string) $state) : null;
+            if ($state === null && isset($listing['_embedded']['state'])) {
+                $emb = $listing['_embedded']['state'];
+                $state = is_array($emb) ? ($emb['slug'] ?? $emb['name'] ?? null) : $emb;
+            }
+            $listingState = $state ? strtolower((string) $state) : 'live';
+            // Default 'live' when state missing so tab counts work (All vs Active); run reverb:fetch to refresh
 
             $bulkData[] = [
                 'sku' => $sku,
@@ -181,10 +190,18 @@ class FetchReverbData extends Command
                 continue;
             }
             $data = $response->json();
-            // current_bid: display "2%", or bump_v2_stats.current_bid.display
             $currentBid = $data['current_bid'] ?? $data['bump_v2_stats']['current_bid'] ?? null;
-            $display = is_array($currentBid) ? ($currentBid['display'] ?? null) : null;
+            $display = is_array($currentBid) ? ($currentBid['display'] ?? null) : $currentBid;
+
+            // Clean bump bid to prevent "Data too long for column" (e.g. "5.000000074505806%" -> "5%")
             if ($display !== null) {
+                if (is_string($display)) {
+                    if (preg_match('/^(\d+(?:\.\d+)?)%/', $display, $matches)) {
+                        $display = $matches[1] . '%';
+                    } else {
+                        $display = substr($display, 0, 10);
+                    }
+                }
                 $result[$sku] = $display;
             }
             usleep(150000); // 0.15s between calls to avoid rate limit
@@ -196,18 +213,43 @@ class FetchReverbData extends Command
 
     protected function fetchAllOrders(): void
     {
-        $url = 'https://api.reverb.com/api/my/orders/selling/all';
+        $baseUrl = 'https://api.reverb.com/api/my/orders/selling/all';
+        $lastSync = null;
+        if (! $this->option('force') && \Illuminate\Support\Facades\Schema::hasTable('reverb_sync_states')) {
+            $lastSync = ReverbSyncState::getLastSync(ReverbSyncState::KEY_ORDERS_LAST_SYNC);
+        }
+        if ($lastSync) {
+            $buffer = $lastSync->copy()->subMinutes(5);
+            $url = $baseUrl . '?updated_start_date=' . $buffer->toIso8601String();
+            $this->info('Fetching orders updated since last sync (with 5-min buffer): ' . $buffer->toIso8601String());
+        } else {
+            $url = $baseUrl;
+            $this->info('Fetching all orders (first run or no last_sync).');
+        }
+
         $pageCount = 0;
         $totalOrders = 0;
         $bulkOrders = [];
+        $maxRetries = 5;
+        $timeoutSeconds = 60;
+
+        $settings = ReverbSyncSettings::getForReverb();
+        $autoImportOrders = $settings['order']['import_orders_to_main_store'] ?? false;
+        $skipShipped = $settings['order']['skip_shipped_orders'] ?? false;
+        $debugAutoPush = config('services.reverb.auto_push_debug', false) || env('REVERB_AUTO_PUSH_DEBUG', false);
+        $lastSyncForPush = \Illuminate\Support\Facades\Schema::hasTable('reverb_sync_states')
+            ? ReverbSyncState::getLastSync(ReverbSyncState::KEY_ORDERS_LAST_SYNC)
+            : null;
+        $jobsDispatched = 0;
 
         do {
             $pageCount++;
-            $response = Http::timeout(30)->withHeaders([
-                'Authorization' => 'Bearer ' . config('services.reverb.token'),
-                'Accept' => 'application/hal+json',
-                'Accept-Version' => '3.0',
-            ])->get($url);
+            $response = $this->fetchWithRetry($url, $maxRetries, $timeoutSeconds, $pageCount);
+
+            if ($response === null) {
+                $this->warn("Skipping page {$pageCount} after {$maxRetries} attempts (connection reset or timeout). Saving progress and stopping orders fetch.");
+                break;
+            }
 
             if ($response->failed()) {
                 $this->error('Failed to fetch orders on page ' . $pageCount . ': ' . $response->body());
@@ -223,9 +265,11 @@ class FetchReverbData extends Command
                 $paidAt = $order['paid_at'] ?? $order['created_at'] ?? null;
                 if (!$paidAt) continue;
 
+                $paidAtCarbon = Carbon::parse($paidAt, 'America/Los_Angeles');
                 $bulkOrders[] = [
                     'order_number' => $order['order_number'],
-                    'order_date' => Carbon::parse($paidAt, 'America/Los_Angeles')->toDateString(),
+                    'order_date' => $paidAtCarbon->toDateString(),
+                    'order_paid_at' => $paidAtCarbon->toDateTimeString(),
                     'status' => $order['status'] ?? null,
                     'amount' => ($order['total']['amount_cents'] ?? 0) / 100,
                     'display_sku' => $order['title'] ?? null,
@@ -238,21 +282,126 @@ class FetchReverbData extends Command
 
             // Bulk insert in chunks of 100 to avoid memory issues
             if (count($bulkOrders) >= 100) {
-                $this->bulkUpsertOrders($bulkOrders);
+                $chunkToInsert = $bulkOrders;
+                $this->bulkUpsertOrders($chunkToInsert);
+                $chunkNumbers = array_column($chunkToInsert, 'order_number');
                 $bulkOrders = [];
+
+                // Dispatch ImportReverbOrderToShopify jobs (skip on first run to avoid full history import)
+                if ($autoImportOrders && $lastSyncForPush && !empty($chunkNumbers)) {
+                    $query = ReverbOrderMetric::query()
+                        ->whereNull('shopify_order_id')
+                        ->whereIn('order_number', $chunkNumbers)
+                        ->whereNotNull('order_paid_at');
+                    if ($lastSyncForPush) {
+                        $query->where('order_paid_at', '>', $lastSyncForPush);
+                    }
+                    if ($skipShipped) {
+                        $query->whereNotIn('status', ['shipped', 'delivered']);
+                    }
+                    $toImport = $query->orderBy('order_date')->orderBy('id')->get();
+
+                    foreach ($toImport as $order) {
+                        if ($debugAutoPush) {
+                            \Illuminate\Support\Facades\Log::info('Auto-import (chunk): dispatching job for order #' . $order->order_number);
+                        }
+                        ImportReverbOrderToShopify::dispatch($order->id);
+                        $jobsDispatched++;
+                        $this->info("  Dispatched import job for Reverb order #{$order->order_number}");
+                    }
+                }
             }
 
-            $url = $data['_links']['next']['href'] ?? null;
+            $url = isset($data['_links']['next']['href']) ? trim($data['_links']['next']['href']) : null;
             $this->info("  Processed page {$pageCount} ({$totalOrders} orders so far)...");
 
+            if ($url) {
+                usleep(300000); // 0.3s between pages
+            }
         } while ($url);
 
         // Insert remaining orders
         if (!empty($bulkOrders)) {
             $this->bulkUpsertOrders($bulkOrders);
+            $chunkNumbers = array_column($bulkOrders, 'order_number');
+
+            // Dispatch ImportReverbOrderToShopify jobs for remaining chunk
+            if ($autoImportOrders && $lastSyncForPush && !empty($chunkNumbers)) {
+                $query = ReverbOrderMetric::query()
+                    ->whereNull('shopify_order_id')
+                    ->whereIn('order_number', $chunkNumbers)
+                    ->whereNotNull('order_paid_at');
+                if ($lastSyncForPush) {
+                    $query->where('order_paid_at', '>', $lastSyncForPush);
+                }
+                if ($skipShipped) {
+                    $query->whereNotIn('status', ['shipped', 'delivered']);
+                }
+                $toImport = $query->orderBy('order_date')->orderBy('id')->get();
+
+                foreach ($toImport as $order) {
+                    ImportReverbOrderToShopify::dispatch($order->id);
+                    $jobsDispatched++;
+                    $this->info("  Dispatched import job for Reverb order #{$order->order_number}");
+                }
+            }
         }
 
-        $this->info("Fetched and stored {$totalOrders} orders from {$pageCount} pages.");
+        if ($autoImportOrders && !$lastSyncForPush && $debugAutoPush) {
+            \Illuminate\Support\Facades\Log::info('Auto-import: no last_sync yet; only dispatched orders from current fetch chunks.');
+        }
+        if ($jobsDispatched > 0) {
+            $this->info("  Total import jobs dispatched: {$jobsDispatched}. Ensure queue worker is running: php artisan queue:work");
+        }
+
+        if (\Illuminate\Support\Facades\Schema::hasTable('reverb_sync_states')) {
+            ReverbSyncState::setLastSync(ReverbSyncState::KEY_ORDERS_LAST_SYNC);
+            $this->info("Fetched and stored {$totalOrders} orders from {$pageCount} pages. Last sync time saved.");
+        } else {
+            $this->info("Fetched and stored {$totalOrders} orders from {$pageCount} pages.");
+        }
+    }
+
+    /**
+     * Fetch URL with retries and exponential backoff. Returns response or null on failure.
+     */
+    protected function fetchWithRetry(string $url, int $maxAttempts, int $timeoutSeconds, int $pageNum = 0): ?\Illuminate\Http\Client\Response
+    {
+        $headers = [
+            'Authorization' => 'Bearer ' . config('services.reverb.token'),
+            'Accept' => 'application/hal+json',
+            'Accept-Version' => '3.0',
+        ];
+
+        for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
+            try {
+                $response = Http::withHeaders($headers)
+                    ->timeout($timeoutSeconds)
+                    ->connectTimeout(15)
+                    ->get($url);
+
+                return $response;
+            } catch (ConnectionException $e) {
+                $this->warn("  Orders page {$pageNum} attempt {$attempt}/{$maxAttempts}: connection reset - " . $e->getMessage());
+                if ($attempt < $maxAttempts) {
+                    $delayMs = (int) pow(2, $attempt) * 1000; // 2s, 4s, 8s, 16s, 32s
+                    $this->info("  Waiting {$delayMs}ms before retry...");
+                    usleep($delayMs * 1000);
+                } else {
+                    return null;
+                }
+            } catch (\Throwable $e) {
+                $this->warn("  Orders page {$pageNum} attempt {$attempt}/{$maxAttempts}: " . $e->getMessage());
+                if ($attempt < $maxAttempts) {
+                    $delayMs = (int) pow(2, $attempt) * 1000;
+                    usleep($delayMs * 1000);
+                } else {
+                    return null;
+                }
+            }
+        }
+
+        return null;
     }
 
     protected function calculateQuantitiesFromMetrics(Carbon $startDate, Carbon $endDate): array

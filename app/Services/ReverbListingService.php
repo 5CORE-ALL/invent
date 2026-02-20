@@ -25,27 +25,41 @@ class ReverbListingService
             return false;
         }
 
-        $url = "https://api.reverb.com/api/listings/{$listingId}";
-        $response = Http::withoutVerifying()
-            ->withHeaders([
-                'Authorization' => 'Bearer ' . $this->token,
-                'Accept' => 'application/hal+json',
-                'Accept-Version' => '3.0',
-                'Content-Type' => 'application/hal+json',
-            ])
-            ->timeout(30)
-            ->put($url, [
-                'inventory' => max(0, $quantity),
-            ]);
+        $listingId = trim((string) $listingId);
+        if ($listingId === '') {
+            Log::warning('ReverbListingService: empty listing ID.');
+            return false;
+        }
 
-        if ($response->successful()) {
-            return true;
+        $url = 'https://api.reverb.com/api/listings/' . $listingId;
+        $payload = ['inventory' => max(0, (int) $quantity)];
+
+        $lastResponse = null;
+        $maxAttempts = 3;
+        for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
+            $lastResponse = Http::withoutVerifying()
+                ->withHeaders([
+                    'Authorization' => 'Bearer ' . $this->token,
+                    'Accept' => 'application/hal+json',
+                    'Accept-Version' => '3.0',
+                    'Content-Type' => 'application/hal+json',
+                ])
+                ->timeout(60)
+                ->put($url, $payload);
+
+            if ($lastResponse->successful()) {
+                return true;
+            }
+
+            if ($attempt < $maxAttempts) {
+                usleep(1000 * (int) pow(2, $attempt)); // 2s, 4s backoff
+            }
         }
 
         Log::warning('ReverbListingService: failed to update listing inventory', [
             'listing_id' => $listingId,
-            'status' => $response->status(),
-            'body' => $response->body(),
+            'status' => $lastResponse ? $lastResponse->status() : null,
+            'body' => $lastResponse ? $lastResponse->body() : null,
         ]);
         return false;
     }

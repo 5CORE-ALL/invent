@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\MarketPlace;
 
 use App\Http\Controllers\Controller;
+use App\Jobs\ImportReverbOrderToShopify;
 use App\Models\ReverbOrderMetric;
 use App\Models\ReverbProduct;
 use App\Models\ReverbSyncSettings;
@@ -142,39 +143,74 @@ class ReverbSyncController extends Controller
      */
     public function saveSettings(Request $request): JsonResponse
     {
-        $payload = $request->validate([
-            'pricing' => 'sometimes|array',
-            'pricing.price_sync' => 'sometimes',
-            'pricing.use_sale_price' => 'sometimes',
-            'pricing.currency_conversion' => 'sometimes',
-            'inventory' => 'sometimes|array',
-            'inventory.inventory_sync' => 'sometimes',
-            'inventory.keep_listing_active' => 'sometimes',
-            'inventory.auto_relist' => 'sometimes',
-            'inventory.quantity_calc_percent' => 'sometimes|numeric',
-            'inventory.max_quantity' => 'sometimes|integer',
-            'inventory.min_quantity' => 'sometimes|integer',
-            'inventory.out_of_stock_threshold' => 'sometimes|integer',
-            'inventory.shopify_location_ids' => 'sometimes|array',
-            'order' => 'sometimes|array',
-            'order.skip_shipped_orders' => 'sometimes',
-            'order.import_orders_to_main_store' => 'sometimes',
-            'order.import_orders_with_unlisted_products' => 'sometimes',
-            'order.keep_order_number_from_channel' => 'sometimes',
-            'order.tax_rules' => 'sometimes|string',
-            'order.import_orders_without_tax' => 'sometimes',
-            'order.order_receipt_email' => 'sometimes',
-            'order.fulfillment_receipt_email' => 'sometimes',
-            'order.marketing_emails' => 'sometimes',
-            'order.import_sales_with_by' => 'sometimes|string',
-            'order.sort_order' => 'sometimes|array',
+        // DEBUG: Log entire request
+        Log::info('=== REVERB SETTINGS SAVE STARTED ===', [
+            'all_request_data' => $request->all(),
+            'method' => $request->method(),
+            'headers' => $request->headers->all(),
+            'content_type' => $request->header('Content-Type')
         ]);
-
-        $current = ReverbSyncSettings::getForReverb();
-        $merged = $this->normalizeAndMergeSettings($current, $request->only(['pricing', 'inventory', 'order']));
-        ReverbSyncSettings::setForReverb($merged);
-
-        return response()->json(['success' => true, 'message' => 'Settings saved.']);
+    
+        try {
+            $payload = $request->validate([
+                'pricing' => 'sometimes|array',
+                'pricing.price_sync' => 'sometimes',
+                'pricing.use_sale_price' => 'sometimes',
+                'pricing.currency_conversion' => 'sometimes',
+                'inventory' => 'sometimes|array',
+                'inventory.inventory_sync' => 'sometimes',
+                'inventory.keep_listing_active' => 'sometimes',
+                'inventory.auto_relist' => 'sometimes',
+                'inventory.quantity_calc_percent' => 'sometimes|numeric',
+                'inventory.max_quantity' => 'sometimes|integer',
+                'inventory.min_quantity' => 'sometimes|integer',
+                'inventory.out_of_stock_threshold' => 'sometimes|integer',
+                'inventory.shopify_location_ids' => 'sometimes|array',
+                'order' => 'sometimes|array',
+                'order.skip_shipped_orders' => 'sometimes',
+                'order.import_orders_to_main_store' => 'sometimes',
+                'order.import_orders_with_unlisted_products' => 'sometimes',
+                'order.keep_order_number_from_channel' => 'sometimes',
+                'order.tax_rules' => 'sometimes|string',
+                'order.import_orders_without_tax' => 'sometimes',
+                'order.order_receipt_email' => 'sometimes',
+                'order.fulfillment_receipt_email' => 'sometimes',
+                'order.marketing_emails' => 'sometimes',
+                'order.import_sales_with_by' => 'sometimes|string',
+                'order.sort_order' => 'sometimes|array',
+            ]);
+    
+            Log::info('Validated payload:', $payload);
+    
+            $current = ReverbSyncSettings::getForReverb();
+            Log::info('Current settings before merge:', $current);
+    
+            $merged = $this->normalizeAndMergeSettings($current, $request->only(['pricing', 'inventory', 'order']));
+            Log::info('Merged settings:', $merged);
+    
+            ReverbSyncSettings::setForReverb($merged);
+    
+            // Verify save was successful
+            $saved = ReverbSyncSettings::getForReverb();
+            Log::info('Saved settings after update:', $saved);
+    
+            return response()->json([
+                'success' => true,
+                'message' => 'Settings saved.',
+                'saved_settings' => $saved // Return saved settings for verification
+            ]);
+    
+        } catch (\Exception $e) {
+            Log::error('Settings save failed:', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+    
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage()
+            ], 500);
+        }
     }
 
     protected function normalizeAndMergeSettings(array $current, array $input): array
@@ -203,7 +239,7 @@ class ReverbSyncController extends Controller
     }
 
     /**
-     * Push a single Reverb order to Shopify with tags.
+     * Retry import of a failed Reverb order to Shopify (dispatches ImportReverbOrderToShopify job).
      */
     public function pushOrderToShopify(Request $request): JsonResponse
     {
@@ -213,117 +249,15 @@ class ReverbSyncController extends Controller
         if ($order->shopify_order_id) {
             return response()->json([
                 'success' => false,
-                'message' => 'Order already pushed to Shopify.',
+                'message' => 'Order already imported to Shopify.',
             ], 422);
         }
 
-        $tags = array_filter([
-            'reverb',
-            'reverb-' . ($order->order_number ?? $order->id),
+        ImportReverbOrderToShopify::dispatch($order->id);
+        return response()->json([
+            'success' => true,
+            'message' => 'Import job dispatched. Order will be processed by the queue worker.',
         ]);
-        $settings = ReverbSyncSettings::getForReverb();
-        $orderTags = $settings['order']['shopify_order_tags'] ?? ['reverb'];
-        $tags = array_values(array_unique(array_merge($tags, $orderTags)));
-
-        try {
-            $shopifyOrderId = $this->createShopifyOrderFromReverb($order, $tags);
-            $order->update([
-                'shopify_order_id' => (string) $shopifyOrderId,
-                'pushed_to_shopify_at' => now(),
-            ]);
-            return response()->json([
-                'success' => true,
-                'message' => 'Order pushed to Shopify.',
-                'shopify_order_id' => $shopifyOrderId,
-            ]);
-        } catch (\Throwable $e) {
-            Log::error('Reverb push to Shopify failed', ['order_id' => $order->id, 'error' => $e->getMessage()]);
-            return response()->json([
-                'success' => false,
-                'message' => $e->getMessage(),
-            ], 500);
-        }
-    }
-
-    protected function createShopifyOrderFromReverb(ReverbOrderMetric $order, array $tags): string
-    {
-        $storeUrl = str_replace(['https://', 'http://'], '', config('services.shopify.store_url'));
-        $token = config('services.shopify.password') ?: env('SHOPIFY_PASSWORD');
-
-        // Resolve variant ID by SKU (from Shopify product/variant)
-        $variantId = $this->findShopifyVariantIdBySku($order->sku);
-        if (!$variantId) {
-            throw new \RuntimeException("SKU \"{$order->sku}\" not found in Shopify. Add the product to Shopify first.");
-        }
-
-        $payload = [
-            'order' => [
-                'line_items' => [
-                    [
-                        'variant_id' => $variantId,
-                        'quantity' => (int) ($order->quantity ?: 1),
-                    ],
-                ],
-                'tags' => implode(', ', $tags),
-                'note' => 'Imported from Reverb. Order #' . ($order->order_number ?? $order->id),
-                'source_name' => 'reverb',
-            ],
-        ];
-
-        $response = Http::withHeaders([
-            'X-Shopify-Access-Token' => $token,
-            'Content-Type' => 'application/json',
-        ])->post("https://{$storeUrl}/admin/api/2024-01/orders.json", $payload);
-
-        if (!$response->successful()) {
-            throw new \RuntimeException('Shopify API error: ' . $response->body());
-        }
-
-        $data = $response->json();
-        return (string) ($data['order']['id'] ?? '');
-    }
-
-    protected function findShopifyVariantIdBySku(?string $sku): ?string
-    {
-        if (!$sku) {
-            return null;
-        }
-        $sku = trim($sku);
-        $storeUrl = str_replace(['https://', 'http://'], '', config('services.shopify.store_url'));
-        $token = config('services.shopify.password') ?: env('SHOPIFY_PASSWORD');
-        $url = "https://{$storeUrl}/admin/api/2024-01/products.json";
-        $pageInfo = null;
-        for ($i = 0; $i < 20; $i++) {
-            $query = ['limit' => 250, 'fields' => 'id,variants'];
-            if ($pageInfo) {
-                $query['page_info'] = $pageInfo;
-            }
-            $response = Http::withHeaders([
-                'X-Shopify-Access-Token' => $token,
-                'Content-Type' => 'application/json',
-            ])->get($url, $query);
-            if (!$response->successful()) {
-                return null;
-            }
-            $products = $response->json()['products'] ?? [];
-            foreach ($products as $product) {
-                foreach ($product['variants'] ?? [] as $v) {
-                    if (isset($v['sku']) && trim((string) $v['sku']) === $sku) {
-                        return (string) $v['id'];
-                    }
-                }
-            }
-            $link = $response->header('Link');
-            if (!$link || strpos($link, 'rel="next"') === false) {
-                break;
-            }
-            if (preg_match('/<[^>]+page_info=([^&>]+)[^>]*>;\s*rel="next"/', $link, $m)) {
-                $pageInfo = $m[1];
-            } else {
-                break;
-            }
-        }
-        return null;
     }
 
     protected function getShopifyLocations(): array

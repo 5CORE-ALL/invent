@@ -227,9 +227,7 @@ class Ebay2ApiService
                 'Content-Type' => 'application/json',
             ])
             ->post('https://api.ebay.com/identity/v1/oauth2/token', $payload);
-            
 
-        dd($response);
         if ($response->failed()) {
             Log::error('eBay2 Access Token Error', ['response' => $response->json()]);
             throw new \RuntimeException('Unable to retrieve eBay2 access token.');
