@@ -37,6 +37,7 @@ class Kernel extends ConsoleKernel
         SyncMercariWShipSheet::class,
         SyncMercariWoShipSheet::class,
         \App\Console\Commands\LogClear::class,
+        \App\Console\Commands\EnsureStorageDirectories::class,
         \App\Console\Commands\SyncTemuSheet::class,
         \App\Console\Commands\AutoUpdateAmazonKwBids::class,
         \App\Console\Commands\AutoUpdateAmazonPtBids::class,
