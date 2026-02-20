@@ -140,7 +140,7 @@ class ReverbOrderPushService
                 'line_items' => [['variant_id' => $variantId, 'quantity' => $quantity, 'price' => $price]],
                 'financial_status' => 'paid',
                 'inventory_behaviour' => 'decrement_obeying_policy',
-                'tags' => implode(', ', array_values(array_unique(array_merge(['Reverb Order'], $extraTags)))),
+                'tags' => implode(', ', $this->cleanTags(array_merge(['Reverb Order'], $extraTags))),
                 'note' => 'Imported from Reverb Order #' . $orderNumber . ($extraNote ? "\n" . $extraNote : ''),
                 'source_name' => 'reverb',
                 'note_attributes' => [['name' => 'reverb_order_number', 'value' => $orderNumber]],
@@ -199,7 +199,7 @@ class ReverbOrderPushService
         }
 
         $baseTags = ['Reverb Order', 'SKU Missing'];
-        $tags = implode(', ', array_values(array_unique(array_merge($baseTags, $extraTags))));
+        $tags = implode(', ', $this->cleanTags(array_merge($baseTags, $extraTags)));
 
         $payload = [
             'order' => [
@@ -387,6 +387,27 @@ class ReverbOrderPushService
     }
 
     /**
+     * Clean and validate Shopify tags.
+     *
+     * @param array $tags Raw tags array
+     * @return array Cleaned tags (max 40 chars, valid characters only)
+     */
+    protected function cleanTags(array $tags): array
+    {
+        $cleanTags = [];
+        foreach ($tags as $tag) {
+            $cleanTag = trim((string) $tag);
+            $cleanTag = substr($cleanTag, 0, 40);
+            $cleanTag = preg_replace('/[^a-zA-Z0-9\s\-_]/', '', $cleanTag);
+            $cleanTag = preg_replace('/\s+/', ' ', trim($cleanTag));
+            if ($cleanTag !== '') {
+                $cleanTags[] = $cleanTag;
+            }
+        }
+        return array_values(array_unique($cleanTags));
+    }
+
+    /**
      * Store order in pending_shopify_orders for later retry. Sends admin alert.
      */
     public function storeInPending(ReverbOrderMetric $order, string $reason): void
@@ -552,7 +573,7 @@ class ReverbOrderPushService
 
         $orderPayload = [
             'line_items' => [$lineItem],
-            'tags' => implode(', ', $tags),
+            'tags' => implode(', ', $this->cleanTags($tags)),
             'note' => $baseNote,
             'source_name' => 'reverb',
             'note_attributes' => $noteAttrs,
