@@ -62,12 +62,16 @@ class ImportReverbOrderToShopify implements ShouldQueue
             return;
         }
 
+        $fallbackPath = 'createOrderFromMarketplace_returned_null';
         try {
             $shopifyOrderId = $pushService->createOrderFromMarketplace($order);
         } catch (\Throwable $e) {
-            Log::error('ImportReverbOrderToShopify: unexpected exception (fallback)', [
+            $fallbackPath = 'exception_then_custom';
+            Log::error('ImportReverbOrderToShopify: unexpected exception (fallback to custom)', [
                 'order_id' => $order->id,
+                'order_number' => $order->order_number,
                 'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
             ]);
             $shopifyOrderId = $pushService->createOrderWithCustomItem(
                 $order,
@@ -75,7 +79,8 @@ class ImportReverbOrderToShopify implements ShouldQueue
                 ['Fallback - Exception']
             );
             if ($shopifyOrderId === null) {
-                $pushService->storeInPending($order, 'Exception then custom item failed: ' . $e->getMessage());
+                $reason = 'Exception: ' . $e->getMessage() . ' | Custom failed: ' . ($pushService->lastFailureReason ?? $pushService->lastApiErrorCode ?? 'Unknown');
+                $pushService->storeInPending($order, $reason);
             }
         }
 
@@ -105,10 +110,22 @@ class ImportReverbOrderToShopify implements ShouldQueue
         $pending = PendingShopifyOrder::where('reverb_order_metric_id', $order->id)->exists();
         if ($pending) {
             $order->update(['import_status' => 'pending_shopify']);
-            Log::info('ImportReverbOrderToShopify: stored in pending_shopify_orders', ['order_number' => $order->order_number]);
+            Log::warning('ImportReverbOrderToShopify: stored in pending_shopify_orders', [
+                'order_number' => $order->order_number,
+                'order_id' => $order->id,
+                'reason' => $pushService->lastFailureReason ?? $pushService->lastApiErrorCode ?? 'Unknown',
+                'fallback_path' => $fallbackPath ?? 'createOrderFromMarketplace_returned_null',
+                'last_api_status' => $pushService->lastApiStatus ?? null,
+            ]);
         } else {
             $order->update(['import_status' => 'import_failed']);
-            Log::error('ImportReverbOrderToShopify: no Shopify order and not in pending', ['order_number' => $order->order_number]);
+            Log::error('ImportReverbOrderToShopify: no Shopify order and not in pending (unexpected)', [
+                'order_number' => $order->order_number,
+                'order_id' => $order->id,
+                'last_failure_reason' => $pushService->lastFailureReason ?? null,
+                'last_api_error' => $pushService->lastApiErrorCode ?? null,
+                'last_api_status' => $pushService->lastApiStatus ?? null,
+            ]);
         }
     }
 

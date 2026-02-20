@@ -74,7 +74,8 @@ class ReverbOrderPushService
             if ($result !== null) {
                 return $result;
             }
-            $this->storeInPending($order, 'Custom item creation failed after retries (SKU not found)');
+            $reason = 'Custom item failed (SKU not found). ' . ($this->lastFailureReason ?? $this->lastApiErrorCode ?? 'Unknown');
+            $this->storeInPending($order, $reason);
             return null;
         }
 
@@ -100,17 +101,27 @@ class ReverbOrderPushService
         Log::info('ReverbOrderPushService: fallback=VARIANT_ERROR', [
             'order_number' => $order->order_number,
             'error_code' => $errorCode,
+            'last_response_preview' => substr((string) $this->lastApiResponseBody, 0, 200),
         ]);
         $result = $this->createOrderWithCustomItem($order, 'Fallback - ' . $errorCode, ['SKU Missing', 'Fallback - ' . $errorCode]);
         if ($result !== null) {
             return $result;
         }
 
-        $this->storeInPending($order, 'Variant and custom item creation both failed');
+        $reason = 'Variant and custom both failed. Variant: ' . $errorCode . ' | Custom: ' . ($this->lastFailureReason ?? $this->lastApiErrorCode ?? 'Unknown');
+        $this->storeInPending($order, $reason);
         return null;
     }
 
-    protected ?string $lastApiErrorCode = null;
+    /** For logging when order creation fails. */
+    public ?string $lastApiErrorCode = null;
+
+    public ?string $lastApiResponseBody = null;
+
+    public ?int $lastApiStatus = null;
+
+    /** Human-readable reason for last failure (for logging/storage). */
+    public ?string $lastFailureReason = null;
 
     /**
      * Create order using variant_id. Handles 429/timeout with retries. Returns Shopify order ID or null.
@@ -153,25 +164,42 @@ class ReverbOrderPushService
 
     /**
      * Create order with custom line item only. Never throws – returns Shopify order ID or null.
+     * Validates line item data and logs each step for debugging.
      */
     public function createOrderWithCustomItem(ReverbOrderMetric $order, string $reasonNote, array $extraTags = []): ?string
     {
+        $this->lastFailureReason = null;
+        $orderNumber = (string) ($order->order_number ?? $order->id);
+
+        Log::info('ReverbOrderPushService: createOrderWithCustomItem start', [
+            'order_number' => $orderNumber,
+            'sku' => $order->sku,
+            'reason' => substr($reasonNote, 0, 80),
+        ]);
+
+        $lineItem = $this->validateAndBuildCustomLineItem($order);
+        if ($lineItem === null) {
+            $this->lastFailureReason = 'Validation failed for custom line item';
+            Log::error('ReverbOrderPushService: custom line item validation failed', [
+                'order_number' => $orderNumber,
+                'sku' => $order->sku,
+                'amount' => $order->amount,
+                'quantity' => $order->quantity,
+                'display_sku' => $order->display_sku,
+            ]);
+            return null;
+        }
+
         $storeUrl = str_replace(['https://', 'http://'], '', config('services.shopify.store_url'));
         $token = config('services.shopify.password') ?: env('SHOPIFY_PASSWORD');
+        if (!$storeUrl || !$token) {
+            $this->lastFailureReason = 'Shopify store URL or token not configured';
+            Log::error('ReverbOrderPushService: Shopify config missing');
+            return null;
+        }
 
-        $orderNumber = (string) ($order->order_number ?? $order->id);
         $baseTags = ['Reverb Order', 'SKU Missing'];
         $tags = implode(', ', array_values(array_unique(array_merge($baseTags, $extraTags))));
-
-        $productName = (string) ($order->display_sku ?? $order->sku ?? 'Reverb order item');
-        $lineItem = [
-            'title' => $productName,
-            'price' => (string) number_format((float) ($order->amount ?? 0), 2, '.', ''),
-            'quantity' => (int) ($order->quantity ?: 1),
-        ];
-        if ($order->sku) {
-            $lineItem['properties'] = [['name' => 'SKU', 'value' => (string) $order->sku]];
-        }
 
         $payload = [
             'order' => [
@@ -185,19 +213,74 @@ class ReverbOrderPushService
             ],
         ];
 
+        Log::debug('ReverbOrderPushService: custom payload built', ['order_number' => $orderNumber, 'line_item' => $lineItem]);
+
         $reverbDetails = $this->enrichOrderPayloadFromReverb($payload['order'], $order);
+
         $response = $this->postOrderWithRetry($storeUrl, $token, $payload);
         if ($response === null) {
+            $reason = $this->lastApiStatus . ' ' . ($this->lastApiErrorCode ?? 'Unknown') . ' | ' . substr((string) $this->lastApiResponseBody, 0, 200);
+            $this->lastFailureReason = $reason;
+            Log::error('ReverbOrderPushService: createOrderWithCustomItem API failed', [
+                'order_number' => $orderNumber,
+                'status' => $this->lastApiStatus,
+                'error' => $this->lastApiErrorCode,
+                'response_preview' => substr((string) $this->lastApiResponseBody, 0, 300),
+            ]);
             return null;
         }
 
         $data = $response->json();
         $shopifyOrderId = (string) ($data['order']['id'] ?? '');
-        if ($shopifyOrderId && $reverbDetails && !empty($reverbDetails['shipping_code']) && in_array($reverbDetails['status'] ?? '', ['shipped', 'delivered'], true)) {
+        if (!$shopifyOrderId) {
+            $this->lastFailureReason = 'Shopify API returned success but no order ID';
+            Log::error('ReverbOrderPushService: no order ID in response', ['order_number' => $orderNumber, 'response_keys' => array_keys($data['order'] ?? [])]);
+            return null;
+        }
+
+        Log::info('ReverbOrderPushService: createOrderWithCustomItem success', [
+            'order_number' => $orderNumber,
+            'shopify_order_id' => $shopifyOrderId,
+        ]);
+
+        if ($reverbDetails && !empty($reverbDetails['shipping_code']) && in_array($reverbDetails['status'] ?? '', ['shipped', 'delivered'], true)) {
             $trackingUrl = $reverbDetails['_links']['web_tracking']['href'] ?? null;
             $this->addShopifyFulfillmentWithTracking($storeUrl, $token, (int) $shopifyOrderId, (string) $reverbDetails['shipping_code'], (string) ($reverbDetails['shipping_provider'] ?? ''), $reverbDetails['shipped_at'] ?? null, is_string($trackingUrl) ? $trackingUrl : null);
         }
         return $shopifyOrderId;
+    }
+
+    /**
+     * Validate and build custom line item. Returns array or null on validation failure.
+     */
+    protected function validateAndBuildCustomLineItem(ReverbOrderMetric $order): ?array
+    {
+        $title = trim((string) ($order->display_sku ?? $order->sku ?? ''));
+        if ($title === '') {
+            $title = 'Reverb order item';
+        }
+        $title = mb_substr($title, 0, 255);
+
+        $priceVal = (float) ($order->amount ?? 0);
+        if ($priceVal < 0 || !is_finite($priceVal)) {
+            $priceVal = 0.00;
+        }
+        $price = number_format($priceVal, 2, '.', '');
+
+        $quantity = (int) ($order->quantity ?? 1);
+        if ($quantity < 1) {
+            $quantity = 1;
+        }
+
+        $lineItem = [
+            'title' => $title,
+            'price' => $price,
+            'quantity' => $quantity,
+        ];
+        if ($order->sku && trim((string) $order->sku) !== '') {
+            $lineItem['properties'] = [['name' => 'SKU', 'value' => mb_substr(trim((string) $order->sku), 0, 255)]];
+        }
+        return $lineItem;
     }
 
     /**
@@ -217,17 +300,27 @@ class ReverbOrderPushService
             ])->timeout(60)->post($url, $payload);
 
             if ($response->successful()) {
+                $this->lastApiErrorCode = null;
+                $this->lastApiResponseBody = null;
+                $this->lastApiStatus = null;
                 return $response;
             }
 
             $status = $response->status();
             $body = $response->body();
-            $this->lastApiErrorCode = (string) $status . ' ' . substr(preg_replace('/\s+/', ' ', $body), 0, 80);
+            $this->lastApiStatus = $status;
+            $this->lastApiResponseBody = $body;
+            $this->lastApiErrorCode = $this->parseShopifyErrorCode($status, $body);
 
             $handling = $this->handleApiError($status, $body, $response->toException());
             if ($handling['retry'] && $attempt < self::MAX_RETRIES) {
                 $wait = self::API_BACKOFF[$backoffIndex % count(self::API_BACKOFF)];
-                Log::warning('ReverbOrderPushService: API error, retrying', ['attempt' => $attempt, 'wait' => $wait, 'status' => $status]);
+                Log::warning('ReverbOrderPushService: API error, retrying', [
+                    'attempt' => $attempt,
+                    'wait' => $wait,
+                    'status' => $status,
+                    'error_code' => $handling['error_code'],
+                ]);
                 sleep($wait);
                 $backoffIndex++;
                 continue;
@@ -237,25 +330,47 @@ class ReverbOrderPushService
         }
     }
 
+    protected function parseShopifyErrorCode(int $status, string $body): string
+    {
+        $preview = substr(preg_replace('/\s+/', ' ', trim($body)), 0, 150);
+        $decoded = json_decode($body, true);
+        if (is_array($decoded) && isset($decoded['errors'])) {
+            $err = $decoded['errors'];
+            if (is_string($err)) {
+                return (string) $status . ' ' . substr($err, 0, 80);
+            }
+            if (is_array($err)) {
+                $first = reset($err);
+                $msg = is_array($first) ? json_encode($first) : (string) $first;
+                return (string) $status . ' ' . substr($msg, 0, 80);
+            }
+        }
+        return (string) $status . ' ' . $preview;
+    }
+
     /**
      * Categorize API error and decide action.
-     * @return array{retry: bool, fallback_to_custom: bool, error_code: string}
+     * @return array{retry: bool, fallback_to_custom: bool, error_code: string, is_permanent: bool}
      */
     public function handleApiError(int $status, string $body, ?\Throwable $exception = null): array
     {
-        $errorCode = (string) $status . ' ' . substr(preg_replace('/\s+/', ' ', $body), 0, 100);
+        $preview = substr(preg_replace('/\s+/', ' ', trim($body)), 0, 100);
+        $errorCode = (string) $status . ' ' . $preview;
         $message = $body . ($exception ? ' ' . $exception->getMessage() : '');
 
         if ($status === 429) {
-            return ['retry' => true, 'fallback_to_custom' => true, 'error_code' => '429 Rate Limit'];
+            return ['retry' => true, 'fallback_to_custom' => true, 'error_code' => '429 Rate Limit', 'is_permanent' => false];
         }
         if ($status >= 500 || $status === 0) {
-            return ['retry' => true, 'fallback_to_custom' => true, 'error_code' => $errorCode];
+            return ['retry' => true, 'fallback_to_custom' => true, 'error_code' => $errorCode, 'is_permanent' => false];
         }
-        if (stripos($message, 'timeout') !== false || stripos($message, 'connection') !== false || stripos($message, 'Connection') !== false) {
-            return ['retry' => true, 'fallback_to_custom' => true, 'error_code' => 'Timeout/Connection'];
+        if (stripos($message, 'timeout') !== false || stripos($message, 'connection') !== false || stripos($message, 'Connection') !== false || stripos($message, 'Connection refused') !== false) {
+            return ['retry' => true, 'fallback_to_custom' => true, 'error_code' => 'Timeout/Connection', 'is_permanent' => false];
         }
-        return ['retry' => false, 'fallback_to_custom' => true, 'error_code' => $errorCode];
+        if ($status >= 400 && $status < 500) {
+            return ['retry' => false, 'fallback_to_custom' => true, 'error_code' => $errorCode, 'is_permanent' => true];
+        }
+        return ['retry' => false, 'fallback_to_custom' => true, 'error_code' => $errorCode, 'is_permanent' => false];
     }
 
     public function shouldRetry(int $status, string $body): bool
@@ -290,10 +405,12 @@ class ReverbOrderPushService
             'last_error' => $reason,
         ]);
 
-        Log::critical('ReverbOrderPushService: Shopify order stored in pending_shopify_orders – Shopify API unavailable', [
+        Log::critical('ReverbOrderPushService: Shopify order stored in pending_shopify_orders', [
             'reverb_order_metric_id' => $order->id,
             'order_number' => $order->order_number,
             'reason' => $reason,
+            'last_api_status' => $this->lastApiStatus,
+            'last_api_error' => $this->lastApiErrorCode,
         ]);
     }
 

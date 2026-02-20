@@ -12,7 +12,8 @@ class RetryPendingShopifyOrders extends Command
 {
     protected $signature = 'shopify:retry-pending-orders
                             {--limit=50 : Max pending orders to process per run}
-                            {--max-attempts=20 : Stop retrying after this many attempts}';
+                            {--max-attempts=20 : Stop retrying after this many attempts}
+                            {--custom-only : Force custom line item (skip variant) for all retries}';
 
     protected $description = 'Retry creating Shopify orders from pending_shopify_orders (e.g. after Shopify downtime)';
 
@@ -20,6 +21,7 @@ class RetryPendingShopifyOrders extends Command
     {
         $limit = (int) $this->option('limit');
         $maxAttempts = (int) $this->option('max-attempts');
+        $customOnly = $this->option('custom-only');
 
         $pending = PendingShopifyOrder::query()
             ->where('attempts', '<', $maxAttempts)
@@ -32,7 +34,7 @@ class RetryPendingShopifyOrders extends Command
             return self::SUCCESS;
         }
 
-        $this->info('Retrying ' . $pending->count() . ' pending order(s).');
+        $this->info('Retrying ' . $pending->count() . ' pending order(s)' . ($customOnly ? ' (custom-only)' : '') . '.');
 
         $success = 0;
         $stillPending = 0;
@@ -48,6 +50,7 @@ class RetryPendingShopifyOrders extends Command
                     'last_attempt_at' => now(),
                     'last_error' => 'ReverbOrderMetric not found',
                 ]);
+                $stillPending++;
                 continue;
             }
 
@@ -58,16 +61,27 @@ class RetryPendingShopifyOrders extends Command
                 continue;
             }
 
+            $previousError = $row->last_error;
             $row->update([
                 'attempts' => $row->attempts + 1,
                 'last_attempt_at' => now(),
                 'last_error' => null,
             ]);
 
+            $shopifyOrderId = null;
+
             try {
-                $shopifyOrderId = $pushService->createOrderFromMarketplace($order);
+                if ($customOnly) {
+                    $shopifyOrderId = $pushService->createOrderWithCustomItem(
+                        $order,
+                        'Retry from pending (custom-only). Previous: ' . substr((string) $previousError, 0, 100),
+                        ['SKU Missing', 'Retry-Custom']
+                    );
+                } else {
+                    $shopifyOrderId = $pushService->createOrderFromMarketplace($order);
+                }
             } catch (\Throwable $e) {
-                $row->update(['last_error' => $e->getMessage()]);
+                $row->update(['last_error' => 'Exception: ' . $e->getMessage()]);
                 Log::warning('RetryPendingShopifyOrders: attempt failed', [
                     'pending_id' => $row->id,
                     'order_number' => $order->order_number,
@@ -95,8 +109,25 @@ class RetryPendingShopifyOrders extends Command
                 $this->line("  Order #{$order->order_number} -> Shopify #{$shopifyOrderId}");
                 $success++;
             } else {
-                $row->update(['last_error' => 'createOrderFromMarketplace returned null']);
+                $errorDetail = $pushService->lastFailureReason ?? $pushService->lastApiErrorCode ?? 'createOrderFromMarketplace returned null';
+                $row->update(['last_error' => $errorDetail]);
+                Log::warning('RetryPendingShopifyOrders: create returned null', [
+                    'pending_id' => $row->id,
+                    'order_number' => $order->order_number,
+                    'last_failure_reason' => $pushService->lastFailureReason,
+                    'last_api_error' => $pushService->lastApiErrorCode,
+                ]);
                 $stillPending++;
+            }
+        }
+
+        if ($stillPending > 0) {
+            $highAttempts = PendingShopifyOrder::where('attempts', '>=', 5)->count();
+            if ($highAttempts > 0) {
+                Log::critical('RetryPendingShopifyOrders: repeated failures – orders still pending after 5+ attempts', [
+                    'high_attempt_count' => $highAttempts,
+                    'still_pending' => $stillPending,
+                ]);
             }
         }
 
