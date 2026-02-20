@@ -2356,22 +2356,15 @@
                             if (row.is_parent_summary) return '';
 
                             const nrl = row['NR'] || '';
-                            const sku = row['(Child) sku'];
+                            const sku = row['(Child) sku'] || '';
 
-                            // Determine current value (default to RL if empty)
-                            let value = '';
-                            if (nrl === 'NR') {
-                                value = 'NR';
-                            } else if (nrl === 'REQ') {
-                                value = 'REQ';
-                            } else {
-                                value = 'REQ'; // Default to REQ
-                            }
+                            // Backend stores REQ or NRL; display NR = NRL
+                            const value = (nrl === 'NR') ? 'NRL' : 'REQ';
 
-                            return `<select class="form-select form-select-sm nr-select" data-sku="${sku}"
+                            return `<select class="form-select form-select-sm editable-select" data-sku="${sku}" data-field="NRL"
                                 style="border: 1px solid #ddd; text-align: center; cursor: pointer; padding: 2px 4px; font-size: 16px; width: 50px; height: 28px; color: black; font-weight: bold;">
                                 <option value="REQ" ${value === 'REQ' ? 'selected' : ''} style="color: black;">🟢</option>
-                                <option value="NR" ${value === 'NR' ? 'selected' : ''} style="color: black;">🔴</option>
+                                <option value="NRL" ${value === 'NRL' ? 'selected' : ''} style="color: black;">🔴</option>
                             </select>`;
                         },
                         cellClick: function(e, cell) {
@@ -6789,40 +6782,63 @@
                         $btn.html(originalText).prop('disabled', false);
                     });
                 } else {
-                    // Handle NRA/RA/LATER actions
+                    // Handle NRA/RA/LATER actions - use same URL as single-cell save
+                    var bulkSaveUrl = "{{ url('update-amazon-nr-nrl-fba') }}";
+                    var csrfMeta = document.querySelector('meta[name="csrf-token"]');
+                    var csrfToken = csrfMeta ? csrfMeta.getAttribute('content') : '';
+
                     var promises = selectedSkusList.map(function(sku) {
-                        return fetch('/update-amazon-nr-nrl-fba', {
+                        return fetch(bulkSaveUrl, {
                             method: 'POST',
                             headers: {
                                 'Content-Type': 'application/json',
-                                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+                                'Accept': 'application/json',
+                                'X-CSRF-TOKEN': csrfToken
                             },
                             body: JSON.stringify({
                                 sku: sku,
                                 field: 'NRA',
                                 value: action
                             })
-                        }).then(function(res) { return res.json(); });
-                    });
-                    
-                    Promise.all(promises).then(function(results) {
-                        // Update table data
-                        selectedSkusList.forEach(function(sku) {
-                            var rows = table.getRows().filter(function(row) {
-                                return row.getData()['(Child) sku'] === sku;
+                        }).then(function(res) {
+                            if (!res.ok) {
+                                return res.text().then(function(text) {
+                                    var msg = res.status === 419 ? 'Session expired.' : (text || 'Save failed (' + res.status + ')');
+                                    return { ok: false, sku: sku, error: msg };
+                                });
+                            }
+                            return res.json().then(function(data) {
+                                return { ok: data.success !== false, sku: sku, data: data };
                             });
-                            rows.forEach(function(row) {
-                                row.update({NRA: action});
-                            });
+                        }).catch(function(err) {
+                            return { ok: false, sku: sku, error: err.message || 'Network error' };
                         });
-                        
-                        // Show success message
-                        showToast('success', selectedSkusList.length + ' row(s) marked as ' + action);
-                        
-                        // Clear selections
+                    });
+
+                    Promise.all(promises).then(function(results) {
+                        var succeeded = 0;
+                        var failed = [];
+                        results.forEach(function(r) {
+                            if (r.ok) {
+                                succeeded++;
+                                var rows = table.getRows().filter(function(row) {
+                                    return row.getData()['(Child) sku'] === r.sku;
+                                });
+                                rows.forEach(function(row) {
+                                    row.update({ NRA: action });
+                                });
+                            } else {
+                                failed.push(r.sku + (r.error ? ': ' + r.error : ''));
+                            }
+                        });
+
+                        if (failed.length > 0) {
+                            showToast('danger', succeeded + ' saved, ' + failed.length + ' failed. ' + (failed[0].length > 60 ? failed[0].substring(0, 60) + '…' : failed[0]));
+                            if (failed.length > 1) console.error('Bulk NRA failures:', failed);
+                        } else {
+                            showToast('success', succeeded + ' row(s) marked as ' + action);
+                        }
                         clearRowSelections();
-                        
-                        // Restore button
                         $btn.html(originalText).prop('disabled', false);
                     }).catch(function(err) {
                         console.error('Bulk action error:', err);
@@ -7035,6 +7051,8 @@
                     let field = e.target.getAttribute("data-field");
                     let value = e.target.value;
 
+                    if (!sku || !field) return;
+
                     // Update color immediately for NRA field
                     if (field === 'NRA') {
                         if (value === 'NRA') {
@@ -7049,12 +7067,16 @@
                         }
                     }
 
-                    // Save to database
-                    fetch('/update-amazon-nr-nrl-fba', {
+                    var saveUrl = "{{ url('update-amazon-nr-nrl-fba') }}";
+                    var csrfMeta = document.querySelector('meta[name="csrf-token"]');
+                    var csrfToken = csrfMeta ? csrfMeta.getAttribute('content') : '';
+
+                    fetch(saveUrl, {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
-                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+                            'Accept': 'application/json',
+                            'X-CSRF-TOKEN': csrfToken
                         },
                         body: JSON.stringify({
                             sku: sku,
@@ -7062,18 +7084,30 @@
                             value: value
                         })
                     })
-                    .then(res => res.json())
-                    .then(data => {
-                        console.log(data);
-                        // Update table data with response
+                    .then(function(res) {
+                        if (!res.ok) {
+                            return res.text().then(function(t) {
+                                throw new Error(res.status === 419 ? 'Session expired. Please refresh the page.' : (t || 'Save failed (' + res.status + ')'));
+                            });
+                        }
+                        return res.json();
+                    })
+                    .then(function(data) {
                         if (data.success && typeof table !== 'undefined' && table) {
-                            let rows = table.searchRows('(Child) sku', '=', sku);
+                            var rows = table.searchRows('(Child) sku', '=', sku);
                             if (rows.length > 0) {
-                                rows[0].update({[field]: value});
+                                if (field === 'NRL') {
+                                    rows[0].update({ NRL: value, NR: value === 'NRL' ? 'NR' : 'REQ' });
+                                } else {
+                                    rows[0].update({[field]: value});
+                                }
                             }
                         }
+                        if (typeof showToast === 'function') {
+                            showToast('success', field === 'NRL' ? 'NRL saved.' : 'NRA saved.');
+                        }
                     })
-                    .catch(err => {
+                    .catch(function(err) {
                         console.error('Error saving NRA:', err);
                         alert("Failed to save: " + (err.message || "Network error"));
                     });

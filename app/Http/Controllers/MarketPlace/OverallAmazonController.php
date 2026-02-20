@@ -1561,8 +1561,24 @@ class OverallAmazonController extends Controller
         // Load NR values from AmazonListingStatus model instead of AmazonDataView
         $nrListingStatuses = AmazonListingStatus::whereIn('sku', $skus)->get()->keyBy('sku');
         
-        // Keep loading other data from AmazonDataView for backward compatibility
-        $nrValues = AmazonDataView::whereIn('sku', $skus)->pluck('value', 'sku', 'fba');
+        // Load AmazonDataView by exact SKU, then by normalized SKU (trim + collapse spaces) so NRL/NRA show when stored under a variant SKU
+        $nrValues = AmazonDataView::whereIn('sku', $skus)->pluck('value', 'sku')->all();
+        $normalizeSku = function ($s) {
+            if ($s === null || $s === '') return '';
+            $s = preg_replace('/\s+/', ' ', trim((string) $s));
+            $s = preg_replace('/\s+2\s+PCS\b/i', ' 2PCS', $s);
+            return $s;
+        };
+        $normalizedSkusSet = array_flip(array_unique(array_filter(array_map($normalizeSku, $skus))));
+        foreach (AmazonDataView::select('sku', 'value')->get() as $r) {
+            $n = $normalizeSku($r->sku);
+            if ($n !== '' && isset($normalizedSkusSet[$n])) {
+                if (!isset($nrValues[$r->sku])) {
+                    $nrValues[$r->sku] = $r->value;
+                }
+                $nrValues[$n] = $r->value;
+            }
+        }
 
         // Load Bid Caps from dedicated table
         $bidCaps = AmazonBidCap::whereIn('sku', $skus)
@@ -2628,13 +2644,10 @@ class OverallAmazonController extends Controller
             );
             $row['NROI%'] = $row['ROI_percentage']; // Alias for clarity
 
-            // Load NR field from AmazonDataView (where ListingAmazonController saves it)
-            if (isset($nrValues[$pm->sku])) {
-                $raw = $nrValues[$pm->sku];
-
-                if (!is_array($raw)) {
-                    $raw = json_decode($raw, true);
-                }
+            // Load NR field from AmazonDataView (exact SKU or normalized SKU so spacing variants match)
+            $nrRaw = $nrValues[$pm->sku] ?? $nrValues[$normalizeSku($pm->sku)] ?? null;
+            if ($nrRaw !== null) {
+                $raw = is_array($nrRaw) ? $nrRaw : (is_string($nrRaw) ? json_decode($nrRaw, true) : null);
 
                 if (is_array($raw)) {
                     // Read NRL field from amazon_data_view - "REQ" means RL, "NRL" means NRL
@@ -2677,12 +2690,9 @@ class OverallAmazonController extends Controller
                 $row['bid_cap_updated_at'] = null;
             }
 
-            // Continue with other fields
-            if (isset($nrValues[$pm->sku])) {
-                $raw = $nrValues[$pm->sku];
-                if (!is_array($raw)) {
-                    $raw = json_decode($raw, true);
-                }
+            // Continue with other fields (APlus, checklist, etc.) – use same exact or normalized lookup
+            if ($nrRaw !== null) {
+                $raw = is_array($nrRaw) ? $nrRaw : (is_string($nrRaw) ? json_decode($nrRaw, true) : null);
                 if (is_array($raw)) {
                     $row['APlus'] = isset($raw['APlus']) ? filter_var($raw['APlus'], FILTER_VALIDATE_BOOLEAN) : null;
                     $row['js_comp_manual_api_link'] = $raw['js_comp_manual_api_link'] ?? '';
@@ -2882,29 +2892,34 @@ class OverallAmazonController extends Controller
                     || $campaignName === $parentCampaignNameNoDot . ' KW';
             });
             
-            // Match L90 campaign for parent (for budget)
+            // Match L90 campaign for parent (for budget) - include " PARENT X KW" variant
             $parentCampaignL90 = $amazonSpCampaignReportsL90->first(function ($item) use ($parentCampaignName, $parentCampaignNameNoDot, $normalizeCampaignName) {
                 $campaignName = $normalizeCampaignName($item->campaignName);
-                return $campaignName === $parentCampaignName 
-                    || $campaignName === $parentCampaignNameNoDot;
+                return $campaignName === $parentCampaignName
+                    || $campaignName === $parentCampaignNameNoDot
+                    || $campaignName === $parentCampaignName . ' KW'
+                    || $campaignName === $parentCampaignNameNoDot . ' KW';
             });
             
-            // Match L30 campaign for parent
+            // Match L30 campaign for parent - include " PARENT X KW" so "PARENT A-54 KW" in DB matches
             $parentCampaignsL30 = $amazonSpCampaignReportsL30->filter(function ($item) use ($parentCampaignName, $parentCampaignNameNoDot, $normalizeCampaignName) {
                 $campaignName = $normalizeCampaignName($item->campaignName);
-                return $campaignName === $parentCampaignName 
-                    || $campaignName === $parentCampaignNameNoDot;
+                return $campaignName === $parentCampaignName
+                    || $campaignName === $parentCampaignNameNoDot
+                    || $campaignName === $parentCampaignName . ' KW'
+                    || $campaignName === $parentCampaignNameNoDot . ' KW';
             });
             
-            // Add campaign data to parent summary
+            $firstParentL30 = $parentCampaignsL30->first();
+            // Add campaign data to parent summary - use L30 when L7/L1 have no match so campaign name shows
             $sumRow['hasCampaign'] = $parentCampaignL7 || $parentCampaignL1 || $parentCampaignsL30->isNotEmpty();
             $sumRow['has_own_kw_campaign'] = $sumRow['hasCampaign'];
             $sumRow['has_own_pt_campaign'] = false;
             $sumRow['has_own_hl_campaign'] = false;
-            $sumRow['campaign_id'] = $parentCampaignL7->campaign_id ?? ($parentCampaignL1->campaign_id ?? null);
-            $sumRow['campaignName'] = $parentCampaignL7->campaignName ?? ($parentCampaignL1->campaignName ?? null);
-            $sumRow['campaignStatus'] = $parentCampaignL7->campaignStatus ?? ($parentCampaignL1->campaignStatus ?? null);
-            $sumRow['campaignBudgetAmount'] = $parentCampaignL90->campaignBudgetAmount ?? ($parentCampaignL7->campaignBudgetAmount ?? 0);
+            $sumRow['campaign_id'] = ($parentCampaignL7 ? $parentCampaignL7->campaign_id : null) ?? ($parentCampaignL1 ? $parentCampaignL1->campaign_id : null) ?? ($firstParentL30 ? $firstParentL30->campaign_id : null);
+            $sumRow['campaignName'] = ($parentCampaignL7 ? $parentCampaignL7->campaignName : null) ?? ($parentCampaignL1 ? $parentCampaignL1->campaignName : null) ?? ($firstParentL30 ? $firstParentL30->campaignName : null);
+            $sumRow['campaignStatus'] = ($parentCampaignL7 ? $parentCampaignL7->campaignStatus : null) ?? ($parentCampaignL1 ? $parentCampaignL1->campaignStatus : null) ?? ($firstParentL30 ? $firstParentL30->campaignStatus : null);
+            $sumRow['campaignBudgetAmount'] = ($parentCampaignL90 ? $parentCampaignL90->campaignBudgetAmount : null) ?? ($parentCampaignL7 ? $parentCampaignL7->campaignBudgetAmount : null) ?? ($firstParentL30 ? $firstParentL30->campaignBudgetAmount : null) ?? 0;
             
             // L7 spend with fallback calculation (clicks * cpc) like KW page
             $l7SpendVal = $parentCampaignL7 ? (float)($parentCampaignL7->spend ?? $parentCampaignL7->cost ?? 0) : 0;

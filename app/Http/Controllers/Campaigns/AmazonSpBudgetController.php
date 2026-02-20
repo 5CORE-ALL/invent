@@ -1831,24 +1831,35 @@ class AmazonSpBudgetController extends Controller
         $field = $request->input('field');
         $value = $request->input('value');
 
+        if (empty($sku) || $field === null || $field === '') {
+            return response()->json([
+                'status' => 422,
+                'message' => 'SKU and field are required',
+                'success' => false,
+            ], 422);
+        }
+
         $amazonDataView = AmazonDataView::where('sku', $sku)->first();
 
-        $jsonData = $amazonDataView && $amazonDataView->value ? $amazonDataView->value : [];
+        $jsonData = [];
+        if ($amazonDataView && $amazonDataView->value !== null) {
+            $existing = $amazonDataView->value;
+            $jsonData = is_array($existing) ? $existing : (is_string($existing) ? (json_decode($existing, true) ?: []) : []);
+        }
 
         $jsonData[$field] = $value;
 
-        $amazonDataView = AmazonDataView::updateOrCreate(
+        AmazonDataView::updateOrCreate(
             ['sku' => $sku],
             ['value' => $jsonData]
         );
 
         return response()->json([
             'status' => 200,
-            'message' => "Data updated successfully",
+            'message' => 'Data updated successfully',
             'success' => true,
-            'updated_json' => $jsonData
+            'updated_json' => $jsonData,
         ]);
-
     }
 
     public function amazonUtilizedView()
