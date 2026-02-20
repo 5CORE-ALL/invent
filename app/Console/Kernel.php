@@ -29,6 +29,7 @@ class Kernel extends ConsoleKernel
 {
     protected $commands = [
         FetchReverbData::class,
+        \App\Console\Commands\ProcessPendingReverbOrders::class,
         FetchMacyProducts::class,
         FetchWayfairData::class,
         SyncFbMarketplaceSheet::class,

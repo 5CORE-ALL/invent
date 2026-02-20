@@ -85,7 +85,7 @@ class ReverbWebhookController extends Controller
             return;
         }
 
-        ImportReverbOrderToShopify::dispatch($metric->id);
+        ImportReverbOrderToShopify::dispatch($metric->id)->onQueue('reverb');
         Log::info('ReverbWebhookController: dispatched ImportReverbOrderToShopify', ['order_number' => $orderNumber]);
     }
 
