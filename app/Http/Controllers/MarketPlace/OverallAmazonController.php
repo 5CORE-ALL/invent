@@ -335,10 +335,11 @@ class OverallAmazonController extends Controller
             // $row['A_L7'] = $row['kw_sold_L7'] + $row['pt_sold_L7'] + $row['hl_sold_L7'];
             $row['total_review_count']  = $amazonSheet->total_review_count ?? 0;
             $row['average_star_rating']  = $amazonSheet->average_star_rating ?? 0;
-            $row['campaign_id'] = $matchedCampaignL90->campaign_id ??  '';
-            $row['campaignName'] = $matchedCampaignL90->campaignName ?? '';
-            $row['campaignStatus'] = $matchedCampaignL90->campaignStatus ?? '';
-            $row['campaignBudgetAmount'] = $matchedCampaignL90->campaignBudgetAmount ?? 0;
+            // Use L30 first (has 597 KW campaigns), fallback to L90 (has 0 KW campaigns)
+            $row['campaign_id'] = $matchedCampaignL30->campaign_id ?? ($matchedCampaignL90->campaign_id ?? '');
+            $row['campaignName'] = $matchedCampaignL30->campaignName ?? ($matchedCampaignL90->campaignName ?? '');
+            $row['campaignStatus'] = $matchedCampaignL30->campaignStatus ?? ($matchedCampaignL90->campaignStatus ?? '');
+            $row['campaignBudgetAmount'] = $matchedCampaignL30->campaignBudgetAmount ?? ($matchedCampaignL90->campaignBudgetAmount ?? 0);
             $row['l7_cpc'] = $matchedCampaignL7->costPerClick ?? 0;
             $row['spend_l90'] = $matchedCampaignL90->spend ?? 0;
             $row['ad_sales_l90'] = $matchedCampaignL90->sales30d ?? 0;
@@ -784,10 +785,11 @@ class OverallAmazonController extends Controller
             $row['A_L7'] = $row['kw_sold_L7'] + $row['pt_sold_L7'] + $row['hl_sold_L7'];
             $row['total_review_count']  = $amazonSheet->total_review_count ?? 0;
             $row['average_star_rating']  = $amazonSheet->average_star_rating ?? 0;
-            $row['campaign_id'] = $matchedCampaignL90->campaign_id ??  '';
-            $row['campaignName'] = $matchedCampaignL90->campaignName ?? '';
-            $row['campaignStatus'] = $matchedCampaignL90->campaignStatus ?? '';
-            $row['campaignBudgetAmount'] = $matchedCampaignL90->campaignBudgetAmount ?? 0;
+            // Use L30 first (has 597 KW campaigns), fallback to L90 (has 0 KW campaigns)
+            $row['campaign_id'] = $matchedCampaignL30->campaign_id ?? ($matchedCampaignL90->campaign_id ?? '');
+            $row['campaignName'] = $matchedCampaignL30->campaignName ?? ($matchedCampaignL90->campaignName ?? '');
+            $row['campaignStatus'] = $matchedCampaignL30->campaignStatus ?? ($matchedCampaignL90->campaignStatus ?? '');
+            $row['campaignBudgetAmount'] = $matchedCampaignL30->campaignBudgetAmount ?? ($matchedCampaignL90->campaignBudgetAmount ?? 0);
             $row['l7_cpc'] = $matchedCampaignL7->costPerClick ?? 0;
             // $row['spend_l90'] = $matchedCampaignL90->spend ?? 0;
             // $row['ad_sales_l90'] = $matchedCampaignL90->sales30d ?? 0;
@@ -1065,10 +1067,11 @@ class OverallAmazonController extends Controller
             $row['fba']    = $pm->fba ?? null;
             $row['A_L30']  = $amazonSheet->units_ordered_l30 ?? 0;
             $row['A_L90']  = $amazonSheet->units_ordered_l90 ?? 0;
-            $row['campaign_id'] = $matchedCampaignL90->campaign_id ??  '';
-            $row['campaignName'] = $matchedCampaignL90->campaignName ?? '';
-            $row['campaignStatus'] = $matchedCampaignL90->campaignStatus ?? '';
-            $row['campaignBudgetAmount'] = $matchedCampaignL90->campaignBudgetAmount ?? 0;
+            // Use L30 first (has 597 KW campaigns), fallback to L90 (has 0 KW campaigns)
+            $row['campaign_id'] = $matchedCampaignL30->campaign_id ?? ($matchedCampaignL90->campaign_id ?? '');
+            $row['campaignName'] = $matchedCampaignL30->campaignName ?? ($matchedCampaignL90->campaignName ?? '');
+            $row['campaignStatus'] = $matchedCampaignL30->campaignStatus ?? ($matchedCampaignL90->campaignStatus ?? '');
+            $row['campaignBudgetAmount'] = $matchedCampaignL30->campaignBudgetAmount ?? ($matchedCampaignL90->campaignBudgetAmount ?? 0);
             $row['l7_cpc'] = $matchedCampaignL7->costPerClick ?? 0;
             $row['spend_l90'] = $matchedCampaignL90->spend ?? 0;
             $row['ad_sales_l90'] = $matchedCampaignL90->sales30d ?? 0;
@@ -1261,10 +1264,11 @@ class OverallAmazonController extends Controller
             $row['A_L90']  = $amazonSheet->units_ordered_l90 ?? 0;
             $row['total_review_count']  = $amazonSheet->total_review_count ?? 0;
             $row['average_star_rating']  = $amazonSheet->average_star_rating ?? 0;
-            $row['campaign_id'] = $matchedCampaignL90->campaign_id ??  '';
-            $row['campaignName'] = $matchedCampaignL90->campaignName ?? '';
-            $row['campaignStatus'] = $matchedCampaignL90->campaignStatus ?? '';
-            $row['campaignBudgetAmount'] = $matchedCampaignL90->campaignBudgetAmount ?? 0;
+            // Use L30 first (has 597 KW campaigns), fallback to L90 (has 0 KW campaigns)
+            $row['campaign_id'] = $matchedCampaignL30->campaign_id ?? ($matchedCampaignL90->campaign_id ?? '');
+            $row['campaignName'] = $matchedCampaignL30->campaignName ?? ($matchedCampaignL90->campaignName ?? '');
+            $row['campaignStatus'] = $matchedCampaignL30->campaignStatus ?? ($matchedCampaignL90->campaignStatus ?? '');
+            $row['campaignBudgetAmount'] = $matchedCampaignL30->campaignBudgetAmount ?? ($matchedCampaignL90->campaignBudgetAmount ?? 0);
             $row['l7_cpc'] = $matchedCampaignL7->costPerClick ?? 0;
             $row['spend_l90'] = $matchedCampaignL90->spend ?? 0;
             $row['ad_sales_l90'] = $matchedCampaignL90->sales30d ?? 0;
@@ -2267,9 +2271,9 @@ class OverallAmazonController extends Controller
             // Get budget from L30 first (same as KW page line 2922)
             $row['campaignBudgetAmount'] = $matchedCampaignL30ForAcos->campaignBudgetAmount ?? ($matchedCampaignL7->campaignBudgetAmount ?? ($matchedCampaignL1->campaignBudgetAmount ?? 0));
             $row['utilization_budget'] = $row['campaignBudgetAmount'];
-            $row['campaign_id'] = $matchedCampaignL7->campaign_id ?? ($matchedCampaignL1->campaign_id ?? null);
-            $row['campaignName'] = $matchedCampaignL7->campaignName ?? ($matchedCampaignL1->campaignName ?? null);
-            $row['campaignStatus'] = $matchedCampaignL7->campaignStatus ?? ($matchedCampaignL1->campaignStatus ?? null);
+            $row['campaign_id'] = $matchedCampaignL30ForAcos->campaign_id ?? ($matchedCampaignL7->campaign_id ?? ($matchedCampaignL1->campaign_id ?? null));
+            $row['campaignName'] = $matchedCampaignL30ForAcos->campaignName ?? ($matchedCampaignL7->campaignName ?? ($matchedCampaignL1->campaignName ?? null));
+            $row['campaignStatus'] = $matchedCampaignL30ForAcos->campaignStatus ?? ($matchedCampaignL7->campaignStatus ?? ($matchedCampaignL1->campaignStatus ?? null));
             
             // L7/L1 spend and CPC (same as KW page)
             $row['l7_spend'] = $matchedCampaignL7->spend ?? 0;
@@ -3224,6 +3228,140 @@ class OverallAmazonController extends Controller
             $sumRow['price'] = $childPrices->count() > 0 ? round($childPrices->avg(), 2) : 0;
 
             $finalResult[] = (object) $sumRow;
+        }
+
+        // Ensure all KW/KW. suffix campaigns from DB are represented in the view (597 total)
+        $kwSuffixCampaignsL30 = $amazonSpCampaignReportsL30->filter(function ($r) {
+            $n = trim($r->campaignName ?? '');
+            return str_ends_with($n, ' KW') || str_ends_with($n, ' KW.');
+        })->keyBy('campaignName');
+        $representedKwCampaigns = [];
+        foreach ($finalResult as $r) {
+            $cn = trim($r->campaignName ?? '');
+            if ($cn !== '' && (str_ends_with($cn, ' KW') || str_ends_with($cn, ' KW.'))) {
+                $representedKwCampaigns[strtoupper($cn)] = true;
+            }
+        }
+        foreach ($kwSuffixCampaignsL30 as $campaignName => $rec) {
+            $cnUpper = strtoupper(trim($rec->campaignName ?? ''));
+            if (isset($representedKwCampaigns[$cnUpper])) {
+                continue;
+            }
+            $baseSku = trim(preg_replace('/\s+KW\.?\s*$/i', '', $rec->campaignName ?? ''));
+            $orphanRow = [
+                '(Child) sku' => $baseSku,
+                'Parent' => $baseSku,
+                'is_parent_summary' => false,
+                'rating' => null,
+                'reviews' => null,
+                'A_L30' => 0,
+                'A_L15' => 0,
+                'A_L7' => 0,
+                'Sess30' => 0,
+                'Sess7' => 0,
+                'price' => null,
+                'price_lmpa' => null,
+                'sessions_l60' => 0,
+                'units_ordered_l60' => 0,
+                'INV' => 0,
+                'INV_AMZ' => 0,
+                'is_missing_amazon' => true,
+                'L30' => 0,
+                'fba' => null,
+                'Total_pft' => 0,
+                'T_Sale_l30' => 0,
+                'PFT_percentage' => 0,
+                'ROI_percentage' => 0,
+                'T_COGS' => 0,
+                'ad_updates' => $adUpdates,
+                'percentage' => $percentage,
+                'LP_productmaster' => 0,
+                'Ship_productmaster' => 0,
+                'NRL' => '',
+                'NRA' => null,
+                'FBA' => null,
+                'SPRICE' => null,
+                'Spft' => null,
+                'SROI' => null,
+                'ad_spend' => (float) ($rec->spend ?? 0),
+                'Listed' => null,
+                'Live' => null,
+                'APlus' => null,
+                'lmp_price' => null,
+                'lmp_link' => null,
+                'lmp_asin' => null,
+                'lmp_title' => null,
+                'lmp_entries' => [],
+                'lmp_entries_total' => 0,
+                'kw_spend_L30' => (float) ($rec->spend ?? 0),
+                'pmt_spend_L30' => 0,
+                'ad_pause' => strtoupper($rec->campaignStatus ?? '') !== 'ENABLED',
+                'kw_campaign_status' => $rec->campaignStatus ?? 'PAUSED',
+                'pt_campaign_status' => null,
+                'has_campaigns' => true,
+                'hasCampaign' => true,
+                'campaignBudgetAmount' => $rec->campaignBudgetAmount ?? 0,
+                'utilization_budget' => $rec->campaignBudgetAmount ?? 0,
+                'campaign_id' => $rec->campaign_id ?? null,
+                'campaignName' => $rec->campaignName ?? '',
+                'campaignStatus' => $rec->campaignStatus ?? 'PAUSED',
+                'l7_spend' => 0,
+                'l1_spend' => 0,
+                'l7_cpc' => 0,
+                'l1_cpc' => 0,
+                'avg_cpc' => ($rec->campaign_id ?? null) ? $avgCpcData->get($rec->campaign_id, 0) : 0,
+                'l7_clicks' => 0,
+                'l7_sales' => 0,
+                'spend_l7_col' => 0,
+                'l7_purchases' => 0,
+                'kw_sales_L30' => (float) ($rec->sales30d ?? 0),
+                'pmt_sales_L30' => 0,
+                'l30_clicks' => (int) ($rec->clicks ?? 0),
+                'l30_spend' => (float) ($rec->spend ?? 0),
+                'l30_sales' => (float) ($rec->sales30d ?? 0),
+                'l30_purchases' => (int) ($rec->unitsSoldClicks30d ?? 0),
+                'pt_spend_L30' => 0,
+                'pt_sales_L30' => 0,
+                'pt_clicks_L30' => 0,
+                'pt_sold_L30' => 0,
+                'pt_spend_L7' => 0,
+                'pt_sales_L7' => 0,
+                'pt_clicks_L7' => 0,
+                'pt_sold_L7' => 0,
+                'pt_spend_L1' => 0,
+                'pt_clicks_L1' => 0,
+                'pt_campaignName' => null,
+                'pt_campaignBudgetAmount' => 0,
+                'pt_campaign_id' => null,
+                'hl_campaignName' => null,
+                'hl_campaignBudgetAmount' => 0,
+                'hl_campaign_id' => null,
+                'hl_campaign_status' => null,
+                'hl_spend_L30' => 0,
+                'hl_sales_L30' => 0,
+                'SPEND_L30' => (float) ($rec->spend ?? 0),
+                'AD_Spend_L30' => (float) ($rec->spend ?? 0),
+                'SALES_L30' => (float) ($rec->sales30d ?? 0),
+                'AD%' => 0,
+                'GPFT%' => 0,
+                'GROI%' => 0,
+                'PFT%' => 0,
+                'NROI%' => 0,
+                'NR' => null,
+                'buyer_link' => null,
+                'seller_link' => null,
+                'shopify_id' => null,
+                'Spft%' => null,
+                'SGPFT' => null,
+                'acos' => 0,
+                'ACOS' => 0,
+                'ad_cvr' => 0,
+                'image_path' => null,
+                'checklist' => '',
+                'seo_audit_history' => [],
+                'has_custom_sprice' => false,
+            ];
+            $finalResult[] = (object) $orphanRow;
         }
 
         // Save PFT% and ROI_percentage to AmazonDataView value column after processing all rows

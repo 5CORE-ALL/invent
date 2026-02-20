@@ -5369,36 +5369,32 @@
                     });
                 }
 
-                // Campaign Status filter (Active Filter) - section-aware
+                // Campaign Status filter (Active Filter) - section-aware, same logic as Active toggle column (apply to child and parent rows)
                 if (campaignStatusFilter && campaignStatusFilter !== '' && campaignStatusFilter !== 'ALL') {
                     table.addFilter(function(data) {
-                        if (data.is_parent_summary) return true; // Show parent rows
-                        
                         var currentSection = $('#section-filter').val();
                         var isEnabled = false;
+                        var hasCampaignInSection = false;
                         
                         if (currentSection === 'hl-ads') {
-                            // HL Ads section: only check HL campaign status
                             var hlStatus = (data.hl_campaign_status || '').toUpperCase();
+                            hasCampaignInSection = !!(data.hl_campaignName || data.hl_spend_L30 > 0 || data.hl_campaign_status);
                             isEnabled = hlStatus === 'ENABLED';
                         } else if (currentSection === 'pt-ads') {
-                            // PT Ads section: only check PT campaign status
                             var ptStatus = (data.pt_campaign_status || '').toUpperCase();
+                            hasCampaignInSection = !!(data.pt_campaignName || data.pt_spend_L30 > 0 || data.pt_campaign_status);
                             isEnabled = ptStatus === 'ENABLED';
                         } else {
-                            // KW Ads or default: check all statuses
-                            var kwStatus = (data.kw_campaign_status || '').toUpperCase();
-                            var ptStatus = (data.pt_campaign_status || '').toUpperCase();
-                            var generalStatus = (data.campaignStatus || '').toUpperCase();
-                            isEnabled = kwStatus === 'ENABLED' || ptStatus === 'ENABLED' || generalStatus === 'ENABLED';
+                            // KW Ads or default: check KW status only (same as Active toggle column)
+                            var kwStatus = (data.kw_campaign_status || data.campaignStatus || '').toUpperCase();
+                            hasCampaignInSection = !!(data.hasCampaign || (data.campaign_id && data.campaignName));
+                            isEnabled = kwStatus === 'ENABLED';
                         }
-                        
-                        var isPaused = !isEnabled;
                         
                         if (campaignStatusFilter === 'ENABLED') {
                             return isEnabled;
                         } else if (campaignStatusFilter === 'PAUSED') {
-                            return !isEnabled && (kwStatus || ptStatus || generalStatus); // Has campaign but not enabled
+                            return hasCampaignInSection && !isEnabled; // Has campaign in this section but not enabled
                         }
                         
                         return true;
@@ -6175,6 +6171,8 @@
 
             // Update summary badges for INV > 0
             function updateSummary() {
+                // Use "active" data for campaign/badge counts so Campaign count matches "Showing X of Y rows"
+                const allData = table.getData("all");
                 const data = table.getData("active");
                 let totalPftAmt = 0;
                 let totalSalesAmt = 0;
@@ -6193,15 +6191,67 @@
                 let missingCount = 0;
                 let missingAmazonCount = 0;
                 
-                // KW page counts
-                let campaignCount = 0;
+                // KW page counts - Use Set to track unique campaigns
+                let uniqueCampaigns = new Set();
+                let uniquePausedCampaigns = new Set();
                 let missingCampaignCount = 0;
                 let nraCount = 0;
                 let raCount = 0;
-                let pausedCampaignsCount = 0;
                 let ub7Count = 0;
                 let ub7Ub1Count = 0;
 
+                // First pass: Campaign count - section-aware and Active-filter-aware
+                const currentSection = $('#section-filter').val();
+                const campaignStatusFilter = $('#campaign-status-filter').val();
+                // KW Ads + All/empty → show total KW count (use allData). KW Ads + Active/Paused → show filtered count (use data).
+                const useAllDataForCampaignCount = (currentSection === 'kw-ads' && (campaignStatusFilter === '' || campaignStatusFilter === 'ALL'));
+                const dataForCampaignCount = useAllDataForCampaignCount ? allData : data;
+
+                let parentRowsChecked = 0;
+                let parentRowsWithCampaign = 0;
+                
+                dataForCampaignCount.forEach(row => {
+                    if (row['is_parent_summary']) {
+                        parentRowsChecked++;
+                    }
+                    
+                    let campaignName = '';
+                    let campaignStatus = '';
+                    
+                    if (currentSection === 'hl-ads') {
+                        campaignName = row.hl_campaignName || '';
+                        campaignStatus = (row.hl_campaign_status || '').toUpperCase();
+                    } else if (currentSection === 'pt-ads') {
+                        campaignName = row.pt_campaignName || '';
+                        campaignStatus = (row.pt_campaign_status || '').toUpperCase();
+                    } else {
+                        campaignName = row.campaignName || '';
+                        const isKwCampaign = campaignName.endsWith(' KW') || campaignName.endsWith(' KW.');
+                        if (currentSection === 'kw-ads') {
+                            if (!isKwCampaign) campaignName = '';
+                        }
+                        campaignStatus = (row.kw_campaign_status || row.campaignStatus || '').toUpperCase();
+                    }
+                    
+                    // When using data (filtered), table already has only Active or only Paused rows per Active filter
+                    if (campaignName) {
+                        uniqueCampaigns.add(campaignName);
+                        if (row['is_parent_summary']) parentRowsWithCampaign++;
+                        if (campaignStatus === 'PAUSED') uniquePausedCampaigns.add(campaignName);
+                    }
+                });
+                
+                if (currentSection === 'kw-ads') {
+                    console.log('Campaign Debug:', {
+                        section: currentSection,
+                        campaignStatusFilter: campaignStatusFilter,
+                        useAllData: useAllDataForCampaignCount,
+                        totalRows: dataForCampaignCount.length,
+                        uniqueCampaigns: uniqueCampaigns.size
+                    });
+                }
+
+                // Second pass: Process INV > 0 rows for other metrics
                 data.forEach(row => {
                     if (!row['is_parent_summary'] && parseFloat(row['INV']) > 0) {
                         totalSkuCount++;
@@ -6270,22 +6320,48 @@
                             dilCount++;
                         }
                         
-                        // KW page counts
-                        // Campaign count
-                        const hasCampaign = row.hasCampaign !== undefined ? row.hasCampaign : (row.campaign_id && row.campaignName);
-                        if (hasCampaign) {
-                            campaignCount++;
+                        // Calculate 7UB and 1UB counts (for INV > 0 SKUs only) - section aware
+                        // Missing campaign count (SKUs with INV > 0 but no campaign)
+                        let hasCampaign = false;
+                        if (currentSection === 'hl-ads') {
+                            hasCampaign = row.hl_campaignName || row.hl_spend_L30 > 0 || (row.hl_campaign_status && row.hl_campaign_status !== '');
+                        } else if (currentSection === 'pt-ads') {
+                            hasCampaign = row.pt_campaignName || row.pt_spend_L30 > 0 || (row.pt_campaign_status && row.pt_campaign_status !== '');
+                        } else {
+                            const campaignName = row.campaignName || '';
+                            const isKwCampaign = campaignName.endsWith(' KW') || campaignName.endsWith(' KW.');
                             
-                            // Check for paused campaigns
-                            const campaignStatus = (row.campaignStatus || '').toUpperCase();
-                            if (campaignStatus === 'PAUSED') {
-                                pausedCampaignsCount++;
+                            if (currentSection === 'kw-ads') {
+                                hasCampaign = isKwCampaign && (row.hasCampaign !== undefined ? row.hasCampaign : (row.campaign_id && campaignName));
+                            } else {
+                                hasCampaign = row.hasCampaign !== undefined ? row.hasCampaign : (row.campaign_id && campaignName);
+                            }
+                        }
+                        
+                        if (!hasCampaign) {
+                            missingCampaignCount++;
+                        }
+                        
+                        // Calculate 7UB and 1UB for INV > 0 SKUs (section-aware)
+                        if (hasCampaign) {
+                            let l7_spend = 0;
+                            let l1_spend = 0;
+                            let budget = 0;
+                            
+                            if (currentSection === 'hl-ads') {
+                                l7_spend = parseFloat(row.hl_spend_L7) || 0;
+                                l1_spend = parseFloat(row.hl_spend_L1) || 0;
+                                budget = parseFloat(row.hl_campaignBudgetAmount) || 0;
+                            } else if (currentSection === 'pt-ads') {
+                                l7_spend = parseFloat(row.pt_spend_L7) || 0;
+                                l1_spend = parseFloat(row.pt_spend_L1) || 0;
+                                budget = parseFloat(row.pt_campaignBudgetAmount) || 0;
+                            } else {
+                                l7_spend = parseFloat(row.l7_spend) || 0;
+                                l1_spend = parseFloat(row.l1_spend) || 0;
+                                budget = (row.utilization_budget != null && row.utilization_budget !== '') ? parseFloat(row.utilization_budget) : (parseFloat(row.campaignBudgetAmount) || 0);
                             }
                             
-                            // Calculate 7UB and 1UB
-                            const l7_spend = parseFloat(row.l7_spend) || 0;
-                            const l1_spend = parseFloat(row.l1_spend) || 0;
-                            const budget = (row.utilization_budget != null && row.utilization_budget !== '') ? parseFloat(row.utilization_budget) : (parseFloat(row.campaignBudgetAmount) || 0);
                             const ub7 = budget > 0 ? (l7_spend / (budget * 7)) * 100 : 0;
                             const ub1 = budget > 0 ? (l1_spend / budget) * 100 : 0;
                             
@@ -6298,8 +6374,6 @@
                             if ((ub7 >= 66 && ub7 <= 99) && (ub1 >= 66 && ub1 <= 99)) {
                                 ub7Ub1Count++;
                             }
-                        } else {
-                            missingCampaignCount++;
                         }
                         
                         // NRA/RA count
@@ -6394,12 +6468,12 @@
                 $('#hl-spend-badge').text('HL Ads: $' + Math.round(campaignTotals.hl_spend_L30 || 0));
                 $('#pt-spend-badge').text('PT Ads: $' + Math.round(campaignTotals.pt_spend_L30 || 0));
                 
-                // Update KW page badges
-                $('#campaign-count').text(campaignCount.toLocaleString());
+                // Update KW page badges - Use Set.size for unique campaign counts
+                $('#campaign-count').text(uniqueCampaigns.size.toLocaleString());
                 $('#missing-campaign-count').text(missingCampaignCount.toLocaleString());
                 $('#nra-count').text(nraCount.toLocaleString());
                 $('#ra-count').text(raCount.toLocaleString());
-                $('#paused-campaigns-count').text(pausedCampaignsCount.toLocaleString());
+                $('#paused-campaigns-count').text(uniquePausedCampaigns.size.toLocaleString());
                 $('#7ub-count').text(ub7Count.toLocaleString());
                 $('#7ub-1ub-count').text(ub7Ub1Count.toLocaleString());
 
@@ -6415,11 +6489,11 @@
                         nmap_count: missingCount,
                         missing_count: missingAmazonCount,
                         prc_gt_lmp_count: prcGtLmpCount,
-                        campaign_count: campaignCount,
+                        campaign_count: uniqueCampaigns.size,
                         missing_campaign_count: missingCampaignCount,
                         nra_count: nraCount,
                         ra_count: raCount,
-                        paused_count: pausedCampaignsCount,
+                        paused_count: uniquePausedCampaigns.size,
                         ub7_count: ub7Count,
                         ub7_ub1_count: ub7Ub1Count,
                         kw_spend: Math.round(campaignTotals.kw_spend_L30 || 0),
