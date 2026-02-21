@@ -26,7 +26,7 @@ class SyncWalmartAdSheetData extends Command
                 return 1;
             }
 
-            $url = "https://script.google.com/macros/s/AKfycbxWwC98yCcPDcXjXfKpbE0dMC74L0YfF0fx2HdG_i3G7BzSjuhD8H9X98byGQymFNbx/exec";
+            $url = "https://script.google.com/macros/s/AKfycbxz9UYGuF2sVUC6HfcJSC1sC2xDMYSPTlBqeMbRoNohYw1zvEQCbvt8qXg0qp7m60Q-/exec";
 
             $response = Http::get($url);
 

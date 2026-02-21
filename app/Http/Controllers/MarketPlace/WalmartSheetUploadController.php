@@ -663,7 +663,16 @@ class WalmartSheetUploadController extends Controller
                         $sbid = 0;
                         $l1Zero = (round((float) $l1Cpc, 2) == 0);
                         $l7Zero = (round((float) $l7Cpc, 2) == 0);
-                        if ($l1Zero && $l7Zero) {
+                        if ($zone7 === 'red') {
+                            // Both 7UB% and 1UB% red: L1*1.1; if L1=0 then L7*1.1; if both 0 then 0.60
+                            if ($l1Zero && $l7Zero) {
+                                $sbid = 0.60;
+                            } elseif ($l1Zero) {
+                                $sbid = round($l7Cpc * 1.1, 2);
+                            } else {
+                                $sbid = round($l1Cpc * 1.1, 2);
+                            }
+                        } elseif ($l1Zero && $l7Zero) {
                             $sbid = 0.60;
                         } elseif ($ub7 > 99) {
                             $sbid = round($l1Cpc * 0.90, 2);
@@ -1448,7 +1457,15 @@ class WalmartSheetUploadController extends Controller
                 $sbid = 0;
                 $l1Zero = (round((float) $l1Cpc, 2) == 0);
                 $l7Zero = (round((float) $l7Cpc, 2) == 0);
-                if ($l1Zero && $l7Zero) {
+                if ($zone7 === 'red') {
+                    if ($l1Zero && $l7Zero) {
+                        $sbid = 0.60;
+                    } elseif ($l1Zero) {
+                        $sbid = round($l7Cpc * 1.1, 2);
+                    } else {
+                        $sbid = round($l1Cpc * 1.1, 2);
+                    }
+                } elseif ($l1Zero && $l7Zero) {
                     $sbid = 0.60;
                 } elseif ($ub7 > 99) {
                     $sbid = round($l1Cpc * 0.90, 2);
