@@ -3029,20 +3029,16 @@
                     visible: false,
                     formatter: function(cell) {
                         var rd = cell.getRow().getData();
-                        var l7 = parseInt(rd.pmt_own_l7_views) || 0;
+                        var sold = parseInt(rd['eBay L30'], 10) || 0;
                         var es = parseFloat(rd.suggested_bid) || 0;
                         var v;
-                        if (l7 >= 0 && l7 < 50) v = es;
-                            else if (l7 >= 50 && l7 < 100) v = 9;
-                            else if (l7 >= 100 && l7 < 150) v = 8;
-                            else if (l7 >= 150 && l7 < 200) v = 7;
-                            else if (l7 >= 200 && l7 < 250) v = 6;
-                            else if (l7 >= 250) v = 5;
-                            else v = es;
-                            v = Math.min(v, 12);
-                            return v > 0 ? v.toFixed(2) : '-';
-                        },
-                        width: 80
+                        if (sold === 0) v = es;
+                        else if (sold >= 1 && sold <= 5) v = 9;
+                        else if (sold < 7) v = 7;
+                        else v = es;
+                        return v > 0 ? Number(v).toFixed(2) : (es > 0 ? es.toFixed(2) : '-');
+                    },
+                    width: 80
                 },
                 {
                     title: "PMT T Views",

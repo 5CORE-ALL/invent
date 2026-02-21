@@ -2452,8 +2452,23 @@
                     hozAlign: "center",
                     sorter: "number",
                     formatter: function(cell) {
-                        const value = parseFloat(cell.getValue()) || 0;
-                        return value > 0 ? value.toFixed(0) : '-';
+                        const raw = cell.getValue();
+                        const value = (raw !== null && raw !== undefined && raw !== '') ? parseFloat(raw) : NaN;
+                        if (isNaN(value)) return '-';
+                        return Number(value).toFixed(0);
+                    },
+                    visible: false
+                },
+                {
+                    title: "S BGT",
+                    field: "sbgt",
+                    hozAlign: "center",
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const raw = cell.getValue();
+                        const value = (raw !== null && raw !== undefined && raw !== '') ? parseFloat(raw) : NaN;
+                        if (isNaN(value)) return '-';
+                        return Number(value).toFixed(0);
                     },
                     visible: false
                 },
@@ -2526,8 +2541,10 @@
                     hozAlign: "center",
                     sorter: "number",
                     formatter: function(cell) {
-                        const value = parseFloat(cell.getValue()) || 0;
-                        return value > 0 ? value.toFixed(2) : '-';
+                        const raw = cell.getValue();
+                        if (raw === null || raw === undefined || raw === '') return '-';
+                        const value = parseFloat(raw);
+                        return !isNaN(value) ? value.toFixed(2) : '-';
                     },
                     visible: false
                 },
@@ -2570,7 +2587,7 @@
         let originalColumnVisibility = {}; // Store original visibility state
         // Columns to show when ads view is active (matching image exactly)
         // Note: 'missing', 'api_price', 'spend' are NOT in adsColumnFields because they should be visible by default
-        const adsColumnFields = ['hasCampaign', 'nra', 'campaign_budget', 'ad_acos', 'ad_clicks', 'ad_sold', 'ald_bgt', 'ad_cvr', 'ub7', 'ub1', 'l7_cpc', 'l1_cpc', 'sbid', 'campaign_name', 'campaign_status']; // Only ads-specific columns
+        const adsColumnFields = ['hasCampaign', 'nra', 'campaign_budget', 'ad_acos', 'ad_clicks', 'ad_sold', 'ald_bgt', 'sbgt', 'ad_cvr', 'ub7', 'ub1', 'l7_cpc', 'l1_cpc', 'sbid', 'campaign_name', 'campaign_status']; // Only ads-specific columns
         const columnsToKeepVisible = ['sku', 'api_price', 'spend', 'INV', 'L30', 'inventory_walmart', 'dil_calculated', 'total_qty', 'rl_nrl', '_select']; // Keep these columns visible (SKU, W Prc, Spend, INV, OV L30, W INV, Dil, W L30, NRL, Checkbox) - M column will be hidden when ads columns are shown
         
         $('#toggle-ads-columns-btn').on('click', function() {
@@ -3223,6 +3240,7 @@
                             // Left column
                             html += '<tr><td class="fw-bold" style="width: 40%;">BGT:</td><td>' + fmt(c.bgt, 0) + '</td></tr>';
                             html += '<tr><td class="fw-bold">ALD BGT:</td><td>' + fmt(c.ald_bgt, 0) + '</td></tr>';
+                            html += '<tr><td class="fw-bold">S BGT:</td><td>' + fmt(c.sbgt, 0) + '</td></tr>';
                             html += '<tr><td class="fw-bold">ACOS:</td><td>' + (acosColorClass ? '<span class="' + acosColorClass + '">' + fmtPct(acos) + '</span>' : fmtPct(acos)) + '</td></tr>';
                             html += '<tr><td class="fw-bold">Clicks:</td><td>' + fmt(c.clicks) + '</td></tr>';
                             html += '<tr><td class="fw-bold">Ad Spend:</td><td>$' + fmt(c.ad_spend, 2) + '</td></tr>';

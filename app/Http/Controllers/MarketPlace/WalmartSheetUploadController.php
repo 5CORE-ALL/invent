@@ -619,31 +619,60 @@ class WalmartSheetUploadController extends Controller
                 if ($adAcos > 25) {
                     $aldBgt = 1;
                 } elseif ($adAcos >= 20 && $adAcos <= 25) {
-                    $aldBgt = 2;
-                } elseif ($adAcos >= 15 && $adAcos < 20) {
-                    $aldBgt = 4;
-                } elseif ($adAcos >= 10 && $adAcos < 15) {
-                    $aldBgt = 6;
-                } elseif ($adAcos >= 5 && $adAcos < 10) {
-                    $aldBgt = 8;
-                } elseif ($adAcos >= 0.01 && $adAcos < 5) {
                     $aldBgt = 10;
+                } elseif ($adAcos >= 15 && $adAcos < 20) {
+                    $aldBgt = 15;
+                } elseif ($adAcos >= 10 && $adAcos < 15) {
+                    $aldBgt = 20;
+                } elseif ($adAcos >= 5 && $adAcos < 10) {
+                    $aldBgt = 25;
+                } elseif ($adAcos >= 0.01 && $adAcos < 5) {
+                    $aldBgt = 30;
+                }
+
+                // S BGT from ACOS (10, 15, 20, 25, 30 only; no rule for ACOS > 25)
+                $sbgt = 0;
+                if ($adAcos >= 20 && $adAcos <= 25) {
+                    $sbgt = 10;
+                } elseif ($adAcos >= 15 && $adAcos < 20) {
+                    $sbgt = 15;
+                } elseif ($adAcos >= 10 && $adAcos < 15) {
+                    $sbgt = 20;
+                } elseif ($adAcos >= 5 && $adAcos < 10) {
+                    $sbgt = 25;
+                } elseif ($adAcos >= 0.01 && $adAcos < 5) {
+                    $sbgt = 30;
                 }
                 
                 // Calculate 7UB and 1UB using ALD BGT
                 $ub7 = ($aldBgt > 0 && ($aldBgt * 7) > 0) ? (($l7Spend / ($aldBgt * 7)) * 100) : 0;
                 $ub1 = ($aldBgt > 0) ? (($l1Spend / $aldBgt) * 100) : 0;
                 
-                // Calculate SBID
-                $sbid = 0;
-                if ($l1Cpc === 0 && $l7Cpc === 0) {
-                    $sbid = 0.50;
-                } elseif ($ub7 > 99) {
-                    $sbid = round($l1Cpc * 0.90, 2);
-                } elseif ($ub7 < 66) {
-                    $sbid = round($l7Cpc * 1.1, 2);
-                } else {
-                    $sbid = round($l7Cpc * 1.0, 2);
+                // Calculate SBID only when campaign exists and status is Live; otherwise no SBID
+                $sbid = null;
+                $statusUpper = strtoupper(trim($campaignStatus ?? ''));
+                $campaignExists = $hasCampaign && !empty(trim($campaignName ?? ''));
+                $isLive = ($statusUpper === 'LIVE' || $statusUpper === 'ENABLED');
+                if ($campaignExists && $isLive) {
+                    // UB zone (same as view: red < 66, green 66-99, pink > 99)
+                    $zone7 = $ub7 < 66 ? 'red' : ($ub7 <= 99 ? 'green' : 'pink');
+                    $zone1 = $ub1 < 66 ? 'red' : ($ub1 <= 99 ? 'green' : 'pink');
+                    if ($zone7 !== $zone1) {
+                        $sbid = null; // different 7UB% and 1UB% colours → no SBID
+                    } else {
+                        $sbid = 0;
+                        $l1Zero = (round((float) $l1Cpc, 2) == 0);
+                        $l7Zero = (round((float) $l7Cpc, 2) == 0);
+                        if ($l1Zero && $l7Zero) {
+                            $sbid = 0.60;
+                        } elseif ($ub7 > 99) {
+                            $sbid = round($l1Cpc * 0.90, 2);
+                        } elseif ($ub7 < 66) {
+                            $sbid = round($l7Cpc * 1.1, 2);
+                        } else {
+                            $sbid = round($l7Cpc * 1.0, 2);
+                        }
+                    }
                 }
                 
                 // Get inventory
@@ -737,6 +766,7 @@ class WalmartSheetUploadController extends Controller
                     'l7_cpc' => $l7Cpc,
                     'l1_cpc' => $l1Cpc,
                     'ald_bgt' => $aldBgt,
+                    'sbgt' => $sbgt,
                     'ub7' => $ub7,
                     'ub1' => $ub1,
                     'sbid' => $sbid,
@@ -1379,15 +1409,29 @@ class WalmartSheetUploadController extends Controller
             if ($acos > 25) {
                 $aldBgt = 1;
             } elseif ($acos >= 20 && $acos <= 25) {
-                $aldBgt = 2;
-            } elseif ($acos >= 15 && $acos < 20) {
-                $aldBgt = 4;
-            } elseif ($acos >= 10 && $acos < 15) {
-                $aldBgt = 6;
-            } elseif ($acos >= 5 && $acos < 10) {
-                $aldBgt = 8;
-            } elseif ($acos >= 0.01 && $acos < 5) {
                 $aldBgt = 10;
+            } elseif ($acos >= 15 && $acos < 20) {
+                $aldBgt = 15;
+            } elseif ($acos >= 10 && $acos < 15) {
+                $aldBgt = 20;
+            } elseif ($acos >= 5 && $acos < 10) {
+                $aldBgt = 25;
+            } elseif ($acos >= 0.01 && $acos < 5) {
+                $aldBgt = 30;
+            }
+
+            // S BGT from ACOS (10, 15, 20, 25, 30 only; no rule for ACOS > 25)
+            $sbgt = 0;
+            if ($acos >= 20 && $acos <= 25) {
+                $sbgt = 10;
+            } elseif ($acos >= 15 && $acos < 20) {
+                $sbgt = 15;
+            } elseif ($acos >= 10 && $acos < 15) {
+                $sbgt = 20;
+            } elseif ($acos >= 5 && $acos < 10) {
+                $sbgt = 25;
+            } elseif ($acos >= 0.01 && $acos < 5) {
+                $sbgt = 30;
             }
 
             // Calculate 7UB and UB1 using ALD BGT (not actual budget)
@@ -1396,24 +1440,23 @@ class WalmartSheetUploadController extends Controller
             // UB1 = (L1 spend / ALD BGT) * 100
             $ub1 = ($aldBgt > 0) ? (($l1Spend / $aldBgt) * 100) : 0;
 
-            // Calculate SBID (Walmart-specific logic)
-            // Match JavaScript toFixed(2) behavior - use round() instead of floor()
-            $sbid = 0;
-            // If both l1_cpc and l7_cpc are 0, then sbid = 0.50
-            if ($l1Cpc === 0 && $l7Cpc === 0) {
-                $sbid = 0.50;
-            }
-            // If ub7 > 99 then sbid = l1_cpc * 0.90
-            elseif ($ub7 > 99) {
-                $sbid = round($l1Cpc * 0.90, 2);
-            }
-            // If ub7 < 66 then sbid = l7_cpc * 1.1
-            elseif ($ub7 < 66) {
-                $sbid = round($l7Cpc * 1.1, 2);
-            }
-            // For ub7 between 66-99, use default (l7_cpc * 1.0)
-            else {
-                $sbid = round($l7Cpc * 1.0, 2);
+            // Calculate SBID (Walmart-specific logic); show no SBID if 7UB% and 1UB% have different colours
+            $zone7 = $ub7 < 66 ? 'red' : ($ub7 <= 99 ? 'green' : 'pink');
+            $zone1 = $ub1 < 66 ? 'red' : ($ub1 <= 99 ? 'green' : 'pink');
+            $sbid = null;
+            if ($zone7 === $zone1) {
+                $sbid = 0;
+                $l1Zero = (round((float) $l1Cpc, 2) == 0);
+                $l7Zero = (round((float) $l7Cpc, 2) == 0);
+                if ($l1Zero && $l7Zero) {
+                    $sbid = 0.60;
+                } elseif ($ub7 > 99) {
+                    $sbid = round($l1Cpc * 0.90, 2);
+                } elseif ($ub7 < 66) {
+                    $sbid = round($l7Cpc * 1.1, 2);
+                } else {
+                    $sbid = round($l7Cpc * 1.0, 2);
+                }
             }
 
             // Only include campaigns that have activity
@@ -1422,6 +1465,7 @@ class WalmartSheetUploadController extends Controller
                     'campaign_name' => $r->campaignName ?? 'N/A',
                     'bgt' => $bgt,
                     'ald_bgt' => $aldBgt,
+                    'sbgt' => $sbgt,
                     'acos' => $acos,
                     'clicks' => $clicks,
                     'ad_spend' => $spend,
