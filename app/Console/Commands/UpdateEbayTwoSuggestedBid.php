@@ -136,7 +136,7 @@ class UpdateEbayTwoSuggestedBid extends Command
                 ->keyBy('listing_id');
             
         // Process ProductMaster data in chunks and update campaign listings
-        $this->info('Processing bid updates based on L7_VIEWS...');
+        $this->info('Processing bid updates based on L30 eBay sold...');
         $updatedListings = 0;
         // Track SKU-specific bids to handle multiple SKUs with same listing_id
         $skuBids = []; // [listing_id => [sku => bid]]
@@ -172,35 +172,25 @@ class UpdateEbayTwoSuggestedBid extends Command
                     $listing = $campaignListings[$ebayMetric->item_id];
                     $l30Data = $ebayGeneralL30->get($ebayMetric->item_id);
                     
-                    // Get L7_VIEWS for SBID calculation
-                    $l7Views = (int) ($ebayMetric->l7_views ?? 0);
+                    // L30 eBay sold (eBay L30) for this SKU
+                    $soldL30 = (int) ($ebayMetric->ebay_l30 ?? 0);
                     
-                    // Get ESBID (suggested bid from bid_percentage in campaign listing)
+                    // Get ESBID (suggested bid from campaign listing)
                     $esbid = (float) ($listing->suggested_bid ?? 0);
                     
-                    // Calculate SBID based on L7_VIEWS ranges (matching blade view logic)
-                    $newBid = $esbid; // Default: use ESBID
-                    
-                    if ($l7Views >= 0 && $l7Views < 50) {
-                        // 0-50: use ESBID
+                    // PMT S BID rules: L30 sold = 0 → ESbid; 1-5 → 9; <7 (i.e. 6) → 7; >=7 → ESbid
+                    if ($soldL30 === 0) {
                         $newBid = $esbid;
-                    } elseif ($l7Views >= 50 && $l7Views < 100) {
-                        $newBid = 9;
-                    } elseif ($l7Views >= 100 && $l7Views < 150) {
-                        $newBid = 8;
-                    } elseif ($l7Views >= 150 && $l7Views < 200) {
-                        $newBid = 7;
-                    } elseif ($l7Views >= 200 && $l7Views < 250) {
-                        $newBid = 6;
-                    } elseif ($l7Views >= 250) {
-                        $newBid = 5;
+                    } elseif ($soldL30 >= 1 && $soldL30 <= 5) {
+                        $newBid = 9.0;
+                    } elseif ($soldL30 < 7) {
+                        $newBid = 7.0;
                     } else {
-                        // Fallback: use ESBID
                         $newBid = $esbid;
                     }
-
-                    // Cap newBid to maximum of 12 (matching blade view)
-                    $newBid = min($newBid, 12);
+                    
+                    // Cap newBid to maximum of 12
+                    $newBid = min($newBid, 12.0);
                     
                     // Store bid per SKU for this listing_id
                     $listingId = $ebayMetric->item_id;
@@ -220,7 +210,7 @@ class UpdateEbayTwoSuggestedBid extends Command
                         return "{$sku}:{$skuBids[$listingId][$sku]}";
                     }, array_keys($skuBids[$listingId])));
                     $finalBid = min($skuBids[$listingId]);
-                    $this->info("SKU: {$pm->sku} | Listing ID: {$listingId} | Calculated SBID: {$newBid} | L7_VIEWS: {$l7Views} | All SKUs: [{$allSkusStr}] | All Bids: [{$allBidsStr}] | Final Bid (min): {$finalBid}");
+                    $this->info("SKU: {$pm->sku} | Listing ID: {$listingId} | Calculated SBID: {$newBid} | L30 eBay sold: {$soldL30} | All SKUs: [{$allSkusStr}] | All Bids: [{$allBidsStr}] | Final Bid (min): {$finalBid}");
                     $updatedListings++;
                 }
             });
