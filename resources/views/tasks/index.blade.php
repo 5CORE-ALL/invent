@@ -3109,56 +3109,78 @@
                 });
             });
 
-            // View Task
+            // View Task - use row data from table first (has link1-9), else fetch from API
             $(document).on('click', '.view-task', function() {
                 var taskId = $(this).data('id');
-                $.ajax({
-                    url: '/tasks/' + taskId,
-                    type: 'GET',
-                    success: function(response) {
-                        var html = `
-                            <div style="padding: 10px;">
-                                <table class="table table-borderless">
-                                    <tr>
-                                        <th width="200" style="color: #6c757d; font-weight: 600;">L1:</th>
-                                        <td>${response.l1 || '<span style="color: #adb5bd;">-</span>'}</td>
-                                    </tr>
-                                    <tr>
-                                        <th style="color: #6c757d; font-weight: 600;">L2:</th>
-                                        <td>${response.l2 || '<span style="color: #adb5bd;">-</span>'}</td>
-                                    </tr>
-                                    <tr>
-                                        <th style="color: #6c757d; font-weight: 600;">Training Link:</th>
-                                        <td>${response.training_link ? '<a href="' + response.training_link + '" target="_blank" style="color: #0d6efd;">' + response.training_link + '</a>' : '<span style="color: #adb5bd;">-</span>'}</td>
-                                    </tr>
-                                    <tr>
-                                        <th style="color: #6c757d; font-weight: 600;">Video Link:</th>
-                                        <td>${response.video_link ? '<a href="' + response.video_link + '" target="_blank" style="color: #0d6efd;">' + response.video_link + '</a>' : '<span style="color: #adb5bd;">-</span>'}</td>
-                                    </tr>
-                                    <tr>
-                                        <th style="color: #6c757d; font-weight: 600;">Form Link:</th>
-                                        <td>${response.form_link ? '<a href="' + response.form_link + '" target="_blank" style="color: #0d6efd;">' + response.form_link + '</a>' : '<span style="color: #adb5bd;">-</span>'}</td>
-                                    </tr>
-                                    <tr>
-                                        <th style="color: #6c757d; font-weight: 600;">Form Report Link:</th>
-                                        <td>${response.form_report_link ? '<a href="' + response.form_report_link + '" target="_blank" style="color: #0d6efd;">' + response.form_report_link + '</a>' : '<span style="color: #adb5bd;">-</span>'}</td>
-                                    </tr>
-                                    <tr>
-                                        <th style="color: #6c757d; font-weight: 600;">Checklist Link:</th>
-                                        <td>${response.checklist_link ? '<a href="' + response.checklist_link + '" target="_blank" style="color: #0d6efd;">' + response.checklist_link + '</a>' : '<span style="color: #adb5bd;">-</span>'}</td>
-                                    </tr>
-                                    <tr>
-                                        <th style="color: #6c757d; font-weight: 600;">PL:</th>
-                                        <td>${response.pl || '<span style="color: #adb5bd;">-</span>'}</td>
-                                    </tr>
-                                    ${response.image ? '<tr><th style="color: #6c757d; font-weight: 600;">Image:</th><td><img src="/uploads/tasks/' + response.image + '" class="img-thumbnail" style="max-width: 300px; border-radius: 8px;"></td></tr>' : ''}
-                                </table>
-                            </div>
-                        `;
-                        $('#task-details').html(html);
-                        $('#viewTaskModal').modal('show');
-                    }
-                });
+                var row = table.getRow(taskId);
+                var data = row ? row.getData() : null;
+                if (data) {
+                    // Build modal from table row: L1/L2=link1/link2, PL=link8, process=link9; link3-7=training,video,form,form_report,checklist
+                    var l1Val = data.l1 || data.link1 || '';
+                    var l2Val = data.l2 || data.link2 || '';
+                    var plVal = data.pl || data.link8 || '';
+                    var training = data.training_link || data.link3 || '';
+                    var video = data.video_link || data.link4 || '';
+                    var form = data.form_link || data.link5 || '';
+                    var formReport = data.form_report_link || data.link6 || '';
+                    var checklist = data.checklist_link || data.link7 || '';
+                    var escapeHtml = function(s) { return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); };
+                    var linkCell = function(url, text) {
+                        if (!url || !String(url).trim()) return '<span style="color: #adb5bd;">-</span>';
+                        var u = String(url).trim();
+                        var t = text || u;
+                        return '<a href="' + escapeHtml(u) + '" target="_blank" style="color: #0d6efd;">' + escapeHtml(t) + '</a>';
+                    };
+                    var html = '<div style="padding: 10px;">' +
+                        '<table class="table table-borderless">' +
+                        '<tr><th width="200" style="color: #6c757d; font-weight: 600;">L1:</th><td>' + (l1Val ? linkCell(l1Val) : '<span style="color: #adb5bd;">-</span>') + '</td></tr>' +
+                        '<tr><th style="color: #6c757d; font-weight: 600;">L2:</th><td>' + (l2Val ? linkCell(l2Val) : '<span style="color: #adb5bd;">-</span>') + '</td></tr>' +
+                        '<tr><th style="color: #6c757d; font-weight: 600;">Training Link:</th><td>' + linkCell(training) + '</td></tr>' +
+                        '<tr><th style="color: #6c757d; font-weight: 600;">Video Link:</th><td>' + linkCell(video) + '</td></tr>' +
+                        '<tr><th style="color: #6c757d; font-weight: 600;">Form Link:</th><td>' + linkCell(form) + '</td></tr>' +
+                        '<tr><th style="color: #6c757d; font-weight: 600;">Form Report Link:</th><td>' + linkCell(formReport) + '</td></tr>' +
+                        '<tr><th style="color: #6c757d; font-weight: 600;">Checklist Link:</th><td>' + linkCell(checklist) + '</td></tr>' +
+                        '<tr><th style="color: #6c757d; font-weight: 600;">PL:</th><td>' + (plVal ? linkCell(plVal) : '<span style="color: #adb5bd;">-</span>') + '</td></tr>' +
+                        (data.image ? '<tr><th style="color: #6c757d; font-weight: 600;">Image:</th><td><img src="/uploads/tasks/' + escapeHtml(data.image) + '" class="img-thumbnail" style="max-width: 300px; border-radius: 8px;"></td></tr>' : '') +
+                        '</table></div>';
+                    $('#task-details').html(html);
+                    $('#viewTaskModal').modal('show');
+                } else {
+                    $.ajax({
+                        url: '/tasks/' + taskId,
+                        type: 'GET',
+                        success: function(response) {
+                            var l1Val = response.l1 || response.link1 || '';
+                            var l2Val = response.l2 || response.link2 || '';
+                            var plVal = response.pl || response.link8 || '';
+                            var training = response.training_link || response.link3 || '';
+                            var video = response.video_link || response.link4 || '';
+                            var form = response.form_link || response.link5 || '';
+                            var formReport = response.form_report_link || response.link6 || '';
+                            var checklist = response.checklist_link || response.link7 || '';
+                            var escapeHtml = function(s) { return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); };
+                            var linkCell = function(url) {
+                                if (!url || !String(url).trim()) return '<span style="color: #adb5bd;">-</span>';
+                                var u = String(url).trim();
+                                return '<a href="' + escapeHtml(u) + '" target="_blank" style="color: #0d6efd;">' + escapeHtml(u) + '</a>';
+                            };
+                            var html = '<div style="padding: 10px;">' +
+                                '<table class="table table-borderless">' +
+                                '<tr><th width="200" style="color: #6c757d; font-weight: 600;">L1:</th><td>' + (l1Val ? linkCell(l1Val) : '<span style="color: #adb5bd;">-</span>') + '</td></tr>' +
+                                '<tr><th style="color: #6c757d; font-weight: 600;">L2:</th><td>' + (l2Val ? linkCell(l2Val) : '<span style="color: #adb5bd;">-</span>') + '</td></tr>' +
+                                '<tr><th style="color: #6c757d; font-weight: 600;">Training Link:</th><td>' + linkCell(training) + '</td></tr>' +
+                                '<tr><th style="color: #6c757d; font-weight: 600;">Video Link:</th><td>' + linkCell(video) + '</td></tr>' +
+                                '<tr><th style="color: #6c757d; font-weight: 600;">Form Link:</th><td>' + linkCell(form) + '</td></tr>' +
+                                '<tr><th style="color: #6c757d; font-weight: 600;">Form Report Link:</th><td>' + linkCell(formReport) + '</td></tr>' +
+                                '<tr><th style="color: #6c757d; font-weight: 600;">Checklist Link:</th><td>' + linkCell(checklist) + '</td></tr>' +
+                                '<tr><th style="color: #6c757d; font-weight: 600;">PL:</th><td>' + (plVal ? linkCell(plVal) : '<span style="color: #adb5bd;">-</span>') + '</td></tr>' +
+                                (response.image ? '<tr><th style="color: #6c757d; font-weight: 600;">Image:</th><td><img src="/uploads/tasks/' + escapeHtml(response.image) + '" class="img-thumbnail" style="max-width: 300px; border-radius: 8px;"></td></tr>' : '') +
+                                '</table></div>';
+                            $('#task-details').html(html);
+                            $('#viewTaskModal').modal('show');
+                        }
+                    });
+                }
             });
 
             // Edit Task

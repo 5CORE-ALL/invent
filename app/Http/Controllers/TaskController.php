@@ -303,7 +303,19 @@ class TaskController extends Controller
                 $assigneeUser = User::where('email', $task->assign_to)->first();
                 $taskData['assignee_name'] = $assigneeUser ? $assigneeUser->name : $task->assign_to;
             }
-            
+
+            // Ensure view modal gets link fields (support both training_link column and link3-7)
+            $taskData['training_link'] = $task->getAttribute('training_link') ?: $task->getAttribute('link3') ?: '';
+            $taskData['video_link'] = $task->getAttribute('video_link') ?: $task->getAttribute('link4') ?: '';
+            $taskData['form_link'] = $task->getAttribute('form_link') ?: $task->getAttribute('link5') ?: '';
+            $taskData['form_report_link'] = $task->getAttribute('form_report_link') ?: $task->getAttribute('link6') ?: '';
+            $taskData['checklist_link'] = $task->getAttribute('checklist_link') ?: $task->getAttribute('link7') ?: '';
+            // L1/L2 stored as link1/link2; PL/process stored as link8/link9 in DB
+            $taskData['l1'] = $task->getAttribute('link1') ?: $task->getAttribute('l1') ?: '';
+            $taskData['l2'] = $task->getAttribute('link2') ?: $task->getAttribute('l2') ?: '';
+            $taskData['pl'] = $task->getAttribute('link8') ?: $task->getAttribute('pl') ?: '';
+            $taskData['process'] = $task->getAttribute('link9') ?: $task->getAttribute('process') ?: '';
+
             return response()->json($taskData);
         } catch (\Illuminate\Auth\Access\AuthorizationException $e) {
             return response()->json(['error' => 'Unauthorized'], 403);
