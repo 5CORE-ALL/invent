@@ -54,6 +54,19 @@ use App\Models\AmazonSpCampaignReport;
 use App\Models\AmazonSkuCompetitor;
 use App\Models\EbaySkuCompetitor;
 use App\Models\CvrRemark;
+use App\Models\AmazonListingStatus;
+use App\Models\EbayListingStatus;
+use App\Models\EbayTwoListingStatus;
+use App\Models\EbayThreeListingStatus;
+use App\Models\DobaListingStatus;
+use App\Models\WalmartListingStatus;
+use App\Models\TiktokShopListingStatus;
+use App\Models\ShopifyB2CListingStatus;
+use App\Models\MacysListingStatus;
+use App\Models\ReverbListingStatus;
+use App\Models\TemuListingStatus;
+use App\Models\BestbuyUSAListingStatus;
+use App\Models\TiendamiaListingStatus;
 use Carbon\Carbon;
 use App\Services\AmazonSpApiService;
 use App\Services\DobaApiService;
@@ -961,6 +974,16 @@ class CvrMasterController extends Controller
                 return $channelTacosData[$mappedName] ?? 0;
             };
 
+            // Helper to get buyer_link and seller_link from any marketplace listing_statuses table (same structure: sku, value JSON)
+            $getListingLinks = function($modelClass, $sku) {
+                if (!$sku || $sku === 'Not Listed') {
+                    return [null, null];
+                }
+                $row = $modelClass::where('sku', $sku)->first();
+                $val = $row && is_array($row->value) ? $row->value : [];
+                return [$val['buyer_link'] ?? null, $val['seller_link'] ?? null];
+            };
+
             // First, get the full SKU from ProductMaster (in case shortened SKU is passed)
             $productMaster = ProductMaster::where('sku', $sku)
                 ->orWhere('sku', 'LIKE', $sku . '%')
@@ -1070,6 +1093,8 @@ class CvrMasterController extends Controller
                 }
             }
             
+            [$amazonBuyerLink, $amazonSellerLink] = $getListingLinks(AmazonListingStatus::class, $fullSku);
+            
             $breakdownData[] = [
                 'marketplace' => 'Amazon',
                 'sku' => $amazonData ? $fullSku : 'Not Listed',
@@ -1089,6 +1114,8 @@ class CvrMasterController extends Controller
                 'margin' => 0.80,
                 'pushed_by' => $amazonPushedBy,
                 'pushed_at' => $amazonPushedAt,
+                'buyer_link' => $amazonBuyerLink,
+                'seller_link' => $amazonSellerLink,
             ];
 
             // Get parent SKU for eBay 3 campaigns
@@ -1145,6 +1172,8 @@ class CvrMasterController extends Controller
                 'margin' => $ebay1Margin,
                 'pushed_by' => null,
                 'pushed_at' => null,
+                'buyer_link' => ($ebay1Links = $getListingLinks(EbayListingStatus::class, $fullSku))[0],
+                'seller_link' => $ebay1Links[1],
             ];
 
             // Fetch eBay 2 data from Ebay2Metric model (using full SKU)
@@ -1197,6 +1226,8 @@ class CvrMasterController extends Controller
                 'margin' => $ebay2Margin,
                 'pushed_by' => null,
                 'pushed_at' => null,
+                'buyer_link' => ($ebay2Links = $getListingLinks(EbayTwoListingStatus::class, $ebay2Data ? $ebay2Data->sku : null))[0],
+                'seller_link' => $ebay2Links[1],
             ];
 
             // eBay 3
@@ -1247,6 +1278,8 @@ class CvrMasterController extends Controller
                 'margin' => $ebay3Margin,
                 'pushed_by' => null,
                 'pushed_at' => null,
+                'buyer_link' => ($ebay3Links = $getListingLinks(EbayThreeListingStatus::class, $fullSku))[0],
+                'seller_link' => $ebay3Links[1],
             ];
 
             // Fetch Temu data (with SKU normalization matching TemuController)
@@ -1425,6 +1458,8 @@ class CvrMasterController extends Controller
                 'margin' => $dobaPercentage,
                 'pushed_by' => $dobaPushedBy,
                 'pushed_at' => $dobaPushedAt,
+                'buyer_link' => ($dobaLinks = $getListingLinks(DobaListingStatus::class, $fullSku))[0],
+                'seller_link' => $dobaLinks[1],
             ];
 
             // Fetch Walmart data (matching WalmartSheetUploadController)
@@ -1529,6 +1564,8 @@ class CvrMasterController extends Controller
                 'margin' => $walmartMargin,
                 'pushed_by' => $walmartPushedBy,
                 'pushed_at' => $walmartPushedAt,
+                'buyer_link' => ($walmartLinks = $getListingLinks(WalmartListingStatus::class, $fullSku))[0],
+                'seller_link' => $walmartLinks[1],
             ];
 
             // Fetch TikTok data (matching TikTokPricingController)
@@ -1610,6 +1647,8 @@ class CvrMasterController extends Controller
                 'margin' => $tiktokPercentage,
                 'pushed_by' => null,
                 'pushed_at' => null,
+                'buyer_link' => ($tiktokLinks = $getListingLinks(TiktokShopListingStatus::class, $fullSku))[0],
+                'seller_link' => $tiktokLinks[1],
             ];
 
             // Fetch BestBuy data (matching BestBuyPricingController)
@@ -1691,6 +1730,8 @@ class CvrMasterController extends Controller
                 'margin' => $sb2cPercentage,
                 'pushed_by' => $sb2cPushedBy,
                 'pushed_at' => $sb2cPushedAt,
+                'buyer_link' => ($sb2cLinks = $getListingLinks(ShopifyB2CListingStatus::class, $fullSku))[0],
+                'seller_link' => $sb2cLinks[1],
             ];
 
             // Add Shopify B2B - Same logic as B2C
@@ -1746,6 +1787,8 @@ class CvrMasterController extends Controller
                 'margin' => $sb2bMargin,
                 'pushed_by' => $sb2bPushedBy,
                 'pushed_at' => $sb2bPushedAt,
+                'buyer_link' => null,
+                'seller_link' => null,
             ];
 
             // Fetch Macy data from macy_products table (using full SKU)
@@ -1796,6 +1839,8 @@ class CvrMasterController extends Controller
                 'margin' => $macyPercentage,
                 'pushed_by' => null,
                 'pushed_at' => null,
+                'buyer_link' => ($macyLinks = $getListingLinks(MacysListingStatus::class, $fullSku))[0],
+                'seller_link' => $macyLinks[1],
             ];
 
             // Fetch Reverb data from reverb_products table (using full SKU)
@@ -1852,6 +1897,8 @@ class CvrMasterController extends Controller
                 'margin' => $reverbPercentage,
                 'pushed_by' => null,
                 'pushed_at' => null,
+                'buyer_link' => ($reverbLinks = $getListingLinks(ReverbListingStatus::class, $fullSku))[0],
+                'seller_link' => $reverbLinks[1],
             ];
 
             // Add Temu
@@ -1897,6 +1944,8 @@ class CvrMasterController extends Controller
                 'margin' => $temuMargin,
                 'pushed_by' => null,
                 'pushed_at' => null,
+                'buyer_link' => ($temuLinks = $getListingLinks(TemuListingStatus::class, $fullSku))[0],
+                'seller_link' => $temuLinks[1],
             ];
 
             // NOTE: Macy is added earlier as 'MACY' with enhanced suggested data (line ~1500)
@@ -1939,6 +1988,8 @@ class CvrMasterController extends Controller
                 'margin' => $bestbuyMargin,
                 'pushed_by' => null,
                 'pushed_at' => null,
+                'buyer_link' => ($bestbuyLinks = $getListingLinks(BestbuyUSAListingStatus::class, $fullSku))[0],
+                'seller_link' => $bestbuyLinks[1],
             ];
 
             // Add Tiendamia
@@ -1980,6 +2031,8 @@ class CvrMasterController extends Controller
                 'margin' => $tiendamiaMargin,
                 'pushed_by' => null,
                 'pushed_at' => null,
+                'buyer_link' => ($tiendamiaLinks = $getListingLinks(TiendamiaListingStatus::class, $fullSku))[0],
+                'seller_link' => $tiendamiaLinks[1],
             ];
 
             Log::info('Total marketplaces: ' . count($breakdownData));

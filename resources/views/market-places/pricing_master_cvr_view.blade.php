@@ -360,6 +360,7 @@
                                     <th>TACOS CH</th>
                                     <th>NPFT%</th>
                                     <th>LMP</th>
+                                    <th>Links</th>
                                     <th>SPRICE</th>
                                     <th>SGPFT%</th>
                                     <th>SPFT%</th>
@@ -379,6 +380,7 @@
                                     <th class="text-end" id="modal-avg-tacos">0%</th>
                                     <th class="text-end" id="modal-avg-npft">0%</th>
                                     <th></th>
+                                    <th></th>
                                     <th class="text-end" id="modal-avg-sprice">$0.00</th>
                                     <th class="text-end" id="modal-avg-sgpft">0%</th>
                                     <th class="text-end" id="modal-avg-spft">0%</th>
@@ -390,7 +392,7 @@
                             <tbody id="ovl30DetailsTableBody">
                                 <!-- Table rows will be populated dynamically -->
                                 <tr>
-                                    <td colspan="9" class="text-center text-muted py-4">No data available</td>
+                                    <td colspan="18" class="text-center text-muted py-4">No data available</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -640,7 +642,7 @@
         function showModalLoading(sku) {
             $('#ovl30DetailsTableBody').html(`
                 <tr>
-                    <td colspan="9" class="text-center text-muted py-4">
+                    <td colspan="18" class="text-center text-muted py-4">
                         <div class="spinner-border spinner-border-sm text-info me-2" role="status"></div>
                         Loading data for ${sku}...
                     </td>
@@ -651,7 +653,7 @@
         function showModalEmpty(sku) {
             $('#ovl30DetailsTableBody').html(`
                 <tr>
-                    <td colspan="9" class="text-center text-muted py-4">
+                    <td colspan="18" class="text-center text-muted py-4">
                         No marketplace data available for ${sku}
                     </td>
                 </tr>
@@ -661,7 +663,7 @@
         function showModalError(message) {
             $('#ovl30DetailsTableBody').html(`
                 <tr>
-                    <td colspan="9" class="text-center text-danger py-4">
+                    <td colspan="18" class="text-center text-danger py-4">
                         <i class="fas fa-exclamation-circle me-2"></i>${message}
                     </td>
                 </tr>
@@ -868,6 +870,12 @@
                                 'data-marketplace="' + item.marketplace + '" ' +
                                 'data-sku="' + item.sku + '" ' +
                                 'title="View LMP Data for ' + item.marketplace + '"></i>' 
+                                : '-'}
+                        </td>
+                        <td class="text-center ${textClass}" style="white-space: nowrap;">
+                            ${(item.buyer_link || item.seller_link) ? 
+                                (item.buyer_link ? '<a href="' + item.buyer_link + '" target="_blank" rel="noopener" class="btn btn-sm btn-outline-primary me-1" title="Buyer link">B</a>' : '') +
+                                (item.seller_link ? '<a href="' + item.seller_link + '" target="_blank" rel="noopener" class="btn btn-sm btn-outline-secondary" title="Seller link">S</a>' : '')
                                 : '-'}
                         </td>
                         <td class="text-end ${textClass}">
