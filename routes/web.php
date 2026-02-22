@@ -895,6 +895,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/cvr-master-remark-toggle/{id}', [CvrMasterController::class, 'toggleRemarkSolved'])->name('cvr.master.remark.toggle');
     Route::post('/cvr-master-save-suggested-data', [CvrMasterController::class, 'saveSuggestedData'])->name('cvr.master.save.suggested');
     Route::post('/cvr-master-push-price', [CvrMasterController::class, 'pushPriceToAmazon'])->name('cvr.master.push.price');
+    Route::post('/cvr-master-bulk-change-price', [CvrMasterController::class, 'bulkChangePrice'])->name('cvr.master.bulk.change.price');
 
     // Pricing Master CVR Route (uses CVR Master controller)
     Route::get('/pricing-master-cvr', [CvrMasterController::class, 'pricingMasterCvrView'])->name('pricing.master.cvr');

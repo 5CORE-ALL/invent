@@ -71,6 +71,7 @@ use Carbon\Carbon;
 use App\Services\AmazonSpApiService;
 use App\Services\DobaApiService;
 use App\Services\WalmartService;
+use App\Services\ReverbApiService;
 
 class CvrMasterController extends Controller
 {
@@ -2294,10 +2295,12 @@ class CvrMasterController extends Controller
                 return $this->pushToShopifyB2C($sku, $price);
             } elseif ($marketplace === 'sb2b' || $marketplace === 'shopifyb2b') {
                 return $this->pushToShopifyB2B($sku, $price);
+            } elseif ($marketplace === 'reverb') {
+                return $this->pushToReverb($sku, $price);
             } else {
                 return response()->json([
                     'success' => false,
-                    'message' => "Price push is only supported for Amazon, Doba, Walmart, Shopify B2C, and Shopify B2B. Received: $marketplace"
+                    'message' => "Price push is only supported for Amazon, Doba, Walmart, Shopify B2C, Shopify B2B, and Reverb. Received: $marketplace"
                 ], 400);
             }
 
@@ -2439,14 +2442,7 @@ class CvrMasterController extends Controller
                 ], 400);
             }
 
-            // Success - update the anticipated_income in DobaMetric as well
-            $dobaMetric->anticipated_income = $price;
-            if ($selfPickPrice !== null) {
-                $dobaMetric->self_pick_price = $selfPickPrice;
-            }
-            $dobaMetric->save();
-
-            // Save success status
+            // Only push to Doba API - do not update local doba_metrics (main table)
             $this->savePricePushStatus($sku, 'doba', 'pushed', $price);
             
             Log::info('CVR Master - Doba price push successful', [
@@ -2616,47 +2612,21 @@ class CvrMasterController extends Controller
             $result = \App\Http\Controllers\UpdatePriceApiController::updateShopifyVariantPrice($variantId, $price);
 
             if ($result['status'] === 'success') {
-                // Update local database after successful API push
-                try {
-                    DB::beginTransaction();
-                    
-                    $verifiedPrice = $result['verified_price'] ?? $price;
-                    $shopifyRecord->price = $verifiedPrice;
-                    $shopifyRecord->price_updated_manually_at = now();
-                    $shopifyRecord->save();
-                    
-                    DB::commit();
-                    
-                    // Save success status
-                    $this->savePricePushStatus($sku, 'shopifyb2c', 'pushed', $verifiedPrice);
-                    
-                    Log::info('CVR Master - Shopify B2C price push successful', [
-                        'sku' => $sku,
-                        'variant_id' => $variantId,
-                        'price' => $verifiedPrice
-                    ]);
-                    
-                    return response()->json([
-                        'success' => true,
-                        'message' => "Price $" . number_format($verifiedPrice, 2) . " pushed to Shopify B2C successfully for SKU: $sku",
-                        'data' => $result
-                    ]);
-                    
-                } catch (\Exception $e) {
-                    DB::rollBack();
-                    Log::error('CVR Master - Shopify B2C local DB update failed', [
-                        'sku' => $sku,
-                        'error' => $e->getMessage()
-                    ]);
-                    // Still return success since API worked
-                    $this->savePricePushStatus($sku, 'shopifyb2c', 'pushed', $price);
-                    
-                    return response()->json([
-                        'success' => true,
-                        'message' => "Price pushed to Shopify but local update failed",
-                        'data' => $result
-                    ]);
-                }
+                // Only push to Shopify API - do not update local shopify_skus.price (main table)
+                $verifiedPrice = $result['verified_price'] ?? $price;
+                $this->savePricePushStatus($sku, 'shopifyb2c', 'pushed', $verifiedPrice);
+                
+                Log::info('CVR Master - Shopify B2C price push successful', [
+                    'sku' => $sku,
+                    'variant_id' => $variantId,
+                    'price' => $verifiedPrice
+                ]);
+                
+                return response()->json([
+                    'success' => true,
+                    'message' => "Price $" . number_format($verifiedPrice, 2) . " pushed to Shopify B2C successfully for SKU: $sku",
+                    'data' => $result
+                ]);
             } else {
                 $reason = $result['message'] ?? 'API error';
                 
@@ -2778,6 +2748,45 @@ class CvrMasterController extends Controller
     }
 
     /**
+     * Push price to Reverb via ReverbApiService (uses reverb_products.reverb_listing_id when available).
+     */
+    private function pushToReverb($sku, $price)
+    {
+        try {
+            $service = new ReverbApiService();
+            $result = $service->updatePrice($sku, $price);
+
+            if ($result['success']) {
+                $this->savePricePushStatus($sku, 'reverb', 'pushed', $price);
+                return response()->json([
+                    'success' => true,
+                    'message' => $result['message'],
+                    'data' => $result
+                ]);
+            }
+
+            $this->savePricePushStatus($sku, 'reverb', 'error', $price);
+            return response()->json([
+                'success' => false,
+                'message' => $result['message'],
+                'errors' => [['message' => $result['message']]]
+            ], 400);
+        } catch (\Exception $e) {
+            $this->savePricePushStatus($sku, 'reverb', 'error', $price);
+            Log::error('CVR Master - Reverb push exception', [
+                'sku' => $sku,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Reverb error: ' . $e->getMessage(),
+                'errors' => [['message' => $e->getMessage()]]
+            ], 500);
+        }
+    }
+
+    /**
      * Save price push status to the appropriate data_view table
      */
     private function savePricePushStatus($sku, $marketplace, $status, $pushedPrice = null)
@@ -2795,13 +2804,18 @@ class CvrMasterController extends Controller
                 $dataView = Shopifyb2cDataView::firstOrNew(['sku' => $sku]);
             } elseif ($marketplace === 'shopifyb2b' || $marketplace === 'sb2b') {
                 $dataView = ShopifyB2BDataView::firstOrNew(['sku' => $sku]);
+            } elseif ($marketplace === 'reverb') {
+                $dataView = ReverbViewData::firstOrNew(['sku' => $sku]);
             }
             
             if ($dataView) {
-                // Decode value column safely
-                $existing = is_array($dataView->value)
-                    ? $dataView->value
-                    : (json_decode($dataView->value ?? '{}', true) ?? []);
+                // ReverbViewData uses 'values', others use 'value'
+                if ($marketplace === 'reverb') {
+                    $existing = is_array($dataView->values) ? $dataView->values : (json_decode($dataView->values ?? '{}', true) ?? []);
+                } else {
+                    $existing = is_array($dataView->value) ? $dataView->value : (json_decode($dataView->value ?? '{}', true) ?? []);
+                }
+                if (!is_array($existing)) $existing = [];
                 
                 // Save status
                 $existing['SPRICE_STATUS'] = $status;
@@ -2819,7 +2833,11 @@ class CvrMasterController extends Controller
                     $existing['SPRICE_PUSHED_VALUE'] = $pushedPrice;
                 }
                 
-                $dataView->value = $existing;
+                if ($marketplace === 'reverb') {
+                    $dataView->values = $existing;
+                } else {
+                    $dataView->value = $existing;
+                }
                 $dataView->save();
             }
             
@@ -2868,7 +2886,7 @@ class CvrMasterController extends Controller
             return response()->json(['success' => false, 'message' => 'No valid SKUs provided'], 400);
         }
 
-        $pushableMarketplaces = ['amazon', 'doba', 'walmart', 'sb2c', 'sb2b'];
+        $pushableMarketplaces = ['amazon', 'doba', 'walmart', 'sb2c', 'sb2b', 'reverb'];
         $updated = 0;
         $errors = [];
 

@@ -104,10 +104,9 @@
             font-weight: bold !important;
         }
         
-        /* White text for specific total columns (Price, Views, L30, SPRICE) */
+        /* White text for specific total columns (Price, Views, SPRICE) */
         #ovl30DetailsModal .modal-totals-row #modal-total-price,
         #ovl30DetailsModal .modal-totals-row #modal-total-views,
-        #ovl30DetailsModal .modal-totals-row #modal-total-l30,
         #ovl30DetailsModal .modal-totals-row #modal-avg-sprice {
             color: white !important;
         }
@@ -334,9 +333,6 @@
                             <span>
                                 <strong>Dil %:</strong> <span id="modal-header-dil">0%</span>
                             </span>
-                            <span>
-                                <strong>TACOS CH:</strong> <span id="modal-header-tacos">0%</span>
-                            </span>
                             <span id="modal-header-lmp-link" style="cursor: pointer; text-decoration: underline;" title="Click to view LMP competitors">
                                 <i class="fas fa-search me-2"></i><strong>LMP</strong>
                             </span>
@@ -353,7 +349,6 @@
                                     <th>SKU</th>
                                     <th>Price</th>
                                     <th>Views</th>
-                                    <th>L30</th>
                                     <th>CVR%</th>
                                     <th>GPFT%</th>
                                     <th>AD%</th>
@@ -373,7 +368,6 @@
                                     <th>Total</th>
                                     <th class="text-end" id="modal-total-price">$0.00</th>
                                     <th class="text-end" id="modal-total-views">0</th>
-                                    <th class="text-end" id="modal-total-l30">0</th>
                                     <th class="text-end" id="modal-avg-cvr">0%</th>
                                     <th class="text-end" id="modal-avg-gpft">0%</th>
                                     <th class="text-end" id="modal-avg-ad">0%</th>
@@ -392,7 +386,7 @@
                             <tbody id="ovl30DetailsTableBody">
                                 <!-- Table rows will be populated dynamically -->
                                 <tr>
-                                    <td colspan="18" class="text-center text-muted py-4">No data available</td>
+                                    <td colspan="17" class="text-center text-muted py-4">No data available</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -642,7 +636,7 @@
         function showModalLoading(sku) {
             $('#ovl30DetailsTableBody').html(`
                 <tr>
-                    <td colspan="18" class="text-center text-muted py-4">
+                    <td colspan="17" class="text-center text-muted py-4">
                         <div class="spinner-border spinner-border-sm text-info me-2" role="status"></div>
                         Loading data for ${sku}...
                     </td>
@@ -653,7 +647,7 @@
         function showModalEmpty(sku) {
             $('#ovl30DetailsTableBody').html(`
                 <tr>
-                    <td colspan="18" class="text-center text-muted py-4">
+                    <td colspan="17" class="text-center text-muted py-4">
                         No marketplace data available for ${sku}
                     </td>
                 </tr>
@@ -663,7 +657,7 @@
         function showModalError(message) {
             $('#ovl30DetailsTableBody').html(`
                 <tr>
-                    <td colspan="18" class="text-center text-danger py-4">
+                    <td colspan="17" class="text-center text-danger py-4">
                         <i class="fas fa-exclamation-circle me-2"></i>${message}
                     </td>
                 </tr>
@@ -847,7 +841,7 @@
                 }
                 
                 // Determine if upload button should be shown (Amazon, Doba, Walmart, Shopify B2C, Shopify B2B)
-                const canPushPrice = ['amazon', 'doba', 'walmart', 'sb2c', 'sb2b'].includes((item.marketplace || '').toLowerCase()) && isListed;
+                const canPushPrice = ['amazon', 'doba', 'walmart', 'sb2c', 'sb2b', 'reverb'].includes((item.marketplace || '').toLowerCase()) && isListed;
                 
                 html += `
                     <tr class="${rowClass}" data-marketplace="${item.marketplace}" data-sku="${item.sku}" 
@@ -856,7 +850,6 @@
                         <td class="${textClass}" style="white-space: nowrap; min-width: 250px;">${item.sku || '-'}</td>
                         <td class="text-end ${textClass}">${isListed ? '$' + parseFloat(item.price || 0).toFixed(2) : '-'}</td>
                         <td class="text-end ${textClass}">${isListed ? views.toLocaleString() : '-'}</td>
-                        <td class="text-end ${textClass}">${isListed ? l30 : '-'}</td>
                         <td class="text-end ${textClass}">${isListed && views > 0 ? '<span style="color: ' + cvrColor + '; font-weight: 600;">' + cvr.toFixed(1) + '%</span>' : '-'}</td>
                         <td class="text-end ${textClass}">${isListed && gpft !== 0 ? '<span style="color: ' + gpftColor + '; font-weight: 600;">' + Math.round(gpft) + '%</span>' : '-'}</td>
                         <td class="text-end ${textClass}">${isListed ? '<span style="color: ' + adColor + '; font-weight: 600;">' + ad.toFixed(1) + '%</span>' : '-'}</td>
@@ -994,15 +987,12 @@
             const avgPrice = totalL30 > 0 ? totalPrice / totalL30 : 0;
             $('#modal-total-price').text('$' + avgPrice.toFixed(2));
             $('#modal-total-views').text(totalViews.toLocaleString());
-            $('#modal-total-l30').text(totalL30.toLocaleString());
             $('#modal-avg-cvr').html(`<span style="color: ${cvrColorTotal}; font-weight: 600;">${avgCVR.toFixed(1)}%</span>`);
             $('#modal-avg-gpft').html(`<span style="color: ${gpftColorTotal}; font-weight: 600;">${avgGPFT.toFixed(1)}%</span>`);
             $('#modal-avg-ad').html(`<span style="color: ${adColorTotal}; font-weight: 600;">${avgAD.toFixed(1)}%</span>`);
             $('#modal-avg-tacos').html(`<span style="color: ${tacosColorTotal}; font-weight: 600;">${avgTACOS.toFixed(1)}%</span>`);
             $('#modal-avg-npft').html(`<span style="color: ${npftColorTotal}; font-weight: 600;">${avgNPFT.toFixed(1)}%</span>`);
             
-            // Update header TACOS CH with color formatting
-            $('#modal-header-tacos').html(`<span style="color: ${tacosColorTotal}; font-weight: 600;">${avgTACOS.toFixed(1)}%</span>`);
             $('#modal-avg-sprice').text('$' + (spriceCount > 0 ? totalSPRICE / spriceCount : 0).toFixed(2));
             $('#modal-avg-sgpft').html(`<span style="color: ${sgpftColorTotal}; font-weight: 600;">${avgSGPFT.toFixed(1)}%</span>`);
             $('#modal-avg-spft').html(`<span style="color: ${spftColorTotal}; font-weight: 600;">${avgSPFT.toFixed(1)}%</span>`);
@@ -1141,7 +1131,7 @@
                         const rowData = cell.getRow().getData();
                         const sku = rowData.sku;
                         const imagePath = rowData.image_path || '';
-                        const inv = rowData.inv || 0;
+                        const inv = rowData.inventory ?? rowData.inv ?? 0;
                         const dilPercent = rowData.dil_percent || 0;
                         
                         // Don't show info icon for parent rows
@@ -1160,17 +1150,6 @@
                                data-dil="${dilPercent}"
                                title="View breakdown for ${sku}"></i>
                         `;
-                    }
-                },
-                {
-                    title: "M L30",
-                    field: "m_l30",
-                    hozAlign: "center",
-                    width: 90,
-                    sorter: "number",
-                    formatter: function(cell) {
-                        const value = parseFloat(cell.getValue() || 0);
-                        return `<span style="font-weight: 600;">${value}</span>`;
                     }
                 },
                 {
@@ -1515,6 +1494,7 @@
             }
 
             const msg = `Apply price $${price.toFixed(2)} to ${skus.length} SKU(s) across all marketplaces?\n\n` +
+                'Amazon, Walmart, Shopify B2C, Reverb: full price\n' +
                 'Doba & Shopify Wholesale: 25% discount applied\n' +
                 'Shopify B2B: 25% discount + shipping deducted';
             if (!confirm(msg)) return;
