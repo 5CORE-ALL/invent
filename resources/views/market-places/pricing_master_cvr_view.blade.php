@@ -479,6 +479,22 @@
                         <i class="fas fa-times-circle"></i> Remove Filter
                     </button>
 
+                    <!-- Play → shows Pause, enables Next/Prev; Pause → back to normal, disables Next/Prev -->
+                    <div class="btn-group align-items-center ms-2" role="group">
+                        <button type="button" id="play-backward" class="btn btn-sm btn-light rounded-circle shadow-sm" title="Previous parent" disabled>
+                            <i class="fas fa-step-backward"></i>
+                        </button>
+                        <button type="button" id="play-auto" class="btn btn-sm btn-primary rounded-circle shadow-sm me-1" title="Play">
+                            <i class="fas fa-play"></i>
+                        </button>
+                        <button type="button" id="play-pause" class="btn btn-sm btn-primary rounded-circle shadow-sm me-1" style="display: none;" title="Pause - click to reset Play">
+                            <i class="fas fa-pause"></i>
+                        </button>
+                        <button type="button" id="play-forward" class="btn btn-sm btn-light rounded-circle shadow-sm" title="Next parent" disabled>
+                            <i class="fas fa-step-forward"></i>
+                        </button>
+                    </div>
+
                     <!-- Column Visibility Dropdown -->
                     <div class="dropdown d-inline-block">
                         <button class="btn btn-sm btn-secondary dropdown-toggle" type="button"
@@ -1858,11 +1874,11 @@
             );
 
             let displayData = [];
+            displayData = displayData.concat(childRows);
             if (parentRow) {
                 parentRow._expanded = true;
                 displayData.push(parentRow);
             }
-            displayData = displayData.concat(childRows);
 
             suppressDataLoadedHandler = true;
             table.setData(displayData).then(() => {
@@ -1919,32 +1935,22 @@
             
             let displayData = [];
             
-            // Build ordered list: parent, then its children if expanded
+            // Build ordered list: when expanded, show children first then parent last (parent row highlighted at bottom)
             parentRows.forEach(parent => {
                 // Mark parent as expanded or not (for icon display)
                 parent._expanded = (expandedParent === parent.parent);
                 
-                // Add parent
-                displayData.push(parent);
-                
-                // Add children RIGHT AFTER parent if this parent is expanded
                 if (expandedParent !== null && expandedParent === parent.parent) {
-                    const children = childRows.filter(child => {
-                        const matches = child.parent === expandedParent;
-                        return matches;
-                    });
-                    console.log('✓ Parent matched! Adding', children.length, 'children for parent:', parent.parent);
-                    
-                    // Debug: show sample children
+                    const children = childRows.filter(child => child.parent === expandedParent);
+                    console.log('✓ Parent matched! Adding', children.length, 'children then parent for:', parent.parent);
                     if (children.length > 0) {
                         console.log('Sample children SKUs:', children.slice(0, 3).map(c => c.sku));
-                    } else {
-                        console.warn('⚠ No children found for parent:', expandedParent);
-                        console.log('Looking for children with parent field =', expandedParent);
-                        console.log('Sample child parent values:', childRows.slice(0, 5).map(c => ({sku: c.sku, parent: c.parent})));
                     }
-                    
+                    // Children first, then parent at bottom (like product-master: parent row highlighted last)
                     displayData = displayData.concat(children);
+                    displayData.push(parent);
+                } else {
+                    displayData.push(parent);
                 }
             });
             
@@ -1960,6 +1966,65 @@
                 console.error('❌ Error updating table:', err);
             });
         }
+
+        // ==================== NAVIGATE PARENTS (no autoplay) ====================
+        function getParentRows() {
+            if (!fullDataset || fullDataset.length === 0) return [];
+            return fullDataset.filter(row => row.is_parent_summary === true);
+        }
+
+        function getCurrentParentIndex() {
+            const parentRows = getParentRows();
+            if (parentRows.length === 0 || expandedParent === null) return -1;
+            const idx = parentRows.findIndex(p => p.parent === expandedParent);
+            return idx >= 0 ? idx : -1;
+        }
+
+        function goToParentByIndex(index) {
+            const parentRows = getParentRows();
+            if (parentRows.length === 0 || index < 0 || index >= parentRows.length) return;
+            expandedParent = parentRows[index].parent;
+            buildParentView();
+        }
+
+        function nextParent() {
+            const parentRows = getParentRows();
+            if (parentRows.length === 0) return;
+            let idx = getCurrentParentIndex();
+            idx = idx < 0 ? 0 : (idx + 1) % parentRows.length;
+            goToParentByIndex(idx);
+        }
+
+        function previousParent() {
+            const parentRows = getParentRows();
+            if (parentRows.length === 0) return;
+            let idx = getCurrentParentIndex();
+            idx = idx < 0 ? parentRows.length - 1 : (idx - 1 + parentRows.length) % parentRows.length;
+            goToParentByIndex(idx);
+        }
+
+        $('#play-auto').on('click', function() {
+            nextParent();
+            $(this).hide();
+            $('#play-pause').show();
+            $('#play-backward, #play-forward').prop('disabled', false);
+        });
+        $('#play-pause').on('click', function() {
+            $(this).hide();
+            $('#play-auto').show();
+            $('#play-backward, #play-forward').prop('disabled', true);
+            // Reset to normal: restore full data and re-apply current filters (SKU Only / Both / Parent Only)
+            expandedParent = null;
+            dotExpandedParent = null;
+            if (fullDataset.length > 0) {
+                suppressDataLoadedHandler = true;
+                table.setData(fullDataset).then(applyFilters);
+            } else {
+                applyFilters();
+            }
+        });
+        $('#play-forward').on('click', nextParent);
+        $('#play-backward').on('click', previousParent);
 
         // ==================== FILTER FUNCTIONS ====================
         

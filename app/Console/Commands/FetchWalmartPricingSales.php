@@ -19,14 +19,16 @@ class FetchWalmartPricingSales extends Command
      *
      * @var string
      */
-    protected $signature = 'walmart:pricing-sales';
+    protected $signature = 'walmart:pricing-sales
+                            {--resume : Resume from last saved page after a previous failure}
+                            {--fresh : Start from page 0 and clear any resume state}';
 
     /**
      * The console command description.
      *
      * @var string
      */
-    protected $description = 'Fetch Walmart pricing insights and order sales data from API';
+    protected $description = 'Fetch Walmart pricing insights and order sales data from API (saves each page immediately; use --resume to continue after failure)';
 
     protected $baseUrl = 'https://marketplace.walmartapis.com';
     protected $token;
@@ -44,6 +46,12 @@ class FetchWalmartPricingSales extends Command
         'HIGH' => 4,
         'VERY_HIGH' => 5,
     ];
+
+    /** Chunk size for walmart_pricing upsert; larger = fewer round-trips */
+    protected const PRICING_SALES_UPSERT_CHUNK = 500;
+
+    /** Cache key for resume: last successfully saved page number (0-based) */
+    protected const RESUME_CACHE_KEY = 'walmart_pricing_sales_last_page';
 
     /**
      * Execute the console command.
@@ -68,17 +76,46 @@ class FetchWalmartPricingSales extends Command
         $this->info('Access token received.');
 
         // Step 1: Calculate order counts first
-        $this->info('Step 1/2: Calculating order counts...');
+        $this->info('Step 1/3: Calculating order counts...');
         $orderCounts = $this->calculateOrderCounts($days);
         $this->info("  Calculated order counts for " . count($orderCounts) . " SKUs");
 
-        // Step 2: Insert/update only daily sales metrics (no insight APIs).
-        $this->info('Step 2/2: Saving daily sales metrics to walmart_pricing...');
-        $this->mergeAndStoreData([], $orderCounts, []);
-        $this->info("  ✓ Saved daily sales data for " . count($orderCounts) . " SKUs");
+        // Resume state: --fresh clears it; otherwise we resume if cache has last page
+        $resume = $this->option('resume') || (!$this->option('fresh') && Cache::has(static::RESUME_CACHE_KEY));
+        if ($this->option('fresh')) {
+            Cache::forget(static::RESUME_CACHE_KEY);
+            $this->comment('Fresh run: starting from page 0.');
+        } elseif ($resume && Cache::has(static::RESUME_CACHE_KEY)) {
+            $this->info('Resume mode: will continue from last saved page after previous failure.');
+        }
+
+        // Step 2: Fetch pricing page by page and save each page immediately (resume from last page on failure)
+        $this->info('Step 2/3: Fetching listed price (pricing insights) and saving each page immediately...');
+        try {
+            $totalPricingSaved = $this->fetchPricingInsightsAndSaveEachPage($orderCounts, $resume);
+            $this->info("  ✓ Fetched and saved pricing for {$totalPricingSaved} SKUs");
+        } catch (\Throwable $e) {
+            Log::error('Walmart pricing-sales fetch/save failed', ['message' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
+            $this->error('Step 2 failed: ' . $e->getMessage());
+            $this->comment('Run again with --resume to continue from the last saved page.');
+            return 1;
+        }
+
+        // Step 3: Save SKUs that have order counts but were not in pricing API (order-only rows)
+        $this->info('Step 3/3: Saving order-only SKUs to walmart_pricing...');
+        try {
+            $this->mergeAndStoreData([], $orderCounts, []);
+        } catch (\Throwable $e) {
+            Log::error('Walmart pricing-sales order-only save failed', ['message' => $e->getMessage()]);
+            $this->error('Step 3 failed: ' . $e->getMessage());
+            return 1;
+        }
+        $allSkusCount = count($orderCounts);
+        $this->info("  ✓ Saved {$allSkusCount} SKUs to table: walmart_pricing");
 
         $elapsed = round(microtime(true) - $startTime, 2);
-        $this->info("✓ Walmart daily sales data fetched and stored successfully in {$elapsed} seconds.");
+        $this->info("✓ Walmart pricing & sales data fetched and stored successfully in {$elapsed} seconds.");
+        $this->comment('(Data is stored in the walmart_pricing table, not walmart_pricing_sales.)');
 
         return 0;
     }
@@ -132,18 +169,22 @@ class FetchWalmartPricingSales extends Command
     }
 
     /**
-     * Fetch pricing insights from Walmart API
+     * Fetch pricing insights from Walmart API (paginated).
+     * Stops when: empty page, page >= totalPages, no new SKUs for 2 pages, or maxPages reached.
      */
     protected function fetchPricingInsights(): array
     {
         $allPricingData = [];
         $pageNumber = 0;
         $maxPages = 100; // Safety limit
+        $totalPages = null;
+        $noGrowthCount = 0;
 
         do {
             try {
-                // Use rate limiter with retry logic
-                $response = $this->rateLimiter->executeWithRetry(function() use ($pageNumber) {
+                $countBefore = count($allPricingData);
+
+                $response = $this->rateLimiter->executeWithRetry(function () use ($pageNumber) {
                     $response = Http::withoutVerifying()->withHeaders([
                         'WM_QOS.CORRELATION_ID' => uniqid(),
                         'WM_SEC.ACCESS_TOKEN' => $this->token,
@@ -158,15 +199,12 @@ class FetchWalmartPricingSales extends Command
                         ]
                     ]);
 
-                    // Check for token expiration and refresh
                     if ($response->status() == 401 || strpos($response->body(), 'UNAUTHORIZED') !== false) {
                         $this->warn("  Token expired, refreshing...");
                         $this->token = $this->getAccessToken();
                         if (!$this->token) {
                             throw new \Exception('Failed to refresh access token');
                         }
-                        
-                        // Retry with new token
                         $response = Http::withoutVerifying()->withHeaders([
                             'WM_QOS.CORRELATION_ID' => uniqid(),
                             'WM_SEC.ACCESS_TOKEN' => $this->token,
@@ -182,18 +220,19 @@ class FetchWalmartPricingSales extends Command
                         ]);
                     }
 
-                    // Throw exception on failure so retry logic can handle it
                     if (!$response->successful()) {
                         throw new \Exception($response->body());
                     }
-
                     return $response;
                 }, 'pricing', 3);
 
                 $data = $response->json();
-                $items = $data['data']['pricingInsightsResponseList'] ?? [];
+                $items = $data['data']['pricingInsightsResponseList']
+                    ?? $data['data']['getPricingInsightsItems']['pricingInsightsResponseList']
+                    ?? [];
 
                 if (empty($items)) {
+                    $this->info("  Page {$pageNumber}: no items, stopping.");
                     break;
                 }
 
@@ -204,20 +243,240 @@ class FetchWalmartPricingSales extends Command
                     }
                 }
 
+                $countAfter = count($allPricingData);
+                if ($totalPages === null && isset($data['data']['getPricingInsightsItems']['pageContext']['totalPages'])) {
+                    $totalPages = (int) $data['data']['getPricingInsightsItems']['pageContext']['totalPages'];
+                }
+                if ($totalPages === null && isset($data['data']['pageContext']['totalPages'])) {
+                    $totalPages = (int) $data['data']['pageContext']['totalPages'];
+                }
+
+                if ($countAfter === $countBefore) {
+                    $noGrowthCount++;
+                    if ($noGrowthCount >= 2) {
+                        $this->warn("  No new SKUs for 2 pages (API may return same page); stopping to save data.");
+                        break;
+                    }
+                } else {
+                    $noGrowthCount = 0;
+                }
+
                 $remaining = $this->rateLimiter->getRemainingRequests('pricing');
-                $this->info("  Page {$pageNumber}: " . count($items) . " items (Total: " . count($allPricingData) . ", Remaining: {$remaining})");
+                $this->info("  Page {$pageNumber}: " . count($items) . " items (Total unique: {$countAfter}, Remaining: {$remaining})");
 
                 $pageNumber++;
 
+                if ($totalPages !== null && $pageNumber >= $totalPages) {
+                    $this->info("  Reached last page ({$pageNumber}/{$totalPages}).");
+                    break;
+                }
             } catch (\Exception $e) {
                 $this->pricingApiError = $e->getMessage();
                 $this->error("Failed to fetch pricing page {$pageNumber}: " . $e->getMessage());
                 break;
             }
-
-        } while ($pageNumber < $maxPages && !empty($items));
+        } while ($pageNumber < $maxPages);
 
         return $allPricingData;
+    }
+
+    /**
+     * Fetch a single page of pricing insights from the API.
+     * @return array{items: array<string, array>, totalPages: int|null}
+     */
+    protected function fetchOnePricingPage(int $pageNumber): array
+    {
+        $response = $this->rateLimiter->executeWithRetry(function () use ($pageNumber) {
+            $response = Http::withoutVerifying()->withHeaders([
+                'WM_QOS.CORRELATION_ID' => uniqid(),
+                'WM_SEC.ACCESS_TOKEN' => $this->token,
+                'WM_SVC.NAME' => 'Walmart Marketplace',
+                'accept' => 'application/json',
+                'content-type' => 'application/json',
+            ])->post($this->baseUrl . '/v3/price/getPricingInsights', [
+                'pageNumber' => $pageNumber,
+                'sort' => [
+                    'sortField' => 'TRAFFIC',
+                    'sortOrder' => 'DESC'
+                ]
+            ]);
+
+            if ($response->status() == 401 || strpos($response->body(), 'UNAUTHORIZED') !== false) {
+                $this->warn("  Token expired, refreshing...");
+                $this->token = $this->getAccessToken();
+                if (!$this->token) {
+                    throw new \Exception('Failed to refresh access token');
+                }
+                $response = Http::withoutVerifying()->withHeaders([
+                    'WM_QOS.CORRELATION_ID' => uniqid(),
+                    'WM_SEC.ACCESS_TOKEN' => $this->token,
+                    'WM_SVC.NAME' => 'Walmart Marketplace',
+                    'accept' => 'application/json',
+                    'content-type' => 'application/json',
+                ])->post($this->baseUrl . '/v3/price/getPricingInsights', [
+                    'pageNumber' => $pageNumber,
+                    'sort' => [
+                        'sortField' => 'TRAFFIC',
+                        'sortOrder' => 'DESC'
+                    ]
+                ]);
+            }
+
+            if (!$response->successful()) {
+                throw new \Exception($response->body());
+            }
+            return $response;
+        }, 'pricing', 3);
+
+        $data = $response->json();
+        $items = $data['data']['pricingInsightsResponseList']
+            ?? $data['data']['getPricingInsightsItems']['pricingInsightsResponseList']
+            ?? [];
+
+        $bySku = [];
+        foreach ($items as $item) {
+            $sku = $item['sku'] ?? null;
+            if ($sku) {
+                $bySku[$sku] = $item;
+            }
+        }
+
+        $totalPages = null;
+        if (isset($data['data']['getPricingInsightsItems']['pageContext']['totalPages'])) {
+            $totalPages = (int) $data['data']['getPricingInsightsItems']['pageContext']['totalPages'];
+        } elseif (isset($data['data']['pageContext']['totalPages'])) {
+            $totalPages = (int) $data['data']['pageContext']['totalPages'];
+        }
+
+        return ['items' => $bySku, 'totalPages' => $totalPages];
+    }
+
+    /**
+     * Build and upsert one batch of pricing + order data (same row shape as mergeAndStoreData).
+     */
+    protected function savePricingBatch(array $pricingChunk, array $orderCounts): void
+    {
+        if (empty($pricingChunk)) {
+            return;
+        }
+        $bulkData = [];
+        foreach ($pricingChunk as $sku => $pricing) {
+            $orders = $orderCounts[$sku] ?? [
+                'l30_orders' => 0, 'l30_qty' => 0, 'l30_revenue' => 0,
+                'l60_orders' => 0, 'l60_qty' => 0, 'l60_revenue' => 0,
+            ];
+            $views = $this->trafficMap[$pricing['traffic'] ?? ''] ?? null;
+            $bulkData[] = [
+                'sku' => $sku,
+                'item_id' => $pricing['itemId'] ?? null,
+                'item_name' => isset($pricing['itemName']) ? substr($pricing['itemName'], 0, 500) : null,
+                'current_price' => $pricing['currentPrice'] ?? null,
+                'buy_box_base_price' => $pricing['buyBoxBasePrice'] ?? null,
+                'buy_box_total_price' => $pricing['buyBoxTotalPrice'] ?? null,
+                'buy_box_win_rate' => $pricing['buyBoxWinRate'] ?? null,
+                'competitor_price' => $pricing['competitorPrice'] ?? null,
+                'comparison_price' => $pricing['comparisonPrice'] ?? null,
+                'price_differential' => $pricing['priceDifferential'] ?? null,
+                'price_competitive_score' => $pricing['priceCompetitiveScore'] ?? null,
+                'price_competitive' => ($pricing['priceCompetitive'] ?? false) ? 1 : 0,
+                'repricer_strategy_type' => $pricing['repricerStrategyType'] ?? null,
+                'repricer_strategy_name' => $pricing['repricerStrategyName'] ?? null,
+                'repricer_status' => $pricing['repricerStatus'] ?? null,
+                'repricer_min_price' => $pricing['repricerMinPrice'] ?? null,
+                'repricer_max_price' => $pricing['repricerMaxPrice'] ?? null,
+                'gmv30' => $pricing['gmv30'] ?? null,
+                'inventory_count' => $pricing['inventoryCount'] ?? null,
+                'fulfillment' => $pricing['fulfillment'] ?? null,
+                'sales_rank' => $pricing['salesRank'] ?? null,
+                'l30_orders' => $orders['l30_orders'],
+                'l30_qty' => $orders['l30_qty'],
+                'l30_revenue' => $orders['l30_revenue'],
+                'l60_orders' => $orders['l60_orders'],
+                'l60_qty' => $orders['l60_qty'],
+                'l60_revenue' => $orders['l60_revenue'],
+                'traffic' => $pricing['traffic'] ?? null,
+                'views' => $views,
+                'page_views' => null,
+                'in_demand' => ($pricing['inDemand'] ?? false) ? 1 : 0,
+                'promo_status' => $pricing['promoStatus'] ?? null,
+                'promo_details' => isset($pricing['promoDetails']) ? json_encode($pricing['promoDetails']) : null,
+                'reduced_referral_status' => $pricing['reducedReferralStatus'] ?? null,
+                'walmart_funded_status' => $pricing['walmartFundedStatus'] ?? null,
+                'created_at' => now()->toDateTimeString(),
+                'updated_at' => now()->toDateTimeString(),
+            ];
+        }
+        $this->bulkUpsert($bulkData);
+    }
+
+    /**
+     * Fetch pricing insights page by page and save each page immediately.
+     * On failure, next run with --resume continues from last saved page.
+     * @return int Total number of SKUs saved from pricing API
+     */
+    protected function fetchPricingInsightsAndSaveEachPage(array $orderCounts, bool $resume): int
+    {
+        $startPage = 0;
+        if ($resume && Cache::has(static::RESUME_CACHE_KEY)) {
+            $startPage = (int) Cache::get(static::RESUME_CACHE_KEY) + 1;
+            $this->info("  Resuming from page {$startPage}.");
+        }
+
+        $maxPages = 100;
+        $totalSaved = 0;
+        $noGrowthCount = 0;
+        $totalPages = null;
+        $pageNumber = $startPage;
+        $seenSkus = [];
+
+        while ($pageNumber < $maxPages) {
+            $result = $this->fetchOnePricingPage($pageNumber);
+            $items = $result['items'];
+            if (isset($result['totalPages'])) {
+                $totalPages = $result['totalPages'];
+            }
+
+            if (empty($items)) {
+                $this->info("  Page {$pageNumber}: no items, stopping.");
+                break;
+            }
+
+            $newSkus = array_diff(array_keys($items), $seenSkus);
+            $seenSkus = array_merge($seenSkus, array_keys($items));
+            $seenSkus = array_unique($seenSkus);
+            if (count($newSkus) === 0 && count($items) > 0) {
+                $noGrowthCount++;
+                if ($noGrowthCount >= 2) {
+                    $this->warn("  No new SKUs for 2 pages (API may return same page); stopping.");
+                    break;
+                }
+            } else {
+                $noGrowthCount = 0;
+            }
+
+            $this->savePricingBatch($items, $orderCounts);
+            $saved = count($items);
+            $totalSaved += $saved;
+
+            Cache::put(static::RESUME_CACHE_KEY, $pageNumber, now()->addDays(1));
+
+            $remaining = $this->rateLimiter->getRemainingRequests('pricing');
+            $this->info("  Page {$pageNumber}: saved {$saved} SKUs (Total saved: {$totalSaved}, Remaining: {$remaining})");
+
+            if ($totalPages !== null && $pageNumber >= $totalPages - 1) {
+                $this->info("  Reached last page ({$pageNumber}/{$totalPages}).");
+                break;
+            }
+
+            $pageNumber++;
+
+            if ($totalPages !== null && $pageNumber >= $totalPages) {
+                break;
+            }
+        }
+
+        Cache::forget(static::RESUME_CACHE_KEY);
+        return $totalSaved;
     }
 
     /**
@@ -1055,17 +1314,18 @@ class FetchWalmartPricingSales extends Command
                 'updated_at' => now()->toDateTimeString(),
             ];
 
-            // Bulk insert in chunks
-            if (count($bulkData) >= 100) {
+            // Bulk insert in chunks (larger chunk = fewer DB round-trips)
+            if (count($bulkData) >= static::PRICING_SALES_UPSERT_CHUNK) {
                 $this->bulkUpsert($bulkData);
                 $bulkData = [];
             }
         }
 
-        // Insert remaining data
-        if (!empty($bulkData)) {
-            $this->bulkUpsert($bulkData);
-        }
+        DB::transaction(function () use ($bulkData, $allSkus) {
+            if (!empty($bulkData)) {
+                $this->bulkUpsert($bulkData);
+            }
+        });
 
         $this->info("Stored data for " . count($allSkus) . " SKUs");
         
@@ -1129,6 +1389,7 @@ class FetchWalmartPricingSales extends Command
         } catch (\Exception $e) {
             Log::error('Failed to upsert Walmart pricing sales: ' . $e->getMessage());
             $this->error('Upsert failed: ' . $e->getMessage());
+            throw $e;
         }
     }
 
