@@ -1153,6 +1153,19 @@
                     }
                 },
                 {
+                    title: "Amz Price",
+                    field: "amazon_price",
+                    hozAlign: "right",
+                    width: 95,
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const value = cell.getValue();
+                        if (value == null || value === '' || parseFloat(value) <= 0) return '-';
+                        const num = parseFloat(value);
+                        return `<span style="font-weight: 600;">$` + num.toFixed(2) + '</span>';
+                    }
+                },
+                {
                     title: "Dil",
                     field: "dil_percent",
                     hozAlign: "center",

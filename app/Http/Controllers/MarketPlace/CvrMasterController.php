@@ -786,6 +786,7 @@ class CvrMasterController extends Controller
                     "parent" => $parent,
                     "image_path" => $imagePath,
                     "inventory" => $inventory,
+                    "amazon_price" => $amazonPrice > 0 ? round($amazonPrice, 2) : null,
                     "overall_l30" => $overallL30,
                     "m_l30" => $totalL30,
                     "dil_percent" => $dilPercent,
@@ -827,12 +828,14 @@ class CvrMasterController extends Controller
                 // Create synthetic parent summary row (placed BELOW children)
                 $amazonLmpVals = $rows->pluck('amazon_lmp_price')->filter(fn ($v) => $v !== null && $v > 0);
                 $ebayLmpVals = $rows->pluck('ebay_lmp_price')->filter(fn ($v) => $v !== null && $v > 0);
+                $amazonPriceVals = $rows->pluck('amazon_price')->filter(fn ($v) => $v !== null && $v > 0);
                 $parentRow = [
                     'SL No.' => $slNo++,
                     'sku' => 'PARENT ' . $parent,
                     'parent' => $parent,
                     'image_path' => null,
                     'inventory' => $rows->sum('inventory'),
+                    'amazon_price' => $amazonPriceVals->isNotEmpty() ? round($amazonPriceVals->avg(), 2) : null,
                     'overall_l30' => $rows->sum('overall_l30'),
                     'm_l30' => $rows->sum('m_l30'),
                     'dil_percent' => 0, // Calculate after
