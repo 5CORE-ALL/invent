@@ -180,6 +180,9 @@
                             <li><a class="dropdown-item section-option" href="#" data-section="reviews">
                                 <i class="fas fa-star"></i> REVIEWS
                             </a></li>
+                            <li><a class="dropdown-item section-option" href="#" data-section="missing">
+                                <i class="fas fa-exclamation-triangle"></i> Missing
+                            </a></li>
                         </ul>
                     </div>
                     
@@ -232,43 +235,43 @@
                     <h6 class="mb-3">Summary Statistics</h6>
                     <div class="d-flex flex-wrap gap-2">
                         <span class="badge bg-primary fs-6 p-2" style="color: white; font-weight: bold;">
-                            Total Channels: <span id="total-channels">0</span>
+                            Channels: <span id="total-channels">0</span>
                         </span>
                         <span class="badge bg-success fs-6 p-2 badge-chart-link" data-metric="l30_sales" style="color: black; font-weight: bold; cursor:pointer;" title="View trend">
-                            L30 Sales: <span id="total-l30-sales">$0</span>
+                            Sales: <span id="total-l30-sales">$0</span>
                         </span>
                         <span class="badge bg-info fs-6 p-2 badge-chart-link" data-metric="l30_orders" style="color: black; font-weight: bold; cursor:pointer;" title="View trend">
-                            L30 Orders: <span id="total-l30-orders">0</span>
+                            Orders: <span id="total-l30-orders">0</span>
                         </span>
                         <span class="badge bg-primary fs-6 p-2 badge-chart-link" data-metric="qty" style="color: white; font-weight: bold; cursor:pointer;" title="View trend">
-                            Total Qty items: <span id="total-qty">0</span>
+                            Qty items: <span id="total-qty">0</span>
                         </span>
                         <span class="badge bg-warning fs-6 p-2 badge-chart-link" data-metric="gprofit" style="color: black; font-weight: bold; cursor:pointer;" title="View trend">
-                            Avg Gprofit%: <span id="avg-gprofit">0%</span>
+                            GPFT: <span id="avg-gprofit">0%</span>
                         </span>
                         <span class="badge bg-danger fs-6 p-2 badge-chart-link" data-metric="groi" style="color: white; font-weight: bold; cursor:pointer;" title="View trend">
-                            Avg G ROI%: <span id="avg-groi">0%</span>
+                            G ROI %: <span id="avg-groi">0%</span>
                         </span>
                         <span class="badge bg-secondary fs-6 p-2 badge-chart-link" data-metric="ad_spend" style="color: white; font-weight: bold; cursor:pointer;" title="View trend">
-                            Total Ad Spend: <span id="total-ad-spend">$0</span>
+                            Ads Spend: <span id="total-ad-spend">$0</span>
                         </span>
                         <span class="badge bg-success fs-6 p-2 badge-chart-link" data-metric="pft" style="color: white; font-weight: bold; cursor:pointer;" title="View trend">
                             NPFT: <span id="total-pft">$0</span>
                         </span>
                         <span class="badge bg-dark fs-6 p-2 badge-chart-link" data-metric="npft" style="color: white; font-weight: bold; cursor:pointer;" title="View trend">
-                            Avg N PFT%: <span id="avg-npft">0%</span>
+                            NPFT%: <span id="avg-npft">0%</span>
                         </span>
                         <span class="badge bg-primary fs-6 p-2 badge-chart-link" data-metric="nroi" style="color: white; font-weight: bold; cursor:pointer;" title="View trend">
-                            Avg N ROI%: <span id="avg-nroi">0%</span>
+                            Nroi%: <span id="avg-nroi">0%</span>
                         </span>
                         <span class="badge bg-info fs-6 p-2 badge-chart-link" data-metric="clicks" style="color: black; font-weight: bold; cursor:pointer;" title="View trend">
-                            Total Clicks: <span id="total-clicks">0</span>
+                            Clicks: <span id="total-clicks">0</span>
                         </span>
                         {{-- <span class="badge bg-warning fs-6 p-2" style="color: black; font-weight: bold;">
                              Map: <span id="total-map">0</span>
                         </span> --}}
                         <span class="badge bg-danger fs-6 p-2 badge-chart-link" data-metric="nmap" style="color: white; font-weight: bold; cursor:pointer;" title="View trend">
-                            N Map: <span id="total-nmap">0</span>
+                            Missing M: <span id="total-nmap">0</span>
                         </span>
                         <span class="badge bg-danger fs-6 p-2 badge-chart-link" data-metric="missing_l" style="color: white; font-weight: bold; cursor:pointer;" title="View trend">
                             Missing L : <span id="total-miss">0</span>
@@ -387,9 +390,9 @@
                             <thead style="background: #f5f7fa;">
                                 <tr>
                                     <th>Date</th>
-                                    <th class="text-end">L30 Sales</th>
-                                    <th class="text-end">L30 Orders</th>
-                                    <th class="text-end">Total Qty items</th>
+                                    <th class="text-end">Sales</th>
+                                    <th class="text-end">Orders</th>
+                                    <th class="text-end">Qty items</th>
                                     <th class="text-end">Clicks</th>
                                     <th class="text-end">Gprofit%</th>
                                     <th class="text-end">NPFT%</th>
@@ -854,6 +857,7 @@
                             const channel = cell.getValue();
                             const rowData = cell.getRow().getData();
                             const type = rowData.type || 'B2C';
+                            const missingLink = rowData['missing_link'] || '';
 
                             // Determine type badge class
                             let typeBadgeClass = 'type-b2c';
@@ -865,9 +869,13 @@
                             const graphIcon =
                                 `<i class="fas fa-chart-area history-graph-icon" style="cursor:pointer;color:#28a745;font-size:14px;margin-left:5px;" title="View Historical Graph" data-channel="${channel}"></i>`;
 
+                            const channelDisplay = missingLink
+                                ? `<a href="${missingLink}" target="_blank" class="missing-l-link channel-name-link" style="color:inherit;font-weight:inherit;text-decoration:none;" title="View missing items">${channel}</a>`
+                                : `<span>${channel}</span>`;
+
                             return `<div>
                                 <div>
-                                    <span>${channel}</span>
+                                    ${channelDisplay}
                                     ${historyIcon}
                                     ${graphIcon}
                                 </div>
@@ -875,6 +883,7 @@
                             </div>`;
                         },
                         cellClick: function(e, cell) {
+                            if (e.target.closest && e.target.closest('a.channel-name-link')) return;
                             // Handle icon clicks directly
                             if (e.target.classList.contains('history-table-icon')) {
                                 e.stopPropagation();
@@ -906,7 +915,8 @@
                             const dotColor = getMetricDotColor(channel, 'missing_l');
                             const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="missing_l" style="cursor:pointer;color:${dotColor};font-size:8px;" title="View Chart"></i>`;
 
-                            const style = 'color:black;font-weight:600;';
+                            const textColor = value === 0 ? '#198754' : value > 0 ? '#dc3545' : 'black';
+                            const style = `color:${textColor};font-weight:600;`;
 
                             if (missingLink && value > 0) {
                                 return `<a href="${missingLink}" target="_blank" style="${style}text-decoration:none;cursor:pointer;" title="Click to view missing items details">${value}</a>${chartIcon}`;
@@ -946,7 +956,7 @@
                     //     }
                     // },
                     {
-                        title: "Missing Map",
+                        title: "Missing M",
                         field: "NMap",
                         hozAlign: "center",
                         sorter: "number",
@@ -1013,7 +1023,7 @@
                         }
                     },
                     {
-                        title: "L30 Sales",
+                        title: "Sales",
                         field: "L30 Sales",
                         hozAlign: "center",
                         sorter: "number",
@@ -1038,7 +1048,7 @@
                         }
                     },
                     {
-                        title: "AD SPEND",
+                        title: "Ads Spend",
                         field: "Total Ad Spend",
                         hozAlign: "center",
                         sorter: "number",
@@ -1070,7 +1080,7 @@
                         }
                     },
                     {
-                        title: "L30 Orders",
+                        title: "Orders",
                         field: "L30 Orders",
                         hozAlign: "center",
                         sorter: "number",
@@ -1120,7 +1130,7 @@
                         }
                     },
                     {
-                        title: "Gprofit%",
+                        title: "GPFT",
                         field: "Gprofit%",
                         hozAlign: "center",
                         sorter: "number",
@@ -1154,7 +1164,7 @@
                         }
                     },
                     {
-                        title: "G ROI%",
+                        title: "G ROI %",
                         field: "G Roi",
                         hozAlign: "center",
                         sorter: "number",
@@ -1223,7 +1233,7 @@
                         }
                     },
                     {
-                        title: "N PFT%",
+                        title: "NPFT%",
                         field: "N PFT",
                         hozAlign: "center",
                         sorter: "number",
@@ -1256,7 +1266,7 @@
                         }
                     },
                     {
-                        title: "N ROI%",
+                        title: "Nroi%",
                         field: "N ROI",
                         hozAlign: "center",
                         sorter: "number",
@@ -2756,7 +2766,8 @@
                 'ah': ['AH Score', 'Policy Violations', 'Customer Complaints'],
                 'expenses': ['Total Ad Spend', 'Shipping Cost', 'FBA Fees', 'Storage Fees'],
                 'traffic': ['clicks', 'Sessions', 'Page Views', 'Conversion Rate'],
-                'reviews': ['Total Reviews', 'Avg Rating', '5-Star', '4-Star', '1-Star']
+                'reviews': ['Total Reviews', 'Avg Rating', '5-Star', '4-Star', '1-Star'],
+                'missing': ['Miss', 'NMap', 'Missing Ads']
             };
             
             $('.section-option').on('click', function(e) {
@@ -3316,8 +3327,8 @@
 
             // Metric label map for titles
             const metricLabels = {
-                'l30_sales': 'L30 Sales',
-                'l30_orders': 'L30 Orders',
+                'l30_sales': 'Sales',
+                'l30_orders': 'Orders',
                 'qty': 'Qty',
                 'gprofit': 'Gprofit%',
                 'groi': 'G ROI%',
@@ -3326,7 +3337,7 @@
                 'npft': 'N PFT%',
                 'nroi': 'N ROI%',
                 'missing_l': 'Missing L',
-                'nmap': 'N Map',
+                'nmap': 'Missing M',
                 'ad_spend': 'AD Spend',
                 'clicks': 'AD Clicks',
                 'ad_sales': 'AD Sales',
@@ -3419,10 +3430,19 @@
                     return Math.round(v).toLocaleString('en-US');
                 };
 
-                // --- Populate right-side reference panel ---
-                document.getElementById('adChartHighest').textContent = fmtVal(dataMax);
-                document.getElementById('adChartMedian').textContent = fmtVal(median);
-                document.getElementById('adChartLowest').textContent = fmtVal(dataMin);
+                // --- Populate right-side reference panel (positive values in red) ---
+                const refRed = '#dc3545';
+                const refGray = '#6c757d';
+                const refGreen = '#198754';
+                const highestEl = document.getElementById('adChartHighest');
+                const medianEl = document.getElementById('adChartMedian');
+                const lowestEl = document.getElementById('adChartLowest');
+                highestEl.textContent = fmtVal(dataMax);
+                highestEl.style.color = dataMax === 0 ? refGreen : dataMax > 0 ? refRed : refGray;
+                medianEl.textContent = fmtVal(median);
+                medianEl.style.color = median === 0 ? refGreen : median > 0 ? refRed : refGray;
+                lowestEl.textContent = fmtVal(dataMin);
+                lowestEl.style.color = dataMin === 0 ? refGreen : dataMin > 0 ? refRed : refGray;
 
                 // --- Dot colors: green=UP red=DOWN, but INVERTED for ACOS & TAcos % (lower is better) ---
                 const invertedMetrics = ['acos', 'ads_pct'];
@@ -3439,8 +3459,8 @@
                            '#6c757d';                         // neutral = same
                 });
 
-                // --- Value label colors: same as dot colors (match previous day comparison) ---
-                const labelColors = dotColors;
+                // --- Value label colors: positive = red, zero = green ---
+                const labelColors = values.map(v => v === 0 ? '#198754' : v > 0 ? '#dc3545' : '#6c757d');
 
                 // --- Median line plugin ---
                 const medianLinePlugin = {
@@ -3800,7 +3820,7 @@
 
                 // Prepare data for Google Charts
                 const chartData = [
-                    ['Date', 'L30 Sales', 'L30 Orders', 'Total Qty items', 'Clicks', 'Gprofit%', 'NPFT%']
+                    ['Date', 'Sales', 'Orders', 'Qty items', 'Clicks', 'GPFT', 'NPFT%']
                 ];
 
                 const reversedData = [...data].reverse();

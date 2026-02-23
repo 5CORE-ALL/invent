@@ -2675,7 +2675,11 @@ class OverallAmazonController extends Controller
                     $row['SPRICE_STATUS'] = $raw['SPRICE_STATUS'] ?? null; // Status: 'pushed', 'applied', 'error'
                     $row['Listed'] = isset($raw['Listed']) ? filter_var($raw['Listed'], FILTER_VALIDATE_BOOLEAN) : null;
                     $row['Live'] = isset($raw['Live']) ? filter_var($raw['Live'], FILTER_VALIDATE_BOOLEAN) : null;
+                    $row['variation_display'] = (isset($raw['variation']) && in_array($raw['variation'], ['red', 'green'], true)) ? $raw['variation'] : 'red';
                 }
+            }
+            if (!array_key_exists('variation_display', $row)) {
+                $row['variation_display'] = 'red';
             }
 
             // Load Bid Cap from dedicated table
@@ -2788,6 +2792,15 @@ class OverallAmazonController extends Controller
 
         // Parent-wise grouping
         $groupedByParent = collect($result)->groupBy('Parent');
+        $parentSkus = $groupedByParent->keys()->filter(function ($p) { return $p !== '' && $p !== null; })->values()->toArray();
+        $parentVariations = [];
+        if (!empty($parentSkus)) {
+            $parentViewRows = AmazonDataView::whereIn('sku', $parentSkus)->get();
+            foreach ($parentViewRows as $r) {
+                $val = is_array($r->value) ? $r->value : (is_string($r->value) ? json_decode($r->value, true) : []);
+                $parentVariations[$r->sku] = (isset($val['variation']) && in_array($val['variation'], ['red', 'green'], true)) ? $val['variation'] : 'red';
+            }
+        }
         $finalResult = [];
 
         foreach ($groupedByParent as $parent => $rows) {
@@ -2853,7 +2866,8 @@ class OverallAmazonController extends Controller
                 'ROI_percentage' => $rows->count() > 0 ? round($rows->avg('ROI_percentage'), 2) : 0,
                 'PFT%' => $rows->count() > 0 ? round($rows->avg('PFT%'), 2) : 0,
                 'is_parent_summary' => true,
-                'ad_updates' => $adUpdates
+                'ad_updates' => $adUpdates,
+                'variation_display' => $parentVariations[$parent] ?? 'red'
             ];
             
             // Add campaign data for parent rows - match by "PARENT {parent}" campaign name
@@ -3650,6 +3664,33 @@ class OverallAmazonController extends Controller
         }
 
         return response()->json(['success' => true, 'data' => $amazonDataView, 'message' => $message]);
+    }
+
+    /**
+     * Save variation display (red/green) for a SKU to amazon_data_view.
+     * Used by the Variation column dot click in the Amazon tabulator.
+     */
+    public function saveVariationToDatabase(Request $request)
+    {
+        $sku = $request->input('sku');
+        $variation = $request->input('variation'); // 'red' or 'green'
+
+        if (!$sku) {
+            return response()->json(['success' => false, 'error' => 'SKU is required.'], 400);
+        }
+        if (!in_array($variation, ['red', 'green'], true)) {
+            return response()->json(['success' => false, 'error' => 'Variation must be red or green.'], 400);
+        }
+
+        $amazonDataView = AmazonDataView::firstOrNew(['sku' => $sku]);
+        $existing = is_array($amazonDataView->value)
+            ? $amazonDataView->value
+            : (json_decode($amazonDataView->value ?? '{}', true) ?? []);
+        $existing['variation'] = $variation;
+        $amazonDataView->value = $existing;
+        $amazonDataView->save();
+
+        return response()->json(['success' => true, 'variation' => $variation, 'message' => 'Variation saved.']);
     }
 
     public function saveBidCap(Request $request)

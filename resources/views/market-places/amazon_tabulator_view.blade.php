@@ -173,9 +173,9 @@
 
                     <select id="inventory-filter" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;">
-                        <option value="all">INV</option>
+                        <option value="all" selected>INV</option>
                         <option value="zero">Zero </option>
-                        <option value="more" selected>More</option>
+                        <option value="more">More</option>
                     </select>
 
                     <select id="nrl-filter" class="form-select form-select-sm"
@@ -228,9 +228,9 @@
 
                     <select id="parent-filter" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;">
-                        <option value="all">All Rows</option>
+                        <option value="all" selected>All Rows</option>
                         <option value="parents">Parents</option>
-                        <option value="skus" selected>SKUs</option>
+                        <option value="skus">SKUs</option>
                     </select>
 
                     <select id="status-filter" class="form-select form-select-sm"
@@ -252,6 +252,7 @@
                     <select id="section-filter" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;">
                         <option value="all">Section</option>
+                        <option value="missing">listing</option>
                         <option value="pricing">Pricing</option>
                         <option value="kw-ads">KW Ads</option>
                         <option value="pt-ads">PT Ads</option>
@@ -279,7 +280,7 @@
                         <option value="ALL">All</option>
                         <option value="ENABLED">Active</option>
                         <option value="PAUSED">Paused</option>
-                        <option value="MISSING">Missing Camp</option>
+                        <option value="MISSING">Missing A</option>
                     </select>
 
                     <select id="nra-filter" class="form-select form-select-sm"
@@ -450,14 +451,14 @@
                         </span>
                         
                         <!-- Inventory Mapping Badges (Clickable + Hover for chart) -->
-                        <span class="badge bg-success fs-6 p-2 map-filter-badge amz-hover-chart" data-filter="mapped" data-metric="map_count" data-source="badge" style="color: black; font-weight: bold; cursor: pointer;" title="Click to filter · Hover for trend">
-                            Map: <span id="map-count">0</span>
-                        </span>
                         <span class="badge bg-danger fs-6 p-2 map-filter-badge amz-hover-chart" data-filter="nmapped" data-metric="nmap_count" data-source="badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter · Hover for trend">
                              N Map: <span id="nmap-count">0</span>
                         </span>
-                        <span class="badge bg-warning fs-6 p-2 missing-amz-filter-badge amz-hover-chart" data-filter="missing-amazon" data-metric="missing_count" data-source="badge" style="color: black; font-weight: bold; cursor: pointer;" title="Click to filter · Hover for trend">
+                        <span class="badge bg-success fs-6 p-2 missing-amz-filter-badge amz-hover-chart" id="missing-amazon-badge" data-filter="missing-amazon" data-metric="missing_count" data-source="badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter · Hover for trend">
                             Missing L: <span id="missing-amazon-count">0</span>
+                        </span>
+                        <span class="badge bg-success fs-6 p-2" id="variation-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Variation (NRL count)">
+                            Variation: <span id="variation-count">0</span>
                         </span>
                         
                         <!-- Price Comparison Badge -->
@@ -466,9 +467,9 @@
                         </span>
                         
                         <!-- Financial Metrics -->
-                        <span class="badge bg-success fs-6 p-2 amz-badge-chart" data-metric="total_pft" id="total-pft-amt-badge" style="color: black; font-weight: bold; cursor:pointer;" title="View trend">Total PFT: $0.00</span>
-                        <span class="badge bg-primary fs-6 p-2 amz-badge-chart" data-metric="total_sales" id="total-sales-amt-badge" style="color: black; font-weight: bold; cursor:pointer;" title="View trend">Total Sales: $0.00</span>
-                        <span class="badge bg-warning fs-6 p-2 amz-badge-chart" data-metric="total_spend" id="total-spend-l30-badge" style="color: black; font-weight: bold; cursor:pointer;" title="View trend">Ad Spend L30: $0.00</span>
+                        <span class="badge bg-success fs-6 p-2 amz-badge-chart" data-metric="total_pft" id="total-pft-amt-badge" style="color: black; font-weight: bold; cursor:pointer;" title="View trend">PFT: $0.00</span>
+                        <span class="badge bg-primary fs-6 p-2 amz-badge-chart" data-metric="total_sales" id="total-sales-amt-badge" style="color: black; font-weight: bold; cursor:pointer;" title="View trend">Sales: $0.00</span>
+                        <span class="badge bg-warning fs-6 p-2 amz-badge-chart" data-metric="total_spend" id="total-spend-l30-badge" style="color: black; font-weight: bold; cursor:pointer;" title="View trend">Ad Spend: $0.00</span>
                         
                         <!-- Percentage Metrics -->
                         <span class="badge bg-info fs-6 p-2 amz-badge-chart" data-metric="gpft_pct" id="avg-gpft-badge" style="color: black; font-weight: bold; cursor:pointer;" title="View trend">GPFT: 0%</span>
@@ -497,7 +498,7 @@
                             Campaign: <span id="campaign-count">0</span>
                         </span>
                         <span class="badge fs-6 p-2 missing-campaign-badge amz-hover-chart" id="missing-campaign-badge" data-metric="missing_campaign_count" data-source="badge" style="background: linear-gradient(135deg, #dc3545 0%, #c82333 100%); color: black; font-weight: bold; cursor: pointer;" title="Click to filter · Hover for trend">
-                            Missing Camp: <span id="missing-campaign-count">0</span>
+                            Missing A: <span id="missing-campaign-count">0</span>
                         </span>
                         <span class="badge fs-6 p-2 nra-count-badge amz-hover-chart" id="nra-count-badge" data-metric="nra_count" data-source="badge" style="background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); color: black; font-weight: bold; cursor: pointer;" title="Click to filter · Hover for trend">
                             NRA: <span id="nra-count">0</span>
@@ -757,6 +758,7 @@
         let soldFilterActive = 'all'; // Track sold filter state: 'all', 'sold', 'zero'
         let priceFilterActive = false; // Track price filter state: true = show only Prc > LMP
         let mapFilterActive = 'all'; // Track map filter state: 'all', 'mapped', 'missing'
+        let missingAmazonFilterActive = false; // Track Missing L (missing from Amazon) filter
         let seoModeActive = false; // Track SEO mode state
 
         // === Amazon Metric Trend Chart ===
@@ -773,13 +775,13 @@
             'nmap': 'N Map',
             // Badge-stat metrics (daily snapshot counts)
             'sold_count': 'Sold (>0)', 'zero_sold_count': '0 Sold',
-            'map_count': 'Map', 'nmap_count': 'N Map', 'missing_count': 'Missing L',
+            'map_count': 'Missing M', 'nmap_count': 'N Map', 'missing_count': 'Missing L',
             'prc_gt_lmp_count': 'Prc > LMP', 'campaign_count': 'Campaign',
-            'missing_campaign_count': 'Missing Camp', 'nra_count': 'NRA',
+            'missing_campaign_count': 'Missing A', 'nra_count': 'NRA',
             'ra_count': 'RA', 'paused_count': 'Paused',
             'ub7_count': '7UB', 'ub7_ub1_count': '7UB+1UB',
             'kw_spend': 'KW Ads Spend', 'hl_spend': 'HL Ads Spend', 'pt_spend': 'PT Ads Spend',
-            'total_pft': 'Total Profit', 'total_sales': 'Total Sales', 'total_spend': 'Ad Spend',
+            'total_pft': 'PFT', 'total_sales': 'Sales', 'total_spend': 'Ad Spend',
             'gpft_pct': 'GPFT%', 'npft_pct': 'PFT%', 'groi_pct': 'GROI%', 'nroi_pct': 'NROI%', 'tcos_pct': 'TCOS%',
             'total_l30_orders': 'L30 Orders',
         };
@@ -1299,7 +1301,6 @@
             });
 
             // Missing Amazon filter badge click handler (delegated so it works when table re-renders)
-            let missingAmazonFilterActive = false;
             $(document).on('click', '.missing-amz-filter-badge', function() {
                 missingAmazonFilterActive = !missingAmazonFilterActive;
                 
@@ -1324,7 +1325,7 @@
                 applyFilters();
             });
 
-            // Missing Camp filter badge click handler: set Active Filter to "Missing Camp" and apply
+            // Missing A filter badge click handler: set Active Filter to "Missing A" and apply
             $(document).on('click', '.missing-campaign-badge', function() {
                 var $sel = $('#campaign-status-filter');
                 if ($sel.val() === 'MISSING') {
@@ -1332,6 +1333,13 @@
                 } else {
                     $sel.val('MISSING');
                 }
+                applyFilters();
+            });
+
+            // Variation badge click: filter to NRL (red) rows only; click again to show all
+            $(document).on('click', '#variation-count-badge', function() {
+                var current = $('#nrl-filter').val();
+                $('#nrl-filter').val(current === 'nr' ? 'all' : 'nr');
                 applyFilters();
             });
 
@@ -2174,7 +2182,7 @@
                 paginationSize: 100,
                 columnCalcs: "both",
                 initialSort: [{
-                    column: "CVR_L30",
+                    column: "Parent",
                     dir: "asc"
                 }],
                 ajaxResponse: function(url, params, response) {
@@ -2213,17 +2221,22 @@
                             e.stopPropagation();
                         }
                     },
-                    // {
-                    //     title: "Parent",
-                    //     field: "Parent",
-                    //     headerFilter: "input",
-                    //     headerFilterPlaceholder: "Search Parent...",
-                    //     cssClass: "text-primary",
-                    //     tooltip: true,
-                    //     frozen: true,
-                    //     width: 150,
-                    //     visible: false
-                    // },
+                    {
+                        title: "Parent",
+                        field: "Parent",
+                        headerFilter: "input",
+                        headerFilterPlaceholder: "Search Parent...",
+                        cssClass: "text-primary",
+                        tooltip: true,
+                        frozen: true,
+                        width: 150,
+                        visible: true,
+                        formatter: function(cell) {
+                            var row = cell.getRow().getData();
+                            var val = row['Parent'] != null ? row['Parent'] : (row['parent'] != null ? row['parent'] : '');
+                            return val ? String(val) : '';
+                        }
+                    },
 
                     {
                         title: "Image",
@@ -2362,7 +2375,7 @@
                         width: 65
                     },
                     {
-                        title: "NR/RL",
+                        title: "NR/RL <span class='nr-header-red-dot' style='display:inline-block;width:8px;height:8px;border-radius:50%;background:#dc3545;cursor:pointer;margin-left:3px;vertical-align:middle;' title='Show only red (NRL) rows'></span>",
                         field: "NR",
                         hozAlign: "center",
                         headerSort: false,
@@ -2390,7 +2403,7 @@
                         width: 60
                     },
                     {
-                        title: "Missing L",
+                        title: "Missing L <span class='missing-l-header-red-dot' style='display:inline-block;width:8px;height:8px;border-radius:50%;background:#dc3545;cursor:pointer;margin-left:3px;vertical-align:middle;' title='Show only red (Missing L) rows'></span>",
                         field: "is_missing",
                         hozAlign: "center",
                         width: 65,
@@ -2418,7 +2431,7 @@
                     },
 
                     {
-                        title: "Map",
+                        title: "Missing M <span class='missing-m-header-red-dot' style='display:inline-block;width:8px;height:8px;border-radius:50%;background:#dc3545;cursor:pointer;margin-left:3px;vertical-align:middle;' title='Show only red (mismatched) rows'></span>",
                         field: "inv_map",
                         hozAlign: "center",
                         width: 60,
@@ -2453,6 +2466,37 @@
                                     <span style="font-size: 11px; color: #dc3545; font-weight: 600;">${Math.round(difference)}</span>
                                 </div>`;
                             }
+                        }
+                    },
+                    {
+                        title: "Variation <span class='variation-header-red-dot' style='display:inline-block;width:8px;height:8px;border-radius:50%;background:#dc3545;cursor:pointer;margin-left:3px;vertical-align:middle;' title='Show only red (NRL) rows'></span> <span class='variation-header-green-dot' style='display:inline-block;width:8px;height:8px;border-radius:50%;background:#28a745;cursor:pointer;margin-left:2px;vertical-align:middle;' title='Show only green (REQ) rows'></span>",
+                        field: "variation_dot",
+                        hozAlign: "center",
+                        headerSort: false,
+                        width: 70,
+                        formatter: function(cell) {
+                            const row = cell.getRow().getData();
+                            const variation = (row['variation_display'] || 'red').toLowerCase();
+                            const isRed = (variation === 'red');
+                            const color = isRed ? '#dc3545' : '#28a745';
+                            const nextVal = isRed ? 'green' : 'red';
+                            const sku = row['is_parent_summary'] ? (row['Parent'] || '') : (row['(Child) sku'] || '');
+                            return `<span class="variation-dot-click" data-sku="${sku}" data-next="${nextVal}" style="font-size: 16px; color: ${color}; cursor: pointer;" title="Click to toggle (${nextVal})">${isRed ? '🔴' : '🟢'}</span>`;
+                        },
+                        cellClick: function(e, cell) {
+                            if (!e.target.classList.contains('variation-dot-click')) return;
+                            e.stopPropagation();
+                            e.preventDefault();
+                            const sku = $(e.target).data('sku');
+                            const nextVal = $(e.target).data('next');
+                            if (!sku) return;
+                            $.post('/amazon/save-variation', { sku: sku, variation: nextVal, _token: $('meta[name="csrf-token"]').attr('content') }, function(res) {
+                                if (res.success) {
+                                    cell.getRow().update({ variation_display: nextVal });
+                                }
+                            }).fail(function() {
+                                if (typeof showToast === 'function') showToast('error', 'Failed to save variation');
+                            });
                         }
                     },
                     {
@@ -5408,7 +5452,7 @@
                         } else if (campaignStatusFilter === 'PAUSED') {
                             return hasCampaignInSection && !isEnabled; // Has campaign in this section but not enabled
                         } else if (campaignStatusFilter === 'MISSING') {
-                            return !hasCampaignInSection; // No campaign in this section (matches Missing Camp badge count)
+                            return !hasCampaignInSection; // No campaign in this section (matches Missing A badge count)
                         }
                         
                         return true;
@@ -5632,7 +5676,7 @@
                 updateCalcValues();
                 updateSummary();
                 updateSeoCount();
-                // Sync Missing Camp badge appearance when Active Filter is "Missing Camp"
+                // Sync Missing A badge appearance when Active Filter is "Missing A"
                 var campFilterVal = $('#campaign-status-filter').val();
                 var $missingCampBadge = $('.missing-campaign-badge');
                 if (campFilterVal === 'MISSING') {
@@ -5647,6 +5691,84 @@
             }
 
             $('#inventory-filter, #nrl-filter, #gpft-filter, #cvr-filter, #dil-filter, #rating-filter, #parent-filter, #status-filter, #sold-filter, #utilization-type-filter, #campaign-status-filter, #nra-filter, #price-slab-filter, #acos-slab-filter').on('change', function() {
+                applyFilters();
+            });
+
+            // NR/RL header red dot: click to show only red (NRL) rows; click again to show all
+            $(document).on('click', '.nr-header-red-dot', function(e) {
+                e.stopPropagation();
+                e.preventDefault();
+                var current = $('#nrl-filter').val();
+                $('#nrl-filter').val(current === 'nr' ? 'all' : 'nr');
+                applyFilters();
+            });
+
+            // Missing L header red dot: click to show only red (Missing L) rows; click again to show all
+            $(document).on('click', '.missing-l-header-red-dot', function(e) {
+                e.stopPropagation();
+                e.preventDefault();
+                missingAmazonFilterActive = !missingAmazonFilterActive;
+                if (missingAmazonFilterActive) {
+                    mapFilterActive = 'all';
+                    $('.map-filter-badge').each(function() {
+                        var badgeFilter = $(this).data('filter');
+                        if (badgeFilter === 'mapped') {
+                            $(this).removeClass('bg-warning').addClass('bg-success').css('color', 'black');
+                        } else {
+                            $(this).removeClass('bg-warning').addClass('bg-danger').css('color', 'white');
+                        }
+                    });
+                    $('.missing-amz-filter-badge').removeClass('bg-warning').addClass('bg-info').css('color', 'black');
+                } else {
+                    $('.missing-amz-filter-badge').removeClass('bg-info').addClass('bg-warning').css('color', 'black');
+                }
+                applyFilters();
+            });
+
+            // Missing M header red dot: click to show only red (mismatched) rows; click again to show all
+            $(document).on('click', '.missing-m-header-red-dot', function(e) {
+                e.stopPropagation();
+                e.preventDefault();
+                if (mapFilterActive === 'nmapped') {
+                    mapFilterActive = 'all';
+                    $('.map-filter-badge').each(function() {
+                        var badgeFilter = $(this).data('filter');
+                        if (badgeFilter === 'mapped') {
+                            $(this).removeClass('bg-warning').addClass('bg-success').css('color', 'black');
+                        } else {
+                            $(this).removeClass('bg-warning').addClass('bg-danger').css('color', 'white');
+                        }
+                    });
+                } else {
+                    mapFilterActive = 'nmapped';
+                    $('.map-filter-badge').each(function() {
+                        var badgeFilter = $(this).data('filter');
+                        if (badgeFilter === 'nmapped') {
+                            $(this).removeClass('bg-success bg-danger').addClass('bg-warning').css('color', 'black');
+                        } else if (badgeFilter === 'mapped') {
+                            $(this).removeClass('bg-warning').addClass('bg-success').css('color', 'black');
+                        } else {
+                            $(this).removeClass('bg-warning').addClass('bg-danger').css('color', 'white');
+                        }
+                    });
+                }
+                applyFilters();
+            });
+
+            // Variation header red dot: show only red (NRL) rows; same as NR/RL red dot
+            $(document).on('click', '.variation-header-red-dot', function(e) {
+                e.stopPropagation();
+                e.preventDefault();
+                var current = $('#nrl-filter').val();
+                $('#nrl-filter').val(current === 'nr' ? 'all' : 'nr');
+                applyFilters();
+            });
+            // Variation header green dot: show only green (REQ) rows
+            $(document).on('click', '.variation-header-green-dot', function(e) {
+                e.stopPropagation();
+                e.preventDefault();
+                var current = $('#nrl-filter').val();
+                $('#nrl-filter').val(current === 'req' ? 'all' : 'req');
                 applyFilters();
             });
 
@@ -5674,8 +5796,8 @@
                 
                 // Show loading overlay
                 $('#section-loading-overlay').remove();
-                var sectionLabel = section === 'kw-ads' ? 'KW Ads' : section === 'pt-ads' ? 'PT Ads' : section === 'hl-ads' ? 'HL Ads' : section === 'pricing' ? 'Pricing' : 'All';
-                var sectionColor = section === 'kw-ads' ? '#4361ee' : section === 'pt-ads' ? '#7209b7' : section === 'hl-ads' ? '#f72585' : section === 'pricing' ? '#2ec4b6' : '#4361ee';
+                var sectionLabel = section === 'kw-ads' ? 'KW Ads' : section === 'pt-ads' ? 'PT Ads' : section === 'hl-ads' ? 'HL Ads' : section === 'pricing' ? 'Pricing' : section === 'missing' ? 'listing' : 'All';
+                var sectionColor = section === 'kw-ads' ? '#4361ee' : section === 'pt-ads' ? '#7209b7' : section === 'hl-ads' ? '#f72585' : section === 'pricing' ? '#2ec4b6' : section === 'missing' ? '#dc3545' : '#4361ee';
                 $('body').append(
                     '<div id="section-loading-overlay" style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(15,23,42,0.45);backdrop-filter:blur(3px);z-index:99999;display:flex;align-items:center;justify-content:center;animation:secFadeIn .15s ease;">' +
                         '<div style="background:#fff;border-radius:16px;padding:36px 52px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,0.15);border-top:4px solid ' + sectionColor + ';">' +
@@ -5744,6 +5866,14 @@
                 var pricingColumns = [
                     '(Child) sku', 'price', 'campaign_info_icon', 'c_price', 'actual_cost', 'buy_box_price', 
                     'GPFT%', 'PFT%', 'ROI_percentage', 'cost', 'margin', 'INV', 'A_L30'
+                ];
+                var missingColumns = [
+                    'image_path',      // Image
+                    '(Child) sku',    // SKU
+                    'NR',              // NR/RL
+                    'is_missing',     // Missing L
+                    'inv_map',        // Missing M
+                    'variation_dot'   // Variation
                 ];
                 // PT Ads columns - PT campaign specific (SAME sequence as KW Ads)
                 var ptAdsColumns = [
@@ -5874,6 +6004,8 @@
                 var columnsToShow = [];
                 if (section === 'pricing') {
                     columnsToShow = pricingColumns;
+                } else if (section === 'missing') {
+                    columnsToShow = missingColumns;
                 } else if (section === 'kw-ads') {
                     columnsToShow = kwAdsColumns;
                 } else if (section === 'pt-ads') {
@@ -5899,6 +6031,17 @@
                 // Always keep row_select column visible
                 if (table.getColumn('row_select')) {
                     table.showColumn('row_select');
+                }
+                
+                if (section === 'missing') {
+                    $('#parent-filter').val('all');
+                    $('#utilization-type-filter').val('all');
+                    table.clearFilter();
+                    applyFilters();
+                    // Do not show Missing Ads column when listing filter is applied
+                    if (table.getColumn('missing_ad')) {
+                        table.hideColumn('missing_ad');
+                    }
                 }
                 
                 // For KW Ads section: sort by ACOS descending and show all rows including parents
@@ -6212,6 +6355,7 @@
                 let mapCount = 0;
                 let missingCount = 0;
                 let missingAmazonCount = 0;
+                let variationCount = 0;
                 
                 // KW page counts - Use Set to track unique campaigns
                 let uniqueCampaigns = new Set();
@@ -6272,6 +6416,11 @@
                         uniqueCampaigns: uniqueCampaigns.size
                     });
                 }
+
+                // Variation count (NRL / red dot rows - all rows including parents)
+                data.forEach(row => {
+                    if (row['NR'] === 'NR') variationCount++;
+                });
 
                 // Second pass: Process INV > 0 rows for other metrics
                 data.forEach(row => {
@@ -6440,11 +6589,25 @@
                 $('#zero-sold-count').text(zeroSoldCount.toLocaleString());
                 
                 // Update Map and N Map counts (inventory sync for items that exist in Amazon)
-                $('#map-count').text(mapCount.toLocaleString());
-                $('#nmap-count').text(missingCount.toLocaleString());
-                
+$('#nmap-count').text(missingCount.toLocaleString());
+
                 // Update Missing Amazon count (items not in amazon_datsheets)
                 $('#missing-amazon-count').text(missingAmazonCount.toLocaleString());
+                var $missingBadge = $('#missing-amazon-badge');
+                if (missingAmazonCount > 0) {
+                    $missingBadge.removeClass('bg-success bg-warning').addClass('bg-danger').css('color', 'white');
+                } else {
+                    $missingBadge.removeClass('bg-danger bg-warning').addClass('bg-success').css('color', 'white');
+                }
+                
+                // Update Variation count badge (NRL / red dot rows)
+                $('#variation-count').text(variationCount.toLocaleString());
+                var $variationBadge = $('#variation-count-badge');
+                if (variationCount > 0) {
+                    $variationBadge.removeClass('bg-success bg-warning').addClass('bg-danger').css('color', 'white');
+                } else {
+                    $variationBadge.removeClass('bg-danger bg-warning').addClass('bg-success').css('color', 'white');
+                }
                 
                 // Update Prc > LMP count
                 $('#prc-gt-lmp-count').text(prcGtLmpCount.toLocaleString());
@@ -6455,7 +6618,7 @@
                 // Calculate TCOS% = (Total Spend L30 / Total Sales) * 100
                 const tcosPercent = totalSalesAmt > 0 ? ((totalSpendL30 / totalSalesAmt) * 100) : 0;
                 
-                $('#total-spend-l30-badge').text('Ad Spend L30: $' + Math.round(totalSpendL30));
+                $('#total-spend-l30-badge').text('Ad Spend: $' + Math.round(totalSpendL30));
                 
                 // GROI% = (Total PFT / Total COGS) * 100
                 const groiPercent = totalLpAmt > 0 ? ((totalPftAmt / totalLpAmt) * 100) : 0;
@@ -6470,8 +6633,8 @@
                 
                 $('#total-amazon-inv-badge').text('INV: ' + Math.round(totalAmazonInv).toLocaleString());
                 $('#total-amazon-inv-amz-badge').text('INV AMZ: ' + Math.round(totalAmazonInvAmz).toLocaleString());
-                $('#total-pft-amt-badge').text('Total PFT: $' + Math.round(totalPftAmt));
-                $('#total-sales-amt-badge').text('Total Sales: $' + Math.round(totalSalesAmt));
+                $('#total-pft-amt-badge').text('PFT: $' + Math.round(totalPftAmt));
+                $('#total-sales-amt-badge').text('Sales: $' + Math.round(totalSalesAmt));
                 
                 // AVG GPFT% = (Total_pft / Total_Sales) * 100 (Gross Profit % - before ads)
                 const avgGpft = totalSalesAmt > 0 ? ((totalPftAmt / totalSalesAmt) * 100) : 0;

@@ -1064,6 +1064,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/amazon-campaign-data-by-sku', action: [OverallAmazonController::class, 'getCampaignDataBySku'])->name('amazon.campaign.data.by.sku');
     Route::post('/amazon/refresh-links', [OverallAmazonController::class, 'refreshAmazonLinks'])->name('amazon.refresh.links');
     Route::post('/save-amazon-nr', [OverallAmazonController::class, 'saveNrToDatabase']);
+    Route::post('/save-amazon-variation', [OverallAmazonController::class, 'saveVariationToDatabase']);
     Route::post('/save-amazon-sprice', [OverallAmazonController::class, 'saveSpriceToDatabase']);
     Route::post('/amazon-clear-sprice', [OverallAmazonController::class, 'clearAmazonSprice']);
     Route::post('/apply-amazon-price', [OverallAmazonController::class, 'applyAmazonPrice']);
@@ -1711,6 +1712,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
     //amazon db save routes
     Route::post('/amazon/save-nr', [OverallAmazonController::class, 'saveNrToDatabase']);
+    Route::post('/amazon/save-variation', [OverallAmazonController::class, 'saveVariationToDatabase']);
     Route::post('/amazon/update-listed-live', [OverallAmazonController::class, 'updateListedLive']);
 
     Route::post('/amazon/save-sprice', [OverallAmazonController::class, 'saveSpriceToDatabase'])->name('amazon.save-sprice');
