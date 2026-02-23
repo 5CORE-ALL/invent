@@ -1297,7 +1297,7 @@
                         }
                     },
                     {
-                        title: "KW",
+                        title: "Kw Spend",
                         field: "KW Spent",
                         hozAlign: "center",
                         visible: true,
@@ -1324,7 +1324,7 @@
                         }
                     },
                     {
-                        title: "PT",
+                        title: "PT spend",
                         field: "PT Spent",
                         hozAlign: "center",
                         visible: true,
@@ -1351,7 +1351,7 @@
                         }
                     },
                     {
-                        title: "HL",
+                        title: "HL spend",
                         field: "HL Spent",
                         hozAlign: "center",
                         visible: true,
@@ -1378,7 +1378,7 @@
                         }
                     },
                     {
-                        title: "PMT",
+                        title: "PMT spend",
                         field: "PMT Spent",
                         hozAlign: "center",
                         visible: true,
@@ -1492,7 +1492,7 @@
                     },
                     // Hidden Clicks Breakdown Columns
                     {
-                        title: "KW",
+                        title: "Kw Spend",
                         field: "KW Clicks",
                         hozAlign: "center",
                         visible: true,
@@ -1518,7 +1518,7 @@
                         }
                     },
                     {
-                        title: "PT",
+                        title: "PT spend",
                         field: "PT Clicks",
                         hozAlign: "center",
                         visible: true,
@@ -1544,7 +1544,7 @@
                         }
                     },
                     {
-                        title: "HL",
+                        title: "HL spend",
                         field: "HL Clicks",
                         hozAlign: "center",
                         visible: true,
@@ -1570,7 +1570,7 @@
                         }
                     },
                     {
-                        title: "PMT",
+                        title: "PMT spend",
                         field: "PMT Clicks",
                         hozAlign: "center",
                         visible: true,
@@ -1683,7 +1683,7 @@
                     },
                     // Hidden Ad Sales Breakdown Columns
                     {
-                        title: "KW",
+                        title: "Kw Spend",
                         field: "KW Sales",
                         hozAlign: "center",
                         visible: true,
@@ -1709,7 +1709,7 @@
                         }
                     },
                     {
-                        title: "PT",
+                        title: "PT spend",
                         field: "PT Sales",
                         hozAlign: "center",
                         visible: true,
@@ -1735,7 +1735,7 @@
                         }
                     },
                     {
-                        title: "HL",
+                        title: "HL spend",
                         field: "HL Sales",
                         hozAlign: "center",
                         visible: true,
@@ -1761,7 +1761,7 @@
                         }
                     },
                     {
-                        title: "PMT",
+                        title: "PMT spend",
                         field: "PMT Sales",
                         hozAlign: "center",
                         visible: true,
@@ -1873,7 +1873,7 @@
                     },
                     // Hidden Ad Sold Breakdown Columns
                     {
-                        title: "KW",
+                        title: "Kw Spend",
                         field: "KW Sold",
                         hozAlign: "center",
                         visible: true,
@@ -1899,7 +1899,7 @@
                         }
                     },
                     {
-                        title: "PT",
+                        title: "PT spend",
                         field: "PT Sold",
                         hozAlign: "center",
                         visible: true,
@@ -1925,7 +1925,7 @@
                         }
                     },
                     {
-                        title: "HL",
+                        title: "HL spend",
                         field: "HL Sold",
                         hozAlign: "center",
                         visible: true,
@@ -1951,7 +1951,7 @@
                         }
                     },
                     {
-                        title: "PMT",
+                        title: "PMT spend",
                         field: "PMT Sold",
                         hozAlign: "center",
                         visible: true,
@@ -2072,7 +2072,7 @@
                     },
                     // Hidden ACOS Breakdown Columns
                     {
-                        title: "KW",
+                        title: "Kw Spend",
                         field: "KW ACOS",
                         hozAlign: "center",
                         visible: true,
@@ -2094,7 +2094,7 @@
                         }
                     },
                     {
-                        title: "PT",
+                        title: "PT spend",
                         field: "PT ACOS",
                         hozAlign: "center",
                         visible: true,
@@ -2116,7 +2116,7 @@
                         }
                     },
                     {
-                        title: "HL",
+                        title: "HL spend",
                         field: "HL ACOS",
                         hozAlign: "center",
                         visible: true,
@@ -2138,7 +2138,7 @@
                         }
                     },
                     {
-                        title: "PMT",
+                        title: "PMT spend",
                         field: "PMT ACOS",
                         hozAlign: "center",
                         visible: true,
@@ -2247,7 +2247,7 @@
                     },
                     // Hidden CVR Breakdown Columns
                     {
-                        title: "KW",
+                        title: "Kw Spend",
                         field: "KW CVR",
                         hozAlign: "center",
                         visible: true,
@@ -2269,7 +2269,7 @@
                         }
                     },
                     {
-                        title: "PT",
+                        title: "PT spend",
                         field: "PT CVR",
                         hozAlign: "center",
                         visible: true,
@@ -2291,7 +2291,7 @@
                         }
                     },
                     {
-                        title: "HL",
+                        title: "HL spend",
                         field: "HL CVR",
                         hozAlign: "center",
                         visible: true,
@@ -2313,7 +2313,7 @@
                         }
                     },
                     {
-                        title: "PMT",
+                        title: "PMT spend",
                         field: "PMT CVR",
                         hozAlign: "center",
                         visible: true,

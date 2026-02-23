@@ -11,13 +11,12 @@ trait GoogleAdsDateRangeTrait
     protected function calculateDateRanges()
     {
         $today = now();
-        
-        // Google Ads data is fetched daily at 12 PM via cron
-        // If it's before 12 PM, yesterday's data won't be available yet
-        // So we need to use day before yesterday (2 days ago) as the end date for all ranges
-        $currentHour = (int) $today->format('H');
-        $endDateDaysBack = ($currentHour < 12) ? 2 : 1; // Use 2 days ago if before 12 PM, otherwise yesterday
-        $l1DaysBack = $endDateDaysBack; // L1 uses the same logic
+
+        // Use yesterday as end date so L30 matches Google Ads "Last 30 days" (e.g. Jan 25 - Feb 23).
+        // This keeps Clicks L30 and Spend L30 in sync with the campaign table in Google Ads.
+        // If cron has not yet synced yesterday's data, that day will sum as 0 until the next run.
+        $endDateDaysBack = 1; // yesterday
+        $l1DaysBack = $endDateDaysBack;
         $endDate = $today->copy()->subDays($endDateDaysBack)->format('Y-m-d');
         
         return [
@@ -48,9 +47,16 @@ trait GoogleAdsDateRangeTrait
         ];
     }
 
-    protected function aggregateMetricsByRange($googleCampaigns, $sku, $dateRange, $statusFilter = 'ENABLED')
+    /**
+     * @param string|int|null $campaignId When set (e.g. for parent campaigns), filter by campaign_id so clicks/spend match the correct campaign.
+     */
+    protected function aggregateMetricsByRange($googleCampaigns, $sku, $dateRange, $statusFilter = 'ENABLED', $campaignId = null)
     {
-        $campaignRanges = $googleCampaigns->filter(function ($c) use ($sku, $dateRange, $statusFilter) {
+        $campaignRanges = $googleCampaigns->filter(function ($c) use ($sku, $dateRange, $statusFilter, $campaignId) {
+            // When campaign_id is provided (e.g. parent), use it so we aggregate the exact campaign and clicks/spend match Google Ads
+            if ($campaignId !== null && $campaignId !== '') {
+                $matchesCampaign = (string) ($c->campaign_id ?? '') === (string) $campaignId;
+            } else {
             $campaign = strtoupper(trim($c->campaign_name));
             $campaignCleaned = rtrim(trim($campaign), '.'); // Remove trailing period
             $skuTrimmed = strtoupper(trim($sku));
@@ -88,8 +94,8 @@ trait GoogleAdsDateRangeTrait
                     $exactMatch = $campaignCleaned === $skuCleaned;
                 }
             }
-            
-            $matchesCampaign = $exactMatch;
+                $matchesCampaign = $exactMatch;
+            }
             $matchesStatus = $statusFilter ? $c->campaign_status === $statusFilter : true;
             
             // Fixed: Handle both string and Carbon date instances for proper comparison

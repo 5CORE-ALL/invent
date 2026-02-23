@@ -1748,7 +1748,7 @@
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
                             var spend_L30 = parseFloat(row.spend_L30) || 0;
-                            return Math.round(spend_L30);
+                            return spend_L30 % 1 === 0 ? spend_L30 : spend_L30.toFixed(2);
                         },
                         sorter: "number"
                     },
@@ -3593,7 +3593,7 @@
                             Status: row.campaignStatus || "",
                             Budget: budget.toFixed(2),
                             "Clicks L30": parseFloat(row.clicks_L30 || 0),
-                            "Spend L30": Math.round(parseFloat(row.spend_L30 || 0)),
+                            "Spend L30": Number(parseFloat(row.spend_L30 || 0).toFixed(2)),
                             "Spend L7": Math.round(parseFloat(row.spend_L7 || 0)),
                             "7 UB%": ub7.toFixed(0) + "%",
                             "1 UB%": ub1.toFixed(0) + "%",

@@ -782,12 +782,12 @@ class GoogleAdsController extends Controller
                     'sbid' => 0, 'ub7' => 0, 'ub1' => 0,
                 ];
 
-                // Calculate metrics for matched parent campaign (match by SKU/campaign name)
+                // Calculate metrics for matched parent campaign (by campaign_id so clicks/spend match Google Ads)
                 if ($parentHasCampaign) {
                     $skuForMetrics = strtoupper(trim($pm->sku));
                     foreach ($rangesNeeded as $rangeName) {
                         $metrics = $this->aggregateMetricsByRange(
-                            $googleCampaigns, $skuForMetrics, $dateRanges[$rangeName], null
+                            $googleCampaigns, $skuForMetrics, $dateRanges[$rangeName], null, $parentCampaignId
                         );
                         $campaignMap[$mapKey]["spend_$rangeName"] = $metrics['spend'];
                         $campaignMap[$mapKey]["clicks_$rangeName"] = $metrics['clicks'];
@@ -963,20 +963,21 @@ class GoogleAdsController extends Controller
                 ];
             }
 
-            // Calculate metrics for matched campaign
+            // Calculate metrics for matched campaign (by campaign_id so Spend L30 / Clicks L30 match Google Ads)
             if ($matchedCampaign && $hasCampaign) {
                 $skuForMetrics = strtoupper(trim($pm->sku));
-                
+
                 foreach ($rangesNeeded as $rangeName) {
                     // null = include all statuses (ENABLED + PAUSED) for historical metrics;
-                    // PAUSED campaigns can have non-zero clicks/spend/sales in the date range
+                    // Pass $campaignId so aggregation uses exact campaign and spend/clicks match Google Ads
                     $metrics = $this->aggregateMetricsByRange(
-                        $googleCampaigns, 
-                        $skuForMetrics, 
-                        $dateRanges[$rangeName], 
-                        null
+                        $googleCampaigns,
+                        $skuForMetrics,
+                        $dateRanges[$rangeName],
+                        null,
+                        $campaignId
                     );
-                    
+
                     $campaignMap[$mapKey]["spend_$rangeName"] = $metrics['spend'];
                     $campaignMap[$mapKey]["clicks_$rangeName"] = $metrics['clicks'];
                     $campaignMap[$mapKey]["cpc_$rangeName"] = $metrics['cpc'];
