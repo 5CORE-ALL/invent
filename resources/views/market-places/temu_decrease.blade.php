@@ -325,9 +325,11 @@
                 </div>
 
                 <div id="summary-stats" class="mt-2 p-3 bg-light rounded">
-                    <h6 class="mb-3">Summary Statistics</h6>
+                    <h6 class="mb-1">Summary Statistics</h6>
+                    <small class="text-muted d-block mb-2">Sums from full table (all rows, no filter)</small>
                     <div class="d-flex flex-wrap gap-2">
-                        <!-- Basic Counts -->
+                        <!-- Basic Counts (sales summary = same as tabulator sales page) -->
+                        <span class="badge bg-primary fs-6 p-2" id="total-orders-badge" style="color: white; font-weight: bold;">Total Orders: 0</span>
                         <span class="badge bg-primary fs-6 p-2" id="total-products-badge" style="color: black; font-weight: bold;">Total Products: 0</span>
                         <span class="badge bg-success fs-6 p-2" id="total-quantity-badge" style="color: black; font-weight: bold;">Total Quantity: 0</span>
                         <span class="badge bg-danger fs-6 p-2" id="zero-sold-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter 0 sold items (INV>0)">0 Sold: 0</span>
@@ -2002,7 +2004,8 @@
         }
 
         function updateSummary() {
-            const data = table.getData("active");
+            // Sum from table directly with no filter: use full dataset (getData("all"))
+            const data = table.getData("all");
             
             let totalProducts = data.length;
             let totalQuantity = 0;
@@ -2032,16 +2035,16 @@
             let moreAmzCount = 0;
             
             data.forEach(row => {
-                const qty = parseInt(row['quantity']) || 0;
-                const price = parseFloat(row['base_price']) || 0;
-                totalQuantity += qty;
-                totalPriceWeighted += price * qty;
-                totalQty += qty;
-                
-                // Revenue = Temu Price × Temu L30
-                const temuPrice = parseFloat(row['temu_price']) || 0;
+                // Use temu_l30 (L30 sold) for Total Quantity to match tabulator view (quantity_purchased)
                 const temuL30 = parseInt(row['temu_l30']) || 0;
-                totalRevenue += temuPrice * temuL30;
+                const price = parseFloat(row['base_price']) || 0;
+                totalQuantity += temuL30;
+                totalPriceWeighted += price * temuL30;
+                totalQty += temuL30;
+                
+                // Total Revenue = base_price × quantity (same formula as tabulator sales page)
+                totalRevenue += price * temuL30;
+                const temuPrice = parseFloat(row['temu_price']) || 0;
                 
                 // Profit from row data
                 totalProfit += parseFloat(row['profit']) || 0;
@@ -2137,9 +2140,17 @@
             // Calculate average views
             const avgViews = totalProducts > 0 ? totalViews / totalProducts : 0;
             
-            // Update badges
+            // Update badges (Total Orders, Quantity, Revenue from API = same as sales page when available)
+            if (salesSummaryFromBackend) {
+                $('#total-orders-badge').text('Total Orders: ' + (salesSummaryFromBackend.total_orders || 0).toLocaleString());
+                $('#total-quantity-badge').text('Total Quantity: ' + (salesSummaryFromBackend.total_quantity || 0).toLocaleString());
+                $('#total-revenue-badge').text('Total Revenue: $' + (salesSummaryFromBackend.total_revenue != null ? Number(salesSummaryFromBackend.total_revenue).toFixed(2) : '0.00'));
+            } else {
+                $('#total-orders-badge').text('Total Orders: 0');
+                $('#total-quantity-badge').text('Total Quantity: ' + totalQuantity.toLocaleString());
+                $('#total-revenue-badge').text('Total Revenue: $' + totalRevenue.toFixed(2));
+            }
             $('#total-products-badge').text('Total Products: ' + totalProducts.toLocaleString());
-            $('#total-quantity-badge').text('Total Quantity: ' + totalQuantity.toLocaleString());
             $('#zero-sold-count-badge').text('0 Sold Count: ' + zeroSoldCount.toLocaleString());
             $('#missing-count-badge').text('Missing: ' + missingCount.toLocaleString());
             $('#mapped-count-badge').text('MP: ' + mappedCount.toLocaleString());
@@ -2149,7 +2160,7 @@
             $('#avg-price-badge').text('Avg Price: $' + avgPrice.toFixed(2));
             $('#avg-cvr-badge').text('Avg CVR: ' + avgCvr.toFixed(1) + '%');
             $('#avg-dil-badge').text('Avg DIL: ' + Math.round(avgDil) + '%');
-            $('#total-revenue-badge').text('Total Revenue: $' + Math.round(totalRevenue).toLocaleString());
+            // Total Revenue badge set above from sales_summary or table
             $('#total-profit-badge').text('Total Profit: $' + Math.round(totalProfit).toLocaleString());
             $('#total-lp-badge').text('Total LP: $' + Math.round(totalLp).toLocaleString());
             $('#avg-gprft-badge').text('Avg GPRFT%: ' + avgGprft.toFixed(1) + '%');
@@ -2268,6 +2279,7 @@
         };
 
         let totalCampaignCountFromBackend = 0;
+        let salesSummaryFromBackend = null;
 
         table = new Tabulator("#temu-table", {
             ajaxURL: "/temu-decrease-data",
@@ -2283,6 +2295,7 @@
             ajaxResponse: function(url, params, response) {
                 if (response && Array.isArray(response.data)) {
                     totalCampaignCountFromBackend = parseInt(response.total_campaign_count || 0, 10);
+                    salesSummaryFromBackend = response.sales_summary || null;
                     return response.data;
                 }
                 if (Array.isArray(response)) return response;

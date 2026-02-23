@@ -6392,6 +6392,151 @@ class ChannelMasterController extends Controller
     }
 
     /**
+     * Return last-two values per channel per metric for table dot colors (red/green/gray).
+     * Uses the same source and methodology as the chart: ChannelMasterSummary only, normalized channel key,
+     * same metricMap and value extraction as getChannelMetricChartData (single-channel).
+     */
+    public function getChannelMetricDotTrends(Request $request)
+    {
+        try {
+            $channelsParam = $request->input('channels', '');
+            // Same normalization as chart and table save: normalized key (temu, amazon, etc.)
+            $channelKeys = array_filter(array_map(function ($c) {
+                return strtolower(str_replace([' ', '-', '&', '/'], '', trim($c)));
+            }, explode(',', $channelsParam)));
+
+            if (empty($channelKeys)) {
+                return response()->json(['success' => true, 'channels' => (object)[]]);
+            }
+
+            // Same metricMap as getChannelMetricChartData so value extraction matches chart exactly
+            $metricMap = [
+                'l30_sales' => 'l30_sales',
+                'l30_orders' => 'l30_orders',
+                'qty' => 'total_quantity',
+                'gprofit' => 'gprofit_percent',
+                'groi' => 'groi_percent',
+                'ads_pct' => 'tcos_percent',
+                'npft' => 'npft_percent',
+                'missing_l' => 'miss_count',
+                'nmap' => 'nmap_count',
+                'ad_spend' => 'total_ad_spend',
+                'clicks' => 'clicks',
+            ];
+            $metrics = ['missing_l', 'nmap', 'l30_sales', 'ad_spend', 'l30_orders', 'qty', 'gprofit', 'groi', 'ads_pct', 'npft', 'nroi', 'clicks', 'ad_sales', 'ad_sold', 'acos', 'ads_cvr'];
+            $out = [];
+
+            foreach ($channelKeys as $channel) {
+                foreach ($metrics as $metric) {
+                    $out[$channel][$metric] = [null, null];
+                }
+
+                // Same source as chart: ChannelMasterSummary. Same key: normalized channel (table saves with this key in saveChannelDailySummaries).
+                $cmsRows = \App\Models\ChannelMasterSummary::where('channel', $channel)
+                    ->orderBy('snapshot_date', 'desc')
+                    ->take(2)
+                    ->get();
+
+                if ($cmsRows->count() >= 2) {
+                    // Same order as chart: older = second-to-last, newer = last (chart compares values[last] vs values[last-1])
+                    $older = $cmsRows->get(1)->summary_data ?? [];
+                    $newer = $cmsRows->get(0)->summary_data ?? [];
+                    foreach ($metrics as $metric) {
+                        $v1 = $this->getMetricValueFromSummaryData($channel, $metric, $older, $metricMap);
+                        $v2 = $this->getMetricValueFromSummaryData($channel, $metric, $newer, $metricMap);
+                        if ($v1 !== null || $v2 !== null) {
+                            $out[$channel][$metric] = [$v1, $v2];
+                        }
+                    }
+                } elseif ($cmsRows->count() === 1) {
+                    $sd = $cmsRows->get(0)->summary_data ?? [];
+                    foreach ($metrics as $metric) {
+                        $v = $this->getMetricValueFromSummaryData($channel, $metric, $sd, $metricMap);
+                        $out[$channel][$metric] = $v !== null ? [$v, $v] : [null, null];
+                    }
+                }
+            }
+
+            return response()->json(['success' => true, 'channels' => $out]);
+        } catch (\Exception $e) {
+            \Log::error('getChannelMetricDotTrends error: ' . $e->getMessage());
+            return response()->json(['success' => false, 'message' => 'Error fetching dot trends'], 500);
+        }
+    }
+
+    /**
+     * Extract a single metric value from a MarketplaceDailyMetric row (for dot trends).
+     */
+    private function getMetricValueFromMdm(string $metric, $mdm): ?float
+    {
+        if (!$mdm) return null;
+        if ($metric === 'ad_spend') {
+            $kw = (float) ($mdm->kw_spent ?? 0);
+            $pmt = (float) ($mdm->pmt_spent ?? 0);
+            $hl = (float) ($mdm->hl_spent ?? 0);
+            $total = $kw + $pmt + $hl;
+            return $total;
+        }
+        return match ($metric) {
+            'l30_sales' => $mdm->total_sales !== null ? (float) $mdm->total_sales : null,
+            'l30_orders' => $mdm->total_orders !== null ? (float) $mdm->total_orders : null,
+            'qty' => $mdm->total_quantity !== null ? (float) $mdm->total_quantity : null,
+            'gprofit' => $mdm->pft_percentage !== null ? (float) $mdm->pft_percentage : null,
+            'groi' => $mdm->roi_percentage !== null ? (float) $mdm->roi_percentage : null,
+            'ads_pct' => $mdm->tacos_percentage !== null ? (float) $mdm->tacos_percentage : null,
+            'npft' => $mdm->n_pft !== null ? (float) $mdm->n_pft : null,
+            'nroi' => $mdm->n_roi !== null ? (float) $mdm->n_roi : null,
+            default => null,
+        };
+    }
+
+    /**
+     * Extract a single metric value from ChannelMasterSummary summary_data (same logic as chart).
+     */
+    private function getMetricValueFromSummaryData(string $channel, string $metric, array $summaryData, array $metricMap): ?float
+    {
+        $metricKey = $metricMap[$metric] ?? $metric;
+
+        if ($metric === 'acos') {
+            $spend = floatval($summaryData['total_ad_spend'] ?? 0);
+            $l30Sales = floatval($summaryData['l30_sales'] ?? 0);
+            $adSales = $l30Sales * $this->getAdSalesRatio($channel);
+            return $adSales > 0 ? round(($spend / $adSales) * 100, 1) : null;
+        }
+        if ($metric === 'ad_sales') {
+            $adSales = floatval($summaryData['ad_sales'] ?? 0);
+            if ($adSales <= 0) {
+                $l30Sales = floatval($summaryData['l30_sales'] ?? 0);
+                $adSales = $l30Sales * $this->getAdSalesRatio($channel);
+            }
+            return round($adSales, 2);
+        }
+        if ($metric === 'ad_sold') {
+            $adSold = floatval($summaryData['ad_sold'] ?? 0);
+            if ($adSold <= 0) {
+                $clicks = floatval($summaryData['clicks'] ?? 0);
+                $adSold = $clicks * $this->getAdCvrRatio($channel);
+            }
+            return round($adSold);
+        }
+        if ($metric === 'ads_cvr') {
+            $adSold = floatval($summaryData['ad_sold'] ?? 0);
+            $clicks = floatval($summaryData['clicks'] ?? 0);
+            if ($adSold <= 0 && $clicks > 0) {
+                $adSold = $clicks * $this->getAdCvrRatio($channel);
+            }
+            return $clicks > 0 ? round(($adSold / $clicks) * 100, 1) : null;
+        }
+        if ($metric === 'nroi') {
+            $groi = floatval($summaryData['groi_percent'] ?? 0);
+            $tcos = floatval($summaryData['tcos_percent'] ?? 0);
+            return round($groi - $tcos, 1);
+        }
+
+        return array_key_exists($metricKey, $summaryData) ? floatval($summaryData[$metricKey]) : null;
+    }
+
+    /**
      * Get the "table reference value" for ALL channels combined.
      * Sums the latest marketplace_daily_metrics value across every channel.
      * Used when channel='all' to scale charts to match the badge totals.
@@ -6674,6 +6819,7 @@ class ChannelMasterController extends Controller
     {
         $mapping = [
             'amazon' => 'Amazon',
+            'amazonfba' => 'Amazon FBA',
             'ebay' => 'eBay',
             'ebaytwo' => 'eBay 2',
             'ebaythree' => 'eBay 3',

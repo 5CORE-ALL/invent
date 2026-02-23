@@ -1073,41 +1073,69 @@ class TemuController extends Controller
     }
 
     /**
-     * Get daily data - show only SKUs that exist in temu_daily_data
-     * Fetch LP and temu_ship from ProductMaster for those SKUs only
+     * Get daily data for Temu tabulator (sales page).
+     * Order data is taken from temu_daily_data and matched by SKU (contribution_sku,
+     * normalized to ProductMaster SKU). LP and temu_ship come from ProductMaster.
      */
     public function getDailyData(Request $request)
     {
         try {
-            // 1. Fetch ALL TemuDailyData first - show ALL records (no date filter)
-            $allTemuData = TemuDailyData::orderBy('purchase_date', 'desc')
+            $normalizeSku = function ($sku) {
+                $sku = strtoupper(trim((string) $sku));
+                $sku = preg_replace('/(\d+)\s*(PCS?|PIECES?)$/i', '$1PC', $sku);
+                $sku = preg_replace('/\s+/', ' ', $sku);
+                return $sku;
+            };
+
+            // 1. Get ProductMaster SKUs (excluding PARENT) - same universe as analytic/decrease page
+            $productMasterSkus = ProductMaster::orderBy('parent', 'asc')
+                ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
+                ->orderBy('sku', 'asc')
+                ->pluck('sku')
+                ->filter(function ($sku) {
+                    return stripos($sku, 'PARENT') === false;
+                })
+                ->unique()
+                ->values()
+                ->all();
+
+            $normalizedPmSet = collect($productMasterSkus)->mapWithKeys(function ($s) use ($normalizeSku) {
+                return [$normalizeSku($s) => true];
+            })->all();
+
+            // 2. Include orders whose contribution_sku normalizes to a ProductMaster SKU (so "abc" matches "ABC")
+            $allowedRawSkus = TemuDailyData::select('contribution_sku')->distinct()
+                ->get()
+                ->filter(function ($r) use ($normalizeSku, $normalizedPmSet) {
+                    return isset($normalizedPmSet[$normalizeSku($r->contribution_sku ?? '')]);
+                })
+                ->pluck('contribution_sku')
+                ->unique()
+                ->values()
+                ->all();
+
+            $allTemuData = TemuDailyData::whereIn('contribution_sku', $allowedRawSkus)
+                ->orderBy('purchase_date', 'desc')
                 ->orderBy('order_id', 'desc')
                 ->get();
-            
+
             Log::info('Temu data fetched', [
                 'total_records' => $allTemuData->count(),
                 'unique_skus_in_temu' => $allTemuData->pluck('contribution_sku')->unique()->count()
             ]);
-            
-            // 2. Get unique SKUs from TemuDailyData only
-            $temuSkus = $allTemuData->pluck('contribution_sku')
-                ->filter()
-                ->unique()
-                ->values()
-                ->all();
-            
-            // 3. Fetch ProductMaster data ONLY for SKUs that exist in TemuDailyData
-            $productMasters = ProductMaster::whereIn('sku', $temuSkus)
-                ->get()
-                ->keyBy('sku');
-            
-            // 4. Build result array - show only Temu data (exactly 2562 records, no parent rows)
+
+            // 3. ProductMaster keyed by normalized SKU for lookup (order "abc" -> PM "ABC")
+            $productMasters = ProductMaster::whereIn('sku', $productMasterSkus)->get();
+            $pmByNormalized = $productMasters->keyBy(function ($pm) use ($normalizeSku) {
+                return $normalizeSku($pm->sku);
+            });
+
+            // 5. Build result array
             $result = [];
 
-            // Process ALL Temu data directly (no parent grouping to avoid extra rows)
             foreach ($allTemuData as $item) {
                 $sku = $item->contribution_sku;
-                $pm = $productMasters[$sku] ?? null;
+                $pm = $pmByNormalized[$normalizeSku($sku ?? '')] ?? null;
                 
                 // Get parent from ProductMaster if available
                 $parent = $pm ? $pm->parent : '';
@@ -1176,7 +1204,7 @@ class TemuController extends Controller
             Log::info('Temu daily data fetched (exact count match)', [
                 'result_count' => count($result),
                 'temu_data_count' => $allTemuData->count(),
-                'unique_temu_skus' => count($temuSkus),
+                'unique_temu_skus' => count($allowedRawSkus),
                 'product_master_matches' => $productMasters->count(),
                 'match_check' => count($result) === $allTemuData->count() ? 'MATCH' : 'MISMATCH'
             ]);
@@ -1512,12 +1540,56 @@ class TemuController extends Controller
             // Fetch shopify data for inventory
             $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
 
-            // Fetch Temu L30 (sales count from temu_daily_data - all available data)
-            $temuSalesData = TemuDailyData::whereIn('contribution_sku', $skus)
-                ->selectRaw('contribution_sku as sku, SUM(quantity_purchased) as temu_l30')
-                ->groupBy('contribution_sku')
-                ->get()
-                ->keyBy('sku');
+            // L30 = orders from temu_daily_data matched by SKU (contribution_sku normalized to ProductMaster)
+            // Same source as tabulator; normalized so "abc" on orders matches "ABC" on ProductMaster
+            $normalizedPmSkus = collect($skus)->mapWithKeys(function ($sku) use ($normalizeSku) {
+                return [$normalizeSku($sku) => $sku];
+            })->all();
+            $l30ByNormalizedSku = array_fill_keys(array_keys($normalizedPmSkus), 0);
+            $orderRows = TemuDailyData::select('contribution_sku', 'quantity_purchased')->get();
+            foreach ($orderRows as $row) {
+                $n = $normalizeSku($row->contribution_sku ?? '');
+                if (isset($l30ByNormalizedSku[$n])) {
+                    $l30ByNormalizedSku[$n] += (int) ($row->quantity_purchased ?? 0);
+                }
+            }
+            $temuSalesData = collect($skus)->mapWithKeys(function ($sku) use ($l30ByNormalizedSku, $normalizeSku) {
+                $temuL30 = $l30ByNormalizedSku[$normalizeSku($sku)] ?? 0;
+                return [$sku => (object) ['sku' => $sku, 'temu_l30' => $temuL30]];
+            });
+
+            // Sales summary from same order data as tabulator (Total Orders, Total Quantity, Total Revenue)
+            $normalizedPmSet = collect($skus)->mapWithKeys(function ($s) use ($normalizeSku) {
+                return [$normalizeSku($s) => true];
+            })->all();
+            $allowedRawSkus = TemuDailyData::select('contribution_sku')->distinct()->get()
+                ->filter(function ($r) use ($normalizeSku, $normalizedPmSet) {
+                    return isset($normalizedPmSet[$normalizeSku($r->contribution_sku ?? '')]);
+                })
+                ->pluck('contribution_sku')
+                ->unique()
+                ->values()
+                ->all();
+            $salesOrderRows = TemuDailyData::whereIn('contribution_sku', $allowedRawSkus)
+                ->get(['contribution_sku', 'order_id', 'quantity_purchased', 'base_price_total']);
+            $salesTotalOrders = 0;
+            $salesTotalQuantity = 0;
+            $salesTotalRevenue = 0.0;
+            foreach ($salesOrderRows as $row) {
+                if (trim((string)($row->contribution_sku ?? '')) === '' || trim((string)($row->order_id ?? '')) === '') {
+                    continue;
+                }
+                $salesTotalOrders++;
+                $qty = (int)($row->quantity_purchased ?? 0);
+                $base = (float)($row->base_price_total ?? 0);
+                $salesTotalQuantity += $qty;
+                $salesTotalRevenue += $base * $qty;
+            }
+            $salesSummary = [
+                'total_orders' => $salesTotalOrders,
+                'total_quantity' => $salesTotalQuantity,
+                'total_revenue' => round($salesTotalRevenue, 2),
+            ];
 
             // Fetch all view data from temu_view_data (no date filter)
             $viewData = TemuViewData::selectRaw('goods_id, SUM(product_impressions) as product_impressions, SUM(visitor_impressions) as visitor_impressions, SUM(product_clicks) as product_clicks, SUM(visitor_clicks) as visitor_clicks, AVG(ctr) as ctr')
@@ -1820,6 +1892,7 @@ class TemuController extends Controller
             return response()->json([
                 'data' => $processedData,
                 'total_campaign_count' => $totalCampaignCount,
+                'sales_summary' => $salesSummary,
             ]);
         } catch (\Exception $e) {
             Log::error('Error fetching Temu decrease data: ' . $e->getMessage());
@@ -3001,16 +3074,16 @@ class TemuController extends Controller
             $moreAmzCount = 0;
             
             // Loop through each row (EXACT JavaScript forEach logic)
+            // Use temu_l30 for Total Quantity to match tabulator view (quantity sold, not stock)
             foreach ($filteredData as $row) {
-                $qty = intval($row['quantity'] ?? 0);
+                $temuL30 = intval($row['temu_l30'] ?? 0);
                 $price = floatval($row['base_price'] ?? 0);
-                $totalQuantity += $qty;
-                $totalPriceWeighted += $price * $qty;
-                $totalQty += $qty;
+                $totalQuantity += $temuL30;
+                $totalPriceWeighted += $price * $temuL30;
+                $totalQty += $temuL30;
                 
                 // Revenue = Temu Price × Temu L30
                 $temuPrice = floatval($row['temu_price'] ?? 0);
-                $temuL30 = intval($row['temu_l30'] ?? 0);
                 $totalRevenue += $temuPrice * $temuL30;
                 
                 // Profit from row data

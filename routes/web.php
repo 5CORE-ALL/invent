@@ -421,6 +421,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/channel-clicks-breakdown', [ChannelMasterController::class, 'getClicksBreakdown']);
     Route::get('/ad-breakdown-chart-data', [ChannelMasterController::class, 'getAdBreakdownChartData']);
     Route::get('/channel-metric-chart-data', [ChannelMasterController::class, 'getChannelMetricChartData']);
+    Route::get('/channel-metric-dot-trends', [ChannelMasterController::class, 'getChannelMetricDotTrends']);
     Route::post('/channel-archive', [ChannelMasterController::class, 'archiveChannel'])->name('channel.archive');
     Route::get('/all-marketplace-master', [ChannelMasterController::class, 'allMarketplaceMaster'])->name('all.marketplace.master');
 

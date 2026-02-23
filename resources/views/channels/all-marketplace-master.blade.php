@@ -675,6 +675,9 @@
 @section('script-bottom')
     <script>
         let table = null;
+        var channelMetricDotTrendsUrl = "{{ url('channel-metric-dot-trends') }}";
+        var dotTrendsLoadedOnce = false;
+        var DEFAULT_DOT_GRAY = '#6c757d';
 
         // Toast notification helper
         function showToast(type, message) {
@@ -835,6 +838,10 @@
                 ajaxResponse: function(url, params, response) {
                     if (response && response.data) {
                         updateSummaryStats(response.data);
+                        if (!dotTrendsLoadedOnce) {
+                            dotTrendsLoadedOnce = true;
+                            loadMetricDotTrends(response.data);
+                        }
                         return response.data;
                     }
                     return [];
@@ -896,7 +903,8 @@
                             const rowData = cell.getRow().getData();
                             const missingLink = rowData['missing_link'] || '';
                             const channel = (rowData['Channel '] || '').trim();
-                            const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="missing_l" style="cursor:pointer;color:#b8860b;font-size:8px;" title="View Chart"></i>`;
+                            const dotColor = getMetricDotColor(channel, 'missing_l');
+                            const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="missing_l" style="cursor:pointer;color:${dotColor};font-size:8px;" title="View Chart"></i>`;
 
                             const style = 'color:black;font-weight:600;';
 
@@ -945,7 +953,8 @@
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
                             const channel = (cell.getRow().getData()['Channel '] || '').trim();
-                            const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="nmap" style="cursor:pointer;color:#b8860b;font-size:8px;" title="View Chart"></i>`;
+                            const dotColor = getMetricDotColor(channel, 'nmap');
+                            const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="nmap" style="cursor:pointer;color:${dotColor};font-size:8px;" title="View Chart"></i>`;
 
                             let color = 'red';
                             if (value === 0) {
@@ -1012,7 +1021,8 @@
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
                             const channel = (cell.getRow().getData()['Channel '] || '').trim();
-                            const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="l30_sales" style="cursor:pointer;color:#b8860b;font-size:8px;" title="View Chart"></i>`;
+                            const dotColor = getMetricDotColor(channel, 'l30_sales');
+                            const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="l30_sales" style="cursor:pointer;color:${dotColor};font-size:8px;" title="View Chart"></i>`;
                             return `<span style="font-weight: 600;">$${value.toLocaleString('en-US')}</span>${chartIcon}`;
                         },
                         cellClick: function(e, cell) {
@@ -1037,7 +1047,8 @@
                             const totalSpent = parseNumber(cell.getValue() || 0);
                             const channel = (cell.getRow().getData()['Channel '] || '').trim();
                             if (totalSpent === 0) return '-';
-                            const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="ad_spend" style="cursor:pointer;color:#b8860b;font-size:8px;" title="View Chart"></i>`;
+                            const dotColor = getMetricDotColor(channel, 'ad_spend');
+                            const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="ad_spend" style="cursor:pointer;color:${dotColor};font-size:8px;" title="View Chart"></i>`;
                             const infoIcon =
                                 `<i class="fas fa-chevron-right ad-spend-breakdown-toggle ms-1" style="cursor:pointer;color:#17a2b8;font-size:10px;" title="Toggle Spend Breakdown"></i>`;
                             return `<span style="font-weight:600;">$${Math.round(totalSpent).toLocaleString('en-US')}</span>${chartIcon}${infoIcon}`;
@@ -1059,6 +1070,223 @@
                         }
                     },
                     {
+                        title: "L30 Orders",
+                        field: "L30 Orders",
+                        hozAlign: "center",
+                        sorter: "number",
+                        width: 100,
+                        formatter: function(cell) {
+                            const value = parseNumber(cell.getValue());
+                            const channel = (cell.getRow().getData()['Channel '] || '').trim();
+                            const dotColor = getMetricDotColor(channel, 'l30_orders');
+                            const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="l30_orders" style="cursor:pointer;color:${dotColor};font-size:8px;" title="View Chart"></i>`;
+                            return `<span>${value.toLocaleString('en-US')}</span>${chartIcon}`;
+                        },
+                        cellClick: function(e, cell) {
+                            if (e.target.classList.contains('metric-chart-icon')) {
+                                e.stopPropagation();
+                                var cv = cell.getElement().querySelector('span'); cv = cv ? parseFloat(cv.textContent.replace(/[$,%,\s]/g, '')) : null; showMetricChart($(e.target).data('channel'), $(e.target).data('metric'), cv);
+                            }
+                        },
+                        bottomCalc: "sum",
+                        bottomCalcFormatter: function(cell) {
+                            const value = cell.getValue();
+                            return `<strong>${parseNumber(value).toLocaleString('en-US')}</strong>`;
+                        }
+                    },
+                    {
+                        title: "Qty items",
+                        field: "Qty",
+                        hozAlign: "center",
+                        sorter: "number",
+                        width: 90,
+                        formatter: function(cell) {
+                            const value = parseNumber(cell.getValue());
+                            const channel = (cell.getRow().getData()['Channel '] || '').trim();
+                            const dotColor = getMetricDotColor(channel, 'qty');
+                            const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="qty" style="cursor:pointer;color:${dotColor};font-size:8px;" title="View Chart"></i>`;
+                            return `<span>${value.toLocaleString('en-US')}</span>${chartIcon}`;
+                        },
+                        cellClick: function(e, cell) {
+                            if (e.target.classList.contains('metric-chart-icon')) {
+                                e.stopPropagation();
+                                var cv = cell.getElement().querySelector('span'); cv = cv ? parseFloat(cv.textContent.replace(/[$,%,\s]/g, '')) : null; showMetricChart($(e.target).data('channel'), $(e.target).data('metric'), cv);
+                            }
+                        },
+                        bottomCalc: "sum",
+                        bottomCalcFormatter: function(cell) {
+                            const value = cell.getValue();
+                            return `<strong>${parseNumber(value).toLocaleString('en-US')}</strong>`;
+                        }
+                    },
+                    {
+                        title: "Gprofit%",
+                        field: "Gprofit%",
+                        hozAlign: "center",
+                        sorter: "number",
+                        formatter: function(cell) {
+                            const value = parseNumber(cell.getValue());
+                            const channel = (cell.getRow().getData()['Channel '] || '').trim();
+                            const dotColor = getMetricDotColor(channel, 'gprofit');
+                            const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="gprofit" style="cursor:pointer;color:${dotColor};font-size:8px;" title="View Chart"></i>`;
+                            let style = '';
+
+                            if (value >= 0 && value <= 10) {
+                                style = 'color:#a00211;';
+                            } else if (value > 10 && value <= 18) {
+                                style =
+                                    'background:#ffc107;color:black;padding:4px 8px;border-radius:4px;';
+                            } else if (value > 18 && value <= 25) {
+                                style = 'color:#3591dc;';
+                            } else if (value > 25 && value <= 40) {
+                                style = 'color:#28a745;';
+                            } else {
+                                style = 'color:#e83e8c;';
+                            }
+
+                            return `<span style="${style}font-weight:600;">${value.toFixed(1)}%</span>${chartIcon}`;
+                        },
+                        cellClick: function(e, cell) {
+                            if (e.target.classList.contains('metric-chart-icon')) {
+                                e.stopPropagation();
+                                var cv = cell.getElement().querySelector('span'); cv = cv ? parseFloat(cv.textContent.replace(/[$,%,\s]/g, '')) : null; showMetricChart($(e.target).data('channel'), $(e.target).data('metric'), cv);
+                            }
+                        }
+                    },
+                    {
+                        title: "G ROI%",
+                        field: "G Roi",
+                        hozAlign: "center",
+                        sorter: "number",
+                        formatter: function(cell) {
+                            const value = parseNumber(cell.getValue());
+                            const channel = (cell.getRow().getData()['Channel '] || '').trim();
+                            const dotColor = getMetricDotColor(channel, 'groi');
+                            const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="groi" style="cursor:pointer;color:${dotColor};font-size:8px;" title="View Chart"></i>`;
+                            let style = '';
+
+                            if (value <= 50) {
+                                style = 'color:#a00211;';
+                            } else if (value > 50 && value <= 75) {
+                                style = 'background:#ffc107;color:black;padding:4px 8px;border-radius:4px;';
+                            } else if (value > 75 && value <= 125) {
+                                style = 'color:#28a745;';
+                            } else {
+                                style = 'color:#8000ff;';
+                            }
+
+                            return `<span style="${style}font-weight:600;">${value.toFixed(0)}%</span>${chartIcon}`;
+                        },
+                        cellClick: function(e, cell) {
+                            if (e.target.classList.contains('metric-chart-icon')) {
+                                e.stopPropagation();
+                                var cv = cell.getElement().querySelector('span'); cv = cv ? parseFloat(cv.textContent.replace(/[$,%,\s]/g, '')) : null; showMetricChart($(e.target).data('channel'), $(e.target).data('metric'), cv);
+                            }
+                        }
+                    },
+                    {
+                        title: "TAcos %",
+                        field: "Ads%",
+                        hozAlign: "center",
+                        sorter: "number",
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+                            const channelRaw = (rowData['Channel '] || '').trim();
+                            const channel = channelRaw.toLowerCase();
+                            const dotColor = getMetricDotColor(channelRaw, 'ads_pct');
+                            const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channelRaw}" data-metric="ads_pct" style="cursor:pointer;color:${dotColor};font-size:8px;" title="View Chart"></i>`;
+
+                            let adsPercent = 0;
+                            if (channel === 'walmart' || channel === 'temu' || channel ===
+                                'shopifyb2c') {
+                                adsPercent = parseNumber(rowData['TACOS %'] || 0);
+                            } else {
+                                adsPercent = parseNumber(cell.getValue() || 0);
+                            }
+
+                            let style = '';
+                            if (adsPercent < 5) {
+                                style = 'color:#e83e8c;';
+                            } else if (adsPercent >= 5 && adsPercent <= 10) {
+                                style = 'color:#28a745;';
+                            } else {
+                                style = 'color:#a00211;';
+                            }
+
+                            return `<span style="${style}font-weight:600;">${adsPercent.toFixed(1)}%</span>${chartIcon}`;
+                        },
+                        cellClick: function(e, cell) {
+                            if (e.target.classList.contains('metric-chart-icon')) {
+                                e.stopPropagation();
+                                var cv = cell.getElement().querySelector('span'); cv = cv ? parseFloat(cv.textContent.replace(/[$,%,\s]/g, '')) : null; showMetricChart($(e.target).data('channel'), $(e.target).data('metric'), cv);
+                            }
+                        }
+                    },
+                    {
+                        title: "N PFT%",
+                        field: "N PFT",
+                        hozAlign: "center",
+                        sorter: "number",
+                        formatter: function(cell) {
+                            const value = parseNumber(cell.getValue());
+                            const channel = (cell.getRow().getData()['Channel '] || '').trim();
+                            const dotColor = getMetricDotColor(channel, 'npft');
+                            const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="npft" style="cursor:pointer;color:${dotColor};font-size:8px;" title="View Chart"></i>`;
+                            let style = '';
+
+                            if (value >= 0 && value <= 10) {
+                                style = 'color:#a00211;';
+                            } else if (value > 10 && value <= 18) {
+                                style = 'background:#ffc107;color:black;padding:4px 8px;border-radius:4px;';
+                            } else if (value > 18 && value <= 25) {
+                                style = 'color:#3591dc;';
+                            } else if (value > 25 && value <= 40) {
+                                style = 'color:#28a745;';
+                            } else {
+                                style = 'color:#e83e8c;';
+                            }
+
+                            return `<span style="${style}font-weight:600;">${value.toFixed(1)}%</span>${chartIcon}`;
+                        },
+                        cellClick: function(e, cell) {
+                            if (e.target.classList.contains('metric-chart-icon')) {
+                                e.stopPropagation();
+                                var cv = cell.getElement().querySelector('span'); cv = cv ? parseFloat(cv.textContent.replace(/[$,%,\s]/g, '')) : null; showMetricChart($(e.target).data('channel'), $(e.target).data('metric'), cv);
+                            }
+                        }
+                    },
+                    {
+                        title: "N ROI%",
+                        field: "N ROI",
+                        hozAlign: "center",
+                        sorter: "number",
+                        formatter: function(cell) {
+                            const value = parseNumber(cell.getValue());
+                            const channel = (cell.getRow().getData()['Channel '] || '').trim();
+                            const dotColor = getMetricDotColor(channel, 'nroi');
+                            const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="nroi" style="cursor:pointer;color:${dotColor};font-size:8px;" title="View Chart"></i>`;
+                            let style = '';
+
+                            if (value <= 50) {
+                                style = 'color:#a00211;';
+                            } else if (value > 50 && value <= 75) {
+                                style = 'background:#ffc107;color:black;padding:4px 8px;border-radius:4px;';
+                            } else if (value > 75 && value <= 125) {
+                                style = 'color:#28a745;';
+                            } else {
+                                style = 'color:#8000ff;';
+                            }
+
+                            return `<span style="${style}font-weight:600;">${value.toFixed(0)}%</span>${chartIcon}`;
+                        },
+                        cellClick: function(e, cell) {
+                            if (e.target.classList.contains('metric-chart-icon')) {
+                                e.stopPropagation();
+                                var cv = cell.getElement().querySelector('span'); cv = cv ? parseFloat(cv.textContent.replace(/[$,%,\s]/g, '')) : null; showMetricChart($(e.target).data('channel'), $(e.target).data('metric'), cv);
+                            }
+                        }
+                    },
+                    {
                         title: "KW",
                         field: "KW Spent",
                         hozAlign: "center",
@@ -1068,8 +1296,8 @@
                             const rowData = cell.getRow().getData();
                             const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
-                            const chartIcon =
-                                `<i class="fas fa-circle ad-chart-icon ms-1" data-channel="${channel}" data-adtype="kw" style="cursor:pointer;color:#b8860b;font-size:8px;" title="View Chart"></i>`;
+                            const dotColor = getMetricDotColor(channel, 'ad_spend');
+                            const chartIcon = `<i class="fas fa-circle ad-chart-icon ms-1" data-channel="${channel}" data-adtype="kw" style="cursor:pointer;color:${dotColor};font-size:8px;" title="View Chart"></i>`;
                             return `<span style="font-weight:600;color:#198754;">$${value.toLocaleString('en-US', {minimumFractionDigits: 0, maximumFractionDigits: 0})}</span>${chartIcon}`;
                         },
                         cellClick: function(e, cell) {
@@ -1095,8 +1323,8 @@
                             const rowData = cell.getRow().getData();
                             const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
-                            const chartIcon =
-                                `<i class="fas fa-circle ad-chart-icon ms-1" data-channel="${channel}" data-adtype="pt" style="cursor:pointer;color:#b8860b;font-size:8px;" title="View Chart"></i>`;
+                            const dotColor = getMetricDotColor(channel, 'ad_spend');
+                            const chartIcon = `<i class="fas fa-circle ad-chart-icon ms-1" data-channel="${channel}" data-adtype="pt" style="cursor:pointer;color:${dotColor};font-size:8px;" title="View Chart"></i>`;
                             return `<span style="font-weight:600;color:#0d6efd;">$${value.toLocaleString('en-US', {minimumFractionDigits: 0, maximumFractionDigits: 0})}</span>${chartIcon}`;
                         },
                         cellClick: function(e, cell) {
@@ -1122,8 +1350,8 @@
                             const rowData = cell.getRow().getData();
                             const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
-                            const chartIcon =
-                                `<i class="fas fa-circle ad-chart-icon ms-1" data-channel="${channel}" data-adtype="hl" style="cursor:pointer;color:#b8860b;font-size:8px;" title="View Chart"></i>`;
+                            const dotColor = getMetricDotColor(channel, 'ad_spend');
+                            const chartIcon = `<i class="fas fa-circle ad-chart-icon ms-1" data-channel="${channel}" data-adtype="hl" style="cursor:pointer;color:${dotColor};font-size:8px;" title="View Chart"></i>`;
                             return `<span style="font-weight:600;color:#dc3545;">$${value.toLocaleString('en-US', {minimumFractionDigits: 0, maximumFractionDigits: 0})}</span>${chartIcon}`;
                         },
                         cellClick: function(e, cell) {
@@ -1149,8 +1377,8 @@
                             const rowData = cell.getRow().getData();
                             const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
-                            const chartIcon =
-                                `<i class="fas fa-circle ad-chart-icon ms-1" data-channel="${channel}" data-adtype="pmt" style="cursor:pointer;color:#b8860b;font-size:8px;" title="View Chart"></i>`;
+                            const dotColor = getMetricDotColor(channel, 'ad_spend');
+                            const chartIcon = `<i class="fas fa-circle ad-chart-icon ms-1" data-channel="${channel}" data-adtype="pmt" style="cursor:pointer;color:${dotColor};font-size:8px;" title="View Chart"></i>`;
                             return `<span style="font-weight:600;color:#ffc107;">$${value.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>${chartIcon}`;
                         },
                         cellClick: function(e, cell) {
@@ -1176,8 +1404,8 @@
                             const rowData = cell.getRow().getData();
                             const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
-                            const chartIcon =
-                                `<i class="fas fa-circle ad-chart-icon ms-1" data-channel="${channel}" data-adtype="shopping" style="cursor:pointer;color:#b8860b;font-size:8px;" title="View Chart"></i>`;
+                            const dotColor = getMetricDotColor(channel, 'ad_spend');
+                            const chartIcon = `<i class="fas fa-circle ad-chart-icon ms-1" data-channel="${channel}" data-adtype="shopping" style="cursor:pointer;color:${dotColor};font-size:8px;" title="View Chart"></i>`;
                             return `<span style="font-weight:600;color:#4285f4;">$${value.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>${chartIcon}`;
                         },
                         cellClick: function(e, cell) {
@@ -1203,8 +1431,8 @@
                             const rowData = cell.getRow().getData();
                             const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
-                            const chartIcon =
-                                `<i class="fas fa-circle ad-chart-icon ms-1" data-channel="${channel}" data-adtype="serp" style="cursor:pointer;color:#b8860b;font-size:8px;" title="View Chart"></i>`;
+                            const dotColor = getMetricDotColor(channel, 'ad_spend');
+                            const chartIcon = `<i class="fas fa-circle ad-chart-icon ms-1" data-channel="${channel}" data-adtype="serp" style="cursor:pointer;color:${dotColor};font-size:8px;" title="View Chart"></i>`;
                             return `<span style="font-weight:600;color:#6f42c1;">$${value.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>${chartIcon}`;
                         },
                         cellClick: function(e, cell) {
@@ -1230,7 +1458,8 @@
                             const value = parseNumber(cell.getValue());
                             const channel = (cell.getRow().getData()['Channel '] || '').trim();
                             if (value === 0) return '-';
-                            const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="clicks" style="cursor:pointer;color:#b8860b;font-size:8px;" title="View Chart"></i>`;
+                            const dotColor = getMetricDotColor(channel, 'clicks');
+                            const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="clicks" style="cursor:pointer;color:${dotColor};font-size:8px;" title="View Chart"></i>`;
                             const infoIcon =
                                 `<i class="fas fa-chevron-right clicks-breakdown-toggle ms-1" style="cursor:pointer;color:#17a2b8;font-size:10px;" title="Toggle Clicks Breakdown"></i>`;
                             return `<span style="font-weight:600;">${value.toLocaleString('en-US')}</span>${chartIcon}${infoIcon}`;
@@ -1263,7 +1492,7 @@
                             const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
                             const chartIcon =
-                                `<i class="fas fa-circle ad-chart-icon ms-1" data-channel="${channel}" data-adtype="kw" data-metric="clicks" style="cursor:pointer;color:#b8860b;font-size:8px;" title="View Chart"></i>`;
+                                `<i class="fas fa-circle ad-chart-icon ms-1" data-channel="${channel}" data-adtype="kw" data-metric="clicks" style="cursor:pointer;color:${getMetricDotColor(channel, 'clicks')};font-size:8px;" title="View Chart"></i>`;
                             return `<span style="font-weight:600;color:#198754;">${value.toLocaleString('en-US')}</span>${chartIcon}`;
                         },
                         cellClick: function(e, cell) {
@@ -1289,7 +1518,7 @@
                             const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
                             const chartIcon =
-                                `<i class="fas fa-circle ad-chart-icon ms-1" data-channel="${channel}" data-adtype="pt" data-metric="clicks" style="cursor:pointer;color:#b8860b;font-size:8px;" title="View Chart"></i>`;
+                                `<i class="fas fa-circle ad-chart-icon ms-1" data-channel="${channel}" data-adtype="pt" data-metric="clicks" style="cursor:pointer;color:${getMetricDotColor(channel, 'clicks')};font-size:8px;" title="View Chart"></i>`;
                             return `<span style="font-weight:600;color:#0d6efd;">${value.toLocaleString('en-US')}</span>${chartIcon}`;
                         },
                         cellClick: function(e, cell) {
@@ -1315,7 +1544,7 @@
                             const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
                             const chartIcon =
-                                `<i class="fas fa-circle ad-chart-icon ms-1" data-channel="${channel}" data-adtype="hl" data-metric="clicks" style="cursor:pointer;color:#b8860b;font-size:8px;" title="View Chart"></i>`;
+                                `<i class="fas fa-circle ad-chart-icon ms-1" data-channel="${channel}" data-adtype="hl" data-metric="clicks" style="cursor:pointer;color:${getMetricDotColor(channel, 'clicks')};font-size:8px;" title="View Chart"></i>`;
                             return `<span style="font-weight:600;color:#dc3545;">${value.toLocaleString('en-US')}</span>${chartIcon}`;
                         },
                         cellClick: function(e, cell) {
@@ -1341,7 +1570,7 @@
                             const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
                             const chartIcon =
-                                `<i class="fas fa-circle ad-chart-icon ms-1" data-channel="${channel}" data-adtype="pmt" data-metric="clicks" style="cursor:pointer;color:#b8860b;font-size:8px;" title="View Chart"></i>`;
+                                `<i class="fas fa-circle ad-chart-icon ms-1" data-channel="${channel}" data-adtype="pmt" data-metric="clicks" style="cursor:pointer;color:${getMetricDotColor(channel, 'clicks')};font-size:8px;" title="View Chart"></i>`;
                             return `<span style="font-weight:600;color:#ffc107;">${value.toLocaleString('en-US')}</span>${chartIcon}`;
                         },
                         cellClick: function(e, cell) {
@@ -1367,7 +1596,7 @@
                             const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
                             const chartIcon =
-                                `<i class="fas fa-circle ad-chart-icon ms-1" data-channel="${channel}" data-adtype="shopping" data-metric="clicks" style="cursor:pointer;color:#b8860b;font-size:8px;" title="View Chart"></i>`;
+                                `<i class="fas fa-circle ad-chart-icon ms-1" data-channel="${channel}" data-adtype="shopping" data-metric="clicks" style="cursor:pointer;color:${getMetricDotColor(channel, 'clicks')};font-size:8px;" title="View Chart"></i>`;
                             return `<span style="font-weight:600;color:#4285f4;">${value.toLocaleString('en-US')}</span>${chartIcon}`;
                         },
                         cellClick: function(e, cell) {
@@ -1393,7 +1622,7 @@
                             const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
                             const chartIcon =
-                                `<i class="fas fa-circle ad-chart-icon ms-1" data-channel="${channel}" data-adtype="serp" data-metric="clicks" style="cursor:pointer;color:#b8860b;font-size:8px;" title="View Chart"></i>`;
+                                `<i class="fas fa-circle ad-chart-icon ms-1" data-channel="${channel}" data-adtype="serp" data-metric="clicks" style="cursor:pointer;color:${getMetricDotColor(channel, 'clicks')};font-size:8px;" title="View Chart"></i>`;
                             return `<span style="font-weight:600;color:#6f42c1;">${value.toLocaleString('en-US')}</span>${chartIcon}`;
                         },
                         cellClick: function(e, cell) {
@@ -1419,7 +1648,8 @@
                             const value = parseNumber(cell.getValue());
                             const channel = (cell.getRow().getData()['Channel '] || '').trim();
                             if (!value || value === 0) return '-';
-                            const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="ad_sales" style="cursor:pointer;color:#b8860b;font-size:8px;" title="View Chart"></i>`;
+                            const dotColor = getMetricDotColor(channel, 'ad_sales');
+                            const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="ad_sales" style="cursor:pointer;color:${dotColor};font-size:8px;" title="View Chart"></i>`;
                             const infoIcon =
                                 `<i class="fas fa-chevron-right ad-sales-breakdown-toggle ms-1" style="cursor:pointer;color:#17a2b8;font-size:10px;" title="Toggle Ad Sales Breakdown"></i>`;
                             return `<span style="font-weight:600;">$${Math.round(value).toLocaleString('en-US')}</span>${chartIcon}${infoIcon}`;
@@ -1453,7 +1683,7 @@
                             const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
                             const chartIcon =
-                                `<i class="fas fa-circle ad-chart-icon ms-1" data-channel="${channel}" data-adtype="kw" data-metric="sales" style="cursor:pointer;color:#b8860b;font-size:8px;" title="View Chart"></i>`;
+                                `<i class="fas fa-circle ad-chart-icon ms-1" data-channel="${channel}" data-adtype="kw" data-metric="sales" style="cursor:pointer;color:${getMetricDotColor(channel, 'ad_sales')};font-size:8px;" title="View Chart"></i>`;
                             return `<span style="font-weight:600;color:#198754;">$${Math.round(value).toLocaleString('en-US')}</span>${chartIcon}`;
                         },
                         cellClick: function(e, cell) {
@@ -1479,7 +1709,7 @@
                             const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
                             const chartIcon =
-                                `<i class="fas fa-circle ad-chart-icon ms-1" data-channel="${channel}" data-adtype="pt" data-metric="sales" style="cursor:pointer;color:#b8860b;font-size:8px;" title="View Chart"></i>`;
+                                `<i class="fas fa-circle ad-chart-icon ms-1" data-channel="${channel}" data-adtype="pt" data-metric="sales" style="cursor:pointer;color:${getMetricDotColor(channel, 'ad_sales')};font-size:8px;" title="View Chart"></i>`;
                             return `<span style="font-weight:600;color:#0d6efd;">$${Math.round(value).toLocaleString('en-US')}</span>${chartIcon}`;
                         },
                         cellClick: function(e, cell) {
@@ -1505,7 +1735,7 @@
                             const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
                             const chartIcon =
-                                `<i class="fas fa-circle ad-chart-icon ms-1" data-channel="${channel}" data-adtype="hl" data-metric="sales" style="cursor:pointer;color:#b8860b;font-size:8px;" title="View Chart"></i>`;
+                                `<i class="fas fa-circle ad-chart-icon ms-1" data-channel="${channel}" data-adtype="hl" data-metric="sales" style="cursor:pointer;color:${getMetricDotColor(channel, 'ad_sales')};font-size:8px;" title="View Chart"></i>`;
                             return `<span style="font-weight:600;color:#dc3545;">$${Math.round(value).toLocaleString('en-US')}</span>${chartIcon}`;
                         },
                         cellClick: function(e, cell) {
@@ -1531,7 +1761,7 @@
                             const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
                             const chartIcon =
-                                `<i class="fas fa-circle ad-chart-icon ms-1" data-channel="${channel}" data-adtype="pmt" data-metric="sales" style="cursor:pointer;color:#b8860b;font-size:8px;" title="View Chart"></i>`;
+                                `<i class="fas fa-circle ad-chart-icon ms-1" data-channel="${channel}" data-adtype="pmt" data-metric="sales" style="cursor:pointer;color:${getMetricDotColor(channel, 'ad_sales')};font-size:8px;" title="View Chart"></i>`;
                             return `<span style="font-weight:600;color:#ffc107;">$${Math.round(value).toLocaleString('en-US')}</span>${chartIcon}`;
                         },
                         cellClick: function(e, cell) {
@@ -1557,7 +1787,7 @@
                             const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
                             const chartIcon =
-                                `<i class="fas fa-circle ad-chart-icon ms-1" data-channel="${channel}" data-adtype="shopping" data-metric="sales" style="cursor:pointer;color:#b8860b;font-size:8px;" title="View Chart"></i>`;
+                                `<i class="fas fa-circle ad-chart-icon ms-1" data-channel="${channel}" data-adtype="shopping" data-metric="sales" style="cursor:pointer;color:${getMetricDotColor(channel, 'ad_sales')};font-size:8px;" title="View Chart"></i>`;
                             return `<span style="font-weight:600;color:#4285f4;">$${Math.round(value).toLocaleString('en-US')}</span>${chartIcon}`;
                         },
                         cellClick: function(e, cell) {
@@ -1583,7 +1813,7 @@
                             const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
                             const chartIcon =
-                                `<i class="fas fa-circle ad-chart-icon ms-1" data-channel="${channel}" data-adtype="serp" data-metric="sales" style="cursor:pointer;color:#b8860b;font-size:8px;" title="View Chart"></i>`;
+                                `<i class="fas fa-circle ad-chart-icon ms-1" data-channel="${channel}" data-adtype="serp" data-metric="sales" style="cursor:pointer;color:${getMetricDotColor(channel, 'ad_sales')};font-size:8px;" title="View Chart"></i>`;
                             return `<span style="font-weight:600;color:#6f42c1;">$${Math.round(value).toLocaleString('en-US')}</span>${chartIcon}`;
                         },
                         cellClick: function(e, cell) {
@@ -1609,7 +1839,8 @@
                             const value = parseNumber(cell.getValue());
                             const channel = (cell.getRow().getData()['Channel '] || '').trim();
                             if (value === 0) return '-';
-                            const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="ad_sold" style="cursor:pointer;color:#b8860b;font-size:8px;" title="View Chart"></i>`;
+                            const dotColor = getMetricDotColor(channel, 'ad_sold');
+                            const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="ad_sold" style="cursor:pointer;color:${dotColor};font-size:8px;" title="View Chart"></i>`;
                             const infoIcon =
                                 `<i class="fas fa-chevron-right ad-sold-breakdown-toggle ms-1" style="cursor:pointer;color:#17a2b8;font-size:10px;" title="Toggle Ad Sold Breakdown"></i>`;
                             return `<span style="font-weight:600;">${value.toLocaleString('en-US')}</span>${chartIcon}${infoIcon}`;
@@ -1642,7 +1873,7 @@
                             const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
                             const chartIcon =
-                                `<i class="fas fa-circle ad-chart-icon ms-1" data-channel="${channel}" data-adtype="kw" data-metric="sold" style="cursor:pointer;color:#b8860b;font-size:8px;" title="View Chart"></i>`;
+                                `<i class="fas fa-circle ad-chart-icon ms-1" data-channel="${channel}" data-adtype="kw" data-metric="sold" style="cursor:pointer;color:${getMetricDotColor(channel, 'ad_sold')};font-size:8px;" title="View Chart"></i>`;
                             return `<span style="font-weight:600;color:#198754;">${value.toLocaleString('en-US')}</span>${chartIcon}`;
                         },
                         cellClick: function(e, cell) {
@@ -1668,7 +1899,7 @@
                             const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
                             const chartIcon =
-                                `<i class="fas fa-circle ad-chart-icon ms-1" data-channel="${channel}" data-adtype="pt" data-metric="sold" style="cursor:pointer;color:#b8860b;font-size:8px;" title="View Chart"></i>`;
+                                `<i class="fas fa-circle ad-chart-icon ms-1" data-channel="${channel}" data-adtype="pt" data-metric="sold" style="cursor:pointer;color:${getMetricDotColor(channel, 'ad_sold')};font-size:8px;" title="View Chart"></i>`;
                             return `<span style="font-weight:600;color:#0d6efd;">${value.toLocaleString('en-US')}</span>${chartIcon}`;
                         },
                         cellClick: function(e, cell) {
@@ -1694,7 +1925,7 @@
                             const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
                             const chartIcon =
-                                `<i class="fas fa-circle ad-chart-icon ms-1" data-channel="${channel}" data-adtype="hl" data-metric="sold" style="cursor:pointer;color:#b8860b;font-size:8px;" title="View Chart"></i>`;
+                                `<i class="fas fa-circle ad-chart-icon ms-1" data-channel="${channel}" data-adtype="hl" data-metric="sold" style="cursor:pointer;color:${getMetricDotColor(channel, 'ad_sold')};font-size:8px;" title="View Chart"></i>`;
                             return `<span style="font-weight:600;color:#dc3545;">${value.toLocaleString('en-US')}</span>${chartIcon}`;
                         },
                         cellClick: function(e, cell) {
@@ -1720,7 +1951,7 @@
                             const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
                             const chartIcon =
-                                `<i class="fas fa-circle ad-chart-icon ms-1" data-channel="${channel}" data-adtype="pmt" data-metric="sold" style="cursor:pointer;color:#b8860b;font-size:8px;" title="View Chart"></i>`;
+                                `<i class="fas fa-circle ad-chart-icon ms-1" data-channel="${channel}" data-adtype="pmt" data-metric="sold" style="cursor:pointer;color:${getMetricDotColor(channel, 'ad_sold')};font-size:8px;" title="View Chart"></i>`;
                             return `<span style="font-weight:600;color:#ffc107;">${value.toLocaleString('en-US')}</span>${chartIcon}`;
                         },
                         cellClick: function(e, cell) {
@@ -1746,7 +1977,7 @@
                             const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
                             const chartIcon =
-                                `<i class="fas fa-circle ad-chart-icon ms-1" data-channel="${channel}" data-adtype="shopping" data-metric="sold" style="cursor:pointer;color:#b8860b;font-size:8px;" title="View Chart"></i>`;
+                                `<i class="fas fa-circle ad-chart-icon ms-1" data-channel="${channel}" data-adtype="shopping" data-metric="sold" style="cursor:pointer;color:${getMetricDotColor(channel, 'ad_sold')};font-size:8px;" title="View Chart"></i>`;
                             return `<span style="font-weight:600;color:#4285f4;">${value.toLocaleString('en-US')}</span>${chartIcon}`;
                         },
                         cellClick: function(e, cell) {
@@ -1772,7 +2003,7 @@
                             const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
                             const chartIcon =
-                                `<i class="fas fa-circle ad-chart-icon ms-1" data-channel="${channel}" data-adtype="serp" data-metric="sold" style="cursor:pointer;color:#b8860b;font-size:8px;" title="View Chart"></i>`;
+                                `<i class="fas fa-circle ad-chart-icon ms-1" data-channel="${channel}" data-adtype="serp" data-metric="sold" style="cursor:pointer;color:${getMetricDotColor(channel, 'ad_sold')};font-size:8px;" title="View Chart"></i>`;
                             return `<span style="font-weight:600;color:#6f42c1;">${value.toLocaleString('en-US')}</span>${chartIcon}`;
                         },
                         cellClick: function(e, cell) {
@@ -1798,7 +2029,8 @@
                             const value = parseNumber(cell.getValue());
                             const channel = (cell.getRow().getData()['Channel '] || '').trim();
                             if (!value || value === 0) return '-';
-                            const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="acos" style="cursor:pointer;color:#b8860b;font-size:8px;" title="View Chart"></i>`;
+                            const dotColor = getMetricDotColor(channel, 'acos');
+                            const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="acos" style="cursor:pointer;color:${dotColor};font-size:8px;" title="View Chart"></i>`;
                             const infoIcon =
                                 `<i class="fas fa-chevron-right acos-breakdown-toggle ms-1" style="cursor:pointer;color:#17a2b8;font-size:10px;" title="Toggle ACOS Breakdown"></i>`;
                             return `<span style="font-weight:600;">${value.toFixed(1)}%</span>${chartIcon}${infoIcon}`;
@@ -1840,7 +2072,7 @@
                             const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
                             const chartIcon =
-                                `<i class="fas fa-circle ad-chart-icon ms-1" data-channel="${channel}" data-adtype="kw" data-metric="acos" style="cursor:pointer;color:#b8860b;font-size:8px;" title="View ACOS Chart"></i>`;
+                                `<i class="fas fa-circle ad-chart-icon ms-1" data-channel="${channel}" data-adtype="kw" data-metric="acos" style="cursor:pointer;color:${getMetricDotColor(channel, 'acos')};font-size:8px;" title="View ACOS Chart"></i>`;
                             return `<span style="font-weight:600;color:#198754;">${value.toFixed(1)}%</span>${chartIcon}`;
                         },
                         cellClick: function(e, cell) {
@@ -1862,7 +2094,7 @@
                             const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
                             const chartIcon =
-                                `<i class="fas fa-circle ad-chart-icon ms-1" data-channel="${channel}" data-adtype="pt" data-metric="acos" style="cursor:pointer;color:#b8860b;font-size:8px;" title="View ACOS Chart"></i>`;
+                                `<i class="fas fa-circle ad-chart-icon ms-1" data-channel="${channel}" data-adtype="pt" data-metric="acos" style="cursor:pointer;color:${getMetricDotColor(channel, 'acos')};font-size:8px;" title="View ACOS Chart"></i>`;
                             return `<span style="font-weight:600;color:#0d6efd;">${value.toFixed(1)}%</span>${chartIcon}`;
                         },
                         cellClick: function(e, cell) {
@@ -1884,7 +2116,7 @@
                             const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
                             const chartIcon =
-                                `<i class="fas fa-circle ad-chart-icon ms-1" data-channel="${channel}" data-adtype="hl" data-metric="acos" style="cursor:pointer;color:#b8860b;font-size:8px;" title="View ACOS Chart"></i>`;
+                                `<i class="fas fa-circle ad-chart-icon ms-1" data-channel="${channel}" data-adtype="hl" data-metric="acos" style="cursor:pointer;color:${getMetricDotColor(channel, 'acos')};font-size:8px;" title="View ACOS Chart"></i>`;
                             return `<span style="font-weight:600;color:#dc3545;">${value.toFixed(1)}%</span>${chartIcon}`;
                         },
                         cellClick: function(e, cell) {
@@ -1906,7 +2138,7 @@
                             const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
                             const chartIcon =
-                                `<i class="fas fa-circle ad-chart-icon ms-1" data-channel="${channel}" data-adtype="pmt" data-metric="acos" style="cursor:pointer;color:#b8860b;font-size:8px;" title="View ACOS Chart"></i>`;
+                                `<i class="fas fa-circle ad-chart-icon ms-1" data-channel="${channel}" data-adtype="pmt" data-metric="acos" style="cursor:pointer;color:${getMetricDotColor(channel, 'acos')};font-size:8px;" title="View ACOS Chart"></i>`;
                             return `<span style="font-weight:600;color:#ffc107;">${value.toFixed(1)}%</span>${chartIcon}`;
                         },
                         cellClick: function(e, cell) {
@@ -1928,7 +2160,7 @@
                             const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
                             const chartIcon =
-                                `<i class="fas fa-circle ad-chart-icon ms-1" data-channel="${channel}" data-adtype="shopping" data-metric="acos" style="cursor:pointer;color:#b8860b;font-size:8px;" title="View ACOS Chart"></i>`;
+                                `<i class="fas fa-circle ad-chart-icon ms-1" data-channel="${channel}" data-adtype="shopping" data-metric="acos" style="cursor:pointer;color:${getMetricDotColor(channel, 'acos')};font-size:8px;" title="View ACOS Chart"></i>`;
                             return `<span style="font-weight:600;color:#4285f4;">${value.toFixed(1)}%</span>${chartIcon}`;
                         },
                         cellClick: function(e, cell) {
@@ -1950,7 +2182,7 @@
                             const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
                             const chartIcon =
-                                `<i class="fas fa-circle ad-chart-icon ms-1" data-channel="${channel}" data-adtype="serp" data-metric="acos" style="cursor:pointer;color:#b8860b;font-size:8px;" title="View ACOS Chart"></i>`;
+                                `<i class="fas fa-circle ad-chart-icon ms-1" data-channel="${channel}" data-adtype="serp" data-metric="acos" style="cursor:pointer;color:${getMetricDotColor(channel, 'acos')};font-size:8px;" title="View ACOS Chart"></i>`;
                             return `<span style="font-weight:600;color:#6f42c1;">${value.toFixed(1)}%</span>${chartIcon}`;
                         },
                         cellClick: function(e, cell) {
@@ -1972,7 +2204,8 @@
                             const value = parseNumber(cell.getValue());
                             const channel = (cell.getRow().getData()['Channel '] || '').trim();
                             if (!value || value === 0) return '-';
-                            const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="ads_cvr" style="cursor:pointer;color:#b8860b;font-size:8px;" title="View Chart"></i>`;
+                            const dotColor = getMetricDotColor(channel, 'ads_cvr');
+                            const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="ads_cvr" style="cursor:pointer;color:${dotColor};font-size:8px;" title="View Chart"></i>`;
                             const infoIcon =
                                 `<i class="fas fa-chevron-right cvr-breakdown-toggle ms-1" style="cursor:pointer;color:#17a2b8;font-size:10px;" title="Toggle CVR Breakdown"></i>`;
                             return `<span style="font-weight:600;">${value.toFixed(1)}%</span>${chartIcon}${infoIcon}`;
@@ -2014,7 +2247,7 @@
                             const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
                             const chartIcon =
-                                `<i class="fas fa-circle ad-chart-icon ms-1" data-channel="${channel}" data-adtype="kw" data-metric="cvr" style="cursor:pointer;color:#b8860b;font-size:8px;" title="View CVR Chart"></i>`;
+                                `<i class="fas fa-circle ad-chart-icon ms-1" data-channel="${channel}" data-adtype="kw" data-metric="cvr" style="cursor:pointer;color:${getMetricDotColor(channel, 'ads_cvr')};font-size:8px;" title="View CVR Chart"></i>`;
                             return `<span style="font-weight:600;color:#198754;">${value.toFixed(1)}%</span>${chartIcon}`;
                         },
                         cellClick: function(e, cell) {
@@ -2036,7 +2269,7 @@
                             const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
                             const chartIcon =
-                                `<i class="fas fa-circle ad-chart-icon ms-1" data-channel="${channel}" data-adtype="pt" data-metric="cvr" style="cursor:pointer;color:#b8860b;font-size:8px;" title="View CVR Chart"></i>`;
+                                `<i class="fas fa-circle ad-chart-icon ms-1" data-channel="${channel}" data-adtype="pt" data-metric="cvr" style="cursor:pointer;color:${getMetricDotColor(channel, 'ads_cvr')};font-size:8px;" title="View CVR Chart"></i>`;
                             return `<span style="font-weight:600;color:#0d6efd;">${value.toFixed(1)}%</span>${chartIcon}`;
                         },
                         cellClick: function(e, cell) {
@@ -2058,7 +2291,7 @@
                             const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
                             const chartIcon =
-                                `<i class="fas fa-circle ad-chart-icon ms-1" data-channel="${channel}" data-adtype="hl" data-metric="cvr" style="cursor:pointer;color:#b8860b;font-size:8px;" title="View CVR Chart"></i>`;
+                                `<i class="fas fa-circle ad-chart-icon ms-1" data-channel="${channel}" data-adtype="hl" data-metric="cvr" style="cursor:pointer;color:${getMetricDotColor(channel, 'ads_cvr')};font-size:8px;" title="View CVR Chart"></i>`;
                             return `<span style="font-weight:600;color:#dc3545;">${value.toFixed(1)}%</span>${chartIcon}`;
                         },
                         cellClick: function(e, cell) {
@@ -2080,7 +2313,7 @@
                             const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
                             const chartIcon =
-                                `<i class="fas fa-circle ad-chart-icon ms-1" data-channel="${channel}" data-adtype="pmt" data-metric="cvr" style="cursor:pointer;color:#b8860b;font-size:8px;" title="View CVR Chart"></i>`;
+                                `<i class="fas fa-circle ad-chart-icon ms-1" data-channel="${channel}" data-adtype="pmt" data-metric="cvr" style="cursor:pointer;color:${getMetricDotColor(channel, 'ads_cvr')};font-size:8px;" title="View CVR Chart"></i>`;
                             return `<span style="font-weight:600;color:#ffc107;">${value.toFixed(1)}%</span>${chartIcon}`;
                         },
                         cellClick: function(e, cell) {
@@ -2102,7 +2335,7 @@
                             const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
                             const chartIcon =
-                                `<i class="fas fa-circle ad-chart-icon ms-1" data-channel="${channel}" data-adtype="shopping" data-metric="cvr" style="cursor:pointer;color:#b8860b;font-size:8px;" title="View CVR Chart"></i>`;
+                                `<i class="fas fa-circle ad-chart-icon ms-1" data-channel="${channel}" data-adtype="shopping" data-metric="cvr" style="cursor:pointer;color:${getMetricDotColor(channel, 'ads_cvr')};font-size:8px;" title="View CVR Chart"></i>`;
                             return `<span style="font-weight:600;color:#4285f4;">${value.toFixed(1)}%</span>${chartIcon}`;
                         },
                         cellClick: function(e, cell) {
@@ -2124,7 +2357,7 @@
                             const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
                             const chartIcon =
-                                `<i class="fas fa-circle ad-chart-icon ms-1" data-channel="${channel}" data-adtype="serp" data-metric="cvr" style="cursor:pointer;color:#b8860b;font-size:8px;" title="View CVR Chart"></i>`;
+                                `<i class="fas fa-circle ad-chart-icon ms-1" data-channel="${channel}" data-adtype="serp" data-metric="cvr" style="cursor:pointer;color:${getMetricDotColor(channel, 'ads_cvr')};font-size:8px;" title="View CVR Chart"></i>`;
                             return `<span style="font-weight:600;color:#6f42c1;">${value.toFixed(1)}%</span>${chartIcon}`;
                         },
                         cellClick: function(e, cell) {
@@ -2132,218 +2365,6 @@
                                 e.stopPropagation();
                                 showAdBreakdownChart($(e.target).data('channel'), $(e.target).data(
                                     'adtype'), $(e.target).data('metric'));
-                            }
-                        }
-                    },
-                    {
-                        title: "L30 Orders",
-                        field: "L30 Orders",
-                        hozAlign: "center",
-                        sorter: "number",
-                        width: 100,
-                        formatter: function(cell) {
-                            const value = parseNumber(cell.getValue());
-                            const channel = (cell.getRow().getData()['Channel '] || '').trim();
-                            const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="l30_orders" style="cursor:pointer;color:#b8860b;font-size:8px;" title="View Chart"></i>`;
-                            return `<span>${value.toLocaleString('en-US')}</span>${chartIcon}`;
-                        },
-                        cellClick: function(e, cell) {
-                            if (e.target.classList.contains('metric-chart-icon')) {
-                                e.stopPropagation();
-                                var cv = cell.getElement().querySelector('span'); cv = cv ? parseFloat(cv.textContent.replace(/[$,%,\s]/g, '')) : null; showMetricChart($(e.target).data('channel'), $(e.target).data('metric'), cv);
-                            }
-                        },
-                        bottomCalc: "sum",
-                        bottomCalcFormatter: function(cell) {
-                            const value = cell.getValue();
-                            return `<strong>${parseNumber(value).toLocaleString('en-US')}</strong>`;
-                        }
-                    },
-                    {
-                        title: "Qty items",
-                        field: "Qty",
-                        hozAlign: "center",
-                        sorter: "number",
-                        width: 90,
-                        formatter: function(cell) {
-                            const value = parseNumber(cell.getValue());
-                            const channel = (cell.getRow().getData()['Channel '] || '').trim();
-                            const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="qty" style="cursor:pointer;color:#b8860b;font-size:8px;" title="View Chart"></i>`;
-                            return `<span>${value.toLocaleString('en-US')}</span>${chartIcon}`;
-                        },
-                        cellClick: function(e, cell) {
-                            if (e.target.classList.contains('metric-chart-icon')) {
-                                e.stopPropagation();
-                                var cv = cell.getElement().querySelector('span'); cv = cv ? parseFloat(cv.textContent.replace(/[$,%,\s]/g, '')) : null; showMetricChart($(e.target).data('channel'), $(e.target).data('metric'), cv);
-                            }
-                        },
-                        bottomCalc: "sum",
-                        bottomCalcFormatter: function(cell) {
-                            const value = cell.getValue();
-                            return `<strong>${parseNumber(value).toLocaleString('en-US')}</strong>`;
-                        }
-                    },
-
-                    {
-                        title: "Gprofit%",
-                        field: "Gprofit%",
-                        hozAlign: "center",
-                        sorter: "number",
-                        formatter: function(cell) {
-                            const value = parseNumber(cell.getValue());
-                            const channel = (cell.getRow().getData()['Channel '] || '').trim();
-                            const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="gprofit" style="cursor:pointer;color:#b8860b;font-size:8px;" title="View Chart"></i>`;
-                            let style = '';
-
-                            if (value >= 0 && value <= 10) {
-                                style = 'color:#a00211;';
-                            } else if (value > 10 && value <= 18) {
-                                style =
-                                    'background:#ffc107;color:black;padding:4px 8px;border-radius:4px;';
-                            } else if (value > 18 && value <= 25) {
-                                style = 'color:#3591dc;';
-                            } else if (value > 25 && value <= 40) {
-                                style = 'color:#28a745;';
-                            } else {
-                                style = 'color:#e83e8c;';
-                            }
-
-                            return `<span style="${style}font-weight:600;">${value.toFixed(1)}%</span>${chartIcon}`;
-                        },
-                        cellClick: function(e, cell) {
-                            if (e.target.classList.contains('metric-chart-icon')) {
-                                e.stopPropagation();
-                                var cv = cell.getElement().querySelector('span'); cv = cv ? parseFloat(cv.textContent.replace(/[$,%,\s]/g, '')) : null; showMetricChart($(e.target).data('channel'), $(e.target).data('metric'), cv);
-                            }
-                        }
-                    },
-                    {
-                        title: "G ROI%",
-                        field: "G Roi",
-                        hozAlign: "center",
-                        sorter: "number",
-                        formatter: function(cell) {
-                            const value = parseNumber(cell.getValue());
-                            const channel = (cell.getRow().getData()['Channel '] || '').trim();
-                            const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="groi" style="cursor:pointer;color:#b8860b;font-size:8px;" title="View Chart"></i>`;
-                            let style = '';
-
-                            if (value <= 50) {
-                                style = 'color:#a00211;';
-                            } else if (value > 50 && value <= 75) {
-                                style = 'background:#ffc107;color:black;padding:4px 8px;border-radius:4px;';
-                            } else if (value > 75 && value <= 125) {
-                                style = 'color:#28a745;';
-                            } else {
-                                style = 'color:#8000ff;';
-                            }
-
-                            return `<span style="${style}font-weight:600;">${value.toFixed(0)}%</span>${chartIcon}`;
-                        },
-                        cellClick: function(e, cell) {
-                            if (e.target.classList.contains('metric-chart-icon')) {
-                                e.stopPropagation();
-                                var cv = cell.getElement().querySelector('span'); cv = cv ? parseFloat(cv.textContent.replace(/[$,%,\s]/g, '')) : null; showMetricChart($(e.target).data('channel'), $(e.target).data('metric'), cv);
-                            }
-                        }
-                    },
-
-                    {
-                        title: "TAcos %",
-                        field: "Ads%",
-                        hozAlign: "center",
-                        sorter: "number",
-                        formatter: function(cell) {
-                            const rowData = cell.getRow().getData();
-                            const channelRaw = (rowData['Channel '] || '').trim();
-                            const channel = channelRaw.toLowerCase();
-                            const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channelRaw}" data-metric="ads_pct" style="cursor:pointer;color:#b8860b;font-size:8px;" title="View Chart"></i>`;
-
-                            let adsPercent = 0;
-                            if (channel === 'walmart' || channel === 'temu' || channel ===
-                                'shopifyb2c') {
-                                adsPercent = parseNumber(rowData['TACOS %'] || 0);
-                            } else {
-                                adsPercent = parseNumber(cell.getValue() || 0);
-                            }
-
-                            let style = '';
-                            if (adsPercent < 5) {
-                                style = 'color:#e83e8c;';
-                            } else if (adsPercent >= 5 && adsPercent <= 10) {
-                                style = 'color:#28a745;';
-                            } else {
-                                style = 'color:#a00211;';
-                            }
-
-                            return `<span style="${style}font-weight:600;">${adsPercent.toFixed(1)}%</span>${chartIcon}`;
-                        },
-                        cellClick: function(e, cell) {
-                            if (e.target.classList.contains('metric-chart-icon')) {
-                                e.stopPropagation();
-                                var cv = cell.getElement().querySelector('span'); cv = cv ? parseFloat(cv.textContent.replace(/[$,%,\s]/g, '')) : null; showMetricChart($(e.target).data('channel'), $(e.target).data('metric'), cv);
-                            }
-                        }
-                    },
-                    {
-                        title: "N PFT%",
-                        field: "N PFT",
-                        hozAlign: "center",
-                        sorter: "number",
-                        formatter: function(cell) {
-                            const value = parseNumber(cell.getValue());
-                            const channel = (cell.getRow().getData()['Channel '] || '').trim();
-                            const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="npft" style="cursor:pointer;color:#b8860b;font-size:8px;" title="View Chart"></i>`;
-                            let style = '';
-
-                            if (value >= 0 && value <= 10) {
-                                style = 'color:#a00211;';
-                            } else if (value > 10 && value <= 18) {
-                                style = 'background:#ffc107;color:black;padding:4px 8px;border-radius:4px;';
-                            } else if (value > 18 && value <= 25) {
-                                style = 'color:#3591dc;';
-                            } else if (value > 25 && value <= 40) {
-                                style = 'color:#28a745;';
-                            } else {
-                                style = 'color:#e83e8c;';
-                            }
-
-                            return `<span style="${style}font-weight:600;">${value.toFixed(1)}%</span>${chartIcon}`;
-                        },
-                        cellClick: function(e, cell) {
-                            if (e.target.classList.contains('metric-chart-icon')) {
-                                e.stopPropagation();
-                                var cv = cell.getElement().querySelector('span'); cv = cv ? parseFloat(cv.textContent.replace(/[$,%,\s]/g, '')) : null; showMetricChart($(e.target).data('channel'), $(e.target).data('metric'), cv);
-                            }
-                        }
-                    },
-                    {
-                        title: "N ROI%",
-                        field: "N ROI",
-                        hozAlign: "center",
-                        sorter: "number",
-                        formatter: function(cell) {
-                            const value = parseNumber(cell.getValue());
-                            const channel = (cell.getRow().getData()['Channel '] || '').trim();
-                            const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="nroi" style="cursor:pointer;color:#b8860b;font-size:8px;" title="View Chart"></i>`;
-                            let style = '';
-
-                            if (value <= 50) {
-                                style = 'color:#a00211;';
-                            } else if (value > 50 && value <= 75) {
-                                style = 'background:#ffc107;color:black;padding:4px 8px;border-radius:4px;';
-                            } else if (value > 75 && value <= 125) {
-                                style = 'color:#28a745;';
-                            } else {
-                                style = 'color:#8000ff;';
-                            }
-
-                            return `<span style="${style}font-weight:600;">${value.toFixed(0)}%</span>${chartIcon}`;
-                        },
-                        cellClick: function(e, cell) {
-                            if (e.target.classList.contains('metric-chart-icon')) {
-                                e.stopPropagation();
-                                var cv = cell.getElement().querySelector('span'); cv = cv ? parseFloat(cv.textContent.replace(/[$,%,\s]/g, '')) : null; showMetricChart($(e.target).data('channel'), $(e.target).data('metric'), cv);
                             }
                         }
                     },
@@ -2497,6 +2518,70 @@
                     },
                 ]
             });
+
+            // Initial load only: set column dot color from last-two values (same red/green/gray logic as chart).
+            var metricDotMetricKeys = ['missing_l','nmap','l30_sales','ad_spend','l30_orders','qty','gprofit','groi','ads_pct','npft','nroi','clicks','ad_sales','ad_sold','acos','ads_cvr'];
+            function loadMetricDotTrends(tableData) {
+                if (typeof lastDotColorByKey === 'undefined') return;
+                var data = tableData && Array.isArray(tableData) ? tableData : (typeof table !== 'undefined' && table.getData ? table.getData() : []);
+                var channelKeys = [];
+                for (var i = 0; i < data.length; i++) {
+                    var ch = (data[i]['Channel '] || data[i]['Channel'] || '').toString().trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+                    if (ch) channelKeys.push(ch);
+                }
+                if (channelKeys.length === 0) return;
+                var params = { channels: channelKeys.join(',') };
+                $.ajax({
+                    url: channelMetricDotTrendsUrl || '/channel-metric-dot-trends',
+                    type: 'GET',
+                    data: params,
+                    dataType: 'json'
+                }).done(function(response) {
+                    var invertedMetrics = ['acos', 'ads_pct'];
+                    if (response.success && response.channels) {
+                        Object.keys(response.channels).forEach(function(channel) {
+                            var metrics = response.channels[channel];
+                            Object.keys(metrics).forEach(function(metric) {
+                                var pair = metrics[metric];
+                                var v1 = pair[0] != null ? parseFloat(pair[0]) : null;
+                                var v2 = pair[1] != null ? parseFloat(pair[1]) : null;
+                                if (v1 == null || v2 == null) {
+                                    lastDotColorByKey[channel + '_' + metric] = (typeof DEFAULT_DOT_GRAY !== 'undefined' ? DEFAULT_DOT_GRAY : '#6c757d');
+                                    return;
+                                }
+                                var isInverted = invertedMetrics.indexOf(metric) >= 0;
+                                var gray = (typeof DEFAULT_DOT_GRAY !== 'undefined' ? DEFAULT_DOT_GRAY : '#6c757d');
+                                var color = v1 === v2 ? gray : isInverted
+                                    ? (v2 < v1 ? '#28a745' : '#dc3545')
+                                    : (v2 > v1 ? '#28a745' : '#dc3545');
+                                lastDotColorByKey[channel + '_' + metric] = color;
+                            });
+                        });
+                    }
+                    for (var c = 0; c < channelKeys.length; c++) {
+                        for (var m = 0; m < metricDotMetricKeys.length; m++) {
+                            var key = channelKeys[c] + '_' + metricDotMetricKeys[m];
+                            if (lastDotColorByKey[key] === undefined) lastDotColorByKey[key] = (typeof DEFAULT_DOT_GRAY !== 'undefined' ? DEFAULT_DOT_GRAY : '#6c757d');
+                        }
+                    }
+                    saveDotColorsToStorage();
+                    function redrawDots() {
+                        if (typeof table !== 'undefined' && table.redraw) table.redraw(true);
+                    }
+                    redrawDots();
+                    setTimeout(redrawDots, 100);
+                    setTimeout(redrawDots, 500);
+                    setTimeout(redrawDots, 1200);
+                }).fail(function() {
+                    for (var c = 0; c < channelKeys.length; c++) {
+                        for (var m = 0; m < metricDotMetricKeys.length; m++) {
+                            lastDotColorByKey[channelKeys[c] + '_' + metricDotMetricKeys[m]] = (typeof DEFAULT_DOT_GRAY !== 'undefined' ? DEFAULT_DOT_GRAY : '#6c757d');
+                        }
+                    }
+                    saveDotColorsToStorage();
+                    if (typeof table !== 'undefined' && table.redraw) table.redraw(true);
+                });
+            }
 
             // Update summary statistics
             function updateSummaryStats(data) {
@@ -2717,11 +2802,15 @@
                 buildColumnDropdown();
             });
 
-            // Table data loaded event - rebuild dropdown
+            // Table data loaded: rebuild dropdown; dot colors are loaded from ajaxResponse on first data load.
             table.on('dataLoaded', function() {
                 setTimeout(function() {
                     buildColumnDropdown();
                 }, 100);
+                if (!dotTrendsLoadedOnce && table.getData && table.getData().length) {
+                    dotTrendsLoadedOnce = true;
+                    loadMetricDotTrends(table.getData());
+                }
             });
 
             // History table icon click handler
@@ -3078,6 +3167,18 @@
             let adChartAjax = null; // track in-flight request
             let currentChartMode = 'ad'; // 'ad' = ad breakdown, 'metric' = channel metric
             let currentMetricKey = ''; // metric key for channel metric mode
+
+            // Dot colors: same as chart's last-data-point logic (red/green/gray). Set on page load only.
+            var lastDotColorByKey = {};
+            function getMetricDotColor(channelName, metricKey) {
+                var k = (channelName || '').toString().trim().toLowerCase().replace(/[^a-z0-9]/g, '') + '_' + (metricKey || '');
+                return lastDotColorByKey[k] || DEFAULT_DOT_GRAY;
+            }
+            function saveDotColorsToStorage() {
+                try {
+                    localStorage.setItem('channelMasterDotColors', JSON.stringify(lastDotColorByKey));
+                } catch (e) { /* ignore */ }
+            }
 
             // Channels that have daily data
             const channelsWithDailyData = ['amazon', 'amazonfba', 'ebay', 'ebaytwo', 'ebaythree', 'shopifyb2c', 'temu', 'walmart'];
