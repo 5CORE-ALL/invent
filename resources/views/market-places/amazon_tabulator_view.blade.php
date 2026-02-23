@@ -3498,10 +3498,10 @@
                                 rowUtilizationType = 'correctly';
                             }
                             
-                            // Special case: If UB7 and UB1 = 0%, use price-based default
+                            // Special case: If UB7 and UB1 = 0% (L1 and L7 both 0), use price-based default; price < 50 → 0.60
                             if (ub7 === 0 && ub1 === 0) {
                                 if (price < 50) {
-                                    sbid = 0.50;
+                                    sbid = 0.60;
                                 } else if (price >= 50 && price < 100) {
                                     sbid = 1.00;
                                 } else if (price >= 100 && price < 200) {
@@ -3520,8 +3520,15 @@
                                     sbid = 1.00;
                                 }
                             } else if (rowUtilizationType === 'under') {
-                                if (l1_cpc > 0) {
+                                // L1 0.01–0.20 → +0.10; L1 0.201–0.30 → +0.05; L1=0 and L7 0.20–0.30 → +0.05; else 10%
+                                if (l1_cpc >= 0.01 && l1_cpc <= 0.20) {
+                                    sbid = Math.floor((l1_cpc + 0.10) * 100) / 100;
+                                } else if (l1_cpc >= 0.201 && l1_cpc <= 0.30) {
+                                    sbid = Math.floor((l1_cpc + 0.05) * 100) / 100;
+                                } else if (l1_cpc > 0) {
                                     sbid = Math.floor(l1_cpc * 1.10 * 100) / 100;
+                                } else if (l1_cpc === 0 && l7_cpc >= 0.20 && l7_cpc <= 0.30) {
+                                    sbid = Math.floor((l7_cpc + 0.05) * 100) / 100;
                                 } else if (l7_cpc > 0) {
                                     sbid = Math.floor(l7_cpc * 1.10 * 100) / 100;
                                 } else if (avg_cpc > 0) {
@@ -3821,7 +3828,7 @@
                         }
                     },
                     {
-                        title: "HL AVG CPC",
+                        title: "HL LIFE CPC",
                         field: "hl_avg_cpc",
                         hozAlign: "center",
                         visible: false,
@@ -3914,9 +3921,10 @@
                                 rowUtilizationType = 'correctly';
                             }
                             
+                            // Special case: If UB7 and UB1 = 0% (L1 and L7 both 0), use price-based default; price < 50 → 0.60
                             if (ub7 === 0 && ub1 === 0) {
                                 if (price < 50) {
-                                    sbid = 0.50;
+                                    sbid = 0.60;
                                 } else if (price >= 50 && price < 100) {
                                     sbid = 1.00;
                                 } else if (price >= 100 && price < 200) {
@@ -3935,8 +3943,15 @@
                                     sbid = 1.00;
                                 }
                             } else if (rowUtilizationType === 'under') {
-                                if (l1_cpc > 0) {
+                                // L1 0.01–0.20 → +0.10; L1 0.201–0.30 → +0.05; L1=0 and L7 0.20–0.30 → +0.05; else 10%
+                                if (l1_cpc >= 0.01 && l1_cpc <= 0.20) {
+                                    sbid = Math.floor((l1_cpc + 0.10) * 100) / 100;
+                                } else if (l1_cpc >= 0.201 && l1_cpc <= 0.30) {
+                                    sbid = Math.floor((l1_cpc + 0.05) * 100) / 100;
+                                } else if (l1_cpc > 0) {
                                     sbid = Math.floor(l1_cpc * 1.10 * 100) / 100;
+                                } else if (l1_cpc === 0 && l7_cpc >= 0.20 && l7_cpc <= 0.30) {
+                                    sbid = Math.floor((l7_cpc + 0.05) * 100) / 100;
                                 } else if (l7_cpc > 0) {
                                     sbid = Math.floor(l7_cpc * 1.10 * 100) / 100;
                                 } else if (avg_cpc > 0) {
@@ -4531,10 +4546,10 @@
                             
                             var sbid = 0;
                             
-                            // Special case: If UB7 and UB1 = 0%, use price-based default
+                            // Special case: If UB7 and UB1 = 0% (L1 and L7 both 0), use price-based default; price < 50 → 0.60
                             if (ub7 === 0 && ub1 === 0) {
                                 if (price < 50) {
-                                    sbid = 0.50;
+                                    sbid = 0.60;
                                 } else if (price >= 50 && price < 100) {
                                     sbid = 1.00;
                                 } else if (price >= 100 && price < 200) {
@@ -4554,9 +4569,15 @@
                                     sbid = 1.00;
                                 }
                             } else if (rowType === 'under') {
-                                // Priority: L1 CPC → L7 CPC → AVG CPC → 1.00, then increase by 10%
-                                if (l1Cpc > 0) {
+                                // L1 0.01–0.20 → +0.10; L1 0.201–0.30 → +0.05; L1=0 and L7 0.20–0.30 → +0.05; else 10%
+                                if (l1Cpc >= 0.01 && l1Cpc <= 0.20) {
+                                    sbid = Math.floor((l1Cpc + 0.10) * 100) / 100;
+                                } else if (l1Cpc >= 0.201 && l1Cpc <= 0.30) {
+                                    sbid = Math.floor((l1Cpc + 0.05) * 100) / 100;
+                                } else if (l1Cpc > 0) {
                                     sbid = Math.floor(l1Cpc * 1.10 * 100) / 100;
+                                } else if (l1Cpc === 0 && l7Cpc >= 0.20 && l7Cpc <= 0.30) {
+                                    sbid = Math.floor((l7Cpc + 0.05) * 100) / 100;
                                 } else if (l7Cpc > 0) {
                                     sbid = Math.floor(l7Cpc * 1.10 * 100) / 100;
                                 } else if (avgCpc > 0) {
@@ -5946,7 +5967,7 @@
                     'hl_sold_L30',              // 24. HL Ad Sold L30
                     'hl_7ub',                   // 25. HL 7 UB%
                     'hl_1ub',                   // 26. HL 1 UB%
-                    'hl_avg_cpc',               // 27. HL AVG CPC
+                    'hl_avg_cpc',               // 27. HL LIFE CPC
                     'hl_l7_cpc',                // 28. HL L7 CPC
                     'hl_l1_cpc',                // 29. HL L1 CPC
                     'hl_last_sbid',             // 30. HL Last SBID
@@ -6168,7 +6189,7 @@
                     // 25-33: Utilization, CPC, SBID columns
                     table.moveColumn("hl_7ub", "hl_sold_L30", true);               // 25. HL 7 UB%
                     table.moveColumn("hl_1ub", "hl_7ub", true);                    // 26. HL 1 UB%
-                    table.moveColumn("hl_avg_cpc", "hl_1ub", true);                // 27. HL AVG CPC
+                    table.moveColumn("hl_avg_cpc", "hl_1ub", true);                // 27. HL LIFE CPC
                     table.moveColumn("hl_l7_cpc", "hl_avg_cpc", true);             // 28. HL L7 CPC
                     table.moveColumn("hl_l1_cpc", "hl_l7_cpc", true);              // 29. HL L1 CPC
                     table.moveColumn("hl_last_sbid", "hl_l1_cpc", true);           // 30. HL Last SBID

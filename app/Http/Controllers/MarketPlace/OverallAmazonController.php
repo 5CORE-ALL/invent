@@ -1834,6 +1834,39 @@ class OverallAmazonController extends Controller
             }
         }
 
+        // Fallback: KW last_sbid from L1/L7 when no day-specific row exists yet
+        $kwLastSbidFallback = DB::table('amazon_sp_campaign_reports')
+            ->select('campaignName', 'campaign_id', 'last_sbid', 'sbid_m')
+            ->where('ad_type', 'SPONSORED_PRODUCTS')
+            ->whereIn('report_date_range', ['L1', 'L7'])
+            ->whereRaw("campaignName NOT REGEXP '(PT\\.?$|FBA$)'")
+            ->where(function($q) {
+                $q->whereNotNull('last_sbid')->where('last_sbid', '!=', '')
+                  ->orWhere(function($q2) {
+                      $q2->whereNotNull('sbid_m')->where('sbid_m', '!=', '');
+                  });
+            })
+            ->orderByRaw("CASE WHEN report_date_range = 'L1' THEN 0 ELSE 1 END")
+            ->get();
+        foreach ($kwLastSbidFallback as $report) {
+            $campaignIdStr = (string)$report->campaign_id;
+            if (!empty($campaignIdStr) && !isset($lastSbidMap[$campaignIdStr]) && !empty($report->last_sbid)) {
+                $lastSbidMap[$campaignIdStr] = $report->last_sbid;
+            }
+            if (!empty($campaignIdStr) && !isset($sbidMMap[$campaignIdStr]) && !empty($report->sbid_m)) {
+                $sbidMMap[$campaignIdStr] = $report->sbid_m;
+            }
+            if (!empty($report->campaignName)) {
+                $normalizedName = strtoupper(trim(rtrim($report->campaignName, '.')));
+                if (!isset($lastSbidMap['name_' . $normalizedName]) && !empty($report->last_sbid)) {
+                    $lastSbidMap['name_' . $normalizedName] = $report->last_sbid;
+                }
+                if (!isset($sbidMMap['name_' . $normalizedName]) && !empty($report->sbid_m)) {
+                    $sbidMMap['name_' . $normalizedName] = $report->sbid_m;
+                }
+            }
+        }
+
         // Fetch PT-specific last_sbid and sbid_m from day-before-yesterday and yesterday records
         $ptLastSbidReports = DB::table('amazon_sp_campaign_reports')
             ->select('campaignName', 'campaign_id', 'last_sbid', 'sbid_m')
@@ -1866,6 +1899,39 @@ class OverallAmazonController extends Controller
                 $ptSbidMMap[$campaignIdStr] = $report->sbid_m;
             }
             // Also map by normalized campaign name for fallback
+            if (!empty($report->campaignName)) {
+                $normalizedName = strtoupper(trim(rtrim($report->campaignName, '.')));
+                if (!isset($ptLastSbidMap['name_' . $normalizedName]) && !empty($report->last_sbid)) {
+                    $ptLastSbidMap['name_' . $normalizedName] = $report->last_sbid;
+                }
+                if (!isset($ptSbidMMap['name_' . $normalizedName]) && !empty($report->sbid_m)) {
+                    $ptSbidMMap['name_' . $normalizedName] = $report->sbid_m;
+                }
+            }
+        }
+
+        // Fallback: PT last_sbid from L1/L7 when no day-specific row exists yet
+        $ptLastSbidFallback = DB::table('amazon_sp_campaign_reports')
+            ->select('campaignName', 'campaign_id', 'last_sbid', 'sbid_m')
+            ->where('ad_type', 'SPONSORED_PRODUCTS')
+            ->whereIn('report_date_range', ['L1', 'L7'])
+            ->whereRaw("(campaignName REGEXP '(PT\\.?$)' OR campaignName LIKE '% PT' OR campaignName LIKE '% PT.')")
+            ->where(function($q) {
+                $q->whereNotNull('last_sbid')->where('last_sbid', '!=', '')
+                  ->orWhere(function($q2) {
+                      $q2->whereNotNull('sbid_m')->where('sbid_m', '!=', '');
+                  });
+            })
+            ->orderByRaw("CASE WHEN report_date_range = 'L1' THEN 0 ELSE 1 END")
+            ->get();
+        foreach ($ptLastSbidFallback as $report) {
+            $campaignIdStr = (string)$report->campaign_id;
+            if (!empty($campaignIdStr) && !isset($ptLastSbidMap[$campaignIdStr]) && !empty($report->last_sbid)) {
+                $ptLastSbidMap[$campaignIdStr] = $report->last_sbid;
+            }
+            if (!empty($campaignIdStr) && !isset($ptSbidMMap[$campaignIdStr]) && !empty($report->sbid_m)) {
+                $ptSbidMMap[$campaignIdStr] = $report->sbid_m;
+            }
             if (!empty($report->campaignName)) {
                 $normalizedName = strtoupper(trim(rtrim($report->campaignName, '.')));
                 if (!isset($ptLastSbidMap['name_' . $normalizedName]) && !empty($report->last_sbid)) {
@@ -1919,6 +1985,38 @@ class OverallAmazonController extends Controller
             }
         }
 
+        // Fallback: fetch HL last_sbid from L1/L7 so saved value shows when no day-specific row exists yet
+        $hlLastSbidFallback = DB::table('amazon_sb_campaign_reports')
+            ->select('campaign_id', 'campaignName', 'last_sbid', 'sbid_m')
+            ->where('ad_type', 'SPONSORED_BRANDS')
+            ->whereIn('report_date_range', ['L1', 'L7'])
+            ->where(function($q) {
+                $q->whereNotNull('last_sbid')->where('last_sbid', '!=', '')
+                  ->orWhere(function($q2) {
+                      $q2->whereNotNull('sbid_m')->where('sbid_m', '!=', '');
+                  });
+            })
+            ->orderByRaw("CASE WHEN report_date_range = 'L1' THEN 0 ELSE 1 END")
+            ->get();
+        foreach ($hlLastSbidFallback as $report) {
+            $campaignIdStr = (string)$report->campaign_id;
+            if (!empty($campaignIdStr) && !isset($hlLastSbidMap[$campaignIdStr]) && !empty($report->last_sbid)) {
+                $hlLastSbidMap[$campaignIdStr] = $report->last_sbid;
+            }
+            if (!empty($campaignIdStr) && !isset($hlSbidMMap[$campaignIdStr]) && !empty($report->sbid_m)) {
+                $hlSbidMMap[$campaignIdStr] = $report->sbid_m;
+            }
+            if (!empty($report->campaignName)) {
+                $normalizedName = strtoupper(trim(rtrim($report->campaignName, '.')));
+                if (!isset($hlLastSbidMap['name_' . $normalizedName]) && !empty($report->last_sbid)) {
+                    $hlLastSbidMap['name_' . $normalizedName] = $report->last_sbid;
+                }
+                if (!isset($hlSbidMMap['name_' . $normalizedName]) && !empty($report->sbid_m)) {
+                    $hlSbidMMap['name_' . $normalizedName] = $report->sbid_m;
+                }
+            }
+        }
+
         // Calculate AVG CPC for PT campaigns (from daily records)
         // Use same query as amazon-utilized-pt page: AVG(costPerClick) grouped by campaign_id
         // Do NOT filter by campaign name - just use campaign_id (same approach as PT utilized page)
@@ -1942,7 +2040,7 @@ class OverallAmazonController extends Controller
             // Continue without PT avg_cpc data if there's an error
         }
 
-        // Calculate HL AVG CPC from all daily records (lifetime average)
+        // Calculate HL LIFE CPC from all daily records: Total Cost / Total Clicks (lifetime average CPC)
         $hlAvgCpcData = collect();
         try {
             $hlDailyRecords = DB::table('amazon_sb_campaign_reports')
@@ -1960,7 +2058,7 @@ class OverallAmazonController extends Controller
                 }
             }
         } catch (\Exception $e) {
-            Log::warning('Could not calculate HL AVG CPC: ' . $e->getMessage());
+            Log::warning('Could not calculate HL LIFE CPC: ' . $e->getMessage());
         }
 
         $parentSkuCounts = $productMasters
@@ -3252,7 +3350,7 @@ class OverallAmazonController extends Controller
                 $sumRow['hl_l1_cpc'] = 0;
             }
             
-            // HL AVG CPC
+            // HL LIFE CPC
             $sumRow['hl_avg_cpc'] = $sumRow['hl_campaign_id'] ? $hlAvgCpcData->get($sumRow['hl_campaign_id'], 0) : 0;
             
             // HL AD CVR = (hl_sold_L30 / hl_clicks_L30) * 100

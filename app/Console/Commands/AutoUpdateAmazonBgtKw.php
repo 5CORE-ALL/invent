@@ -12,6 +12,7 @@ use App\Models\ShopifySku;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
 
+
 class AutoUpdateAmazonBgtKw extends Command
 {
     protected $signature = 'amazon:auto-update-amz-bgt-kw {--dry-run : Run without updating Amazon (test only)}';

@@ -272,15 +272,17 @@ class AutoUpdateAmzUnderHlBids extends Command
 
             // Under-utilized rule: NRA !== 'NRA', campaignName !== '', ub7 < 66 && ub1 < 66
             if ($row['NRA'] !== 'NRA' && $row['campaignName'] !== '' && ($ub7 < 66 && $ub1 < 66)) {
-                // Calculate SBID for HL campaigns with tiered rules
-                if ($l1_cpc <= 0 && $l7_cpc > 0) {
-                    $row['sbid'] = 0.60;
-                } elseif ($l1_cpc >= 0.01 && $l1_cpc <= 0.20) {
+                // Calculate SBID for HL campaigns with tiered rules: L1 0.01-0.20 → +0.10; L1 0.201-0.30 → +0.05; L1=0 and L7 0.20-0.30 → +0.05
+                if ($l1_cpc >= 0.01 && $l1_cpc <= 0.20) {
                     $row['sbid'] = round($l1_cpc + 0.10, 2);
-                } elseif ($l1_cpc >= 0.201 && $l1_cpc <= 0.40) {
+                } elseif ($l1_cpc >= 0.201 && $l1_cpc <= 0.30) {
                     $row['sbid'] = round($l1_cpc + 0.05, 2);
                 } elseif ($l1_cpc > 0) {
                     $row['sbid'] = floor($l1_cpc * 1.10 * 100) / 100;
+                } elseif ($l1_cpc <= 0 && $l7_cpc >= 0.20 && $l7_cpc <= 0.30) {
+                    $row['sbid'] = round($l7_cpc + 0.05, 2);
+                } elseif ($l1_cpc <= 0 && $l7_cpc > 0) {
+                    $row['sbid'] = 0.60;
                 } elseif ($l7_cpc > 0) {
                     $row['sbid'] = floor($l7_cpc * 1.10 * 100) / 100;
                 } elseif ($avgCpc > 0) {

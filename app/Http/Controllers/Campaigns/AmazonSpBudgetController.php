@@ -5178,9 +5178,10 @@ class AmazonSpBudgetController extends Controller
             $sbid = 0;
             
             // Special case: If UB7 and UB1 = 0%, use price-based default
+            // When L1 and L7 both 0 (UB7 and UB1 = 0%), price-based default; price < 50 → 0.60
             if ($ub7 == 0 && $ub1 == 0) {
                 if ($price < 50) {
-                    $sbid = 0.50;
+                    $sbid = 0.60;
                 } elseif ($price >= 50 && $price < 100) {
                     $sbid = 1.00;
                 } elseif ($price >= 100 && $price < 200) {
@@ -5200,9 +5201,15 @@ class AmazonSpBudgetController extends Controller
                     $sbid = 1.00;
                 }
             } elseif ($utilizationType === 'under') {
-                // Under-utilized: Priority L1 CPC → L7 CPC → AVG CPC → 1.00, then increase by 10%
-                if ($l1Cpc > 0) {
+                // L1 0.01–0.20 → +0.10; L1 0.201–0.30 → +0.05; L1=0 and L7 0.20–0.30 → +0.05; else 10%
+                if ($l1Cpc >= 0.01 && $l1Cpc <= 0.20) {
+                    $sbid = floor(($l1Cpc + 0.10) * 100) / 100;
+                } elseif ($l1Cpc >= 0.201 && $l1Cpc <= 0.30) {
+                    $sbid = floor(($l1Cpc + 0.05) * 100) / 100;
+                } elseif ($l1Cpc > 0) {
                     $sbid = floor($l1Cpc * 1.10 * 100) / 100;
+                } elseif ($l1Cpc == 0 && $l7Cpc >= 0.20 && $l7Cpc <= 0.30) {
+                    $sbid = floor(($l7Cpc + 0.05) * 100) / 100;
                 } elseif ($l7Cpc > 0) {
                     $sbid = floor($l7Cpc * 1.10 * 100) / 100;
                 } elseif ($avgCpc > 0) {
@@ -5328,46 +5335,47 @@ class AmazonSpBudgetController extends Controller
 
             $yesterday = date('Y-m-d', strtotime('-1 day'));
 
+            $sbidMStr = (string)$sbidM;
             if ($campaignType === 'HL') {
-                // Update SB campaigns - try yesterday first, then L1 as fallback
-                // First try yesterday's date
+                // Update SB campaigns - try yesterday first, then L1 as fallback. Also save last_sbid so it displays in tabulator.
                 $updated = DB::table('amazon_sb_campaign_reports')
                     ->where('campaign_id', $campaignId)
                     ->where('report_date_range', $yesterday)
                     ->where('ad_type', 'SPONSORED_BRANDS')
                     ->update([
-                        'sbid_m' => (string)$sbidM
+                        'sbid_m' => $sbidMStr,
+                        'last_sbid' => $sbidMStr,
                     ]);
                 
-                // If no record found for yesterday, try L1
                 if ($updated === 0) {
                     $updated = DB::table('amazon_sb_campaign_reports')
                         ->where('campaign_id', $campaignId)
                         ->where('report_date_range', 'L1')
                         ->where('ad_type', 'SPONSORED_BRANDS')
                         ->update([
-                            'sbid_m' => (string)$sbidM
+                            'sbid_m' => $sbidMStr,
+                            'last_sbid' => $sbidMStr,
                         ]);
                 }
             } else {
-                // Update SP campaigns (KW and PT) - try yesterday first, then L1 as fallback
-                // First try yesterday's date
+                // Update SP campaigns (KW and PT) - try yesterday first, then L1 as fallback. Also save last_sbid.
                 $updated = DB::table('amazon_sp_campaign_reports')
                     ->where('campaign_id', $campaignId)
                     ->where('report_date_range', $yesterday)
                     ->where('ad_type', 'SPONSORED_PRODUCTS')
                     ->update([
-                        'sbid_m' => (string)$sbidM
+                        'sbid_m' => $sbidMStr,
+                        'last_sbid' => $sbidMStr,
                     ]);
                 
-                // If no record found for yesterday, try L1
                 if ($updated === 0) {
                     $updated = DB::table('amazon_sp_campaign_reports')
                         ->where('campaign_id', $campaignId)
                         ->where('report_date_range', 'L1')
                         ->where('ad_type', 'SPONSORED_PRODUCTS')
                         ->update([
-                            'sbid_m' => (string)$sbidM
+                            'sbid_m' => $sbidMStr,
+                            'last_sbid' => $sbidMStr,
                         ]);
                 }
             }
@@ -5438,6 +5446,7 @@ class AmazonSpBudgetController extends Controller
             $dateRanges = [$yesterday, 'L1', 'L7'];
             $updated = 0;
 
+            $sbidMStr = (string)$sbidM;
             if ($campaignType === 'HL') {
                 // First, try to find the campaign in any of the common date ranges
                 $campaignExists = DB::table('amazon_sb_campaign_reports')
@@ -5447,24 +5456,25 @@ class AmazonSpBudgetController extends Controller
                     ->exists();
                 
                 if ($campaignExists) {
-                    // Update all matching records in the date ranges
+                    // Update all matching records (sbid, sbid_m, and last_sbid so it displays in tabulator)
                     $updated = DB::table('amazon_sb_campaign_reports')
                         ->where('campaign_id', $campaignId)
                         ->whereIn('report_date_range', $dateRanges)
                         ->where('ad_type', 'SPONSORED_BRANDS')
                         ->update([
-                            'sbid' => (string)$sbidM,
-                            'sbid_m' => (string)$sbidM
+                            'sbid' => $sbidMStr,
+                            'sbid_m' => $sbidMStr,
+                            'last_sbid' => $sbidMStr,
                         ]);
                 } else {
-                    // If not found in common ranges, try to find in any date range
                     $updated = DB::table('amazon_sb_campaign_reports')
                         ->where('campaign_id', $campaignId)
                         ->where('ad_type', 'SPONSORED_BRANDS')
                         ->where('campaignStatus', '!=', 'ARCHIVED')
                         ->update([
-                            'sbid' => (string)$sbidM,
-                            'sbid_m' => (string)$sbidM
+                            'sbid' => $sbidMStr,
+                            'sbid_m' => $sbidMStr,
+                            'last_sbid' => $sbidMStr,
                         ]);
                 }
             } else {
@@ -5476,24 +5486,25 @@ class AmazonSpBudgetController extends Controller
                     ->exists();
                 
                 if ($campaignExists) {
-                    // Update all matching records in the date ranges
+                    // Update all matching records (sbid, sbid_m, and last_sbid so it displays in tabulator)
                     $updated = DB::table('amazon_sp_campaign_reports')
                         ->where('campaign_id', $campaignId)
                         ->whereIn('report_date_range', $dateRanges)
                         ->where('ad_type', 'SPONSORED_PRODUCTS')
                         ->update([
-                            'sbid' => (string)$sbidM,
-                            'sbid_m' => (string)$sbidM
+                            'sbid' => $sbidMStr,
+                            'sbid_m' => $sbidMStr,
+                            'last_sbid' => $sbidMStr,
                         ]);
                 } else {
-                    // If not found in common ranges, try to find in any date range
                     $updated = DB::table('amazon_sp_campaign_reports')
                         ->where('campaign_id', $campaignId)
                         ->where('ad_type', 'SPONSORED_PRODUCTS')
                         ->where('campaignStatus', '!=', 'ARCHIVED')
                         ->update([
-                            'sbid' => (string)$sbidM,
-                            'sbid_m' => (string)$sbidM
+                            'sbid' => $sbidMStr,
+                            'sbid_m' => $sbidMStr,
+                            'last_sbid' => $sbidMStr,
                         ]);
                 }
             }
