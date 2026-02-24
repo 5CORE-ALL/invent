@@ -321,9 +321,7 @@
                         style="width: auto; display: inline-block;">
                         <option value="">Select Filter</option>
                         <option value="Sess30">View L30</option>
-                        <option value="Sess7">View L7</option>
                         <option value="A_L30">Sold L30</option>
-                        <option value="A_L7">Sold L7</option>
                     </select>
                     <input type="number" id="range-min" class="form-control form-control-sm" 
                         placeholder="Min" min="0" style="width: 90px; display: inline-block;">
@@ -631,28 +629,48 @@
         </div>
     </div>
 
-    <!-- SKU Metrics Chart Modal -->
+    <!-- SKU Metrics Chart Modal (format matches all-marketplace-master) -->
     <div class="modal fade" id="skuMetricsModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-lg">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">Metrics Chart for <span id="modalSkuName"></span></h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <div class="mb-3">
-                        <label class="form-label">Date Range:</label>
-                        <select id="sku-chart-days-filter" class="form-select form-select-sm" style="width: auto; display: inline-block;">
-                            <option value="7" selected>Last 7 Days</option>
-                            <option value="14">Last 14 Days</option>
-                            <option value="30">Last 30 Days</option>
+        <div class="modal-dialog shadow-none" style="max-width: 98vw; width: 98vw; margin: 10px auto 0;">
+            <div class="modal-content" style="border-radius: 8px; overflow: hidden;">
+                <div class="modal-header bg-info text-white py-1 px-3">
+                    <h6 class="modal-title mb-0" style="font-size: 13px;">
+                        <i class="fas fa-chart-area me-1"></i>
+                        <span id="skuChartModalTitle">Amazon - <span id="modalSkuName"></span> - Metrics</span> <span id="skuChartModalSuffix">(Rolling L30)</span>
+                    </h6>
+                    <div class="d-flex align-items-center gap-2">
+                        <select id="sku-chart-days-filter" class="form-select form-select-sm bg-white" style="width: 110px; height: 26px; font-size: 11px; padding: 1px 8px;">
+                            <option value="7">7 Days</option>
+                            <option value="14">14 Days</option>
+                            <option value="30" selected>30 Days</option>
+                            <option value="60">60 Days</option>
+                            <option value="90">90 Days</option>
+                            <option value="0">Lifetime</option>
                         </select>
+                        <button type="button" class="btn-close btn-close-white" style="font-size: 10px;" data-bs-dismiss="modal"></button>
                     </div>
-                    <div id="chart-no-data-message" class="alert alert-info" style="display: none;">
-                        No historical data available for this SKU. Data will appear after running the metrics collection command.
+                </div>
+                <div class="modal-body p-2">
+                    <div id="skuChartContainer" style="height: 20vh; display: flex; align-items: stretch;">
+                        <div style="flex: 1; min-width: 0; position: relative;">
+                            <canvas id="skuMetricsChart"></canvas>
+                        </div>
+                        <div id="skuChartRefPanel" style="display: flex; gap: 6px; padding: 6px 8px; border-left: 1px solid #e9ecef; background: #f8f9fa; border-radius: 0 4px 4px 0; min-width: 0; flex-wrap: nowrap; overflow-x: auto;">
+                            <div class="sku-ref-col" data-metric="0" style="min-width: 62px; text-align: center; padding: 4px 4px;">
+                                <div style="font-size: 7px; font-weight: 700; margin-bottom: 4px; display: flex; align-items: center; justify-content: center; gap: 3px;"><span id="skuChartRefDot" class="sku-col-dot" style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #adb5bd; flex-shrink: 0;"></span><span id="skuChartRefLabel">Price</span></div>
+                                <div style="font-size: 6px; font-weight: 700; color: #dc3545;">High</div><div id="skuCol0High" style="font-size: 10px; font-weight: 700; color: #dc3545;">-</div>
+                                <div style="font-size: 6px; font-weight: 700; color: #6c757d;">Med</div><div id="skuCol0Med" style="font-size: 10px; font-weight: 700; color: #6c757d;">-</div>
+                                <div style="font-size: 6px; font-weight: 700; color: #198754;">Low</div><div id="skuCol0Low" style="font-size: 10px; font-weight: 700; color: #198754;">-</div>
+                            </div>
+                        </div>
                     </div>
-                    <div style="height: 400px;">
-                        <canvas id="skuMetricsChart"></canvas>
+                    <div id="skuChartLoading" class="text-center py-3" style="display: none;">
+                        <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+                        <p class="mt-1 text-muted small mb-0">Loading chart data...</p>
+                    </div>
+                    <div id="chart-no-data-message" class="text-center py-3" style="display: none;">
+                        <i class="fas fa-exclamation-circle text-warning fa-2x mb-2"></i>
+                        <p class="text-muted small mb-0">No historical data available for this SKU. Data will appear after running the metrics collection command.</p>
                     </div>
                 </div>
             </div>
@@ -750,6 +768,8 @@
     <script>
         const COLUMN_VIS_KEY = "amazon_tabulator_column_visibility";
         let skuMetricsChart = null;
+        let skuChartFirstSeriesStats = null; // { values, median, dataMin, dataMax, dotColors, labelColors } for ref panel & plugins
+        let currentSkuChartMetric = 'price';  // 'price' | 'cvr' - which metric the SKU chart modal shows
         let currentSku = null;
         let table = null; // Global table reference
         let decreaseModeActive = false; // Track decrease mode state
@@ -986,9 +1006,60 @@
             });
         }
 
-        // SKU-specific chart
+        // Format helper for SKU chart first series (Price)
+        function skuChartFmtVal(v) {
+            return '$' + (Number(v) === v && v % 1 !== 0 ? v.toFixed(2) : Math.round(v).toLocaleString('en-US'));
+        }
+
+        // SKU-specific chart (layout/plugins match all-marketplace-master: ref panel, median line, value labels on first series)
         function initSkuMetricsChart() {
             const ctx = document.getElementById('skuMetricsChart').getContext('2d');
+
+            const medianLinePlugin = {
+                id: 'skuMedianLine',
+                afterDraw(chart) {
+                    if (!skuChartFirstSeriesStats || skuChartFirstSeriesStats.median === undefined) return;
+                    const yScale = chart.scales.y;
+                    const xScale = chart.scales.x;
+                    const ctx = chart.ctx;
+                    const yPixel = yScale.getPixelForValue(skuChartFirstSeriesStats.median);
+                    ctx.save();
+                    ctx.setLineDash([6, 4]);
+                    ctx.strokeStyle = '#6c757d';
+                    ctx.lineWidth = 1.2;
+                    ctx.beginPath();
+                    ctx.moveTo(xScale.left, yPixel);
+                    ctx.lineTo(xScale.right, yPixel);
+                    ctx.stroke();
+                    ctx.restore();
+                }
+            };
+
+            const valueLabelsPlugin = {
+                id: 'skuValueLabels',
+                afterDatasetsDraw(chart) {
+                    if (!chart.data.datasets.length) return;
+                    const dataset = chart.data.datasets[0];
+                    const meta = chart.getDatasetMeta(0);
+                    const ctx = chart.ctx;
+                    ctx.save();
+                    ctx.font = 'bold 6px Inter, system-ui, sans-serif';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'bottom';
+                    const fmt = skuChartFmtVal;
+                    const seriesColor = dataset.borderColor || '#6c757d';
+                    meta.data.forEach((point, i) => {
+                        const val = dataset.data[i];
+                        if (val == null) return;
+                        const offsetY = (i % 2 === 0) ? -6 : -10;
+                        const valueFmt = (skuChartFirstSeriesStats && skuChartFirstSeriesStats.valueFmt) ? skuChartFirstSeriesStats.valueFmt : skuChartFmtVal;
+                        ctx.fillStyle = seriesColor;
+                        ctx.fillText(valueFmt(val), point.x, point.y + offsetY);
+                    });
+                    ctx.restore();
+                }
+            };
+
             skuMetricsChart = new Chart(ctx, {
                 type: 'line',
                 data: {
@@ -997,225 +1068,173 @@
                         {
                             label: 'Price (USD)',
                             data: [],
-                            borderColor: '#FF0000',
-                            backgroundColor: 'rgba(255, 0, 0, 0.1)',
-                            borderWidth: 2,
-                            pointRadius: 4,
-                            pointHoverRadius: 6,
+                            borderColor: '#adb5bd',
+                            backgroundColor: 'rgba(108,117,125,0.08)',
+                            borderWidth: 1.5,
+                            pointRadius: 3,
+                            pointHoverRadius: 5,
                             yAxisID: 'y',
-                            tension: 0.4
-                        },
-                        {
-                            label: 'Views',
-                            data: [],
-                            borderColor: '#0000FF',
-                            backgroundColor: 'rgba(0, 0, 255, 0.1)',
-                            borderWidth: 2,
-                            pointRadius: 4,
-                            pointHoverRadius: 6,
-                            yAxisID: 'y',
-                            tension: 0.4
-                        },
-                        {
-                            label: 'CVR%',
-                            data: [],
-                            borderColor: '#008000',
-                            backgroundColor: 'rgba(0, 128, 0, 0.1)',
-                            borderWidth: 2,
-                            pointRadius: 4,
-                            pointHoverRadius: 6,
-                            yAxisID: 'y1',
-                            tension: 0.4
-                        },
-                        {
-                            label: 'AD%',
-                            data: [],
-                            borderColor: '#FFD700',
-                            backgroundColor: 'rgba(255, 215, 0, 0.1)',
-                            borderWidth: 2,
-                            pointRadius: 4,
-                            pointHoverRadius: 6,
-                            yAxisID: 'y1',
-                            tension: 0.4
-                        },
-                        {
-                            label: 'Sold (L30)',
-                            data: [],
-                            borderColor: '#FF00FF',
-                            backgroundColor: 'rgba(255, 0, 255, 0.1)',
-                            borderWidth: 2,
-                            pointRadius: 4,
-                            pointHoverRadius: 6,
-                            yAxisID: 'y',
-                            tension: 0.4
+                            tension: 0.3,
+                            fill: true
                         }
                     ]
                 },
+                plugins: [medianLinePlugin, valueLabelsPlugin],
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    interaction: {
-                        mode: 'index',
-                        intersect: false,
-                    },
+                    layout: { padding: { top: 18, left: 2, right: 2, bottom: 2 } },
+                    interaction: { mode: 'index', intersect: false },
                     plugins: {
-                        legend: {
-                            position: 'top',
-                            labels: {
-                                usePointStyle: true,
-                                padding: 15,
-                                font: {
-                                    size: 12
-                                }
-                            }
-                        },
-                        title: {
-                            display: true,
-                            text: 'Amazon SKU Metrics',
-                            font: {
-                                size: 16,
-                                weight: 'bold'
-                            },
-                            padding: {
-                                top: 10,
-                                bottom: 20
-                            }
-                        },
+                        legend: { display: false },
+                        title: { display: false },
                         tooltip: {
                             enabled: true,
                             mode: 'index',
                             intersect: false,
+                            titleFont: { size: 10 },
+                            bodyFont: { size: 10 },
+                            padding: 6,
                             callbacks: {
                                 label: function(context) {
-                                    let label = context.dataset.label || '';
-                                    let value = context.parsed.y || 0;
-                                    
-                                    // Format based on dataset label
-                                    if (label.includes('Price')) {
-                                        return label + ': $' + value.toFixed(2);
-                                    } else if (label.includes('Views')) {
-                                        return label + ': ' + value.toLocaleString();
-                                    } else if (label.includes('Sold')) {
-                                        return label + ': ' + Math.round(value).toLocaleString();
-                                    } else if (label.includes('CVR')) {
-                                        return label + ': ' + value.toFixed(1) + '%';
-                                    } else if (label.includes('AD')) {
-                                        return label + ': ' + Math.round(value) + '%';
-                                    }
-                                    return label + ': ' + value;
+                                    return 'Price: ' + skuChartFmtVal(context.parsed.y || 0);
                                 }
                             }
                         }
                     },
                     scales: {
                         x: {
-                            title: {
-                                display: true,
-                                text: 'Date',
-                                font: {
-                                    size: 12,
-                                    weight: 'bold'
-                                }
-                            },
-                            ticks: {
-                                font: {
-                                    size: 11
-                                }
-                            }
+                            ticks: { maxRotation: 45, minRotation: 45, autoSkip: true, maxTicksLimit: 30, font: { size: 8 } }
                         },
                         y: {
                             type: 'linear',
                             display: true,
                             position: 'left',
-                            title: {
-                                display: true,
-                                text: 'Price/Views/Sold',
-                                font: {
-                                    size: 12,
-                                    weight: 'bold'
-                                }
-                            },
                             beginAtZero: true,
-                            ticks: {
-                                font: {
-                                    size: 11
-                                },
-                                callback: function(value, index, values) {
-                                    // Format as number (for Views and Sold), not currency
-                                    // Price will be shown in tooltip, but axis shows numeric values
-                                    return value.toLocaleString();
-                                }
-                            }
-                        },
-                        y1: {
-                            type: 'linear',
-                            display: true,
-                            position: 'right',
-                            title: {
-                                display: true,
-                                text: 'Percent (%)',
-                                font: {
-                                    size: 12,
-                                    weight: 'bold'
-                                }
-                            },
-                            beginAtZero: true,
-                            grid: {
-                                drawOnChartArea: false,
-                            },
-                            ticks: {
-                                font: {
-                                    size: 11
-                                },
-                                callback: function(value) {
-                                    return value.toFixed(0) + '%';
-                                }
-                            }
+                            ticks: { font: { size: 9 }, callback: function(v) { return '$' + (Number(v) === v && v % 1 !== 0 ? v.toFixed(2) : Math.round(v).toLocaleString('en-US')); } }
                         }
                     }
                 }
             });
         }
 
-        function loadSkuMetricsData(sku, days = 7) {
-            console.log('Loading metrics data for SKU:', sku, 'Days:', days);
-            fetch(`/amazon-metrics-history?days=${days}&sku=${encodeURIComponent(sku)}`)
+        function loadSkuMetricsData(sku, days = 30) {
+            $('#skuChartLoading').show();
+            $('#skuChartContainer').hide();
+            $('#chart-no-data-message').hide();
+            const daysNum = days === 0 || days === '0' ? 0 : (parseInt(days, 10) || 30);
+            fetch(`/amazon-metrics-history?days=${daysNum}&sku=${encodeURIComponent(sku)}`)
                 .then(response => {
-                    if (!response.ok) {
-                        throw new Error(`HTTP error! status: ${response.status}`);
-                    }
+                    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
                     return response.json();
                 })
                 .then(data => {
-                    console.log('Metrics data received:', data);
-                    if (skuMetricsChart) {
-                        if (!data || data.length === 0) {
-                            console.warn('No data returned for SKU:', sku);
-                            $('#chart-no-data-message').show();
-                            skuMetricsChart.data.labels = [];
-                            skuMetricsChart.data.datasets.forEach(dataset => {
-                                dataset.data = [];
-                            });
-                            skuMetricsChart.options.plugins.title.text = 'Amazon Metrics';
-                            skuMetricsChart.update();
-                            return;
-                        }
-                        
-                        $('#chart-no-data-message').hide();
-                        skuMetricsChart.options.plugins.title.text = `Amazon Metrics (${days} Days)`;
-                        skuMetricsChart.data.labels = data.map(d => d.date_formatted || d.date || '');
-                        skuMetricsChart.data.datasets[0].data = data.map(d => d.price || 0);
-                        skuMetricsChart.data.datasets[1].data = data.map(d => d.views || 0);
-                        skuMetricsChart.data.datasets[2].data = data.map(d => d.cvr_percent || 0);
-                        skuMetricsChart.data.datasets[3].data = data.map(d => d.ad_percent || 0);
-                        skuMetricsChart.data.datasets[4].data = data.map(d => d.a_l30 || 0);
-                        skuMetricsChart.update('active');
-                        console.log('Chart updated successfully with', data.length, 'data points');
+                    $('#skuChartLoading').hide();
+                    if (!skuMetricsChart) return;
+                    function setSkuRefCol(dsIdx, high, med, low, fmt) {
+                        const refRed = '#dc3545', refGray = '#6c757d', refGreen = '#198754';
+                        const hEl = document.getElementById('skuCol' + dsIdx + 'High');
+                        const mEl = document.getElementById('skuCol' + dsIdx + 'Med');
+                        const lEl = document.getElementById('skuCol' + dsIdx + 'Low');
+                        if (hEl) { hEl.textContent = fmt(high); hEl.style.color = high === 0 ? refGreen : high > 0 ? refRed : refGray; }
+                        if (mEl) { mEl.textContent = fmt(med); mEl.style.color = med === 0 ? refGreen : med > 0 ? refRed : refGray; }
+                        if (lEl) { lEl.textContent = fmt(low); lEl.style.color = low === 0 ? refGreen : low > 0 ? refRed : refGray; }
                     }
+                    function statsForArr(arr) {
+                        const valid = arr.filter(v => v != null && !isNaN(v));
+                        if (valid.length === 0) return { min: 0, max: 0, median: 0 };
+                        const min = Math.min(...valid);
+                        const max = Math.max(...valid);
+                        const sorted = [...valid].sort((a, b) => a - b);
+                        const mid = Math.floor(sorted.length / 2);
+                        const median = sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+                        return { min, max, median };
+                    }
+                    if (!data || data.length === 0) {
+                        skuChartFirstSeriesStats = null;
+                        const h = document.getElementById('skuCol0High');
+                        const m = document.getElementById('skuCol0Med');
+                        const l = document.getElementById('skuCol0Low');
+                        if (h) h.textContent = '-';
+                        if (m) m.textContent = '-';
+                        if (l) l.textContent = '-';
+                        skuMetricsChart.data.labels = [];
+                        skuMetricsChart.data.datasets.forEach(dataset => { dataset.data = []; });
+                        skuMetricsChart.update('active');
+                        $('#chart-no-data-message').show();
+                        return;
+                    }
+                    const labels = data.map(d => d.date_formatted || d.date || '');
+                    const isCvr = currentSkuChartMetric === 'cvr';
+                    const isViews = currentSkuChartMetric === 'views';
+                    const isTacos = currentSkuChartMetric === 'tacos';
+                    const isInv = currentSkuChartMetric === 'inv';
+                    const isInvAmz = currentSkuChartMetric === 'inv_amz';
+                    const isAl30 = currentSkuChartMetric === 'al30';
+                    const isOvl30 = currentSkuChartMetric === 'ovl30';
+                    const intFmt = v => Math.round(Number(v) || 0).toLocaleString('en-US');
+                    const values = isCvr ? data.map(d => Number(d.cvr_percent) || 0) : isViews ? data.map(d => Number(d.views) || 0) : isTacos ? data.map(d => Number(d.ad_percent) || 0) : isInv ? data.map(d => Number(d.inv) ?? 0) : isInvAmz ? data.map(d => Number(d.inv_amz) ?? 0) : isAl30 ? data.map(d => Number(d.a_l30) || 0) : isOvl30 ? data.map(d => Number(d.l30) ?? 0) : data.map(d => Number(d.price) || 0);
+                    const refLabelEl = document.getElementById('skuChartRefLabel');
+                    const refDotEl = document.getElementById('skuChartRefDot');
+                    const refLabels = { cvr: 'CVR%', views: 'View L30', tacos: 'TACOS%', inv: 'INV', inv_amz: 'INV AMZ', al30: 'A L30', ovl30: 'OV L30' };
+                    const refLabelText = refLabels[currentSkuChartMetric] || 'Price';
+                    if (refLabelEl) refLabelEl.textContent = refLabelText;
+                    const refColors = { cvr: '#008000', views: '#0000FF', tacos: '#FFD700', inv: '#6c757d', inv_amz: '#17a2b8', al30: '#e83e8c', ovl30: '#fd7e14' };
+                    if (refDotEl) refDotEl.style.background = refColors[currentSkuChartMetric] || '#adb5bd';
+
+                    skuMetricsChart.data.labels = labels;
+                    skuMetricsChart.data.datasets[0].data = values;
+                    skuMetricsChart.data.datasets[0].label = refLabelText + (currentSkuChartMetric === 'price' ? ' (USD)' : '');
+                    skuMetricsChart.data.datasets[0].borderColor = refColors[currentSkuChartMetric] || '#adb5bd';
+                    const bgColors = { cvr: 'rgba(0, 128, 0, 0.1)', views: 'rgba(0, 0, 255, 0.1)', tacos: 'rgba(255, 215, 0, 0.1)', inv: 'rgba(108,117,125,0.1)', inv_amz: 'rgba(23,162,184,0.1)', al30: 'rgba(232,62,140,0.1)', ovl30: 'rgba(253,126,20,0.1)' };
+                    skuMetricsChart.data.datasets[0].backgroundColor = bgColors[currentSkuChartMetric] || 'rgba(108,117,125,0.08)';
+                    const cvrFmt = v => (Number(v) === v ? v.toFixed(1) : v) + '%';
+                    const viewsFmt = intFmt;
+                    const tacosFmt = v => (Number(v) === v ? v.toFixed(1) : v) + '%';
+                    const refFmt = (isCvr || isTacos) ? (isCvr ? cvrFmt : tacosFmt) : (isViews || isInv || isInvAmz || isAl30 || isOvl30) ? intFmt : skuChartFmtVal;
+                    if (skuMetricsChart.options.scales && skuMetricsChart.options.scales.y) {
+                        if (isCvr || isTacos) skuMetricsChart.options.scales.y.ticks.callback = function(v) { return v.toFixed(0) + '%'; };
+                        else if (isViews || isInv || isInvAmz || isAl30 || isOvl30) skuMetricsChart.options.scales.y.ticks.callback = function(v) { return Math.round(v).toLocaleString('en-US'); };
+                        else skuMetricsChart.options.scales.y.ticks.callback = function(v) { return '$' + (Number(v) === v && v % 1 !== 0 ? v.toFixed(2) : Math.round(v).toLocaleString('en-US')); };
+                    }
+                    if (skuMetricsChart.options.plugins && skuMetricsChart.options.plugins.tooltip && skuMetricsChart.options.plugins.tooltip.callbacks) {
+                        if (isCvr) skuMetricsChart.options.plugins.tooltip.callbacks.label = function(context) { return 'CVR%: ' + (context.parsed.y != null ? (Number(context.parsed.y).toFixed(1) + '%') : '-'); };
+                        else if (isTacos) skuMetricsChart.options.plugins.tooltip.callbacks.label = function(context) { return 'TACOS%: ' + (context.parsed.y != null ? (Number(context.parsed.y).toFixed(1) + '%') : '-'); };
+                        else if (isViews) skuMetricsChart.options.plugins.tooltip.callbacks.label = function(context) { return 'View L30: ' + (context.parsed.y != null ? intFmt(context.parsed.y) : '-'); };
+                        else if (isInv || isInvAmz || isAl30 || isOvl30) skuMetricsChart.options.plugins.tooltip.callbacks.label = function(context) { return refLabelText + ': ' + (context.parsed.y != null ? intFmt(context.parsed.y) : '-'); };
+                        else skuMetricsChart.options.plugins.tooltip.callbacks.label = function(context) { return 'Price: ' + skuChartFmtVal(context.parsed.y || 0); };
+                    }
+
+                    const s0 = statsForArr(values);
+                    setSkuRefCol(0, s0.max, s0.median, s0.min, refFmt);
+
+                    const refRed = '#dc3545';
+                    const refGray = '#6c757d';
+                    const refGreen = '#198754';
+                    const dotColors = values.map((v, i) => {
+                        if (i === 0) return refGray;
+                        return v > values[i - 1] ? '#28a745' : v < values[i - 1] ? refRed : refGray;
+                    });
+                    const labelColors = values.map(v => v === 0 ? refGreen : v > 0 ? refRed : refGray);
+                    skuChartFirstSeriesStats = { values, median: s0.median, dataMin: s0.min, dataMax: s0.max, dotColors, labelColors, valueFmt: refFmt };
+                    skuMetricsChart.data.datasets[0].pointBackgroundColor = dotColors;
+                    skuMetricsChart.data.datasets[0].pointBorderColor = dotColors;
+                    skuMetricsChart.data.datasets[0].pointBorderWidth = 1.5;
+
+                    $('#skuChartContainer').show();
+                    skuMetricsChart.update('active');
                 })
                 .catch(error => {
+                    $('#skuChartLoading').hide();
+                    skuChartFirstSeriesStats = null;
+                    const h = document.getElementById('skuCol0High');
+                    const m = document.getElementById('skuCol0Med');
+                    const l = document.getElementById('skuCol0Low');
+                    if (h) h.textContent = '-';
+                    if (m) m.textContent = '-';
+                    if (l) l.textContent = '-';
+                    $('#chart-no-data-message').show();
                     console.error('Error loading SKU metrics data:', error);
-                    alert('Error loading metrics data. Please check console for details.');
                 });
         }
 
@@ -2160,13 +2179,12 @@
             // SKU chart days filter
             $('#sku-chart-days-filter').on('change', function() {
                 const days = $(this).val();
-                if (currentSku) {
-                    if (skuMetricsChart) {
-                        skuMetricsChart.options.plugins.title.text = `Amazon Metrics (${days} Days)`;
-                        skuMetricsChart.update();
-                    }
-                    loadSkuMetricsData(currentSku, days);
-                }
+                const daysNum = parseInt(days, 10);
+                const rangeLabel = daysNum === 0 ? 'Lifetime' : 'L' + daysNum;
+                const metricLabels = { cvr: 'CVR%', views: 'View L30', tacos: 'TACOS%', inv: 'INV', inv_amz: 'INV AMZ', al30: 'A L30', ovl30: 'OV L30' };
+                const metricLabel = metricLabels[currentSkuChartMetric] || 'Price';
+                $('#skuChartModalSuffix').text(metricLabel + ' (Rolling ' + rangeLabel + ')');
+                if (currentSku) loadSkuMetricsData(currentSku, daysNum || 0);
             });
             let campaignTotals = {
                 kw_spend_L30: 0,
@@ -2286,21 +2304,23 @@
                         hozAlign: "center",
                         formatter: function(cell) {
                             const row = cell.getRow().getData();
+                            const sku = row['(Child) sku'] || '';
                             const aL30 = parseFloat(row['A_L30']) || 0;
                             const sess30 = parseFloat(row['Sess30']) || 0;
 
-                            if (sess30 === 0) return '<span style="color: #a00211; font-weight: 600;">0.0%</span>';
+                            if (sess30 === 0) {
+                                const dotBtn = sku ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${sku}" data-metric="cvr" title="View CVR% chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #008000;"></span></button>` : '';
+                                return `<span style="color: #a00211; font-weight: 600;">0.0%</span> ${dotBtn}`.trim();
+                            }
 
                             const cvr = (aL30 / sess30) * 100;
                             let color = '';
-                            
-                            // getCvrColor logic from inc/dec page (same as eBay)
-                            if (cvr <= 4) color = '#a00211'; // red
-                            else if (cvr > 4 && cvr <= 7) color = '#ffc107'; // yellow
-                            else if (cvr > 7 && cvr <= 10) color = '#28a745'; // green
-                            else color = '#e83e8c'; // pink
-                            
-                            return `<span style="color: ${color}; font-weight: 600;">${cvr.toFixed(1)}%</span>`;
+                            if (cvr <= 4) color = '#a00211';
+                            else if (cvr > 4 && cvr <= 7) color = '#ffc107';
+                            else if (cvr > 7 && cvr <= 10) color = '#28a745';
+                            else color = '#e83e8c';
+                            const dotBtn = sku ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${sku}" data-metric="cvr" title="View CVR% chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #008000;"></span></button>` : '';
+                            return `<span style="color: ${color}; font-weight: 600;">${cvr.toFixed(1)}%</span> ${dotBtn}`.trim();
                         },
                         sorter: function(a, b, aRow, bRow) {
                             const calcCVR = (row) => {
@@ -2578,7 +2598,15 @@
                         field: "INV",
                         hozAlign: "center",
                         width: 50,
-                        sorter: "number"
+                        sorter: "number",
+                        formatter: function(cell) {
+                            const row = cell.getRow().getData();
+                            const sku = row['(Child) sku'] || '';
+                            const value = cell.getValue();
+                            const num = Math.round(parseFloat(value) || 0);
+                            const dotBtn = sku ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${sku}" data-metric="inv" title="View INV chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #6c757d;"></span></button>` : '';
+                            return `${num} ${dotBtn}`.trim();
+                        }
                     },
 
                     {
@@ -2590,32 +2618,32 @@
                         formatter: function(cell) {
                             const value = parseFloat(cell.getValue()) || 0;
                             const rowData = cell.getRow().getData();
+                            const sku = rowData['(Child) sku'] || '';
                             const shopifyInv = parseFloat(rowData.INV) || 0;
-                            
-                            // Color logic: Green if matches, Red if different by >3, Yellow if different by <=3
                             let color = '';
                             const difference = Math.abs(value - shopifyInv);
-                            
-                            if (difference === 0) {
-                                color = '#28a745'; // Green - exact match
-                            } else if (difference <= 3) {
-                                color = '#ffc107'; // Yellow - small difference
-                            } else {
-                                color = '#dc3545'; // Red - large difference
-                            }
-                            
-                            return `<span style="color: ${color}; font-weight: 600;">${Math.round(value)}</span>`;
+                            if (difference === 0) color = '#28a745';
+                            else if (difference <= 3) color = '#ffc107';
+                            else color = '#dc3545';
+                            const dotBtn = sku ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${sku}" data-metric="inv_amz" title="View INV AMZ chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #17a2b8;"></span></button>` : '';
+                            return `<span style="color: ${color}; font-weight: 600;">${Math.round(value)}</span> ${dotBtn}`.trim();
                         }
                     },
-
-                   
 
                     {
                         title: "OV L30",
                         field: "L30",
                         hozAlign: "center",
                         width: 50,
-                        sorter: "number"
+                        sorter: "number",
+                        formatter: function(cell) {
+                            const row = cell.getRow().getData();
+                            const sku = row['(Child) sku'] || '';
+                            const value = cell.getValue();
+                            const num = Math.round(parseFloat(value) || 0);
+                            const dotBtn = sku ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${sku}" data-metric="ovl30" title="View OV L30 chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #fd7e14;"></span></button>` : '';
+                            return `${num} ${dotBtn}`.trim();
+                        }
                     },
 
 
@@ -2652,8 +2680,12 @@
                         width: 50,
                         sorter: "number",
                         formatter: function(cell) {
+                            const row = cell.getRow().getData();
+                            const sku = row['(Child) sku'] || '';
                             const value = cell.getValue();
-                            return Math.round(value || 0);
+                            const num = Math.round(value || 0);
+                            const dotBtn = sku ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${sku}" data-metric="al30" title="View A L30 chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #e83e8c;"></span></button>` : '';
+                            return `${num} ${dotBtn}`.trim();
                         }
                     },
                     {
@@ -2727,62 +2759,18 @@
                     },
 
                     {
-                        title: "A L7",
-                        field: "A_L7",
-                        hozAlign: "center",
-                        width: 50,
-                        sorter: "number",
-                        formatter: function(cell) {
-                            const value = cell.getValue();
-                            return Math.round(value || 0);
-                        }
-                    },
-
-                    {
-                        title: "A L60",
-                        field: "units_ordered_l60",
-                        hozAlign: "center",
-                        width: 55,
-                        sorter: "number",
-                        formatter: function(cell) {
-                            const value = cell.getValue();
-                            return Math.round(value || 0);
-                        }
-                    },
-
-                    {
                         title: "View L30",
                         field: "Sess30",
                         hozAlign: "center",
                         sorter: "number",
                         width: 55,
                         formatter: function(cell) {
+                            const row = cell.getRow().getData();
+                            const sku = row['(Child) sku'] || '';
                             const value = cell.getValue();
-                            return Math.round(value || 0);
-                        }
-                    },
-
-                    {
-                        title: "View L7",
-                        field: "Sess7",
-                        hozAlign: "center",
-                        sorter: "number",
-                        width: 50,
-                        formatter: function(cell) {
-                            const value = cell.getValue();
-                            return Math.round(value || 0);
-                        }
-                    },
-
-                    {
-                        title: "View L60",
-                        field: "sessions_l60",
-                        hozAlign: "center",
-                        sorter: "number",
-                        width: 60,
-                        formatter: function(cell) {
-                            const value = cell.getValue();
-                            return Math.round(value || 0);
+                            const num = Math.round(value || 0);
+                            const dotBtn = sku ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${sku}" data-metric="views" title="View View L30 chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #0000FF;"></span></button>` : '';
+                            return `${num.toLocaleString('en-US')} ${dotBtn}`.trim();
                         }
                     },
 
@@ -2797,27 +2785,29 @@
                             // Empty for parent rows
                             if (rowData.is_parent_summary) return '';
 
+                            const sku = rowData['(Child) sku'] || '';
                             const price = parseFloat(value || 0);
                             const lmpPrice = parseFloat(rowData.lmp_price || 0);
                             const lmpaPrice = parseFloat(rowData.price_lmpa || 0);
+
+                            // Dot icon: opens SKU metrics chart (same color as Price line in chart)
+                            const dotBtn = sku ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${sku}" title="View metrics chart (Price, Views, CVR%, AD%, Sold)" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #adb5bd;"></span></button>` : '';
 
                             // If no Amazon price, show best available fallback price (in gray italic)
                             if (price <= 0) {
                                 const fallback = lmpPrice > 0 ? lmpPrice : (lmpaPrice > 0 ? lmpaPrice : 0);
                                 if (fallback > 0) {
-                                    return `<span style="color: #6c757d; font-style: italic;" title="Reference price (no Amazon listing price)">$${fallback.toFixed(2)}</span>`;
+                                    return `<span style="color: #6c757d; font-style: italic;" title="Reference price (no Amazon listing price)">$${fallback.toFixed(2)}</span> ${dotBtn}`.trim();
                                 }
-                                return '';
+                                return dotBtn || '';
                             }
 
                             const priceFormatted = '$' + price.toFixed(2);
-                            
-                            // Color red if price > lmp_price
-                            if (lmpPrice > 0 && price > lmpPrice) {
-                                return `<span style="color: #dc3545; font-weight: 600;">${priceFormatted}</span>`;
-                            }
-                            
-                            return priceFormatted;
+                            const priceSpan = (lmpPrice > 0 && price > lmpPrice)
+                                ? `<span style="color: #dc3545; font-weight: 600;">${priceFormatted}</span>`
+                                : priceFormatted;
+
+                            return `${priceSpan} ${dotBtn}`.trim();
                         },
                         sorter: "number",
                         width: 70
@@ -2929,24 +2919,26 @@
                         formatter: function(cell) {
                             const value = cell.getValue();
                             const rowData = cell.getRow().getData();
+                            const sku = rowData['(Child) sku'] || '';
                             const adSpend = parseFloat(rowData.AD_Spend_L30) || 0;
                             const sales = parseFloat(rowData['A_L30']) || 0;
-                            
+                            const dotBtn = sku ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${sku}" data-metric="tacos" title="View TACOS% chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #FFD700;"></span></button>` : '';
+
                             // If there is ad spend but no sales, show 100%
                             if (adSpend > 0 && sales === 0) {
-                                return `<span style="color: #a00211; font-weight: 600;">100%</span>`;
+                                return `<span style="color: #a00211; font-weight: 600;">100%</span> ${dotBtn}`.trim();
                             }
-                            
-                            if (value === null || value === undefined) return '0.00%';
+
+                            if (value === null || value === undefined) return `0.00% ${dotBtn}`.trim();
                             const percent = parseFloat(value);
-                            if (isNaN(percent)) return '0.00%';
-                            
+                            if (isNaN(percent)) return `0.00% ${dotBtn}`.trim();
+
                             // If spend > 0 but AD% is 0, show red alert
                             if (adSpend > 0 && percent === 0) {
-                                return `<span style="color: #dc3545; font-weight: 600;">100%</span>`;
+                                return `<span style="color: #dc3545; font-weight: 600;">100%</span> ${dotBtn}`.trim();
                             }
-                            
-                            return `${parseFloat(value).toFixed(0)}%`;
+
+                            return `${parseFloat(value).toFixed(0)}% ${dotBtn}`.trim();
                         },
                         width: 55
                     },
@@ -2983,7 +2975,7 @@
                             var adSold7 = parseInt(row.l7_purchases || 0).toLocaleString();
                             var tooltipText = "L30: Clicks " + clicks30 + ", Spend " + spend30Display + ", Sales " + sales30Display + ", Ad Sold " + adSold30 +
                                 "\nL7: Clicks " + clicks7 + ", Spend " + spend7 + ", Sales " + sales7 + ", Ad Sold " + adSold7 +
-                                "\n(Click info to show/hide Clicks L7, Spend L7, Sales L7, Ad Sold L7 and L30 columns)";
+                                "\n(Click info to show/hide Clicks L30, Spend L30, Sales L30, Ad Sold L30 columns)";
                             
                             var acosDisplay;
                             if (acos === 0) {
@@ -3038,52 +3030,6 @@
                             var value = cell.getValue();
                             if (value === undefined || value === null) return '-';
                             return value;
-                        }
-                    },
-                    {
-                        title: "Clicks L7",
-                        field: "l7_clicks",
-                        hozAlign: "right",
-                        visible: false,
-                        minWidth: 80,
-                        formatter: function(cell) {
-                            var value = parseInt(cell.getValue() || 0);
-                            var tooltipL7 = "Click info to show/hide Spend L7, Sales L7, Ad Sold L7";
-                            return value.toLocaleString() + '<i class="fas fa-info-circle ms-1 info-icon-l7-toggle" style="cursor: pointer; color: #0d6efd;" title="' + tooltipL7 + '"></i>';
-                        },
-                        sorter: "number"
-                    },
-                    {
-                        title: "Spend L7",
-                        field: "spend_l7_col",
-                        hozAlign: "right",
-                        visible: false,
-                        minWidth: 75,
-                        formatter: function(cell) {
-                            var value = parseFloat(cell.getValue() || 0);
-                            return '$' + value.toFixed(2);
-                        }
-                    },
-                    {
-                        title: "Sales L7",
-                        field: "l7_sales",
-                        hozAlign: "right",
-                        visible: false,
-                        minWidth: 70,
-                        formatter: function(cell) {
-                            var value = parseFloat(cell.getValue() || 0);
-                            return '$' + value.toFixed(2);
-                        }
-                    },
-                    {
-                        title: "Ad Sold L7",
-                        field: "l7_purchases",
-                        hozAlign: "right",
-                        visible: false,
-                        minWidth: 85,
-                        formatter: function(cell) {
-                            var value = parseInt(cell.getValue() || 0);
-                            return value.toLocaleString();
                         }
                     },
                     {
@@ -3236,51 +3182,6 @@
                         }
                     },
                     {
-                        title: "PT Clicks L7",
-                        field: "pt_clicks_L7",
-                        hozAlign: "right",
-                        visible: false,
-                        minWidth: 85,
-                        formatter: function(cell) {
-                            var value = parseInt(cell.getValue() || 0);
-                            return value.toLocaleString();
-                        },
-                        sorter: "number"
-                    },
-                    {
-                        title: "PT Spend L7",
-                        field: "pt_spend_L7",
-                        hozAlign: "right",
-                        visible: false,
-                        minWidth: 85,
-                        formatter: function(cell) {
-                            var value = parseFloat(cell.getValue() || 0);
-                            return '$' + value.toFixed(2);
-                        }
-                    },
-                    {
-                        title: "PT Sales L7",
-                        field: "pt_sales_L7",
-                        hozAlign: "right",
-                        visible: false,
-                        minWidth: 85,
-                        formatter: function(cell) {
-                            var value = parseFloat(cell.getValue() || 0);
-                            return '$' + value.toFixed(2);
-                        }
-                    },
-                    {
-                        title: "PT Sold L7",
-                        field: "pt_sold_L7",
-                        hozAlign: "right",
-                        visible: false,
-                        minWidth: 85,
-                        formatter: function(cell) {
-                            var value = parseInt(cell.getValue() || 0);
-                            return value.toLocaleString();
-                        }
-                    },
-                    {
                         title: "PT Clicks L30",
                         field: "pt_clicks_L30",
                         hozAlign: "right",
@@ -3288,8 +3189,7 @@
                         minWidth: 90,
                         formatter: function(cell) {
                             var value = parseInt(cell.getValue() || 0);
-                            var tooltipL7 = "Click info to show/hide PT L7 columns";
-                            return value.toLocaleString() + '<i class="fas fa-info-circle ms-1 pt-info-icon-l7-toggle" style="cursor: pointer; color: #0d6efd;" title="' + tooltipL7 + '"></i>';
+                            return value.toLocaleString();
                         },
                         sorter: "number"
                     },
@@ -3663,51 +3563,6 @@
                         },
                         formatter: function(cell) {
                             return cell.getValue();
-                        }
-                    },
-                    {
-                        title: "HL Clicks L7",
-                        field: "hl_clicks_L7",
-                        hozAlign: "right",
-                        visible: false,
-                        minWidth: 85,
-                        formatter: function(cell) {
-                            var value = parseInt(cell.getValue() || 0);
-                            return value.toLocaleString();
-                        },
-                        sorter: "number"
-                    },
-                    {
-                        title: "HL Spend L7",
-                        field: "hl_spend_L7",
-                        hozAlign: "right",
-                        visible: false,
-                        minWidth: 85,
-                        formatter: function(cell) {
-                            var value = parseFloat(cell.getValue() || 0);
-                            return '$' + value.toFixed(2);
-                        }
-                    },
-                    {
-                        title: "HL Sales L7",
-                        field: "hl_sales_L7",
-                        hozAlign: "right",
-                        visible: false,
-                        minWidth: 85,
-                        formatter: function(cell) {
-                            var value = parseFloat(cell.getValue() || 0);
-                            return '$' + value.toFixed(2);
-                        }
-                    },
-                    {
-                        title: "HL Sold L7",
-                        field: "hl_sold_L7",
-                        hozAlign: "right",
-                        visible: false,
-                        minWidth: 85,
-                        formatter: function(cell) {
-                            var value = parseInt(cell.getValue() || 0);
-                            return value.toLocaleString();
                         }
                     },
                     {
@@ -5841,7 +5696,7 @@
                 // Define column groups for each section
                 // KW Ads columns as specified by user:
                 // Active, SKU, Ratings, Missing, INV, OV L30, DIL %, AL 30, A DIL %, NRL, NRA, Price, 
-                // BGT, SBGT, ACOS, Clicks L7, Clicks L30, Spend L30, Sales L30, Ad Sold L30, AD CVR,
+                // BGT, SBGT, ACOS, Clicks L30, Spend L30, Sales L30, Ad Sold L30, AD CVR,
                 // 7 UB%, 1 UB%, AVG CPC, L7 CPC, L1 CPC, Last SBID, SBID, SBID M, APR BID, TPFT%, Status, CAMPAIGN
                 var kwAdsColumns = [
                     '(Child) sku',      // SKU
@@ -5855,10 +5710,6 @@
                     'NRA',              // KW NRA
                     'active_toggle',    // Active toggle (after NRA)
                     'missing_ad',       // Missing AD
-                    'l7_clicks',        // Clicks L7
-                    'spend_l7_col',     // Spend L7
-                    'l7_sales',         // Sales L7
-                    'l7_purchases',     // Ad Sold L7
                     'l30_sales',        // Sales L30
                     'l30_purchases',    // Ad Sold L30
                     'INV',              // INV
@@ -5919,10 +5770,6 @@
                     'GROI%',                // 19. GROI%
                     'pt_campaignBudgetAmount', // 19. PT BGT
                     'pt_sbgt',              // 18. PT SBGT
-                    'pt_clicks_L7',         // 19. PT Clicks L7
-                    'pt_spend_L7',          // 20. PT Spend L7
-                    'pt_sales_L7',          // 21. PT Sales L7
-                    'pt_sold_L7',           // 22. PT Ad Sold L7
                     'pt_sales_L30',         // 23. PT Sales L30
                     'pt_sold_L30',          // 24. PT Ad Sold L30
                     'pt_7ub',               // 25. PT 7 UB%
@@ -5959,10 +5806,6 @@
                     'GROI%',                    // 19. GROI%
                     'hl_campaignBudgetAmount',  // 19. HL BGT
                     'hl_sbgt',                  // 18. HL SBGT
-                    'hl_clicks_L7',             // 19. HL Clicks L7
-                    'hl_spend_L7',              // 20. HL Spend L7
-                    'hl_sales_L7',              // 21. HL Sales L7
-                    'hl_sold_L7',               // 22. HL Ad Sold L7
                     'hl_sales_L30',             // 23. HL Sales L30
                     'hl_sold_L30',              // 24. HL Ad Sold L30
                     'hl_7ub',                   // 25. HL 7 UB%
@@ -6114,13 +5957,9 @@
                     table.moveColumn("pt_campaignBudgetAmount", "price", true); // 17. PT BGT
                     table.moveColumn("pt_sbgt", "pt_campaignBudgetAmount", true); // 18. PT SBGT
                     
-                    // 19-24: L7/L30 detail columns
-                    table.moveColumn("pt_clicks_L7", "pt_sbgt", true);       // 19. Clicks L7
-                    table.moveColumn("pt_spend_L7", "pt_clicks_L7", true);   // 20. Spend L7
-                    table.moveColumn("pt_sales_L7", "pt_spend_L7", true);    // 21. Sales L7
-                    table.moveColumn("pt_sold_L7", "pt_sales_L7", true);     // 22. Ad Sold L7
-                    table.moveColumn("pt_sales_L30", "pt_sold_L7", true);    // 23. Sales L30
-                    table.moveColumn("pt_sold_L30", "pt_sales_L30", true);   // 24. Ad Sold L30
+                    // 19-20: L30 detail columns
+                    table.moveColumn("pt_sales_L30", "pt_sbgt", true);       // 19. Sales L30
+                    table.moveColumn("pt_sold_L30", "pt_sales_L30", true);   // 20. Ad Sold L30
                     
                     // 25-33: Utilization, CPC, SBID columns
                     table.moveColumn("pt_7ub", "pt_sold_L30", true);         // 25. PT 7 UB%
@@ -6178,13 +6017,9 @@
                     table.moveColumn("hl_campaignBudgetAmount", "price", true);    // 17. HL BGT
                     table.moveColumn("hl_sbgt", "hl_campaignBudgetAmount", true);  // 18. HL SBGT
                     
-                    // 19-24: L7/L30 detail columns
-                    table.moveColumn("hl_clicks_L7", "hl_sbgt", true);             // 19. Clicks L7
-                    table.moveColumn("hl_spend_L7", "hl_clicks_L7", true);         // 20. Spend L7
-                    table.moveColumn("hl_sales_L7", "hl_spend_L7", true);          // 21. Sales L7
-                    table.moveColumn("hl_sold_L7", "hl_sales_L7", true);           // 22. Ad Sold L7
-                    table.moveColumn("hl_sales_L30", "hl_sold_L7", true);          // 23. Sales L30
-                    table.moveColumn("hl_sold_L30", "hl_sales_L30", true);         // 24. Ad Sold L30
+                    // 19-20: L30 detail columns
+                    table.moveColumn("hl_sales_L30", "hl_sbgt", true);             // 19. Sales L30
+                    table.moveColumn("hl_sold_L30", "hl_sales_L30", true);         // 20. Ad Sold L30
                     
                     // 25-33: Utilization, CPC, SBID columns
                     table.moveColumn("hl_7ub", "hl_sold_L30", true);               // 25. HL 7 UB%
@@ -6224,32 +6059,16 @@
                 }, 50); // End of setTimeout for loading overlay
             });
 
-            // ACOS info icon: toggle detail columns (Clicks L7, Clicks L30, Spend L30, Sales L30, Ad Sold L30)
+                // ACOS info icon: toggle detail columns (Clicks L30, Spend L30, Sales L30, Ad Sold L30)
             $(document).on('click', '.info-icon-toggle', function(e) {
                 e.stopPropagation();
                 e.preventDefault();
-                // ACOS info: toggle Clicks L7 + L30 columns
-                var acosDetailFields = ['l7_clicks', 'l30_clicks', 'l30_spend', 'l30_sales', 'l30_purchases'];
-                var firstCol = table.getColumn('l7_clicks');
+                // ACOS info: toggle L30 columns
+                var acosDetailFields = ['l30_clicks', 'l30_spend', 'l30_sales', 'l30_purchases'];
+                var firstCol = table.getColumn('l30_clicks');
                 var anyVisible = firstCol && firstCol.isVisible();
                 acosDetailFields.forEach(function(fieldName) {
                     if (anyVisible) {
-                        table.hideColumn(fieldName);
-                    } else {
-                        table.showColumn(fieldName);
-                    }
-                });
-            });
-            
-            // Clicks L7 info icon: toggle only Spend L7, Sales L7, Ad Sold L7
-            $(document).on('click', '.info-icon-l7-toggle', function(e) {
-                e.stopPropagation();
-                e.preventDefault();
-                var l7DetailFields = ['spend_l7_col', 'l7_sales', 'l7_purchases'];
-                var spendL7Col = table.getColumn('spend_l7_col');
-                var anyL7Visible = spendL7Col && spendL7Col.isVisible();
-                l7DetailFields.forEach(function(fieldName) {
-                    if (anyL7Visible) {
                         table.hideColumn(fieldName);
                     } else {
                         table.showColumn(fieldName);
@@ -6261,27 +6080,11 @@
             $(document).on('click', '.pt-info-icon-toggle', function(e) {
                 e.stopPropagation();
                 e.preventDefault();
-                var ptDetailFields = ['pt_clicks_L7', 'pt_clicks_L30', 'pt_spend_L30', 'pt_sales_L30', 'pt_sold_L30'];
-                var firstCol = table.getColumn('pt_clicks_L7');
+                var ptDetailFields = ['pt_clicks_L30', 'pt_spend_L30', 'pt_sales_L30', 'pt_sold_L30'];
+                var firstCol = table.getColumn('pt_clicks_L30');
                 var anyVisible = firstCol && firstCol.isVisible();
                 ptDetailFields.forEach(function(fieldName) {
                     if (anyVisible) {
-                        table.hideColumn(fieldName);
-                    } else {
-                        table.showColumn(fieldName);
-                    }
-                });
-            });
-            
-            // PT Clicks L30 info icon: toggle only PT L7 columns
-            $(document).on('click', '.pt-info-icon-l7-toggle', function(e) {
-                e.stopPropagation();
-                e.preventDefault();
-                var ptL7DetailFields = ['pt_spend_L7', 'pt_sales_L7', 'pt_sold_L7'];
-                var spendL7Col = table.getColumn('pt_spend_L7');
-                var anyL7Visible = spendL7Col && spendL7Col.isVisible();
-                ptL7DetailFields.forEach(function(fieldName) {
-                    if (anyL7Visible) {
                         table.hideColumn(fieldName);
                     } else {
                         table.showColumn(fieldName);
@@ -7194,16 +6997,23 @@ $('#nmap-count').text(missingCount.toLocaleString());
                     });
                 }
 
-                // View SKU chart
+                // View SKU chart (Price or CVR from column dot / SKU info icon)
                 if (e.target.closest('.view-sku-chart')) {
                     e.preventDefault();
                     e.stopPropagation();
-                    const sku = e.target.closest('.view-sku-chart').getAttribute('data-sku');
+                    const el = e.target.closest('.view-sku-chart');
+                    const sku = el.getAttribute('data-sku');
+                    currentSkuChartMetric = (el.getAttribute('data-metric') || 'price');
                     currentSku = sku;
                     $('#modalSkuName').text(sku);
-                    $('#sku-chart-days-filter').val('7');
+                    $('#sku-chart-days-filter').val('30');
+                    const metricLabels = { cvr: 'CVR%', views: 'View L30', tacos: 'TACOS%', inv: 'INV', inv_amz: 'INV AMZ', al30: 'A L30', ovl30: 'OV L30' };
+                    const metricLabel = metricLabels[currentSkuChartMetric] || 'Price';
+                    $('#skuChartModalSuffix').text(metricLabel + ' (Rolling L30)');
+                    $('#skuChartLoading').show();
+                    $('#skuChartContainer').hide();
                     $('#chart-no-data-message').hide();
-                    loadSkuMetricsData(sku, 7);
+                    loadSkuMetricsData(sku, 30);
                     $('#skuMetricsModal').modal('show');
                 }
             });

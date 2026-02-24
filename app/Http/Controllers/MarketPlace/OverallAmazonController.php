@@ -4741,6 +4741,9 @@ class OverallAmazonController extends Controller
                         'cvr_percent' => round($data['cvr_percent'] ?? 0, 2),
                         'ad_percent' => round($data['ad_percent'] ?? 0, 2),
                         'a_l30' => round($data['a_l30'] ?? 0, 0), // Amazon L30 sold units
+                        'inv' => isset($data['inv']) ? (int) $data['inv'] : null,
+                        'inv_amz' => isset($data['inv_amz']) ? (int) $data['inv_amz'] : null,
+                        'l30' => isset($data['l30']) ? (int) $data['l30'] : null, // OV L30 overall sold
                     ];
                 }
             } else {
