@@ -157,7 +157,8 @@ class AutoUpdateAmazonPinkDilKwAds extends Command
         }
     }
 
-    public function getAmazonPinkDilKwAdsData(){
+    public function getAmazonPinkDilKwAdsData()
+    {
         try {
             $productMasters = ProductMaster::orderBy('parent', 'asc')
                 ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
@@ -169,12 +170,22 @@ class AutoUpdateAmazonPinkDilKwAds extends Command
                 return [];
             }
 
-            $skus = $productMasters->pluck('sku')->filter()->unique()->values()->all();
+            // Build SKU list, excluding PARENT SKUs
+            $skus = $productMasters->pluck('sku')
+                ->filter()
+                ->reject(function ($sku) {
+                    return stripos($sku, 'PARENT ') === 0;
+                })
+                ->unique()
+                ->values()
+                ->all();
 
             if (empty($skus)) {
-                $this->warn("No valid SKUs found!");
+                $this->warn("No valid non-parent SKUs found!");
                 return [];
             }
+
+            $this->info(sprintf("KW Pink DIL: loaded %d product masters, %d unique child SKUs", $productMasters->count(), count($skus)));
 
             $amazonDatasheetsBySku = [];
             $shopifyData = [];
@@ -221,168 +232,126 @@ class AutoUpdateAmazonPinkDilKwAds extends Command
                 }
             }
 
-        // Use LIKE to find campaigns that contain SKU names (not just exact matches)
-        // EXCLUDE: FBA campaigns, PT campaigns (only KW campaigns)
-        $amazonSpCampaignReportsL30 = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
-            ->where('report_date_range', 'L30')
-            ->where(function ($q) use ($skus) {
-                foreach ($skus as $sku) {
-                    $q->orWhere('campaignName', 'LIKE', '%' . strtoupper($sku) . '%');
+            // Get ALL KW (non-PT, non-FBA) SP campaigns for L30/L7/L1, then match in PHP
+            $allCampaigns = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
+                ->whereIn('report_date_range', ['L30', 'L7', 'L1'])
+                ->whereNotNull('campaignName')
+                ->where(function ($q) {
+                    // Exclude FBA campaigns
+                    $q->where('campaignName', 'NOT LIKE', '%FBA%');
+                    // Exclude PT campaigns (ending with PT or PT.)
+                    $q->whereRaw("UPPER(TRIM(TRAILING '.' FROM campaignName)) NOT LIKE '% PT'");
+                    $q->whereRaw("UPPER(TRIM(campaignName)) NOT LIKE '%PT.%'");
+                })
+                ->get();
+
+            $campaignsByRange = [
+                'L30' => $allCampaigns->where('report_date_range', 'L30')->values(),
+                'L7'  => $allCampaigns->where('report_date_range', 'L7')->values(),
+                'L1'  => $allCampaigns->where('report_date_range', 'L1')->values(),
+            ];
+
+            $this->info(sprintf(
+                "KW Pink DIL: loaded %d SP campaigns (L30: %d, L7: %d, L1: %d)",
+                $allCampaigns->count(),
+                $campaignsByRange['L30']->count(),
+                $campaignsByRange['L7']->count(),
+                $campaignsByRange['L1']->count()
+            ));
+
+            $result = [];
+            $totalSkusProcessed = 0;
+            $matchedSkus = 0;
+
+            foreach ($productMasters as $pm) {
+                $rawSku = $pm->sku;
+                if (!$rawSku || stripos($rawSku, 'PARENT ') === 0) {
+                    // Skip parent SKUs for matching; they don't have their own KW campaigns
+                    continue;
                 }
-            })
-            ->where(function ($q) {
-                // Exclude FBA campaigns
-                $q->where('campaignName', 'NOT LIKE', '%FBA%');
-                // Exclude PT campaigns (ending with PT or PT.)
-                $q->whereRaw("UPPER(TRIM(TRAILING '.' FROM campaignName)) NOT LIKE '% PT'");
-                $q->whereRaw("UPPER(TRIM(campaignName)) NOT LIKE '%PT.%'");
-            })
-            ->get();
 
-        $amazonSpCampaignReportsL7 = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
-            ->where('report_date_range', 'L7')
-            ->where(function ($q) use ($skus) {
-                foreach ($skus as $sku) {
-                    $q->orWhere('campaignName', 'LIKE', '%' . strtoupper($sku) . '%');
+                $totalSkusProcessed++;
+                $sku = strtoupper($rawSku);
+
+                $amazonSheet = $amazonDatasheetsBySku[strtoupper($pm->sku)] ?? null;
+                $shopify = $shopifyData[$pm->sku] ?? null;
+
+                // Use flexible matching per date range
+                $matchedCampaignL7  = $this->findMatchingCampaign($sku, $campaignsByRange['L7']);
+                $matchedCampaignL1  = $this->findMatchingCampaign($sku, $campaignsByRange['L1']);
+                $matchedCampaignL30 = $this->findMatchingCampaign($sku, $campaignsByRange['L30']);
+
+                // Skip if no campaign found in any range
+                if (!$matchedCampaignL30 && !$matchedCampaignL7 && !$matchedCampaignL1) {
+                    // For debugging, see if there are loose substring matches
+                    $possible = $campaignsByRange['L30']->filter(function ($item) use ($sku) {
+                        return stripos($this->normalizeText($item->campaignName), $this->normalizeText($sku)) !== false;
+                    });
+                    if ($possible->isNotEmpty()) {
+                        $this->warn("KW Pink DIL: SKU '{$sku}' has loose matches but no strong match: " . $possible->pluck('campaignName')->implode(', '));
+                    }
+                    continue;
                 }
-            })
-            ->where(function ($q) {
-                // Exclude FBA campaigns
-                $q->where('campaignName', 'NOT LIKE', '%FBA%');
-                // Exclude PT campaigns (ending with PT or PT.)
-                $q->whereRaw("UPPER(TRIM(TRAILING '.' FROM campaignName)) NOT LIKE '% PT'");
-                $q->whereRaw("UPPER(TRIM(campaignName)) NOT LIKE '%PT.%'");
-            })
-            ->get();
 
-        $amazonSpCampaignReportsL1 = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
-            ->where('report_date_range', 'L1')
-            ->where(function ($q) use ($skus) {
-                foreach ($skus as $sku) {
-                    $q->orWhere('campaignName', 'LIKE', '%' . strtoupper($sku) . '%');
+                $matchedSkus++;
+
+                // Get campaign_id and name from any available range (prioritize L7, then L1, then L30)
+                $campaignId = ($matchedCampaignL7 ? $matchedCampaignL7->campaign_id : null)
+                    ?? ($matchedCampaignL1 ? $matchedCampaignL1->campaign_id : null)
+                    ?? ($matchedCampaignL30 ? $matchedCampaignL30->campaign_id : '');
+                $campaignName = $matchedCampaignL7->campaignName
+                    ?? ($matchedCampaignL1->campaignName ?? ($matchedCampaignL30->campaignName ?? ''));
+
+                // Use L30 data if we found it, otherwise try to find it by campaign_id inside L30 range
+                if (!$matchedCampaignL30 && !empty($campaignId)) {
+                    $matchedCampaignL30 = $campaignsByRange['L30']->firstWhere('campaign_id', $campaignId);
                 }
-            })
-            ->where(function ($q) {
-                // Exclude FBA campaigns
-                $q->where('campaignName', 'NOT LIKE', '%FBA%');
-                // Exclude PT campaigns (ending with PT or PT.)
-                $q->whereRaw("UPPER(TRIM(TRAILING '.' FROM campaignName)) NOT LIKE '% PT'");
-                $q->whereRaw("UPPER(TRIM(campaignName)) NOT LIKE '%PT.%'");
-            })
-            ->get();
 
+                $row = [];
+                $row['INV']    = $shopify->inv ?? 0;
+                $row['A_L30']  = $amazonSheet->units_ordered_l30 ?? 0;
+                $row['OV_L30'] = $shopify->quantity ?? 0; // OV L30 (overall L30 from Shopify)
+                $row['price']  = $amazonSheet->price ?? null;
+                $row['campaign_id'] = $campaignId;
+                $row['campaignName'] = $campaignName;
+                $row['campaignBudgetAmount'] = $matchedCampaignL7->campaignBudgetAmount
+                    ?? ($matchedCampaignL1->campaignBudgetAmount ?? ($matchedCampaignL30->campaignBudgetAmount ?? 0));
+                $row['rating'] = $junglescoutData[$pm->sku] ?? null;
+                $row['sbgt'] = 1;
 
-        $result = [];
-
-        foreach ($productMasters as $pm) {
-            $sku = strtoupper($pm->sku);
-
-            $amazonSheet = $amazonDatasheetsBySku[$sku] ?? null;
-            $shopify = $shopifyData[$pm->sku] ?? null;
-
-            // Match campaigns using same logic as utilized pages
-            // Normalize campaign name and use exact match (same as getAmazonUtilizedAdsData for KW)
-            // Also check L30 first in case campaign only exists in L30
-            $matchedCampaignL30 = $amazonSpCampaignReportsL30->first(function ($item) use ($sku) {
-                // Normalize campaign name: replace non-breaking spaces and multiple spaces (same as utilized pages)
-                $campaignName = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $item->campaignName);
-                $campaignName = preg_replace('/\s+/', ' ', $campaignName);
-                $campaignName = strtoupper(trim(rtrim($campaignName, '.')));
-                $cleanSku = strtoupper(trim(rtrim($sku, '.')));
-                
-                // Match campaign with or without " KW" suffix
-                return $campaignName === $cleanSku || $campaignName === $cleanSku . ' KW';
-            });
-            
-            $matchedCampaignL7 = $amazonSpCampaignReportsL7->first(function ($item) use ($sku) {
-                // Normalize campaign name: replace non-breaking spaces and multiple spaces (same as utilized pages)
-                $campaignName = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $item->campaignName);
-                $campaignName = preg_replace('/\s+/', ' ', $campaignName);
-                $campaignName = strtoupper(trim(rtrim($campaignName, '.')));
-                $cleanSku = strtoupper(trim(rtrim($sku, '.')));
-                
-                // Match campaign with or without " KW" suffix
-                return $campaignName === $cleanSku || $campaignName === $cleanSku . ' KW';
-            });
-            
-            $matchedCampaignL1 = $amazonSpCampaignReportsL1->first(function ($item) use ($sku) {
-                // Normalize campaign name: replace non-breaking spaces and multiple spaces (same as utilized pages)
-                $campaignName = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $item->campaignName);
-                $campaignName = preg_replace('/\s+/', ' ', $campaignName);
-                $campaignName = strtoupper(trim(rtrim($campaignName, '.')));
-                $cleanSku = strtoupper(trim(rtrim($sku, '.')));
-                
-                // Match campaign with or without " KW" suffix
-                return $campaignName === $cleanSku || $campaignName === $cleanSku . ' KW';
-            });
-            
-            // Skip if no campaign found in any range
-            if (!$matchedCampaignL30 && !$matchedCampaignL7 && !$matchedCampaignL1) {
-                $allCampaignsForSku = $amazonSpCampaignReportsL30->filter(function ($item) use ($sku) {
-                    return stripos($item->campaignName, $sku) !== false;
-                });
-                if ($allCampaignsForSku->isNotEmpty()) {
-                    $this->warn("SKU '{$sku}' found campaigns but no exact match: " . $allCampaignsForSku->pluck('campaignName')->implode(', '));
-                }
-                continue;
-            }
-
-            // Get campaign_id and name from any available range (prioritize L7, then L1, then L30)
-            $campaignId = ($matchedCampaignL7 ? $matchedCampaignL7->campaign_id : null) 
-                ?? ($matchedCampaignL1 ? $matchedCampaignL1->campaign_id : null)
-                ?? ($matchedCampaignL30 ? $matchedCampaignL30->campaign_id : '');
-            $campaignName = $matchedCampaignL7->campaignName 
-                ?? ($matchedCampaignL1->campaignName ?? ($matchedCampaignL30->campaignName ?? ''));
-            
-            // Use L30 data if we found it, otherwise try to find it by campaign_id
-            if (!$matchedCampaignL30 && !empty($campaignId)) {
-                $matchedCampaignL30 = $amazonSpCampaignReportsL30->firstWhere('campaign_id', $campaignId);
-            }
-
-            $row = [];
-            $row['INV']    = $shopify->inv ?? 0;
-            $row['A_L30']  = $amazonSheet->units_ordered_l30 ?? 0;
-            $row['OV_L30'] = $shopify->quantity ?? 0; // OV L30 (overall L30 from Shopify)
-            $row['price']  = $amazonSheet->price ?? null;
-            $row['campaign_id'] = $campaignId;
-            $row['campaignName'] = $campaignName;
-            $row['campaignBudgetAmount'] = $matchedCampaignL7->campaignBudgetAmount 
-                ?? ($matchedCampaignL1->campaignBudgetAmount ?? ($matchedCampaignL30->campaignBudgetAmount ?? 0));
-            $row['rating'] = $junglescoutData[$pm->sku] ?? null;
-            $row['sbgt'] = 1;
-
-            // Process ALL campaigns, not just pink dil ones
-            // We need to check for pause conditions:
-            // 1. Dil% > 100% AND Acos > 10%
-            // 2. Dil% is 50-100% AND Acos > 20%
-            // 3. Ratings < 3.5
-            // 4. Price < 10 AND units ordered > 0
-            if (!empty($row['campaignName'])) {
-                // Use OV L30 (overall L30) instead of A_L30 for dilPercent calculation
-                $dilPercent = $row['INV'] > 0 ? (($row['OV_L30'] / $row['INV']) * 100) : 0;
-                
-                // Calculate ACOS from L30 data
-                $sales = $matchedCampaignL30 ? ($matchedCampaignL30->sales30d ?? 0) : 0;
-                $spend = $matchedCampaignL30 ? ($matchedCampaignL30->spend ?? 0) : 0;
-                
-                if ($sales > 0) {
-                    $row['acos_L30'] = round(($spend / $sales) * 100, 2);
-                } elseif ($spend > 0) {
-                    $row['acos_L30'] = 100;
-                } else {
-                    $row['acos_L30'] = 0;
-                }
-                
-                // Only set dilPercent if it's pink (for logging purposes)
-                if ($dilPercent > 50) {
+                // Process ALL campaigns, not just pink DIL ones
+                // We need to check for pause conditions:
+                // 1. Dil% > 100% AND Acos > 10%
+                // 2. Dil% is 50-100% AND Acos > 20%
+                // 3. Ratings < 3.5
+                // 4. Price < 10 AND units ordered > 0
+                if (!empty($row['campaignName'])) {
+                    // Use OV L30 (overall L30) instead of A_L30 for dilPercent calculation
+                    $dilPercent = $row['INV'] > 0 ? (($row['OV_L30'] / $row['INV']) * 100) : 0;
+                    
+                    // Calculate ACOS from L30 data
+                    $sales = $matchedCampaignL30 ? ($matchedCampaignL30->sales30d ?? 0) : 0;
+                    $spend = $matchedCampaignL30 ? ($matchedCampaignL30->spend ?? 0) : 0;
+                    
+                    if ($sales > 0) {
+                        $row['acos_L30'] = round(($spend / $sales) * 100, 2);
+                    } elseif ($spend > 0) {
+                        $row['acos_L30'] = 100;
+                    } else {
+                        $row['acos_L30'] = 0;
+                    }
+                    
                     $row['dilPercent'] = round($dilPercent, 2);
-                } else {
-                    $row['dilPercent'] = round($dilPercent, 2);
+                    
+                    $result[] = (object) $row;
                 }
-                
-                $result[] = (object) $row;
             }
-            }
+
+            $this->info(sprintf(
+                "KW Pink DIL: processed %d child SKUs, matched %d campaigns",
+                $totalSkusProcessed,
+                $matchedSkus
+            ));
 
             DB::connection()->disconnect();
             return $result;
@@ -394,6 +363,98 @@ class AutoUpdateAmazonPinkDilKwAds extends Command
         } finally {
             DB::connection()->disconnect();
         }
+    }
+
+    /**
+     * Normalize text by uppercasing, trimming, collapsing spaces, and removing trailing dots.
+     */
+    protected function normalizeText(?string $text): string
+    {
+        if ($text === null) {
+            return '';
+        }
+        // Replace non-breaking and odd spaces, then collapse
+        $text = str_replace(
+            ["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"],
+            ' ',
+            $text
+        );
+        $text = preg_replace('/\s+/', ' ', $text);
+        return strtoupper(trim(rtrim($text, '.')));
+    }
+
+    /**
+     * Flexible campaign matching for a given SKU against a collection of campaigns.
+     * Strategies (in order):
+     *  - Exact match on normalized name
+     *  - SKU with ' KW' suffix
+     *  - Compact match ignoring spaces (with and without 'KW')
+     *  - Whole-word match: single-word SKU as token, or all words of SKU present
+     */
+    protected function findMatchingCampaign(string $sku, $campaigns)
+    {
+        if (!$campaigns || $campaigns->isEmpty()) {
+            return null;
+        }
+
+        $skuNorm = $this->normalizeText($sku);
+        if ($skuNorm === '') {
+            return null;
+        }
+
+        $skuWithKw = $skuNorm . ' KW';
+        $skuCompact = str_replace(' ', '', $skuNorm);
+        $skuCompactKw = $skuCompact . 'KW';
+        $skuTokens = array_values(array_filter(explode(' ', $skuNorm)));
+        $isMultiWordSku = count($skuTokens) > 1;
+
+        // 1) Exact normalized match (with and without ' KW')
+        foreach ($campaigns as $item) {
+            $nameNorm = $this->normalizeText($item->campaignName);
+            if ($nameNorm === $skuNorm || $nameNorm === $skuWithKw) {
+                return $item;
+            }
+        }
+
+        // 2) Compact match ignoring spaces (e.g., 'MS DBL G YLW 2PCS' vs 'MSDBLGYLW2PCS KW')
+        foreach ($campaigns as $item) {
+            $nameNorm = $this->normalizeText($item->campaignName);
+            $nameCompact = str_replace(' ', '', $nameNorm);
+            if ($nameCompact === $skuCompact || $nameCompact === $skuCompactKw) {
+                return $item;
+            }
+        }
+
+        // 3) Whole-word / all-words-present matching
+        foreach ($campaigns as $item) {
+            $nameNorm = $this->normalizeText($item->campaignName);
+            $nameTokens = array_values(array_filter(explode(' ', $nameNorm)));
+
+            if (empty($nameTokens)) {
+                continue;
+            }
+
+            if ($isMultiWordSku) {
+                // Multi-word SKU: require ALL SKU tokens to appear somewhere in campaign name
+                $allTokensPresent = true;
+                foreach ($skuTokens as $token) {
+                    if (!in_array($token, $nameTokens, true)) {
+                        $allTokensPresent = false;
+                        break;
+                    }
+                }
+                if ($allTokensPresent) {
+                    return $item;
+                }
+            } else {
+                // Single-word SKU: match as a whole word in campaign name
+                if (in_array($skuNorm, $nameTokens, true)) {
+                    return $item;
+                }
+            }
+        }
+
+        return null;
     }
 
 }

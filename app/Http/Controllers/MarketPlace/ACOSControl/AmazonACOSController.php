@@ -58,6 +58,10 @@ class AmazonACOSController extends Controller
         ini_set('memory_limit', '512M');
 
         if (empty($campaignIds) || empty($newBgts)) {
+            Log::warning('updateAutoAmazonCampaignBgt called with empty inputs', [
+                'campaign_ids_count' => count($campaignIds),
+                'new_bgts_count' => count($newBgts),
+            ]);
             return response()->json([
                 'message' => 'Campaign IDs and new budgets are required',
                 'status' => 400
@@ -88,6 +92,10 @@ class AmazonACOSController extends Controller
         $accessToken = $this->getAccessToken();
         $client = new Client();
         $url = 'https://advertising-api.amazon.com/sp/campaigns';
+        Log::info('updateAutoAmazonCampaignBgt: starting SP campaign budget update', [
+            'campaign_ids_count' => count($campaignIds),
+            'payload_campaigns_count' => count($allCampaigns),
+        ]);
         $results = [];
 
         try {
@@ -117,6 +125,10 @@ class AmazonACOSController extends Controller
             ];
 
         } catch (\Exception $e) {
+            Log::error('Error updating SP campaign budgets', [
+                'campaign_ids' => $campaignIds,
+                'error' => $e->getMessage(),
+            ]);
             return [
                 'message' => 'Error updating BGT',
                 'error' => $e->getMessage(),
@@ -1060,6 +1072,7 @@ class AmazonACOSController extends Controller
         ini_set('memory_limit', '512M');
 
         if (empty($campaignIds)) {
+            Log::warning('pauseCampaigns called with empty campaignIds');
             return [
                 'message' => 'No campaign IDs provided',
                 'status' => 400
@@ -1069,6 +1082,9 @@ class AmazonACOSController extends Controller
         $accessToken = $this->getAccessToken();
         $client = new Client();
         $url = 'https://advertising-api.amazon.com/sp/campaigns';
+        Log::info('pauseCampaigns: starting SP campaign pause', [
+            'campaign_ids_count' => count($campaignIds),
+        ]);
         $results = [];
 
         try {
@@ -1108,8 +1124,15 @@ class AmazonACOSController extends Controller
                         'pink_dil_paused_at' => now()
                     ]);
             } catch (\Exception $dbError) {
-                Log::warning('Error updating SP campaign status in database: ' . $dbError->getMessage());
+                Log::warning('Error updating SP campaign status in database', [
+                    'campaign_ids' => $campaignIds,
+                    'error' => $dbError->getMessage(),
+                ]);
             }
+
+            Log::info('pauseCampaigns: SP campaign pause completed', [
+                'campaign_ids_count' => count($campaignIds),
+            ]);
 
             return [
                 'message' => 'Campaigns paused successfully',
@@ -1118,7 +1141,10 @@ class AmazonACOSController extends Controller
             ];
 
         } catch (\Exception $e) {
-            Log::error('Error pausing campaigns: ' . $e->getMessage());
+            Log::error('Error pausing campaigns', [
+                'campaign_ids' => $campaignIds,
+                'error' => $e->getMessage(),
+            ]);
             return [
                 'message' => 'Error pausing campaigns',
                 'error' => $e->getMessage(),

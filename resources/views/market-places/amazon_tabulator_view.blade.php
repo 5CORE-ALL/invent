@@ -4401,18 +4401,7 @@
                             
                             var sbid = 0;
                             
-                            // Special case: If UB7 and UB1 = 0% (L1 and L7 both 0), use price-based default; price < 50 → 0.60
-                            if (ub7 === 0 && ub1 === 0) {
-                                if (price < 50) {
-                                    sbid = 0.60;
-                                } else if (price >= 50 && price < 100) {
-                                    sbid = 1.00;
-                                } else if (price >= 100 && price < 200) {
-                                    sbid = 1.50;
-                                } else {
-                                    sbid = 2.00;
-                                }
-                            } else if (rowType === 'over') {
+                            if (rowType === 'over') {
                                 // Priority: L1 CPC → L7 CPC → AVG CPC → 1.00, then decrease by 10%
                                 if (l1Cpc > 0) {
                                     sbid = Math.floor(l1Cpc * 0.90 * 100) / 100;
