@@ -2,14 +2,17 @@
 
 namespace App\Console\Commands;
 
-use Illuminate\Console\Command;
-use Illuminate\Http\Client\ConnectionException;
-use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\DB;
+use App\Jobs\ImportReverbOrderToShopify;
 use App\Models\ReverbOrderMetric;
 use App\Models\ReverbProduct;
+use App\Models\ReverbSyncSettings;
 use App\Models\ReverbSyncState;
 use Carbon\Carbon;
+use Illuminate\Console\Command;
+use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Schema;
 
 class FetchReverbData extends Command
 {
@@ -214,12 +217,22 @@ class FetchReverbData extends Command
         $baseUrl = 'https://api.reverb.com/api/my/orders/selling/all';
         $lastSync = null;
         $lastSyncForPush = null;
-        if (! $this->option('force') && \Illuminate\Support\Facades\Schema::hasTable('reverb_sync_states')) {
+        if (! $this->option('force') && Schema::hasTable('reverb_sync_states')) {
             $lastSync = ReverbSyncState::getLastSync(ReverbSyncState::KEY_ORDERS_LAST_SYNC);
             $lastSyncForPush = $lastSync ?? Carbon::now();
             ReverbSyncState::setLastSync(ReverbSyncState::KEY_ORDERS_LAST_SYNC_FOR_PUSH, $lastSyncForPush);
             $this->info('Stored lastSyncForPush for order push cutoff: ' . $lastSyncForPush->toIso8601String());
         }
+        // For dispatching import jobs: use stored cutoff or very old date so all pending orders qualify
+        $lastSyncForPush = $lastSyncForPush ?? ReverbSyncState::getLastSync(ReverbSyncState::KEY_ORDERS_LAST_SYNC_FOR_PUSH);
+        if ($this->option('force') || $lastSyncForPush === null) {
+            $lastSyncForPush = Carbon::parse('2000-01-01 00:00:00');
+        }
+        $settings = ReverbSyncSettings::getForReverb();
+        $autoImportOrders = (bool) ($settings['order']['import_orders_to_main_store'] ?? false);
+        $skipShipped = (bool) ($settings['order']['skip_shipped_orders'] ?? false);
+        $jobsDispatched = 0;
+
         if ($lastSync) {
             $buffer = $lastSync->copy()->subMinutes(5);
             $url = $baseUrl . '?updated_start_date=' . $buffer->toIso8601String();
@@ -273,10 +286,15 @@ class FetchReverbData extends Command
                 ];
             }
 
-            // Bulk insert in chunks of 100 to avoid memory issues (jobs dispatched by SyncAllReverb after full sync)
+            // Bulk insert in chunks of 100, then dispatch import jobs for new orders in this chunk
             if (count($bulkOrders) >= 100) {
                 $chunkToInsert = $bulkOrders;
                 $this->bulkUpsertOrders($chunkToInsert);
+                $chunkNumbers = array_column($chunkToInsert, 'order_number');
+                if ($autoImportOrders && !empty($chunkNumbers)) {
+                    $dispatched = $this->dispatchImportJobsForOrderNumbers($chunkNumbers, $lastSyncForPush, $skipShipped);
+                    $jobsDispatched += $dispatched;
+                }
                 $bulkOrders = [];
             }
 
@@ -288,17 +306,51 @@ class FetchReverbData extends Command
             }
         } while ($url);
 
-        // Insert remaining orders (jobs dispatched by SyncAllReverb after full sync completes)
+        // Insert remaining orders and dispatch import jobs for them
         if (!empty($bulkOrders)) {
             $this->bulkUpsertOrders($bulkOrders);
+            $chunkNumbers = array_column($bulkOrders, 'order_number');
+            if ($autoImportOrders && !empty($chunkNumbers)) {
+                $dispatched = $this->dispatchImportJobsForOrderNumbers($chunkNumbers, $lastSyncForPush, $skipShipped);
+                $jobsDispatched += $dispatched;
+            }
         }
 
-        if (\Illuminate\Support\Facades\Schema::hasTable('reverb_sync_states')) {
+        if ($jobsDispatched > 0) {
+            $this->info("  Total import jobs dispatched: {$jobsDispatched}.");
+        }
+
+        if (Schema::hasTable('reverb_sync_states')) {
             ReverbSyncState::setLastSync(ReverbSyncState::KEY_ORDERS_LAST_SYNC);
             $this->info("Fetched and stored {$totalOrders} orders from {$pageCount} pages. Last sync time saved.");
         } else {
             $this->info("Fetched and stored {$totalOrders} orders from {$pageCount} pages.");
         }
+    }
+
+    /**
+     * Dispatch ImportReverbOrderToShopify jobs for orders that are not yet pushed and meet cutoff/status filters.
+     */
+    protected function dispatchImportJobsForOrderNumbers(array $orderNumbers, Carbon $lastSyncForPush, bool $skipShipped): int
+    {
+        $toImport = ReverbOrderMetric::query()
+            ->whereNull('shopify_order_id')
+            ->whereIn('order_number', $orderNumbers)
+            ->whereNotNull('order_paid_at')
+            ->where('order_paid_at', '>', $lastSyncForPush);
+
+        if ($skipShipped) {
+            $toImport->whereNotIn('status', ['shipped', 'delivered']);
+        }
+
+        $ordersToImport = $toImport->orderBy('order_date')->orderBy('id')->get();
+        $count = 0;
+        foreach ($ordersToImport as $order) {
+            ImportReverbOrderToShopify::dispatch($order->id)->onQueue('reverb');
+            $count++;
+            $this->info("  Dispatched import job for Reverb order #{$order->order_number}");
+        }
+        return $count;
     }
 
     /**
