@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Http\Controllers\MarketPlace\ReverbSyncController;
+use App\Http\Controllers\MarketPlace\TopDawgSyncController;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -14,12 +15,13 @@ use Illuminate\View\View;
 class MarketplaceController extends Controller
 {
     /** Supported marketplace slugs (lowercase). */
-    public const SUPPORTED_MARKETPLACES = ['reverb', 'amazon', 'ebay', 'walmart'];
+    public const SUPPORTED_MARKETPLACES = ['reverb', 'amazon', 'ebay', 'walmart', 'topdawg'];
 
     protected function getController(string $marketplace): ?object
     {
         return match (strtolower($marketplace)) {
             'reverb' => app(ReverbSyncController::class),
+            'topdawg' => app(TopDawgSyncController::class),
             'amazon', 'ebay', 'walmart' => null,
             default => null,
         };
@@ -78,10 +80,14 @@ class MarketplaceController extends Controller
 
     public function saveSettings(Request $request, string $marketplace): JsonResponse
     {
-        if (strtolower($marketplace) !== 'reverb') {
-            return response()->json(['success' => false], 404);
+        $marketplace = strtolower($marketplace);
+        if ($marketplace === 'reverb') {
+            return app(ReverbSyncController::class)->saveSettings($request);
         }
-        return app(ReverbSyncController::class)->saveSettings($request);
+        if ($marketplace === 'topdawg') {
+            return app(TopDawgSyncController::class)->saveSettings($request);
+        }
+        return response()->json(['success' => false], 404);
     }
 
     public function pushOrderToShopify(Request $request, string $marketplace): JsonResponse
