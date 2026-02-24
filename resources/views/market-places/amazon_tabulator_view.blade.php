@@ -4459,6 +4459,7 @@
                         hozAlign: "center",
                         visible: false,
                         minWidth: 72,
+                        editor: "input",
                         formatter: function(cell) {
                             var value = cell.getValue();
                             if (!value || value === '' || value === '0' || value === 0) {
@@ -4785,6 +4786,44 @@
                 var field = cell.getColumn().getField();
                 var value = cell.getValue();
 
+                if (field === 'sbid_m') {
+                    var campaignId = data.campaign_id;
+                    var sbidM = parseFloat(value) || 0;
+                    if (!campaignId) {
+                        showToast('error', 'No KW campaign for this row. Cannot save SBID M.');
+                        return;
+                    }
+                    if (sbidM <= 0) {
+                        showToast('error', 'SBID M must be greater than 0');
+                        return;
+                    }
+                    $.ajax({
+                        url: '/save-amazon-sbid-m',
+                        method: 'POST',
+                        headers: {
+                            'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                        },
+                        data: {
+                            campaign_id: campaignId,
+                            sbid_m: sbidM,
+                            campaign_type: 'KW',
+                            _token: '{{ csrf_token() }}'
+                        },
+                        success: function(response) {
+                            if (response.status === 200) {
+                                showToast('success', 'KW SBID M $' + sbidM.toFixed(2) + ' saved for campaign');
+                            } else {
+                                showToast('error', response.message || 'Failed to save SBID M');
+                            }
+                        },
+                        error: function(xhr) {
+                            var msg = xhr.responseJSON?.message || 'Error saving SBID M';
+                            showToast('error', msg);
+                            console.error('Save SBID M error:', xhr);
+                        }
+                    });
+                    return;
+                }
                 if (field === 'bid_cap') {
                     const sku = data['(Child) sku'];
                     const bidCapValue = parseFloat(value) || 0;
