@@ -185,7 +185,7 @@ class UpdateEbaySuggestedBid extends Command
                             $newBid = $esbid;
                         } elseif ($soldL30 >= 1 && $soldL30 <= 5) {
                             $newBid = 9.0;
-                        } elseif ($soldL30 < 7) {
+                        } elseif ($soldL30 >5) {
                             $newBid = 7.0;
                         } else {
                             $newBid = $esbid;
