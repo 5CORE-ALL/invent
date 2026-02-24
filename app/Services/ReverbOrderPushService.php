@@ -57,11 +57,24 @@ class ReverbOrderPushService
     }
 
     /**
+     * Get Shopify store config from ShopifyStoreSelector (default: prolightsounds for testing).
+     */
+    protected function getShopifyConfig(): array
+    {
+        $selector = app(ShopifyStoreSelector::class);
+        return [
+            'store_url' => str_replace(['https://', 'http://'], '', $selector->getStoreUrl()),
+            'token' => $selector->getPassword(),
+        ];
+    }
+
+    /**
      * Create a Shopify order from a Reverb order. NEVER throws – returns Shopify order ID or null.
      * Tries variant first; falls back to custom line item; on total API failure stores in pending_shopify_orders.
      */
     public function createOrderFromMarketplace(ReverbOrderMetric $order): ?string
     {
+        Log::info('ReverbOrderPushService: Using Shopify store: ' . app(ShopifyStoreSelector::class)->getActiveStore());
         $variantId = $order->sku ? $this->findShopifyVariantIdBySku($order->sku) : null;
         $quantity = (int) ($order->quantity ?: 1);
 
@@ -128,8 +141,9 @@ class ReverbOrderPushService
      */
     protected function createOrderWithVariant(ReverbOrderMetric $order, int $variantId, array $extraTags = [], ?string $extraNote = null): ?string
     {
-        $storeUrl = str_replace(['https://', 'http://'], '', config('services.shopify.store_url'));
-        $token = config('services.shopify.password') ?: env('SHOPIFY_PASSWORD');
+        $config = $this->getShopifyConfig();
+        $storeUrl = $config['store_url'];
+        $token = $config['token'];
 
         $price = number_format((float) ($order->amount ?? 0), 2, '.', '');
         $quantity = (int) ($order->quantity ?: 1);
@@ -140,7 +154,7 @@ class ReverbOrderPushService
                 'line_items' => [['variant_id' => $variantId, 'quantity' => $quantity, 'price' => $price]],
                 'financial_status' => 'paid',
                 'inventory_behaviour' => 'decrement_obeying_policy',
-                'tags' => implode(', ', $this->cleanTags(array_merge(['Reverb Order'], $extraTags))),
+                'tags' => implode(', ', array_values(array_unique(array_merge(['Reverb Order'], $extraTags)))),
                 'note' => 'Imported from Reverb Order #' . $orderNumber . ($extraNote ? "\n" . $extraNote : ''),
                 'source_name' => 'reverb',
                 'note_attributes' => [['name' => 'reverb_order_number', 'value' => $orderNumber]],
@@ -190,8 +204,9 @@ class ReverbOrderPushService
             return null;
         }
 
-        $storeUrl = str_replace(['https://', 'http://'], '', config('services.shopify.store_url'));
-        $token = config('services.shopify.password') ?: env('SHOPIFY_PASSWORD');
+        $config = $this->getShopifyConfig();
+        $storeUrl = $config['store_url'];
+        $token = $config['token'];
         if (!$storeUrl || !$token) {
             $this->lastFailureReason = 'Shopify store URL or token not configured';
             Log::error('ReverbOrderPushService: Shopify config missing');
@@ -199,7 +214,7 @@ class ReverbOrderPushService
         }
 
         $baseTags = ['Reverb Order', 'SKU Missing'];
-        $tags = implode(', ', $this->cleanTags(array_merge($baseTags, $extraTags)));
+        $tags = implode(', ', array_values(array_unique(array_merge($baseTags, $extraTags))));
 
         $payload = [
             'order' => [
@@ -387,27 +402,6 @@ class ReverbOrderPushService
     }
 
     /**
-     * Clean and validate Shopify tags.
-     *
-     * @param array $tags Raw tags array
-     * @return array Cleaned tags (max 40 chars, valid characters only)
-     */
-    protected function cleanTags(array $tags): array
-    {
-        $cleanTags = [];
-        foreach ($tags as $tag) {
-            $cleanTag = trim((string) $tag);
-            $cleanTag = substr($cleanTag, 0, 40);
-            $cleanTag = preg_replace('/[^a-zA-Z0-9\s\-_]/', '', $cleanTag);
-            $cleanTag = preg_replace('/\s+/', ' ', trim($cleanTag));
-            if ($cleanTag !== '') {
-                $cleanTags[] = $cleanTag;
-            }
-        }
-        return array_values(array_unique($cleanTags));
-    }
-
-    /**
      * Store order in pending_shopify_orders for later retry. Sends admin alert.
      */
     public function storeInPending(ReverbOrderMetric $order, string $reason): void
@@ -493,8 +487,9 @@ class ReverbOrderPushService
      */
     protected function getVariantInventoryQuantity(string $variantId): ?int
     {
-        $storeUrl = str_replace(['https://', 'http://'], '', config('services.shopify.store_url'));
-        $token = config('services.shopify.password') ?: env('SHOPIFY_PASSWORD');
+        $config = $this->getShopifyConfig();
+        $storeUrl = $config['store_url'];
+        $token = $config['token'];
 
         $response = Http::withHeaders([
             'X-Shopify-Access-Token' => $token,
@@ -535,8 +530,9 @@ class ReverbOrderPushService
 
     public function createShopifyOrderFromReverb(ReverbOrderMetric $order, array $tags): string
     {
-        $storeUrl = str_replace(['https://', 'http://'], '', config('services.shopify.store_url'));
-        $token = config('services.shopify.password') ?: env('SHOPIFY_PASSWORD');
+        $config = $this->getShopifyConfig();
+        $storeUrl = $config['store_url'];
+        $token = $config['token'];
 
         $variantId = $order->sku ? $this->findShopifyVariantIdBySku($order->sku) : null;
         $useCustomLineItem = ! $variantId;
@@ -573,7 +569,7 @@ class ReverbOrderPushService
 
         $orderPayload = [
             'line_items' => [$lineItem],
-            'tags' => implode(', ', $this->cleanTags($tags)),
+            'tags' => implode(', ', $tags),
             'note' => $baseNote,
             'source_name' => 'reverb',
             'note_attributes' => $noteAttrs,
@@ -728,8 +724,9 @@ class ReverbOrderPushService
             return null;
         }
         $sku = trim($sku);
-        $storeUrl = str_replace(['https://', 'http://'], '', config('services.shopify.store_url'));
-        $token = config('services.shopify.password') ?: env('SHOPIFY_PASSWORD');
+        $config = $this->getShopifyConfig();
+        $storeUrl = $config['store_url'];
+        $token = $config['token'];
         $url = "https://{$storeUrl}/admin/api/2024-01/products.json";
         $pageInfo = null;
         for ($i = 0; $i < 20; $i++) {
