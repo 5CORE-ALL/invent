@@ -3101,7 +3101,8 @@
                             var row = cell.getRow().getData();
                             var spend30 = parseFloat(row.pt_spend_L30 || 0);
                             var sales30 = parseFloat(row.pt_sales_L30 || 0);
-                            var acos = sales30 > 0 ? (spend30 / sales30) * 100 : 0;
+                            // Rule: if there is spend and no ad sales, ACOS = 100%
+                            var acos = sales30 > 0 ? (spend30 / sales30) * 100 : (spend30 > 0 ? 100 : 0);
                             
                             var td = cell.getElement();
                             td.classList.remove('green-bg', 'pink-bg', 'red-bg');
@@ -3141,8 +3142,8 @@
                             var aSales = parseFloat(aData.pt_sales_L30 || 0);
                             var bSpend = parseFloat(bData.pt_spend_L30 || 0);
                             var bSales = parseFloat(bData.pt_sales_L30 || 0);
-                            var aAcos = aSales > 0 ? (aSpend / aSales) * 100 : 0;
-                            var bAcos = bSales > 0 ? (bSpend / bSales) * 100 : 0;
+                            var aAcos = aSales > 0 ? (aSpend / aSales) * 100 : (aSpend > 0 ? 100 : 0);
+                            var bAcos = bSales > 0 ? (bSpend / bSales) * 100 : (bSpend > 0 ? 100 : 0);
                             return aAcos - bAcos;
                         }
                     },
