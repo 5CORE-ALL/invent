@@ -51,10 +51,8 @@ class Kernel extends ConsoleKernel
         \App\Console\Commands\AutoUpdateAmzUnderHlBids::class,
         \App\Console\Commands\AutoUpdateAmazonBgtKw::class,
         \App\Console\Commands\AutoUpdateAmazonBgtPt::class,
-        \App\Console\Commands\AutoUpdateAmazonBgtHl::class,
         \App\Console\Commands\AutoUpdateAmazonPinkDilKwAds::class,
         \App\Console\Commands\AutoUpdateAmazonPinkDilPtAds::class,
-        \App\Console\Commands\AutoUpdateAmazonPinkDilHlAds::class,
         \App\Console\Commands\EbayOverUtilzBidsAutoUpdate::class,
         \App\Console\Commands\Ebay2UtilizedBidsAutoUpdate::class,
         \App\Console\Commands\Ebay3UtilizedBidsAutoUpdate::class,
@@ -288,14 +286,6 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
-        $schedule->command('amazon:auto-update-amz-bgt-hl')
-            ->dailyAt('12:00')
-            ->timezone('Asia/Kolkata')
-            ->name('amazon-bgt-hl')
-            ->withoutOverlapping()
-            ->runInBackground()
-            ->appendOutputTo($log);
-
         $schedule->command('amazon:auto-update-pink-dil-kw-ads')
             ->dailyAt('12:00')
             ->timezone('Asia/Kolkata')
@@ -308,14 +298,6 @@ class Kernel extends ConsoleKernel
             ->dailyAt('12:00')
             ->timezone('Asia/Kolkata')
             ->name('amazon-pink-dil-pt')
-            ->withoutOverlapping()
-            ->runInBackground()
-            ->appendOutputTo($log);
-
-        $schedule->command('amazon:auto-update-pink-dil-hl-ads')
-            ->dailyAt('12:00')
-            ->timezone('Asia/Kolkata')
-            ->name('amazon-pink-dil-hl')
             ->withoutOverlapping()
             ->runInBackground()
             ->appendOutputTo($log);

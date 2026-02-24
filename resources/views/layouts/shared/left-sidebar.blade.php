@@ -1711,10 +1711,6 @@
                                                         KW</a>
                                                 </li>
                                                 <li>
-                                                    <a href="{{ route('amazon.acos.hl.control') }}">Amz FBM ACOS
-                                                        HL</a>
-                                                </li>
-                                                <li>
                                                     <a href="{{ route('amazon.acos.pt.control') }}">Amz FBM ACOS
                                                         PT</a>
                                                 </li>
@@ -1732,10 +1728,6 @@
                                                 <li>
                                                     <a href="{{ route('amazon.pink.dil.kw.ads') }}">Amz FBM Pink
                                                         KW</a>
-                                                </li>
-                                                <li>
-                                                    <a href="{{ route('amazon.pink.dil.hl.ads') }}">Amz FBM Pink
-                                                        HL</a>
                                                 </li>
                                                 <li>
                                                     <a href="{{ route('amazon.pink.dil.pt.ads') }}">Amz FBM Pink

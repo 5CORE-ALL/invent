@@ -2489,9 +2489,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
         Route::get('/amazon/pink-dil/pt/ads', 'amazonPinkDilPtAds')->name('amazon.pink.dil.pt.ads');
         Route::get('/amazon/pink-dil/pt/ads/data', 'getAmazonPinkDilPtAdsData');
-
-        Route::get('/amazon/pink-dil/hl/ads', 'amazonPinkDilHlAds')->name('amazon.pink.dil.hl.ads');
-        Route::get('/amazon/pink-dil/hl/ads/data', 'getAmazonPinkDilHlAdsData');
     });
 
 
@@ -2638,8 +2635,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::controller(AmazonACOSController::class)->group(function () {
         Route::get('/amazon-acos-kw-control', 'amazonAcosKwControl')->name('amazon.acos.kw.control');
         Route::get('/amazon-acos-kw-control-data', 'amazonAcosKwControlData')->name('amazon.acos.kw.control.data');
-        Route::get('/amazon-acos-hl-control', 'amazonAcosHlControl')->name('amazon.acos.hl.control');
-        Route::get('/amazon-acos-hl-control-data', 'amazonAcosHlControlData')->name('amazon.acos.hl.control.data');
         Route::get('/amazon-acos-pt-control', 'amazonAcosPtControl')->name('amazon.acos.pt.control');
         Route::get('/amazon-acos-pt-control-data', 'amazonAcosPtControlData')->name('amazon.acos.pt.control.data');
 

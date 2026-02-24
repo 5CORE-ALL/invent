@@ -1095,9 +1095,6 @@
                                                         <a href="{{ route('amazon.acos.kw.control') }}">Amazon ACOS KW</a>
                                                     </li>
                                                     <li>
-                                                        <a href="{{ route('amazon.acos.hl.control') }}">Amazon ACOS HL</a>
-                                                    </li>
-                                                    <li>
                                                         <a href="{{ route('amazon.acos.pt.control') }}">Amazon ACOS PT</a>
                                                     </li>
                                                 </ul>
