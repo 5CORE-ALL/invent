@@ -11,11 +11,18 @@ use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use GuzzleHttp\Client;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class AutoUpdateAmazonKwBids extends Command
 {
     protected $signature = 'amazon:auto-update-over-kw-bids {--dry-run : Show what would be updated without calling API}';
     protected $description = 'Automatically update Amazon campaign keyword bids';
+
+    /** Number of retry attempts for failed campaign updates (minimum 5 tries total for failures). */
+    const MAX_RETRY_ATTEMPTS = 5;
+
+    /** Seconds to wait between retry rounds for failed campaigns (rate-limit precaution). */
+    const RETRY_DELAY_SECONDS = 5;
 
     protected $profileId;
 
@@ -27,6 +34,9 @@ class AutoUpdateAmazonKwBids extends Command
     public function handle()
     {
         try {
+            // Ensure enough time for full run including retries (up to 5 rounds of API calls)
+            @ini_set('max_execution_time', 900);
+
             $dryRun = $this->option('dry-run');
             $this->info("Starting Amazon bids auto-update..." . ($dryRun ? " [DRY RUN - no API calls]" : ""));
 
@@ -147,84 +157,131 @@ class AutoUpdateAmazonKwBids extends Command
                 return 1;
             }
 
-            // Retry logic for API calls
-            $maxRetries = 3;
+            $campaignBudgetMapForRetry = $campaignBudgetMap; // keep for building retry lists
+            $allSkipped = [];
             $result = null;
-            $lastError = null;
-            
-            for ($attempt = 1; $attempt <= $maxRetries; $attempt++) {
+            $attempt = 0;
+            $maxRetries = self::MAX_RETRY_ATTEMPTS;
+            $retryDelay = self::RETRY_DELAY_SECONDS;
+            $currentCampaignIds = $campaignIds;
+            $currentNewBids = $newBids;
+
+            while (true) {
+                $attempt++;
+                $this->info("Update attempt {$attempt} of {$maxRetries} (" . count($currentCampaignIds) . " campaigns).");
+
                 try {
                     if ($attempt > 1) {
-                        $this->info("Retry attempt {$attempt} of {$maxRetries}...");
-                        sleep(2); // Wait 2 seconds before retry
+                        $this->info("Waiting {$retryDelay} seconds before retry (rate-limit precaution)...");
+                        sleep($retryDelay);
                     }
-                    
-                    $result = $updateKwBids->updateAutoCampaignKeywordsBid($campaignIds, $newBids);
-                    
-                    // Check if result indicates success
-                    if (is_array($result)) {
-                        $status = $result['status'] ?? null;
-                        if ($status == 200 || (isset($result['message']) && stripos($result['message'], 'success') !== false)) {
-                            break; // Success, exit retry loop
+
+                    $result = $updateKwBids->updateAutoCampaignKeywordsBid($currentCampaignIds, $currentNewBids);
+
+                    if (!is_array($result)) {
+                        $this->error("Unexpected result from update.");
+                        break;
+                    }
+
+                    $allSkipped = array_merge($allSkipped, $result['skipped'] ?? []);
+
+                    $failed = $result['failed'] ?? [];
+                    if (empty($failed)) {
+                        $this->info("All campaigns in this batch updated successfully.");
+                        break;
+                    }
+
+                    $this->warn("Attempt {$attempt}: " . count($failed) . " campaign(s) failed. Will retry failed only.");
+                    foreach ($failed as $f) {
+                        $this->warn("  - {$f['campaign_id']}: " . ($f['error'] ?? 'unknown'));
+                    }
+
+                    if ($attempt >= $maxRetries) {
+                        $this->error("Max retries ({$maxRetries}) reached. " . count($failed) . " campaign(s) still failed.");
+                        $result['failed'] = $failed;
+                        break;
+                    }
+
+                    // Build next batch: only failed campaign IDs with their bids
+                    $currentCampaignIds = [];
+                    $currentNewBids = [];
+                    foreach ($failed as $f) {
+                        $cid = $f['campaign_id'] ?? null;
+                        if ($cid !== null && isset($campaignBudgetMapForRetry[$cid])) {
+                            $currentCampaignIds[] = $cid;
+                            $currentNewBids[] = $campaignBudgetMapForRetry[$cid];
                         }
-                        
-                        // Check for retryable errors
-                        $error = $result['error'] ?? '';
-                        if (stripos($error, 'timeout') !== false || 
-                            stripos($error, 'connection') !== false ||
-                            stripos($error, '500') !== false ||
-                            stripos($error, '503') !== false) {
-                            $lastError = $result;
-                            if ($attempt < $maxRetries) {
-                                continue; // Retry
-                            }
-                        }
                     }
-                    
-                    break; // Exit loop if we got a result (success or non-retryable error)
-                    
-                } catch (\GuzzleHttp\Exception\ServerException $e) {
-                    $lastError = ['error' => $e->getMessage(), 'type' => 'ServerException'];
-                    if ($attempt < $maxRetries) {
-                        continue; // Retry server errors
+                    if (empty($currentCampaignIds)) {
+                        $this->warn("No retriable campaign IDs left.");
+                        break;
                     }
-                } catch (\GuzzleHttp\Exception\ClientException $e) {
-                    $lastError = ['error' => $e->getMessage(), 'type' => 'ClientException'];
-                    // Don't retry client errors (4xx), they're usually permanent
-                    break;
                 } catch (\Exception $e) {
-                    $lastError = ['error' => $e->getMessage(), 'type' => 'Exception'];
-                    if ($attempt < $maxRetries) {
-                        continue; // Retry other exceptions
+                    $this->error("Attempt {$attempt} exception: " . $e->getMessage());
+                    $result = ['status' => 500, 'error' => $e->getMessage(), 'failed' => []];
+                    if ($attempt >= $maxRetries) {
+                        break;
                     }
+                    $this->info("Will retry full batch on next attempt.");
                 }
             }
-            
+
             // Log results
             if ($result) {
                 $this->info("Update Result Status: " . (is_array($result) && isset($result['status']) ? $result['status'] : 'unknown'));
                 if (is_array($result) && isset($result['message'])) {
                     $this->info("Update Message: " . $result['message']);
                 }
-                if (is_array($result) && isset($result['error'])) {
+                if (!empty($allSkipped)) {
+                    $this->warn("Skipped campaigns (total): " . count($allSkipped));
+                    foreach (array_slice($allSkipped, 0, 20) as $s) {
+                        $this->warn("  - {$s['campaign_id']}: {$s['reason']}");
+                    }
+                    if (count($allSkipped) > 20) {
+                        $this->warn("  ... and " . (count($allSkipped) - 20) . " more.");
+                    }
+                }
+                if (is_array($result) && !empty($result['failed'])) {
+                    $this->error("Failed campaigns after all retries: " . count($result['failed']));
+                    foreach ($result['failed'] as $f) {
+                        $this->error("  - {$f['campaign_id']}: " . ($f['error'] ?? 'unknown'));
+                    }
+                }
+                if (is_array($result) && isset($result['error']) && empty($result['failed'])) {
                     $this->error("Update Error: " . $result['error']);
                 }
             } else {
-                $this->error("Update failed after {$maxRetries} attempts");
-                if ($lastError) {
-                    $this->error("Last Error: " . ($lastError['error'] ?? json_encode($lastError)));
-                }
+                $this->error("Update failed (no result).");
             }
+
+            $total = count($campaignIds);
+            $skippedCount = count($allSkipped);
+            $failedCount = isset($result['failed']) ? count($result['failed']) : 0;
+            $updatedCount = $total - $skippedCount - $failedCount;
+            $this->info("========================================");
+            $this->info("FINAL: Total={$total} | Updated={$updatedCount} | Skipped={$skippedCount} | Failed={$failedCount}");
+            $this->info("========================================");
+
+            Log::info('amazon:auto-update-over-kw-bids completed', [
+                'total' => $total,
+                'updated' => $updatedCount,
+                'skipped' => $skippedCount,
+                'failed' => $failedCount,
+                'attempts' => $attempt,
+            ]);
             
             $this->info("Amazon KW Bids Update completed. Total campaigns: " . count($campaignIds));
 
-            if ($result && is_array($result) && ($result['status'] ?? 0) == 200) {
-                $this->info("✓ Command completed successfully");
+            if ($result && is_array($result) && empty($result['failed'] ?? [])) {
+                $this->info("✓ Command completed successfully. All retriable campaigns updated.");
                 return 0;
-            } else {
-                $this->warn("⚠ Command completed with warnings or errors");
+            }
+            if ($result && is_array($result) && !empty($result['failed'])) {
+                $this->warn("⚠ Command completed with " . count($result['failed']) . " campaign(s) still failed after " . self::MAX_RETRY_ATTEMPTS . " attempts.");
                 return 1;
             }
+            $this->warn("⚠ Command completed with warnings or errors.");
+            return 1;
 
         } catch (\Exception $e) {
             $this->error("✗ Error occurred: " . $e->getMessage());
@@ -477,38 +534,50 @@ class AutoUpdateAmazonKwBids extends Command
             $ub7 = $budget > 0 ? ($l7_spend / ($budget * 7)) * 100 : 0;
             $ub1 = $budget > 0 ? ($l1_spend / $budget) * 100 : 0;
 
-            // Calculate SBID based on blade file logic
+            $ub7 = $budget > 0 ? ($l7_spend / ($budget * 7)) * 100 : 0;
+            $ub1 = $budget > 0 ? ($l1_spend / $budget) * 100 : 0;
+
+            // Determine utilization type (must match tabulator)
+            $rowType = 'all';
+            if ($ub7 > 99 && $ub1 > 99) {
+                $rowType = 'over';
+            } elseif ($ub7 < 66 && $ub1 < 66) {
+                $rowType = 'under';
+            } elseif ($ub7 >= 66 && $ub7 <= 99 && $ub1 >= 66 && $ub1 <= 99) {
+                $rowType = 'correctly';
+            }
+
+            // Calculate SBID to match tabulator (no price-range default; over/under only)
             $l1_cpc = floatval($row['l1_cpc']);
             $l7_cpc = floatval($row['l7_cpc']);
-            // Parent rows now have avg price, so apply same price-based rules for all rows (including PARENT)
-            // Special case - If UB7 and UB1 = 0%, use price-based default
-            if ($ub7 === 0 && $ub1 === 0) {
-                if ($price < 50) {
-                    $row['sbid'] = 0.50;
-                } else if ($price >= 50 && $price < 100) {
-                    $row['sbid'] = 1.00;
-                } else if ($price >= 100 && $price < 200) {
-                    $row['sbid'] = 1.50;
-                } else {
-                    $row['sbid'] = 2.00;
-                }
-            } else {
-                // Over-utilized: Priority - L1 CPC → L7 CPC → AVG CPC → 1.00, then decrease by 10%
+            $row['sbid'] = 0;
+
+            if ($rowType === 'over') {
                 if ($l1_cpc > 0) {
                     $row['sbid'] = floor($l1_cpc * 0.90 * 100) / 100;
-                } else if ($l7_cpc > 0) {
+                } elseif ($l7_cpc > 0) {
                     $row['sbid'] = floor($l7_cpc * 0.90 * 100) / 100;
-                } else if ($avgCpc > 0) {
+                } elseif ($avgCpc > 0) {
                     $row['sbid'] = floor($avgCpc * 0.90 * 100) / 100;
                 } else {
                     $row['sbid'] = 1.00;
                 }
-            }
-            // Apply price-based caps (parent rows now have avg price, so apply for all rows)
-            if ($price < 10 && $row['sbid'] > 0.10) {
-                $row['sbid'] = 0.10;
-            } else if ($price >= 10 && $price < 20 && $row['sbid'] > 0.20) {
-                $row['sbid'] = 0.20;
+            } elseif ($rowType === 'under') {
+                if ($l1_cpc >= 0.01 && $l1_cpc <= 0.20) {
+                    $row['sbid'] = floor(($l1_cpc + 0.10) * 100) / 100;
+                } elseif ($l1_cpc >= 0.201 && $l1_cpc <= 0.30) {
+                    $row['sbid'] = floor(($l1_cpc + 0.05) * 100) / 100;
+                } elseif ($l1_cpc > 0) {
+                    $row['sbid'] = floor($l1_cpc * 1.10 * 100) / 100;
+                } elseif ($l7_cpc >= 0.20 && $l7_cpc <= 0.30) {
+                    $row['sbid'] = floor(($l7_cpc + 0.05) * 100) / 100;
+                } elseif ($l7_cpc > 0) {
+                    $row['sbid'] = floor($l7_cpc * 1.10 * 100) / 100;
+                } elseif ($avgCpc > 0) {
+                    $row['sbid'] = floor($avgCpc * 1.10 * 100) / 100;
+                } else {
+                    $row['sbid'] = 1.00;
+                }
             }
 
             // Validate all required fields before adding
@@ -520,9 +589,8 @@ class AutoUpdateAmazonKwBids extends Command
                 continue; // Skip if invalid bid
             }
 
-            // Include only OVER-utilized + ENABLED (matches frontend: Over filter excludes PAUSED).
-            // Frontend shows only ENABLED when filtering by utilization type; command must match.
-            if ($row['INV'] > 0 && ($ub7 > 99 && $ub1 > 99) && ($row['campaignStatus'] ?? '') === 'ENABLED') {
+            // Include all campaigns with valid SBID and ENABLED (over-, under-, and correctly utilized)
+            if (!empty($row['campaign_id']) && is_numeric($row['sbid']) && $row['sbid'] > 0 && ($row['campaignStatus'] ?? '') === 'ENABLED') {
                 $result[] = (object) $row;
             }
         }

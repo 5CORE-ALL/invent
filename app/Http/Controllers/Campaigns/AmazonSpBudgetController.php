@@ -219,7 +219,7 @@ class AmazonSpBudgetController extends Controller
 
     public function updateAutoCampaignKeywordsBid(array $campaignIds, array $newBids)
     {
-        ini_set('max_execution_time', 300);
+        ini_set('max_execution_time', 600);
         ini_set('memory_limit', '512M');
 
         if (empty($campaignIds) || empty($newBids)) {
@@ -229,83 +229,117 @@ class AmazonSpBudgetController extends Controller
             ];
         }
 
-        $allKeywords = [];
+        $accessToken = $this->getAccessToken();
+        $client = new Client();
+        $url = 'https://advertising-api.amazon.com/sp/keywords';
+        $allResults = [];
+        $skipped = [];
+        $failed = [];
+        $chunkRetries = 3;
+        $timeout = 90;
+        $connectTimeout = 45;
 
         foreach ($campaignIds as $index => $campaignId) {
             $newBid = floatval($newBids[$index] ?? 0);
+            if ($newBid <= 0) {
+                $skipped[] = ['campaign_id' => $campaignId, 'reason' => 'invalid_bid'];
+                continue;
+            }
 
             AmazonSpCampaignReport::where('campaign_id', $campaignId)
                 ->where('ad_type', 'SPONSORED_PRODUCTS')
                 ->whereIn('report_date_range', ['L7', 'L1'])
-                ->update([
-                    'apprSbid' => "approved"
-                ]);
+                ->update(['apprSbid' => 'approved']);
 
             $adGroups = $this->getAdGroupsByCampaigns([$campaignId]);
-            if (empty($adGroups)) continue;
+            if (empty($adGroups)) {
+                FacadesLog::warning('updateAutoCampaignKeywordsBid: no ad groups', ['campaign_id' => $campaignId]);
+                $skipped[] = ['campaign_id' => $campaignId, 'reason' => 'no_ad_groups'];
+                continue;
+            }
 
+            $keywords = [];
             foreach ($adGroups as $adGroup) {
-                $keywords = $this->getKeywordsByAdGroup($adGroup['adGroupId']);
-                foreach ($keywords as $kw) {
-                    $allKeywords[] = [
-                        'keywordId' => $kw['keywordId'],
-                        'bid' => $newBid,
-                    ];
+                $kws = $this->getKeywordsByAdGroup($adGroup['adGroupId']);
+                foreach ($kws as $kw) {
+                    $keywords[] = ['keywordId' => $kw['keywordId'], 'bid' => $newBid];
                 }
             }
-        }
-
-        if (empty($allKeywords)) {
-            return response()->json([
-                'message' => 'No keywords found to update',
-                'status' => 404,
-            ]);
-        }
-
-        $allKeywords = collect($allKeywords)
-            ->unique('keywordId')
-            ->values()
-            ->toArray();
-
-        $accessToken = $this->getAccessToken();
-        $client = new Client();
-        $url = 'https://advertising-api.amazon.com/sp/keywords';
-        $results = [];
-
-        try {
-            $chunks = array_chunk($allKeywords, 100);
-            foreach ($chunks as $chunk) {
-                $response = $client->put($url, [
-                    'headers' => [
-                        'Amazon-Advertising-API-ClientId' => config('services.amazon_ads.client_id'),
-                        'Authorization' => 'Bearer ' . $accessToken,
-                        'Amazon-Advertising-API-Scope' => $this->profileId,
-                        'Content-Type' => 'application/vnd.spKeyword.v3+json',
-                        'Accept' => 'application/vnd.spKeyword.v3+json',
-                    ],
-                    'json' => [
-                        'keywords' => $chunk
-                    ],
-                    'timeout' => 60,
-                    'connect_timeout' => 30,
-                ]);
-
-                $results[] = json_decode($response->getBody(), true);
+            $keywords = collect($keywords)->unique('keywordId')->values()->all();
+            if (empty($keywords)) {
+                FacadesLog::warning('updateAutoCampaignKeywordsBid: no keywords', ['campaign_id' => $campaignId]);
+                $skipped[] = ['campaign_id' => $campaignId, 'reason' => 'no_keywords'];
+                continue;
             }
 
-            return [
-                'message' => 'Keywords bid updated successfully',
-                'data' => $results,
-                'status' => 200,
-            ];
+            $campaignSucceeded = false;
+            $lastChunkError = null;
+            $chunks = array_chunk($keywords, 100);
 
-        } catch (\Exception $e) {
+            for ($cr = 1; $cr <= $chunkRetries; $cr++) {
+                try {
+                    if ($cr > 1) {
+                        usleep(2000000); // 2 seconds before chunk retry
+                    }
+                    $chunkResults = [];
+                    foreach ($chunks as $chunk) {
+                        $response = $client->put($url, [
+                            'headers' => [
+                                'Amazon-Advertising-API-ClientId' => config('services.amazon_ads.client_id'),
+                                'Authorization' => 'Bearer ' . $accessToken,
+                                'Amazon-Advertising-API-Scope' => $this->profileId,
+                                'Content-Type' => 'application/vnd.spKeyword.v3+json',
+                                'Accept' => 'application/vnd.spKeyword.v3+json',
+                            ],
+                            'json' => ['keywords' => $chunk],
+                            'timeout' => $timeout,
+                            'connect_timeout' => $connectTimeout,
+                        ]);
+                        $chunkResults[] = json_decode($response->getBody(), true);
+                    }
+                    $allResults = array_merge($allResults, $chunkResults);
+                    $campaignSucceeded = true;
+                    break;
+                } catch (\Exception $e) {
+                    $lastChunkError = $e->getMessage();
+                    FacadesLog::warning('updateAutoCampaignKeywordsBid: chunk attempt failed', [
+                        'campaign_id' => $campaignId,
+                        'attempt' => $cr,
+                        'max' => $chunkRetries,
+                        'error' => $lastChunkError,
+                    ]);
+                }
+            }
+
+            if (!$campaignSucceeded) {
+                FacadesLog::error('updateAutoCampaignKeywordsBid: campaign failed after retries', [
+                    'campaign_id' => $campaignId,
+                    'bid' => $newBid,
+                    'error' => $lastChunkError,
+                ]);
+                $failed[] = ['campaign_id' => $campaignId, 'error' => $lastChunkError ?? 'Unknown'];
+            }
+        }
+
+        if (!empty($skipped)) {
+            FacadesLog::info('updateAutoCampaignKeywordsBid: skipped campaigns', ['skipped' => $skipped]);
+        }
+        if (!empty($failed)) {
             return [
-                'message' => 'Error updating keywords bid',
-                'error' => $e->getMessage(),
-                'status' => 500,
+                'message' => 'Some campaigns failed; others may have been updated.',
+                'data' => $allResults,
+                'skipped' => $skipped,
+                'failed' => $failed,
+                'status' => 207,
             ];
         }
+
+        return [
+            'message' => 'Keywords bid updated successfully',
+            'data' => $allResults,
+            'skipped' => $skipped,
+            'status' => 200,
+        ];
     }
 
     public function updateCampaignKeywordsBid(Request $request)

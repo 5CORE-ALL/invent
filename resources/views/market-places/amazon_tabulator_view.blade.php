@@ -3438,13 +3438,6 @@
                                 }
                             }
                             
-                            // Apply price-based caps
-                            if (price < 10 && sbid > 0.10) {
-                                sbid = 0.10;
-                            } else if (price >= 10 && price < 20 && sbid > 0.20) {
-                                sbid = 0.20;
-                            }
-                            
                             return sbid === 0 ? '-' : sbid.toFixed(2);
                         }
                     },
@@ -3814,12 +3807,6 @@
                                 } else {
                                     sbid = 1.00;
                                 }
-                            }
-                            
-                            if (price < 10 && sbid > 0.10) {
-                                sbid = 0.10;
-                            } else if (price >= 10 && price < 20 && sbid > 0.20) {
-                                sbid = 0.20;
                             }
                             
                             return sbid === 0 ? '-' : sbid.toFixed(2);
@@ -4429,13 +4416,6 @@
                                 } else {
                                     sbid = 1.00;
                                 }
-                            }
-                            
-                            // Apply price-based caps
-                            if (price < 10 && sbid > 0.10) {
-                                sbid = 0.10;
-                            } else if (price >= 10 && price < 20 && sbid > 0.20) {
-                                sbid = 0.20;
                             }
                             
                             if (sbid === 0) return '-';
