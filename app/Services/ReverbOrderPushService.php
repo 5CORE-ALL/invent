@@ -214,14 +214,14 @@ class ReverbOrderPushService
         }
 
         $baseTags = ['Reverb Order', 'SKU Missing'];
-        $tags = implode(', ', array_values(array_unique(array_merge($baseTags, $extraTags))));
-
+        $allTags = array_merge($baseTags, $extraTags);
+        $cleanTags = $this->cleanTags($allTags);
         $payload = [
             'order' => [
                 'line_items' => [$lineItem],
                 'financial_status' => 'paid',
                 'inventory_behaviour' => 'bypass',
-                'tags' => $tags,
+                'tags' => implode(', ', $cleanTags),
                 'note' => 'Imported from Reverb Order #' . $orderNumber . "\n" . $reasonNote,
                 'source_name' => 'reverb',
                 'note_attributes' => [['name' => 'reverb_order_number', 'value' => $orderNumber]],
@@ -296,6 +296,29 @@ class ReverbOrderPushService
             $lineItem['properties'] = [['name' => 'SKU', 'value' => mb_substr(trim((string) $order->sku), 0, 255)]];
         }
         return $lineItem;
+    }
+
+    /**
+     * Sanitize tags for Shopify (removes invalid characters that cause "Order tags is invalid").
+     */
+    protected function cleanTags(array $tags): array
+    {
+        $cleaned = [];
+        foreach ($tags as $tag) {
+            $t = trim((string) $tag);
+            if ($t === '') {
+                continue;
+            }
+            // Shopify tags: no commas (separator), no newlines; allow letters, numbers, spaces, hyphens, underscores
+            $t = str_replace([",", "\r", "\n"], ' ', $t);
+            $t = preg_replace('/[^\p{L}\p{N}\s\-_]/u', '', $t);
+            $t = preg_replace('/\s+/', ' ', $t);
+            $t = trim($t);
+            if ($t !== '') {
+                $cleaned[] = mb_substr($t, 0, 255);
+            }
+        }
+        return array_values(array_unique($cleaned));
     }
 
     /**
