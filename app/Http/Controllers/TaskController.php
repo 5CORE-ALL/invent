@@ -1161,7 +1161,7 @@ class TaskController extends Controller
             'title' => $validated['title'],
             'group' => $validated['group'],
             'priority' => $validated['priority'],
-            'description' => $validated['description'],
+            'description' => $validated['description'] ?? '',
             'assignor' => $assignorEmail,
             'assign_to' => $assigneeEmail,
             'eta_time' => $validated['etc_minutes'] ?? 10,
