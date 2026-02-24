@@ -425,7 +425,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/all-marketplace-master', [ChannelMasterController::class, 'allMarketplaceMaster'])->name('all.marketplace.master');
 
     // Marketplace Sync: dynamic routes per marketplace (reverb, amazon, ebay, walmart)
-    Route::prefix('marketplace/{marketplace}')->where(['marketplace' => 'reverb|amazon|ebay|walmart'])->group(function () {
+    Route::prefix('marketplace/{marketplace}')->where(['marketplace' => 'reverb|amazon|ebay|walmart|topdawg'])->group(function () {
         Route::get('/products', [\App\Http\Controllers\MarketplaceController::class, 'products'])->name('marketplace.products');
         Route::get('/orders', [\App\Http\Controllers\MarketplaceController::class, 'orders'])->name('marketplace.orders');
         Route::get('/settings', [\App\Http\Controllers\MarketplaceController::class, 'settings'])->name('marketplace.settings');
@@ -882,6 +882,14 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/reverb-pricing-column-visibility', [\App\Http\Controllers\MarketPlace\ReverbController::class, 'getColumnVisibility'])->name('reverb.pricing.column.get');
     Route::post('/reverb-pricing-column-visibility', [\App\Http\Controllers\MarketPlace\ReverbController::class, 'setColumnVisibility'])->name('reverb.pricing.column.set');
     Route::get('/reverb/fallback-stats', [\App\Http\Controllers\MarketPlace\ReverbSyncController::class, 'fallbackStats'])->name('reverb.fallback.stats');
+    Route::get('/admin/shopify-store/{store}', function ($store) {
+        $allowed = ['prolightsounds', 'main', '5core', 'business'];
+        if (in_array($store, $allowed)) {
+            session(['shopify_active_store' => $store]);
+            return "Switched to {$store} store. Current store: " . session('shopify_active_store');
+        }
+        return 'Invalid store. Allowed: ' . implode(', ', $allowed);
+    })->middleware('auth')->name('admin.shopify-store.switch');
 
     // CVR Master Routes (Tabulator)
     Route::get('/cvr-master', [CvrMasterController::class, 'index'])->name('cvr.master');

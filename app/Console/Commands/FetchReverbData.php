@@ -213,8 +213,12 @@ class FetchReverbData extends Command
     {
         $baseUrl = 'https://api.reverb.com/api/my/orders/selling/all';
         $lastSync = null;
+        $lastSyncForPush = null;
         if (! $this->option('force') && \Illuminate\Support\Facades\Schema::hasTable('reverb_sync_states')) {
             $lastSync = ReverbSyncState::getLastSync(ReverbSyncState::KEY_ORDERS_LAST_SYNC);
+            $lastSyncForPush = $lastSync ?? Carbon::now();
+            ReverbSyncState::setLastSync(ReverbSyncState::KEY_ORDERS_LAST_SYNC_FOR_PUSH, $lastSyncForPush);
+            $this->info('Stored lastSyncForPush for order push cutoff: ' . $lastSyncForPush->toIso8601String());
         }
         if ($lastSync) {
             $buffer = $lastSync->copy()->subMinutes(5);

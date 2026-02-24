@@ -5,15 +5,14 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Carbon;
 
-class ReverbSyncState extends Model
+class TopDawgSyncState extends Model
 {
-    protected $table = 'reverb_sync_states';
+    protected $table = 'topdawg_sync_states';
 
     protected $fillable = ['key', 'value'];
 
     public const KEY_ORDERS_LAST_SYNC = 'orders_last_sync';
-    public const KEY_ORDERS_LAST_SYNC_FOR_PUSH = 'orders_last_sync_for_push';
-    public const KEY_INVENTORY_LAST_SYNC = 'inventory_last_sync';
+    public const KEY_PRODUCTS_LAST_SYNC = 'products_last_sync';
 
     public static function getLastSync(string $key): ?Carbon
     {

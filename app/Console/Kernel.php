@@ -9,6 +9,8 @@ use App\Console\Commands\FetchGoogleAdsCampaigns;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Foundation\Console\Kernel as ConsoleKernel;
 use App\Console\Commands\FetchReverbData;
+use App\Console\Commands\FetchTopDawgData;
+use App\Console\Commands\SyncTopDawgAll;
 use App\Console\Commands\FetchMacyProducts;
 use App\Console\Commands\FetchWayfairData;
 use App\Console\Commands\SyncFbMarketplaceSheet;
@@ -29,6 +31,8 @@ class Kernel extends ConsoleKernel
 {
     protected $commands = [
         FetchReverbData::class,
+        FetchTopDawgData::class,
+        SyncTopDawgAll::class,
         \App\Console\Commands\ProcessPendingReverbOrders::class,
         FetchMacyProducts::class,
         FetchWayfairData::class,

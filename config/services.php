@@ -39,7 +39,7 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Shopify (Main Store)
+    | Shopify - Reverb push uses ShopifyStoreSelector (SHOPIFY_ACTIVE_STORE, default: prolightsounds)
     |--------------------------------------------------------------------------
     */
     'shopify' => [
@@ -66,11 +66,11 @@ return [
     | Shopify ProLightSounds Store
     |--------------------------------------------------------------------------
     */
-    'shopify_pls' => [
-        'domain' => env('PROLIGHTSOUNDS_SHOPIFY_DOMAIN'),
-        'api_key' => env('PROLIGHTSOUNDS_SHOPIFY_API_KEY'),
-        'password' => env('PROLIGHTSOUNDS_SHOPIFY_PASSWORD'),
-    ],
+ 'prolightsounds' => [
+    'api_key' => 'PROLIGHTSOUNDS_SHOPIFY_API_KEY',  // ← Direct env
+    'password' => 'PROLIGHTSOUNDS_SHOPIFY_PASSWORD',
+    'store_url' => 'PROLIGHTSOUNDS_SHOPIFY_DOMAIN',
+],
 
     /*
     |--------------------------------------------------------------------------
@@ -148,6 +148,11 @@ return [
     */
     'reverb' => [
         'token' => env('REVERB_TOKEN'),
+    ],
+
+    'topdawg' => [
+        'base_url' => env('TOPDAWG_API_BASE_URL', 'https://topdawg.com/supplier/api'),
+        'token' => env('TOPDAWG_API_TOKEN'),
     ],
 
     /*
