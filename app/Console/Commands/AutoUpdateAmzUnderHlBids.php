@@ -272,16 +272,15 @@ class AutoUpdateAmzUnderHlBids extends Command
 
             // Under-utilized rule: NRA !== 'NRA', campaignName !== '', ub7 < 66 && ub1 < 66
             if ($row['NRA'] !== 'NRA' && $row['campaignName'] !== '' && ($ub7 < 66 && $ub1 < 66)) {
-                // Calculate SBID for HL campaigns (no price-based rules)
-                // Under-utilized: Priority - L1 CPC → L7 CPC → AVG CPC → 1.00, then increase by 10%
+                // Calculate SBID for HL campaigns - use same logic as HL SBID column (never avg_cpc)
+                // Under-utilized: Priority - L1 CPC → L7 CPC → 0.60 when both zero
                 if ($l1_cpc > 0) {
                     $row['sbid'] = floor($l1_cpc * 1.10 * 100) / 100;
                 } else if ($l7_cpc > 0) {
                     $row['sbid'] = floor($l7_cpc * 1.10 * 100) / 100;
-                } else if ($avgCpc > 0) {
-                    $row['sbid'] = floor($avgCpc * 1.10 * 100) / 100;
                 } else {
-                    $row['sbid'] = 1.00;
+                    // When both L1 and L7 CPC are 0, use 0.60 (HL SBID default, not avg_cpc)
+                    $row['sbid'] = 0.60;
                 }
                 
                 $result[] = (object) $row;
