@@ -220,102 +220,114 @@ class Kernel extends ConsoleKernel
 
         /*
         |--------------------------------------------------------------------------
-        | AMAZON BIDS / BUDGET AUTO-UPDATE (All at 12:00 IST)
+        | AMAZON BIDS / BUDGET AUTO-UPDATE (Staggered IST for reliability)
         |--------------------------------------------------------------------------
         */
+        // Over-utilized KW bids: 2:00 AM IST
         $schedule->command('amazon:auto-update-over-kw-bids')
-            ->dailyAt('12:00')
+            ->dailyAt('02:00')
             ->timezone('Asia/Kolkata')
             ->name('amazon-over-kw-bids')
-            ->withoutOverlapping()
+            ->withoutOverlapping(60)
             ->runInBackground()
             ->appendOutputTo($log);
 
-        $schedule->command('amazon:auto-update-over-pt-bids')
-            ->dailyAt('12:00')
-            ->timezone('Asia/Kolkata')
-            ->name('amazon-over-pt-bids')
-            ->withoutOverlapping()
-            ->runInBackground()
-            ->appendOutputTo($log);
-
-        $schedule->command('amazon:auto-update-over-hl-bids')
-            ->dailyAt('12:00')
-            ->timezone('Asia/Kolkata')
-            ->name('amazon-over-hl-bids')
-            ->withoutOverlapping()
-            ->runInBackground()
-            ->appendOutputTo($log);
-
+        // Under-utilized KW bids: 2:30 AM IST
         $schedule->command('amazon:auto-update-under-kw-bids')
-            ->dailyAt('12:00')
+            ->dailyAt('02:30')
             ->timezone('Asia/Kolkata')
             ->name('amazon-under-kw-bids')
-            ->withoutOverlapping()
+            ->withoutOverlapping(60)
             ->runInBackground()
             ->appendOutputTo($log);
 
-        $schedule->command('amazon:auto-update-under-pt-bids')
-            ->dailyAt('12:00')
-            ->timezone('Asia/Kolkata')
-            ->name('amazon-under-pt-bids')
-            ->withoutOverlapping()
-            ->runInBackground()
-            ->appendOutputTo($log);
-
-        $schedule->command('amazon:auto-update-under-hl-bids')
-            ->dailyAt('12:00')
-            ->timezone('Asia/Kolkata')
-            ->name('amazon-under-hl-bids')
-            ->withoutOverlapping()
-            ->runInBackground()
-            ->appendOutputTo($log);
-
-        $schedule->command('amazon:auto-update-amz-bgt-kw')
-            ->dailyAt('12:00')
-            ->timezone('Asia/Kolkata')
-            ->name('amazon-bgt-kw')
-            ->withoutOverlapping()
-            ->runInBackground()
-            ->appendOutputTo($log);
-
-        $schedule->command('amazon:auto-update-amz-bgt-pt')
-            ->dailyAt('12:00')
-            ->timezone('Asia/Kolkata')
-            ->name('amazon-bgt-pt')
-            ->withoutOverlapping()
-            ->runInBackground()
-            ->appendOutputTo($log);
-
-        $schedule->command('amazon:auto-update-amz-bgt-hl')
-            ->dailyAt('12:00')
-            ->timezone('Asia/Kolkata')
-            ->name('amazon-bgt-hl')
-            ->withoutOverlapping()
-            ->runInBackground()
-            ->appendOutputTo($log);
-
+        // Pink dilution KW: 3:00 AM IST
         $schedule->command('amazon:auto-update-pink-dil-kw-ads')
-            ->dailyAt('12:00')
+            ->dailyAt('03:00')
             ->timezone('Asia/Kolkata')
             ->name('amazon-pink-dil-kw')
-            ->withoutOverlapping()
+            ->withoutOverlapping(60)
             ->runInBackground()
             ->appendOutputTo($log);
 
+        // Over-utilized PT bids: 4:00 AM IST
+        $schedule->command('amazon:auto-update-over-pt-bids')
+            ->dailyAt('04:00')
+            ->timezone('Asia/Kolkata')
+            ->name('amazon-over-pt-bids')
+            ->withoutOverlapping(60)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        // Under-utilized PT bids: 4:30 AM IST
+        $schedule->command('amazon:auto-update-under-pt-bids')
+            ->dailyAt('04:30')
+            ->timezone('Asia/Kolkata')
+            ->name('amazon-under-pt-bids')
+            ->withoutOverlapping(60)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        // Pink dilution PT: 5:00 AM IST
         $schedule->command('amazon:auto-update-pink-dil-pt-ads')
-            ->dailyAt('12:00')
+            ->dailyAt('05:00')
             ->timezone('Asia/Kolkata')
             ->name('amazon-pink-dil-pt')
-            ->withoutOverlapping()
+            ->withoutOverlapping(60)
             ->runInBackground()
             ->appendOutputTo($log);
 
+        // Over-utilized HL bids: 6:00 AM IST
+        $schedule->command('amazon:auto-update-over-hl-bids')
+            ->dailyAt('06:00')
+            ->timezone('Asia/Kolkata')
+            ->name('amazon-over-hl-bids')
+            ->withoutOverlapping(60)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        // Under-utilized HL bids: 6:30 AM IST
+        $schedule->command('amazon:auto-update-under-hl-bids')
+            ->dailyAt('06:30')
+            ->timezone('Asia/Kolkata')
+            ->name('amazon-under-hl-bids')
+            ->withoutOverlapping(60)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        // Pink dilution HL: 7:00 AM IST
         $schedule->command('amazon:auto-update-pink-dil-hl-ads')
-            ->dailyAt('12:00')
+            ->dailyAt('07:00')
             ->timezone('Asia/Kolkata')
             ->name('amazon-pink-dil-hl')
-            ->withoutOverlapping()
+            ->withoutOverlapping(60)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        // Amazon budget KW: 8:00 AM IST
+        $schedule->command('amazon:auto-update-amz-bgt-kw')
+            ->dailyAt('08:00')
+            ->timezone('Asia/Kolkata')
+            ->name('amazon-bgt-kw')
+            ->withoutOverlapping(60)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        // Amazon budget PT: 8:30 AM IST
+        $schedule->command('amazon:auto-update-amz-bgt-pt')
+            ->dailyAt('08:30')
+            ->timezone('Asia/Kolkata')
+            ->name('amazon-bgt-pt')
+            ->withoutOverlapping(60)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        // Amazon budget HL: 9:00 AM IST
+        $schedule->command('amazon:auto-update-amz-bgt-hl')
+            ->dailyAt('09:00')
+            ->timezone('Asia/Kolkata')
+            ->name('amazon-bgt-hl')
+            ->withoutOverlapping(60)
             ->runInBackground()
             ->appendOutputTo($log);
 
