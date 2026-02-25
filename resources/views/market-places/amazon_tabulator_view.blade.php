@@ -13,11 +13,23 @@
         .parent-row {
             background-color: #bde0ff !important;
             font-weight: bold !important;
+            min-height: 48px !important;
         }
 
         .tabulator-row.parent-row {
             background-color: #bde0ff !important;
             font-weight: bold !important;
+            min-height: 48px !important;
+        }
+
+        /* Parent row cells: enough height so toggles/dots are not clipped */
+        .tabulator-row.parent-row .tabulator-cell {
+            min-height: 48px !important;
+            height: 48px !important;
+            padding-top: 8px !important;
+            padding-bottom: 8px !important;
+            overflow: visible !important;
+            vertical-align: middle !important;
         }
 
         /* Vertical column headers */
@@ -2213,10 +2225,17 @@
                 },
                 rowFormatter: function(row) {
                     const data = row.getData();
+                    const el = row.getElement();
                     if (data.is_parent_summary === true) {
-                        row.getElement().style.backgroundColor = "#bde0ff";
-                        row.getElement().style.fontWeight = "bold";
-                        row.getElement().classList.add("parent-row");
+                        el.style.backgroundColor = "#bde0ff";
+                        el.style.fontWeight = "bold";
+                        el.style.minHeight = "48px";
+                        el.classList.add("parent-row");
+                    } else {
+                        el.style.backgroundColor = "";
+                        el.style.fontWeight = "";
+                        el.style.minHeight = "";
+                        el.classList.remove("parent-row");
                     }
                 },
                 columns: [
@@ -3353,8 +3372,10 @@
                         minWidth: 80,
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
-                            var hasCampaign = row.pt_campaignName || row.pt_spend_L30 > 0;
+                            if (parseFloat(row.INV) <= 0) return '-';
+                            var hasCampaign = !!(row.has_own_pt_campaign && (row.pt_campaign_id || row.pt_campaignName));
                             if (!hasCampaign) return '-';
+                            if ((row.pt_campaign_status || '').toUpperCase() !== 'ENABLED') return '-';
                             return cell.getValue() || '-';
                         }
                     },
@@ -3366,12 +3387,11 @@
                         minWidth: 72,
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
-                            var hasCampaign = row.pt_campaignName || row.pt_spend_L30 > 0;
+                            if (parseFloat(row.INV) <= 0) return '-';
+                            var hasCampaign = !!(row.has_own_pt_campaign && (row.pt_campaign_id || row.pt_campaignName));
                             if (!hasCampaign) return '-';
-                            
-                            // Check if PT campaign is PAUSED - don't show SBID for paused campaigns
                             var ptStatus = (row.pt_campaign_status || '').toUpperCase();
-                            if (ptStatus === 'PAUSED') {
+                            if (ptStatus !== 'ENABLED') {
                                 return '<span style="color: #999;">-</span>';
                             }
                             
@@ -3450,8 +3470,10 @@
                         minWidth: 72,
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
-                            var hasCampaign = row.pt_campaignName || row.pt_spend_L30 > 0;
+                            if (parseFloat(row.INV) <= 0) return '-';
+                            var hasCampaign = !!(row.has_own_pt_campaign && (row.pt_campaign_id || row.pt_campaignName));
                             if (!hasCampaign) return '-';
+                            if ((row.pt_campaign_status || '').toUpperCase() !== 'ENABLED') return '-';
                             return cell.getValue() || '-';
                         }
                     },
@@ -3726,8 +3748,10 @@
                         minWidth: 80,
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
-                            var hasCampaign = row.hl_campaignName || row.hl_spend_L30 > 0;
+                            if (parseFloat(row.INV) <= 0) return '-';
+                            var hasCampaign = !!(row.has_own_hl_campaign && (row.hl_campaign_id || row.hl_campaignName));
                             if (!hasCampaign) return '-';
+                            if ((row.hl_campaign_status || '').toUpperCase() !== 'ENABLED') return '-';
                             return cell.getValue() || '-';
                         }
                     },
@@ -3739,12 +3763,11 @@
                         minWidth: 72,
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
-                            var hasCampaign = row.hl_campaignName || row.hl_spend_L30 > 0;
+                            if (parseFloat(row.INV) <= 0) return '-';
+                            var hasCampaign = !!(row.has_own_hl_campaign && (row.hl_campaign_id || row.hl_campaignName));
                             if (!hasCampaign) return '-';
-                            
-                            // Check if HL campaign is PAUSED - don't show SBID for paused campaigns
                             var hlStatus = (row.hl_campaign_status || '').toUpperCase();
-                            if (hlStatus === 'PAUSED') {
+                            if (hlStatus !== 'ENABLED') {
                                 return '<span style="color: #999;">-</span>';
                             }
                             
@@ -3819,8 +3842,10 @@
                         minWidth: 72,
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
-                            var hasCampaign = row.hl_campaignName || row.hl_spend_L30 > 0;
+                            if (parseFloat(row.INV) <= 0) return '-';
+                            var hasCampaign = !!(row.has_own_hl_campaign && (row.hl_campaign_id || row.hl_campaignName));
                             if (!hasCampaign) return '-';
+                            if ((row.hl_campaign_status || '').toUpperCase() !== 'ENABLED') return '-';
                             return cell.getValue() || '-';
                         }
                     },
@@ -4306,6 +4331,8 @@
                         visible: false,
                         minWidth: 72,
                         formatter: function(cell) {
+                            var row = cell.getRow().getData();
+                            if (parseFloat(row.INV) <= 0) return '-';
                             var value = cell.getValue();
                             if (!value || value === '' || value === '0' || value === 0) {
                                 return '-';
@@ -4352,12 +4379,20 @@
                         minWidth: 72,
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
-                            var hasCampaign = row.hasCampaign !== undefined ? row.hasCampaign : (row.campaign_id && row.campaignName);
+                            if (parseFloat(row.INV) <= 0) return '-';
+                            var currentSection = $('#section-filter').val();
+                            // KW Ads: strict - show SBID only when L30 confirms campaign (has_own_kw_campaign), campaign_id exists, and status === ENABLED
+                            var hasCampaign = false;
+                            if (currentSection === 'kw-ads') {
+                                hasCampaign = !!(row.has_own_kw_campaign && row.campaign_id && (row.campaignName || row.campaign_id));
+                            } else {
+                                hasCampaign = row.hasCampaign !== undefined ? row.hasCampaign : (row.campaign_id && row.campaignName);
+                            }
                             if (!hasCampaign) return '-';
                             
-                            // Check if campaign is PAUSED - don't show SBID for paused campaigns
-                            var kwStatus = (row.kw_campaign_status || row.campaignStatus || '').toUpperCase();
-                            if (kwStatus === 'PAUSED') {
+                            // Check if campaign is PAUSED - don't show SBID for paused campaigns; KW Ads: use only kw_campaign_status (from L30)
+                            var kwStatus = (currentSection === 'kw-ads' ? (row.kw_campaign_status || '') : (row.kw_campaign_status || row.campaignStatus || '')).toUpperCase();
+                            if (kwStatus !== 'ENABLED') {
                                 return '<span style="color: #999;">-</span>';
                             }
                             
@@ -4429,6 +4464,8 @@
                         minWidth: 72,
                         editor: "input",
                         formatter: function(cell) {
+                            var row = cell.getRow().getData();
+                            if (parseFloat(row.INV) <= 0) return '-';
                             var value = cell.getValue();
                             if (!value || value === '' || value === '0' || value === 0) {
                                 return '-';
@@ -4450,14 +4487,19 @@
                             // Check if has campaign - section-aware
                             var hasCampaign = false;
                             if (currentSection === 'hl-ads') {
-                                // For HL Ads section, check HL campaign existence
-                                hasCampaign = row.hl_campaignName || row.hl_spend_L30 > 0 || (row.hl_campaign_status && row.hl_campaign_status !== '');
+                                // HL Ads: strict - L30 confirms campaign (has_own_hl_campaign) and campaign_id/name present
+                                hasCampaign = !!(row.has_own_hl_campaign && (row.hl_campaign_id || row.hl_campaignName));
                             } else if (currentSection === 'pt-ads') {
-                                // For PT Ads section, check PT campaign existence
-                                hasCampaign = row.pt_campaignName || row.pt_spend_L30 > 0 || (row.pt_campaign_status && row.pt_campaign_status !== '');
+                                // PT Ads: strict - L30 confirms campaign (has_own_pt_campaign) and campaign_id/name present
+                                hasCampaign = !!(row.has_own_pt_campaign && (row.pt_campaign_id || row.pt_campaignName));
                             } else {
-                                // For KW Ads or other sections, check KW campaign existence
-                                hasCampaign = row.hasCampaign !== undefined ? row.hasCampaign : (row.campaign_id && row.campaignName);
+                                // KW Ads: strict validation - campaign_id must exist AND L30 confirms campaign (has_own_kw_campaign)
+                                // Do not use campaign_id/campaignName alone (they must come from L30, not stale L7/L1)
+                                if (currentSection === 'kw-ads') {
+                                    hasCampaign = !!(row.has_own_kw_campaign && (row.campaign_id || row.campaignName));
+                                } else {
+                                    hasCampaign = row.hasCampaign !== undefined ? row.hasCampaign : (row.campaign_id && row.campaignName);
+                                }
                             }
                             
                             if (!hasCampaign) {
@@ -4465,22 +4507,28 @@
                             }
                             
                             // Section-aware campaign status and campaign ID
+                            // For KW Ads: only show Active when campaign exists in L30 and status === ENABLED (no fallback to campaignStatus)
                             var isEnabled = false;
                             var campaignId = '';
                             var sectionKey = 'kw';
                             if (currentSection === 'hl-ads') {
                                 var hlStatus = (row.hl_campaign_status || '').toUpperCase();
-                                isEnabled = hlStatus === 'ENABLED';
+                                isEnabled = hlStatus === 'ENABLED' && !!(row.hl_campaign_id && row.has_own_hl_campaign);
                                 campaignId = row.hl_campaign_id || '';
                                 sectionKey = 'hl';
                             } else if (currentSection === 'pt-ads') {
                                 var ptStatus = (row.pt_campaign_status || '').toUpperCase();
-                                isEnabled = ptStatus === 'ENABLED';
+                                isEnabled = ptStatus === 'ENABLED' && !!(row.pt_campaign_id && row.has_own_pt_campaign);
                                 campaignId = row.pt_campaign_id || '';
                                 sectionKey = 'pt';
                             } else {
-                                var kwStatus = (row.kw_campaign_status || row.campaignStatus || '').toUpperCase();
-                                isEnabled = kwStatus === 'ENABLED';
+                                var kwStatus = (row.kw_campaign_status || '').toUpperCase();
+                                // KW Ads section: Active only when campaign_id exists, L30 confirms (has_own_kw_campaign), and status === ENABLED
+                                if (currentSection === 'kw-ads') {
+                                    isEnabled = kwStatus === 'ENABLED' && !!(row.campaign_id && row.has_own_kw_campaign);
+                                } else {
+                                    isEnabled = kwStatus === 'ENABLED';
+                                }
                                 campaignId = row.campaign_id || '';
                             }
                             
@@ -4514,11 +4562,16 @@
                             var currentSection = $('#section-filter').val();
                             
                             // Missing AD dots: campaign exists = green; no campaign + NRA green (RA) = red; no campaign + NRA red (NRA) = yellow
+                            // KW Ads: strict - green only when L30 confirms own KW campaign (has_own_kw_campaign) and campaign_id/name present
                             var hasOwnCampaign = false;
                             if (currentSection === 'hl-ads') {
+                                // HL Ads: strict - green only when L30 confirms own HL campaign
                                 hasOwnCampaign = !!row.has_own_hl_campaign && !!(row.hl_campaign_id || row.hl_campaignName);
                             } else if (currentSection === 'pt-ads') {
+                                // PT Ads: strict - green only when L30 confirms own PT campaign
                                 hasOwnCampaign = !!row.has_own_pt_campaign && !!(row.pt_campaign_id || row.pt_campaignName);
+                            } else if (currentSection === 'kw-ads') {
+                                hasOwnCampaign = !!row.has_own_kw_campaign && !!(row.campaign_id || row.campaignName);
                             } else {
                                 hasOwnCampaign = (!!row.has_own_kw_campaign || !!row.has_own_pt_campaign) && !!(row.campaign_id || row.campaignName || row.pt_campaign_id || row.pt_campaignName);
                             }
@@ -4974,14 +5027,18 @@
                         if (!isParent) {
                             var csEnabled = false;
                             if (currentSection === 'hl-ads') {
-                                csEnabled = (row.hl_campaign_status || '').toUpperCase() === 'ENABLED';
+                                csEnabled = (row.hl_campaign_status || '').toUpperCase() === 'ENABLED' && !!(row.has_own_hl_campaign && (row.hl_campaign_id || row.hl_campaignName));
                             } else if (currentSection === 'pt-ads') {
-                                csEnabled = (row.pt_campaign_status || '').toUpperCase() === 'ENABLED';
+                                csEnabled = (row.pt_campaign_status || '').toUpperCase() === 'ENABLED' && !!(row.has_own_pt_campaign && (row.pt_campaign_id || row.pt_campaignName));
                             } else {
-                                var ks = (row.kw_campaign_status || '').toUpperCase();
-                                var ps = (row.pt_campaign_status || '').toUpperCase();
-                                var gs = (row.campaignStatus || '').toUpperCase();
-                                csEnabled = ks === 'ENABLED' || ps === 'ENABLED' || gs === 'ENABLED';
+                                if (currentSection === 'kw-ads') {
+                                    csEnabled = (row.kw_campaign_status || '').toUpperCase() === 'ENABLED' && !!(row.has_own_kw_campaign && (row.campaign_id || row.campaignName));
+                                } else {
+                                    var ks = (row.kw_campaign_status || '').toUpperCase();
+                                    var ps = (row.pt_campaign_status || '').toUpperCase();
+                                    var gs = (row.campaignStatus || '').toUpperCase();
+                                    csEnabled = ks === 'ENABLED' || ps === 'ENABLED' || gs === 'ENABLED';
+                                }
                             }
                             if (campaignStatusVal === 'ENABLED' && !csEnabled) return;
                             if (campaignStatusVal === 'PAUSED' && csEnabled) return;
@@ -4992,7 +5049,7 @@
                     var hasCampaign, l7_spend, l1_spend, budget, campStatus;
                     
                     if (currentSection === 'hl-ads') {
-                        hasCampaign = row.hl_campaignName || (row.hl_campaign_status && row.hl_campaign_status !== '') || parseFloat(row.hl_spend_L30) > 0 || parseFloat(row.hl_spend_L7) > 0 || parseFloat(row.hl_spend_L1) > 0;
+                        hasCampaign = !!(row.has_own_hl_campaign && (row.hl_campaign_id || row.hl_campaignName));
                         if (!hasCampaign) return;
                         campStatus = (row.hl_campaign_status || '').toUpperCase();
                         if (campStatus !== 'ENABLED') return;
@@ -5000,7 +5057,7 @@
                         l1_spend = parseFloat(row.hl_spend_L1) || 0;
                         budget = parseFloat(row.hl_campaignBudgetAmount) || 0;
                     } else if (currentSection === 'pt-ads') {
-                        hasCampaign = row.pt_campaignName || (row.pt_campaign_status && row.pt_campaign_status !== '') || parseFloat(row.pt_spend_L30) > 0 || parseFloat(row.pt_spend_L7) > 0 || parseFloat(row.pt_spend_L1) > 0;
+                        hasCampaign = !!(row.has_own_pt_campaign && (row.pt_campaign_id || row.pt_campaignName));
                         if (!hasCampaign) return;
                         campStatus = (row.pt_campaign_status || '').toUpperCase();
                         if (campStatus !== 'ENABLED') return;
@@ -5008,9 +5065,14 @@
                         l1_spend = parseFloat(row.pt_spend_L1) || 0;
                         budget = parseFloat(row.pt_campaignBudgetAmount) || 0;
                     } else {
-                        hasCampaign = row.campaignName || row.campaign_id || (row.kw_campaign_status && row.kw_campaign_status !== '') || parseFloat(row.l7_spend) > 0 || parseFloat(row.l1_spend) > 0;
+                        if (currentSection === 'kw-ads') {
+                            hasCampaign = !!(row.has_own_kw_campaign && (row.campaign_id || row.campaignName));
+                            campStatus = (row.kw_campaign_status || '').toUpperCase();
+                        } else {
+                            hasCampaign = row.campaignName || row.campaign_id || (row.kw_campaign_status && row.kw_campaign_status !== '') || parseFloat(row.l7_spend) > 0 || parseFloat(row.l1_spend) > 0;
+                            campStatus = (row.kw_campaign_status || row.campaignStatus || '').toUpperCase();
+                        }
                         if (!hasCampaign) return;
-                        campStatus = (row.kw_campaign_status || row.campaignStatus || '').toUpperCase();
                         if (campStatus !== 'ENABLED') return;
                         l7_spend = parseFloat(row.l7_spend) || 0;
                         l1_spend = parseFloat(row.l1_spend) || 0;
@@ -5095,14 +5157,24 @@
 
                 if (nrlFilter !== 'all') {
                     if (nrlFilter === 'req') {
-                        // Show only REQ (exclude NR)
+                        // Show only RL (REQ) - exclude NRL; use NR or derive from NRL for parent rows
                         table.addFilter(function(data) {
-                            return data.NR !== 'NR';
+                            var nr = (data.NR || '').toString().trim();
+                            if (!nr) {
+                                var nrl = (data.NRL || 'REQ').toString().trim();
+                                nr = (nrl === 'NRL') ? 'NR' : 'REQ';
+                            }
+                            return nr !== 'NR';
                         });
                     } else if (nrlFilter === 'nr') {
-                        // Show only NR
+                        // Show only NRL (red dot)
                         table.addFilter(function(data) {
-                            return data.NR === 'NR';
+                            var nr = (data.NR || '').toString().trim();
+                            if (!nr) {
+                                var nrl = (data.NRL || 'REQ').toString().trim();
+                                nr = (nrl === 'NRL') ? 'NR' : 'REQ';
+                            }
+                            return nr === 'NR';
                         });
                     }
                 }
@@ -5188,6 +5260,16 @@
                     });
                 }
                 // If 'all', don't add any filter - show all rows
+
+                // SKU Search filter (inside applyFilters so it stacks with Active/campaign status and other filters)
+                var searchVal = ($('#sku-search').val() || '').trim().toLowerCase();
+                if (searchVal) {
+                    table.addFilter(function(data) {
+                        var sku = ((data['(Child) sku'] || data.sku || '') + '').toLowerCase();
+                        var campName = (sectionFilter === 'hl-ads' ? (data.hl_campaignName || '') : sectionFilter === 'pt-ads' ? (data.pt_campaignName || '') : (data.campaignName || '')).toString().toLowerCase();
+                        return sku.indexOf(searchVal) !== -1 || campName.indexOf(searchVal) !== -1;
+                    });
+                }
 
                 if (statusFilter !== 'all') {
                     table.addFilter(function(data) {
@@ -5310,24 +5392,22 @@
                         var hasCampaignInSection = false;
                         
                         if (currentSection === 'hl-ads') {
-                            var hlStatus = (data.hl_campaign_status || '').toUpperCase();
-                            hasCampaignInSection = !!(data.hl_campaignName || data.hl_spend_L30 > 0 || data.hl_campaign_status);
-                            isEnabled = hlStatus === 'ENABLED';
+                            hasCampaignInSection = !!(data.has_own_hl_campaign && (data.hl_campaign_id || data.hl_campaignName));
+                            isEnabled = (data.hl_campaign_status || '').toUpperCase() === 'ENABLED' && hasCampaignInSection;
                         } else if (currentSection === 'pt-ads') {
-                            var ptStatus = (data.pt_campaign_status || '').toUpperCase();
-                            hasCampaignInSection = !!(data.pt_campaignName || data.pt_spend_L30 > 0 || data.pt_campaign_status);
-                            isEnabled = ptStatus === 'ENABLED';
+                            hasCampaignInSection = !!(data.has_own_pt_campaign && (data.pt_campaign_id || data.pt_campaignName));
+                            isEnabled = (data.pt_campaign_status || '').toUpperCase() === 'ENABLED' && hasCampaignInSection;
                         } else {
-                            // KW Ads or default: same logic as missing-campaign badge count (KW = campaign name ends with ' KW')
-                            var campaignName = (data.campaignName || '').trim();
-                            var isKwCampaign = campaignName.endsWith(' KW') || campaignName.endsWith(' KW.');
+                            // KW Ads: strict - campaign must exist in L30 (has_own_kw_campaign) and campaign_id/name present
                             if (currentSection === 'kw-ads') {
-                                hasCampaignInSection = isKwCampaign && (data.hasCampaign !== undefined ? !!data.hasCampaign : !!(data.campaign_id && campaignName));
+                                hasCampaignInSection = !!(data.has_own_kw_campaign && (data.campaign_id || data.campaignName));
+                                isEnabled = (data.kw_campaign_status || '').toUpperCase() === 'ENABLED' && hasCampaignInSection;
                             } else {
+                                var campaignName = (data.campaignName || '').trim();
                                 hasCampaignInSection = data.hasCampaign !== undefined ? !!data.hasCampaign : !!(data.campaign_id && campaignName);
+                                var kwStatus = (data.kw_campaign_status || data.campaignStatus || '').toUpperCase();
+                                isEnabled = kwStatus === 'ENABLED';
                             }
-                            var kwStatus = (data.kw_campaign_status || data.campaignStatus || '').toUpperCase();
-                            isEnabled = kwStatus === 'ENABLED';
                         }
                         
                         if (campaignStatusFilter === 'ENABLED') {
@@ -5342,19 +5422,15 @@
                     });
                 }
 
-                // NRA filter - apply same default logic as formatter
+                // NRA filter - apply same default logic as formatter (include parent rows; parent NRA/NRL set from children in backend)
                 if (nraFilter && nraFilter !== '') {
                     table.addFilter(function(data) {
-                        if (data.is_parent_summary) return true; // Show parent rows
-                        
-                        // Get NRA value, applying default logic if empty
+                        // Get NRA value, applying default logic if empty (parent rows have NRA/NRL from backend)
                         var nraValue = (data.NRA || '').toString().trim();
                         if (!nraValue) {
-                            // Apply default: if NRL is 'NRL', default to 'NRA', otherwise 'RA'
                             var nrlValue = (data.NRL || 'REQ').toString().trim();
                             nraValue = (nrlValue === 'NRL') ? 'NRA' : 'RA';
                         }
-                        
                         return nraValue === nraFilter;
                     });
                 }
@@ -5490,19 +5566,13 @@
                 // When a utilization type is selected, show all matching rows including NRA
                 // (matches KW/PT utilized page behavior where NRA = "All" by default)
                 if ((sectionFilter === 'kw-ads' || sectionFilter === 'pt-ads' || sectionFilter === 'hl-ads') && nraFilter !== 'NRA' && (!utilizationTypeFilter || utilizationTypeFilter === 'all')) {
-                    // Hide rows marked as NRA (red dot) in NRA column
+                    // Hide rows marked as NRA (red dot) in NRA column (parent rows use NRA/NRL from backend)
                     table.addFilter(function(data) {
-                        if (data.is_parent_summary) return true; // Show parent rows
-                        
-                        // Get NRA value, applying default logic if empty
                         var nraValue = (data.NRA || '').toString().trim();
                         if (!nraValue) {
-                            // Apply default: if NRL is 'NRL', default to 'NRA', otherwise 'RA'
                             var nrlValue = (data.NRL || 'REQ').toString().trim();
                             nraValue = (nrlValue === 'NRL') ? 'NRA' : 'RA';
                         }
-                        
-                        // Hide rows with NRA (red dot)
                         return nraValue !== 'NRA';
                     });
                 }
@@ -5517,8 +5587,7 @@
                         var hasCampaign, l7_spend, l1_spend, budget, campaignStatus;
                         
                         if (currentSection === 'hl-ads') {
-                            // HL section: check HL campaign existence broadly (L30/L7/L1)
-                            hasCampaign = data.hl_campaignName || (data.hl_campaign_status && data.hl_campaign_status !== '') || parseFloat(data.hl_spend_L30) > 0 || parseFloat(data.hl_spend_L7) > 0 || parseFloat(data.hl_spend_L1) > 0;
+                            hasCampaign = !!(data.has_own_hl_campaign && (data.hl_campaign_id || data.hl_campaignName));
                             if (!hasCampaign) return false;
                             campaignStatus = (data.hl_campaign_status || '').toUpperCase();
                             if (campaignStatus !== 'ENABLED') return false;
@@ -5526,8 +5595,7 @@
                             l1_spend = parseFloat(data.hl_spend_L1) || 0;
                             budget = parseFloat(data.hl_campaignBudgetAmount) || 0;
                         } else if (currentSection === 'pt-ads') {
-                            // PT section: check PT campaign existence broadly (L30/L7/L1)
-                            hasCampaign = data.pt_campaignName || (data.pt_campaign_status && data.pt_campaign_status !== '') || parseFloat(data.pt_spend_L30) > 0 || parseFloat(data.pt_spend_L7) > 0 || parseFloat(data.pt_spend_L1) > 0;
+                            hasCampaign = !!(data.has_own_pt_campaign && (data.pt_campaign_id || data.pt_campaignName));
                             if (!hasCampaign) return false;
                             campaignStatus = (data.pt_campaign_status || '').toUpperCase();
                             if (campaignStatus !== 'ENABLED') return false;
@@ -5535,10 +5603,15 @@
                             l1_spend = parseFloat(data.pt_spend_L1) || 0;
                             budget = parseFloat(data.pt_campaignBudgetAmount) || 0;
                         } else {
-                            // KW Ads or default: check KW campaign existence broadly (L30/L7/L1)
-                            hasCampaign = data.campaignName || data.campaign_id || (data.kw_campaign_status && data.kw_campaign_status !== '') || parseFloat(data.l7_spend) > 0 || parseFloat(data.l1_spend) > 0;
+                            // KW Ads: strict - L30 confirms campaign (has_own_kw_campaign) and campaign_id/name present
+                            if (currentSection === 'kw-ads') {
+                                hasCampaign = !!(data.has_own_kw_campaign && (data.campaign_id || data.campaignName));
+                                campaignStatus = (data.kw_campaign_status || '').toUpperCase();
+                            } else {
+                                hasCampaign = data.campaignName || data.campaign_id || (data.kw_campaign_status && data.kw_campaign_status !== '') || parseFloat(data.l7_spend) > 0 || parseFloat(data.l1_spend) > 0;
+                                campaignStatus = (data.kw_campaign_status || data.campaignStatus || '').toUpperCase();
+                            }
                             if (!hasCampaign) return false;
-                            campaignStatus = (data.kw_campaign_status || data.campaignStatus || '').toUpperCase();
                             if (campaignStatus !== 'ENABLED') return false;
                             l7_spend = parseFloat(data.l7_spend) || 0;
                             l1_spend = parseFloat(data.l1_spend) || 0;
@@ -6216,18 +6289,18 @@
                     let campaignStatus = '';
                     
                     if (currentSection === 'hl-ads') {
-                        campaignName = row.hl_campaignName || '';
+                        campaignName = (row.has_own_hl_campaign && (row.hl_campaign_id || row.hl_campaignName)) ? (row.hl_campaignName || '') : '';
                         campaignStatus = (row.hl_campaign_status || '').toUpperCase();
                     } else if (currentSection === 'pt-ads') {
-                        campaignName = row.pt_campaignName || '';
+                        campaignName = (row.has_own_pt_campaign && (row.pt_campaign_id || row.pt_campaignName)) ? (row.pt_campaignName || '') : '';
                         campaignStatus = (row.pt_campaign_status || '').toUpperCase();
                     } else {
-                        campaignName = row.campaignName || '';
-                        const isKwCampaign = campaignName.endsWith(' KW') || campaignName.endsWith(' KW.');
-                        if (currentSection === 'kw-ads') {
-                            if (!isKwCampaign) campaignName = '';
-                        }
-                        campaignStatus = (row.kw_campaign_status || row.campaignStatus || '').toUpperCase();
+                            if (currentSection === 'kw-ads') {
+                                campaignName = (row.has_own_kw_campaign && (row.campaign_id || row.campaignName)) ? (row.campaignName || '') : '';
+                            } else {
+                                campaignName = row.campaignName || '';
+                            }
+                            campaignStatus = (row.kw_campaign_status || row.campaignStatus || '').toUpperCase();
                     }
                     
                     // When using data (filtered), table already has only Active or only Paused rows per Active filter
@@ -6326,16 +6399,14 @@
                         // Missing campaign count (SKUs with INV > 0 but no campaign)
                         let hasCampaign = false;
                         if (currentSection === 'hl-ads') {
-                            hasCampaign = row.hl_campaignName || row.hl_spend_L30 > 0 || (row.hl_campaign_status && row.hl_campaign_status !== '');
+                            hasCampaign = !!(row.has_own_hl_campaign && (row.hl_campaign_id || row.hl_campaignName));
                         } else if (currentSection === 'pt-ads') {
-                            hasCampaign = row.pt_campaignName || row.pt_spend_L30 > 0 || (row.pt_campaign_status && row.pt_campaign_status !== '');
+                            hasCampaign = !!(row.has_own_pt_campaign && (row.pt_campaign_id || row.pt_campaignName));
                         } else {
-                            const campaignName = row.campaignName || '';
-                            const isKwCampaign = campaignName.endsWith(' KW') || campaignName.endsWith(' KW.');
-                            
                             if (currentSection === 'kw-ads') {
-                                hasCampaign = isKwCampaign && (row.hasCampaign !== undefined ? row.hasCampaign : (row.campaign_id && campaignName));
+                                hasCampaign = !!(row.has_own_kw_campaign && (row.campaign_id || row.campaignName));
                             } else {
+                                const campaignName = row.campaignName || '';
                                 hasCampaign = row.hasCampaign !== undefined ? row.hasCampaign : (row.campaign_id && campaignName);
                             }
                         }
