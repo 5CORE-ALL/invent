@@ -5,8 +5,10 @@ namespace App\Console\Commands;
 use App\Jobs\ImportReverbOrderToShopify;
 use App\Models\ReverbOrderMetric;
 use App\Models\ReverbSyncSettings;
+use App\Models\ReverbSyncState;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 
 class ProcessPendingReverbOrders extends Command
 {
@@ -15,11 +17,12 @@ class ProcessPendingReverbOrders extends Command
                             {--force : Ignore import_orders_to_main_store setting}
                             {--wait-for-sync : Wait until reverb sync is not running before dispatching}
                             {--skip-sync-check : Dispatch even if sync is running (manual override)}
+                            {--skip-date-check : Dispatch all pending (ignore lastSyncForPush cutoff - may push old orders)}
                             {--batch-size=100 : Orders per batch when using batch mode}
                             {--pause=5 : Seconds to pause between batches}
                             {--batch-mode : Process in batches with pause between (reduces load)}';
 
-    protected $description = 'Dispatch ImportReverbOrderToShopify jobs for pending Reverb orders to the reverb queue';
+    protected $description = 'Dispatch ImportReverbOrderToShopify jobs for pending Reverb orders (only NEW orders by default)';
 
     public function handle(): int
     {
@@ -38,6 +41,19 @@ class ProcessPendingReverbOrders extends Command
 
         $limit = (int) $this->option('limit');
         $skipShipped = $settings['order']['skip_shipped_orders'] ?? false;
+        $skipDateCheck = $this->option('skip-date-check');
+
+        $lastSyncForPush = null;
+        if (!$skipDateCheck && \Illuminate\Support\Facades\Schema::hasTable('reverb_sync_states')) {
+            $lastSyncForPush = ReverbSyncState::getLastSync(ReverbSyncState::KEY_ORDERS_LAST_SYNC_FOR_PUSH);
+        }
+
+        if ($lastSyncForPush) {
+            $this->info('Only dispatching orders paid after: ' . $lastSyncForPush->toIso8601String());
+            Log::info('ProcessPendingReverbOrders: using lastSyncForPush cutoff', ['cutoff' => $lastSyncForPush->toIso8601String()]);
+        } else {
+            $this->warn('No lastSyncForPush - ' . ($skipDateCheck ? 'skip-date-check used' : 'first run or no sync state') . '. Dispatching all pending.');
+        }
 
         $baseQuery = ReverbOrderMetric::query()
             ->whereNull('shopify_order_id')
@@ -47,6 +63,10 @@ class ProcessPendingReverbOrders extends Command
             })
             ->orderBy('order_date')
             ->orderBy('id');
+
+        if ($lastSyncForPush && !$skipDateCheck) {
+            $baseQuery->where('order_paid_at', '>', $lastSyncForPush);
+        }
 
         if ($skipShipped) {
             $baseQuery->whereNotIn('status', ['shipped', 'delivered']);
@@ -74,6 +94,7 @@ class ProcessPendingReverbOrders extends Command
                 $batchDispatched = 0;
                 foreach ($orders as $order) {
                     ImportReverbOrderToShopify::dispatch($order->id)->onQueue('reverb');
+                    Log::debug('ProcessPendingReverbOrders: dispatched new order', ['order_number' => $order->order_number, 'order_paid_at' => $order->order_paid_at?->toIso8601String()]);
                     $dispatchedIds[] = $order->id;
                     $batchDispatched++;
                     $totalDispatched++;
@@ -94,6 +115,7 @@ class ProcessPendingReverbOrders extends Command
             $orders = $baseQuery->limit($limit)->get();
             foreach ($orders as $order) {
                 ImportReverbOrderToShopify::dispatch($order->id)->onQueue('reverb');
+                Log::debug('ProcessPendingReverbOrders: dispatched new order', ['order_number' => $order->order_number, 'order_paid_at' => $order->order_paid_at?->toIso8601String()]);
                 $totalDispatched++;
             }
             if ($totalDispatched > 0) {

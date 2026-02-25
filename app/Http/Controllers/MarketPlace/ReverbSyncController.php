@@ -339,8 +339,9 @@ class ReverbSyncController extends Controller
 
     protected function getShopifyLocations(): array
     {
-        $storeUrl = str_replace(['https://', 'http://'], '', config('services.shopify.store_url'));
-        $token = config('services.shopify.password') ?: env('SHOPIFY_PASSWORD');
+        $selector = app(\App\Services\ShopifyStoreSelector::class);
+        $storeUrl = str_replace(['https://', 'http://'], '', $selector->getStoreUrl());
+        $token = $selector->getPassword();
         $response = Http::withHeaders([
             'X-Shopify-Access-Token' => $token,
             'Content-Type' => 'application/json',
