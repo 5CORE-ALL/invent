@@ -840,6 +840,9 @@
                 }],
                 ajaxResponse: function(url, params, response) {
                     if (response && response.data) {
+                        if (response.data.length === 0 && response.message) {
+                            showToast('info', response.message || 'No channels to display.');
+                        }
                         updateSummaryStats(response.data);
                         if (!dotTrendsLoadedOnce) {
                             dotTrendsLoadedOnce = true;
@@ -848,6 +851,10 @@
                         return response.data;
                     }
                     return [];
+                },
+                ajaxRequestError: function(error) {
+                    const msg = (error && error.responseJSON && error.responseJSON.message) ? error.responseJSON.message : 'Failed to load channel data. Check console for details.';
+                    if (typeof showToast === 'function') showToast('error', msg);
                 },
                 columns: [{
                         title: "Channel",

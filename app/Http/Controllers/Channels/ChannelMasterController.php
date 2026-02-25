@@ -734,13 +734,17 @@ class ChannelMasterController extends Controller
             $columns[] = 'missing_link';
         }
         
-        $channels = ChannelMaster::where('status', 'Active')
+        $channels = ChannelMaster::whereRaw('LOWER(TRIM(status)) = ?', ['active'])
             ->orderBy('type', 'asc')
             ->orderBy('id', 'asc')
             ->get($columns);
 
         if ($channels->isEmpty()) {
-            return response()->json(['status' => 404, 'message' => 'No active channel found']);
+            return response()->json([
+                'status'  => 200,
+                'message' => 'No active channel found',
+                'data'    => [],
+            ]);
         }
 
         // Get clicks data from adv_masters_data table
@@ -825,6 +829,7 @@ class ChannelMasterController extends Controller
             // Normalize channel name for lookup
             $key = strtolower(str_replace([' ', '-', '&', '/'], '', trim($channel)));
 
+            try {
             if (isset($controllerMap[$key]) && method_exists($this, $controllerMap[$key])) {
                 $method = $controllerMap[$key];
                 $data = $this->$method($request)->getData(true); // call respective function
@@ -906,11 +911,34 @@ class ChannelMasterController extends Controller
             $row['ACOS'] = $acos;
             $row['Missing Ads'] = $missingAds;
 
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::warning('Channel data failed for "' . $channel . '": ' . $e->getMessage(), ['exception' => $e]);
+                // Keep base $row; ensure required keys exist for table
+                $row['clicks'] = $row['clicks'] ?? 0;
+                $row['ad_sold'] = $row['ad_sold'] ?? 0;
+                $row['Ad Sales'] = $row['Ad Sales'] ?? 0;
+                $row['Ads CVR'] = $row['Ads CVR'] ?? 0;
+                $row['ACOS'] = $row['ACOS'] ?? 0;
+                $row['Missing Ads'] = $row['Missing Ads'] ?? 0;
+                if (!isset($row['KW Clicks'])) {
+                    $row['KW Clicks'] = 0; $row['PT Clicks'] = 0; $row['HL Clicks'] = 0; $row['PMT Clicks'] = 0; $row['Shopping Clicks'] = 0; $row['SERP Clicks'] = 0;
+                    $row['KW Sales'] = 0; $row['PT Sales'] = 0; $row['HL Sales'] = 0; $row['PMT Sales'] = 0; $row['Shopping Sales'] = 0; $row['SERP Sales'] = 0;
+                    $row['KW Sold'] = 0; $row['PT Sold'] = 0; $row['HL Sold'] = 0; $row['PMT Sold'] = 0; $row['Shopping Sold'] = 0; $row['SERP Sold'] = 0;
+                    $row['KW ACOS'] = 0; $row['PT ACOS'] = 0; $row['HL ACOS'] = 0; $row['PMT ACOS'] = 0; $row['Shopping ACOS'] = 0; $row['SERP ACOS'] = 0;
+                    $row['KW CVR'] = 0; $row['PT CVR'] = 0; $row['HL CVR'] = 0; $row['PMT CVR'] = 0; $row['Shopping CVR'] = 0; $row['SERP CVR'] = 0;
+                }
+                $row['Ads%'] = $row['Ads%'] ?? '0%';
+            }
+
             $finalData[] = $row;
         }
 
         // Auto-save channel-wise daily summaries
-        $this->saveChannelDailySummaries($finalData);
+        try {
+            $this->saveChannelDailySummaries($finalData);
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('saveChannelDailySummaries failed: ' . $e->getMessage(), ['exception' => $e]);
+        }
 
         return response()->json([
             'status'  => 200,
