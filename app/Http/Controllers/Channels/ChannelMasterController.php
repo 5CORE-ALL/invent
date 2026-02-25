@@ -2278,9 +2278,53 @@ class ChannelMasterController extends Controller
     {
         $result = [];
 
-        // Get metrics from marketplace_daily_metrics table (pre-calculated)
+        // Get metrics from marketplace_daily_metrics table (pre-calculated by UpdateMarketplaceDailyMetrics)
         $metrics = MarketplaceDailyMetric::where('channel', 'Temu')->latest('date')->first();
-        
+
+        // When no metrics yet (cron not run or no Temu daily data), return defaults so the page doesn't break
+        if (!$metrics) {
+            $channelData = ChannelMaster::where('channel', 'Temu')->first();
+            $mapMissCounts = $this->getMapAndMissCounts('temu');
+            $result[] = [
+                'Channel '   => 'Temu',
+                'L-60 Sales' => 0,
+                'L30 Sales'  => 0,
+                'Growth'     => '0%',
+                'L60 Orders' => 0,
+                'L30 Orders' => 0,
+                'Qty'        => 0,
+                'Gprofit%'   => '0%',
+                'gprofitL60' => '0%',
+                'G Roi'      => 0,
+                'G RoiL60'   => 0,
+                'Total PFT'  => 0,
+                'N PFT'      => '0%',
+                'N ROI'      => '0%',
+                'KW Spent'   => 0,
+                'PT Spent'   => 0,
+                'HL Spent'   => 0,
+                'PMT Spent'  => 0,
+                'Shopping Spent' => 0,
+                'SERP Spent' => 0,
+                'Total Ad Spend' => 0,
+                'Ads%'       => '0%',
+                'TACOS %'    => '0%',
+                'type'       => $channelData->type ?? '',
+                'W/Ads'      => $channelData->w_ads ?? 0,
+                'NR'         => $channelData->nr ?? 0,
+                'Update'     => $channelData->update ?? 0,
+                'cogs'       => 0,
+                'Map'        => $mapMissCounts['map'],
+                'Miss'       => $mapMissCounts['miss'],
+                'NMap'       => $mapMissCounts['nmap'],
+            ];
+            return response()->json([
+                'status' => 200,
+                'message' => 'Temu channel data (no metrics yet – run app:update-marketplace-daily-metrics)',
+                'data' => $result,
+            ]);
+        }
+
         // L60 will be 0 until we have historical data with proper dates
         $l60Orders = 0;
         $l60Sales = 0;

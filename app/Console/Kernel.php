@@ -22,7 +22,6 @@ use Illuminate\Support\Facades\Log;
 use App\Console\Commands\FetchMiraklDailyData;
 use App\Console\Commands\FetchEbay3DailyData;
 use App\Console\Commands\FetchReverbDailyData;
-use App\Console\Commands\FetchWalmartDailyData;
 use App\Console\Commands\FetchWayfairDailyData;
 use App\Console\Commands\FetchShopifyB2BMetrics;
 use App\Console\Commands\FetchShopifyB2CMetrics;
@@ -51,23 +50,16 @@ class Kernel extends ConsoleKernel
         \App\Console\Commands\AutoUpdateAmzUnderHlBids::class,
         \App\Console\Commands\AutoUpdateAmazonBgtKw::class,
         \App\Console\Commands\AutoUpdateAmazonBgtPt::class,
-        \App\Console\Commands\AutoUpdateAmazonPinkDilKwAds::class,
-        \App\Console\Commands\AutoUpdateAmazonPinkDilPtAds::class,
         \App\Console\Commands\EbayOverUtilzBidsAutoUpdate::class,
         \App\Console\Commands\Ebay2UtilizedBidsAutoUpdate::class,
         \App\Console\Commands\Ebay3UtilizedBidsAutoUpdate::class,
-        \App\Console\Commands\Ebay1PausePinkDilKwAds::class,
-        \App\Console\Commands\Ebay2PausePinkDilKwAds::class,
-        \App\Console\Commands\Ebay3PausePinkDilKwAds::class,
         \App\Console\Commands\UpdateEbayOneBudget::class,
         \App\Console\Commands\AutoUpdateAmazonFbaOverKwBids::class,
         \App\Console\Commands\AutoUpdateAmazonFbaUnderKwBids::class,
         \App\Console\Commands\AutoUpdateAmazonFbaOverPtBids::class,
         \App\Console\Commands\AutoUpdateAmazonFbaUnderPtBids::class,
-        \App\Console\Commands\GenerateMovementAnalysis::class,
         \App\Console\Commands\UpdateEbaySuggestedBid::class,
         \App\Console\Commands\UpdateStockMappingDaily::class,
-        \App\Console\Commands\SyncShopifyAllChannelsData::class,
         AmazonSpCampaignReports::class,
         AmazonSbCampaignReports::class,
         AmazonSdCampaignReports::class,
@@ -87,12 +79,9 @@ class Kernel extends ConsoleKernel
         FetchMiraklDailyData::class,
         FetchEbay3DailyData::class,
         FetchReverbDailyData::class,
-        FetchWalmartDailyData::class,
         FetchWayfairDailyData::class,
         FetchShopifyB2BMetrics::class,
         FetchShopifyB2CMetrics::class,
-        \App\Console\Commands\RunAdvMastersCron::class,
-        \App\Console\Commands\CollectWalmartMetrics::class,
         \App\Console\Commands\UpdateEbayCompetitorPrices::class,
         \App\Console\Commands\UpdateEbaySkuCompetitorPrices::class,
         \App\Console\Commands\UpdateAmazonCompetitorPrices::class,
@@ -282,22 +271,6 @@ class Kernel extends ConsoleKernel
             ->dailyAt('12:00')
             ->timezone('Asia/Kolkata')
             ->name('amazon-bgt-pt')
-            ->withoutOverlapping()
-            ->runInBackground()
-            ->appendOutputTo($log);
-
-        $schedule->command('amazon:auto-update-pink-dil-kw-ads')
-            ->dailyAt('12:00')
-            ->timezone('Asia/Kolkata')
-            ->name('amazon-pink-dil-kw')
-            ->withoutOverlapping()
-            ->runInBackground()
-            ->appendOutputTo($log);
-
-        $schedule->command('amazon:auto-update-pink-dil-pt-ads')
-            ->dailyAt('12:00')
-            ->timezone('Asia/Kolkata')
-            ->name('amazon-pink-dil-pt')
             ->withoutOverlapping()
             ->runInBackground()
             ->appendOutputTo($log);
@@ -559,30 +532,6 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
-        $schedule->command('ebay1:auto-pause-pink-dil-kw-ads')
-            ->dailyAt('12:00')
-            ->timezone('Asia/Kolkata')
-            ->name('ebay1-pink-dil')
-            ->withoutOverlapping()
-            ->runInBackground()
-            ->appendOutputTo($log);
-
-        $schedule->command('ebay2:auto-pause-pink-dil-kw-ads')
-            ->dailyAt('12:00')
-            ->timezone('Asia/Kolkata')
-            ->name('ebay2-pink-dil')
-            ->withoutOverlapping()
-            ->runInBackground()
-            ->appendOutputTo($log);
-
-        $schedule->command('ebay3:auto-pause-pink-dil-kw-ads')
-            ->dailyAt('12:00')
-            ->timezone('Asia/Kolkata')
-            ->name('ebay3-pink-dil')
-            ->withoutOverlapping()
-            ->runInBackground()
-            ->appendOutputTo($log);
-
         $schedule->command('ebay:update-suggestedbid')
             ->dailyAt('12:00')
             ->timezone('Asia/Kolkata')
@@ -802,51 +751,6 @@ class Kernel extends ConsoleKernel
 
         /*
         |--------------------------------------------------------------------------
-        | WALMART
-        |--------------------------------------------------------------------------
-        */
-        $schedule->command('walmart:daily --days=60')
-            ->dailyAt('01:20')
-            ->timezone('Asia/Kolkata')
-            ->name('walmart-daily')
-            ->withoutOverlapping()
-            ->runInBackground()
-            ->appendOutputTo($log);
-
-        $schedule->command('walmart:pricing-sales')
-            ->cron('0 */3 * * *')
-            ->timezone('America/Los_Angeles')
-            ->name('walmart-pricing-sales')
-            ->withoutOverlapping()
-            ->runInBackground()
-            ->appendOutputTo($log);
-
-        $schedule->command('walmart:fetch-inventory')
-            ->cron('30 */4 * * *')
-            ->timezone('America/Los_Angeles')
-            ->name('walmart-inventory')
-            ->withoutOverlapping()
-            ->runInBackground()
-            ->appendOutputTo($log);
-
-        $schedule->command('walmart:collect-metrics')
-            ->dailyAt('23:45')
-            ->timezone('UTC')
-            ->name('walmart-collect-metrics')
-            ->withoutOverlapping()
-            ->runInBackground()
-            ->appendOutputTo($log);
-
-        $schedule->command('sync:walmart-ad-sheet-data')
-            ->dailyAt('12:00')
-            ->timezone('Asia/Kolkata')
-            ->name('walmart-ad-sheet-sync')
-            ->withoutOverlapping()
-            ->runInBackground()
-            ->appendOutputTo($log);
-
-        /*
-        |--------------------------------------------------------------------------
         | SHOPIFY
         |--------------------------------------------------------------------------
         */
@@ -854,14 +758,6 @@ class Kernel extends ConsoleKernel
             ->everyFiveMinutes()
             ->timezone('UTC')
             ->name('shopify-save-daily-inventory')
-            ->withoutOverlapping()
-            ->runInBackground()
-            ->appendOutputTo($log);
-
-        $schedule->command('app:sync-shopify-all-channels-data')
-            ->dailyAt('12:00')
-            ->timezone('Asia/Kolkata')
-            ->name('sync-shopify-all-channels')
             ->withoutOverlapping()
             ->runInBackground()
             ->appendOutputTo($log);
@@ -1085,20 +981,6 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
-        $schedule->command('sync:shein-sheet')
-            ->twiceDaily(1, 13)
-            ->name('sync-shein-sheet')
-            ->withoutOverlapping()
-            ->runInBackground()
-            ->appendOutputTo($log);
-
-        $schedule->command('sync:walmart-sheet')
-            ->twiceDaily(1, 13)
-            ->name('sync-walmart-sheet')
-            ->withoutOverlapping()
-            ->runInBackground()
-            ->appendOutputTo($log);
-
         $schedule->command('sync:temu-sheet-data')
             ->twiceDaily(1, 13)
             ->name('sync-temu-sheet')
@@ -1169,15 +1051,6 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
-        // Advertisement Masters Cron
-        $schedule->command('adv:run-masters-cron')
-            ->everyFiveMinutes()
-            ->timezone('UTC')
-            ->name('advertisement-masters-cron')
-            ->withoutOverlapping()
-            ->runInBackground()
-            ->appendOutputTo($log);
-
         /*
         |--------------------------------------------------------------------------
         | TIKTOK
@@ -1195,14 +1068,6 @@ class Kernel extends ConsoleKernel
         | MOVEMENT ANALYSIS & STOCK
         |--------------------------------------------------------------------------
         */
-        $schedule->command('movement:generate')
-            ->dailyAt('12:00')
-            ->timezone('Asia/Kolkata')
-            ->name('movement-analysis')
-            ->withoutOverlapping()
-            ->runInBackground()
-            ->appendOutputTo($log);
-
         $schedule->command('stock:update-mapping-daily')
             ->dailyAt('01:00')
             ->timezone('America/Los_Angeles')

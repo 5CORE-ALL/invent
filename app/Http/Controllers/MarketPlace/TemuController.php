@@ -1546,15 +1546,33 @@ class TemuController extends Controller
                 return [$normalizeSku($sku) => $sku];
             })->all();
             $l30ByNormalizedSku = array_fill_keys(array_keys($normalizedPmSkus), 0);
+            // Fallback: match by SKU with all spaces removed (e.g. "SKU123" in orders matches "SKU 123" in PM)
+            $noSpaceToNormalized = [];
+            foreach (array_keys($normalizedPmSkus) as $nk) {
+                $noSpace = str_replace(' ', '', $nk);
+                if ($noSpace !== '') {
+                    $noSpaceToNormalized[$noSpace] = $nk;
+                }
+            }
             $orderRows = TemuDailyData::select('contribution_sku', 'quantity_purchased')->get();
             foreach ($orderRows as $row) {
-                $n = $normalizeSku($row->contribution_sku ?? '');
+                $raw = trim((string) ($row->contribution_sku ?? ''));
+                if ($raw === '') {
+                    continue;
+                }
+                $n = $normalizeSku($raw);
+                $qty = (int) ($row->quantity_purchased ?? 0);
                 if (isset($l30ByNormalizedSku[$n])) {
-                    $l30ByNormalizedSku[$n] += (int) ($row->quantity_purchased ?? 0);
+                    $l30ByNormalizedSku[$n] += $qty;
+                } else {
+                    $nNoSpace = str_replace(' ', '', $n);
+                    if (isset($noSpaceToNormalized[$nNoSpace])) {
+                        $l30ByNormalizedSku[$noSpaceToNormalized[$nNoSpace]] += $qty;
+                    }
                 }
             }
             $temuSalesData = collect($skus)->mapWithKeys(function ($sku) use ($l30ByNormalizedSku, $normalizeSku) {
-                $temuL30 = $l30ByNormalizedSku[$normalizeSku($sku)] ?? 0;
+                $temuL30 = (int) ($l30ByNormalizedSku[$normalizeSku($sku)] ?? 0);
                 return [$sku => (object) ['sku' => $sku, 'temu_l30' => $temuL30]];
             });
 
@@ -1694,8 +1712,8 @@ class TemuController extends Controller
                 $inventory = $shopify->inv ?? 0;
                 $l30 = $shopify->quantity ?? 0;
                 
-                // Get Temu L30 (last 30 days sales from Temu)
-                $temuL30 = $temuSales ? $temuSales->temu_l30 : 0;
+                // Get Temu L30 (last 30 days sales from Temu daily data)
+                $temuL30 = $temuSales ? (int) ($temuSales->temu_l30 ?? 0) : 0;
                 
                 // Get view data by goods_id (last 30 days) - only if item exists in Temu
                 $goodsId = $item ? $item->goods_id : null;

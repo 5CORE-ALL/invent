@@ -258,6 +258,9 @@
                     <button type="button" class="btn btn-sm btn-success" id="export-btn">
                         <i class="fa fa-download"></i> Export CSV
                     </button>
+                    <a href="{{ route('temu.tabulator') }}" class="btn btn-sm btn-outline-primary" title="View order-level sales data (Order ID, status, line items)">
+                        <i class="fa fa-list-alt"></i> Order Data
+                    </a>
 
                     <button id="decrease-btn" class="btn btn-sm btn-warning">
                         <i class="fas fa-arrow-down"></i> Decrease Mode

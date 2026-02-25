@@ -837,6 +837,14 @@ class UpdateMarketplaceDailyMetrics extends Command
 
     private function calculateTemuMetrics($date)
     {
+        // Normalize SKU for matching (same as TemuController / temu-decrease)
+        $normalizeSku = function ($sku) {
+            $sku = strtoupper(trim((string) $sku));
+            $sku = preg_replace('/(\d+)\s*(PCS?|PIECES?)$/i', '$1PC', $sku);
+            $sku = preg_replace('/\s+/', ' ', $sku);
+            return $sku;
+        };
+
         // Get Temu daily data
         $data = TemuDailyData::all();
 
@@ -844,8 +852,11 @@ class UpdateMarketplaceDailyMetrics extends Command
             return null;
         }
 
-        // Get ProductMaster with parent info (keyed by SKU, not uppercase)
-        $productMasters = ProductMaster::all()->keyBy('sku');
+        // Get ProductMaster keyed by normalized SKU (so order contribution_sku matches PM sku)
+        $productMastersBySku = ProductMaster::all()->keyBy('sku');
+        $productMastersByNormalized = ProductMaster::all()->keyBy(function ($pm) use ($normalizeSku) {
+            return $normalizeSku($pm->sku ?? '');
+        });
 
         $totalOrders = 0;
         $totalQuantity = 0;
@@ -857,12 +868,16 @@ class UpdateMarketplaceDailyMetrics extends Command
         $totalQuantityForPrice = 0;
 
         foreach ($data as $row) {
-            if (!$row->contribution_sku || $row->contribution_sku === '') continue;
+            if (!$row->contribution_sku || trim((string) $row->contribution_sku) === '') {
+                continue;
+            }
 
-            // Skip parent rows (like badge calculation does)
-            $pm = $productMasters[$row->contribution_sku] ?? null;
+            // Look up ProductMaster by exact then normalized SKU (match TemuController logic)
+            $pm = $productMastersBySku[$row->contribution_sku]
+                ?? $productMastersByNormalized[$normalizeSku($row->contribution_sku)]
+                ?? null;
             $parent = $pm ? $pm->parent : '';
-            if ($parent && str_starts_with($parent, 'PARENT')) {
+            if ($parent && str_starts_with((string) $parent, 'PARENT')) {
                 continue;
             }
 

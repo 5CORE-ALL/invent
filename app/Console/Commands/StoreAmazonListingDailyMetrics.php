@@ -102,7 +102,7 @@ class StoreAmazonListingDailyMetrics extends Command
                 
                 // Count items with INV > 0 AND missing status (!listing_status && NR !== 'NR')
                 // This matches the exact logic used in the view
-                if (parseFloat($inv) > 0 && !$listingStatus && $nr !== 'NR') {
+                if (floatval($inv) > 0 && !$listingStatus && $nr !== 'NR') {
                     $missingInvCombinedCount++;
                 }
             }

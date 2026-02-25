@@ -99,6 +99,9 @@
                     <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#uploadDailyDataModal">
                         <i class="fa fa-upload"></i> Upload Daily Data
                     </button>
+                    <a href="{{ route('temu.decrease') }}" class="btn btn-sm btn-outline-primary" title="View SKU analytics (DIL%, CVR, pricing, ads)">
+                        <i class="fa fa-chart-line"></i> Temu Analytics
+                    </a>
                 </div>
 
                 <!-- Summary Stats -->
