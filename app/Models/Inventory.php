@@ -31,6 +31,7 @@ class Inventory extends Model
         'is_hide',
         'is_ia',
         'type',
+        'is_archived',
         'warehouse_id',
         'to_warehouse',
         'adjustment',

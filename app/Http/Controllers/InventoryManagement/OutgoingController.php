@@ -8,6 +8,7 @@ use App\Models\ProductMaster;
 use App\Models\Warehouse;
 use App\Models\Inventory;
 use App\Models\ShopifySku;
+use App\Models\AmazonDatasheet;
 use Illuminate\Support\Facades\Auth;
 use Carbon\Carbon;
 use App\Http\Controllers\ShopifyApiInventoryController;
@@ -443,29 +444,90 @@ class OutgoingController extends Controller
         //
     }
 
-    public function list()
+    public function list(Request $request)
     {
-        $data = Inventory::with('warehouse')
-            ->where('type', 'outgoing') // Only outgoing records
-            ->latest()
-            ->get()
-            ->map(function ($item) {
-                return [
-                    'sku' => $item->sku,
-                    'verified_stock' => $item->verified_stock,
-                    'reason' => $item->reason,
-                    'remarks' => $item->comment ?? $item->remarks,
-                    'warehouse_name' => $item->warehouse->name ?? '',
-                    'approved_by' => $item->approved_by,
-                    'approved_at' =>  $item->approved_at
-                        ? Carbon::parse($item->approved_at)->timezone('America/New_York')->format('m-d-Y')
-                        : '',
-                ];
-            });
+        $query = Inventory::with('warehouse')
+            ->where('type', 'outgoing');
 
-        return response()->json(['data' => $data]);
+        if ($request->filled('reason')) {
+            $query->where('reason', $request->reason);
+        }
+        if ($request->filled('person')) {
+            $query->where('approved_by', $request->person);
+        }
+        if ($request->filled('start_date')) {
+            $query->whereDate('approved_at', '>=', Carbon::parse($request->start_date)->startOfDay());
+        }
+        if ($request->filled('end_date')) {
+            $query->whereDate('approved_at', '<=', Carbon::parse($request->end_date)->endOfDay());
+        }
+
+        $items = $query->latest()->get();
+
+        $skus = $items->pluck('sku')->map(fn ($s) => strtolower(trim((string) $s)))->unique()->values()->toArray();
+        $pricesBySku = [];
+        if (!empty($skus)) {
+            $placeholders = implode(',', array_fill(0, count($skus), '?'));
+            $amazonRows = AmazonDatasheet::whereNotNull('price')
+                ->whereRaw("LOWER(TRIM(sku)) IN ({$placeholders})", $skus)
+                ->orderByDesc('id')
+                ->get();
+            foreach ($amazonRows as $row) {
+                $key = strtolower(trim((string) $row->sku));
+                if (!isset($pricesBySku[$key])) {
+                    $pricesBySku[$key] = (float) $row->price;
+                }
+            }
+        }
+
+        $data = $items->map(function ($item) use ($pricesBySku) {
+            $price = $pricesBySku[strtolower(trim((string) $item->sku))] ?? 0;
+            $qty = (int) $item->verified_stock;
+            $value = round($qty * $price, 2);
+            $archived = (bool) ($item->is_archived ?? false);
+            return [
+                'id' => $item->id,
+                'sku' => $item->sku,
+                'verified_stock' => $item->verified_stock,
+                'reason' => $item->reason,
+                'remarks' => $item->comment ?? $item->remarks,
+                'warehouse_name' => $item->warehouse->name ?? '',
+                'approved_by' => $item->approved_by,
+                'approved_at' => $item->approved_at
+                    ? Carbon::parse($item->approved_at)->timezone('America/New_York')->format('m-d-Y')
+                    : '',
+                'price' => $price,
+                'value' => $value,
+                'is_archived' => $archived,
+            ];
+        })->values()->all();
+
+        $reasons = Inventory::where('type', 'outgoing')->distinct()->pluck('reason')->filter()->values()->all();
+        $persons = Inventory::where('type', 'outgoing')->distinct()->pluck('approved_by')->filter()->values()->all();
+
+        return response()->json([
+            'data' => $data,
+            'reasons' => $reasons,
+            'persons' => $persons,
+        ]);
     }
 
+    public function archive(Request $request)
+    {
+        $request->validate([
+            'ids' => 'required|array',
+            'ids.*' => 'integer|exists:inventories,id',
+        ]);
+
+        $updated = Inventory::where('type', 'outgoing')
+            ->whereIn('id', $request->ids)
+            ->update(['is_archived' => true]);
+
+        return response()->json([
+            'success' => true,
+            'message' => $updated . ' row(s) archived.',
+        ]);
+    }
 
     public function getAvailableQtyBySku(Request $request)
     {

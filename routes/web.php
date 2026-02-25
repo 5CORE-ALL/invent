@@ -594,6 +594,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/outgoing-view', [OutgoingController::class, 'index'])->name('outgoing.view');
     Route::post('/outgoing-data-store', [OutgoingController::class, 'store'])->name('outgoing.store');
     Route::get('/outgoing-data-list', [OutgoingController::class, 'list']);
+    Route::post('/outgoing-archive', [OutgoingController::class, 'archive']);
 
 
 
