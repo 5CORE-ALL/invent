@@ -917,6 +917,9 @@
                                 <a href="{{ route('stock.balance.view') }}">Stock Balance</a>
                             </li>
                             <li>
+                                <a href="{{ route('combo.trf') }}">Combo TRF</a>
+                            </li>
+                            <li>
                                 <a href="#">Trash Entries</a>
                             </li>
                             <li>

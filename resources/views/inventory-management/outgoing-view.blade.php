@@ -103,6 +103,10 @@
             font-size: 13px;
             margin-top: 4px;
         }
+        #inventoryTable thead th.sortable {
+            cursor: pointer;
+            user-select: none;
+        }
 
 
 
@@ -121,11 +125,54 @@
                 <div class="card-body">
 
 
+                    <!-- Filters -->
+                    <div class="row mb-3 p-3 bg-light rounded">
+                        <div class="col-auto">
+                            <label class="form-label small mb-0">Reason</label>
+                            <select id="filterReason" class="form-select form-select-sm" style="min-width: 140px;">
+                                <option value="">All</option>
+                            </select>
+                        </div>
+                        <div class="col-auto">
+                            <label class="form-label small mb-0">Person</label>
+                            <select id="filterPerson" class="form-select form-select-sm" style="min-width: 120px;">
+                                <option value="">All</option>
+                            </select>
+                        </div>
+                        <div class="col-auto">
+                            <label class="form-label small mb-0">Start Date</label>
+                            <input type="date" id="filterStartDate" class="form-control form-control-sm">
+                        </div>
+                        <div class="col-auto">
+                            <label class="form-label small mb-0">End Date</label>
+                            <input type="date" id="filterEndDate" class="form-control form-control-sm">
+                        </div>
+                        <div class="col-auto d-flex align-items-end">
+                            <button type="button" class="btn btn-sm btn-primary me-1" id="applyFilter"><i class="fas fa-filter me-1"></i>Apply</button>
+                            <button type="button" class="btn btn-sm btn-outline-secondary" id="clearFilter">Clear</button>
+                        </div>
+                        <div class="col-auto ms-3 d-flex align-items-end">
+                            <div class="mb-0">
+                                <span class="small text-muted">Total Value (filtered):</span>
+                                <strong id="totalValueFiltered" class="ms-1">$0</strong>
+                            </div>
+                        </div>
+                        <div class="col-auto d-flex align-items-end">
+                            <div class="mb-0">
+                                <span class="small text-muted">Selected Rows Value:</span>
+                                <strong id="selectedRowsValue" class="ms-1">$0</strong>
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- Search Box and Add Button-->
                     <div class="row mb-3">
                         <div class="col-md-6 d-flex align-items-center">
                             <button type="button" class="btn btn-primary" id="openAddWarehouseModal" data-bs-toggle="modal" data-bs-target="#addWarehouseModal">
                                 <i class="fas fa-plus me-1"></i> CREATE OUTGOING
+                            </button>
+                            <button type="button" class="btn btn-outline-secondary ms-2" id="archiveSelectedBtn" title="Archive selected rows">
+                                <i class="fas fa-archive me-1"></i> Archive selected
                             </button>
                             <div class="dataTables_length ms-3"></div>
                         </div>
@@ -292,13 +339,16 @@
                         <table id="inventoryTable" class="table dt-responsive nowrap w-100">
                             <thead>
                                 <tr>
-                                    <th>SKU</th>
-                                    <th>QUANTITY</th>
-                                    <th>WAREHOUSE</th>
-                                    <th>REASON</th>
-                                    <th>COMMENT</th>
-                                    <th>CREATED BY</th>
-                                    <th>DATE</th>
+                                    <th><input type="checkbox" id="selectAllRows" title="Select all"></th>
+                                    <th class="sortable" data-col="sku">SKU <i class="fas fa-sort ms-1"></i></th>
+                                    <th class="sortable" data-col="verified_stock">QUANTITY <i class="fas fa-sort ms-1"></i></th>
+                                    <th class="sortable" data-col="warehouse_name">WAREHOUSE <i class="fas fa-sort ms-1"></i></th>
+                                    <th class="sortable" data-col="reason">REASON <i class="fas fa-sort ms-1"></i></th>
+                                    <th class="sortable" data-col="remarks">COMMENT <i class="fas fa-sort ms-1"></i></th>
+                                    <th class="sortable" data-col="approved_by">CREATED BY <i class="fas fa-sort ms-1"></i></th>
+                                    <th class="sortable" data-col="approved_at">DATE <i class="fas fa-sort ms-1"></i></th>
+                                    <th class="sortable" data-col="value">VALUE <i class="fas fa-sort ms-1"></i></th>
+                                    <th class="sortable" data-col="is_archived">ARCHIVE <i class="fas fa-sort ms-1"></i></th>
                                 </tr>
                             </thead>
                             <tbody id="inventory-table-body">
@@ -340,6 +390,9 @@
 
             // Store the loaded data globally
             let tableData = [];
+            let currentDisplayData = [];
+            let sortCol = null;
+            let sortDir = 1; // 1 = asc, -1 = desc
 
             function setupProgressModal() {
                 const progressModal = new bootstrap.Modal(document.getElementById('progressModal'));
@@ -452,6 +505,7 @@
             function initializeTable() {
                 loadData();
                 setupSearch();
+                setupSorting();
                 setupAddWarehouseModal();
                 setupProgressModal();
                 setupEditDeleteButtons();
@@ -593,9 +647,16 @@
 
 
             function loadData() {
+                var params = {
+                    reason: $('#filterReason').val() || undefined,
+                    person: $('#filterPerson').val() || undefined,
+                    start_date: $('#filterStartDate').val() || undefined,
+                    end_date: $('#filterEndDate').val() || undefined
+                };
                 $.ajax({
                     url: '/outgoing-data-list',
                     method: 'GET',
+                    data: params,
                     headers: {
                         'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
                     },
@@ -604,15 +665,62 @@
                     },
                     success: function (response) {
                         tableData = response.data || [];
+                        if (response.reasons && $('#filterReason option').length <= 1) {
+                            response.reasons.forEach(function(r) {
+                                $('#filterReason').append($('<option></option>').val(r).text(r));
+                            });
+                        }
+                        if (response.persons && $('#filterPerson option').length <= 1) {
+                            response.persons.forEach(function(p) {
+                                $('#filterPerson').append($('<option></option>').val(p).text(p || '(blank)'));
+                            });
+                        }
                         renderTable(tableData);
                         setupSearch();
+                        $('#selectedRowsValue').text('$0');
                         $('#rainbow-loader').hide();
                     },
                     error: function(xhr) {
                         console.error("Load error:", xhr.responseText);
+                        $('#rainbow-loader').hide();
                     }
                 });
             }
+
+            $(document).on('click', '#applyFilter', function() { loadData(); });
+            $(document).on('click', '#clearFilter', function() {
+                $('#filterReason').val('');
+                $('#filterPerson').val('');
+                $('#filterStartDate').val('');
+                $('#filterEndDate').val('');
+                loadData();
+            });
+
+            $(document).on('click', '#archiveSelectedBtn', function() {
+                const ids = [];
+                document.querySelectorAll('.row-select:checked').forEach(function(cb) {
+                    if (cb.getAttribute('data-archived') === '1') return;
+                    const row = cb.closest('tr');
+                    if (row && row.getAttribute('data-id')) ids.push(parseInt(row.getAttribute('data-id'), 10));
+                });
+                if (ids.length === 0) {
+                    alert('Please select one or more rows to archive (archived rows are excluded).');
+                    return;
+                }
+                $.ajax({
+                    url: '/outgoing-archive',
+                    method: 'POST',
+                    headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+                    contentType: 'application/json',
+                    data: JSON.stringify({ ids: ids }),
+                    success: function(res) {
+                        if (res.success) { loadData(); alert(res.message || 'Archived.'); }
+                    },
+                    error: function(xhr) {
+                        alert(xhr.responseJSON && xhr.responseJSON.message ? xhr.responseJSON.message : 'Failed to archive.');
+                    }
+                });
+            });
 
             
             function renderTable(data) {
@@ -620,14 +728,27 @@
                 tbody.innerHTML = '';
 
                 if (data.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="7" class="text-center">No records found</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="10" class="text-center">No records found</td></tr>';
+                    updateTotalValueFiltered(0);
+                    $('#selectedRowsValue').text('$0');
                     return;
                 }
 
-                data.forEach(item => {
+                currentDisplayData = data;
+                let totalVal = 0;
+                data.forEach((item, index) => {
                     const row = document.createElement('tr');
-
+                    const value = parseFloat(item.value) || 0;
+                    const archived = !!item.is_archived;
+                    if (!archived) totalVal += value;
+                    const valueFormatted = '$' + Math.round(value || 0);
+                    const archiveChecked = archived ? 'checked' : '';
+                    const archiveDisabled = archived ? ' disabled' : ' disabled';
+                    row.setAttribute('data-id', item.id);
+                    row.setAttribute('data-archived', archived ? '1' : '0');
+                    row.setAttribute('data-value', value);
                     row.innerHTML = `
+                        <td><input type="checkbox" class="row-select" data-index="${index}" data-value="${value}" data-archived="${archived ? '1' : '0'}"></td>
                         <td>${item.sku || '-'}</td>
                         <td>${item.verified_stock || '-'}</td>
                         <td>${item.warehouse_name  || '-'}</td>
@@ -635,9 +756,40 @@
                         <td>${item.remarks || '-'}</td>
                         <td>${item.approved_by || '-'}</td>
                         <td>${item.approved_at || '-'}</td>
+                        <td>${valueFormatted}</td>
+                        <td class="text-center"><input type="checkbox" class="archive-display" ${archiveChecked}${archiveDisabled} title="${archived ? 'Archived' : 'Not archived'}"></td>
                     `;
-
                     tbody.appendChild(row);
+                });
+                updateTotalValueFiltered(totalVal);
+                bindRowCheckboxes();
+                bindSelectAll();
+            }
+
+            function updateTotalValueFiltered(sum) {
+                $('#totalValueFiltered').text('$' + Math.round(sum || 0));
+            }
+
+            function updateSelectedRowsValue() {
+                let sum = 0;
+                document.querySelectorAll('.row-select:checked').forEach(function(cb) {
+                    if (cb.getAttribute('data-archived') === '1') return;
+                    sum += parseFloat(cb.getAttribute('data-value')) || 0;
+                });
+                $('#selectedRowsValue').text('$' + Math.round(sum));
+            }
+
+            function bindRowCheckboxes() {
+                $(document).off('change', '.row-select').on('change', '.row-select', function() {
+                    updateSelectedRowsValue();
+                });
+            }
+
+            function bindSelectAll() {
+                $('#selectAllRows').off('change').on('change', function() {
+                    const checked = this.checked;
+                    document.querySelectorAll('.row-select').forEach(function(cb) { cb.checked = checked; });
+                    updateSelectedRowsValue();
                 });
             }
 
@@ -690,6 +842,37 @@
                 clearButton.addEventListener('click', function() {
                     searchInput.value = '';
                     renderTable(tableData);
+                });
+            }
+
+            function setupSorting() {
+                $(document).off('click', '#inventoryTable thead th.sortable').on('click', '#inventoryTable thead th.sortable', function() {
+                    const col = $(this).data('col');
+                    if (!col) return;
+                    sortDir = (sortCol === col) ? -sortDir : 1;
+                    sortCol = col;
+                    const sorted = [...currentDisplayData].sort(function(a, b) {
+                        let va = a[col];
+                        let vb = b[col];
+                        if (col === 'verified_stock' || col === 'value') {
+                            va = parseFloat(va) || 0;
+                            vb = parseFloat(vb) || 0;
+                            return sortDir * (va - vb);
+                        }
+                        if (col === 'is_archived') {
+                            va = va ? 1 : 0;
+                            vb = vb ? 1 : 0;
+                            return sortDir * (va - vb);
+                        }
+                        va = String(va || '').toLowerCase();
+                        vb = String(vb || '').toLowerCase();
+                        if (va < vb) return -sortDir;
+                        if (va > vb) return sortDir;
+                        return 0;
+                    });
+                    renderTable(sorted);
+                    $('#inventoryTable thead th.sortable i').removeClass('fa-sort-up fa-sort-down').addClass('fa-sort');
+                    $(this).find('i').removeClass('fa-sort').addClass(sortDir === 1 ? 'fa-sort-up' : 'fa-sort-down');
                 });
             }
 
