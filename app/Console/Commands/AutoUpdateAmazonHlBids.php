@@ -357,19 +357,18 @@ class AutoUpdateAmazonHlBids extends Command
             $ub7 = $budget > 0 ? ($l7_spend / ($budget * 7)) * 100 : 0;
             $ub1 = $budget > 0 ? ($l1_spend / $budget) * 100 : 0;
 
-            // Calculate SBID for HL campaigns (no price-based rules)
+            // Calculate SBID for HL campaigns - use same logic as HL SBID column (never avg_cpc)
             $l1_cpc = floatval($row['l1_cpc']);
             $l7_cpc = floatval($row['l7_cpc']);
             
-            // Over-utilized: Priority - L1 CPC → L7 CPC → AVG CPC → 1.00, then decrease by 10%
+            // Over-utilized: Priority - L1 CPC → L7 CPC → 0.60 when both zero (HL SBID logic)
             if ($l1_cpc > 0) {
                 $row['sbid'] = floor($l1_cpc * 0.90 * 100) / 100;
             } else if ($l7_cpc > 0) {
                 $row['sbid'] = floor($l7_cpc * 0.90 * 100) / 100;
-            } else if ($avgCpc > 0) {
-                $row['sbid'] = floor($avgCpc * 0.90 * 100) / 100;
             } else {
-                $row['sbid'] = 1.00;
+                // When both L1 and L7 CPC are 0, use 0.60 (HL SBID default, not avg_cpc)
+                $row['sbid'] = 0.60;
             }
 
             // Validate all required fields before adding

@@ -3786,10 +3786,9 @@
                                     sbid = Math.floor(l1_cpc * 0.90 * 100) / 100;
                                 } else if (l7_cpc > 0) {
                                     sbid = Math.floor(l7_cpc * 0.90 * 100) / 100;
-                                } else if (avg_cpc > 0) {
-                                    sbid = Math.floor(avg_cpc * 0.90 * 100) / 100;
                                 } else {
-                                    sbid = 1.00;
+                                    // When both L1 and L7 CPC are 0, use 0.60 (not avg_cpc)
+                                    sbid = 0.60;
                                 }
                             } else if (rowUtilizationType === 'under') {
                                 // L1 0.01–0.20 → +0.10; L1 0.201–0.30 → +0.05; L1=0 and L7 0.20–0.30 → +0.05; else 10%
@@ -3803,10 +3802,9 @@
                                     sbid = Math.floor((l7_cpc + 0.05) * 100) / 100;
                                 } else if (l7_cpc > 0) {
                                     sbid = Math.floor(l7_cpc * 1.10 * 100) / 100;
-                                } else if (avg_cpc > 0) {
-                                    sbid = Math.floor(avg_cpc * 1.10 * 100) / 100;
                                 } else {
-                                    sbid = 1.00;
+                                    // When both L1 and L7 CPC are 0, use 0.60 (not avg_cpc)
+                                    sbid = 0.60;
                                 }
                             }
                             
