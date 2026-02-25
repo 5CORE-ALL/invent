@@ -66,6 +66,7 @@ use App\Http\Controllers\MarketPlace\OverallAmazonPriceController;
 use App\Http\Controllers\MarketPlace\ReverbLowVisibilityController;
 use App\Http\Controllers\MarketPlace\Shopifyb2cController;
 use App\Http\Controllers\Channels\ChannelMasterController;
+use App\Http\Controllers\ListingMaster\AmzListingController;
 use App\Http\Controllers\Channels\ChannelwiseController;
 use App\Http\Controllers\Channels\ReturnController;
 use App\Http\Controllers\Channels\ExpensesController;
@@ -424,6 +425,13 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/channel-metric-dot-trends', [ChannelMasterController::class, 'getChannelMetricDotTrends']);
     Route::post('/channel-archive', [ChannelMasterController::class, 'archiveChannel'])->name('channel.archive');
     Route::get('/all-marketplace-master', [ChannelMasterController::class, 'allMarketplaceMaster'])->name('all.marketplace.master');
+
+    // Listing Master > Amz Data (Amazon Listings raw from SP-API)
+    Route::get('/listing-master/amz-data', [AmzListingController::class, 'index'])->name('listing.master.amz.data');
+    Route::get('/listing-master/amz-data/data', [AmzListingController::class, 'data'])->name('listing.master.amz.data.data');
+    Route::get('/listing-master/amz-data/images', [AmzListingController::class, 'images'])->name('listing.master.amz.data.images');
+    Route::get('/listing-master/amz-data/media', [AmzListingController::class, 'media'])->name('listing.master.amz.data.media');
+    Route::post('/listing-master/amz-data/import', [AmzListingController::class, 'import'])->name('listing.master.amz.data.import');
 
     // Marketplace Sync: dynamic routes per marketplace (reverb, amazon, ebay, walmart)
     Route::prefix('marketplace/{marketplace}')->where(['marketplace' => 'reverb|amazon|ebay|walmart|topdawg'])->group(function () {

@@ -51,6 +51,22 @@
                 </a>
             </li>
 
+            {{-- Listing Master --}}
+            <li class="side-nav-item">
+                <a data-bs-toggle="collapse" href="#sidebarListingMaster" aria-expanded="false" aria-controls="sidebarListingMaster" class="side-nav-link">
+                    <i class="ri-list-check-2"></i>
+                    <span>Listing Master</span>
+                    <span class="menu-arrow"></span>
+                </a>
+                <div class="collapse" id="sidebarListingMaster">
+                    <ul class="side-nav-second-level">
+                        <li>
+                            <a href="{{ route('listing.master.amz.data') }}">Amz Data</a>
+                        </li>
+                    </ul>
+                </div>
+            </li>
+
             {{-- Marketplace Sync (Reverb, Amazon, eBay, Walmart) --}}
             <li class="side-nav-item">
                 <a data-bs-toggle="collapse" href="#sidebarMarketplaceSync" aria-expanded="false" aria-controls="sidebarMarketplaceSync" class="side-nav-link">

@@ -9,6 +9,7 @@ use Aws\Credentials\Credentials;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Cache;
+use App\Models\AmazonListingRaw;
 use App\Models\ProductStockMapping;
 
 class AmazonSpApiService
@@ -851,6 +852,381 @@ class AmazonSpApiService
                     'inventory_amazon' => $quantity,
                 ]);
         }
+    }
+
+    /**
+     * Request GET_MERCHANT_LISTINGS_ALL_DATA report, download, parse and store all rows in amazon_listings_raw.
+     * Uses SP-API credentials from config (services.amazon_sp).
+     * Returns ['success' => true, 'count' => N] or ['success' => false, 'message' => '...'].
+     */
+    public function fetchAndStoreListingsReport(): array
+    {
+        try {
+            $accessToken = $this->getAccessToken();
+            if (!$accessToken) {
+                return ['success' => false, 'message' => 'Could not obtain Amazon API access token. Check SPAPI credentials in .env.'];
+            }
+
+            $marketplaceId = config('services.amazon_sp.marketplace_id');
+            if (empty($marketplaceId)) {
+                return ['success' => false, 'message' => 'SPAPI_MARKETPLACE_ID is not set in .env.'];
+            }
+
+            // Step 1: Request the report
+            $response = Http::withoutVerifying()->withHeaders([
+                'x-amz-access-token' => $accessToken,
+                'Content-Type' => 'application/json',
+            ])->post('https://sellingpartnerapi-na.amazon.com/reports/2021-06-30/reports', [
+                'reportType' => 'GET_MERCHANT_LISTINGS_ALL_DATA',
+                'marketplaceIds' => [$marketplaceId],
+            ]);
+
+            $body = $response->json();
+            $reportId = $body['reportId'] ?? null;
+            if (!$reportId) {
+                Log::error('Amazon Listings Report: Failed to request report', ['response' => $body]);
+                return ['success' => false, 'message' => 'Failed to request report: ' . ($body['errors'][0]['message'] ?? $response->body())];
+            }
+
+            // Step 2: Poll until report is DONE (max ~10 minutes)
+            $maxWait = 60;
+            $waited = 0;
+            do {
+                sleep(15);
+                $waited += 15;
+                $statusResponse = Http::withoutVerifying()->withHeaders([
+                    'x-amz-access-token' => $accessToken,
+                ])->get("https://sellingpartnerapi-na.amazon.com/reports/2021-06-30/reports/{$reportId}");
+                $status = $statusResponse->json();
+                $processingStatus = $status['processingStatus'] ?? 'UNKNOWN';
+                if ($processingStatus === 'CANCELLED' || $processingStatus === 'FATAL') {
+                    return ['success' => false, 'message' => 'Report processing status: ' . $processingStatus];
+                }
+                if ($waited >= $maxWait * 60) {
+                    return ['success' => false, 'message' => 'Report timed out waiting for DONE.'];
+                }
+            } while ($processingStatus !== 'DONE');
+
+            $documentId = $status['reportDocumentId'] ?? null;
+            if (!$documentId) {
+                return ['success' => false, 'message' => 'Report document ID missing.'];
+            }
+
+            $docResponse = Http::withoutVerifying()->withHeaders([
+                'x-amz-access-token' => $accessToken,
+            ])->get("https://sellingpartnerapi-na.amazon.com/reports/2021-06-30/documents/{$documentId}");
+            $doc = $docResponse->json();
+            $url = $doc['url'] ?? null;
+            $compression = $doc['compressionAlgorithm'] ?? 'GZIP';
+            if (!$url) {
+                return ['success' => false, 'message' => 'Report document URL not found.'];
+            }
+
+            $rawContent = file_get_contents($url);
+            if ($rawContent === false) {
+                return ['success' => false, 'message' => 'Failed to download report document.'];
+            }
+            $csv = strtoupper($compression) === 'GZIP' ? gzdecode($rawContent) : $rawContent;
+            if (!$csv) {
+                return ['success' => false, 'message' => 'Failed to decode report content (GZIP).'];
+            }
+
+            $lines = explode("\n", trim($csv));
+            if (empty($lines)) {
+                return ['success' => false, 'message' => 'Report has no content.'];
+            }
+            $headers = array_map('trim', explode("\t", array_shift($lines)));
+            $reportImportedAt = now()->toDateTimeString();
+
+            // Replace existing data with this report snapshot
+            AmazonListingRaw::query()->delete();
+
+            $inserted = 0;
+            $batch = [];
+            $batchSize = 200;
+            $skippedInvalid = 0;
+            foreach ($lines as $line) {
+                $line = trim($line);
+                if ($line === '') continue;
+                $row = str_getcsv($line, "\t");
+                if (count($row) < count($headers)) {
+                    $skippedInvalid++;
+                    continue;
+                }
+                $data = array_combine($headers, $row);
+                $sellerSku = isset($data['seller-sku']) ? preg_replace('/[^\x20-\x7E]/', '', trim($data['seller-sku'])) : null;
+                $asin1 = isset($data['asin1']) ? trim($data['asin1']) : null;
+
+                $rawJson = json_encode($data, JSON_UNESCAPED_UNICODE);
+                if ($rawJson === false || json_last_error() !== JSON_ERROR_NONE) {
+                    Log::warning('Amazon Listings Report: json_encode failed for row', [
+                        'json_error' => json_last_error_msg(),
+                        'seller_sku' => $sellerSku,
+                    ]);
+                    $skippedInvalid++;
+                    continue;
+                }
+
+                $batch[] = [
+                    'report_imported_at' => $reportImportedAt,
+                    'seller_sku' => $sellerSku,
+                    'asin1' => $asin1,
+                    'raw_data' => $rawJson,
+                    'created_at' => now()->toDateTimeString(),
+                    'updated_at' => now()->toDateTimeString(),
+                ];
+                if (count($batch) >= $batchSize) {
+                    AmazonListingRaw::insert($batch);
+                    $inserted += count($batch);
+                    $batch = [];
+                }
+            }
+            if (!empty($batch)) {
+                AmazonListingRaw::insert($batch);
+                $inserted += count($batch);
+            }
+
+            if ($skippedInvalid > 0) {
+                Log::info('Amazon Listings Report: Skipped invalid rows', ['count' => $skippedInvalid]);
+            }
+            Log::info('Amazon Listings Report: Stored ' . $inserted . ' rows in amazon_listings_raw.');
+            return ['success' => true, 'count' => $inserted];
+        } catch (\Throwable $e) {
+            Log::error('Amazon Listings Report: Exception', ['error' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    /**
+     * GET_MERCHANT_LISTINGS_ALL_DATA is known to return empty image-url. This method fetches
+     * listing item details (images, videos, bullet points) via the Listings Items API when available.
+     * Returns ['success' => true, 'images' => [...], 'videos' => [...], 'bullet_points' => [...]] or ['success' => false, ...].
+     */
+    public function getListingsItemMedia(string $sellerSku): array
+    {
+        $empty = ['images' => [], 'videos' => [], 'bullet_points' => []];
+        try {
+            $accessToken = $this->getAccessToken();
+            if (! $accessToken) {
+                return ['success' => false, 'message' => 'Could not obtain access token.'] + $empty;
+            }
+            $sellerId = config('services.amazon_sp.seller_id');
+            if (empty($sellerId)) {
+                return ['success' => false, 'message' => 'AMAZON_SELLER_ID is not set in .env.'] + $empty;
+            }
+            $marketplaceId = $this->marketplaceId ?? config('services.amazon_sp.marketplace_id');
+            if (empty($marketplaceId)) {
+                return ['success' => false, 'message' => 'SPAPI_MARKETPLACE_ID is not set.'] + $empty;
+            }
+            $skuEncoded = rawurlencode($sellerSku);
+            $url = $this->endpoint . '/listings/2021-08-01/items/' . $sellerId . '/' . $skuEncoded
+                . '?marketplaceIds=' . $marketplaceId . '&includedData=summaries,attributes';
+            $response = Http::withoutVerifying()->withHeaders([
+                'x-amz-access-token' => $accessToken,
+                'Content-Type' => 'application/json',
+            ])->get($url);
+            $body = $response->json();
+            if ($response->status() !== 200) {
+                Log::warning('Amazon Listings Item: API error', ['status' => $response->status(), 'body' => $body]);
+
+                return ['success' => false, 'message' => $body['errors'][0]['message'] ?? 'Listings Item API error.'] + $empty;
+            }
+            Log::debug('Amazon Listings Item: raw response top-level keys', ['keys' => array_keys($body ?? [])]);
+            $this->logVideoRelatedKeys($body, $sellerSku);
+            $images = $this->extractImageUrlsFromListingsItemResponse($body);
+            $videos = $this->extractVideoUrlsFromListingsItemResponse($body, $images);
+            $bulletPoints = $this->extractBulletPointsFromListingsItemResponse($body);
+            Log::debug('Amazon Listings Item: media extracted', [
+                'sku' => $sellerSku,
+                'images_count' => count($images),
+                'videos_count' => count($videos),
+                'bullet_points_count' => count($bulletPoints),
+            ]);
+            if (count($bulletPoints) > 0) {
+                Log::debug('Amazon Listings Item: bullet_points sample', ['first' => $bulletPoints[0] ?? null]);
+            }
+
+            return ['success' => true, 'images' => $images, 'videos' => $videos, 'bullet_points' => $bulletPoints];
+        } catch (\Throwable $e) {
+            Log::warning('Amazon Listings Item: Exception', ['error' => $e->getMessage()]);
+
+            return ['success' => false, 'message' => $e->getMessage()] + $empty;
+        }
+    }
+
+    private function logVideoRelatedKeys(array $data, string $sku): void
+    {
+        $videoKeys = [];
+        array_walk_recursive($data, function ($v, $k) use (&$videoKeys) {
+            if (is_string($k) && preg_match('#video|media|movie|clip#i', $k)) {
+                $videoKeys[$k] = is_string($v) ? substr($v, 0, 80) : gettype($v);
+            }
+        });
+        if (count($videoKeys) > 0) {
+            Log::debug('Amazon Listings Item: video-related keys in response', ['sku' => $sku, 'video_keys' => $videoKeys]);
+        }
+    }
+
+    private function extractBulletPointsFromListingsItemResponse(array $data): array
+    {
+        $bullets = [];
+        $keysToTry = ['bullet_points', 'feature_bullets', 'bullet_point', 'features', 'product_description', 'item_description', 'key_product_features'];
+        foreach ($keysToTry as $key) {
+            $val = $this->getNestedValue($data, $key);
+            if ($val === null) {
+                continue;
+            }
+            if (is_array($val)) {
+                foreach ($val as $item) {
+                    if (is_string($item) && trim($item) !== '') {
+                        $bullets[] = trim($item);
+                    }
+                    if (is_array($item) && isset($item['value'])) {
+                        $v = $item['value'];
+                        if (is_string($v) && trim($v) !== '') {
+                            $bullets[] = trim($v);
+                        }
+                    }
+                }
+                if (count($bullets) > 0) {
+                    break;
+                }
+            }
+            if (is_string($val) && trim($val) !== '') {
+                $split = preg_split('/\n|\r\n|•|\*|(?<=[.!?])\s+/', $val);
+                foreach ($split as $line) {
+                    $line = trim($line, " \t\n\r\0\x0B•*-\t");
+                    if ($line !== '') {
+                        $bullets[] = $line;
+                    }
+                }
+                if (count($bullets) > 0) {
+                    break;
+                }
+            }
+        }
+        if (count($bullets) === 0) {
+            array_walk_recursive($data, function ($v) use (&$bullets) {
+                if (is_string($v) && strlen($v) > 20 && strlen($v) < 500 && preg_match('/\b(feature|includes|comes with)\b/i', $v)) {
+                    $bullets[] = trim($v);
+                }
+            });
+            $bullets = array_unique(array_slice($bullets, 0, 20));
+        }
+
+        return array_values(array_unique($bullets));
+    }
+
+    private function getNestedValue(array $data, string $key): mixed
+    {
+        $keyLower = strtolower($key);
+        foreach ($data as $k => $v) {
+            if (strtolower((string) $k) === $keyLower) {
+                return $v;
+            }
+            if (is_array($v)) {
+                $found = $this->getNestedValue($v, $key);
+                if ($found !== null) {
+                    return $found;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private function extractImageUrlsFromListingsItemResponse(array $data): array
+    {
+        $urls = [];
+        $seen = [];
+        $re = '/^https?:\/\/[^\s"\']+\.(jpe?g|png|gif|webp)(\?[^\s"\']*)?$/i';
+        array_walk_recursive($data, function ($v) use (&$urls, &$seen, $re) {
+            if (!is_string($v) || isset($seen[$v])) {
+                return;
+            }
+            $v = trim($v);
+            if ($v === '' || strlen($v) < 20) {
+                return;
+            }
+            if (preg_match($re, $v) || (preg_match('#^https?://#', $v) && preg_match('#(image|img|photo|media)#i', $v))) {
+                $seen[$v] = true;
+                $urls[] = $v;
+            }
+        });
+        return array_values(array_unique($urls));
+    }
+
+    private function extractVideoUrlsFromListingsItemResponse(array $data, array $imageUrls): array
+    {
+        $videos = [];
+        $seen = [];
+        $firstImage = $imageUrls[0] ?? '';
+        $videoUrlPattern = '#(youtube\.com|youtu\.be|vimeo\.com|\.mp4|video|product-video)#i';
+        $addVideo = function (string $url, string $thumb = '', string $duration = '') use (&$videos, &$seen, $firstImage) {
+            $url = trim($url);
+            if ($url === '' || strlen($url) < 15 || isset($seen[$url])) {
+                return;
+            }
+            if (! preg_match('#^https?://#', $url)) {
+                return;
+            }
+            if (preg_match('#\.(jpe?g|png|gif|webp)(\?|$)#i', $url)) {
+                return;
+            }
+            $seen[$url] = true;
+            $videos[] = [
+                'url' => $url,
+                'thumbnail' => $thumb ?: $firstImage,
+                'duration' => $duration,
+            ];
+        };
+        $explicitVideoKeys = ['video_urls', 'product_videos', 'videos', 'video', 'main_video', 'video_url', 'product_video'];
+        foreach ($explicitVideoKeys as $key) {
+            $val = $this->getNestedValue($data, $key);
+            if ($val === null) {
+                continue;
+            }
+            if (is_string($val)) {
+                $addVideo($val);
+                continue;
+            }
+            if (is_array($val)) {
+                foreach ($val as $item) {
+                    if (is_string($item)) {
+                        $addVideo($item);
+                    }
+                    if (is_array($item)) {
+                        $url = $item['url'] ?? $item['video_url'] ?? $item['src'] ?? null;
+                        if (is_string($url)) {
+                            $addVideo(
+                                $url,
+                                $item['thumbnail'] ?? $item['thumb'] ?? '',
+                                (string) ($item['duration'] ?? '')
+                            );
+                        }
+                    }
+                }
+            }
+        }
+        array_walk_recursive($data, function ($v, $k) use (&$videos, &$seen, $firstImage, $videoUrlPattern, $addVideo) {
+            if (! is_string($v)) {
+                return;
+            }
+            $v = trim($v);
+            if ($v === '' || strlen($v) < 15 || isset($seen[$v])) {
+                return;
+            }
+            if (! preg_match('#^https?://#', $v)) {
+                return;
+            }
+            $key = is_string($k) ? strtolower($k) : '';
+            $isVideoKey = str_contains($key, 'video') || str_contains($key, 'video_url');
+            $looksLikeVideo = preg_match($videoUrlPattern, $v) || preg_match($videoUrlPattern, $key);
+            if ($isVideoKey || $looksLikeVideo) {
+                $addVideo($v);
+            }
+        });
+        return $videos;
     }
 
     public function getFbaShipments($status = null, $marketplaceId = null, $lastUpdatedAfter = null, $lastUpdatedBefore = null)
