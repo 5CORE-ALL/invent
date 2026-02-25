@@ -61,20 +61,28 @@ class OutgoingController extends Controller
     public function store(Request $request)
     {
         $request->validate([
-            'sku' => 'required|string',
-            'parent' => 'nullable|string',
-            'qty' => 'required|integer|min:1',
+            'sku' => 'required|array',
+            'sku.*' => 'required|string',
+            'qty' => 'required|array',
+            'qty.*' => 'required|integer|min:1',
             'warehouse_id' => 'required|exists:warehouses,id',
             'reason' => 'required|string',
-            'date' => 'required|date',
+            'comment' => 'nullable|string|max:80',
         ]);
 
-        $sku = trim($request->sku);
-        $outgoingQty = (int) $request->qty;
-        $normalizedSku = strtoupper(preg_replace('/\s+/u', ' ', $sku));
+        $skus = $request->sku;
+        $count = count($skus);
+        $warehouseId = $request->warehouse_id;
+        $reason = $request->reason;
+        $comment = $request->filled('comment') ? trim($request->comment) : null;
 
-        $inventoryItemId = null;
-        $pageInfo = null;
+        for ($i = 0; $i < $count; $i++) {
+            $sku = trim($skus[$i]);
+            $outgoingQty = (int) $request->qty[$i];
+            $normalizedSku = strtoupper(preg_replace('/\s+/u', ' ', $sku));
+
+            $inventoryItemId = null;
+            $pageInfo = null;
 
         // Fast path: try local shopify_skus table for variant_id
         try {
@@ -153,9 +161,9 @@ class OutgoingController extends Controller
         }
 
         if (!$inventoryItemId) {
-            Log::error('Outgoing: Inventory Item ID not found for SKU', ['sku' => $normalizedSku]);
-            return response()->json(['error' => 'SKU not found in Shopify. Please sync inventory first.'], 404);
-        }
+                Log::error('Outgoing: Inventory Item ID not found for SKU', ['sku' => $normalizedSku]);
+                return response()->json(['error' => 'SKU not found in Shopify. Please sync inventory first. (Row ' . ($i + 1) . ': ' . $normalizedSku . ')'], 404);
+            }
 
         // Get location ID
         try {
@@ -172,7 +180,7 @@ class OutgoingController extends Controller
                     'status' => $invLevelResponse->status(),
                     'response' => $invLevelResponse->body()
                 ]);
-                return response()->json(['error' => 'Failed to fetch inventory levels from Shopify'], 500);
+                return response()->json(['error' => 'Failed to fetch inventory levels from Shopify (Row ' . ($i + 1) . ')'], 500);
             }
 
             $levels = $invLevelResponse->json('inventory_levels');
@@ -183,7 +191,7 @@ class OutgoingController extends Controller
                     'inventory_item_id' => $inventoryItemId,
                     'levels_response' => $levels
                 ]);
-                return response()->json(['error' => 'Shopify location not found for this SKU'], 404);
+                return response()->json(['error' => 'Shopify location not found for this SKU (Row ' . ($i + 1) . ')'], 404);
             }
 
             Log::info('Outgoing: Attempting to adjust Shopify inventory', [
@@ -208,7 +216,7 @@ class OutgoingController extends Controller
                     'status' => $adjustResponse->status(),
                     'response' => $adjustResponse->body()
                 ]);
-                return response()->json(['error' => 'Failed to update Shopify inventory: ' . $adjustResponse->body()], 500);
+                return response()->json(['error' => 'Failed to update Shopify inventory (Row ' . ($i + 1) . '): ' . $adjustResponse->body()], 500);
             }
 
             Log::info('Outgoing: Successfully updated Shopify inventory', [
@@ -223,29 +231,35 @@ class OutgoingController extends Controller
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString()
             ]);
-            return response()->json(['error' => 'Error updating Shopify: ' . $e->getMessage()], 500);
+            return response()->json(['error' => 'Error updating Shopify (Row ' . ($i + 1) . '): ' . $e->getMessage()], 500);
         }
 
         try {
-            Inventory::create([
-                'sku' => $sku,
-                'verified_stock' => $outgoingQty,
-                'to_adjust' => -$outgoingQty,
-                'reason' => $request->reason,
-                'is_approved' => true,
-                'approved_by' => Auth::user()->name ?? 'N/A',
-                'approved_at' => Carbon::now('America/New_York'),
-                'type' => 'outgoing',
-                'warehouse_id' => $request->warehouse_id,
-            ]);
-            return response()->json(['success' => true, 'message' => 'Outgoing inventory deducted from Shopify successfully.']);
-        } catch (\Exception $e) {
-            Log::error('Outgoing: Failed to save to database after Shopify update', [
-                'sku' => $normalizedSku,
-                'error' => $e->getMessage()
-            ]);
-            return response()->json(['error' => 'Shopify updated but failed to save to database: ' . $e->getMessage()], 500);
+                Inventory::create([
+                    'sku' => $sku,
+                    'verified_stock' => $outgoingQty,
+                    'to_adjust' => -$outgoingQty,
+                    'reason' => $reason,
+                    'comment' => $comment,
+                    'is_approved' => true,
+                    'approved_by' => Auth::user()->name ?? 'N/A',
+                    'approved_at' => Carbon::now('America/New_York'),
+                    'type' => 'outgoing',
+                    'warehouse_id' => $warehouseId,
+                ]);
+            } catch (\Exception $e) {
+                Log::error('Outgoing: Failed to save to database after Shopify update', [
+                    'sku' => $normalizedSku,
+                    'error' => $e->getMessage()
+                ]);
+                return response()->json(['error' => 'Shopify updated but failed to save to database (Row ' . ($i + 1) . '): ' . $e->getMessage()], 500);
+            }
         }
+
+        $msg = $count === 1
+            ? 'Outgoing inventory deducted from Shopify successfully.'
+            : $count . ' outgoing items deducted from Shopify successfully.';
+        return response()->json(['success' => true, 'message' => $msg]);
     }
 
     // public function store(Request $request)
@@ -440,7 +454,7 @@ class OutgoingController extends Controller
                     'sku' => $item->sku,
                     'verified_stock' => $item->verified_stock,
                     'reason' => $item->reason,
-                    'remarks' => $item->remarks,
+                    'remarks' => $item->comment ?? $item->remarks,
                     'warehouse_name' => $item->warehouse->name ?? '',
                     'approved_by' => $item->approved_by,
                     'approved_at' =>  $item->approved_at

@@ -27,6 +27,7 @@ class Inventory extends Model
         'is_ra_checked',
         'approved_at',
         'remarks',
+        'comment',
         'is_hide',
         'is_ia',
         'type',

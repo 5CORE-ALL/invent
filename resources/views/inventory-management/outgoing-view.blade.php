@@ -165,32 +165,57 @@
                                     <div class="modal-body">
                                         <div id="incoming-errors" class="mb-2 text-danger"></div>
 
-                                        <!-- SKU Dropdown -->
-                                        <div class="mb-3">
-                                            <label for="sku" class="form-label fw-bold">SKU</label>
-                                            <select class="form-select" id="sku" name="sku" required>
-                                                <option selected disabled>Select SKU</option>
-                                                @foreach($skus as $item)
-                                                    <option value="{{ $item->sku }}" data-parent="{{ $item->parent }}" data-available_qty="{{ $item->available_quantity }}">{{ $item->sku }}</option>
-                                                @endforeach
-                                            </select>
+                                        <div id="outgoing-rows-container">
+                                            <div class="outgoing-row border rounded p-3 mb-3" data-row="0">
+                                                <div class="row mb-2">
+                                                    <div class="col-md-5">
+                                                        <label for="sku_0" class="form-label fw-bold">SKU</label>
+                                                        <select class="form-select row-sku" id="sku_0" name="sku[]" required>
+                                                            <option selected disabled>Select SKU</option>
+                                                            @foreach($skus as $item)
+                                                                <option value="{{ $item->sku }}" data-available_qty="{{ $item->available_quantity }}">{{ $item->sku }}</option>
+                                                            @endforeach
+                                                        </select>
+                                                    </div>
+                                                    <div class="col-md-3">
+                                                        <label for="available_qty_0" class="form-label fw-bold">Available Qty</label>
+                                                        <input type="text" id="available_qty_0" name="available_qty[]" class="form-control row-available-qty" readonly>
+                                                    </div>
+                                                    <div class="col-md-3">
+                                                        <label for="qty_0" class="form-label fw-bold">Qty</label>
+                                                        <input type="number" id="qty_0" name="qty[]" class="form-control" required min="1">
+                                                    </div>
+                                                </div>
+                                            </div>
                                         </div>
 
                                         <div class="mb-3">
-                                            <label for="parent" class="form-label fw-bold">Parent</label>
-                                            <input type="text" class="form-control" id="parent" name="parent" readonly>
+                                            <button type="button" id="add-outgoing-row" class="btn btn-outline-primary btn-sm" title="Add another SKU">
+                                                <i class="fas fa-plus"></i> Add another SKU
+                                            </button>
                                         </div>
 
-                                        <div class="row mb-3">
-                                            <div class="col-md-6">
-                                                <label for="available_qty" class="form-label fw-bold">Available Qty</label>
-                                                <input type="text" id="available_qty" name="available_qty" class="form-control" readonly>
+                                        <template id="outgoing-row-template">
+                                            <div class="outgoing-row border rounded p-3 mb-3 position-relative" data-row="">
+                                                <button type="button" class="btn btn-outline-danger btn-sm position-absolute top-0 end-0 m-2 row-remove" title="Remove row"><i class="fas fa-minus"></i></button>
+                                                <div class="row mb-2">
+                                                    <div class="col-md-5">
+                                                        <label class="form-label fw-bold">SKU</label>
+                                                        <select class="form-select row-sku" name="sku[]" required>
+                                                            <option selected disabled>Select SKU</option>
+                                                        </select>
+                                                    </div>
+                                                    <div class="col-md-3">
+                                                        <label class="form-label fw-bold">Available Qty</label>
+                                                        <input type="text" name="available_qty[]" class="form-control row-available-qty" readonly>
+                                                    </div>
+                                                    <div class="col-md-3">
+                                                        <label class="form-label fw-bold">Qty</label>
+                                                        <input type="number" name="qty[]" class="form-control" required min="1">
+                                                    </div>
+                                                </div>
                                             </div>
-                                            <div class="col-md-6">
-                                                <label for="qty" class="form-label fw-bold">Qty</label>
-                                                <input type="number" id="qty" name="qty" class="form-control" required min="1">
-                                            </div>
-                                        </div>
+                                        </template>
 
                                         <div class="mb-3">
                                             <label for="warehouse_id" class="form-label fw-bold">Warehouse</label>
@@ -201,7 +226,6 @@
                                                 @endforeach
                                             </select>
                                         </div>
-
                                         <div class="mb-3">
                                             <label for="reason" class="form-label fw-bold">Reason</label>
                                             <select class="form-select" id="reason" name="reason" required>
@@ -221,10 +245,10 @@
                                                 <option value="Issue(Other)">Issue(Other)</option>
                                             </select>
                                         </div>
-
                                         <div class="mb-3">
-                                            <label for="date" class="form-label fw-bold">Date</label>
-                                            <input type="text" class="form-control" id="date" name="date" readonly>
+                                            <label for="comment" class="form-label fw-bold">COMMENT</label>
+                                            <input type="text" class="form-control" id="comment" name="comment" maxlength="80" placeholder="Optional (max 80 characters)">
+                                            <small class="text-muted"><span id="comment-char-count">0</span>/80</small>
                                         </div>
                                     </div>
 
@@ -272,6 +296,7 @@
                                     <th>QUANTITY</th>
                                     <th>WAREHOUSE</th>
                                     <th>REASON</th>
+                                    <th>COMMENT</th>
                                     <th>CREATED BY</th>
                                     <th>DATE</th>
                                 </tr>
@@ -444,20 +469,26 @@
 
                     const formData = $(this).serialize();
                     let hasError = false;
-                    const fields = [
-                        { id: '#sku', name: 'SKU' },
-                        { id: '#qty', name: 'Quantity' },
-                        { id: '#warehouse_id', name: 'Warehouse' },
-                        { id: '#reason', name: 'Reason' },
-                    ];
-                    fields.forEach(f => {
-                        const el = $(f.id);
-                        if (!el.val() || el.val() === 'Select SKU' || el.val() === 'Select Warehouse' || el.val() === 'Select Reason') {
+                    $('#outgoing-rows-container .outgoing-row').each(function(idx) {
+                        const $row = $(this);
+                        const skuVal = $row.find('.row-sku').val();
+                        const qtyVal = $row.find('input[name="qty[]"]').val();
+                        if (!skuVal || skuVal === 'Select SKU' || !qtyVal || parseInt(qtyVal, 10) < 1) {
                             hasError = true;
-                            el.addClass('is-invalid');
-                            el.after(`<div class="text-danger error-message">${f.name} is required.</div>`);
+                            $row.find('.row-sku, input[name="qty[]"]').addClass('is-invalid');
+                            $row.append(`<div class="text-danger error-message small">Row ${idx + 1}: SKU and Qty required.</div>`);
                         }
                     });
+                    const whVal = $('#warehouse_id').val();
+                    const reasonVal = $('#reason').val();
+                    if (!whVal || whVal === 'Select Warehouse') {
+                        hasError = true;
+                        $('#warehouse_id').addClass('is-invalid').after('<div class="text-danger error-message">Warehouse is required.</div>');
+                    }
+                    if (!reasonVal || reasonVal === 'Select Reason') {
+                        hasError = true;
+                        $('#reason').addClass('is-invalid').after('<div class="text-danger error-message">Reason is required.</div>');
+                    }
                     if (hasError) return;
 
 
@@ -491,10 +522,10 @@
                         data: formData,
                         success: function (response) {
                             document.getElementById("processing-overlay")?.remove();
-                            alert('Outgoing inventory stored and updated in Shopify successfully!');
+                            alert(response.message || 'Outgoing inventory stored and updated in Shopify successfully!');
                             $('#addWarehouseModal').modal('hide');
                             $('#outgoingForm')[0].reset();
-                            $('#parent').val('');
+                            $('#outgoing-rows-container .outgoing-row').not(':first').remove();
                             location.reload();
                         },
                         error: function (xhr) {
@@ -505,42 +536,58 @@
                     });
                 });
 
-                $('#sku').select2({
-                    dropdownParent: $('#addWarehouseModal'),
+                var $modal = $('#addWarehouseModal');
+                $('#sku_0').select2({
+                    dropdownParent: $modal,
                     placeholder: "Select SKU",
                     allowClear: true
                 });
-                
-                // Auto-fill Parent when select sku
-                // $('#sku').on('change', function () {
-                //     const parent = $(this).find('option:selected').data('parent');
-                //     $('#parent').val(parent || '');
-                // });
+                // Warehouse and Reason: native select (no Select2) so dropdowns open reliably in modal
 
-                $('#sku').on('change', function () {
-                    const selected = $(this).find('option:selected');
-                    
-                    // Existing functionality
-                    const parent = selected.data('parent');
-                    $('#parent').val(parent || '');
-
-                    // New functionality for Available Qty
-                    const availableQty = selected.data('available_qty');
-                    $('#available_qty').val(availableQty || 0);
+                $(document).on('change', '.row-sku', function () {
+                    var $row = $(this).closest('.outgoing-row');
+                    var availableQty = $(this).find('option:selected').data('available_qty');
+                    $row.find('.row-available-qty').val(availableQty !== undefined ? availableQty : '0');
                 });
 
-
-               
                 $(document).on('click', '#openAddWarehouseModal', function () {
                     $('#outgoingForm')[0].reset();
-                    $('#warehouseId').val('');
+                    $('#comment-char-count').text('0');
                     $('#warehouseModalLabel').text('Create Outgoing');
-                    const today = new Date();
-                    const yyyy = today.getFullYear();
-                    const mm = String(today.getMonth() + 1).padStart(2, '0');
-                    const dd = String(today.getDate()).padStart(2, '0');
-                    $('#date').val(yyyy + '-' + mm + '-' + dd);
+                    $('#outgoing-rows-container .outgoing-row').not(':first').remove();
                     $('#addWarehouseModal').modal('show');
+                });
+                $(document).on('input', '#comment', function () {
+                    $('#comment-char-count').text(this.value.length);
+                });
+
+                $(document).on('click', '#add-outgoing-row', function() {
+                    var template = document.getElementById('outgoing-row-template');
+                    if (!template || !template.content) return;
+                    var container = document.getElementById('outgoing-rows-container');
+                    var rowCount = container.querySelectorAll('.outgoing-row').length;
+                    var clone = template.content.cloneNode(true);
+                    clone.querySelector('.outgoing-row').setAttribute('data-row', rowCount);
+                    var $firstSku = $('#sku_0');
+                    var $newSku = $(clone).find('.row-sku');
+                    $firstSku.find('option').each(function() { $newSku.append($(this).clone()); });
+                    container.appendChild(clone);
+
+                    var $newRow = $('#outgoing-rows-container .outgoing-row:last');
+                    var $newSkuSelect = $newRow.find('.row-sku');
+                    var newId = 'sku_' + rowCount;
+                    $newSkuSelect.attr('id', newId);
+                    setTimeout(function() {
+                        $newSkuSelect.select2({
+                            dropdownParent: $modal,
+                            placeholder: 'Select SKU',
+                            allowClear: true
+                        });
+                    }, 0);
+                });
+
+                $(document).on('click', '.row-remove', function() {
+                    $(this).closest('.outgoing-row').remove();
                 });
             });
 
@@ -573,7 +620,7 @@
                 tbody.innerHTML = '';
 
                 if (data.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="6" class="text-center">No records found</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="7" class="text-center">No records found</td></tr>';
                     return;
                 }
 
@@ -585,6 +632,7 @@
                         <td>${item.verified_stock || '-'}</td>
                         <td>${item.warehouse_name  || '-'}</td>
                         <td>${item.reason || '-'}</td>
+                        <td>${item.remarks || '-'}</td>
                         <td>${item.approved_by || '-'}</td>
                         <td>${item.approved_at || '-'}</td>
                     `;
