@@ -2311,15 +2311,21 @@ class OverallAmazonController extends Controller
             });
             $campaignForDisplay = $matchedCampaignL30KwSuffix ?? $matchedCampaignL30ForAcos;
             
-            // KW page fields for utilization - prefer KW-suffix campaign for name/status/id so toggle is correct
-            $row['campaignBudgetAmount'] = $campaignForDisplay ? ($campaignForDisplay->campaignBudgetAmount ?? ($matchedCampaignL7?->campaignBudgetAmount ?? ($matchedCampaignL1?->campaignBudgetAmount ?? 0))) : ($matchedCampaignL7?->campaignBudgetAmount ?? ($matchedCampaignL1?->campaignBudgetAmount ?? 0));
-            $row['utilization_budget'] = $row['campaignBudgetAmount'];
-            $row['campaign_id'] = $campaignForDisplay ? ($campaignForDisplay->campaign_id ?? ($matchedCampaignL7?->campaign_id ?? ($matchedCampaignL1?->campaign_id ?? null))) : ($matchedCampaignL7?->campaign_id ?? ($matchedCampaignL1?->campaign_id ?? null));
-            $row['campaignName'] = $campaignForDisplay ? ($campaignForDisplay->campaignName ?? ($matchedCampaignL7?->campaignName ?? ($matchedCampaignL1?->campaignName ?? null))) : ($matchedCampaignL7?->campaignName ?? ($matchedCampaignL1?->campaignName ?? null));
-            $row['campaignStatus'] = $campaignForDisplay ? ($campaignForDisplay->campaignStatus ?? ($matchedCampaignL7?->campaignStatus ?? ($matchedCampaignL1?->campaignStatus ?? null))) : ($matchedCampaignL7?->campaignStatus ?? ($matchedCampaignL1?->campaignStatus ?? null));
-            // Ensure hasCampaign is true when we have campaign from L7/L1 even if not in L30 (so campaign column shows)
-            if (!$row['hasCampaign'] && ($row['campaign_id'] || $row['campaignName'])) {
-                $row['hasCampaign'] = true;
+            // KW page fields: only use L30 (campaignForDisplay) for campaign_id, campaignName, campaignStatus.
+            // Do NOT use L7/L1 fallback so that when no campaign exists in L30 (e.g. deleted), we do not show
+            // SBID, green Missing Ad, or Active. Strict: campaign must exist in L30 and status from API (L30).
+            if ($matchedCampaignsKwL30->isNotEmpty() && $campaignForDisplay) {
+                $row['campaignBudgetAmount'] = $campaignForDisplay->campaignBudgetAmount ?? ($matchedCampaignL7?->campaignBudgetAmount ?? ($matchedCampaignL1?->campaignBudgetAmount ?? 0));
+                $row['utilization_budget'] = $row['campaignBudgetAmount'];
+                $row['campaign_id'] = $campaignForDisplay->campaign_id ?? ($matchedCampaignL7?->campaign_id ?? ($matchedCampaignL1?->campaign_id ?? null));
+                $row['campaignName'] = $campaignForDisplay->campaignName ?? ($matchedCampaignL7?->campaignName ?? ($matchedCampaignL1?->campaignName ?? null));
+                $row['campaignStatus'] = $campaignForDisplay->campaignStatus ?? ($matchedCampaignL7?->campaignStatus ?? ($matchedCampaignL1?->campaignStatus ?? null));
+            } else {
+                $row['campaignBudgetAmount'] = $matchedCampaignL7?->campaignBudgetAmount ?? ($matchedCampaignL1?->campaignBudgetAmount ?? 0);
+                $row['utilization_budget'] = $row['campaignBudgetAmount'];
+                $row['campaign_id'] = null;
+                $row['campaignName'] = null;
+                $row['campaignStatus'] = null;
             }
             
             // L7/L1 spend and CPC (same as KW page)
@@ -2395,42 +2401,27 @@ class OverallAmazonController extends Controller
             $row['pt_spend_L1'] = (float)($matchedCampaignPtL1->spend ?? $matchedCampaignPtL1->cost ?? 0);
             $row['pt_clicks_L1'] = (int)($matchedCampaignPtL1->clicks ?? 0);
             
-            // PT Campaign name, budget, and campaign_id
-            $firstPtCampaign = $matchedCampaignsPtL30->first();
-            $row['pt_campaignName'] = $firstPtCampaign->campaignName ?? ($matchedCampaignPtL7->campaignName ?? null);
-            // Budget priority: L30 → L7 → L1 (same as amazon-utilized-pt page)
-            $row['pt_campaignBudgetAmount'] = ($firstPtCampaign ? $firstPtCampaign->campaignBudgetAmount : null) 
-                ?? ($matchedCampaignPtL7 ? $matchedCampaignPtL7->campaignBudgetAmount : null) 
-                ?? ($matchedCampaignPtL1 ? $matchedCampaignPtL1->campaignBudgetAmount : null) 
-                ?? 0;
-            $row['pt_campaign_id'] = $firstPtCampaign->campaign_id ?? ($matchedCampaignPtL7->campaign_id ?? null);
-            
-            // Update kw_campaign_status with L7/L1 fallback (same as KW utilized page)
-            // If no L30 KW campaign but L7/L1 exists, use L7/L1 status
-            if ($row['kw_campaign_status'] === '' && ($matchedCampaignL7 || $matchedCampaignL1)) {
-                $kwL7L1Status = $matchedCampaignL7->campaignStatus ?? ($matchedCampaignL1->campaignStatus ?? '');
-                $row['kw_campaign_status'] = $kwL7L1Status ? strtoupper($kwL7L1Status) : '';
+            // PT Campaign name, budget, and campaign_id - only from L30 (no L7/L1 fallback) so deleted campaigns don't show as active
+            if ($matchedCampaignsPtL30->isNotEmpty()) {
+                $firstPtCampaign = $matchedCampaignsPtL30->first();
+                $row['pt_campaignName'] = $firstPtCampaign->campaignName ?? null;
+                $row['pt_campaignBudgetAmount'] = ($firstPtCampaign ? $firstPtCampaign->campaignBudgetAmount : null)
+                    ?? ($matchedCampaignPtL7 ? $matchedCampaignPtL7->campaignBudgetAmount : null)
+                    ?? ($matchedCampaignPtL1 ? $matchedCampaignPtL1->campaignBudgetAmount : null)
+                    ?? 0;
+                $row['pt_campaign_id'] = $firstPtCampaign->campaign_id ?? null;
+            } else {
+                $row['pt_campaignName'] = null;
+                $row['pt_campaignBudgetAmount'] = 0;
+                $row['pt_campaign_id'] = null;
             }
             
-            // Update pt_campaign_status with L7/L1 fallback (same as PT utilized page)
-            // If no L30 PT campaign but L7/L1 exists, use L7/L1 status
-            if ($row['pt_campaign_status'] === '' && ($matchedCampaignPtL7 || $matchedCampaignPtL1)) {
-                $ptL7L1Status = $matchedCampaignPtL7->campaignStatus ?? ($matchedCampaignPtL1->campaignStatus ?? '');
-                $row['pt_campaign_status'] = $ptL7L1Status ? strtoupper($ptL7L1Status) : '';
-            }
-            
-            // Update hasCampaign to include L7/L1 matches (same as utilized pages)
-            $kwHasCampaign = $matchedCampaignsKwL30->isNotEmpty() || $matchedCampaignL7 || $matchedCampaignL1;
-            $ptHasCampaignFull = $matchedCampaignsPtL30->isNotEmpty() || $matchedCampaignPtL7 || $matchedCampaignPtL1;
+            // Only use L30 for campaign existence and status; do not use L7/L1 fallback so deleted
+            // campaigns (still in L7/L1 report data) show as Missing A and do not get SBID
+            $kwHasCampaign = $matchedCampaignsKwL30->isNotEmpty();
+            $ptHasCampaignFull = $matchedCampaignsPtL30->isNotEmpty();
             $row['hasCampaign'] = $kwHasCampaign || $ptHasCampaignFull;
             $row['has_campaigns'] = $row['hasCampaign'];
-            // L7/L1 matches are always for this SKU (exact match), so count as own campaign for Missing AD
-            if (!$row['has_own_kw_campaign'] && ($matchedCampaignL7 || $matchedCampaignL1)) {
-                $row['has_own_kw_campaign'] = true;
-            }
-            if (!$row['has_own_pt_campaign'] && ($matchedCampaignPtL7 || $matchedCampaignPtL1)) {
-                $row['has_own_pt_campaign'] = true;
-            }
             
             // PT CPC fields (same calculation as KW)
             $row['pt_l7_cpc'] = $matchedCampaignPtL7->costPerClick ?? 0;
@@ -2442,66 +2433,64 @@ class OverallAmazonController extends Controller
             $ptSold30 = (int)$row['pt_sold_L30'];
             $row['pt_ad_cvr'] = $ptClicks30 > 0 ? round(($ptSold30 / $ptClicks30) * 100, 2) : 0;
             
-            // PT SBID fields - get from PT-specific maps
-            $ptCampaignIdStr = $row['pt_campaign_id'] ? (string)$row['pt_campaign_id'] : null;
+            $inv = (float)($row['INV'] ?? 0);
+            // PT SBID fields - only for campaigns that exist in L30 and INV > 0 (do not show SBID when INV is 0)
             $ptLastSbid = '';
             $ptSbidM = '';
-            if ($ptCampaignIdStr && isset($ptLastSbidMap[$ptCampaignIdStr])) {
-                $ptLastSbid = $ptLastSbidMap[$ptCampaignIdStr];
-            } else {
-                // Fallback: try matching by PT campaign name
-                $ptCampaignName = $row['pt_campaignName'];
-                if ($ptCampaignName) {
-                    $ptNormalizedName = strtoupper(trim(rtrim($ptCampaignName, '.')));
-                    if (isset($ptLastSbidMap['name_' . $ptNormalizedName])) {
-                        $ptLastSbid = $ptLastSbidMap['name_' . $ptNormalizedName];
+            if ($matchedCampaignsPtL30->isNotEmpty() && $inv > 0) {
+                $ptCampaignIdStr = $row['pt_campaign_id'] ? (string)$row['pt_campaign_id'] : null;
+                if ($ptCampaignIdStr && isset($ptLastSbidMap[$ptCampaignIdStr])) {
+                    $ptLastSbid = $ptLastSbidMap[$ptCampaignIdStr];
+                } else {
+                    $ptCampaignName = $row['pt_campaignName'];
+                    if ($ptCampaignName) {
+                        $ptNormalizedName = strtoupper(trim(rtrim($ptCampaignName, '.')));
+                        if (isset($ptLastSbidMap['name_' . $ptNormalizedName])) {
+                            $ptLastSbid = $ptLastSbidMap['name_' . $ptNormalizedName];
+                        }
                     }
                 }
-            }
-            if ($ptCampaignIdStr && isset($ptSbidMMap[$ptCampaignIdStr])) {
-                $ptSbidM = $ptSbidMMap[$ptCampaignIdStr];
-            } else {
-                // Fallback
-                $ptCampaignName = $row['pt_campaignName'];
-                if ($ptCampaignName) {
-                    $ptNormalizedName = strtoupper(trim(rtrim($ptCampaignName, '.')));
-                    if (isset($ptSbidMMap['name_' . $ptNormalizedName])) {
-                        $ptSbidM = $ptSbidMMap['name_' . $ptNormalizedName];
+                if ($ptCampaignIdStr && isset($ptSbidMMap[$ptCampaignIdStr])) {
+                    $ptSbidM = $ptSbidMMap[$ptCampaignIdStr];
+                } else {
+                    $ptCampaignName = $row['pt_campaignName'];
+                    if ($ptCampaignName) {
+                        $ptNormalizedName = strtoupper(trim(rtrim($ptCampaignName, '.')));
+                        if (isset($ptSbidMMap['name_' . $ptNormalizedName])) {
+                            $ptSbidM = $ptSbidMMap['name_' . $ptNormalizedName];
+                        }
                     }
                 }
             }
             $row['pt_last_sbid'] = $ptLastSbid;
             $row['pt_sbid_m'] = $ptSbidM;
             
-            // SBID fields - get last_sbid and sbid_m from campaign data
+            // SBID fields - only for KW campaigns that exist in L30 and INV > 0 (do not show SBID when INV is 0)
             $row['sbid'] = 0;
-            
-            // Get last_sbid and sbid_m from maps
             $cleanParent = strtoupper(trim($parent));
             $lastSbid = '';
             $sbidM = '';
-            $campaignIdStr = $row['campaign_id'] ? (string)$row['campaign_id'] : null;
-            if ($campaignIdStr && isset($lastSbidMap[$campaignIdStr])) {
-                $lastSbid = $lastSbidMap[$campaignIdStr];
-            } else {
-                // Fallback: try matching by campaignName or SKU/parent
-                $nameKey = 'name_' . $cleanSku;
-                if (isset($lastSbidMap[$nameKey])) {
-                    $lastSbid = $lastSbidMap[$nameKey];
-                } elseif (isset($lastSbidMap['name_' . $cleanParent])) {
-                    $lastSbid = $lastSbidMap['name_' . $cleanParent];
+            if ($matchedCampaignsKwL30->isNotEmpty() && $inv > 0) {
+                $campaignIdStr = $row['campaign_id'] ? (string)$row['campaign_id'] : null;
+                if ($campaignIdStr && isset($lastSbidMap[$campaignIdStr])) {
+                    $lastSbid = $lastSbidMap[$campaignIdStr];
+                } else {
+                    $nameKey = 'name_' . $cleanSku;
+                    if (isset($lastSbidMap[$nameKey])) {
+                        $lastSbid = $lastSbidMap[$nameKey];
+                    } elseif (isset($lastSbidMap['name_' . $cleanParent])) {
+                        $lastSbid = $lastSbidMap['name_' . $cleanParent];
+                    }
                 }
-            }
-            // Get sbid_m
-            if ($campaignIdStr && isset($sbidMMap[$campaignIdStr])) {
-                $sbidM = $sbidMMap[$campaignIdStr];
-            } else {
-                // Fallback: try matching by campaignName or SKU/parent
-                $nameKey = 'name_' . $cleanSku;
-                if (isset($sbidMMap[$nameKey])) {
-                    $sbidM = $sbidMMap[$nameKey];
-                } elseif (isset($sbidMMap['name_' . $cleanParent])) {
-                    $sbidM = $sbidMMap['name_' . $cleanParent];
+                if ($campaignIdStr && isset($sbidMMap[$campaignIdStr])) {
+                    $sbidM = $sbidMMap[$campaignIdStr];
+                } else {
+                    $nameKey = 'name_' . $cleanSku;
+                    if (isset($sbidMMap[$nameKey])) {
+                        $sbidM = $sbidMMap[$nameKey];
+                    } elseif (isset($sbidMMap['name_' . $cleanParent])) {
+                        $sbidM = $sbidMMap['name_' . $cleanParent];
+                    }
                 }
             }
             $row['last_sbid'] = $lastSbid;
@@ -2550,19 +2539,22 @@ class OverallAmazonController extends Controller
                     && strtoupper($item->campaignStatus) === 'ENABLED';
             });
 
-            // HL Campaign name, budget, campaign_id, status
-            $row['hl_campaignName'] = ($matchedCampaignHlL30 ? $matchedCampaignHlL30->campaignName : null) ?? ($matchedHlL7 ? $matchedHlL7->campaignName : null) ?? null;
-            $row['hl_campaignBudgetAmount'] = ($matchedCampaignHlL30 ? ($matchedCampaignHlL30->campaignBudgetAmount ?? null) : null)
-                ?? ($matchedHlL7 ? ($matchedHlL7->campaignBudgetAmount ?? null) : null)
-                ?? ($matchedHlL1 ? ($matchedHlL1->campaignBudgetAmount ?? null) : null)
-                ?? 0;
-            $row['hl_campaign_id'] = ($matchedCampaignHlL30 ? $matchedCampaignHlL30->campaign_id : null) ?? ($matchedHlL7 ? $matchedHlL7->campaign_id : null) ?? null;
-            $hlHasEnabled = ($matchedCampaignHlL30 && strtoupper($matchedCampaignHlL30->campaignStatus ?? '') === 'ENABLED')
-                || ($matchedHlL7 && strtoupper($matchedHlL7->campaignStatus ?? '') === 'ENABLED')
-                || ($matchedHlL1 && strtoupper($matchedHlL1->campaignStatus ?? '') === 'ENABLED');
-            $row['hl_campaign_status'] = ($matchedCampaignHlL30 || $matchedHlL7 || $matchedHlL1)
-                ? ($hlHasEnabled ? 'ENABLED' : 'PAUSED')
-                : '';
+            // HL Campaign name, budget, campaign_id, status - only from L30 (no L7/L1 fallback) so deleted campaigns don't show as active
+            if ($matchedCampaignHlL30) {
+                $row['hl_campaignName'] = $matchedCampaignHlL30->campaignName ?? null;
+                $row['hl_campaignBudgetAmount'] = ($matchedCampaignHlL30->campaignBudgetAmount ?? null)
+                    ?? ($matchedHlL7 ? ($matchedHlL7->campaignBudgetAmount ?? null) : null)
+                    ?? ($matchedHlL1 ? ($matchedHlL1->campaignBudgetAmount ?? null) : null)
+                    ?? 0;
+                $row['hl_campaign_id'] = $matchedCampaignHlL30->campaign_id ?? null;
+                $hlHasEnabled = strtoupper($matchedCampaignHlL30->campaignStatus ?? '') === 'ENABLED';
+                $row['hl_campaign_status'] = $hlHasEnabled ? 'ENABLED' : 'PAUSED';
+            } else {
+                $row['hl_campaignName'] = null;
+                $row['hl_campaignBudgetAmount'] = $matchedHlL7?->campaignBudgetAmount ?? ($matchedHlL1?->campaignBudgetAmount ?? 0);
+                $row['hl_campaign_id'] = null;
+                $row['hl_campaign_status'] = '';
+            }
 
             // HL L1 spend and clicks
             $row['hl_spend_L1'] = $matchedHlL1 ? ($matchedHlL1->cost ?? 0) : 0;
@@ -2582,29 +2574,31 @@ class OverallAmazonController extends Controller
             $hlSold30 = (int)($row['hl_sold_L30'] ?? 0);
             $row['hl_ad_cvr'] = $hlClicks30 > 0 ? round(($hlSold30 / $hlClicks30) * 100, 2) : 0;
 
-            // HL SBID fields - get from HL-specific maps
-            $hlCampaignIdStr = $row['hl_campaign_id'] ? (string)$row['hl_campaign_id'] : null;
+            // HL SBID fields - only when HL campaign exists in L30 and INV > 0 (do not show SBID when INV is 0)
             $hlLastSbid = '';
             $hlSbidM = '';
-            if ($hlCampaignIdStr && isset($hlLastSbidMap[$hlCampaignIdStr])) {
-                $hlLastSbid = $hlLastSbidMap[$hlCampaignIdStr];
-            } else {
-                $hlCampaignNameForSbid = $row['hl_campaignName'];
-                if ($hlCampaignNameForSbid) {
-                    $hlNormalizedName = strtoupper(trim(rtrim($hlCampaignNameForSbid, '.')));
-                    if (isset($hlLastSbidMap['name_' . $hlNormalizedName])) {
-                        $hlLastSbid = $hlLastSbidMap['name_' . $hlNormalizedName];
+            if ($matchedCampaignHlL30 && $inv > 0) {
+                $hlCampaignIdStr = $row['hl_campaign_id'] ? (string)$row['hl_campaign_id'] : null;
+                if ($hlCampaignIdStr && isset($hlLastSbidMap[$hlCampaignIdStr])) {
+                    $hlLastSbid = $hlLastSbidMap[$hlCampaignIdStr];
+                } else {
+                    $hlCampaignNameForSbid = $row['hl_campaignName'];
+                    if ($hlCampaignNameForSbid) {
+                        $hlNormalizedName = strtoupper(trim(rtrim($hlCampaignNameForSbid, '.')));
+                        if (isset($hlLastSbidMap['name_' . $hlNormalizedName])) {
+                            $hlLastSbid = $hlLastSbidMap['name_' . $hlNormalizedName];
+                        }
                     }
                 }
-            }
-            if ($hlCampaignIdStr && isset($hlSbidMMap[$hlCampaignIdStr])) {
-                $hlSbidM = $hlSbidMMap[$hlCampaignIdStr];
-            } else {
-                $hlCampaignNameForSbid = $row['hl_campaignName'];
-                if ($hlCampaignNameForSbid) {
-                    $hlNormalizedName = strtoupper(trim(rtrim($hlCampaignNameForSbid, '.')));
-                    if (isset($hlSbidMMap['name_' . $hlNormalizedName])) {
-                        $hlSbidM = $hlSbidMMap['name_' . $hlNormalizedName];
+                if ($hlCampaignIdStr && isset($hlSbidMMap[$hlCampaignIdStr])) {
+                    $hlSbidM = $hlSbidMMap[$hlCampaignIdStr];
+                } else {
+                    $hlCampaignNameForSbid = $row['hl_campaignName'];
+                    if ($hlCampaignNameForSbid) {
+                        $hlNormalizedName = strtoupper(trim(rtrim($hlCampaignNameForSbid, '.')));
+                        if (isset($hlSbidMMap['name_' . $hlNormalizedName])) {
+                            $hlSbidM = $hlSbidMMap['name_' . $hlNormalizedName];
+                        }
                     }
                 }
             }
@@ -2833,8 +2827,8 @@ class OverallAmazonController extends Controller
                 'CVR_L30' => '',
                 'CVR_L7' => '',
                 'CVR_L60' => '',
-                'NRL' => '',
-                'NRA' => '',
+                'NRL' => '', // Set below from children
+                'NRA' => '', // Set below from children
                 'FBA' => null,
                 'shopify_id' => null,
                 'SPRICE' => '',
@@ -2869,7 +2863,20 @@ class OverallAmazonController extends Controller
                 'ad_updates' => $adUpdates,
                 'variation_display' => $parentVariations[$parent] ?? 'red'
             ];
-            
+            // Parent NRL/NRA from children: if any child is NRL/NRA, parent is NRL/NRA; else REQ/RA (so KW NRA filter works on parent rows)
+            // Support both array and object items (grouped rows may be stdClass when coming from JSON/etc.)
+            $hasNraChild = $rows->contains(function ($r) {
+                $nra = trim((string) (is_array($r) ? ($r['NRA'] ?? '') : ($r->NRA ?? '')));
+                if ($nra !== '') {
+                    return $nra === 'NRA';
+                }
+                $nrl = trim((string) (is_array($r) ? ($r['NRL'] ?? 'REQ') : ($r->NRL ?? 'REQ')));
+                return $nrl === 'NRL';
+            });
+            $sumRow['NRL'] = $hasNraChild ? 'NRL' : 'REQ';
+            $sumRow['NRA'] = $hasNraChild ? 'NRA' : 'RA';
+            $sumRow['NR'] = $hasNraChild ? 'NR' : 'REQ'; // NRL/RL filter uses NR; parent derives from children
+
             // Add campaign data for parent rows - match by "PARENT {parent}" campaign name
             // Normalize parent name (handle special characters like non-breaking spaces)
             $parentNorm = strtoupper(trim(preg_replace('/\s+/', ' ', str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $parent ?? ''))));
