@@ -288,26 +288,30 @@ class AutoUpdateAmzUnderPtBids extends Command
             ->get();
 
         $result = [];
+        $processedCampaignIds = []; // Deduplicate: one bid per campaign (first SKU wins)
 
         foreach ($productMasters as $pm) {
             $sku = strtoupper($pm->sku);
 
             $shopify = $shopifyData[$pm->sku] ?? null;
 
-            $matchedCampaignL7 = $amazonSpCampaignReportsL7->first(function ($item) use ($sku) {
-                $cleanName = strtoupper(trim($item->campaignName));
+            // Normalize spaces so "WF 15 140 4OHM 2PCS PT" matches even when DB has multiple spaces
+            $cleanSku = preg_replace('/\s+/', ' ', $sku);
+
+            $matchedCampaignL7 = $amazonSpCampaignReportsL7->first(function ($item) use ($cleanSku) {
+                $cleanName = preg_replace('/\s+/', ' ', strtoupper(trim($item->campaignName)));
 
                 return (
-                    (str_ends_with($cleanName, $sku . ' PT') || str_ends_with($cleanName, $sku . ' PT.'))
+                    (str_ends_with($cleanName, $cleanSku . ' PT') || str_ends_with($cleanName, $cleanSku . ' PT.'))
                     && strtoupper($item->campaignStatus) === 'ENABLED'
                 );
             });
 
-            $matchedCampaignL1 = $amazonSpCampaignReportsL1->first(function ($item) use ($sku) {
-                $cleanName = strtoupper(trim($item->campaignName));
+            $matchedCampaignL1 = $amazonSpCampaignReportsL1->first(function ($item) use ($cleanSku) {
+                $cleanName = preg_replace('/\s+/', ' ', strtoupper(trim($item->campaignName)));
 
                 return (
-                    (str_ends_with($cleanName, $sku . ' PT') || str_ends_with($cleanName, $sku . ' PT.'))
+                    (str_ends_with($cleanName, $cleanSku . ' PT') || str_ends_with($cleanName, $cleanSku . ' PT.'))
                     && strtoupper($item->campaignStatus) === 'ENABLED'
                 );
             });
@@ -316,13 +320,19 @@ class AutoUpdateAmzUnderPtBids extends Command
                 continue;
             }
 
+            $campaignId = $matchedCampaignL7->campaign_id ?? ($matchedCampaignL1->campaign_id ?? '');
+            if (!empty($campaignId) && isset($processedCampaignIds[$campaignId])) {
+                continue; // Already have a bid for this campaign (e.g. parent + child same campaign)
+            }
+            $processedCampaignIds[$campaignId] = true;
+
             $row = [];
             // INV: for PARENT SKU use sum of children's INV; for child use shopify inv
             $isParentSku = stripos($pm->sku ?? '', 'PARENT') !== false;
             $row['INV'] = $isParentSku
                 ? (int) ($childInvSumByParent[$pm->parent ?? $pm->sku ?? ''] ?? 0)
                 : (int) ($shopify->inv ?? 0);
-            $row['campaign_id'] = $matchedCampaignL7->campaign_id ?? ($matchedCampaignL1->campaign_id ?? '');
+            $row['campaign_id'] = $campaignId;
             $row['campaignName'] = $matchedCampaignL7->campaignName ?? ($matchedCampaignL1->campaignName ?? '');
             $row['campaignBudgetAmount'] = $matchedCampaignL7->campaignBudgetAmount ?? ($matchedCampaignL1->campaignBudgetAmount ?? '');
             $row['l7_spend'] = $matchedCampaignL7->spend ?? 0;
@@ -437,13 +447,12 @@ class AutoUpdateAmzUnderPtBids extends Command
                     }
                 }
                 
-                // Apply price-based caps (parent rows now have avg price, so apply for all rows)
+                // Apply price-based cap only for very low price (under-utilized: allow higher bids for $10+)
                 if ($price < 10 && $row['sbid'] > 0.10) {
                     $row['sbid'] = 0.10;
-                } else if ($price >= 10 && $price < 20 && $row['sbid'] > 0.20) {
-                    $row['sbid'] = 0.20;
                 }
-                
+                // No cap for price 10–20 so under-utilized bids can reach 1.5 etc.
+
                 $result[] = (object) $row;
             }
             }

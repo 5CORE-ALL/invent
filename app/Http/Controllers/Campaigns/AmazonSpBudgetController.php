@@ -267,7 +267,22 @@ class AmazonSpBudgetController extends Controller
             }
             $keywords = collect($keywords)->unique('keywordId')->values()->all();
             if (empty($keywords)) {
-                FacadesLog::warning('updateAutoCampaignKeywordsBid: no keywords', ['campaign_id' => $campaignId]);
+                // PT campaigns have targeting clauses, not keywords — try targets and delegate to targets updater
+                $adTargets = $this->getTargetsAdByCampaign([$campaignId]);
+                if (!empty($adTargets)) {
+                    FacadesLog::info('updateAutoCampaignKeywordsBid: no keywords but found targeting clauses (PT campaign), using targets API', [
+                        'campaign_id' => $campaignId,
+                        'targets_count' => count($adTargets),
+                    ]);
+                    $targetResult = $this->updateAutoCampaignTargetsBid([$campaignId], [$newBid]);
+                    if (is_array($targetResult) && ($targetResult['status'] ?? 0) === 200) {
+                        $allResults = array_merge($allResults, $targetResult['data'] ?? []);
+                    } else {
+                        $skipped[] = ['campaign_id' => $campaignId, 'reason' => 'targets_update_failed', 'error' => $targetResult['error'] ?? 'Unknown'];
+                    }
+                    continue;
+                }
+                FacadesLog::warning('updateAutoCampaignKeywordsBid: no keywords and no targets', ['campaign_id' => $campaignId]);
                 $skipped[] = ['campaign_id' => $campaignId, 'reason' => 'no_keywords'];
                 continue;
             }
@@ -513,7 +528,11 @@ class AmazonSpBudgetController extends Controller
                 $results[] = json_decode($response->getBody(), true);
             }
 
-            return  $results;
+            return [
+                'message' => 'Targets bid updated successfully',
+                'data' => $results,
+                'status' => 200,
+            ];
 
         } catch (\Exception $e) {
             return [
@@ -5618,6 +5637,30 @@ class AmazonSpBudgetController extends Controller
         ini_set('max_execution_time', 300);
         ini_set('memory_limit', '512M');
 
+        // PT campaigns use targeting clauses, not keywords — handle first
+        if ($campaignType === 'PT') {
+            return $this->updateCampaignBidsOnAmazonPt($campaignId, $newBid);
+        }
+
+        // If type not provided, infer PT from campaign name (e.g. "WF 15 140 4OHM 2PCS PT")
+        if ($campaignType !== 'HL') {
+            $nameRow = DB::table('amazon_sp_campaign_reports')
+                ->where('campaign_id', $campaignId)
+                ->where('ad_type', 'SPONSORED_PRODUCTS')
+                ->whereNotNull('campaignName')
+                ->value('campaignName');
+            if ($nameRow !== null) {
+                $cleanName = preg_replace('/\s+/', ' ', strtoupper(trim($nameRow)));
+                if (str_ends_with($cleanName, ' PT') || str_ends_with($cleanName, ' PT.')) {
+                    FacadesLog::info('updateCampaignBidsOnAmazon: inferred PT from campaign name', [
+                        'campaign_id' => $campaignId,
+                        'campaign_name' => $nameRow,
+                    ]);
+                    return $this->updateCampaignBidsOnAmazonPt($campaignId, $newBid);
+                }
+            }
+        }
+
         $allKeywords = [];
 
         // Get ad groups for the campaign
@@ -5625,10 +5668,10 @@ class AmazonSpBudgetController extends Controller
             // For SB campaigns (HL), use different method
             $adGroups = $this->getSbAdGroupsByCampaigns([$campaignId]);
         } else {
-            // For SP campaigns (KW and PT)
+            // For SP campaigns (KW only; PT handled above)
             $adGroups = $this->getAdGroupsByCampaigns([$campaignId]);
         }
-        
+
         if (empty($adGroups)) {
             FacadesLog::error('updateCampaignBidsOnAmazon: no ad groups', [
                 'campaign_id' => $campaignId,
@@ -5643,10 +5686,10 @@ class AmazonSpBudgetController extends Controller
                 // For SB campaigns (HL), use different method
                 $keywords = $this->getSbKeywordsByAdGroup($adGroup['adGroupId']);
             } else {
-                // For SP campaigns (KW and PT)
+                // For SP campaigns (KW)
                 $keywords = $this->getKeywordsByAdGroup($adGroup['adGroupId']);
             }
-            
+
             foreach ($keywords as $kw) {
                 if ($campaignType === 'HL') {
                     // For SB campaigns (HL)
@@ -5658,7 +5701,7 @@ class AmazonSpBudgetController extends Controller
                         'state' => $kw['state'] ?? 'enabled'
                     ];
                 } else {
-                    // For SP campaigns (KW and PT)
+                    // For SP campaigns (KW)
                     $allKeywords[] = [
                         'keywordId' => $kw['keywordId'],
                         'bid' => $newBid,
@@ -5707,7 +5750,7 @@ class AmazonSpBudgetController extends Controller
                     $results[] = json_decode($response->getBody(), true);
                 }
             } else {
-                // Use SP keywords endpoint for KW and PT campaigns
+                // Use SP keywords endpoint for KW campaigns
                 $url = 'https://advertising-api.amazon.com/sp/keywords';
                 $chunks = array_chunk($allKeywords, 100);
                 foreach ($chunks as $chunk) {
@@ -5733,6 +5776,102 @@ class AmazonSpBudgetController extends Controller
             return $results;
         } catch (\Exception $e) {
             throw new \Exception('Amazon API error: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Update PT (Product Targeting) campaign bids on Amazon using targeting clauses API.
+     * PT campaigns have targets, not keywords; this is used by approveAmazonSbid when campaign_type is PT.
+     */
+    private function updateCampaignBidsOnAmazonPt($campaignId, $newBid)
+    {
+        ini_set('max_execution_time', 300);
+        ini_set('memory_limit', '512M');
+
+        FacadesLog::info('updateCampaignBidsOnAmazonPt: processing PT campaign', [
+            'campaign_id' => $campaignId,
+            'new_bid' => $newBid,
+        ]);
+
+        AmazonSpCampaignReport::where('campaign_id', $campaignId)
+            ->where('ad_type', 'SPONSORED_PRODUCTS')
+            ->whereIn('report_date_range', ['L7', 'L1'])
+            ->update(['apprSbid' => 'approved']);
+
+        $adTargets = $this->getTargetsAdByCampaign([$campaignId]);
+
+        if (empty($adTargets)) {
+            FacadesLog::error('updateCampaignBidsOnAmazonPt: no targeting clauses found', [
+                'campaign_id' => $campaignId,
+            ]);
+            throw new \Exception('No targeting clauses (targets) found for PT campaign. Ensure the campaign has product targets.');
+        }
+
+        $allTargets = [];
+        foreach ($adTargets as $adTarget) {
+            $targetId = isset($adTarget['targetId']) ? trim((string) $adTarget['targetId']) : '';
+            if ($targetId !== '') {
+                $allTargets[] = [
+                    'bid' => floatval($newBid),
+                    'targetId' => $targetId,
+                ];
+            }
+        }
+
+        $allTargets = collect($allTargets)->unique('targetId')->values()->toArray();
+
+        FacadesLog::info('updateCampaignBidsOnAmazonPt: targeting clauses to update', [
+            'campaign_id' => $campaignId,
+            'targets_count' => count($allTargets),
+            'new_bid' => $newBid,
+        ]);
+
+        if (empty($allTargets)) {
+            FacadesLog::error('updateCampaignBidsOnAmazonPt: no valid target IDs', [
+                'campaign_id' => $campaignId,
+            ]);
+            throw new \Exception('No valid target IDs found for PT campaign');
+        }
+
+        $accessToken = $this->getAccessToken();
+        $client = new Client();
+        $url = 'https://advertising-api.amazon.com/sp/targets';
+        $results = [];
+        $timeout = 90;
+        $connectTimeout = 45;
+
+        try {
+            $chunks = array_chunk($allTargets, 100);
+            foreach ($chunks as $ci => $chunk) {
+                $response = $client->put($url, [
+                    'headers' => [
+                        'Amazon-Advertising-API-ClientId' => config('services.amazon_ads.client_id'),
+                        'Authorization' => 'Bearer ' . $accessToken,
+                        'Amazon-Advertising-API-Scope' => $this->profileId,
+                        'Content-Type' => 'application/vnd.spTargetingClause.v3+json',
+                        'Accept' => 'application/vnd.spTargetingClause.v3+json',
+                    ],
+                    'json' => ['targetingClauses' => $chunk],
+                    'timeout' => $timeout,
+                    'connect_timeout' => $connectTimeout,
+                ]);
+                $results[] = json_decode($response->getBody(), true);
+            }
+
+            FacadesLog::info('updateCampaignBidsOnAmazonPt: API success', [
+                'campaign_id' => $campaignId,
+                'chunks_sent' => count($chunks),
+                'targets_updated' => count($allTargets),
+            ]);
+
+            return $results;
+        } catch (\Exception $e) {
+            FacadesLog::error('updateCampaignBidsOnAmazonPt: API failed', [
+                'campaign_id' => $campaignId,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            throw new \Exception('Amazon API error (PT targets): ' . $e->getMessage());
         }
     }
 
