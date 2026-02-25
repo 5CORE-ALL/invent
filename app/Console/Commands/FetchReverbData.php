@@ -215,18 +215,23 @@ class FetchReverbData extends Command
     protected function fetchAllOrders(): void
     {
         $baseUrl = 'https://api.reverb.com/api/my/orders/selling/all';
+
+        // Fetch URL: when not --force, only fetch orders updated since last sync
         $lastSync = null;
-        $lastSyncForPush = null;
         if (! $this->option('force') && Schema::hasTable('reverb_sync_states')) {
             $lastSync = ReverbSyncState::getLastSync(ReverbSyncState::KEY_ORDERS_LAST_SYNC);
-            $lastSyncForPush = $lastSync ?? Carbon::now();
-            ReverbSyncState::setLastSync(ReverbSyncState::KEY_ORDERS_LAST_SYNC_FOR_PUSH, $lastSyncForPush);
-            $this->info('Stored lastSyncForPush for order push cutoff: ' . $lastSyncForPush->toIso8601String());
         }
-        // For dispatching import jobs: use stored cutoff or very old date so all pending orders qualify
-        $lastSyncForPush = $lastSyncForPush ?? ReverbSyncState::getLastSync(ReverbSyncState::KEY_ORDERS_LAST_SYNC_FOR_PUSH);
-        if ($this->option('force') || $lastSyncForPush === null) {
-            $lastSyncForPush = Carbon::parse('2000-01-01 00:00:00');
+
+        // Push cutoff: always use stored value; never change it based on --force
+        $lastSyncForPush = ReverbSyncState::getLastSync(ReverbSyncState::KEY_ORDERS_LAST_SYNC_FOR_PUSH);
+        if ($lastSyncForPush === null) {
+            $lastSyncForPush = Carbon::now();
+            if (Schema::hasTable('reverb_sync_states')) {
+                ReverbSyncState::setLastSync(ReverbSyncState::KEY_ORDERS_LAST_SYNC_FOR_PUSH, $lastSyncForPush);
+                $this->info('First run: set push cutoff to now (no old orders will be pushed): ' . $lastSyncForPush->toIso8601String());
+            }
+        } else {
+            $this->info('Using stored push cutoff (orders after this will be dispatched): ' . $lastSyncForPush->toIso8601String());
         }
         $settings = ReverbSyncSettings::getForReverb();
         $autoImportOrders = (bool) ($settings['order']['import_orders_to_main_store'] ?? false);
