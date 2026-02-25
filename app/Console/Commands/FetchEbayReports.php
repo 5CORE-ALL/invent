@@ -328,12 +328,28 @@ class FetchEbayReports extends Command
                     ]);
 
                 if (! $response->successful()) {
+                    $body = $response->json() ?? [];
+                    $errorCode = $body['error'] ?? '';
+                    $errorDesc = $body['error_description'] ?? $response->body();
+
                     if ($attempt < $maxRetries) {
                         $this->warn("⚠️  Token request failed (attempt {$attempt}/{$maxRetries}), retrying...");
                         sleep(2);
                         continue;
                     }
-                    $this->error('❌ TOKEN FAILED: '.json_encode($response->json()));
+
+                    $this->error('❌ eBay token request failed: ' . ($errorDesc ?: $response->body()));
+
+                    if ($errorCode === 'invalid_grant' || str_contains((string) $errorDesc, 'refresh token')) {
+                        $this->newLine();
+                        $this->warn('The eBay refresh token is invalid, expired, or was issued to a different app.');
+                        $this->line('To fix:');
+                        $this->line('  1. Generate a new refresh token: php artisan ebay1:generate-refresh-token --code=YOUR_AUTH_CODE');
+                        $this->line('  2. Get YOUR_AUTH_CODE by signing in at the eBay consent URL (see .env or eBay Developer docs).');
+                        $this->line('  3. Add the new token to .env: EBAY_REFRESH_TOKEN=<new_token>');
+                        $this->line('  4. Ensure EBAY_APP_ID and EBAY_CERT_ID in .env match the eBay app used to generate the token.');
+                        $this->newLine();
+                    }
                     return null;
                 }
 
@@ -346,9 +362,15 @@ class FetchEbayReports extends Command
                     sleep(2);
                     continue;
                 }
-                
-                $this->error('EBAY TOKEN EXCEPTION: ' . $e->getMessage());
 
+                $this->error('EBAY TOKEN EXCEPTION: ' . $e->getMessage());
+                if (str_contains($e->getMessage(), 'invalid_grant') || str_contains($e->getMessage(), 'refresh token')) {
+                    $this->newLine();
+                    $this->warn('The eBay refresh token is invalid or expired.');
+                    $this->line('Generate a new one: php artisan ebay1:generate-refresh-token --code=YOUR_AUTH_CODE');
+                    $this->line('Then set EBAY_REFRESH_TOKEN=<new_token> in .env');
+                    $this->newLine();
+                }
                 return null;
             }
         }
