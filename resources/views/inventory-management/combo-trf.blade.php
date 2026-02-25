@@ -33,6 +33,18 @@
             padding-right: 0px !important;
         }
         
+        /* Combo TRF table: increase row height so content (SKU chips + qty table) fits and UI is balanced */
+        #combo-trf-table .tabulator-row {
+            min-height: 140px;
+        }
+        #combo-trf-table .tabulator-row .tabulator-cell {
+            padding: 8px 6px;
+            vertical-align: top;
+        }
+        #combo-trf-table .tabulator-row .tabulator-cell:not(.tabulator-cell-source-sku) {
+            vertical-align: middle;
+        }
+        
         /* DIL% colors */
         .dil-red { color: #a00211; font-weight: 600; }
         .dil-yellow { color: #ffc107; font-weight: 600; }
@@ -61,6 +73,99 @@
             padding: 20px 25px !important;
             letter-spacing: 0.5px;
         }
+        
+        /* Combo TRF: FROM SKU – inline table (Source | Available | Qty to take) */
+        .from-sku-qty-list {
+            display: block;
+            min-width: 100%;
+            margin-top: 6px;
+            max-height: none;
+            overflow: visible;
+        }
+        .from-sku-qty-list:empty {
+            display: none;
+        }
+        .from-sku-qty-list:not(:empty) {
+            display: block !important;
+            visibility: visible !important;
+        }
+        /* Inline table: Source SKU | Available | Qty to take (no modal needed) */
+        .combo-inline-qty-table {
+            width: 100%;
+            font-size: 12px;
+            margin: 0;
+            background: #fff;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+        }
+        .combo-inline-qty-table th {
+            background: #f8f9fa;
+            padding: 4px 6px;
+            font-weight: 600;
+        }
+        .combo-inline-qty-table td {
+            padding: 4px 6px;
+        }
+        .combo-inline-qty-table .from-sku-qty-per-sku {
+            width: 70px;
+            text-align: center;
+            font-weight: 600;
+        }
+        .combo-inline-target-row {
+            margin-top: 6px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        .combo-inline-target-row .combo-inline-target-input {
+            width: 80px;
+            text-align: center;
+            font-weight: 600;
+        }
+        /* Select2 in table: dropdown above other cells */
+        .tabulator-cell .select2-container {
+            z-index: 10;
+        }
+        .tabulator-cell .select2-container--open {
+            z-index: 9999;
+        }
+        .combo-from-sku-cell {
+            min-width: 0;
+            padding: 4px 6px;
+        }
+        /* Allow row to expand so "Qty to take from each source" table is visible */
+        .tabulator-cell.tabulator-cell-source-sku {
+            overflow: visible !important;
+            min-height: 180px;
+            vertical-align: top !important;
+        }
+        .tabulator-cell.tabulator-cell-source-sku .combo-from-sku-cell.has-qty-list {
+            min-height: 180px;
+        }
+        .tabulator-row .tabulator-cell.tabulator-cell-source-sku {
+            vertical-align: top;
+        }
+        /* Select2 multi-select: wrap selected tags to next line instead of overflowing */
+        .combo-from-sku-cell .select2-selection__rendered {
+            display: flex !important;
+            flex-wrap: wrap !important;
+            align-items: center !important;
+            gap: 4px 6px !important;
+            min-height: 56px !important;
+        }
+        .combo-from-sku-cell .select2-selection {
+            min-height: 64px !important;
+            height: auto !important;
+            overflow: visible !important;
+        }
+        .combo-from-sku-cell .select2-container .select2-selection--multiple {
+            padding: 2px 6px 6px 6px !important;
+        }
+        .combo-from-sku-cell .select2-selection__choice {
+            margin: 0 !important;
+            max-width: 100%;
+        }
     </style>
 @endsection
 
@@ -82,7 +187,8 @@
     <div class="row">
         <div class="card shadow-sm">
             <div class="card-body py-3">
-                <h4>Combo TRF</h4>
+                <h4 class="mb-1">Combo TRF</h4>
+                <p class="text-muted small mb-2">Each row is a <strong>destination (TO) combo SKU</strong>. Select <strong>2 or more source (FROM) SKUs</strong>, enter the <strong>combo count</strong> (e.g. 5 = take 5 from each source, add 5 to TO). Then click <strong>Transfer</strong>.</p>
                 
                 <!-- Filters -->
                 <div class="d-flex align-items-center flex-wrap gap-2 mb-3">
@@ -99,8 +205,8 @@
                     </select>
                     
                     <select id="action-filter" class="form-select form-select-sm" style="width: auto;">
-                        <option value="">Show All</option>
-                        <option value="RB" selected>RB</option>
+                        <option value="" selected>Show All</option>
+                        <option value="RB">RB</option>
                         <option value="NRB">NRB</option>
                         <option value="--">-- (No Action)</option>
                     </select>
@@ -180,6 +286,45 @@
                     </div>
                     <!-- Table -->
                     <div id="combo-trf-table" style="flex: 1;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Combo quantities modal: see Available, set Qty to take, set Target -->
+    <div class="modal fade" id="comboQtyModal" tabindex="-1" aria-labelledby="comboQtyModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h5 class="modal-title" id="comboQtyModalLabel">Set quantities – Source & Target</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body p-3">
+                    <p class="small text-muted mb-2">Target TO SKU: <strong id="comboModalToSku">–</strong></p>
+                    <div class="table-responsive">
+                        <table class="table table-sm table-bordered mb-2">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Source SKU</th>
+                                    <th class="text-center">Available</th>
+                                    <th class="text-center">Qty to take</th>
+                                </tr>
+                            </thead>
+                            <tbody id="comboModalSourceBody"></tbody>
+                        </table>
+                    </div>
+                    <div class="row g-2 align-items-center border-top pt-2">
+                        <div class="col-auto">
+                            <label class="col-form-label small mb-0">Combo qty (add to target):</label>
+                        </div>
+                        <div class="col-auto">
+                            <input type="number" id="comboModalTargetQty" class="form-control form-control-sm" min="1" style="width:90px;">
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer py-2">
+                    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary btn-sm" id="comboModalApply">Apply</button>
                 </div>
             </div>
         </div>
@@ -307,7 +452,7 @@
             
             skuArray.forEach(function(sku) {
                 $.ajax({
-                    url: '/stock-balance-update-action',
+                    url: '/combo-trf-update-action',
                     method: 'POST',
                     headers: {
                         'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content'),
@@ -484,7 +629,7 @@
             
             // Save to database
             $.ajax({
-                url: '/stock-balance-update-action',
+                url: '/combo-trf-update-action',
                 method: 'POST',
                 headers: {
                     'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content'),
@@ -511,54 +656,152 @@
             });
         });
         
-        // FROM SKU dropdown change handler (inline in table)
+        // FROM SKU multi-select: build per-SKU qty list and update totals
+        function refreshFromSkuQtyTable($select) {
+            const $row = $select.closest('.tabulator-row');
+            if (!$row.length) return;
+            $select.trigger('change');
+        }
+        $(document).on('select2:select select2:unselect select2:clear', '.to-sku-select', function() {
+            const $select = $(this);
+            setTimeout(function() { refreshFromSkuQtyTable($select); }, 0);
+        });
         $(document).on('change', '.to-sku-select', function() {
             const $select = $(this);
             const $row = $select.closest('.tabulator-row');
+            if (!$row.length) return;
             const row = table.getRow($row[0]);
+            if (!row) return;
             const rowData = row.getData();
-            const toSku = rowData.SKU; // Current row's SKU (TO SKU)
-            const fromSku = $select.val();
+            const toSku = rowData.SKU;
+            const selected = $select.val();
+            const selectedArray = Array.isArray(selected) ? selected : (selected ? [selected] : []);
             
-            if (fromSku) {
-                // Save FROM SKU specifically for this TO SKU
-                const savedData = JSON.parse(localStorage.getItem('transfer_' + toSku) || '{}');
-                savedData.fromSku = fromSku;
+            const savedData = JSON.parse(localStorage.getItem('transfer_' + toSku) || '{}');
+            savedData.fromSkus = selectedArray;
+            savedData.fromQtys = savedData.fromQtys || {};
+            localStorage.setItem('transfer_' + toSku, JSON.stringify(savedData));
+            
+            // Find list in same row (inline table: Source | Available | Qty to take)
+            const $cellContent = $row.find('.combo-from-sku-cell');
+            const $list = $row.find('.from-sku-qty-list');
+            $list.empty();
+            
+            if (selectedArray.length > 0) {
+                $cellContent.addClass('has-qty-list');
+                var totalSold = 0;
+                var comboQty = savedData.comboQty !== undefined ? savedData.comboQty : 1;
+                var esc = function(s) { return (s || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); };
+                var tableRows = '';
+                selectedArray.forEach(function(sku) {
+                    const item = allTableData.find(function(i) { return i.SKU === sku; });
+                    const inv = item ? (parseInt(item.INV) || 0) : 0;
+                    if (item && item.SOLD != null) totalSold += (parseInt(item.SOLD) || 0);
+                    tableRows += '<tr><td class="small">' + esc(sku) + '</td><td class="text-center">' + inv + '</td><td class="text-center"><input type="number" class="form-control form-control-sm from-sku-qty-per-sku" data-sku="' + esc(sku) + '" min="1" max="' + inv + '" value="' + comboQty + '" title="Qty to take"></td></tr>';
+                    savedData.fromQtys[sku] = comboQty;
+                });
+                $list.html(
+                    '<table class="table table-sm combo-inline-qty-table">' +
+                    '<thead class="table-light"><tr><th>Source SKU</th><th class="text-center">Available</th><th class="text-center">Qty to take</th></tr></thead>' +
+                    '<tbody>' + tableRows + '</tbody></table>' +
+                    '<div class="combo-inline-target-row small"><span class="text-muted">Combo qty (add to target):</span> <input type="number" class="form-control form-control-sm combo-inline-target-input" min="1" value="' + comboQty + '" title="Total qty to add to target"></div>'
+                );
+                savedData.comboQty = comboQty;
                 localStorage.setItem('transfer_' + toSku, JSON.stringify(savedData));
-                
-                const selectedOption = $select.find('option:selected');
-                const fromParent = selectedOption.attr('data-parent') || '';
-                const fromInv = selectedOption.attr('data-inv') || 0;
-                
-                // Get FROM SKU data for SOLD, DIL%, and set FROM Qty
-                const fromItem = allTableData.find(function(i) { return i.SKU === fromSku; });
-                const fromSold = fromItem ? (fromItem.SOLD || 0) : 0;
-                const fromDil = fromItem ? (parseFloat(fromItem.DIL) || 0) : 0;
-                const fromDilPercent = Math.round(fromDil * 100);
-                
-                // Auto-fill FROM fields
-                $row.find('.to-parent-display').val(fromParent);
-                $row.find('.from-inv-display').val(fromInv);
-                $row.find('.from-sold-display').val(fromSold);
-                $row.find('.from-qty-input').val(fromInv); // Set FROM Qty to FROM SKU's INV
-                
-                // Set FROM DIL% with color coding
-                const $dilSpan = $row.find('.from-dil-percent');
-                let dilClass = '';
-                if (fromDilPercent < 16.66) dilClass = 'dil-red';
-                else if (fromDilPercent >= 16.66 && fromDilPercent < 25) dilClass = 'dil-yellow';
-                else if (fromDilPercent >= 25 && fromDilPercent < 50) dilClass = 'dil-green';
-                else dilClass = 'dil-pink';
-                
-                $dilSpan.attr('class', 'from-dil-percent ' + dilClass).text(fromDilPercent + '%');
+                $row.find('.from-qty-input').val(comboQty);
+                $row.find('.to-qty-display').val(comboQty);
+                $row.find('.from-sold-display').val(totalSold);
+                $row.find('.from-sold-display').attr('title', selectedArray.length > 1 ? 'Sum of SOLD for ' + selectedArray.length + ' sources' : 'SOLD for selected source');
+                var $dilSpan = $row.find('.from-dil-percent');
+                if (selectedArray.length > 1) {
+                    $dilSpan.attr('class', 'from-dil-percent text-muted').text('Various');
+                } else {
+                    var oneItem = allTableData.find(function(i) { return i.SKU === selectedArray[0]; });
+                    var dilPct = oneItem && oneItem.DIL != null ? Math.round(parseFloat(oneItem.DIL) * 100) : null;
+                    var dilClass = '';
+                    if (dilPct != null) {
+                        if (dilPct < 16.66) dilClass = 'dil-red'; else if (dilPct < 25) dilClass = 'dil-yellow'; else if (dilPct < 50) dilClass = 'dil-green'; else dilClass = 'dil-pink';
+                    }
+                    $dilSpan.attr('class', 'from-dil-percent ' + dilClass).text(dilPct != null ? dilPct + '%' : '–');
+                }
             } else {
-                // Clear fields if no FROM SKU selected
-                $row.find('.to-parent-display').val('');
-                $row.find('.from-inv-display').val('');
+                $cellContent.removeClass('has-qty-list');
                 $row.find('.from-sold-display').val('');
+                $row.find('.from-sold-display').removeAttr('title');
+                $row.find('.from-dil-percent').attr('class', 'from-dil-percent').text('–');
                 $row.find('.from-qty-input').val('');
-                $row.find('.from-dil-percent').attr('class', 'from-dil-percent').text('-');
+                $row.find('.to-qty-display').val('');
             }
+            updateFromTotalAndToQty($row);
+        });
+        
+        // Inline combo qty (add to target): sync with row and save
+        $(document).on('input change', '.combo-inline-target-input', function() {
+            const $row = $(this).closest('.tabulator-row');
+            if (!$row.length) return;
+            const toSku = table.getRow($row[0]).getData().SKU;
+            const val = parseInt($(this).val(), 10) || 1;
+            const savedData = JSON.parse(localStorage.getItem('transfer_' + toSku) || '{}');
+            savedData.comboQty = val;
+            localStorage.setItem('transfer_' + toSku, JSON.stringify(savedData));
+            $row.find('.from-qty-input').val(val);
+            $row.find('.to-qty-display').val(val);
+            updateFromTotalAndToQty($row);
+        });
+        
+        // When target "Combo qty" changes in modal (if modal ever used), set all source "Qty to take" inputs to the same value
+        $(document).on('input change', '#comboModalTargetQty', function() {
+            const val = $(this).val();
+            $('#comboModalSourceBody').find('.combo-modal-qty').each(function() {
+                const $input = $(this);
+                const max = parseInt($input.attr('max'), 10);
+                const num = parseInt(val, 10) || 1;
+                $input.val(max && !isNaN(max) ? Math.min(num, max) : num);
+            });
+        });
+        
+        // Apply modal values to row
+        $('#comboModalApply').on('click', function() {
+            const $row = $('#comboQtyModal').data('combo-row');
+            if (!$row || !$row.length) return;
+            const toSku = table.getRow($row[0]).getData().SKU;
+            const savedData = JSON.parse(localStorage.getItem('transfer_' + toSku) || '{}');
+            savedData.fromQtys = savedData.fromQtys || {};
+            const comboQty = parseInt($('#comboModalTargetQty').val(), 10) || 1;
+            $('#comboModalSourceBody').find('.combo-modal-qty').each(function() {
+                const sku = $(this).data('sku');
+                const qty = parseInt($(this).val(), 10) || 1;
+                const $rowInput = $row.find('.from-sku-qty-per-sku').filter(function() { return $(this).data('sku') === sku; });
+                if ($rowInput.length) {
+                    $rowInput.val(qty);
+                    savedData.fromQtys[sku] = qty;
+                }
+            });
+            savedData.comboQty = comboQty;
+            localStorage.setItem('transfer_' + toSku, JSON.stringify(savedData));
+            $row.find('.from-qty-input').val(comboQty);
+            $row.find('.to-qty-display').val(comboQty);
+            $('#comboQtyModal').modal('hide');
+            showToast('Quantities applied', 'success');
+        });
+        
+        // Per-SKU qty input: combo mode – same qty for all sources. Changing one updates Total FROM and all others.
+        $(document).on('input', '.from-sku-qty-per-sku', function() {
+            const $row = $(this).closest('.tabulator-row');
+            const toSku = table.getRow($row[0]).getData().SKU;
+            const qty = parseInt($(this).val(), 10) || 0;
+            const $list = $row.find('.from-sku-qty-per-sku');
+            const savedData = JSON.parse(localStorage.getItem('transfer_' + toSku) || '{}');
+            savedData.fromQtys = savedData.fromQtys || {};
+            savedData.comboQty = qty;
+            $list.each(function() {
+                $(this).val(qty);
+                savedData.fromQtys[$(this).data('sku')] = qty;
+            });
+            localStorage.setItem('transfer_' + toSku, JSON.stringify(savedData));
+            $row.find('.from-qty-input').val(qty > 0 ? qty : '');
+            $row.find('.to-qty-display').val(qty > 0 ? qty : '');
+            $row.find('.combo-inline-target-input').val(qty > 0 ? qty : '');
         });
         
         // Ratio change handler (inline in table)
@@ -579,27 +822,59 @@
             calculateToQty($row);
         });
         
-        // FROM Qty input change handler
-        $(document).on('input', '.from-qty-input', function() {
-            const $row = $(this).closest('.tabulator-row');
-            calculateToQty($row);
+        // Total FROM (combo count): editable – same qty from EACH source. e.g. 5 = take 5 from each, add 5 to TO.
+        $(document).on('input change', '.from-qty-input', function() {
+            const $totalInput = $(this);
+            const $row = $totalInput.closest('.tabulator-row');
+            const $list = $row.find('.from-sku-qty-per-sku');
+            const comboQty = parseInt($totalInput.val(), 10) || 0;
+            if ($list.length > 0 && comboQty > 0) {
+                const toSku = table.getRow($row[0]).getData().SKU;
+                const savedData = JSON.parse(localStorage.getItem('transfer_' + toSku) || '{}');
+                savedData.fromQtys = savedData.fromQtys || {};
+                savedData.comboQty = comboQty;
+                $list.each(function() {
+                    const $input = $(this);
+                    $input.val(comboQty);
+                    savedData.fromQtys[$input.data('sku')] = comboQty;
+                });
+                localStorage.setItem('transfer_' + toSku, JSON.stringify(savedData));
+                $row.find('.to-qty-display').val(comboQty);
+                $row.find('.combo-inline-target-input').val(comboQty);
+            } else if (comboQty > 0) {
+                $row.find('.to-qty-display').val(comboQty);
+                $row.find('.combo-inline-target-input').val(comboQty);
+            } else {
+                updateFromTotalAndToQty($row);
+            }
         });
         
-        // Calculate TO Qty based on FROM Qty × Ratio
-        function calculateToQty($row) {
-            const fromQty = parseInt($row.find('.from-qty-input').val()) || 0;
+        // Combo: Total FROM = combo count (same from each source). TO qty = combo count × ratio.
+        function updateFromTotalAndToQty($row) {
+            const $list = $row.find('.from-sku-qty-per-sku');
+            let comboCount = 0;
+            if ($list.length > 0) {
+                const firstVal = parseInt($($list[0]).val(), 10) || 0;
+                $row.find('.from-qty-input').val(firstVal > 0 ? firstVal : '');
+                comboCount = firstVal;
+            } else {
+                comboCount = parseInt($row.find('.from-qty-input').val(), 10) || 0;
+            }
             const ratio = $row.find('.ratio-select').val() || '1:1';
-            
-            if (fromQty > 0) {
+            if (comboCount > 0) {
                 const ratioParts = ratio.split(':');
-                const toQty = Math.round(fromQty * (parseFloat(ratioParts[1]) / parseFloat(ratioParts[0])));
+                const toQty = Math.round(comboCount * (parseFloat(ratioParts[1]) / parseFloat(ratioParts[0])));
                 $row.find('.to-qty-display').val(toQty);
             } else {
                 $row.find('.to-qty-display').val('');
             }
         }
         
-        // Submit transfer button handler (inline in table)
+        function calculateToQty($row) {
+            updateFromTotalAndToQty($row);
+        }
+        
+        // Submit transfer button handler (multiple FROM SKUs → one TO SKU)
         $(document).on('click', '.submit-transfer-btn', function(e) {
             e.preventDefault();
             e.stopPropagation();
@@ -609,27 +884,50 @@
             const row = table.getRow($row[0]);
             const rowData = row.getData();
             
-            // Table row SKU is the TO SKU (destination)
             const toSku = rowData.SKU;
             const toParent = rowData.Parent || '';
             const toInv = parseInt(rowData.INV) || 0;
             const toDil = parseFloat(rowData.DIL) || 0;
             const toQty = parseInt($row.find('.to-qty-display').val()) || 0;
             
-            // User selects FROM SKU manually (from dropdown)
-            const fromSku = $row.find('.to-sku-select').val();
-            const fromParent = $row.find('.to-parent-display').val();
-            const fromQty = parseInt($row.find('.from-qty-input').val()) || 0;
-            const ratio = $row.find('.ratio-select').val();
+            const fromSkus = $row.find('.to-sku-select').val();
+            const selectedSkusArray = Array.isArray(fromSkus) ? fromSkus : (fromSkus ? [fromSkus] : []);
             
-            // Validation
-            if (!fromSku) {
-                showToast('Please select a FROM SKU', 'error');
+            if (!selectedSkusArray.length) {
+                showToast('Please select at least one FROM SKU', 'error');
                 return;
             }
             
-            if (fromQty <= 0) {
-                showToast('FROM Qty must be greater than 0', 'error');
+            const fromItems = [];
+            let totalFromQty = 0;
+            let validationError = null;
+            selectedSkusArray.forEach(function(sku) {
+                if (validationError) return;
+                const qtyInput = $row.find('.from-sku-qty-per-sku').filter(function() { return $(this).data('sku') === sku; });
+                const qty = qtyInput.length ? (parseInt(qtyInput.val()) || 0) : 0;
+                if (qty < 1) return;
+                const item = allTableData.find(function(i) { return i.SKU === sku; });
+                const inv = item ? (parseInt(item.INV) || 0) : 0;
+                if (qty > inv) {
+                    validationError = 'Insufficient inventory for ' + sku + '. Available: ' + inv;
+                    return;
+                }
+                fromItems.push({
+                    sku: sku,
+                    parent_name: item ? (item.Parent || '') : '',
+                    available_qty: inv,
+                    dil_percent: item ? (parseFloat(item.DIL) || 0) * 100 : 0,
+                    adjust_qty: qty
+                });
+                totalFromQty += qty;
+            });
+            
+            if (validationError) {
+                showToast(validationError, 'error');
+                return;
+            }
+            if (fromItems.length === 0) {
+                showToast('Enter quantity (≥1) for each FROM SKU', 'error');
                 return;
             }
             
@@ -638,49 +936,30 @@
                 return;
             }
             
-            // Get FROM SKU data
-            const fromItem = allTableData.find(function(i) { return i.SKU === fromSku; });
-            const fromInv = fromItem ? (parseInt(fromItem.INV) || 0) : 0;
-            const fromDil = fromItem ? (parseFloat(fromItem.DIL) || 0) : 0;
-            
-            if (fromQty > fromInv) {
-                showToast('Insufficient inventory for ' + fromSku + '. Available: ' + fromInv, 'error');
-                return;
-            }
-            
-            // Prepare transfer data
-            // Backend: to_sku = destination, from_sku = source (SWAPPING SKUs!)
-            // UI: FROM SKU (source), TO SKU (destination)
-            // Transfer: Deduct FROM Qty from FROM SKU, Add TO Qty to TO SKU
             const transferData = {
-                to_sku: toSku,             // TO SKU (destination - add TO here)
+                to_sku: toSku,
                 to_parent_name: toParent,
                 to_available_qty: toInv,
                 to_dil_percent: toDil * 100,
-                to_adjust_qty: toQty,      // Add TO Qty
-                from_sku: fromSku,         // FROM SKU (source - deduct FROM here)
-                from_parent_name: fromParent,
-                from_available_qty: fromInv,
-                from_dil_percent: fromDil * 100,
-                from_adjust_qty: fromQty,  // Deduct FROM Qty
-                ratio: ratio,
+                to_adjust_qty: toQty,
+                from_items: fromItems,
                 _token: $('meta[name="csrf-token"]').attr('content')
             };
             
             $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i>');
             
             $.ajax({
-                url: '{{ route("stock.balance.store") }}',
+                url: '{{ route("combo.trf.store") }}',
                 method: 'POST',
-                data: transferData,
+                contentType: 'application/json',
+                data: JSON.stringify(transferData),
+                headers: {
+                    'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content'),
+                    'Accept': 'application/json'
+                },
                 timeout: 120000,
                 success: function(response) {
                     showToast(response.message || 'Transfer successful!', 'success');
-                    
-                    // Keep per-SKU preferences saved (don't clear)
-                    // Each row will remember its own FROM SKU and Ratio
-                    
-                    // Reload table to get fresh inventory data
                     table.setData().then(function() {
                         if (transferModeActive) {
                             setTimeout(function() {
@@ -688,13 +967,13 @@
                             }, 100);
                         }
                     });
-                    
                     $btn.prop('disabled', false).html('<i class="fas fa-check"></i>');
                 },
                 error: function(xhr) {
                     $btn.prop('disabled', false).html('<i class="fas fa-check"></i>');
-                    const errorMsg = xhr.responseJSON?.error || 'Transfer failed';
-                    const details = xhr.responseJSON?.details || '';
+                    const data = xhr.responseJSON || {};
+                    const errorMsg = data.error || 'Transfer failed';
+                    const details = data.details || '';
                     showToast(errorMsg + (details ? '<br>' + details : ''), 'error');
                 }
             });
@@ -702,7 +981,7 @@
         
         // Initialize Tabulator
         table = new Tabulator("#combo-trf-table", {
-            ajaxURL: "/stock-balance-inventory-data",
+            ajaxURL: "/combo-trf-inventory-data",
             ajaxResponse: function(url, params, response) {
                 allTableData = response.data || [];
                 return response.data || [];
@@ -842,24 +1121,22 @@
                     }
                 },
                 {
-                    title: "FROM SKU",
+                    title: "Source SKUs (FROM)",
                     field: "to_sku",
-                    hozAlign: "center",
-                    width: 240,
+                    hozAlign: "left",
+                    width: 420,
                     visible: true,
+                    cssClass: "tabulator-cell-source-sku",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         const currentSku = rowData.SKU;
-                        let html = '<select class="form-select form-select-sm to-sku-select" data-from-sku="' + currentSku + '" style="width:230px;"><option value="">Search FROM SKU...</option>';
+                        let html = '<div class="combo-from-sku-cell"><select class="form-select form-select-sm to-sku-select" multiple="multiple" data-to-sku="' + currentSku + '" style="width:100%;min-width:360px;">';
                         allTableData.forEach(function(item) {
-                            // Exclude SKUs that contain "PARENT" in the SKU name
                             if (item.SKU && item.SKU !== currentSku && item.SKU.toUpperCase().indexOf('PARENT') === -1) {
-                                // Show SKU only
-                                const displayText = item.SKU;
-                                html += '<option value="' + item.SKU + '" data-parent="' + (item.Parent || '') + '" data-inv="' + (item.INV || 0) + '" data-search="' + item.SKU + ' ' + (item.Parent || '') + '">' + displayText + '</option>';
+                                html += '<option value="' + item.SKU + '" data-parent="' + (item.Parent || '') + '" data-inv="' + (item.INV || 0) + '" data-search="' + item.SKU + ' ' + (item.Parent || '') + '">' + item.SKU + '</option>';
                             }
                         });
-                        html += '</select>';
+                        html += '</select><div class="from-sku-qty-list"></div></div>';
                         return html;
                     }
                 },
@@ -887,61 +1164,61 @@
                     title: "FROM SOLD",
                     field: "from_sold_display",
                     hozAlign: "center",
-                    width: 80,
-                    visible: true,
+                    width: 95,
+                    visible: false,
                     formatter: function(cell) {
-                        return '<input type="text" class="form-control form-control-sm from-sold-display" readonly style="width:70px;">';
+                        return '<input type="number" class="form-control form-control-sm from-sold-display" min="0" style="width:85px;" placeholder="–" title="Sum of SOLD for selected sources (editable)">';
                     }
                 },
                 {
                     title: "FROM DIL%",
                     field: "from_dil_display",
                     hozAlign: "center",
-                    width: 80,
-                    visible: true,
+                    width: 85,
+                    visible: false,
                     formatter: function(cell) {
-                        return '<span class="from-dil-percent" style="font-weight:600;">-</span>';
+                        return '<span class="from-dil-percent" style="font-weight:600;">–</span>';
                     }
                 },
                 {
-                    title: "FROM Qty",
+                    title: "Combo qty",
                     field: "from_qty",
                     hozAlign: "center",
-                    width: 80,
-                    visible: true,
+                    width: 95,
+                    visible: false,
                     formatter: function(cell) {
-                        return '<input type="number" class="form-control form-control-sm from-qty-input" min="1" value="" placeholder="Select FROM SKU first" style="width:70px;">';
+                        return '<input type="number" class="form-control form-control-sm from-qty-input" min="1" value="" placeholder="e.g. 5" style="width:80px;" title="Same qty from each source (e.g. 5 = 5 from each, add 5 to TO)">';
                     }
                 },
                 {
-                    title: "TO Qty",
+                    title: "Add to TO",
                     field: "to_qty_calc",
                     hozAlign: "center",
-                    width: 70,
-                    visible: true,
+                    width: 80,
+                    visible: false,
                     formatter: function(cell) {
-                        return '<input type="text" class="form-control form-control-sm to-qty-display" readonly placeholder="Calc" style="width:60px; background-color:#d4edda; font-weight:bold;">';
+                        return '<input type="text" class="form-control form-control-sm to-qty-display" readonly placeholder="= Total × ratio" style="width:72px; background-color:#d4edda; font-weight:bold;" title="Qty that will be added to this row SKU">';
                     }
                 },
                 {
-                    title: "Ratio",
+                    title: "Ratio (FROM:TO)",
                     field: "ratio",
                     hozAlign: "center",
                     width: 100,
-                    visible: true,
+                    visible: false,
                     formatter: function(cell) {
                         return '<select class="form-select form-select-sm ratio-select" style="width:90px; font-size:14px;"><option value="1:4">1:4</option><option value="1:2">1:2</option><option value="1:1" selected>1:1</option><option value="2:1">2:1</option><option value="4:1">4:1</option></select>';
                     }
                 },
                 {
-                    title: "Submit",
+                    title: "Transfer",
                     field: "submit",
                     hozAlign: "center",
-                    width: 70,
+                    width: 82,
                     visible: true,
                     headerSort: false,
                     formatter: function(cell) {
-                        return '<button class="btn btn-success btn submit-transfer-btn" title="Execute Transfer"><i class="fas fa-check"></i></button>';
+                        return '<button class="btn btn-success btn-sm submit-transfer-btn" title="Transfer total qty from sources to this row SKU"><i class="fas fa-arrow-right me-1"></i>Go</button>';
                     }
                 },
                 {
@@ -1053,7 +1330,7 @@
                 $('#parent-filter').append('<option value="' + parent + '">' + parent + '</option>');
             });
             
-            // Apply default RB filter
+            // Apply filters (default: show all; user can change Parent/DIL/ACTION)
             applyAllFilters();
         });
         
@@ -1064,57 +1341,50 @@
                 const $row = $select.closest('.tabulator-row');
                 const row = table.getRow($row[0]);
                 const rowData = row.getData();
-                const toSku = rowData.SKU; // Current row's SKU (TO SKU)
-                
-                // Load saved data for THIS specific TO SKU
+                const toSku = rowData.SKU;
+
                 const savedData = JSON.parse(localStorage.getItem('transfer_' + toSku) || '{}');
-                const savedFromSku = savedData.fromSku || null;
+                const savedFromSkus = Array.isArray(savedData.fromSkus) ? savedData.fromSkus : (savedData.fromSku ? [savedData.fromSku] : []);
                 const savedRatio = savedData.ratio || '1:1';
-                
-                // Destroy existing Select2 if any
+
                 if ($select.hasClass('select2-hidden-accessible')) {
                     $select.select2('destroy');
                 }
-                
-                // Initialize Select2
+
                 $select.select2({
-                    placeholder: 'Search FROM SKU...',
+                    placeholder: 'Search FROM SKU (multiple)...',
                     allowClear: true,
-                    width: '230px',
+                    width: '100%',
                     dropdownAutoWidth: false,
                     matcher: function(params, data) {
-                        // If no search term, return all
-                        if ($.trim(params.term) === '') {
-                            return data;
-                        }
-                        
-                        // Search in both SKU and Parent
+                        if ($.trim(params.term) === '') return data;
                         const searchTerm = params.term.toLowerCase();
                         const text = (data.text || '').toLowerCase();
                         const searchData = $(data.element).attr('data-search') || '';
-                        
-                        if (text.indexOf(searchTerm) > -1 || searchData.toLowerCase().indexOf(searchTerm) > -1) {
-                            return data;
-                        }
-                        
+                        if (text.indexOf(searchTerm) > -1 || searchData.toLowerCase().indexOf(searchTerm) > -1) return data;
                         return null;
                     }
                 });
-                
-                // Auto-load saved FROM SKU for THIS specific row
-                if (savedFromSku) {
-                    $select.val(savedFromSku).trigger('change');
+
+                if (savedFromSkus.length) {
+                    $select.val(savedFromSkus).trigger('change');
                 }
-                
-                // Set saved ratio for THIS row
                 $row.find('.ratio-select').val(savedRatio);
             });
         }
         
         // Update table on render complete
         table.on('renderComplete', function() {
-            // Always initialize Select2 for FROM SKU search dropdown
             initializeSelect2FromSku();
+            // Re-populate "Qty to take from each source" lists (Tabulator may have re-drawn cells)
+            $('.to-sku-select').each(function() {
+                var $sel = $(this);
+                var val = $sel.val();
+                var arr = Array.isArray(val) ? val : (val ? [val] : []);
+                if (arr.length > 0) {
+                    $sel.trigger('change');
+                }
+            });
         });
         
     });

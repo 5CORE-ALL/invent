@@ -534,7 +534,198 @@ class StockBalanceController extends Controller
         }
     }
 
+    /**
+     * Store combo transfer: multiple FROM SKUs → one TO SKU.
+     * Request: to_sku, to_parent_name, to_available_qty, to_dil_percent, to_adjust_qty (total),
+     *          from_items = [{ sku, parent_name, available_qty, dil_percent, adjust_qty }, ...]
+     */
+    public function storeComboTrf(Request $request)
+    {
+        set_time_limit(120);
 
+        $request->validate([
+            'to_parent_name' => 'required|string',
+            'to_sku' => 'required|string',
+            'to_dil_percent' => 'nullable|numeric',
+            'to_available_qty' => 'nullable|integer',
+            'to_adjust_qty' => 'required|integer|min:1',
+            'from_items' => 'required|array|min:1',
+            'from_items.*.sku' => 'required|string',
+            'from_items.*.parent_name' => 'nullable|string',
+            'from_items.*.available_qty' => 'nullable|integer',
+            'from_items.*.dil_percent' => 'nullable|numeric',
+            'from_items.*.adjust_qty' => 'required|integer|min:1',
+        ]);
+
+        $toSku = trim($request->to_sku);
+        $toQty = (int) $request->to_adjust_qty;
+        $fromItems = $request->from_items;
+
+        $normalizeDil = function ($v) {
+            if ($v === null || $v === '') return null;
+            $v = (float) $v;
+            if ($v > 100) return 100.0;
+            if ($v < -999.99) return -999.99;
+            return $v;
+        };
+
+        $getInventoryInfo = function ($sku) {
+            $shopifySku = ShopifySku::where('sku', $sku)->first();
+            if (!$shopifySku || !$shopifySku->variant_id) {
+                return ['success' => false, 'error' => 'SKU not found in Shopify inventory', 'details' => "The SKU '{$sku}' was not found."];
+            }
+            usleep(500000);
+            $variantResponse = $this->shopifyApiCall('GET', "https://{$this->shopifyDomain}/admin/api/2025-01/variants/{$shopifySku->variant_id}.json");
+            if (!$variantResponse->successful()) {
+                return ['success' => false, 'error' => 'Failed to fetch product', 'details' => "Error for SKU: {$sku}"];
+            }
+            $inventoryItemId = $variantResponse->json('variant.inventory_item_id');
+            if (!$inventoryItemId) {
+                return ['success' => false, 'error' => 'Invalid product data', 'details' => "No inventory item ID for SKU: {$sku}"];
+            }
+            usleep(500000);
+            $levelsResponse = $this->shopifyApiCall('GET', "https://{$this->shopifyDomain}/admin/api/2025-01/inventory_levels.json", ['inventory_item_ids' => $inventoryItemId]);
+            if (!$levelsResponse->successful()) {
+                return ['success' => false, 'error' => 'Failed to get inventory level', 'details' => "Error for SKU: {$sku}"];
+            }
+            $levels = $levelsResponse->json('inventory_levels');
+            $locationId = $levels[0]['location_id'] ?? null;
+            $available = $levels[0]['available'] ?? 0;
+            if (!$locationId) {
+                return ['success' => false, 'error' => 'Shopify location not found', 'details' => "Could not determine location for SKU: {$sku}"];
+            }
+            return ['success' => true, 'inventory_item_id' => $inventoryItemId, 'location_id' => $locationId, 'available' => $available];
+        };
+
+        foreach ($fromItems as $item) {
+            $qty = (int) ($item['adjust_qty'] ?? 0);
+            if ($qty < 1) {
+                return response()->json(['error' => 'Invalid from_items', 'details' => 'Each FROM item must have adjust_qty >= 1'], 422);
+            }
+        }
+        // Combo: TO qty = combo count (added to destination); we deduct each from_sku's qty (sum can be larger, e.g. 5+5 from two SKUs, add 5 to combo TO).
+
+        $fromInfos = [];
+        foreach ($fromItems as $item) {
+            $sku = trim($item['sku']);
+            $adjQty = (int) $item['adjust_qty'];
+            $info = $getInventoryInfo($sku);
+            if (!$info['success']) {
+                return response()->json(['error' => $info['error'], 'details' => $info['details']], 404);
+            }
+            if (($info['available'] ?? 0) < $adjQty) {
+                return response()->json([
+                    'error' => 'Insufficient Inventory',
+                    'details' => "Cannot transfer {$adjQty} units from SKU: {$sku}. Current available: " . ($info['available'] ?? 0)
+                ], 400);
+            }
+            $fromInfos[] = [
+                'sku' => $sku,
+                'parent_name' => $item['parent_name'] ?? '',
+                'available_qty' => $item['available_qty'] ?? 0,
+                'dil_percent' => $normalizeDil($item['dil_percent'] ?? null),
+                'adjust_qty' => $adjQty,
+                'inventory_item_id' => $info['inventory_item_id'],
+                'location_id' => $info['location_id'],
+            ];
+        }
+
+        $deducted = [];
+        foreach ($fromInfos as $from) {
+            usleep(500000);
+            $decrease = $this->shopifyApiCall('POST', "https://{$this->shopifyDomain}/admin/api/2025-01/inventory_levels/adjust.json", [
+                'inventory_item_id' => $from['inventory_item_id'],
+                'location_id' => $from['location_id'],
+                'available_adjustment' => -$from['adjust_qty'],
+            ]);
+            if (!$decrease->successful()) {
+                foreach ($deducted as $rollback) {
+                    usleep(500000);
+                    $this->shopifyApiCall('POST', "https://{$this->shopifyDomain}/admin/api/2025-01/inventory_levels/adjust.json", [
+                        'inventory_item_id' => $rollback['inventory_item_id'],
+                        'location_id' => $rollback['location_id'],
+                        'available_adjustment' => $rollback['adjust_qty'],
+                    ]);
+                }
+                return response()->json([
+                    'error' => 'Failed to deduct inventory from Shopify',
+                    'details' => 'Could not decrease stock for SKU: ' . $from['sku']
+                ], 500);
+            }
+            $deducted[] = $from;
+        }
+
+        $toInfo = $getInventoryInfo($toSku);
+        if (!$toInfo['success']) {
+            foreach ($deducted as $rollback) {
+                usleep(500000);
+                $this->shopifyApiCall('POST', "https://{$this->shopifyDomain}/admin/api/2025-01/inventory_levels/adjust.json", [
+                    'inventory_item_id' => $rollback['inventory_item_id'],
+                    'location_id' => $rollback['location_id'],
+                    'available_adjustment' => $rollback['adjust_qty'],
+                ]);
+            }
+            return response()->json(['error' => $toInfo['error'], 'details' => $toInfo['details']], 404);
+        }
+
+        usleep(500000);
+        $increase = $this->shopifyApiCall('POST', "https://{$this->shopifyDomain}/admin/api/2025-01/inventory_levels/adjust.json", [
+            'inventory_item_id' => $toInfo['inventory_item_id'],
+            'location_id' => $toInfo['location_id'],
+            'available_adjustment' => $toQty,
+        ]);
+
+        if (!$increase->successful()) {
+            foreach ($deducted as $rollback) {
+                usleep(500000);
+                $this->shopifyApiCall('POST', "https://{$this->shopifyDomain}/admin/api/2025-01/inventory_levels/adjust.json", [
+                    'inventory_item_id' => $rollback['inventory_item_id'],
+                    'location_id' => $rollback['location_id'],
+                    'available_adjustment' => $rollback['adjust_qty'],
+                ]);
+            }
+            return response()->json([
+                'error' => 'Failed to increase inventory in Shopify',
+                'details' => 'Could not increase stock for TO SKU: ' . $toSku
+            ], 500);
+        }
+
+        try {
+            DB::beginTransaction();
+            $toParent = $request->to_parent_name;
+            $toDilPercent = $normalizeDil($request->to_dil_percent) ?? 0;
+            $toAvailableQty = (int) $request->to_available_qty;
+            $transferredAt = Carbon::now('America/New_York');
+            $transferredBy = Auth::user()->name ?? 'N/A';
+
+            foreach ($fromInfos as $from) {
+                StockBalance::create([
+                    'from_parent_name' => $from['parent_name'],
+                    'from_sku' => $from['sku'],
+                    'from_dil_percent' => $from['dil_percent'],
+                    'from_available_qty' => $from['available_qty'],
+                    'from_adjust_qty' => $from['adjust_qty'],
+                    'to_parent_name' => $toParent,
+                    'to_sku' => $toSku,
+                    'to_dil_percent' => $toDilPercent,
+                    'to_available_qty' => $toAvailableQty,
+                    'to_adjust_qty' => $from['adjust_qty'],
+                    'transferred_by' => $transferredBy,
+                    'transferred_at' => $transferredAt,
+                ]);
+            }
+            DB::commit();
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Combo TRF database save failed', ['error' => $e->getMessage()]);
+            return response()->json([
+                'error' => 'Shopify updated but failed to save to database',
+                'details' => $e->getMessage()
+            ], 500);
+        }
+
+        return response()->json(['message' => '✓ Combo transfer completed. ' . count($fromInfos) . ' FROM SKU(s) → 1 TO SKU, saved to database.']);
+    }
 
     /**
      * Display the specified resource.
@@ -788,6 +979,169 @@ class StockBalanceController extends Controller
                 'trace' => $e->getTraceAsString()
             ]);
             
+            return response()->json([
+                'error' => 'Error updating action',
+                'details' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Get inventory data for combo transfer table (ACTION from inventories.combo_action)
+     */
+    public function getComboTrfInventoryData()
+    {
+        $normalizeSku = function ($sku) {
+            $sku = strtoupper(trim($sku));
+            $sku = preg_replace('/\s+/u', ' ', $sku);
+            $sku = preg_replace('/[^\S\r\n]+/u', ' ', $sku);
+            return $sku;
+        };
+
+        $productMasterData = ProductMaster::all();
+        $skus = $productMasterData->pluck('sku')
+            ->filter()
+            ->unique()
+            ->map(fn($sku) => $normalizeSku($sku))
+            ->toArray();
+
+        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy(fn($item) => $normalizeSku($item->sku));
+
+        // ACTION from inventories.combo_action (same table as stock balance, different column)
+        $allInventoryActions = Inventory::all();
+        $inventoryActions = collect();
+        foreach ($allInventoryActions as $inv) {
+            $normalizedInvSku = $normalizeSku($inv->sku);
+            if (in_array($normalizedInvSku, $skus)) {
+                if (!$inventoryActions->has($normalizedInvSku)) {
+                    $inventoryActions[$normalizedInvSku] = $inv;
+                } else {
+                    $existing = $inventoryActions[$normalizedInvSku];
+                    if ($inv->updated_at > $existing->updated_at) {
+                        $inventoryActions[$normalizedInvSku] = $inv;
+                    }
+                }
+            }
+        }
+
+        $lastStockBalances = collect();
+        foreach ($skus as $sku) {
+            $lastBalance = StockBalance::where(function($query) use ($sku) {
+                $query->where('from_sku', $sku)->orWhere('to_sku', $sku);
+            })
+            ->orderBy('transferred_at', 'desc')
+            ->first();
+            if ($lastBalance) {
+                $lastStockBalances[$sku] = $lastBalance;
+            }
+        }
+
+        $data = $productMasterData->map(function ($item) use ($shopifyData, $inventoryActions, $lastStockBalances, $normalizeSku) {
+            $sku = $normalizeSku($item->sku ?? '');
+            $shopify = $shopifyData[$sku] ?? null;
+            $inventory = $inventoryActions[$sku] ?? null;
+            $lastBalance = $lastStockBalances[$sku] ?? null;
+
+            $inv = $shopify->inv ?? 0;
+            $l30 = $shopify->quantity ?? 0;
+            if ($inv > 0 && $l30 === 0) {
+                $dil = 0;
+            } else if ($inv > 0) {
+                $dil = $l30 / $inv;
+                if ($dil > 100) {
+                    $dil = 100;
+                } else if ($dil < -100) {
+                    $dil = -100;
+                }
+            } else {
+                $dil = 0;
+            }
+
+            $lastUpdate = null;
+            if ($lastBalance) {
+                if ($lastBalance->from_sku === $item->sku) {
+                    $direction = 'OUT';
+                    $otherSku = $lastBalance->to_sku;
+                    $qty = $lastBalance->from_adjust_qty;
+                } else {
+                    $direction = 'IN';
+                    $otherSku = $lastBalance->from_sku;
+                    $qty = $lastBalance->to_adjust_qty;
+                }
+                $transferredAt = $lastBalance->transferred_at
+                    ? Carbon::parse($lastBalance->transferred_at)->timezone('America/New_York')->format('m/d/y H:i')
+                    : '';
+                $lastUpdate = [
+                    'direction' => $direction,
+                    'other_sku' => $otherSku,
+                    'qty' => $qty,
+                    'date' => $transferredAt,
+                    'by' => $lastBalance->transferred_by
+                ];
+            }
+
+            return [
+                'IMAGE_URL' => $shopify->image_src ?? null,
+                'Parent' => $item->parent ?? '(No Parent)',
+                'SKU' => $item->sku ?? '',
+                'INV' => $inv,
+                'SOLD' => $l30,
+                'DIL' => $dil,
+                'ACTION' => $inventory->combo_action ?? null,
+                'LAST_UPDATE' => $lastUpdate,
+            ];
+        })->filter(function ($item) {
+            return !empty($item['SKU']);
+        });
+
+        return response()->json([
+            'message' => 'Data fetched successfully',
+            'data' => $data->values(),
+            'status' => 200
+        ]);
+    }
+
+    /**
+     * Update combo transfer ACTION (writes to inventories.combo_action)
+     */
+    public function updateComboTrfAction(Request $request)
+    {
+        $request->validate([
+            'sku' => 'required|string',
+            'action' => 'nullable|string|in:NRB,RB',
+        ]);
+
+        try {
+            $normalizeSku = function ($sku) {
+                $sku = strtoupper(trim($sku));
+                $sku = preg_replace('/\s+/u', ' ', $sku);
+                $sku = preg_replace('/[^\S\r\n]+/u', ' ', $sku);
+                return $sku;
+            };
+
+            $sku = $normalizeSku($request->sku);
+            $action = $request->action;
+
+            $inventory = Inventory::where('sku', $sku)->first();
+            if (!$inventory) {
+                $inventory = new Inventory();
+                $inventory->sku = $sku;
+            }
+            $inventory->combo_action = $action;
+            $inventory->save();
+
+            Log::info("Combo TRF action updated", ['sku' => $sku, 'action' => $action]);
+
+            return response()->json([
+                'message' => 'Action updated successfully',
+                'status' => 200
+            ]);
+        } catch (\Exception $e) {
+            Log::error("Failed to update combo TRF action: " . $e->getMessage(), [
+                'sku' => $request->sku ?? 'N/A',
+                'action' => $request->action ?? 'N/A',
+                'trace' => $e->getTraceAsString()
+            ]);
             return response()->json([
                 'error' => 'Error updating action',
                 'details' => $e->getMessage()

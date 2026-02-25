@@ -1453,6 +1453,9 @@
                             <a href="{{ url('stock-balance-tabulator') }}">Stock Balance TRF</a>
                         </li>
                         <li>
+                            <a href="{{ route('combo.trf') }}">Combo TRF</a>
+                        </li>
+                        <li>
                             <a href="{{ route('incoming.orders.view') }}">Incoming Orders</a>
                         </li>
                         {{-- <li>
