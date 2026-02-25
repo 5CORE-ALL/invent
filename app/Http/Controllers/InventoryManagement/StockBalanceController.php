@@ -102,6 +102,14 @@ class StockBalanceController extends Controller
     }
 
     /**
+     * Display the combo-trf view (duplicate of stock balance tabulator)
+     */
+    public function comboTrfView()
+    {
+        return view('inventory-management.combo-trf');
+    }
+
+    /**
      * Show the form for creating a new resource.
      */
     public function create()
