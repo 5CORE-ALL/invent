@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Task;
 use App\Models\User;
 use App\Models\DeletedTask;
+use App\Policies\TaskPolicy;
 use App\Services\TaskWhatsAppNotificationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -50,7 +51,10 @@ class TaskController extends Controller
         // Get all users for filter dropdowns (include email for bulk assign!)
         $users = User::select('id', 'name', 'email')->orderBy('name')->get();
 
-        return view('tasks.index', compact('stats', 'isAdmin', 'users'));
+        // Special permission: Jasmine, Ritu mam, Joy sir can delete/modify any task
+        $canDeleteAnyTask = TaskPolicy::userHasSpecialTaskPermission($user);
+
+        return view('tasks.index', compact('stats', 'isAdmin', 'users', 'canDeleteAnyTask'));
     }
 
     public function getData()
@@ -632,10 +636,14 @@ class TaskController extends Controller
                         'message' => "$deletedCount automated task(s) deleted successfully!"
                     ]);
                 } else {
-                    // Only allow deletion of tasks where user is the assignor
-                    $tasksToDelete = Task::whereIn('id', $taskIds)
-                        ->where('assignor', $user->email)
-                        ->get();
+                    // Special permission: Jasmine, Ritu mam, Joy sir can delete any task; others only their own
+                    if (TaskPolicy::userHasSpecialTaskPermission($user)) {
+                        $tasksToDelete = Task::whereIn('id', $taskIds)->get();
+                    } else {
+                        $tasksToDelete = Task::whereIn('id', $taskIds)
+                            ->where('assignor', $user->email)
+                            ->get();
+                    }
                     
                     $deletedCount = $tasksToDelete->count();
                     $requestedCount = count($taskIds);

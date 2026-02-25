@@ -44,11 +44,12 @@
         }
         .filter-row th {
             padding: 5px;
-            background-color: #f8f9fa;
+            background-color: #f8f9fa !important;
         }
         .filter-row input {
             border: 1px solid #ced4da;
             font-size: 0.875rem;
+            background-color: #ffffff !important;
         }
         .badge.badge-sm {
             padding: 0.25rem 0.5rem;
@@ -70,88 +71,144 @@
                 padding: 0.5rem;
             }
         }
+        /* Sticky page header: title + filters stay visible when scrolling */
+        .lost-gain-sticky-header {
+            position: sticky;
+            top: 0;
+            z-index: 102;
+            background-color: #f3f6f9 !important;
+            padding-bottom: 0.5rem;
+            margin-bottom: 0;
+            box-shadow: 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+        }
+        .lost-gain-sticky-header .card,
+        .lost-gain-sticky-header .card-body,
+        .lost-gain-sticky-header .page-title-box {
+            background-color: #f3f6f9 !important;
+        }
+        /* Table scroll area with fixed height so thead can stick */
+        .lost-gain-table-wrapper {
+            max-height: calc(100vh - 320px);
+            overflow: auto;
+            overflow-x: auto;
+        }
+        .lost-gain-table-wrapper .table thead {
+            position: relative;
+            z-index: 1;
+        }
+        .lost-gain-table-wrapper .table thead th {
+            position: sticky;
+            z-index: 100;
+            background-color: #ffffff !important;
+            border-bottom: 1px solid #dee2e6;
+            box-shadow: 0 2px 2px -1px rgba(0, 0, 0, 0.08);
+        }
+        .lost-gain-table-wrapper .table thead tr:first-child th {
+            top: 0;
+        }
+        .lost-gain-table-wrapper .table thead tr.filter-row th {
+            top: 42px;
+            z-index: 99;
+            background-color: #f8f9fa !important;
+        }
+        .lost-gain-table-wrapper .table thead tr.filter-row input.form-control {
+            background-color: #ffffff !important;
+        }
+        /* Keep tbody below sticky header in stacking order */
+        .lost-gain-table-wrapper .table tbody {
+            position: relative;
+            z-index: 0;
+        }
     </style>
 @endsection
 
 @section('content')
-    @include('layouts.shared/page-title', ['page_title' => 'Lost Gain', 'sub_title' => 'Loss/Gain'])
-    
-    <div class="row">
-        <div class="col-12">
-            <div class="card">
-                <div class="card-body">
-                    <h4 class="header-title">Loss/Gain</h4>
-
-                    <div class="mb-3">
-                        <div class="row g-3 mb-3">
-                            <div class="col-md-3">
-                                <label for="reasonFilter" class="form-label">Reason</label>
-                                <select id="reasonFilter" class="form-select form-select-sm">
-                                    <option value="">All Reasons</option>
-                                    <option value="Count">Count</option>
-                                    <option value="Received">Received</option>
-                                    <option value="Return Restock">Return Restock</option>
-                                    <option value="Damaged">Damaged</option>
-                                    <option value="Theft or Loss">Theft or Loss</option>
-                                    <option value="Promotion">Promotion</option>
-                                    <option value="Suspense">Suspense</option>
-                                    <option value="Unknown">Unknown</option>
-                                    <option value="Adjustment">Adjustment</option>
-                                    <option value="Combo">Combo</option>
-                                    <option value="Maybe FBA">Maybe FBA</option>
-                                    <option value="Need 2 Find">Need 2 Find</option>
-                                </select>
+    <div class="lost-gain-sticky-header">
+        @include('layouts.shared/page-title', ['page_title' => 'Lost Gain', 'sub_title' => 'Loss/Gain'])
+        <div class="row">
+            <div class="col-12">
+                <div class="card mb-0">
+                    <div class="card-body pb-2">
+                        <h4 class="header-title">Loss/Gain</h4>
+                        <div class="mb-0">
+                            <div class="row g-3 mb-3">
+                                <div class="col-md-3">
+                                    <label for="reasonFilter" class="form-label">Reason</label>
+                                    <select id="reasonFilter" class="form-select form-select-sm">
+                                        <option value="">All Reasons</option>
+                                        <option value="Count">Count</option>
+                                        <option value="Received">Received</option>
+                                        <option value="Return Restock">Return Restock</option>
+                                        <option value="Damaged">Damaged</option>
+                                        <option value="Theft or Loss">Theft or Loss</option>
+                                        <option value="Promotion">Promotion</option>
+                                        <option value="Suspense">Suspense</option>
+                                        <option value="Unknown">Unknown</option>
+                                        <option value="Adjustment">Adjustment</option>
+                                        <option value="Combo">Combo</option>
+                                        <option value="Maybe FBA">Maybe FBA</option>
+                                        <option value="Need 2 Find">Need 2 Find</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-3">
+                                    <label for="approvedByFilter" class="form-label">Approved By</label>
+                                    <select id="approvedByFilter" class="form-select form-select-sm">
+                                        <option value="">All Users</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-3">
+                                    <label for="dateFromFilter" class="form-label">Date From</label>
+                                    <input type="date" id="dateFromFilter" class="form-control form-control-sm">
+                                </div>
+                                <div class="col-md-3">
+                                    <label for="dateToFilter" class="form-label">Date To</label>
+                                    <input type="date" id="dateToFilter" class="form-control form-control-sm">
+                                </div>
                             </div>
-                            <div class="col-md-3">
-                                <label for="approvedByFilter" class="form-label">Approved By</label>
-                                <select id="approvedByFilter" class="form-select form-select-sm">
-                                    <option value="">All Users</option>
-                                </select>
-                            </div>
-                            <div class="col-md-3">
-                                <label for="dateFromFilter" class="form-label">Date From</label>
-                                <input type="date" id="dateFromFilter" class="form-control form-control-sm">
-                            </div>
-                            <div class="col-md-3">
-                                <label for="dateToFilter" class="form-label">Date To</label>
-                                <input type="date" id="dateToFilter" class="form-control form-control-sm">
-                            </div>
-                        </div>
-                        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
-                            <div class="d-flex align-items-center gap-2 flex-wrap">
-                                <div>
-                                    <input type="text" id="lostGainSearch" class="form-control form-control-sm" placeholder="Search all columns" style="min-width: 200px;">
-                                </div>
-                                <div>
-                                    <span class="badge bg-info badge-sm">
-                                        Adjusted: <span id="adjustedTotal">0</span>
-                                    </span>
-                                </div>
-                                <div>
-                                    <span class="badge bg-primary badge-sm" id="lostGainBadge">
-                                        Loss/Gain: <span id="lostGainTotal">0</span>
-                                    </span>
-                                </div>
-                                <div>
-                                    <span class="badge bg-secondary badge-sm">
-                                        I&A Total: <span id="iaTotal">0</span>
-                                    </span>
-                                </div>
-                                <div>
-                                    <button id="iaFilterBtn" class="btn btn-outline-secondary btn-sm">
-                                        <i class="fas fa-filter"></i> I&A (<span id="iaFilterCount">0</span>)
-                                    </button>
-                                </div>
-                                <div>
-                                    <button id="bulkIABtn" class="btn btn-dark btn-sm" disabled>
-                                        <i class="fas fa-archive"></i> Mark Selected as I&A
-                                    </button>
+                            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+                                <div class="d-flex align-items-center gap-2 flex-wrap">
+                                    <div>
+                                        <input type="text" id="lostGainSearch" class="form-control form-control-sm" placeholder="Search all columns" style="min-width: 200px;">
+                                    </div>
+                                    <div>
+                                        <span class="badge bg-info badge-sm">
+                                            Adjusted: <span id="adjustedTotal">0</span>
+                                        </span>
+                                    </div>
+                                    <div>
+                                        <span class="badge bg-primary badge-sm" id="lostGainBadge">
+                                            Loss/Gain: <span id="lostGainTotal">0</span>
+                                        </span>
+                                    </div>
+                                    <div>
+                                        <span class="badge bg-secondary badge-sm">
+                                            I&A Total: <span id="iaTotal">0</span>
+                                        </span>
+                                    </div>
+                                    <div>
+                                        <button id="iaFilterBtn" class="btn btn-outline-secondary btn-sm">
+                                            <i class="fas fa-filter"></i> I&A (<span id="iaFilterCount">0</span>)
+                                        </button>
+                                    </div>
+                                    <div>
+                                        <button id="bulkIABtn" class="btn btn-dark btn-sm" disabled>
+                                            <i class="fas fa-archive"></i> Mark Selected as I&A
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
                         </div>
                     </div>
+                </div>
+            </div>
+        </div>
+    </div>
 
-                    <div class="table-container">
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-body">
+                    <div class="table-container lost-gain-table-wrapper">
                         <table class="table table-bordered" id="lostGainTable">
                             <thead>
                                 <tr>

@@ -1444,7 +1444,7 @@
                     <a href="#" class="list-group-item list-group-item-action" id="bulk-delete-btn">
                         <i class="mdi mdi-delete text-danger me-2"></i>
                         <strong>Delete Selected Tasks</strong>
-                        <small class="d-block text-muted">You can only delete tasks you created</small>
+                        <small class="d-block text-muted">{{ isset($canDeleteAnyTask) && $canDeleteAnyTask ? 'You can delete any selected task' : 'You can only delete tasks you created' }}</small>
                     </a>
                     <a href="#" class="list-group-item list-group-item-action" id="bulk-assign-assignee-btn">
                         <i class="mdi mdi-account-plus text-success me-2"></i>
@@ -1635,6 +1635,7 @@
             var selectedTasks = [];
             var bulkActionType = '';
             var isAdmin = {{ $isAdmin ? 'true' : 'false' }};
+            var canDeleteAnyTask = {{ isset($canDeleteAnyTask) && $canDeleteAnyTask ? 'true' : 'false' }};
             var currentUserId = {{ Auth::id() }};
             var currentUserEmail = '{{ Auth::user()->email }}';
             
@@ -2311,9 +2312,9 @@
                             var assignorId = rowData.assignor_id;
                             var assigneeId = rowData.assignee_id;
                             
-                            // Determine permissions
-                            var canEdit = isAdmin || assignorId === currentUserId;
-                            var canDelete = assignorId === currentUserId; // Only assignor can delete, not even admin
+                            // Determine permissions (special: Jasmine, Ritu mam, Joy sir can delete/edit any task)
+                            var canEdit = isAdmin || canDeleteAnyTask || assignorId === currentUserId;
+                            var canDelete = canDeleteAnyTask || assignorId === currentUserId;
                             var canView = isAdmin || assignorId === currentUserId || assigneeId === currentUserId;
                             
                             var buttons = '';
