@@ -62,7 +62,7 @@ class OutgoingController extends Controller
     {
         $request->validate([
             'sku' => 'required|string',
-            'parent' => 'required|string',
+            'parent' => 'nullable|string',
             'qty' => 'required|integer|min:1',
             'warehouse_id' => 'required|exists:warehouses,id',
             'reason' => 'required|string',
@@ -160,7 +160,7 @@ class OutgoingController extends Controller
         // Get location ID
         try {
             $invLevelResponse = Http::withBasicAuth($this->shopifyApiKey, $this->shopifyPassword)
-                ->timeout(30)
+                    ->timeout(30)
                 ->retry(3, 2000)
                 ->get("https://{$this->shopifyDomain}/admin/api/2025-01/inventory_levels.json", [
                     'inventory_item_ids' => $inventoryItemId,
@@ -193,7 +193,6 @@ class OutgoingController extends Controller
                 'adjustment' => -$outgoingQty
             ]);
 
-            // Adjust inventory (decrease for outgoing)
             $adjustResponse = Http::withBasicAuth($this->shopifyApiKey, $this->shopifyPassword)
                 ->timeout(30)
                 ->retry(3, 2000)
@@ -227,7 +226,6 @@ class OutgoingController extends Controller
             return response()->json(['error' => 'Error updating Shopify: ' . $e->getMessage()], 500);
         }
 
-        // Only save to DB if Shopify update succeeded
         try {
             Inventory::create([
                 'sku' => $sku,
@@ -240,9 +238,7 @@ class OutgoingController extends Controller
                 'type' => 'outgoing',
                 'warehouse_id' => $request->warehouse_id,
             ]);
-
-            return response()->json(['success' => true, 'message' => 'Outgoing inventory deducted from Shopify successfully']);
-
+            return response()->json(['success' => true, 'message' => 'Outgoing inventory deducted from Shopify successfully.']);
         } catch (\Exception $e) {
             Log::error('Outgoing: Failed to save to database after Shopify update', [
                 'sku' => $normalizedSku,
@@ -444,6 +440,7 @@ class OutgoingController extends Controller
                     'sku' => $item->sku,
                     'verified_stock' => $item->verified_stock,
                     'reason' => $item->reason,
+                    'remarks' => $item->remarks,
                     'warehouse_name' => $item->warehouse->name ?? '',
                     'approved_by' => $item->approved_by,
                     'approved_at' =>  $item->approved_at

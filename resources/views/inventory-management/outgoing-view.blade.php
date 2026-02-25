@@ -176,39 +176,22 @@
                                             </select>
                                         </div>
 
-                                        <!-- Auto-filled Parent -->
                                         <div class="mb-3">
                                             <label for="parent" class="form-label fw-bold">Parent</label>
                                             <input type="text" class="form-control" id="parent" name="parent" readonly>
                                         </div>
 
-                                        <!-- Available qty -->
-                                        <!-- <div class="mb-3">
-                                            <label for="available_qty" class="form-label fw-bold">Available Quantity</label>
-                                            <input type="text" class="form-control" id="available_qty" name="available_qty" readonly>
-                                        </div> -->
-
-                                        <!-- Qty -->
-                                        <!-- <div class="mb-3">
-                                            <label for="qty" class="form-label fw-bold">Quantity</label>
-                                            <input type="number" class="form-control" id="qty" name="qty" required>
-                                        </div> -->
-
                                         <div class="row mb-3">
-                                            <!-- Available Qty (Read-Only) -->
                                             <div class="col-md-6">
                                                 <label for="available_qty" class="form-label fw-bold">Available Qty</label>
                                                 <input type="text" id="available_qty" name="available_qty" class="form-control" readonly>
                                             </div>
-
-                                            <!-- Qty (Editable) -->
                                             <div class="col-md-6">
                                                 <label for="qty" class="form-label fw-bold">Qty</label>
-                                                <input type="number" id="qty" name="qty" class="form-control" required>
+                                                <input type="number" id="qty" name="qty" class="form-control" required min="1">
                                             </div>
                                         </div>
 
-                                        <!-- Warehouse Dropdown -->
                                         <div class="mb-3">
                                             <label for="warehouse_id" class="form-label fw-bold">Warehouse</label>
                                             <select class="form-select" id="warehouse_id" name="warehouse_id" required>
@@ -219,7 +202,6 @@
                                             </select>
                                         </div>
 
-                                        <!-- Reason Dropdown -->
                                         <div class="mb-3">
                                             <label for="reason" class="form-label fw-bold">Reason</label>
                                             <select class="form-select" id="reason" name="reason" required>
@@ -231,15 +213,15 @@
                                                 <option value="Issue(Carrier)">Issue(Carrier)</option>
                                                 <option value="Issue(Lost)">Issue(Lost)</option>
                                                 <option value="Issue(WAC)">Issue(WAC)</option>
-                                                <option value="Issue(WAC)">Issue(listing)</option>
-                                                <option value="Issue(WAC)">Issue(pricing)</option>
+                                                <option value="Issue(listing)">Issue(listing)</option>
+                                                <option value="Issue(pricing)">Issue(pricing)</option>
                                                 <option value="Gift">Gift</option>
                                                 <option value="Promotion">Promotion</option>
+                                                <option value="FBA">FBA</option>
                                                 <option value="Issue(Other)">Issue(Other)</option>
                                             </select>
                                         </div>
 
-                                        <!-- Auto Date -->
                                         <div class="mb-3">
                                             <label for="date" class="form-label fw-bold">Date</label>
                                             <input type="text" class="form-control" id="date" name="date" readonly>
@@ -462,15 +444,12 @@
 
                     const formData = $(this).serialize();
                     let hasError = false;
-
-                     // Validate each required field
                     const fields = [
                         { id: '#sku', name: 'SKU' },
                         { id: '#qty', name: 'Quantity' },
                         { id: '#warehouse_id', name: 'Warehouse' },
                         { id: '#reason', name: 'Reason' },
                     ];
-
                     fields.forEach(f => {
                         const el = $(f.id);
                         if (!el.val() || el.val() === 'Select SKU' || el.val() === 'Select Warehouse' || el.val() === 'Select Reason') {
@@ -479,8 +458,7 @@
                             el.after(`<div class="text-danger error-message">${f.name} is required.</div>`);
                         }
                     });
-
-                    if (hasError) return; // stop if validation fails
+                    if (hasError) return;
 
 
                     // Create overlay loader dynamically
@@ -515,8 +493,7 @@
                             document.getElementById("processing-overlay")?.remove();
                             alert('Outgoing inventory stored and updated in Shopify successfully!');
                             $('#addWarehouseModal').modal('hide');
-                            // loadData(); // Reload after store
-                            $('#outgoingForm')[0].reset(); // Optional: clear form
+                            $('#outgoingForm')[0].reset();
                             $('#parent').val('');
                             location.reload();
                         },
@@ -555,34 +532,16 @@
 
                
                 $(document).on('click', '#openAddWarehouseModal', function () {
-                    $('#outgoingForm')[0].reset(); // Only resets for add
+                    $('#outgoingForm')[0].reset();
                     $('#warehouseId').val('');
                     $('#warehouseModalLabel').text('Create Outgoing');
-                    // $('#warehouseGroup').val('').trigger('change');
-
-                    // Auto-fill PO number and date when modal is shown
-                    // const today = new Date();
-                    // const formattedDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-                    const ohioTime = new Date(
-                        new Intl.DateTimeFormat('en-US', {
-                            timeZone: 'America/New_York',
-                            year: 'numeric',
-                            month: '2-digit',
-                            day: '2-digit',
-                        }).format(new Date())
-                    );
-
-                    // Format to YYYY-MM-DD for input field
-                    const yyyy = ohioTime.getFullYear();
-                    const mm = String(ohioTime.getMonth() + 1).padStart(2, '0');
-                    const dd = String(ohioTime.getDate()).padStart(2, '0');
-                    const formattedDate = `${yyyy}-${mm}-${dd}`;
-
-                    $('#date').val(formattedDate);
-
+                    const today = new Date();
+                    const yyyy = today.getFullYear();
+                    const mm = String(today.getMonth() + 1).padStart(2, '0');
+                    const dd = String(today.getDate()).padStart(2, '0');
+                    $('#date').val(yyyy + '-' + mm + '-' + dd);
                     $('#addWarehouseModal').modal('show');
                 });
-
             });
 
 
@@ -614,7 +573,7 @@
                 tbody.innerHTML = '';
 
                 if (data.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="5" class="text-center">No records found</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="6" class="text-center">No records found</td></tr>';
                     return;
                 }
 

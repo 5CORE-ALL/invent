@@ -705,6 +705,13 @@
             const cleaned = String(value).replace(/[^0-9.-]/g, '');
             return parseFloat(cleaned) || 0;
         }
+        // Normalize percentage for display: backend may send 0.15 or 15; always show as 0-100 scale with %
+        function asPercent(value) {
+            const n = parseNumber(value);
+            if (!n) return 0;
+            if (n > 0 && n <= 1) return n * 100; // decimal form
+            return n;
+        }
 
         // Track main Ad columns visibility (from Total Ad Spend to Missing Ads)
         let adColumnsVisible = false;
@@ -739,13 +746,15 @@
 
         function toggleAdSpendBreakdownColumns() {
             adSpendBreakdownVisible = !adSpendBreakdownVisible;
-            adSpendBreakdownFields.forEach(field => {
-                if (adSpendBreakdownVisible) {
+            if (adSpendBreakdownVisible) {
+                adSpendBreakdownFields.forEach((field, i) => {
                     table.showColumn(field);
-                } else {
-                    table.hideColumn(field);
-                }
-            });
+                    const afterField = i === 0 ? 'Total Ad Spend' : adSpendBreakdownFields[i - 1];
+                    table.moveColumn(field, afterField, true);
+                });
+            } else {
+                adSpendBreakdownFields.forEach(field => table.hideColumn(field));
+            }
         }
 
         // Track AD CLICKS breakdown columns visibility
@@ -755,13 +764,15 @@
 
         function toggleClicksBreakdownColumns() {
             clicksBreakdownVisible = !clicksBreakdownVisible;
-            clicksBreakdownFields.forEach(field => {
-                if (clicksBreakdownVisible) {
+            if (clicksBreakdownVisible) {
+                clicksBreakdownFields.forEach((field, i) => {
                     table.showColumn(field);
-                } else {
-                    table.hideColumn(field);
-                }
-            });
+                    const afterField = i === 0 ? 'clicks' : clicksBreakdownFields[i - 1];
+                    table.moveColumn(field, afterField, true);
+                });
+            } else {
+                clicksBreakdownFields.forEach(field => table.hideColumn(field));
+            }
         }
 
         // Track AD SALES breakdown columns visibility
@@ -800,13 +811,15 @@
 
         function toggleAcosBreakdownColumns() {
             acosBreakdownVisible = !acosBreakdownVisible;
-            acosBreakdownFields.forEach(field => {
-                if (acosBreakdownVisible) {
+            if (acosBreakdownVisible) {
+                acosBreakdownFields.forEach((field, i) => {
                     table.showColumn(field);
-                } else {
-                    table.hideColumn(field);
-                }
-            });
+                    const afterField = i === 0 ? 'ACOS' : acosBreakdownFields[i - 1];
+                    table.moveColumn(field, afterField, true);
+                });
+            } else {
+                acosBreakdownFields.forEach(field => table.hideColumn(field));
+            }
         }
 
         // Track AD CVR breakdown columns visibility
@@ -815,13 +828,15 @@
 
         function toggleCvrBreakdownColumns() {
             cvrBreakdownVisible = !cvrBreakdownVisible;
-            cvrBreakdownFields.forEach(field => {
-                if (cvrBreakdownVisible) {
+            if (cvrBreakdownVisible) {
+                cvrBreakdownFields.forEach((field, i) => {
                     table.showColumn(field);
-                } else {
-                    table.hideColumn(field);
-                }
-            });
+                    const afterField = i === 0 ? 'Ads CVR' : cvrBreakdownFields[i - 1];
+                    table.moveColumn(field, afterField, true);
+                });
+            } else {
+                cvrBreakdownFields.forEach(field => table.hideColumn(field));
+            }
         }
 
         $(document).ready(function() {
@@ -1304,7 +1319,7 @@
                         }
                     },
                     {
-                        title: "Kw Spend",
+                        title: "KW $",
                         field: "KW Spent",
                         hozAlign: "center",
                         visible: true,
@@ -1331,7 +1346,7 @@
                         }
                     },
                     {
-                        title: "PT spend",
+                        title: "PT $",
                         field: "PT Spent",
                         hozAlign: "center",
                         visible: true,
@@ -1358,7 +1373,7 @@
                         }
                     },
                     {
-                        title: "HL spend",
+                        title: "HL $",
                         field: "HL Spent",
                         hozAlign: "center",
                         visible: true,
@@ -1385,7 +1400,7 @@
                         }
                     },
                     {
-                        title: "PMT spend",
+                        title: "PMT $",
                         field: "PMT Spent",
                         hozAlign: "center",
                         visible: true,
@@ -1412,7 +1427,7 @@
                         }
                     },
                     {
-                        title: "G-SHOP",
+                        title: "Shop $",
                         field: "Shopping Spent",
                         hozAlign: "center",
                         visible: true,
@@ -1439,7 +1454,7 @@
                         }
                     },
                     {
-                        title: "G-SERP",
+                        title: "SERP $",
                         field: "SERP Spent",
                         hozAlign: "center",
                         visible: true,
@@ -1498,7 +1513,162 @@
                         }
                     },
                     // Hidden Clicks Breakdown Columns
-                    
+                    {
+                        title: "KW Clicks",
+                        field: "KW Clicks",
+                        hozAlign: "center",
+                        visible: true,
+                        formatter: function(cell) {
+                            const value = parseNumber(cell.getValue());
+                            const rowData = cell.getRow().getData();
+                            const channel = (rowData['Channel '] || '').trim();
+                            if (value === 0) return '-';
+                            const chartIcon =
+                                `<i class="fas fa-circle ad-chart-icon ms-1" data-channel="${channel}" data-adtype="kw" data-metric="clicks" style="cursor:pointer;color:${getMetricDotColor(channel, 'clicks')};font-size:8px;" title="View Chart"></i>`;
+                            return `<span style="font-weight:600;color:#198754;">${value.toLocaleString('en-US')}</span>${chartIcon}`;
+                        },
+                        cellClick: function(e, cell) {
+                            if (e.target.classList.contains('ad-chart-icon')) {
+                                e.stopPropagation();
+                                showAdBreakdownChart($(e.target).data('channel'), $(e.target).data(
+                                    'adtype'), $(e.target).data('metric'));
+                            }
+                        },
+                        bottomCalc: "sum",
+                        bottomCalcFormatter: function(cell) {
+                            return `<strong style="color:#198754;">${parseNumber(cell.getValue()).toLocaleString('en-US')}</strong>`;
+                        }
+                    },
+                    {
+                        title: "PT Clicks",
+                        field: "PT Clicks",
+                        hozAlign: "center",
+                        visible: true,
+                        formatter: function(cell) {
+                            const value = parseNumber(cell.getValue());
+                            const rowData = cell.getRow().getData();
+                            const channel = (rowData['Channel '] || '').trim();
+                            if (value === 0) return '-';
+                            const chartIcon =
+                                `<i class="fas fa-circle ad-chart-icon ms-1" data-channel="${channel}" data-adtype="pt" data-metric="clicks" style="cursor:pointer;color:${getMetricDotColor(channel, 'clicks')};font-size:8px;" title="View Chart"></i>`;
+                            return `<span style="font-weight:600;color:#0d6efd;">${value.toLocaleString('en-US')}</span>${chartIcon}`;
+                        },
+                        cellClick: function(e, cell) {
+                            if (e.target.classList.contains('ad-chart-icon')) {
+                                e.stopPropagation();
+                                showAdBreakdownChart($(e.target).data('channel'), $(e.target).data(
+                                    'adtype'), $(e.target).data('metric'));
+                            }
+                        },
+                        bottomCalc: "sum",
+                        bottomCalcFormatter: function(cell) {
+                            return `<strong style="color:#0d6efd;">${parseNumber(cell.getValue()).toLocaleString('en-US')}</strong>`;
+                        }
+                    },
+                    {
+                        title: "HL Clicks",
+                        field: "HL Clicks",
+                        hozAlign: "center",
+                        visible: true,
+                        formatter: function(cell) {
+                            const value = parseNumber(cell.getValue());
+                            const rowData = cell.getRow().getData();
+                            const channel = (rowData['Channel '] || '').trim();
+                            if (value === 0) return '-';
+                            const chartIcon =
+                                `<i class="fas fa-circle ad-chart-icon ms-1" data-channel="${channel}" data-adtype="hl" data-metric="clicks" style="cursor:pointer;color:${getMetricDotColor(channel, 'clicks')};font-size:8px;" title="View Chart"></i>`;
+                            return `<span style="font-weight:600;color:#dc3545;">${value.toLocaleString('en-US')}</span>${chartIcon}`;
+                        },
+                        cellClick: function(e, cell) {
+                            if (e.target.classList.contains('ad-chart-icon')) {
+                                e.stopPropagation();
+                                showAdBreakdownChart($(e.target).data('channel'), $(e.target).data(
+                                    'adtype'), $(e.target).data('metric'));
+                            }
+                        },
+                        bottomCalc: "sum",
+                        bottomCalcFormatter: function(cell) {
+                            return `<strong style="color:#dc3545;">${parseNumber(cell.getValue()).toLocaleString('en-US')}</strong>`;
+                        }
+                    },
+                    {
+                        title: "PMT Clicks",
+                        field: "PMT Clicks",
+                        hozAlign: "center",
+                        visible: true,
+                        formatter: function(cell) {
+                            const value = parseNumber(cell.getValue());
+                            const rowData = cell.getRow().getData();
+                            const channel = (rowData['Channel '] || '').trim();
+                            if (value === 0) return '-';
+                            const chartIcon =
+                                `<i class="fas fa-circle ad-chart-icon ms-1" data-channel="${channel}" data-adtype="pmt" data-metric="clicks" style="cursor:pointer;color:${getMetricDotColor(channel, 'clicks')};font-size:8px;" title="View Chart"></i>`;
+                            return `<span style="font-weight:600;color:#ffc107;">${value.toLocaleString('en-US')}</span>${chartIcon}`;
+                        },
+                        cellClick: function(e, cell) {
+                            if (e.target.classList.contains('ad-chart-icon')) {
+                                e.stopPropagation();
+                                showAdBreakdownChart($(e.target).data('channel'), $(e.target).data(
+                                    'adtype'), $(e.target).data('metric'));
+                            }
+                        },
+                        bottomCalc: "sum",
+                        bottomCalcFormatter: function(cell) {
+                            return `<strong style="color:#ffc107;">${parseNumber(cell.getValue()).toLocaleString('en-US')}</strong>`;
+                        }
+                    },
+                    {
+                        title: "Shop Clicks",
+                        field: "Shopping Clicks",
+                        hozAlign: "center",
+                        visible: true,
+                        formatter: function(cell) {
+                            const value = parseNumber(cell.getValue());
+                            const rowData = cell.getRow().getData();
+                            const channel = (rowData['Channel '] || '').trim();
+                            if (value === 0) return '-';
+                            const chartIcon =
+                                `<i class="fas fa-circle ad-chart-icon ms-1" data-channel="${channel}" data-adtype="shopping" data-metric="clicks" style="cursor:pointer;color:${getMetricDotColor(channel, 'clicks')};font-size:8px;" title="View Chart"></i>`;
+                            return `<span style="font-weight:600;color:#4285f4;">${value.toLocaleString('en-US')}</span>${chartIcon}`;
+                        },
+                        cellClick: function(e, cell) {
+                            if (e.target.classList.contains('ad-chart-icon')) {
+                                e.stopPropagation();
+                                showAdBreakdownChart($(e.target).data('channel'), $(e.target).data(
+                                    'adtype'), $(e.target).data('metric'));
+                            }
+                        },
+                        bottomCalc: "sum",
+                        bottomCalcFormatter: function(cell) {
+                            return `<strong style="color:#4285f4;">${parseNumber(cell.getValue()).toLocaleString('en-US')}</strong>`;
+                        }
+                    },
+                    {
+                        title: "SERP Clicks",
+                        field: "SERP Clicks",
+                        hozAlign: "center",
+                        visible: true,
+                        formatter: function(cell) {
+                            const value = parseNumber(cell.getValue());
+                            const rowData = cell.getRow().getData();
+                            const channel = (rowData['Channel '] || '').trim();
+                            if (value === 0) return '-';
+                            const chartIcon =
+                                `<i class="fas fa-circle ad-chart-icon ms-1" data-channel="${channel}" data-adtype="serp" data-metric="clicks" style="cursor:pointer;color:${getMetricDotColor(channel, 'clicks')};font-size:8px;" title="View Chart"></i>`;
+                            return `<span style="font-weight:600;color:#6f42c1;">${value.toLocaleString('en-US')}</span>${chartIcon}`;
+                        },
+                        cellClick: function(e, cell) {
+                            if (e.target.classList.contains('ad-chart-icon')) {
+                                e.stopPropagation();
+                                showAdBreakdownChart($(e.target).data('channel'), $(e.target).data(
+                                    'adtype'), $(e.target).data('metric'));
+                            }
+                        },
+                        bottomCalc: "sum",
+                        bottomCalcFormatter: function(cell) {
+                            return `<strong style="color:#6f42c1;">${parseNumber(cell.getValue()).toLocaleString('en-US')}</strong>`;
+                        }
+                    },
                     {
                         title: "AD SALES",
                         field: "Ad Sales",
@@ -1535,7 +1705,7 @@
                     },
                     // Hidden Ad Sales Breakdown Columns
                     {
-                        title: "Kw Spend",
+                        title: "KW Sales",
                         field: "KW Sales",
                         hozAlign: "center",
                         visible: true,
@@ -1561,7 +1731,7 @@
                         }
                     },
                     {
-                        title: "PT spend",
+                        title: "PT Sales",
                         field: "PT Sales",
                         hozAlign: "center",
                         visible: true,
@@ -1587,7 +1757,7 @@
                         }
                     },
                     {
-                        title: "HL spend",
+                        title: "HL Sales",
                         field: "HL Sales",
                         hozAlign: "center",
                         visible: true,
@@ -1613,7 +1783,7 @@
                         }
                     },
                     {
-                        title: "PMT spend",
+                        title: "PMT Sales",
                         field: "PMT Sales",
                         hozAlign: "center",
                         visible: true,
@@ -1639,7 +1809,7 @@
                         }
                     },
                     {
-                        title: "G-SHOP",
+                        title: "Shop Sales",
                         field: "Shopping Sales",
                         hozAlign: "center",
                         visible: true,
@@ -1665,7 +1835,7 @@
                         }
                     },
                     {
-                        title: "G-SERP",
+                        title: "SERP Sales",
                         field: "SERP Sales",
                         hozAlign: "center",
                         visible: true,
@@ -1725,7 +1895,7 @@
                     },
                     // Hidden Ad Sold Breakdown Columns
                     {
-                        title: "Kw Spend",
+                        title: "KW Sold",
                         field: "KW Sold",
                         hozAlign: "center",
                         visible: true,
@@ -1751,7 +1921,7 @@
                         }
                     },
                     {
-                        title: "PT spend",
+                        title: "PT Sold",
                         field: "PT Sold",
                         hozAlign: "center",
                         visible: true,
@@ -1777,7 +1947,7 @@
                         }
                     },
                     {
-                        title: "HL spend",
+                        title: "HL Sold",
                         field: "HL Sold",
                         hozAlign: "center",
                         visible: true,
@@ -1803,7 +1973,7 @@
                         }
                     },
                     {
-                        title: "PMT spend",
+                        title: "PMT Sold",
                         field: "PMT Sold",
                         hozAlign: "center",
                         visible: true,
@@ -1829,7 +1999,7 @@
                         }
                     },
                     {
-                        title: "G-SHOP",
+                        title: "Shop Sold",
                         field: "Shopping Sold",
                         hozAlign: "center",
                         visible: true,
@@ -1855,7 +2025,7 @@
                         }
                     },
                     {
-                        title: "G-SERP",
+                        title: "SERP Sold",
                         field: "SERP Sold",
                         hozAlign: "center",
                         visible: true,
@@ -1888,7 +2058,7 @@
                         width: 90,
                         visible: true,
                         formatter: function(cell) {
-                            const value = parseNumber(cell.getValue());
+                            const value = asPercent(cell.getValue());
                             const channel = (cell.getRow().getData()['Channel '] || '').trim();
                             if (!value || value === 0) return '-';
                             const dotColor = getMetricDotColor(channel, 'acos');
@@ -1917,19 +2087,19 @@
                             return totalAdSales > 0 ? (totalSpend / totalAdSales) * 100 : 0;
                         },
                         bottomCalcFormatter: function(cell) {
-                            const value = cell.getValue();
+                            const value = asPercent(cell.getValue());
                             if (!value || value === 0) return '<strong>-</strong>';
-                            return `<strong>${parseFloat(value).toFixed(1)}%</strong>`;
+                            return `<strong>${value.toFixed(1)}%</strong>`;
                         }
                     },
                     // Hidden ACOS Breakdown Columns
                     {
-                        title: "Kw Spend",
+                        title: "KW ACOS",
                         field: "KW ACOS",
                         hozAlign: "center",
                         visible: true,
                         formatter: function(cell) {
-                            const value = parseNumber(cell.getValue());
+                            const value = asPercent(cell.getValue());
                             const rowData = cell.getRow().getData();
                             const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
@@ -1946,12 +2116,12 @@
                         }
                     },
                     {
-                        title: "PT spend",
+                        title: "PT ACOS",
                         field: "PT ACOS",
                         hozAlign: "center",
                         visible: true,
                         formatter: function(cell) {
-                            const value = parseNumber(cell.getValue());
+                            const value = asPercent(cell.getValue());
                             const rowData = cell.getRow().getData();
                             const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
@@ -1968,12 +2138,12 @@
                         }
                     },
                     {
-                        title: "HL spend",
+                        title: "HL ACOS",
                         field: "HL ACOS",
                         hozAlign: "center",
                         visible: true,
                         formatter: function(cell) {
-                            const value = parseNumber(cell.getValue());
+                            const value = asPercent(cell.getValue());
                             const rowData = cell.getRow().getData();
                             const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
@@ -1990,12 +2160,12 @@
                         }
                     },
                     {
-                        title: "PMT spend",
+                        title: "PMT ACOS",
                         field: "PMT ACOS",
                         hozAlign: "center",
                         visible: true,
                         formatter: function(cell) {
-                            const value = parseNumber(cell.getValue());
+                            const value = asPercent(cell.getValue());
                             const rowData = cell.getRow().getData();
                             const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
@@ -2012,12 +2182,12 @@
                         }
                     },
                     {
-                        title: "G-SHOP",
+                        title: "Shop ACOS",
                         field: "Shopping ACOS",
                         hozAlign: "center",
                         visible: true,
                         formatter: function(cell) {
-                            const value = parseNumber(cell.getValue());
+                            const value = asPercent(cell.getValue());
                             const rowData = cell.getRow().getData();
                             const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
@@ -2034,12 +2204,12 @@
                         }
                     },
                     {
-                        title: "G-SERP",
+                        title: "SERP ACOS",
                         field: "SERP ACOS",
                         hozAlign: "center",
                         visible: true,
                         formatter: function(cell) {
-                            const value = parseNumber(cell.getValue());
+                            const value = asPercent(cell.getValue());
                             const rowData = cell.getRow().getData();
                             const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
@@ -2063,7 +2233,7 @@
                         width: 100,
                         visible: true,
                         formatter: function(cell) {
-                            const value = parseNumber(cell.getValue());
+                            const value = asPercent(cell.getValue());
                             const channel = (cell.getRow().getData()['Channel '] || '').trim();
                             if (!value || value === 0) return '-';
                             const dotColor = getMetricDotColor(channel, 'ads_cvr');
@@ -2092,19 +2262,19 @@
                             return totalClicks > 0 ? ((totalAdSold / totalClicks) * 100) : 0;
                         },
                         bottomCalcFormatter: function(cell) {
-                            const value = cell.getValue();
+                            const value = asPercent(cell.getValue());
                             if (!value || value === 0) return '<strong>-</strong>';
-                            return `<strong>${Math.round(value)}%</strong>`;
+                            return `<strong>${value.toFixed(1)}%</strong>`;
                         }
                     },
                     // Hidden CVR Breakdown Columns
                     {
-                        title: "Kw Spend",
+                        title: "KW CVR",
                         field: "KW CVR",
                         hozAlign: "center",
                         visible: true,
                         formatter: function(cell) {
-                            const value = parseNumber(cell.getValue());
+                            const value = asPercent(cell.getValue());
                             const rowData = cell.getRow().getData();
                             const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
@@ -2121,12 +2291,12 @@
                         }
                     },
                     {
-                        title: "PT spend",
+                        title: "PT CVR",
                         field: "PT CVR",
                         hozAlign: "center",
                         visible: true,
                         formatter: function(cell) {
-                            const value = parseNumber(cell.getValue());
+                            const value = asPercent(cell.getValue());
                             const rowData = cell.getRow().getData();
                             const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
@@ -2143,12 +2313,12 @@
                         }
                     },
                     {
-                        title: "HL spend",
+                        title: "HL CVR",
                         field: "HL CVR",
                         hozAlign: "center",
                         visible: true,
                         formatter: function(cell) {
-                            const value = parseNumber(cell.getValue());
+                            const value = asPercent(cell.getValue());
                             const rowData = cell.getRow().getData();
                             const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
@@ -2165,12 +2335,12 @@
                         }
                     },
                     {
-                        title: "PMT spend",
+                        title: "PMT CVR",
                         field: "PMT CVR",
                         hozAlign: "center",
                         visible: true,
                         formatter: function(cell) {
-                            const value = parseNumber(cell.getValue());
+                            const value = asPercent(cell.getValue());
                             const rowData = cell.getRow().getData();
                             const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
@@ -2187,12 +2357,12 @@
                         }
                     },
                     {
-                        title: "G-SHOP",
+                        title: "Shop CVR",
                         field: "Shopping CVR",
                         hozAlign: "center",
                         visible: true,
                         formatter: function(cell) {
-                            const value = parseNumber(cell.getValue());
+                            const value = asPercent(cell.getValue());
                             const rowData = cell.getRow().getData();
                             const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
@@ -2209,12 +2379,12 @@
                         }
                     },
                     {
-                        title: "G-SERP",
+                        title: "SERP CVR",
                         field: "SERP CVR",
                         hozAlign: "center",
                         visible: true,
                         formatter: function(cell) {
-                            const value = parseNumber(cell.getValue());
+                            const value = asPercent(cell.getValue());
                             const rowData = cell.getRow().getData();
                             const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
