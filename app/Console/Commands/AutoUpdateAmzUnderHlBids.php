@@ -90,36 +90,74 @@ class AutoUpdateAmzUnderHlBids extends Command
                     $result = $result->getData(true);
                 }
 
-                // Check for errors
-                if (is_array($result) && isset($result['status'])) {
-                    if ($result['status'] == 200) {
-                        $this->info("✓ Bid update completed successfully!");
-                        $this->line("");
-                        $this->info("Updated campaigns:");
-                        foreach ($validCampaigns as $campaign) {
-                            $campaignName = $campaign->campaignName ?? 'N/A';
-                            $newBid = $campaign->sbid ?? 0;
-                            $this->line("  Campaign: {$campaignName} | New Bid: {$newBid}");
+                $isSuccess = false;
+                $successCount = 0;
+
+                if (is_array($result)) {
+                    $status = $result['status'] ?? null;
+                    $message = $result['message'] ?? '';
+                    $successCount = $result['success_count'] ?? 0;
+
+                    // Format 1: Explicit status 200
+                    if ($status == 200) {
+                        $isSuccess = true;
+                    }
+                    // Format 2: Partial success (207) — still consider job completed
+                    elseif ($status == 207) {
+                        $isSuccess = true;
+                        if (!empty($result['failed_batches'])) {
+                            $this->warn("Some chunks failed after retries; successful updates: " . ($successCount ?: 'see logs'));
                         }
-                    } else {
-                        $this->error("✗ Bid update failed!");
-                        $this->error("Status: " . $result['status']);
+                    }
+                    // Format 3: No status key but data has code SUCCESS (chunked API response)
+                    elseif (!isset($result['status']) && isset($result['data'])) {
+                        $successCount = \App\Http\Controllers\Campaigns\AmazonSbBudgetController::countSuccessfulKeywords($result['data']);
+                        if ($successCount > 0 || !empty($result['data'])) {
+                            $isSuccess = true;
+                        }
+                    }
+                    // Format 4: Raw chunked array (array of arrays with code:SUCCESS)
+                    elseif (!isset($result['status']) && isset($result[0]) && is_array($result[0])) {
+                        $successCount = \App\Http\Controllers\Campaigns\AmazonSbBudgetController::countSuccessfulKeywords($result);
+                        if ($successCount > 0) {
+                            $isSuccess = true;
+                        }
+                    }
+                    // Format 5: Object with success key
+                    elseif (isset($result['success']) && $result['success']) {
+                        $isSuccess = true;
+                    }
+                }
+
+                if ($isSuccess) {
+                    $this->info("✓ HL bids updated successfully!");
+                    $this->line("");
+                    $this->info("Updated campaigns:");
+                    foreach ($validCampaigns as $campaign) {
+                        $campaignName = $campaign->campaignName ?? 'N/A';
+                        $newBid = $campaign->sbid ?? 0;
+                        $this->line("  Campaign: {$campaignName} | New Bid: {$newBid}");
+                    }
+                    if ($successCount > 0) {
+                        $this->info("Keywords updated: {$successCount}");
+                    }
+                } else {
+                    $this->error("✗ Bid update failed!");
+                    if (is_array($result)) {
+                        if (isset($result['status'])) {
+                            $this->error("Status: " . $result['status']);
+                        }
                         if (isset($result['message'])) {
                             $this->error("Message: " . $result['message']);
                         }
                         if (isset($result['error'])) {
                             $this->error("Error: " . $result['error']);
                         }
-                        return 1;
                     }
-                } else {
-                    // Handle unexpected response format
-                    $this->warn("Unexpected response format from update method.");
                     if (is_array($result) || is_object($result)) {
-                        $this->line("Response: " . json_encode($result));
-                    } else {
-                        $this->line("Response type: " . gettype($result));
+                        \Illuminate\Support\Facades\Log::debug('HL under-utilized bid update response', ['result' => $result]);
                     }
+                    return 1;
                 }
 
             } catch (\Exception $e) {

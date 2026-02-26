@@ -114,6 +114,51 @@ class AmazonSbBudgetController extends Controller
         return $data ?? [];
     }
 
+    /**
+     * Count successful keyword updates from Amazon SB API response(s).
+     * Handles: chunked array of arrays with objects containing "code":"SUCCESS", flat arrays, or single chunk.
+     */
+    public static function countSuccessfulKeywords($responseData): int
+    {
+        if (!is_array($responseData)) {
+            return 0;
+        }
+        $count = 0;
+        foreach ($responseData as $chunk) {
+            if (!is_array($chunk)) {
+                continue;
+            }
+            foreach ($chunk as $item) {
+                if (is_array($item) && isset($item['code']) && strtoupper((string) $item['code']) === 'SUCCESS') {
+                    $count++;
+                }
+            }
+        }
+        return $count;
+    }
+
+    /**
+     * Detect response format and whether it indicates success (for logging).
+     */
+    private static function describeResponseFormat($raw): array
+    {
+        if (!is_array($raw)) {
+            return ['format' => 'non_array', 'success_count' => 0];
+        }
+        if (isset($raw['status']) && array_key_exists('data', $raw)) {
+            $successCount = self::countSuccessfulKeywords($raw['data'] ?? []);
+            return ['format' => 'wrapped_with_status', 'status' => $raw['status'], 'success_count' => $successCount];
+        }
+        $successCount = self::countSuccessfulKeywords($raw);
+        if ($successCount > 0) {
+            return ['format' => 'chunked_or_flat_results', 'success_count' => $successCount];
+        }
+        if (isset($raw['success']) && $raw['success']) {
+            return ['format' => 'object_with_success', 'success_count' => 0];
+        }
+        return ['format' => 'unknown_array', 'success_count' => 0];
+    }
+
     public function updateAutoCampaignSbKeywordsBid(array $campaignIds, array $newBids)
     {
         ini_set('max_execution_time', 600);
@@ -260,26 +305,35 @@ class AmazonSbBudgetController extends Controller
             }
         }
 
+        $successCount = self::countSuccessfulKeywords($allResults);
+        $summary = self::describeResponseFormat(['status' => 200, 'data' => $allResults]);
+
         if (!empty($failedBatches)) {
             Log::warning('updateAutoCampaignSbKeywordsBid: completed with failures', [
                 'failed_count' => count($failedBatches),
                 'failed' => $failedBatches,
+                'success_count' => $successCount,
+                'response_format' => $summary['format'],
             ]);
             return [
                 'message' => 'HL bid update completed; some chunks failed after retries.',
                 'data' => $allResults,
                 'failed_batches' => $failedBatches,
                 'status' => 207,
+                'success_count' => $successCount,
             ];
         }
 
         Log::info('updateAutoCampaignSbKeywordsBid: success', [
             'total_chunks' => count($allResults),
+            'success_count' => $successCount,
+            'response_format' => $summary['format'],
         ]);
         return [
             'message' => 'HL keywords bid updated successfully',
             'data' => $allResults,
             'status' => 200,
+            'success_count' => $successCount,
         ];
     }
 
