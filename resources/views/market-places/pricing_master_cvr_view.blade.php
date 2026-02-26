@@ -552,8 +552,8 @@
 
                     <!-- SKU/Parent Filter -->
                     <select id="sku-parent-filter" class="form-select form-select-sm" style="width: auto;">
-                        <option value="both" selected>Both (SKU + Parent)</option>
-                        <option value="sku">SKU Only</option>
+                        <option value="both">Both (SKU + Parent)</option>
+                        <option value="sku" selected>SKU Only</option>
                         <option value="parent">Parent Only</option>
                     </select>
 
