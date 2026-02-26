@@ -16,10 +16,17 @@ class AmazonCompetitorAsin extends Model
         'search_query',
         'asin',
         'title',
+        'seller_name',
         'price',
         'rating',
         'reviews',
         'position',
         'image',
+        'extracted_old_price',
+        'delivery',
+    ];
+
+    protected $casts = [
+        'delivery' => 'array',
     ];
 }

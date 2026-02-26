@@ -453,7 +453,7 @@ class OverallAmazonController extends Controller
 
             $row['amz_price'] = $amazonSheet ? ($amazonSheet->price ?? 0) : 0;
             $row['amz_pft'] = $amazonSheet && ($amazonSheet->price ?? 0) > 0 ? ((($amazonSheet->price * $percentage) - $lp - $ship) / $amazonSheet->price) : 0;
-            $row['amz_roi'] = $amazonSheet && $lp > 0 && ($amazonSheet->price ?? 0) > 0 ? (($amazonSheet->price * 0.70 - $lp - $ship) / $lp) : 0;
+            $row['amz_roi'] = $amazonSheet && $lp > 0 && ($amazonSheet->price ?? 0) > 0 ? ((($amazonSheet->price * $percentage) - $lp - $ship) / $lp) : 0;
 
             $prices = DB::connection('repricer')
                 ->table('lmp_data')
@@ -891,7 +891,7 @@ class OverallAmazonController extends Controller
 
             $row['amz_price'] = $amazonSheet ? ($amazonSheet->price ?? 0) : 0;
             $row['amz_pft'] = $amazonSheet && ($amazonSheet->price ?? 0) > 0 ? ((($amazonSheet->price * $percentage) - $lp - $ship) / $amazonSheet->price) : 0;
-            $row['amz_roi'] = $amazonSheet && $lp > 0 && ($amazonSheet->price ?? 0) > 0 ? (($amazonSheet->price * 0.70 - $lp - $ship) / $lp) : 0;
+            $row['amz_roi'] = $amazonSheet && $lp > 0 && ($amazonSheet->price ?? 0) > 0 ? ((($amazonSheet->price * $percentage) - $lp - $ship) / $lp) : 0;
 
             $prices = DB::connection('repricer')
                 ->table('lmpa_data')
@@ -1139,8 +1139,8 @@ class OverallAmazonController extends Controller
             }
 
             $row['amz_price'] = $amazonSheet ? ($amazonSheet->price ?? 0) : 0;
-            $row['amz_pft'] = $amazonSheet && ($amazonSheet->price ?? 0) > 0 ? (($amazonSheet->price * 0.70 - $lp - $ship) / $amazonSheet->price) : 0;
-            $row['amz_roi'] = $amazonSheet && $lp > 0 && ($amazonSheet->price ?? 0) > 0 ? (($amazonSheet->price * 0.70 - $lp - $ship) / $lp) : 0;
+            $row['amz_pft'] = $amazonSheet && ($amazonSheet->price ?? 0) > 0 ? ((($amazonSheet->price * $percentage) - $lp - $ship) / $amazonSheet->price) : 0;
+            $row['amz_roi'] = $amazonSheet && $lp > 0 && ($amazonSheet->price ?? 0) > 0 ? ((($amazonSheet->price * $percentage) - $lp - $ship) / $lp) : 0;
 
             $prices = DB::connection('repricer')
                 ->table('lmpa_data')
@@ -1336,8 +1336,8 @@ class OverallAmazonController extends Controller
             }
 
             $row['amz_price'] = $amazonSheet ? ($amazonSheet->price ?? 0) : 0;
-            $row['amz_pft'] = $amazonSheet && ($amazonSheet->price ?? 0) > 0 ? (($amazonSheet->price * 0.70 - $lp - $ship) / $amazonSheet->price) : 0;
-            $row['amz_roi'] = $amazonSheet && $lp > 0 && ($amazonSheet->price ?? 0) > 0 ? (($amazonSheet->price * 0.70 - $lp - $ship) / $lp) : 0;
+            $row['amz_pft'] = $amazonSheet && ($amazonSheet->price ?? 0) > 0 ? ((($amazonSheet->price * $percentage) - $lp - $ship) / $amazonSheet->price) : 0;
+            $row['amz_roi'] = $amazonSheet && $lp > 0 && ($amazonSheet->price ?? 0) > 0 ? ((($amazonSheet->price * $percentage) - $lp - $ship) / $lp) : 0;
 
             $prices = DB::connection('repricer')
                 ->table('lmpa_data')
@@ -5219,15 +5219,30 @@ class OverallAmazonController extends Controller
                             ? 'https://m.media-amazon.com/images/P/' . $comp->asin . '._AC_SL160_.jpg'
                             : null
                     );
+                    $delivery = $comp->delivery;
+                    if (is_array($delivery)) {
+                        $delivery = implode(', ', array_slice($delivery, 0, 2));
+                    } elseif (is_string($delivery)) {
+                        $decoded = json_decode($delivery, true);
+                        $delivery = is_array($decoded) ? implode(', ', array_slice($decoded, 0, 2)) : $delivery;
+                    } else {
+                        $delivery = null;
+                    }
                     return [
                         'id' => $comp->id,
+                        'sku' => $comp->sku,
                         'asin' => $comp->asin,
-                        'price' => floatval($comp->price),
+                        'marketplace' => $comp->marketplace,
+                        'image' => $image,
                         'product_link' => $comp->product_link,
                         'product_title' => $comp->product_title,
-                        'image' => $image,
-                        'marketplace' => $comp->marketplace,
-                        'created_at' => $comp->created_at->format('Y-m-d H:i:s'),
+                        'price' => floatval($comp->price),
+                        'rating' => $comp->rating !== null ? floatval($comp->rating) : null,
+                        'reviews' => $comp->reviews !== null ? (int) $comp->reviews : null,
+                        'extracted_old_price' => $comp->extracted_old_price !== null ? floatval($comp->extracted_old_price) : null,
+                        'delivery' => $delivery,
+                        'created_at' => $comp->created_at ? $comp->created_at->format('Y-m-d H:i:s') : null,
+                        'updated_at' => $comp->updated_at ? $comp->updated_at->format('Y-m-d H:i:s') : null,
                     ];
                 }),
                 'lowest_price' => $lowestPrice ? floatval($lowestPrice->price) : null,

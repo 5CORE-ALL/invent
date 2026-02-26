@@ -160,7 +160,10 @@ class CvrMasterController extends Controller
             $walmartPriceData = WalmartPriceData::whereIn('sku', $skus)->get()->keyBy('sku');
             $walmartViewsData = WalmartListingViewsData::whereIn("sku", $skus)->get()->keyBy("sku");
             $walmartDataView = WalmartDataView::whereIn('sku', $skus)->get()->keyBy('sku');
-            
+
+            // Amazon SPRICE from amazon_data_view (same as modal)
+            $amazonDataViewBySku = AmazonDataView::whereIn('sku', $skus)->get()->keyBy('sku');
+
             Log::info('CVR Master - Walmart Data fetched', [
                 'price_data' => $walmartPriceData->count(),
                 'views_data' => $walmartViewsData->count(),
@@ -302,6 +305,10 @@ class CvrMasterController extends Controller
                 'ebay2_metrics' => $ebay2Metrics->count(),
                 'ebay3_metrics' => $ebay3Metrics->count()
             ]);
+
+            // Amazon marketplace percentage (for Amz PFT / ROI)
+            $amazonMarketplace = MarketplacePercentage::where('marketplace', 'Amazon')->first();
+            $amazonPercentage = $amazonMarketplace ? ($amazonMarketplace->percentage / 100) : 0.80;
 
             // Fetch Amazon LMP data from amazon_sku_competitors
             $amazonLmpLookup = collect();
@@ -632,9 +639,13 @@ class CvrMasterController extends Controller
                 $amazonPrice = $amazonSheet ? floatval($amazonSheet->price ?? 0) : 0;
                 $amazonL30 = $amazonSheet ? intval($amazonSheet->units_ordered_l30 ?? 0) : 0;
                 
-                // Amazon GPFT% = (price × 0.80 - ship - lp) / price × 100 (hardcoded 80%)
-                $amazonGPFT = $amazonPrice > 0 ? ((($amazonPrice * 0.80 - $ship - $lp) / $amazonPrice) * 100) : 0;
-                
+                // Amazon GPFT% = (price × marketplace_percentage - ship - lp) / price × 100
+                $amazonGPFT = $amazonPrice > 0 ? ((($amazonPrice * $amazonPercentage - $ship - $lp) / $amazonPrice) * 100) : 0;
+                // Amazon PFT% (gross from Amazon price only, using marketplace %)
+                $amzPft = $amazonPrice > 0 ? round((($amazonPrice * $amazonPercentage - $lp - $ship) / $amazonPrice) * 100, 2) : null;
+                // Amazon ROI% = ((price × percentage - lp - ship) / lp) × 100 when lp > 0
+                $amzRoi = ($lp > 0 && $amazonPrice > 0) ? round((($amazonPrice * $amazonPercentage - $lp - $ship) / $lp) * 100, 2) : null;
+
                 // Get Amazon ad spend
                 $amazonCampaign = $amazonSpCampaigns->get($sku);
                 $amazonAdSpend = $amazonCampaign ? floatval($amazonCampaign->spend ?? 0) : 0;
@@ -833,12 +844,37 @@ class CvrMasterController extends Controller
                 $amazonLmpCount = $amazonLmpCountLookup->get($skuLookupKey) ?? 0;
                 $ebayLmpCount = $ebayLmpCountLookup->get($skuLookupKey) ?? 0;
 
+                $amazonDataViewRow = $amazonDataViewBySku->get($sku);
+                $amazonSprice = null;
+                $amazonSgpft = null;
+                $amazonSpft = null;
+                $amazonSroi = null;
+                if ($amazonDataViewRow && $amazonDataViewRow->value) {
+                    $avVal = is_array($amazonDataViewRow->value) ? $amazonDataViewRow->value : (json_decode($amazonDataViewRow->value ?? '{}', true) ?? []);
+                    $spr = $avVal['SPRICE'] ?? null;
+                    $amazonSprice = ($spr !== null && $spr !== '' && floatval($spr) > 0) ? round(floatval($spr), 2) : null;
+                    if (isset($avVal['SGPFT'])) $amazonSgpft = round(floatval($avVal['SGPFT']), 2);
+                    if (isset($avVal['SPFT'])) $amazonSpft = round(floatval($avVal['SPFT']), 2);
+                    if (isset($avVal['SROI'])) $amazonSroi = round(floatval($avVal['SROI']), 2);
+                }
+
                 $result[] = (object) [
                     "sku" => $sku,
                     "parent" => $parent,
                     "image_path" => $imagePath,
                     "inventory" => $inventory,
                     "amazon_price" => $amazonPrice > 0 ? round($amazonPrice, 2) : null,
+                    "amazon_sprice" => $amazonSprice,
+                    "amazon_sgpft" => $amazonSgpft,
+                    "amazon_spft" => $amazonSpft,
+                    "amazon_sroi" => $amazonSroi,
+                    "amazon_lp" => $lp,
+                    "amazon_ship" => $ship,
+                    "amazon_ad" => round($amazonAD, 2),
+                    "amazon_margin" => 0.80,
+                    "amazon_l30" => $amazonL30,
+                    "amz_pft" => $amzPft,
+                    "amz_roi" => $amzRoi,
                     "overall_l30" => $overallL30,
                     "m_l30" => $totalL30,
                     "dil_percent" => $dilPercent,
@@ -883,6 +919,10 @@ class CvrMasterController extends Controller
                 $amazonLmpVals = $rows->pluck('amazon_lmp_price')->filter(fn ($v) => $v !== null && $v > 0);
                 $ebayLmpVals = $rows->pluck('ebay_lmp_price')->filter(fn ($v) => $v !== null && $v > 0);
                 $amazonPriceVals = $rows->pluck('amazon_price')->filter(fn ($v) => $v !== null && $v > 0);
+                $amazonSpriceVals = $rows->pluck('amazon_sprice')->filter(fn ($v) => $v !== null && $v > 0);
+                $amazonSgpftVals = $rows->pluck('amazon_sgpft')->filter(fn ($v) => $v !== null);
+                $amazonSpftVals = $rows->pluck('amazon_spft')->filter(fn ($v) => $v !== null);
+                $amazonSroiVals = $rows->pluck('amazon_sroi')->filter(fn ($v) => $v !== null);
                 $parentRow = [
                     'SL No.' => $slNo++,
                     'sku' => 'PARENT ' . $parent,
@@ -890,6 +930,19 @@ class CvrMasterController extends Controller
                     'image_path' => null,
                     'inventory' => $rows->sum('inventory'),
                     'amazon_price' => $amazonPriceVals->isNotEmpty() ? round($amazonPriceVals->avg(), 2) : null,
+                    'amazon_sprice' => $amazonSpriceVals->isNotEmpty() ? round($amazonSpriceVals->avg(), 2) : null,
+                    'amazon_sgpft' => $amazonSgpftVals->isNotEmpty() ? round($amazonSgpftVals->avg(), 2) : null,
+                    'amazon_spft' => $amazonSpftVals->isNotEmpty() ? round($amazonSpftVals->avg(), 2) : null,
+                    'amazon_sroi' => $amazonSroiVals->isNotEmpty() ? round($amazonSroiVals->avg(), 2) : null,
+                    'amazon_lp' => null,
+                    'amazon_ship' => null,
+                    'amazon_ad' => null,
+                    'amazon_margin' => 0.80,
+                    'amazon_l30' => null,
+                    'amz_pft' => $rows->filter(fn ($r) => isset($r->amz_pft) && $r->amz_pft !== null)->isNotEmpty()
+                        ? round($rows->filter(fn ($r) => isset($r->amz_pft) && $r->amz_pft !== null)->avg('amz_pft'), 2) : null,
+                    'amz_roi' => $rows->filter(fn ($r) => isset($r->amz_roi) && $r->amz_roi !== null)->isNotEmpty()
+                        ? round($rows->filter(fn ($r) => isset($r->amz_roi) && $r->amz_roi !== null)->avg('amz_roi'), 2) : null,
                     'overall_l30' => $rows->sum('overall_l30'),
                     'm_l30' => $rows->sum('m_l30'),
                     'dil_percent' => 0, // Calculate after
@@ -2210,47 +2263,102 @@ class CvrMasterController extends Controller
     }
 
     /**
+     * Get Amazon SPRICE table data (from amazon_data_view only)
+     */
+    public function getAmazonSpriceTableData(Request $request)
+    {
+        $rows = [];
+        $amazonViews = AmazonDataView::orderBy('sku')->get();
+        $amazonMarketplace = MarketplacePercentage::where('marketplace', 'Amazon')->first();
+        $defaultMargin = $amazonMarketplace ? ($amazonMarketplace->percentage / 100) : 0.80;
+
+        foreach ($amazonViews as $av) {
+            $val = is_array($av->value) ? $av->value : (json_decode($av->value ?? '{}', true) ?? []);
+            $sprice = isset($val['SPRICE']) ? floatval($val['SPRICE']) : null;
+            if ($sprice === null || $sprice <= 0) {
+                continue;
+            }
+            $rows[] = [
+                'sku' => $av->sku,
+                'sprice' => round($sprice, 2),
+                'sgpft' => isset($val['SGPFT']) ? round(floatval($val['SGPFT']), 2) : null,
+                'spft' => isset($val['SPFT']) ? round(floatval($val['SPFT']), 2) : null,
+                'sroi' => isset($val['SROI']) ? round(floatval($val['SROI']), 2) : null,
+                'amazon_margin' => $defaultMargin,
+                'avg_pft' => null,
+                'updated_at' => $av->updated_at?->toDateTimeString(),
+            ];
+        }
+
+        return response()->json([
+            'success' => true,
+            'data' => $rows,
+            'count' => count($rows),
+        ]);
+    }
+
+    /**
      * Save suggested pricing data (SPRICE, SGPFT, SPFT, SROI) to data_view tables
      */
     public function saveSuggestedData(Request $request)
     {
         try {
-            $sku = $request->input('sku');
-            $marketplace = strtolower($request->input('marketplace'));
+            $sku = trim($request->input('sku', ''));
+            $marketplace = strtolower(trim($request->input('marketplace', '')));
+            if (empty($sku) || empty($marketplace)) {
+                return response()->json(['error' => 'SKU and marketplace are required'], 400);
+            }
+
+            // Resolve full SKU (same as getBreakdownData): use ProductMaster then Amazon datasheet for Amazon
+            $productMaster = ProductMaster::where('sku', $sku)
+                ->orWhere('sku', 'LIKE', $sku . '%')
+                ->first();
+            $fullSku = $productMaster ? $productMaster->sku : $sku;
+
+            if ($marketplace === 'amazon') {
+                // Use Amazon datasheet: prefer SKU as stored in amazon_datsheets for consistency
+                $amazonData = AmazonDatasheet::where('sku', $fullSku)->first();
+                $skuToUse = $amazonData ? $amazonData->sku : $fullSku;
+            } else {
+                $skuToUse = $fullSku;
+            }
+
             $sprice = floatval($request->input('sprice', 0));
             $sgpft = floatval($request->input('sgpft', 0));
             $sroi = floatval($request->input('sroi', 0));
             $spft = floatval($request->input('spft', 0));
+            $amazonMargin = $request->has('amazon_margin') ? floatval($request->input('amazon_margin')) : null;
+            $avgPft = $request->has('avg_pft') ? floatval($request->input('avg_pft')) : null;
 
-            // Determine which data_view table to use
+            // Determine which data_view table to use (use resolved SKU)
             if ($marketplace === 'amazon') {
-                $dataView = AmazonDataView::firstOrNew(['sku' => $sku]);
+                $dataView = AmazonDataView::firstOrNew(['sku' => $skuToUse]);
             } elseif ($marketplace === 'ebay') {
-                $dataView = EbayDataView::firstOrNew(['sku' => $sku]);
+                $dataView = EbayDataView::firstOrNew(['sku' => $skuToUse]);
             } elseif ($marketplace === 'ebaytwo') {
-                $dataView = EbayTwoDataView::firstOrNew(['sku' => $sku]);
+                $dataView = EbayTwoDataView::firstOrNew(['sku' => $skuToUse]);
             } elseif ($marketplace === 'ebaythree') {
-                $dataView = EbayThreeDataView::firstOrNew(['sku' => $sku]);
+                $dataView = EbayThreeDataView::firstOrNew(['sku' => $skuToUse]);
             } elseif ($marketplace === 'temu') {
-                $dataView = TemuDataView::firstOrNew(['sku' => $sku]);
+                $dataView = TemuDataView::firstOrNew(['sku' => $skuToUse]);
             } elseif ($marketplace === 'doba') {
-                $dataView = DobaDataView::firstOrNew(['sku' => $sku]);
+                $dataView = DobaDataView::firstOrNew(['sku' => $skuToUse]);
             } elseif ($marketplace === 'walmart') {
-                $dataView = WalmartDataView::firstOrNew(['sku' => $sku]);
+                $dataView = WalmartDataView::firstOrNew(['sku' => $skuToUse]);
             } elseif ($marketplace === 'tiktok') {
-                $dataView = TikTokDataView::firstOrNew(['sku' => $sku]);
+                $dataView = TikTokDataView::firstOrNew(['sku' => $skuToUse]);
             } elseif ($marketplace === 'bestbuy') {
-                $dataView = BestbuyUSADataView::firstOrNew(['sku' => $sku]);
+                $dataView = BestbuyUSADataView::firstOrNew(['sku' => $skuToUse]);
             } elseif ($marketplace === 'macy') {
-                $dataView = MacyDataView::firstOrNew(['sku' => $sku]);
+                $dataView = MacyDataView::firstOrNew(['sku' => $skuToUse]);
             } elseif ($marketplace === 'reverb') {
-                $dataView = ReverbViewData::firstOrNew(['sku' => $sku]);
+                $dataView = ReverbViewData::firstOrNew(['sku' => $skuToUse]);
             } elseif ($marketplace === 'tiendamia') {
-                $dataView = TiendamiaDataView::firstOrNew(['sku' => $sku]);
+                $dataView = TiendamiaDataView::firstOrNew(['sku' => $skuToUse]);
             } elseif ($marketplace === 'shopifyb2c' || $marketplace === 'sb2c') {
-                $dataView = Shopifyb2cDataView::firstOrNew(['sku' => $sku]);
+                $dataView = Shopifyb2cDataView::firstOrNew(['sku' => $skuToUse]);
             } elseif ($marketplace === 'shopifyb2b' || $marketplace === 'sb2b') {
-                $dataView = ShopifyB2BDataView::firstOrNew(['sku' => $sku]);
+                $dataView = ShopifyB2BDataView::firstOrNew(['sku' => $skuToUse]);
             } else {
                 return response()->json(['error' => 'Marketplace not supported'], 400);
             }
@@ -2293,8 +2401,9 @@ class CvrMasterController extends Controller
 
             return response()->json(['success' => true]);
         } catch (\Exception $e) {
-            Log::error('Error saving suggested data: ' . $e->getMessage());
-            return response()->json(['error' => 'Failed to save'], 500);
+            Log::error('Error saving suggested data: ' . $e->getMessage(), ['trace' => $e->getTraceAsString()]);
+            $message = config('app.debug') ? $e->getMessage() : 'Failed to save';
+            return response()->json(['error' => $message], 500);
         }
     }
 

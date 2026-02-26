@@ -238,6 +238,9 @@
                     <button type="button" class="btn btn-secondary btn-lg" id="loadHistoryBtn">
                         <i class="mdi mdi-history me-2"></i>Load History
                     </button>
+                    <button type="button" class="btn btn-outline-info btn-lg" id="viewRawResponseBtn" title="Pehle search karein, phir response structure dekhen">
+                        <i class="mdi mdi-code-json me-2"></i>View Raw Response
+                    </button>
                 </form>
 
                 <div id="searchHistory" class="mt-4" style="display: none;">
@@ -392,6 +395,26 @@
         </div>
     </div>
 </div>
+
+<!-- Modal: View Raw Response -->
+<div class="modal fade" id="rawResponseModal" tabindex="-1" aria-labelledby="rawResponseModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="rawResponseModalLabel">
+                    <i class="mdi mdi-code-json me-2"></i>Raw API Response (structure dekhen — jitna data save karna ho bata dena)
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-0">
+                <div class="p-3 bg-light border-bottom small">
+                    <span id="rawResponseMeta"></span>
+                </div>
+                <pre id="rawResponsePre" class="p-4 mb-0 bg-dark text-light" style="max-height: 70vh; overflow: auto; font-size: 12px;"></pre>
+            </div>
+        </div>
+    </div>
+</div>
 @endsection
 
 @section('script')
@@ -441,6 +464,29 @@ $(document).ready(function() {
     // Load history button
     $('#loadHistoryBtn').on('click', function() {
         loadSearchHistory();
+    });
+
+    // View raw response (saved API response structure dikhane ke liye)
+    $('#viewRawResponseBtn').on('click', function() {
+        const query = $('#searchQuery').val().trim() || currentSearchQuery;
+        if (!query) {
+            alert('Pehle koi search query daalein aur Search karein, phir View Raw Response dabayein.');
+            return;
+        }
+        $.get('/repricer/amazon-search/raw-response', { query: query, page: 1 })
+            .done(function(data) {
+                if (data.success && data.response) {
+                    $('#rawResponseMeta').text('Query: ' + (data.meta.search_query || '') + ' | Page: ' + (data.meta.page || 1) + ' | Saved at: ' + (data.meta.created_at || ''));
+                    $('#rawResponsePre').text(JSON.stringify(data.response, null, 2));
+                    new bootstrap.Modal(document.getElementById('rawResponseModal')).show();
+                } else {
+                    alert(data.message || 'No raw response found.');
+                }
+            })
+            .fail(function(xhr) {
+                const msg = xhr.responseJSON && xhr.responseJSON.message ? xhr.responseJSON.message : 'Raw response load nahi hua. Pehle search karein.';
+                alert(msg);
+            });
     });
     
     // Save competitors button
@@ -636,6 +682,8 @@ $(document).ready(function() {
                 const rating = item.rating ? `${parseFloat(item.rating).toFixed(1)} ★` : '';
                 const reviews = item.reviews ? `(${item.reviews.toLocaleString()})` : '';
                 const image = item.image || 'https://via.placeholder.com/100';
+                const delivery = Array.isArray(item.delivery) ? item.delivery : [];
+                const deliveryJson = delivery.length ? JSON.stringify(delivery).replace(/"/g, '&quot;') : '';
                 
                 const productLink = `https://www.amazon.com/dp/${item.asin}`;
                 const priceValue = item.price || 0;
@@ -649,7 +697,11 @@ $(document).ready(function() {
                                    data-title="${(item.title || '').replace(/"/g, '&quot;')}"
                                    data-price="${priceValue}"
                                    data-link="${productLink}"
-                                   data-image="${(item.image || '').replace(/"/g, '&quot;')}">
+                                   data-image="${(item.image || '').replace(/"/g, '&quot;')}"
+                                   data-rating="${item.rating != null ? item.rating : ''}"
+                                   data-reviews="${item.reviews != null ? item.reviews : ''}"
+                                   data-extracted-old-price="${item.extracted_old_price != null ? item.extracted_old_price : ''}"
+                                   data-delivery="${deliveryJson}">
                             
                             <div class="product-image-container">
                                 <img src="${image}" 
@@ -806,6 +858,18 @@ $(document).ready(function() {
             const productLink = checkbox.data('link');
             const image = checkbox.data('image');
             const price = checkbox.data('price');
+            const rating = checkbox.data('rating');
+            const reviews = checkbox.data('reviews');
+            const extractedOldPrice = checkbox.attr('data-extracted-old-price');
+            let delivery = null;
+            const deliveryRaw = checkbox.attr('data-delivery');
+            if (deliveryRaw) {
+                try { delivery = JSON.parse(deliveryRaw.replace(/&quot;/g, '"')); } catch (e) { delivery = null; }
+            }
+            if (!Array.isArray(delivery)) delivery = null;
+            if (typeof delivery === 'string' && delivery) {
+                try { delivery = JSON.parse(delivery); } catch (e) { delivery = null; }
+            }
             
             // Create a competitor entry for EACH selected SKU
             selectedSkus.forEach(function(sku) {
@@ -816,7 +880,11 @@ $(document).ready(function() {
                     product_title: productTitle || null,
                     product_link: productLink || null,
                     image: image || null,
-                    price: parseFloat(price) || 0
+                    price: parseFloat(price) || 0,
+                    rating: rating !== '' && rating != null ? parseFloat(rating) : null,
+                    reviews: reviews !== '' && reviews != null ? parseInt(reviews, 10) : null,
+                    extracted_old_price: extractedOldPrice !== '' && extractedOldPrice != null ? parseFloat(extractedOldPrice) : null,
+                    delivery: Array.isArray(delivery) ? delivery : null
                 });
             });
         });

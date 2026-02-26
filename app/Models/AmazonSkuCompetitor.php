@@ -15,11 +15,20 @@ class AmazonSkuCompetitor extends Model
         'product_link',
         'image',
         'product_title',
+        'seller_name',
         'price',
+        'rating',
+        'reviews',
+        'extracted_old_price',
+        'delivery',
     ];
 
     protected $casts = [
         'price' => 'decimal:2',
+        'rating' => 'decimal:2',
+        'reviews' => 'integer',
+        'extracted_old_price' => 'decimal:2',
+        'delivery' => 'array',
     ];
 
     /**

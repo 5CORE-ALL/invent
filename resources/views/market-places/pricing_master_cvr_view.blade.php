@@ -388,6 +388,44 @@
         </div>
     </div>
 
+    <!-- Amazon SPRICE Table Modal -->
+    <div class="modal fade" id="amazonSpriceTableModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header" style="background-color: #232f3e; color: white;">
+                    <h5 class="modal-title">
+                        <i class="fas fa-table me-2"></i> Amazon SPRICE Table
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-bordered table-hover mb-0" id="amazonSpriceTableModalTable">
+                            <thead style="background-color: #232f3e; color: white;">
+                                <tr>
+                                    <th>SKU</th>
+                                    <th class="text-end">SPRICE</th>
+                                    <th class="text-end">Amazon Margin</th>
+                                    <th class="text-end">SGPFT%</th>
+                                    <th class="text-end">SPFT%</th>
+                                    <th class="text-end">SROI%</th>
+                                    <th class="text-end">Avg PFT%</th>
+                                    <th>Updated At</th>
+                                </tr>
+                            </thead>
+                            <tbody id="amazonSpriceTableModalBody">
+                                <tr><td colspan="8" class="text-center text-muted py-4">Load data using the button below.</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- LMP Competitors Modal (Amazon + eBay in single view) -->
     <div class="modal fade" id="lmpModal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog modal-xl modal-dialog-scrollable">
@@ -1160,6 +1198,124 @@
                     }
                 },
                 {
+                    title: "Amz SPRICE",
+                    field: "amazon_sprice",
+                    hozAlign: "right",
+                    width: 95,
+                    sorter: "number",
+                    editor: "number",
+                    editorParams: { step: 0.01, min: 0 },
+                    editable: function(cell) {
+                        const d = cell.getRow().getData();
+                        return d.is_parent_summary !== true && d.sku && d.sku.indexOf('PARENT') === -1;
+                    },
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        if (rowData.is_parent_summary === true) {
+                            const value = cell.getValue();
+                            if (value == null || value === '' || parseFloat(value) <= 0) return '-';
+                            return '<span style="font-weight: 600;">$' + parseFloat(value).toFixed(2) + '</span>';
+                        }
+                        const value = cell.getValue();
+                        if (value == null || value === '' || parseFloat(value) <= 0) return '-';
+                        const num = parseFloat(value);
+                        return `<span style="font-weight: 600;">$` + num.toFixed(2) + '</span>';
+                    }
+                },
+                {
+                    title: "Amz SGPFT%",
+                    field: "amazon_sgpft",
+                    hozAlign: "center",
+                    width: 90,
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const value = cell.getValue();
+                        if (value == null || value === '') return '-';
+                        const pct = parseFloat(value);
+                        let color = '';
+                        if (pct < 0) color = '#a00211';
+                        else if (pct >= 0 && pct < 10) color = '#ffc107';
+                        else if (pct >= 10 && pct < 20) color = '#3591dc';
+                        else if (pct >= 20 && pct <= 40) color = '#28a745';
+                        else color = '#e83e8c';
+                        return `<span style="color: ${color}; font-weight: 600;">${Math.round(pct)}%</span>`;
+                    }
+                },
+                {
+                    title: "Amz SPFT%",
+                    field: "amazon_spft",
+                    hozAlign: "center",
+                    width: 90,
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const value = cell.getValue();
+                        if (value == null || value === '') return '-';
+                        const pct = parseFloat(value);
+                        let color = '';
+                        if (pct < 0) color = '#a00211';
+                        else if (pct >= 0 && pct < 10) color = '#ffc107';
+                        else if (pct >= 10 && pct < 20) color = '#3591dc';
+                        else if (pct >= 20 && pct <= 40) color = '#28a745';
+                        else color = '#e83e8c';
+                        return `<span style="color: ${color}; font-weight: 600;">${Math.round(pct)}%</span>`;
+                    }
+                },
+                {
+                    title: "Amz SROI%",
+                    field: "amazon_sroi",
+                    hozAlign: "center",
+                    width: 90,
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const value = cell.getValue();
+                        if (value == null || value === '') return '-';
+                        const pct = parseFloat(value);
+                        let color = '';
+                        if (pct < 0) color = '#a00211';
+                        else if (pct >= 0 && pct < 50) color = '#ffc107';
+                        else if (pct >= 50 && pct < 100) color = '#3591dc';
+                        else if (pct >= 100 && pct <= 150) color = '#28a745';
+                        else color = '#e83e8c';
+                        return `<span style="color: ${color}; font-weight: 600;">${Math.round(pct)}%</span>`;
+                    }
+                },
+                {
+                    title: "Amz PFT",
+                    field: "amz_pft",
+                    hozAlign: "center",
+                    width: 80,
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const value = cell.getValue();
+                        if (value == null || value === '') return '-';
+                        const pct = parseFloat(value);
+                        let color = '';
+                        if (pct < 10) color = '#a00211';
+                        else if (pct >= 10 && pct < 20) color = '#ffc107';
+                        else if (pct >= 20 && pct < 50) color = '#28a745';
+                        else color = '#e83e8c';
+                        return `<span style="color: ${color}; font-weight: 600;">${pct.toFixed(1)}%</span>`;
+                    }
+                },
+                {
+                    title: "Amz ROI",
+                    field: "amz_roi",
+                    hozAlign: "center",
+                    width: 80,
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const value = cell.getValue();
+                        if (value == null || value === '') return '-';
+                        const pct = parseFloat(value);
+                        let color = '';
+                        if (pct < 50) color = '#a00211';
+                        else if (pct >= 50 && pct < 100) color = '#ffc107';
+                        else if (pct >= 100 && pct <= 150) color = '#28a745';
+                        else color = '#e83e8c';
+                        return `<span style="color: ${color}; font-weight: 600;">${pct.toFixed(0)}%</span>`;
+                    }
+                },
+                {
                     title: "Dil",
                     field: "dil_percent",
                     hozAlign: "center",
@@ -1364,6 +1520,50 @@
             ]
         });
 
+        // Amz SPRICE edited in table: save and recalculate SGPFT, SPFT, SROI
+        table.on('cellEdited', function(cell) {
+            if (cell.getField() !== 'amazon_sprice') return;
+            const row = cell.getRow();
+            const rowData = row.getData();
+            if (rowData.is_parent_summary === true) return;
+            const sku = rowData.sku;
+            const sprice = parseFloat(cell.getValue()) || 0;
+            if (sprice <= 0) return;
+            const lp = parseFloat(rowData.amazon_lp) || 0;
+            const ship = parseFloat(rowData.amazon_ship) || 0;
+            const ad = parseFloat(rowData.amazon_ad) || 0;
+            const margin = parseFloat(rowData.amazon_margin) || 0.80;
+            const l30 = parseInt(rowData.amazon_l30, 10) || 0;
+            const sgpft = sprice > 0 ? ((sprice * margin - ship - lp) / sprice) * 100 : 0;
+            const spft = l30 === 0 ? sgpft : (sgpft - ad);
+            const sroi = lp > 0 ? ((sprice * margin - lp - ship) / lp) * 100 : 0;
+            $.ajax({
+                url: '/cvr-master-save-suggested-data',
+                method: 'POST',
+                data: {
+                    sku: sku,
+                    marketplace: 'amazon',
+                    sprice: sprice,
+                    sgpft: Math.round(sgpft * 100) / 100,
+                    spft: Math.round(spft * 100) / 100,
+                    sroi: Math.round(sroi * 100) / 100,
+                    amazon_margin: margin,
+                    _token: '{{ csrf_token() }}'
+                },
+                success: function() {
+                    row.update({
+                        amazon_sgpft: Math.round(sgpft * 100) / 100,
+                        amazon_spft: Math.round(spft * 100) / 100,
+                        amazon_sroi: Math.round(sroi * 100) / 100
+                    });
+                    showToast('Amz SPRICE saved', 'success');
+                },
+                error: function() {
+                    showToast('Failed to save Amz SPRICE', 'error');
+                }
+            });
+        });
+
         // ==================== TABLE EVENT HANDLERS ====================
         
         $('#sku-search').on('keyup', function() {
@@ -1381,7 +1581,23 @@
 
         // ==================== SPRICE EDITING ====================
         
-        // Real-time calculation when SPRICE changes
+        // Helper: same color logic as modal table for SGPFT%, SPFT%, SROI%
+        function getSgpftSpftColor(pct) {
+            if (pct < 0) return '#a00211';
+            if (pct >= 0 && pct < 10) return '#ffc107';
+            if (pct >= 10 && pct < 20) return '#3591dc';
+            if (pct >= 20 && pct <= 40) return '#28a745';
+            return '#e83e8c';
+        }
+        function getSroiColor(pct) {
+            if (pct < 0) return '#a00211';
+            if (pct >= 0 && pct < 50) return '#ffc107';
+            if (pct >= 50 && pct < 100) return '#3591dc';
+            if (pct >= 100 && pct <= 150) return '#28a745';
+            return '#e83e8c';
+        }
+
+        // Real-time calculation when SPRICE changes (OVL30 modal – same formula as main table)
         $(document).on('input', '.editable-sprice', function() {
             const input = $(this);
             const row = input.closest('tr');
@@ -1392,14 +1608,22 @@
             const margin = parseFloat(row.attr('data-margin')) || 0.80;
             const l30 = parseFloat(row.attr('data-l30')) || 0;
             
+            const $sgpftSpan = row.find('.calculated-sgpft');
+            const $spftSpan = row.find('.calculated-spft');
+            const $roiSpan = row.find('.calculated-sroi');
+            
             if (sprice > 0) {
                 const sgpft = ((sprice * margin - ship - lp) / sprice) * 100;
                 const spft = l30 == 0 ? sgpft : (sgpft - ad);
                 const sroi = lp > 0 ? ((sprice * margin - lp - ship) / lp) * 100 : 0;
                 
-                row.find('.calculated-sgpft').text(Math.round(sgpft) + '%');
-                row.find('.calculated-spft').text(Math.round(spft) + '%');
-                row.find('.calculated-sroi').text(Math.round(sroi) + '%');
+                $sgpftSpan.css('color', getSgpftSpftColor(sgpft)).text(Math.round(sgpft) + '%');
+                $spftSpan.css('color', getSgpftSpftColor(spft)).text(Math.round(spft) + '%');
+                $roiSpan.css('color', getSroiColor(sroi)).text(Math.round(sroi) + '%');
+            } else {
+                $sgpftSpan.css('color', '#6c757d').text('-');
+                $spftSpan.css('color', '#6c757d').text('-');
+                $roiSpan.css('color', '#6c757d').text('-');
             }
         });
         
@@ -1428,7 +1652,16 @@
             $.ajax({
                 url: '/cvr-master-save-suggested-data',
                 method: 'POST',
-                data: { sku: sku, marketplace: marketplace, sprice: sprice, sgpft: sgpft, spft: spft, sroi: sroi, _token: '{{ csrf_token() }}' },
+                data: {
+                    sku: sku,
+                    marketplace: marketplace,
+                    sprice: sprice,
+                    sgpft: sgpft,
+                    spft: spft,
+                    sroi: sroi,
+                    amazon_margin: margin,
+                    _token: '{{ csrf_token() }}'
+                },
                 success: function() {
                     input.css('border-color', '#28a745');
                     setTimeout(() => input.css('border-color', ''), 1000);
@@ -1675,8 +1908,9 @@
             }
             
             if (onlyAmazon) {
-                html += '<div class="table-responsive"><table class="table table-hover table-bordered table-sm"><thead class="table-light"><tr><th>#</th><th>SKU</th><th>Amz</th><th>Action</th></tr></thead><tbody>';
+                html += '<div class="table-responsive"><table class="table table-hover table-bordered table-sm"><thead class="table-light"><tr><th>#</th><th>SKU</th><th>ASIN</th><th>Amz</th><th>Title</th><th>Rating</th><th>Reviews</th><th>Old Price</th><th>Delivery</th><th>Action</th></tr></thead><tbody>';
                 amzList.forEach(function(amz, i) {
+                    const sn = 'L' + (i + 1);
                     const amzPrice = parseFloat(amz.price) || 0;
                     const amzLink = amz.product_link || amz.link || '';
                     const amzImage = amz.image || '';
@@ -1685,13 +1919,21 @@
                     const amzCell = amzPrice > 0
                         ? `<div class="d-flex align-items-center">${amzImgHtml}<span>${amzLowestFlag ? '<i class="fa fa-trophy text-success me-1"></i>' : ''}<span style="font-weight: 600;">$${amzPrice.toFixed(2)}</span>${amzLink ? ` <a href="${amzLink.replace(/"/g, '&quot;')}" target="_blank" class="text-primary ms-1" title="Open product"><i class="fa fa-external-link"></i></a>` : ''}</span></div>`
                         : `<div class="d-flex align-items-center">${amzImgHtml}<span class="text-muted">-</span></div>`;
+                    const title = (amz.product_title || '').substring(0, 40) + ((amz.product_title || '').length > 40 ? '...' : '');
+                    const ratingVal = amz.rating != null ? parseFloat(amz.rating) : null;
+                    const ratingCell = ratingVal != null ? '<span><i class="fa fa-star text-warning"></i> ' + ratingVal.toFixed(1) + '</span>' : '<span class="text-muted">-</span>';
+                    const reviewsCell = amz.reviews != null ? (parseInt(amz.reviews) || 0).toLocaleString() : '<span class="text-muted">-</span>';
+                    const oldPrice = amz.extracted_old_price != null ? parseFloat(amz.extracted_old_price) : null;
+                    const oldPriceCell = oldPrice != null && oldPrice > 0 ? '$' + oldPrice.toFixed(2) : '<span class="text-muted">-</span>';
+                    const deliveryCell = (amz.delivery || '').substring(0, 50) + ((amz.delivery || '').length > 50 ? '...' : '') || '<span class="text-muted">-</span>';
                     const rowClass = amzLowestFlag ? 'table-success' : '';
                     const delBtn = '<button type="button" class="btn btn-sm btn-outline-danger delete-lmp-row-btn" data-id="' + amz.id + '" data-marketplace="amazon" data-sku="' + (sku || '').replace(/"/g, '&quot;') + '" data-price="' + amzPrice + '" title="Delete this competitor"><i class="fa fa-trash"></i></button>';
-                    html += `<tr class="${rowClass}"><td>${i+1}</td><td>${sku}</td><td>${amzCell}</td><td>${delBtn}</td></tr>`;
+                    html += `<tr class="${rowClass}"><td>${sn}</td><td>${sku}</td><td>${amz.asin || '-'}</td><td>${amzCell}</td><td title="${(amz.product_title || '').replace(/"/g, '&quot;')}">${title || '-'}</td><td>${ratingCell}</td><td>${reviewsCell}</td><td>${oldPriceCell}</td><td title="${(amz.delivery || '').replace(/"/g, '&quot;')}">${deliveryCell}</td><td>${delBtn}</td></tr>`;
                 });
             } else if (onlyEbay) {
                 html += '<div class="table-responsive"><table class="table table-hover table-bordered table-sm"><thead class="table-light"><tr><th>#</th><th>SKU</th><th>eBay</th><th>Action</th></tr></thead><tbody>';
                 ebayList.forEach(function(ebay, i) {
+                    const sn = 'L' + (i + 1);
                     const ebayPrice = parseFloat(ebay.total_price || ebay.price) || 0;
                     const ebayLink = ebay.link || ebay.product_link || '';
                     const ebayImage = ebay.image || '';
@@ -1702,11 +1944,12 @@
                         : `<div class="d-flex align-items-center">${ebayImgHtml}<span class="text-muted">-</span></div>`;
                     const rowClass = ebayLowestFlag ? 'table-success' : '';
                     const delBtn = '<button type="button" class="btn btn-sm btn-outline-danger delete-lmp-row-btn" data-id="' + ebay.id + '" data-marketplace="ebay" data-sku="' + (sku || '').replace(/"/g, '&quot;') + '" data-price="' + ebayPrice + '" title="Delete this competitor"><i class="fa fa-trash"></i></button>';
-                    html += `<tr class="${rowClass}"><td>${i+1}</td><td>${sku}</td><td>${ebayCell}</td><td>${delBtn}</td></tr>`;
+                    html += `<tr class="${rowClass}"><td>${sn}</td><td>${sku}</td><td>${ebayCell}</td><td>${delBtn}</td></tr>`;
                 });
             } else {
-                html += '<div class="table-responsive"><table class="table table-hover table-bordered table-sm"><thead class="table-light"><tr><th>#</th><th>SKU</th><th>Amz</th><th>eBay</th><th>Action</th></tr></thead><tbody>';
+                html += '<div class="table-responsive"><table class="table table-hover table-bordered table-sm"><thead class="table-light"><tr><th>#</th><th>SKU</th><th>Amz</th><th>Rating</th><th>Reviews</th><th>Old Price</th><th>Delivery</th><th>eBay</th><th>Action</th></tr></thead><tbody>';
                 for (let i = 0; i < maxRows; i++) {
+                    const sn = 'L' + (i + 1);
                     const amz = amzList[i];
                     const ebay = ebayList[i];
                     const amzPrice = amz ? (parseFloat(amz.price) || 0) : null;
@@ -1725,6 +1968,12 @@
                     const ebayCell = ebayPrice != null && ebayPrice > 0
                         ? `<div class="d-flex align-items-center">${ebayImgHtml}<span>${ebayLowestFlag ? '<i class="fa fa-trophy text-success me-1"></i>' : ''}<span style="font-weight: 600;">$${ebayPrice.toFixed(2)}</span>${ebayLink ? ` <a href="${ebayLink.replace(/"/g, '&quot;')}" target="_blank" class="text-primary ms-1" title="Open product"><i class="fa fa-external-link"></i></a>` : ''}</span></div>`
                         : ebay ? `<div class="d-flex align-items-center">${ebayImgHtml}<span class="text-muted">-</span></div>` : '<span class="text-muted">-</span>';
+                    const ratingVal = amz && amz.rating != null ? parseFloat(amz.rating) : null;
+                    const ratingCell = ratingVal != null ? '<span><i class="fa fa-star text-warning"></i> ' + ratingVal.toFixed(1) + '</span>' : '<span class="text-muted">-</span>';
+                    const reviewsCell = amz && amz.reviews != null ? (parseInt(amz.reviews) || 0).toLocaleString() : '<span class="text-muted">-</span>';
+                    const oldPrice = amz && amz.extracted_old_price != null ? parseFloat(amz.extracted_old_price) : null;
+                    const oldPriceCell = oldPrice != null && oldPrice > 0 ? '$' + oldPrice.toFixed(2) : '<span class="text-muted">-</span>';
+                    const deliveryCell = (amz && amz.delivery) ? ((amz.delivery + '').substring(0, 35) + ((amz.delivery + '').length > 35 ? '...' : '')) : '<span class="text-muted">-</span>';
                     const rowClass = (amzLowestFlag || ebayLowestFlag) ? 'table-success' : '';
                     let actionCell = '';
                     if (amz && amz.id) {
@@ -1734,7 +1983,7 @@
                         actionCell += '<button type="button" class="btn btn-sm btn-outline-danger delete-lmp-row-btn" data-id="' + ebay.id + '" data-marketplace="ebay" data-sku="' + (sku || '').replace(/"/g, '&quot;') + '" data-price="' + (ebayPrice || 0) + '" title="Delete eBay"><i class="fa fa-trash"></i></button>';
                     }
                     if (!actionCell) actionCell = '<span class="text-muted">-</span>';
-                    html += `<tr class="${rowClass}"><td>${i+1}</td><td>${sku}</td><td>${amzCell}</td><td>${ebayCell}</td><td>${actionCell}</td></tr>`;
+                    html += `<tr class="${rowClass}"><td>${sn}</td><td>${sku}</td><td>${amzCell}</td><td>${ratingCell}</td><td>${reviewsCell}</td><td>${oldPriceCell}</td><td title="${(amz && amz.delivery) ? (amz.delivery + '').replace(/"/g, '&quot;') : ''}">${deliveryCell}</td><td>${ebayCell}</td><td>${actionCell}</td></tr>`;
                 }
             }
             

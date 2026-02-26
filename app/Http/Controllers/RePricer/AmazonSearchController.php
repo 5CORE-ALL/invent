@@ -7,6 +7,8 @@ use App\Models\AmazonCompetitorAsin;
 use App\Models\AmazonSkuCompetitor;
 use App\Models\AmazonDatasheet;
 use App\Models\ProductMaster;
+use App\Models\SerpApiRawResponse;
+use App\Models\AmazonSearchRawResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Validator;
@@ -57,12 +59,37 @@ class AmazonSearchController extends Controller
         try {
             // Fetch up to 5 pages of results
             for ($page = 1; $page <= $maxPages; $page++) {
-                $response = Http::timeout(30)->get('https://serpapi.com/search', [
+                $requestParams = [
                     'engine' => 'amazon',
                     'amazon_domain' => 'amazon.com',
-                    'k' => $searchQuery,  // Use 'k' instead of 'q' for Amazon keyword search
+                    'k' => $searchQuery,
                     'page' => $page,
                     'api_key' => $serpApiKey,
+                ];
+                $response = Http::timeout(30)->get('https://serpapi.com/search', $requestParams);
+
+                // Store one row per page to avoid exceeding MySQL max_allowed_packet
+                AmazonSearchRawResponse::create([
+                    'search_query' => $searchQuery,
+                    'marketplace' => $marketplace,
+                    'page' => $page,
+                    'raw_response' => $response->body(),
+                    'pages_count' => $maxPages,
+                ]);
+
+                // Store raw response in serp_api_raw_responses (every request, success or failure)
+                $paramsForStorage = $requestParams;
+                if (isset($paramsForStorage['api_key'])) {
+                    $paramsForStorage['api_key'] = '(stored)';
+                }
+                SerpApiRawResponse::create([
+                    'search_query' => $searchQuery,
+                    'page' => $page,
+                    'marketplace' => $marketplace,
+                    'request_params' => $paramsForStorage,
+                    'http_status' => $response->status(),
+                    'raw_body' => $response->body(),
+                    'success' => $response->successful(),
                 ]);
 
                 if (!$response->successful()) {
@@ -103,15 +130,10 @@ class AmazonSearchController extends Controller
 
                     $collectedAsins[] = $asin;
 
-                    // Check if ASIN already exists for this search query
+                    // Check if ASIN already exists for this search query (we'll update it to backfill rating, reviews, extracted_old_price, delivery)
                     $existing = AmazonCompetitorAsin::where('search_query', $searchQuery)
                         ->where('asin', $asin)
                         ->first();
-
-                    // Skip if already exists
-                    if ($existing) {
-                        continue;
-                    }
 
                     // Extract price
                     $price = null;
@@ -129,24 +151,52 @@ class AmazonSearchController extends Controller
                     // Extract rating
                     $rating = $result['rating'] ?? null;
 
-                    // Extract reviews count
-                    $reviews = $result['reviews_count'] ?? $result['ratings_total'] ?? null;
+                    // Extract reviews count (SerpApi can use reviews, reviews_count, or ratings_total)
+                    $reviews = $result['reviews'] ?? $result['reviews_count'] ?? $result['ratings_total'] ?? null;
+                    if ($reviews !== null) {
+                        $reviews = is_numeric($reviews) ? (int) $reviews : null;
+                    }
+
+                    // Extract extracted_old_price (try multiple keys) and delivery
+                    $extractedOldPrice = null;
+                    if (isset($result['extracted_old_price']) && is_numeric($result['extracted_old_price'])) {
+                        $extractedOldPrice = (float) $result['extracted_old_price'];
+                    } elseif (isset($result['old_price']) && is_string($result['old_price'])) {
+                        preg_match('/[\d,.]+/', $result['old_price'], $m);
+                        if (!empty($m)) {
+                            $extractedOldPrice = (float) str_replace(',', '', $m[0]);
+                        }
+                    }
+                    $delivery = null;
+                    if (isset($result['delivery']) && is_array($result['delivery'])) {
+                        $delivery = array_values(array_filter(array_map('strval', $result['delivery'])));
+                    }
 
                     // Calculate position (page-based)
                     $position = (($page - 1) * 20) + ($index + 1);
 
-                    // Store in database
-                    AmazonCompetitorAsin::create([
+                    $title = $result['title'] ?? null;
+                    $payload = [
                         'marketplace' => $marketplace,
                         'search_query' => $searchQuery,
                         'asin' => $asin,
-                        'title' => $result['title'] ?? null,
+                        'title' => $title,
+                        'seller_name' => $this->extractSellerFromTitle($title),
                         'price' => $price,
                         'rating' => $rating,
                         'reviews' => $reviews,
                         'position' => $position,
                         'image' => $result['thumbnail'] ?? $result['image'] ?? null,
-                    ]);
+                        'extracted_old_price' => $extractedOldPrice,
+                        'delivery' => $delivery ?: null,
+                    ];
+
+                    if ($existing) {
+                        // Update existing row so rating, reviews, extracted_old_price, delivery get backfilled
+                        $existing->update($payload);
+                    } else {
+                        AmazonCompetitorAsin::create($payload);
+                    }
                 }
             }
 
@@ -350,6 +400,38 @@ class AmazonSearchController extends Controller
     }
 
     /**
+     * Extract seller name from product title (e.g. "Product by Seller", "Product - Seller", "Product (Seller)")
+     *
+     * @param string|null $title
+     * @return string|null
+     */
+    private function extractSellerFromTitle(?string $title): ?string
+    {
+        if ($title === null || trim($title) === '') {
+            return null;
+        }
+        $title = trim($title);
+        $patterns = [
+            '/\s+by\s+([^\-|(]+)$/i',           // "Product by Seller Name" at end
+            '/\s+-\s+([^\-|(]+)$/u',             // "Product - Seller Name" at end
+            '/\s*[|]\s*([^\-|(]+)$/u',           // "Product | Seller Name" at end
+            '/\s*\(\s*([^)]+)\)\s*$/u',          // "Product (Seller Name)" at end
+            '/Sold\s+by\s+([^\.\-|(]+)/i',       // "Sold by Seller Name"
+            '/from\s+([^\.\-|(]+?)(?:\s*[\.\-|]|$)/i', // "from Seller Name"
+        ];
+        foreach ($patterns as $pattern) {
+            if (preg_match($pattern, $title, $m)) {
+                $seller = trim($m[1]);
+                $seller = preg_replace('/\s+/', ' ', $seller);
+                if (strlen($seller) >= 2 && strlen($seller) <= 255 && !preg_match('/^\d+$/', $seller)) {
+                    return $seller;
+                }
+            }
+        }
+        return null;
+    }
+
+    /**
      * Get filter options for a search query
      *
      * @param Request $request
@@ -394,6 +476,58 @@ class AmazonSearchController extends Controller
                     'max' => $ratings->max() ?? 5,
                 ],
             ]
+        ]);
+    }
+
+    /**
+     * Get raw API response for a search (so you can see structure and decide what to save)
+     *
+     * @param Request $request
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function getRawResponse(Request $request)
+    {
+        $searchQuery = $request->input('query');
+        $page = (int) $request->input('page', 1);
+
+        if (!$searchQuery) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Query parameter is required'
+            ], 422);
+        }
+
+        $record = AmazonSearchRawResponse::where('search_query', $searchQuery)
+            ->when($page > 0, fn ($q) => $q->where('page', $page))
+            ->orderBy('page', 'asc')
+            ->first();
+
+        if (!$record) {
+            return response()->json([
+                'success' => false,
+                'message' => 'No saved raw response found for this search. Run a search first, then view raw response.'
+            ], 404);
+        }
+
+        $raw = $record->raw_response;
+        $parsed = null;
+        if (is_string($raw)) {
+            $decoded = json_decode($raw, true);
+            $parsed = $decoded !== null ? $decoded : $raw;
+        } else {
+            $parsed = $raw;
+        }
+
+        return response()->json([
+            'success' => true,
+            'meta' => [
+                'search_query' => $record->search_query,
+                'marketplace' => $record->marketplace,
+                'page' => $record->page,
+                'pages_count' => $record->pages_count,
+                'created_at' => $record->created_at?->toDateTimeString(),
+            ],
+            'response' => $parsed,
         ]);
     }
 
@@ -448,6 +582,11 @@ class AmazonSearchController extends Controller
             'competitors.*.product_link' => 'nullable|string',
             'competitors.*.image' => 'nullable|string',
             'competitors.*.price' => 'nullable|numeric',
+            'competitors.*.rating' => 'nullable|numeric',
+            'competitors.*.reviews' => 'nullable|integer',
+            'competitors.*.extracted_old_price' => 'nullable|numeric',
+            'competitors.*.delivery' => 'nullable|array',
+            'competitors.*.delivery.*' => 'nullable|string',
         ]);
 
         if ($validator->fails()) {
@@ -481,6 +620,13 @@ class AmazonSearchController extends Controller
                     continue;
                 }
 
+                $delivery = $competitor['delivery'] ?? null;
+                if (is_string($delivery)) {
+                    $decoded = json_decode($delivery, true);
+                    $delivery = is_array($decoded) ? $decoded : null;
+                }
+
+                $productTitle = $competitor['product_title'] ?? null;
                 $result = AmazonSkuCompetitor::updateOrCreate(
                     [
                         'sku' => $sku,
@@ -488,10 +634,15 @@ class AmazonSearchController extends Controller
                     ],
                     [
                         'marketplace' => $competitor['marketplace'] ?? 'amazon',
-                        'product_title' => $competitor['product_title'] ?? null,
+                        'product_title' => $productTitle,
+                        'seller_name' => $this->extractSellerFromTitle($productTitle),
                         'product_link' => $competitor['product_link'] ?? null,
                         'image' => $competitor['image'] ?? null,
                         'price' => $price,
+                        'rating' => isset($competitor['rating']) ? (float) $competitor['rating'] : null,
+                        'reviews' => isset($competitor['reviews']) ? (int) $competitor['reviews'] : null,
+                        'extracted_old_price' => isset($competitor['extracted_old_price']) ? (float) $competitor['extracted_old_price'] : null,
+                        'delivery' => $delivery,
                     ]
                 );
 

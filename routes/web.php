@@ -915,6 +915,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/cvr-master-remark-history/{sku}', [CvrMasterController::class, 'getRemarkHistory'])->name('cvr.master.remark.history');
     Route::get('/cvr-master-remark-latest/{sku}', [CvrMasterController::class, 'getLatestRemark'])->name('cvr.master.remark.latest');
     Route::post('/cvr-master-remark-toggle/{id}', [CvrMasterController::class, 'toggleRemarkSolved'])->name('cvr.master.remark.toggle');
+    Route::get('/cvr-master-amazon-sprice-table', [CvrMasterController::class, 'getAmazonSpriceTableData'])->name('cvr.master.amazon.sprice.table');
     Route::post('/cvr-master-save-suggested-data', [CvrMasterController::class, 'saveSuggestedData'])->name('cvr.master.save.suggested');
     Route::post('/cvr-master-push-price', [CvrMasterController::class, 'pushPriceToAmazon'])->name('cvr.master.push.price');
     Route::post('/cvr-master-bulk-change-price', [CvrMasterController::class, 'bulkChangePrice'])->name('cvr.master.bulk.change.price');
@@ -3004,6 +3005,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/history', [\App\Http\Controllers\RePricer\AmazonSearchController::class, 'getSearchHistory']);
         Route::get('/results', [\App\Http\Controllers\RePricer\AmazonSearchController::class, 'getResults']);
         Route::get('/filter-options', [\App\Http\Controllers\RePricer\AmazonSearchController::class, 'getFilterOptions']);
+        Route::get('/raw-response', [\App\Http\Controllers\RePricer\AmazonSearchController::class, 'getRawResponse']);
         Route::get('/skus', [\App\Http\Controllers\RePricer\AmazonSearchController::class, 'getSkus']);
         Route::post('/store-competitors', [\App\Http\Controllers\RePricer\AmazonSearchController::class, 'storeCompetitors']);
     });
