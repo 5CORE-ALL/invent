@@ -149,6 +149,33 @@
         .red-bg {
             color: #ff2727 !important;
         }
+
+        /* Row-level trend dot (KW ACOS / KW AD CVR) */
+        .trend-dot {
+            width: 10px !important;
+            height: 10px !important;
+            min-width: 10px !important;
+            min-height: 10px !important;
+            background: #b8860b !important;
+            border-radius: 50% !important;
+            display: inline-block !important;
+            margin-right: 6px !important;
+            flex-shrink: 0;
+            cursor: pointer;
+            transition: transform 0.15s ease;
+        }
+        .trend-dot:hover {
+            transform: scale(1.2);
+            background-color: #9c6f0c !important;
+        }
+        .kw-cell-wrapper {
+            display: flex !important;
+            align-items: center !important;
+            gap: 6px;
+        }
+        .tabulator-cell .kw-cell-wrapper {
+            overflow: visible;
+        }
     </style>
 @endsection
 
@@ -737,6 +764,50 @@
                     <div id="amzChartNoData" class="text-center py-3" style="display: none;">
                         <i class="fas fa-exclamation-circle text-warning fa-2x mb-2"></i>
                         <p class="text-muted small mb-0">No historical data available for this metric.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Row-level trend graph modal (KW/PT/HL ACOS & CVR via ad-breakdown-chart-data) -->
+    <div class="modal fade" id="trendGraphModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg shadow-none" style="max-width: 90vw; width: 90vw;">
+            <div class="modal-content" style="border-radius: 8px; overflow: hidden;">
+                <div class="modal-header bg-info text-white py-1 px-3">
+                    <h6 class="modal-title mb-0" style="font-size: 13px;">
+                        <i class="fas fa-chart-line me-1"></i>
+                        <span id="trendGraphModalTitle">30 Day Trend</span>
+                    </h6>
+                    <button type="button" class="btn-close btn-close-white" style="font-size: 10px;" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body p-3">
+                    <div id="trendGraphLoading" class="text-center py-4" style="display: none;">
+                        <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+                        <p class="mt-1 text-muted small mb-0">Loading chart...</p>
+                    </div>
+                    <div id="trendGraphNoData" class="text-center py-4" style="display: none;">
+                        <i class="fas fa-exclamation-circle text-warning fa-2x mb-2"></i>
+                        <p class="text-muted small mb-0">No trend data available.</p>
+                    </div>
+                    <div id="trendGraphContainer" style="height: 20vh; display: none; align-items: stretch;">
+                        <div style="flex: 1; min-width: 0; position: relative;">
+                            <canvas id="trendGraphCanvas"></canvas>
+                        </div>
+                        <div id="trendChartRefPanel" style="width: 100px; display: flex; flex-direction: column; justify-content: center; gap: 8px; padding: 6px 8px; border-left: 1px solid #e9ecef; background: #f8f9fa; border-radius: 0 4px 4px 0;">
+                            <div style="text-align: center;">
+                                <div style="font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #dc3545; margin-bottom: 1px;">Highest</div>
+                                <div id="trendChartHighest" style="font-size: 13px; font-weight: 700; color: #dc3545;">-</div>
+                            </div>
+                            <div style="text-align: center; border-top: 1px dashed #adb5bd; border-bottom: 1px dashed #adb5bd; padding: 4px 0;">
+                                <div style="font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #6c757d; margin-bottom: 1px;">Median</div>
+                                <div id="trendChartMedian" style="font-size: 13px; font-weight: 700; color: #6c757d;">-</div>
+                            </div>
+                            <div style="text-align: center;">
+                                <div style="font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #198754; margin-bottom: 1px;">Lowest</div>
+                                <div id="trendChartLowest" style="font-size: 13px; font-weight: 700; color: #198754;">-</div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -2899,26 +2970,21 @@
                     {
                         title: "KW ACOS",
                         field: "acos",
-                        hozAlign: "right",
+                        hozAlign: "left",
                         visible: false,
                         minWidth: 72,
                         formatter: function(cell) {
+                            if (typeof console !== 'undefined' && console.log) console.log('KW ACOS formatter running');
                             var row = cell.getRow().getData();
+                            var keywordId = row.keyword_id != null ? row.keyword_id : (row.id != null ? row.id : (row.sku || ''));
                             var spend30 = parseFloat(row.l30_spend || 0);
                             var sales30 = parseFloat(row.l30_sales || 0);
-                            var acosRaw = row.acos; 
+                            var acosRaw = row.acos;
                             var acos = parseFloat(acosRaw);
-                            if (isNaN(acos)) {
-                                acos = 0;
-                            }
-                            // ACOS must be 0 when Spend L30 and Sales L30 are both 0
-                            if (spend30 === 0 && sales30 === 0) {
-                                acos = 0;
-                            }
+                            if (isNaN(acos)) acos = 0;
+                            if (spend30 === 0 && sales30 === 0) acos = 0;
                             var td = cell.getElement();
                             td.classList.remove('green-bg', 'pink-bg', 'red-bg');
-                            
-                            // Build tooltip with L30 and L7 stats (same as KW page)
                             var clicks30 = parseInt(row.l30_clicks || 0).toLocaleString();
                             var spend30Display = parseFloat(row.l30_spend || 0).toFixed(0);
                             var sales30Display = parseFloat(row.l30_sales || 0).toFixed(0);
@@ -2930,21 +2996,23 @@
                             var tooltipText = "L30: Clicks " + clicks30 + ", Spend " + spend30Display + ", Sales " + sales30Display + ", Ad Sold " + adSold30 +
                                 "\nL7: Clicks " + clicks7 + ", Spend " + spend7 + ", Sales " + sales7 + ", Ad Sold " + adSold7 +
                                 "\n(Click info to show/hide Clicks L7, Spend L7, Sales L7, Ad Sold L7 and L30 columns)";
-                            
                             var acosDisplay;
                             if (acos === 0) {
-                                acosDisplay = "0%"; 
+                                acosDisplay = "0%";
                             } else if (acos < 7) {
                                 td.classList.add('pink-bg');
                                 acosDisplay = acos.toFixed(0) + "%";
                             } else if (acos >= 7 && acos <= 14) {
                                 td.classList.add('green-bg');
                                 acosDisplay = acos.toFixed(0) + "%";
-                            } else if (acos > 14) {
+                            } else {
                                 td.classList.add('red-bg');
                                 acosDisplay = acos.toFixed(0) + "%";
                             }
-                            return `<div class="text-center">${acosDisplay}<i class="fas fa-info-circle ms-1 info-icon-toggle" style="cursor: pointer; color: #0d6efd;" title="${tooltipText}"></i></div>`;
+                            var infoIcon = '<i class="fas fa-info-circle ms-1 info-icon-toggle" style="cursor: pointer; color: #0d6efd;" title="' + tooltipText + '"></i>';
+                            return '<div class="kw-cell-wrapper">' +
+                                '<span class="trend-dot" data-metric="kw_acos" data-keyword-id="' + keywordId + '" data-sku="' + (row.sku || '') + '" title="View 30 Day Trend"></span>' +
+                                '<div class="text-center">' + acosDisplay + infoIcon + '</div></div>';
                         },
                         sorter: "number"
                     },
@@ -3079,12 +3147,18 @@
                     {
                         title: "KW AD CVR",
                         field: "ad_cvr",
-                        hozAlign: "right",
+                        hozAlign: "left",
                         visible: false,
                         minWidth: 72,
                         formatter: function(cell) {
-                            var value = parseFloat(cell.getValue() || 0);
-                            return value.toFixed(1) + "%";
+                            if (typeof console !== 'undefined' && console.log) console.log('KW ADCVR formatter running');
+                            var row = cell.getRow().getData();
+                            var keywordId = row.keyword_id != null ? row.keyword_id : (row.id != null ? row.id : (row.sku || ''));
+                            var value = cell.getValue() != null && cell.getValue() !== '' ? parseFloat(cell.getValue()) : 0;
+                            var displayVal = value === 0 ? '0.0%' : value.toFixed(1) + '%';
+                            return '<div class="kw-cell-wrapper">' +
+                                '<span class="trend-dot" data-metric="kw_ad_cbr" data-keyword-id="' + keywordId + '" data-sku="' + (row.sku || '') + '" title="View 30 Day Trend"></span>' +
+                                '<span class="kw-value">' + displayVal + '</span></div>';
                         },
                         sorter: "number",
                         width: 90
@@ -3094,19 +3168,17 @@
                     {
                         title: "PT ACOS",
                         field: "pt_acos",
-                        hozAlign: "right",
+                        hozAlign: "left",
                         visible: false,
                         minWidth: 72,
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
+                            var keywordId = row.keyword_id != null ? row.keyword_id : (row.id != null ? row.id : (row.sku || ''));
                             var spend30 = parseFloat(row.pt_spend_L30 || 0);
                             var sales30 = parseFloat(row.pt_sales_L30 || 0);
                             var acos = sales30 > 0 ? (spend30 / sales30) * 100 : 0;
-                            
                             var td = cell.getElement();
                             td.classList.remove('green-bg', 'pink-bg', 'red-bg');
-                            
-                            // Build tooltip with PT L30 and L7 stats
                             var clicks30 = parseInt(row.pt_clicks_L30 || 0).toLocaleString();
                             var spend30Display = parseFloat(row.pt_spend_L30 || 0).toFixed(0);
                             var sales30Display = parseFloat(row.pt_sales_L30 || 0).toFixed(0);
@@ -3118,21 +3190,15 @@
                             var tooltipText = "L30: Clicks " + clicks30 + ", Spend " + spend30Display + ", Sales " + sales30Display + ", Ad Sold " + adSold30 +
                                 "\nL7: Clicks " + clicks7 + ", Spend " + spend7 + ", Sales " + sales7 + ", Ad Sold " + adSold7 +
                                 "\n(Click info to show/hide PT detail columns)";
-                            
                             var acosDisplay;
-                            if (acos === 0) {
-                                acosDisplay = "0%"; 
-                            } else if (acos < 7) {
-                                td.classList.add('pink-bg');
-                                acosDisplay = acos.toFixed(0) + "%";
-                            } else if (acos >= 7 && acos <= 14) {
-                                td.classList.add('green-bg');
-                                acosDisplay = acos.toFixed(0) + "%";
-                            } else if (acos > 14) {
-                                td.classList.add('red-bg');
-                                acosDisplay = acos.toFixed(0) + "%";
-                            }
-                            return `<div class="text-center">${acosDisplay}<i class="fas fa-info-circle ms-1 pt-info-icon-toggle" style="cursor: pointer; color: #0d6efd;" title="${tooltipText}"></i></div>`;
+                            if (acos === 0) acosDisplay = "0%";
+                            else if (acos < 7) { td.classList.add('pink-bg'); acosDisplay = acos.toFixed(0) + "%"; }
+                            else if (acos >= 7 && acos <= 14) { td.classList.add('green-bg'); acosDisplay = acos.toFixed(0) + "%"; }
+                            else { td.classList.add('red-bg'); acosDisplay = acos.toFixed(0) + "%"; }
+                            var infoIcon = '<i class="fas fa-info-circle ms-1 pt-info-icon-toggle" style="cursor: pointer; color: #0d6efd;" title="' + tooltipText + '"></i>';
+                            return '<div class="kw-cell-wrapper">' +
+                                '<span class="trend-dot" data-metric="pt_acos" data-keyword-id="' + keywordId + '" data-sku="' + (row.sku || '') + '" title="View 30 Day Trend"></span>' +
+                                '<div class="text-center">' + acosDisplay + infoIcon + '</div></div>';
                         },
                         sorter: function(a, b, aRow, bRow, column, dir, sorterParams) {
                             var aData = aRow.getData();
@@ -3275,15 +3341,19 @@
                     {
                         title: "PT AD CVR",
                         field: "pt_ad_cvr",
-                        hozAlign: "right",
+                        hozAlign: "left",
                         visible: false,
                         minWidth: 72,
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
+                            var keywordId = row.keyword_id != null ? row.keyword_id : (row.id != null ? row.id : (row.sku || ''));
                             var hasCampaign = row.pt_campaignName || row.pt_spend_L30 > 0;
                             if (!hasCampaign) return '-';
                             var cvr = parseFloat(row.pt_ad_cvr || 0);
-                            return cvr.toFixed(1) + "%";
+                            var displayVal = cvr === 0 ? '0.0%' : cvr.toFixed(1) + '%';
+                            return '<div class="kw-cell-wrapper">' +
+                                '<span class="trend-dot" data-metric="pt_cvr" data-keyword-id="' + keywordId + '" data-sku="' + (row.sku || '') + '" title="View 30 Day Trend"></span>' +
+                                '<span class="kw-value">' + displayVal + '</span></div>';
                         },
                         sorter: function(a, b, aRow, bRow, column, dir, sorterParams) {
                             var aData = aRow.getData();
@@ -3518,44 +3588,25 @@
                     {
                         title: "HL ACOS",
                         field: "hl_acos",
-                        hozAlign: "right",
+                        hozAlign: "left",
                         visible: false,
                         minWidth: 72,
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
+                            var keywordId = row.keyword_id != null ? row.keyword_id : (row.id != null ? row.id : (row.sku || ''));
                             var spend30 = parseFloat(row.hl_spend_L30 || 0);
                             var sales30 = parseFloat(row.hl_sales_L30 || 0);
-                            // Match HL utilized page: spend > 0 && sales == 0 → ACOS = 100%
                             var acos = (spend30 > 0 && sales30 > 0) ? (spend30 / sales30) * 100 : (spend30 > 0 ? 100 : 0);
-                            
                             var td = cell.getElement();
                             td.classList.remove('green-bg', 'pink-bg', 'red-bg');
-                            
-                            var clicks30 = parseInt(row.hl_clicks_L30 || 0).toLocaleString();
-                            var spend30Display = parseFloat(row.hl_spend_L30 || 0).toFixed(0);
-                            var sales30Display = parseFloat(row.hl_sales_L30 || 0).toFixed(0);
-                            var adSold30 = parseInt(row.hl_sold_L30 || 0).toLocaleString();
-                            var clicks7 = parseInt(row.hl_clicks_L7 || 0).toLocaleString();
-                            var spend7 = parseFloat(row.hl_spend_L7 || 0).toFixed(2);
-                            var sales7 = parseFloat(row.hl_sales_L7 || 0).toFixed(2);
-                            var adSold7 = parseInt(row.hl_sold_L7 || 0).toLocaleString();
-                            var tooltipText = "L30: Clicks " + clicks30 + ", Spend " + spend30Display + ", Sales " + sales30Display + ", Ad Sold " + adSold30 +
-                                "\nL7: Clicks " + clicks7 + ", Spend " + spend7 + ", Sales " + sales7 + ", Ad Sold " + adSold7;
-                            
                             var acosDisplay;
-                            if (acos === 0) {
-                                acosDisplay = "0%"; 
-                            } else if (acos < 7) {
-                                td.classList.add('pink-bg');
-                                acosDisplay = acos.toFixed(0) + "%";
-                            } else if (acos >= 7 && acos <= 14) {
-                                td.classList.add('green-bg');
-                                acosDisplay = acos.toFixed(0) + "%";
-                            } else if (acos > 14) {
-                                td.classList.add('red-bg');
-                                acosDisplay = acos.toFixed(0) + "%";
-                            }
-                            return `<div class="text-center">${acosDisplay}</div>`;
+                            if (acos === 0) acosDisplay = "0%";
+                            else if (acos < 7) { td.classList.add('pink-bg'); acosDisplay = acos.toFixed(0) + "%"; }
+                            else if (acos >= 7 && acos <= 14) { td.classList.add('green-bg'); acosDisplay = acos.toFixed(0) + "%"; }
+                            else { td.classList.add('red-bg'); acosDisplay = acos.toFixed(0) + "%"; }
+                            return '<div class="kw-cell-wrapper">' +
+                                '<span class="trend-dot" data-metric="hl_acos" data-keyword-id="' + keywordId + '" data-sku="' + (row.sku || '') + '" title="View 30 Day Trend"></span>' +
+                                '<div class="text-center">' + acosDisplay + '</div></div>';
                         },
                         sorter: function(a, b, aRow, bRow, column, dir, sorterParams) {
                             var aData = aRow.getData();
@@ -3697,15 +3748,19 @@
                     {
                         title: "HL AD CVR",
                         field: "hl_ad_cvr",
-                        hozAlign: "right",
+                        hozAlign: "left",
                         visible: false,
                         minWidth: 72,
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
+                            var keywordId = row.keyword_id != null ? row.keyword_id : (row.id != null ? row.id : (row.sku || ''));
                             var hasCampaign = row.hl_campaignName || row.hl_spend_L30 > 0;
                             if (!hasCampaign) return '-';
                             var cvr = parseFloat(row.hl_ad_cvr || 0);
-                            return cvr.toFixed(1) + "%";
+                            var displayVal = cvr === 0 ? '0.0%' : cvr.toFixed(1) + '%';
+                            return '<div class="kw-cell-wrapper">' +
+                                '<span class="trend-dot" data-metric="hl_cvr" data-keyword-id="' + keywordId + '" data-sku="' + (row.sku || '') + '" title="View 30 Day Trend"></span>' +
+                                '<span class="kw-value">' + displayVal + '</span></div>';
                         },
                         sorter: function(a, b, aRow, bRow, column, dir, sorterParams) {
                             var aData = aRow.getData();
@@ -5849,6 +5904,7 @@
                     columnsToShow = pricingColumns;
                 } else if (section === 'kw-ads') {
                     columnsToShow = kwAdsColumns;
+                    if (typeof console !== 'undefined' && console.log) console.log('KW Ads columns config:', columnsToShow);
                 } else if (section === 'pt-ads') {
                     columnsToShow = ptAdsColumns;
                 } else if (section === 'hl-ads') {
@@ -6096,6 +6152,235 @@
                         table.showColumn(fieldName);
                     }
                 });
+            });
+
+            // Row-level trend dot (KW/PT/HL ACOS & CVR) — open 30-day trend via ad-breakdown-chart-data
+            var trendGraphChartInstance = null;
+            var trendChartAjax = null;
+
+            function trendDateRange(days) {
+                days = days || 30;
+                var today = new Date();
+                var end = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 2);
+                if (days === 0) return { start: null, end: end.getFullYear() + '-' + String(end.getMonth() + 1).padStart(2, '0') + '-' + String(end.getDate()).padStart(2, '0') };
+                var start = new Date(end.getFullYear(), end.getMonth(), end.getDate() - days + 1);
+                return {
+                    start: start.getFullYear() + '-' + String(start.getMonth() + 1).padStart(2, '0') + '-' + String(start.getDate()).padStart(2, '0'),
+                    end: end.getFullYear() + '-' + String(end.getMonth() + 1).padStart(2, '0') + '-' + String(end.getDate()).padStart(2, '0')
+                };
+            }
+
+            $(document).on('click', '.trend-dot', function(e) {
+                e.stopPropagation();
+                e.preventDefault();
+                var metric = $(this).data('metric');
+                var keywordId = $(this).data('keyword-id');
+                var sku = $(this).data('sku');
+                if (metric) openTrendModal(keywordId, metric, sku);
+            });
+
+            function openTrendModal(keywordId, metric, sku) {
+                var adType, apiMetric;
+                if (metric === 'kw_ad_cbr') {
+                    adType = 'kw';
+                    apiMetric = 'cvr';
+                } else {
+                    var parts = metric.split('_');
+                    adType = parts[0];
+                    apiMetric = parts[1];
+                }
+                if (typeof console !== 'undefined' && console.log) console.log('Metric:', metric, 'AdType:', adType, 'apiMetric:', apiMetric);
+                var label = (adType.toUpperCase() + ' ' + (apiMetric === 'acos' ? 'ACOS' : 'CVR'));
+                $('#trendGraphModalTitle').text('Amazon - ' + label + ' (Rolling 30 Day)');
+                $('#trendGraphNoData').hide();
+                $('#trendGraphContainer').hide();
+                $('#trendGraphLoading').show();
+                var modalEl = document.getElementById('trendGraphModal');
+                var modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+                modal.show();
+                loadTrendChart(adType, apiMetric);
+            }
+
+            function loadTrendChart(adType, apiMetric) {
+                if (trendChartAjax) trendChartAjax.abort();
+                var range = trendDateRange(30);
+                var params = {
+                    channel: 'amazon',
+                    ad_type: adType,
+                    metric: apiMetric,
+                    end_date: range.end
+                };
+                if (range.start) params.start_date = range.start;
+                trendChartAjax = $.ajax({
+                    url: '/ad-breakdown-chart-data',
+                    method: 'GET',
+                    data: params,
+                    success: function(response) {
+                        trendChartAjax = null;
+                        $('#trendGraphLoading').hide();
+                        if (response.success && response.data && response.data.length > 0) {
+                            $('#trendGraphContainer').css('display', 'flex').show();
+                            renderTrendGraph(response.data, apiMetric);
+                        } else {
+                            $('#trendGraphNoData').show();
+                        }
+                    },
+                    error: function(xhr, status) {
+                        trendChartAjax = null;
+                        if (status === 'abort') return;
+                        $('#trendGraphLoading').hide();
+                        $('#trendGraphNoData').show();
+                    }
+                });
+            }
+
+            function trendFmtVal(v) {
+                return v.toFixed(1) + '%';
+            }
+
+            function renderTrendGraph(data, apiMetric) {
+                var ctx = document.getElementById('trendGraphCanvas');
+                if (!ctx) return;
+                if (trendGraphChartInstance) {
+                    trendGraphChartInstance.destroy();
+                    trendGraphChartInstance = null;
+                }
+                var labels = data.map(function(d) { return d.date; });
+                var values = data.map(function(d) { return d.value; });
+                var dataMin = values.length ? Math.min.apply(null, values) : 0;
+                var dataMax = values.length ? Math.max.apply(null, values) : 10;
+                var sorted = values.slice().sort(function(a, b) { return a - b; });
+                var mid = Math.floor(sorted.length / 2);
+                var median = sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+                var range = dataMax - dataMin || 1;
+                var yMin = Math.max(0, dataMin - range * 0.1);
+                var yMax = dataMax + range * 0.1;
+
+                document.getElementById('trendChartHighest').textContent = trendFmtVal(dataMax);
+                document.getElementById('trendChartMedian').textContent = trendFmtVal(median);
+                document.getElementById('trendChartLowest').textContent = trendFmtVal(dataMin);
+
+                var dotColors = [];
+                for (var i = 0; i < values.length; i++) {
+                    if (i === 0) dotColors.push('#6c757d');
+                    else if (apiMetric === 'acos') {
+                        if (values[i] > values[i - 1]) dotColors.push('#dc3545');
+                        else if (values[i] < values[i - 1]) dotColors.push('#28a745');
+                        else dotColors.push('#6c757d');
+                    } else {
+                        if (values[i] > values[i - 1]) dotColors.push('#28a745');
+                        else if (values[i] < values[i - 1]) dotColors.push('#dc3545');
+                        else dotColors.push('#6c757d');
+                    }
+                }
+                var labelColors = dotColors;
+
+                var medianLinePlugin = {
+                    id: 'medianLine',
+                    afterDraw: function(chart) {
+                        var yScale = chart.scales.y, xScale = chart.scales.x, cctx = chart.ctx;
+                        var yPixel = yScale.getPixelForValue(median);
+                        cctx.save();
+                        cctx.setLineDash([6, 4]);
+                        cctx.strokeStyle = '#6c757d';
+                        cctx.lineWidth = 1.2;
+                        cctx.beginPath();
+                        cctx.moveTo(xScale.left, yPixel);
+                        cctx.lineTo(xScale.right, yPixel);
+                        cctx.stroke();
+                        cctx.restore();
+                    }
+                };
+
+                var valueLabelsPlugin = {
+                    id: 'valueLabels',
+                    afterDatasetsDraw: function(chart) {
+                        var dataset = chart.data.datasets[0], meta = chart.getDatasetMeta(0), cctx = chart.ctx;
+                        cctx.save();
+                        cctx.font = 'bold 7px Inter, system-ui, sans-serif';
+                        cctx.textAlign = 'center';
+                        cctx.textBaseline = 'bottom';
+                        meta.data.forEach(function(point, i) {
+                            var offsetY = (i % 2 === 0) ? -7 : -14;
+                            cctx.fillStyle = labelColors[i];
+                            cctx.fillText(trendFmtVal(dataset.data[i]), point.x, point.y + offsetY);
+                        });
+                        cctx.restore();
+                    }
+                };
+
+                trendGraphChartInstance = new Chart(ctx.getContext('2d'), {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: apiMetric === 'acos' ? 'ACOS' : 'CVR',
+                            data: values,
+                            borderColor: '#adb5bd',
+                            borderWidth: 1.5,
+                            fill: false,
+                            tension: 0.3,
+                            pointRadius: 3,
+                            pointHoverRadius: 5,
+                            pointBackgroundColor: dotColors,
+                            pointBorderColor: dotColors,
+                            pointBorderWidth: 1.5
+                        }]
+                    },
+                    plugins: [medianLinePlugin, valueLabelsPlugin],
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        layout: { padding: { top: 18, left: 2, right: 2, bottom: 2 } },
+                        interaction: { intersect: false, mode: 'index' },
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: {
+                                titleFont: { size: 10 },
+                                bodyFont: { size: 10 },
+                                padding: 6,
+                                callbacks: {
+                                    label: function(context) {
+                                        var idx = context.dataIndex;
+                                        var parts = ['Value: ' + trendFmtVal(context.raw)];
+                                        if (idx > 0) {
+                                            var diff = context.raw - values[idx - 1];
+                                            parts.push('vs Yesterday: ' + (diff < 0 ? '▼' : diff > 0 ? '▲' : '▬') + ' ' + trendFmtVal(Math.abs(diff)));
+                                        }
+                                        if (idx >= 7) {
+                                            var diff7 = context.raw - values[idx - 7];
+                                            parts.push('vs 7d Ago: ' + (diff7 < 0 ? '▼' : diff7 > 0 ? '▲' : '▬') + ' ' + trendFmtVal(Math.abs(diff7)));
+                                        }
+                                        return parts;
+                                    }
+                                }
+                            }
+                        },
+                        scales: {
+                            y: {
+                                min: yMin,
+                                max: yMax,
+                                ticks: { callback: function(v) { return v.toFixed(1) + '%'; }, font: { size: 9 } },
+                                grid: { color: 'rgba(0,0,0,0.08)' }
+                            },
+                            x: {
+                                ticks: { maxRotation: 45, minRotation: 45, autoSkip: true, maxTicksLimit: 30, font: { size: 8 } },
+                                grid: { color: 'rgba(0,0,0,0.06)' }
+                            }
+                        }
+                    }
+                });
+            }
+
+            document.getElementById('trendGraphModal').addEventListener('hidden.bs.modal', function() {
+                if (trendGraphChartInstance) {
+                    trendGraphChartInstance.destroy();
+                    trendGraphChartInstance = null;
+                }
+                if (trendChartAjax) {
+                    trendChartAjax.abort();
+                    trendChartAjax = null;
+                }
             });
 
             // Function to update range filter badge
