@@ -1011,6 +1011,10 @@ class CvrMasterController extends Controller
                             'overall_l30' => (int) ($row->overall_l30 ?? 0),
                             'avg_price' => isset($row->avg_price) && $row->avg_price > 0 ? round((float) $row->avg_price, 2) : null,
                             'avg_cvr' => isset($row->avg_cvr) && $row->avg_cvr !== null ? round((float) $row->avg_cvr, 2) : null,
+                            'dil_percent' => isset($row->dil_percent) && $row->dil_percent !== null ? round((float) $row->dil_percent, 2) : null,
+                            'amazon_price' => isset($row->amazon_price) && $row->amazon_price > 0 ? round((float) $row->amazon_price, 2) : null,
+                            'rating' => isset($row->rating) && $row->rating > 0 ? round((float) $row->rating, 2) : null,
+                            'total_views' => (int) ($row->total_views ?? 0),
                         ]
                     );
                     $saved++;
@@ -2334,7 +2338,7 @@ class CvrMasterController extends Controller
         $metric = strtolower(trim($request->input('metric', 'inv')));
         $days = (int) $request->input('days', 30);
         $skuRaw = $request->input('sku', '');
-        $allowed = ['inv', 'ov_l30', 'price', 'cvr'];
+        $allowed = ['inv', 'ov_l30', 'price', 'cvr', 'dil', 'amz_price', 'rating', 'total_views'];
         if (!in_array($metric, $allowed)) {
             return response()->json(['success' => false, 'message' => 'Invalid metric'], 400);
         }
@@ -2349,6 +2353,10 @@ class CvrMasterController extends Controller
             'ov_l30' => 'overall_l30',
             'price' => 'avg_price',
             'cvr' => 'avg_cvr',
+            'dil' => 'dil_percent',
+            'amz_price' => 'amazon_price',
+            'rating' => 'rating',
+            'total_views' => 'total_views',
             default => 'inventory',
         };
 
