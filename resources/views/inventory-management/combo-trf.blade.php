@@ -1,4 +1,4 @@
-d@extends('layouts.vertical', ['title' => 'Combo TRF', 'sidenav' => 'condensed'])
+@extends('layouts.vertical', ['title' => 'Combo TRF', 'sidenav' => 'condensed'])
 
 @section('css')
     <meta name="csrf-token" content="{{ csrf_token() }}">
@@ -166,14 +166,80 @@ d@extends('layouts.vertical', ['title' => 'Combo TRF', 'sidenav' => 'condensed']
             margin: 0 !important;
             max-width: 100%;
         }
+        /* Custom FROM SKU multi-select (no Select2) */
+        .custom-from-sku-wrap {
+            width: 100%;
+            min-width: 320px;
+            border: 1px solid #ced4da;
+            border-radius: 4px;
+            background: #fff;
+            padding: 4px 6px;
+            min-height: 56px;
+        }
+        .custom-sku-chips {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px 6px;
+            margin-bottom: 4px;
+            min-height: 24px;
+        }
+        .custom-sku-chips:empty { display: none; }
+        .custom-sku-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 2px 6px;
+            background: #e9ecef;
+            border-radius: 4px;
+            font-size: 12px;
+        }
+        .custom-sku-chip-remove {
+            cursor: pointer;
+            color: #6c757d;
+            padding: 0 2px;
+            line-height: 1;
+        }
+        .custom-sku-chip-remove:hover { color: #dc3545; }
+        .custom-sku-search {
+            width: 100%;
+            border: none !important;
+            outline: none !important;
+            box-shadow: none !important;
+            padding: 2px 4px;
+            font-size: 13px;
+        }
+        .custom-sku-dropdown {
+            display: none;
+            position: absolute;
+            left: 0;
+            right: 0;
+            top: 100%;
+            margin-top: 2px;
+            max-height: 260px;
+            overflow-y: auto;
+            background: #fff;
+            border: 1px solid #ced4da;
+            border-radius: 4px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            z-index: 9999;
+        }
+        .custom-from-sku-wrap.open .custom-sku-dropdown { display: block; }
+        .custom-sku-option {
+            padding: 6px 10px;
+            font-size: 13px;
+            cursor: pointer;
+            border-bottom: 1px solid #f0f0f0;
+        }
+        .custom-sku-option:hover { background: #f8f9fa; }
+        .custom-sku-option.selected { background: #e7f3ff; color: #0d6efd; }
+        .custom-sku-option:last-child { border-bottom: none; }
+        .custom-from-sku-wrap { position: relative; }
     </style>
 @endsection
 
 @section('script')
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
-    <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
-    <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
 @endsection
 
 @section('content')
@@ -592,7 +658,7 @@ d@extends('layouts.vertical', ['title' => 'Combo TRF', 'sidenav' => 'condensed']
                 
                 // Initialize Select2 immediately when Transfer Mode is activated
                 setTimeout(function() {
-                    initializeSelect2FromSku();
+                    restoreSavedFromSku();
                 }, 100);
             } else {
                 $(this).removeClass('btn-danger').addClass('btn-primary').html('<i class="fas fa-exchange-alt"></i> Transfer Mode');
@@ -656,15 +722,86 @@ d@extends('layouts.vertical', ['title' => 'Combo TRF', 'sidenav' => 'condensed']
             });
         });
         
-        // FROM SKU multi-select: build per-SKU qty list and update totals
-        function refreshFromSkuQtyTable($select) {
-            const $row = $select.closest('.tabulator-row');
-            if (!$row.length) return;
-            $select.trigger('change');
+        // Sync visible chips from hidden select (custom multi-select, no Select2)
+        function syncCustomSkuChips($row) {
+            var $select = $row.find('.to-sku-select');
+            var $chips = $row.find('.custom-sku-chips');
+            if (!$chips.length) return;
+            var val = $select.val();
+            var arr = Array.isArray(val) ? val : (val ? [val] : []);
+            var html = '';
+            arr.forEach(function(sku) {
+                var esc = function(s) { return (s || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); };
+                html += '<span class="custom-sku-chip" data-sku="' + esc(sku) + '">' + esc(sku) + '<span class="custom-sku-chip-remove" title="Remove">&times;</span></span>';
+            });
+            $chips.html(html || '');
         }
-        $(document).on('select2:select select2:unselect select2:clear', '.to-sku-select', function() {
-            const $select = $(this);
-            setTimeout(function() { refreshFromSkuQtyTable($select); }, 0);
+        // Build dropdown list from allTableData, filter by search and exclude current row SKU
+        function fillCustomSkuDropdown($wrap, searchTerm) {
+            var currentSku = $wrap.attr('data-to-sku') || '';
+            var $select = $wrap.closest('.combo-from-sku-cell').find('.to-sku-select');
+            var selected = $select.val();
+            var selectedSet = {};
+            if (Array.isArray(selected)) selected.forEach(function(s) { selectedSet[s] = true; });
+            else if (selected) selectedSet[selected] = true;
+            var term = (searchTerm || '').trim().toLowerCase().replace(/\s+/g, ' ');
+            var list = [];
+            allTableData.forEach(function(item) {
+                if (!item.SKU || item.SKU === currentSku || (item.SKU + '').toUpperCase().indexOf('PARENT') !== -1) return;
+                var searchStr = ((item.SKU || '') + ' ' + (item.Parent || '')).toLowerCase();
+                if (term && searchStr.indexOf(term) === -1) return;
+                list.push({ sku: item.SKU, selected: !!selectedSet[item.SKU] });
+            });
+            var $dd = $wrap.find('.custom-sku-dropdown');
+            var esc = function(s) { return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); };
+            if (list.length === 0) {
+                $dd.html('<div class="custom-sku-option text-muted" style="cursor:default;">No matching SKU</div>');
+            } else {
+                $dd.html(list.map(function(o) {
+                    return '<div class="custom-sku-option' + (o.selected ? ' selected' : '') + '" data-sku="' + esc(o.sku) + '">' + esc(o.sku) + '</div>';
+                }).join(''));
+            }
+        }
+        $(document).on('focus', '.custom-sku-search', function() {
+            var $wrap = $(this).closest('.custom-from-sku-wrap');
+            $wrap.addClass('open');
+            fillCustomSkuDropdown($wrap, $(this).val());
+        });
+        $(document).on('input', '.custom-sku-search', function() {
+            var $wrap = $(this).closest('.custom-from-sku-wrap');
+            fillCustomSkuDropdown($wrap, $(this).val());
+        });
+        $(document).on('click', '.custom-sku-option', function(e) {
+            e.preventDefault();
+            var sku = $(this).attr('data-sku');
+            var $row = $(this).closest('.tabulator-row');
+            var $select = $row.find('.to-sku-select');
+            var val = $select.val();
+            var arr = Array.isArray(val) ? val : (val ? [val] : []);
+            var i = arr.indexOf(sku);
+            if (i > -1) arr.splice(i, 1);
+            else arr.push(sku);
+            $select.val(arr).trigger('change');
+            $(this).toggleClass('selected', arr.indexOf(sku) > -1);
+            syncCustomSkuChips($row);
+            if (arr.length >= 2) {
+                $(this).closest('.custom-from-sku-wrap').removeClass('open');
+            }
+        });
+        $(document).on('click', '.custom-sku-chip-remove', function(e) {
+            e.stopPropagation();
+            var sku = $(this).closest('.custom-sku-chip').attr('data-sku');
+            var $row = $(this).closest('.tabulator-row');
+            var $select = $row.find('.to-sku-select');
+            var val = $select.val();
+            var arr = Array.isArray(val) ? val : (val ? [val] : []);
+            var i = arr.indexOf(sku);
+            if (i > -1) { arr.splice(i, 1); $select.val(arr).trigger('change'); syncCustomSkuChips($row); }
+        });
+        $(document).on('click', function(e) {
+            if (!$(e.target).closest('.custom-from-sku-wrap').length) {
+                $('.custom-from-sku-wrap.open').removeClass('open');
+            }
         });
         $(document).on('change', '.to-sku-select', function() {
             const $select = $(this);
@@ -732,6 +869,7 @@ d@extends('layouts.vertical', ['title' => 'Combo TRF', 'sidenav' => 'condensed']
                 $row.find('.from-qty-input').val('');
                 $row.find('.to-qty-display').val('');
             }
+            syncCustomSkuChips($row);
             updateFromTotalAndToQty($row);
         });
         
@@ -963,7 +1101,7 @@ d@extends('layouts.vertical', ['title' => 'Combo TRF', 'sidenav' => 'condensed']
                     table.setData().then(function() {
                         if (transferModeActive) {
                             setTimeout(function() {
-                                initializeSelect2FromSku();
+                                restoreSavedFromSku();
                             }, 100);
                         }
                     });
@@ -1130,14 +1268,26 @@ d@extends('layouts.vertical', ['title' => 'Combo TRF', 'sidenav' => 'condensed']
                     cssClass: "tabulator-cell-source-sku",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
-                        const currentSku = rowData.SKU;
-                        let html = '<div class="combo-from-sku-cell"><select class="form-select form-select-sm to-sku-select" multiple="multiple" data-to-sku="' + currentSku + '" style="width:100%;min-width:360px;">';
+                        const currentSku = (rowData.SKU || '').replace(/"/g, '&quot;');
+                        var esc = function(s) { return (s || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); };
+                        var escAttr = function(s) { return (s || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;'); };
+                        var opts = [];
                         allTableData.forEach(function(item) {
-                            if (item.SKU && item.SKU !== currentSku && item.SKU.toUpperCase().indexOf('PARENT') === -1) {
-                                html += '<option value="' + item.SKU + '" data-parent="' + (item.Parent || '') + '" data-inv="' + (item.INV || 0) + '" data-search="' + item.SKU + ' ' + (item.Parent || '') + '">' + item.SKU + '</option>';
+                            if (item.SKU && item.SKU !== rowData.SKU && (item.SKU + '').toUpperCase().indexOf('PARENT') === -1) {
+                                opts.push({ sku: item.SKU, parent: item.Parent || '', search: ((item.SKU || '') + ' ' + (item.Parent || '')).trim() });
                             }
                         });
-                        html += '</select><div class="from-sku-qty-list"></div></div>';
+                        var selectOpts = opts.map(function(o) {
+                            return '<option value="' + escAttr(o.sku) + '" data-search="' + escAttr(o.search) + '">' + esc(o.sku) + '</option>';
+                        }).join('');
+                        var html = '<div class="combo-from-sku-cell">' +
+                            '<select class="to-sku-select" multiple="multiple" data-to-sku="' + escAttr(rowData.SKU) + '" style="display:none;">' + selectOpts + '</select>' +
+                            '<div class="custom-from-sku-wrap" data-to-sku="' + escAttr(rowData.SKU) + '">' +
+                            '<div class="custom-sku-chips"></div>' +
+                            '<input type="text" class="form-control form-control-sm custom-sku-search" placeholder="Search FROM SKU (multiple)..." autocomplete="off">' +
+                            '<div class="custom-sku-dropdown"></div>' +
+                            '</div>' +
+                            '<div class="from-sku-qty-list"></div></div>';
                         return html;
                     }
                 },
@@ -1335,55 +1485,35 @@ d@extends('layouts.vertical', ['title' => 'Combo TRF', 'sidenav' => 'condensed']
             applyAllFilters();
         });
         
-        // Initialize Select2 on FROM SKU dropdowns
-        function initializeSelect2FromSku() {
+        // Restore saved FROM SKUs and ratio for each row (custom select – no Select2)
+        function restoreSavedFromSku() {
             $('.to-sku-select').each(function() {
-                const $select = $(this);
-                const $row = $select.closest('.tabulator-row');
-                const row = table.getRow($row[0]);
-                const rowData = row.getData();
-                const toSku = rowData.SKU;
-
-                const savedData = JSON.parse(localStorage.getItem('transfer_' + toSku) || '{}');
-                const savedFromSkus = Array.isArray(savedData.fromSkus) ? savedData.fromSkus : (savedData.fromSku ? [savedData.fromSku] : []);
-                const savedRatio = savedData.ratio || '1:1';
-
-                if ($select.hasClass('select2-hidden-accessible')) {
-                    $select.select2('destroy');
-                }
-
-                $select.select2({
-                    placeholder: 'Search FROM SKU (multiple)...',
-                    allowClear: true,
-                    width: '100%',
-                    dropdownAutoWidth: false,
-                    matcher: function(params, data) {
-                        if ($.trim(params.term) === '') return data;
-                        const searchTerm = params.term.toLowerCase();
-                        const text = (data.text || '').toLowerCase();
-                        const searchData = $(data.element).attr('data-search') || '';
-                        if (text.indexOf(searchTerm) > -1 || searchData.toLowerCase().indexOf(searchTerm) > -1) return data;
-                        return null;
-                    }
-                });
-
+                var $select = $(this);
+                var $row = $select.closest('.tabulator-row');
+                var row = table.getRow($row[0]);
+                if (!row) return;
+                var rowData = row.getData();
+                var toSku = rowData.SKU;
+                var savedData = JSON.parse(localStorage.getItem('transfer_' + toSku) || '{}');
+                var savedFromSkus = Array.isArray(savedData.fromSkus) ? savedData.fromSkus : (savedData.fromSku ? [savedData.fromSku] : []);
+                var savedRatio = savedData.ratio || '1:1';
+                $row.find('.ratio-select').val(savedRatio);
                 if (savedFromSkus.length) {
                     $select.val(savedFromSkus).trigger('change');
                 }
-                $row.find('.ratio-select').val(savedRatio);
+                syncCustomSkuChips($row);
             });
         }
-        
-        // Update table on render complete
         table.on('renderComplete', function() {
-            initializeSelect2FromSku();
-            // Re-populate "Qty to take from each source" lists (Tabulator may have re-drawn cells)
+            restoreSavedFromSku();
             $('.to-sku-select').each(function() {
                 var $sel = $(this);
                 var val = $sel.val();
                 var arr = Array.isArray(val) ? val : (val ? [val] : []);
                 if (arr.length > 0) {
-                    $sel.trigger('change');
+                    var $row = $sel.closest('.tabulator-row');
+                    if (typeof buildFromSkuQtyListForRow === 'function' && $row.length) buildFromSkuQtyListForRow($row);
+                    else $sel.trigger('change');
                 }
             });
         });
