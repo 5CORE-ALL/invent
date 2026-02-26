@@ -916,6 +916,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/cvr-master-remark-latest/{sku}', [CvrMasterController::class, 'getLatestRemark'])->name('cvr.master.remark.latest');
     Route::post('/cvr-master-remark-toggle/{id}', [CvrMasterController::class, 'toggleRemarkSolved'])->name('cvr.master.remark.toggle');
     Route::get('/cvr-master-amazon-sprice-table', [CvrMasterController::class, 'getAmazonSpriceTableData'])->name('cvr.master.amazon.sprice.table');
+    Route::get('/cvr-master-chart-data', [CvrMasterController::class, 'getPricingMasterChartData'])->name('cvr.master.chart.data');
     Route::post('/cvr-master-save-suggested-data', [CvrMasterController::class, 'saveSuggestedData'])->name('cvr.master.save.suggested');
     Route::post('/cvr-master-push-price', [CvrMasterController::class, 'pushPriceToAmazon'])->name('cvr.master.push.price');
     Route::post('/cvr-master-bulk-change-price', [CvrMasterController::class, 'bulkChangePrice'])->name('cvr.master.bulk.change.price');

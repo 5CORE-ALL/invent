@@ -447,6 +447,61 @@
         </div>
     </div>
 
+    <!-- Pricing Master Rolling L30 Chart Modal (Inv, OV L30, Price, CVR) -->
+    <div class="modal fade" id="pricingMasterChartModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog shadow-none" style="max-width: 98vw; width: 98vw; margin: 10px auto 0;">
+            <div class="modal-content" style="border-radius: 8px; overflow: hidden;">
+                <div class="modal-header bg-info text-white py-1 px-3">
+                    <h6 class="modal-title mb-0" style="font-size: 13px;">
+                        <i class="fas fa-chart-area me-1"></i>
+                        <span id="pricingMasterChartModalTitle">Pricing Master - Inv (Rolling L30)</span>
+                    </h6>
+                    <div class="d-flex align-items-center gap-2">
+                        <select id="pricingMasterChartRangeSelect" class="form-select form-select-sm bg-white" style="width: 110px; height: 26px; font-size: 11px; padding: 1px 8px;">
+                            <option value="7">7 Days</option>
+                            <option value="30" selected>30 Days</option>
+                            <option value="60">60 Days</option>
+                            <option value="90">90 Days</option>
+                        </select>
+                        <button type="button" class="btn-close btn-close-white" style="font-size: 10px;" data-bs-dismiss="modal"></button>
+                    </div>
+                </div>
+                <div class="modal-body p-2">
+                    <div id="pricingMasterChartContainer" style="height: 20vh; display: flex; align-items: stretch;">
+                        <div style="flex: 1; min-width: 0; position: relative;">
+                            <canvas id="pricingMasterChart"></canvas>
+                        </div>
+                        <div id="pricingMasterChartRefPanel" style="width: 100px; display: flex; flex-direction: column; justify-content: center; gap: 8px; padding: 6px 8px; border-left: 1px solid #e9ecef; background: #f8f9fa; border-radius: 0 4px 4px 0;">
+                            <div style="text-align: center;">
+                                <div style="font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #dc3545; margin-bottom: 1px;">Highest</div>
+                                <div id="pricingMasterChartHighest" style="font-size: 13px; font-weight: 700; color: #dc3545;">-</div>
+                            </div>
+                            <div style="text-align: center; border-top: 1px dashed #adb5bd; border-bottom: 1px dashed #adb5bd; padding: 4px 0;">
+                                <div style="font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #6c757d; margin-bottom: 1px;">Median</div>
+                                <div id="pricingMasterChartMedian" style="font-size: 13px; font-weight: 700; color: #6c757d;">-</div>
+                            </div>
+                            <div style="text-align: center;">
+                                <div style="font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #198754; margin-bottom: 1px;">Lowest</div>
+                                <div id="pricingMasterChartLowest" style="font-size: 13px; font-weight: 700; color: #198754;">-</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="pricingMasterChartLoading" class="text-center py-3">
+                        <div class="spinner-border spinner-border-sm text-primary" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                        <p class="mt-1 text-muted small mb-0">Loading chart data...</p>
+                    </div>
+                    <div id="pricingMasterChartNoData" class="text-center py-3" style="display: none;">
+                        <i class="fas fa-exclamation-circle text-warning fa-2x mb-2"></i>
+                        <p class="text-muted small mb-0">No daily data for this SKU yet.</p>
+                        <p class="text-muted small mb-0"><strong>Refresh this page (Pricing Master CVR)</strong> once so today’s SKU data is saved, then open the graph again.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div class="row">
         <div class="card shadow-sm">
             <!-- Header Bar - Totals -->
@@ -557,6 +612,7 @@
 @endsection
 
 @section('script-bottom')
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script>
     /**
      * ========================================
@@ -1145,11 +1201,14 @@
                     width: 80,
                     sorter: "number",
                     formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
                         const value = parseFloat(cell.getValue() || 0);
-                        if (value === 0) {
-                            return '<span style="color: #dc3545; font-weight: 600;">0</span>';
+                        let html = value === 0 ? '<span style="color: #dc3545; font-weight: 600;">0</span>' : `<span style="font-weight: 600;">${value}</span>`;
+                        if (rowData.is_parent_summary !== true) {
+                            const skuEsc = (rowData.sku || '').replace(/"/g, '&quot;');
+                            html += ' <i class="fas fa-circle pricing-master-chart-link ms-1" data-metric="inv" data-sku="' + skuEsc + '" style="cursor:pointer;color:#4361ee;font-size:8px;vertical-align:middle;" title="View Inv graph (Rolling L30)"></i>';
                         }
-                        return `<span style="font-weight: 600;">${value}</span>`;
+                        return html;
                     }
                 },
                 {
@@ -1181,6 +1240,7 @@
                                data-l30="${value}"
                                data-dil="${dilPercent}"
                                title="View breakdown for ${sku}"></i>
+                            <i class="fas fa-circle pricing-master-chart-link ms-1" data-metric="ov_l30" data-sku="${(sku || '').replace(/"/g, '&quot;')}" style="cursor:pointer;color:#28a745;font-size:8px;vertical-align:middle;" title="View OV L30 graph (Rolling L30)"></i>
                         `;
                     }
                 },
@@ -1382,17 +1442,20 @@
                     hozAlign: "center",
                     sorter: "number",
                     formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
                         const value = parseFloat(cell.getValue() || 0);
                         let color = '';
-                        
-                        // Color coding for CVR%
                         if (value === 0) color = '#6c757d';
                         else if (value < 1) color = '#a00211';
                         else if (value >= 1 && value < 3) color = '#ffc107';
                         else if (value >= 3 && value < 5) color = '#28a745';
                         else color = '#e83e8c';
-                        
-                        return `<span style="color: ${color}; font-weight: 600;">${value.toFixed(1)}%</span>`;
+                        let html = `<span style="color: ${color}; font-weight: 600;">${value.toFixed(1)}%</span>`;
+                        if (rowData.is_parent_summary !== true) {
+                            const skuEsc = (rowData.sku || '').replace(/"/g, '&quot;');
+                            html += ' <i class="fas fa-circle pricing-master-chart-link ms-1" data-metric="cvr" data-sku="' + skuEsc + '" style="cursor:pointer;color:#ffc107;font-size:8px;vertical-align:middle;" title="View CVR graph (Rolling L30)"></i>';
+                        }
+                        return html;
                     },
                     width: 90
                 },
@@ -1404,15 +1467,17 @@
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         const sku = (rowData.sku || '').replace(/"/g, '&quot;');
+                        const skuEnc = encodeURIComponent(rowData.sku || '');
                         if (rowData.is_parent_summary === true) {
                             const v = cell.getValue();
                             return v != null ? '<span style="font-weight: 600;">$' + parseFloat(v).toFixed(2) + '</span>' : '<span class="text-muted">-</span>';
                         }
                         const value = cell.getValue();
-                        if (value == null || value === '') {
-                            return '<span class="text-muted">-</span>';
+                        const price = value != null && value !== '' ? parseFloat(value) : null;
+                        if (price == null || price <= 0) {
+                            const url = '/repricer/amazon-search' + (skuEnc ? '?sku=' + skuEnc : '');
+                            return '<a href="' + url + '" target="_blank" rel="noopener" class="lmp-no-data-link" title="No LMP – open Amazon repricer search"><i class="fas fa-circle" style="color: #ffc107; font-size: 10px;"></i></a>';
                         }
-                        const price = parseFloat(value);
                         const avgPrice = parseFloat(rowData.avg_price || 0);
                         const color = (avgPrice > 0 && price < avgPrice) ? '#dc3545' : '#28a745';
                         return `<a href="#" class="lmp-price-link" data-sku="${sku}" data-marketplace="amazon" style="color: ${color}; font-weight: 600; text-decoration: none; cursor: pointer;">$${price.toFixed(2)}</a>`;
@@ -1427,15 +1492,17 @@
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         const sku = (rowData.sku || '').replace(/"/g, '&quot;');
+                        const skuEnc = encodeURIComponent(rowData.sku || '');
                         if (rowData.is_parent_summary === true) {
                             const v = cell.getValue();
                             return v != null ? '<span style="font-weight: 600;">$' + parseFloat(v).toFixed(2) + '</span>' : '<span class="text-muted">-</span>';
                         }
                         const value = cell.getValue();
-                        if (value == null || value === '') {
-                            return '<span class="text-muted">-</span>';
+                        const price = value != null && value !== '' ? parseFloat(value) : null;
+                        if (price == null || price <= 0) {
+                            const url = '/repricer/ebay-search' + (skuEnc ? '?sku=' + skuEnc : '');
+                            return '<a href="' + url + '" target="_blank" rel="noopener" class="lmp-no-data-link" title="No LMP – open eBay repricer search"><i class="fas fa-circle" style="color: #ffc107; font-size: 10px;"></i></a>';
                         }
-                        const price = parseFloat(value);
                         const avgPrice = parseFloat(rowData.avg_price || 0);
                         const color = (avgPrice > 0 && price < avgPrice) ? '#dc3545' : '#28a745';
                         return `<a href="#" class="lmp-price-link" data-sku="${sku}" data-marketplace="ebay" style="color: ${color}; font-weight: 600; text-decoration: none; cursor: pointer;">$${price.toFixed(2)}</a>`;
@@ -1448,11 +1515,14 @@
                     hozAlign: "center",
                     sorter: "number",
                     formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
                         const value = parseFloat(cell.getValue() || 0);
-                        if (value === 0) {
-                            return '<span style="color: #6c757d;">-</span>';
+                        let html = value === 0 ? '<span style="color: #6c757d;">-</span>' : `<span style="font-weight: 600;">$${value.toFixed(2)}</span>`;
+                        if (rowData.is_parent_summary !== true) {
+                            const skuEsc = (rowData.sku || '').replace(/"/g, '&quot;');
+                            html += ' <i class="fas fa-circle pricing-master-chart-link ms-1" data-metric="price" data-sku="' + skuEsc + '" style="cursor:pointer;color:#e83e8c;font-size:8px;vertical-align:middle;" title="View Price graph (Rolling L30)"></i>';
                         }
-                        return `<span style="font-weight: 600;">$${value.toFixed(2)}</span>`;
+                        return html;
                     },
                     width: 100
                 },
@@ -2665,6 +2735,173 @@
             
             showToast('Export downloaded successfully!', 'success');
         });
+
+        // ==================== PRICING MASTER ROLLING L30 CHARTS (SKU-wise: Inv, OV L30, Price, CVR) ====================
+        let pricingMasterChartInstance = null;
+        let currentPricingChartMetric = 'inv';
+        let currentPricingChartSku = '';
+        let currentPricingChartDays = 30;
+        const pricingChartMetricLabels = { inv: 'Inv', ov_l30: 'OV L30', price: 'Price', cvr: 'CVR' };
+        const pricingChartRangeLabel = (days) => 'L' + days;
+
+        $(document).on('click', '.pricing-master-chart-link', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            const metric = $(e.currentTarget).attr('data-metric') || $(e.currentTarget).data('metric');
+            const sku = String($(e.currentTarget).attr('data-sku') || $(e.currentTarget).data('sku') || '').trim();
+            if (!metric) return;
+            if (!sku) { showToast('SKU not found for chart', 'error'); return; }
+            if (sku.indexOf('PARENT ') === 0) { showToast('Chart is available for child SKU rows only, not parent summary rows.', 'warning'); return; }
+            currentPricingChartMetric = metric;
+            currentPricingChartSku = sku;
+            currentPricingChartDays = 30;
+            $('#pricingMasterChartRangeSelect').val('30');
+            const label = pricingChartMetricLabels[metric] || metric;
+            $('#pricingMasterChartModalTitle').text('Pricing Master - ' + sku + ' - ' + label + ' (Rolling ' + pricingChartRangeLabel(30) + ')');
+            $('#pricingMasterChartContainer').hide();
+            $('#pricingMasterChartNoData').hide();
+            $('#pricingMasterChartLoading').show();
+            const modal = new bootstrap.Modal(document.getElementById('pricingMasterChartModal'));
+            modal.show();
+            loadPricingMasterChart();
+        });
+
+        $(document).on('change', '#pricingMasterChartRangeSelect', function() {
+            const days = parseInt($(this).val(), 10);
+            if (days === currentPricingChartDays) return;
+            currentPricingChartDays = days;
+            $('#pricingMasterChartModalTitle').text($('#pricingMasterChartModalTitle').text().replace(/Rolling L\d+/, 'Rolling ' + pricingChartRangeLabel(days)));
+            loadPricingMasterChart();
+        });
+
+        function loadPricingMasterChart() {
+            $('#pricingMasterChartLoading').show();
+            $('#pricingMasterChartContainer').hide();
+            $('#pricingMasterChartNoData').hide();
+            $.ajax({
+                url: '/cvr-master-chart-data',
+                method: 'GET',
+                data: { metric: currentPricingChartMetric, sku: currentPricingChartSku, days: currentPricingChartDays },
+                success: function(response) {
+                    $('#pricingMasterChartLoading').hide();
+                    if (response.success && response.data && response.data.length > 0) {
+                        $('#pricingMasterChartContainer').show();
+                        renderPricingMasterChart(response.data);
+                    } else {
+                        $('#pricingMasterChartNoData').show();
+                    }
+                },
+                error: function() {
+                    $('#pricingMasterChartLoading').hide();
+                    $('#pricingMasterChartNoData').show();
+                }
+            });
+        }
+
+        function renderPricingMasterChart(data) {
+            const ctx = document.getElementById('pricingMasterChart');
+            if (!ctx) return;
+            if (pricingMasterChartInstance) {
+                pricingMasterChartInstance.destroy();
+                pricingMasterChartInstance = null;
+            }
+            const labels = data.map(d => d.date);
+            const values = data.map(d => parseFloat(d.value) || 0);
+            const dataMin = Math.min(...values);
+            const dataMax = Math.max(...values);
+            const sorted = [...values].sort((a, b) => a - b);
+            const mid = Math.floor(sorted.length / 2);
+            const median = sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+            const range = dataMax - dataMin || 1;
+            const yMin = Math.max(0, dataMin - range * 0.1);
+            const yMax = dataMax + range * 0.1;
+            const fmtVal = (v) => {
+                if (currentPricingChartMetric === 'price') return '$' + (Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+                if (currentPricingChartMetric === 'cvr') return Number(v).toFixed(1) + '%';
+                return Math.round(v).toLocaleString('en-US');
+            };
+            $('#pricingMasterChartHighest').text(fmtVal(dataMax)).css('color', '#dc3545');
+            $('#pricingMasterChartMedian').text(fmtVal(median)).css('color', '#6c757d');
+            $('#pricingMasterChartLowest').text(fmtVal(dataMin)).css('color', '#198754');
+            const dotColors = values.map((v, i) => {
+                if (i === 0) return '#6c757d';
+                return v > values[i - 1] ? '#28a745' : v < values[i - 1] ? '#dc3545' : '#6c757d';
+            });
+            const medianLinePlugin = {
+                id: 'pricingMedianLine',
+                afterDraw(chart) {
+                    const yScale = chart.scales.y;
+                    const xScale = chart.scales.x;
+                    const ctx = chart.ctx;
+                    const yPixel = yScale.getPixelForValue(median);
+                    ctx.save();
+                    ctx.setLineDash([6, 4]);
+                    ctx.strokeStyle = '#6c757d';
+                    ctx.lineWidth = 1.2;
+                    ctx.beginPath();
+                    ctx.moveTo(xScale.left, yPixel);
+                    ctx.lineTo(xScale.right, yPixel);
+                    ctx.stroke();
+                    ctx.restore();
+                }
+            };
+            const valueLabelsPlugin = {
+                id: 'pricingValueLabels',
+                afterDatasetsDraw(chart) {
+                    const dataset = chart.data.datasets[0];
+                    const meta = chart.getDatasetMeta(0);
+                    const ctx = chart.ctx;
+                    ctx.save();
+                    ctx.font = 'bold 7px Inter, system-ui, sans-serif';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'bottom';
+                    meta.data.forEach((point, i) => {
+                        const val = dataset.data[i];
+                        const x = point.x;
+                        const y = point.y;
+                        const offsetY = (i % 2 === 0) ? -7 : -14;
+                        ctx.fillStyle = val === 0 ? '#198754' : val > 0 ? '#dc3545' : '#6c757d';
+                        ctx.fillText(fmtVal(val), x, y + offsetY);
+                    });
+                    ctx.restore();
+                }
+            };
+            pricingMasterChartInstance = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: pricingChartMetricLabels[currentPricingChartMetric] || currentPricingChartMetric,
+                        data: values,
+                        backgroundColor: 'rgba(108,117,125,0.08)',
+                        borderColor: '#adb5bd',
+                        borderWidth: 1.5,
+                        fill: true,
+                        tension: 0.3,
+                        pointRadius: 3,
+                        pointHoverRadius: 5,
+                        pointBackgroundColor: dotColors,
+                        pointBorderColor: dotColors,
+                        pointBorderWidth: 1.5
+                    }]
+                },
+                plugins: [medianLinePlugin, valueLabelsPlugin],
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    layout: { padding: { top: 18, left: 2, right: 2, bottom: 2 } },
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        y: {
+                            min: yMin,
+                            max: yMax,
+                            ticks: { font: { size: 9 }, callback: function(value) { return fmtVal(value); } }
+                        },
+                        x: { ticks: { font: { size: 9 }, maxRotation: 45 } }
+                    }
+                }
+            });
+        }
     });
 </script>
 @endsection

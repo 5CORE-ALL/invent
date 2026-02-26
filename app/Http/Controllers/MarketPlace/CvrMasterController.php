@@ -68,6 +68,7 @@ use App\Models\TemuListingStatus;
 use App\Models\BestbuyUSAListingStatus;
 use App\Models\TiendamiaListingStatus;
 use App\Models\JungleScoutProductData;
+use App\Models\PricingMasterDailySnapshotSku;
 use Carbon\Carbon;
 use App\Services\AmazonSpApiService;
 use App\Services\DobaApiService;
@@ -993,6 +994,33 @@ class CvrMasterController extends Controller
                     ];
                 })->values()->toArray()
             ]);
+
+            // Auto-save SKU-wise daily snapshot on refresh (for Inv, OV L30, Price, CVR graphs per SKU)
+            try {
+                $childRows = collect($finalResult)->filter(fn($r) => empty($r->is_parent_summary));
+                $today = now('America/Los_Angeles')->toDateString();
+                $saved = 0;
+                foreach ($childRows as $row) {
+                    $raw = is_string($row->sku ?? null) ? $row->sku : (string) ($row->sku ?? '');
+                    $sku = preg_replace('/\s+/', ' ', trim($raw));
+                    if ($sku === '') continue;
+                    PricingMasterDailySnapshotSku::updateOrCreate(
+                        ['snapshot_date' => $today, 'sku' => $sku],
+                        [
+                            'inventory' => (int) ($row->inventory ?? 0),
+                            'overall_l30' => (int) ($row->overall_l30 ?? 0),
+                            'avg_price' => isset($row->avg_price) && $row->avg_price > 0 ? round((float) $row->avg_price, 2) : null,
+                            'avg_cvr' => isset($row->avg_cvr) && $row->avg_cvr !== null ? round((float) $row->avg_cvr, 2) : null,
+                        ]
+                    );
+                    $saved++;
+                }
+                if ($saved > 0) {
+                    Log::info('Pricing Master SKU snapshot saved', ['date' => $today, 'count' => $saved]);
+                }
+            } catch (\Exception $e) {
+                Log::warning('Pricing Master SKU daily snapshot save failed: ' . $e->getMessage());
+            }
 
             return response()->json($finalResult);
             
@@ -2295,6 +2323,55 @@ class CvrMasterController extends Controller
             'data' => $rows,
             'count' => count($rows),
         ]);
+    }
+
+    /**
+     * Get Pricing Master chart data (Rolling L30) for Inv, OV L30, Price, CVR graphs.
+     * Data is read from pricing_master_daily_snapshots_sku (SKU-wise, saved on page load/refresh).
+     */
+    public function getPricingMasterChartData(Request $request)
+    {
+        $metric = strtolower(trim($request->input('metric', 'inv')));
+        $days = (int) $request->input('days', 30);
+        $skuRaw = $request->input('sku', '');
+        $allowed = ['inv', 'ov_l30', 'price', 'cvr'];
+        if (!in_array($metric, $allowed)) {
+            return response()->json(['success' => false, 'message' => 'Invalid metric'], 400);
+        }
+        // Normalize: trim and collapse multiple spaces (same as when saving snapshots)
+        $sku = preg_replace('/\s+/', ' ', trim($skuRaw));
+        if ($sku === '') {
+            return response()->json(['success' => false, 'message' => 'SKU is required for chart'], 400);
+        }
+
+        $column = match ($metric) {
+            'inv' => 'inventory',
+            'ov_l30' => 'overall_l30',
+            'price' => 'avg_price',
+            'cvr' => 'avg_cvr',
+            default => 'inventory',
+        };
+
+        // Match SKU: normalized (trim + single space) and case-insensitive so DB/request differences don't break lookup
+        $skuNorm = strtolower($sku);
+        $query = PricingMasterDailySnapshotSku::whereRaw('LOWER(TRIM(sku)) = ?', [$skuNorm])
+            ->orderBy('snapshot_date', 'asc');
+        if ($days > 0) {
+            $start = now('America/Los_Angeles')->subDays($days)->toDateString();
+            $query->where('snapshot_date', '>=', $start);
+        }
+        $rows = $query->get();
+
+        $data = $rows->map(function ($row) use ($column) {
+            $val = $row->{$column};
+            $value = $val !== null ? (is_numeric($val) ? (float) $val : 0) : 0;
+            return [
+                'date' => Carbon::parse($row->snapshot_date)->format('M j'),
+                'value' => $value,
+            ];
+        })->values()->all();
+
+        return response()->json(['success' => true, 'data' => $data]);
     }
 
     /**
