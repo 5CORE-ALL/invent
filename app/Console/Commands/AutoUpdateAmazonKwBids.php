@@ -75,11 +75,8 @@ class AutoUpdateAmazonKwBids extends Command
                 if (!empty($campaignId) && $sbid > 0) {
                     // Only add if we haven't seen this campaign ID before
                     if (!isset($campaignBudgetMap[$campaignId])) {
-                        $budget = floatval($campaign->campaignBudgetAmount ?? 0);
-                        $l7_spend = floatval($campaign->l7_spend ?? 0);
-                        $l1_spend = floatval($campaign->l1_spend ?? 0);
-                        $ub7 = $budget > 0 ? ($l7_spend / ($budget * 7)) * 100 : 0;
-                        $ub1 = $budget > 0 ? ($l1_spend / $budget) * 100 : 0;
+                        $ub7 = floatval($campaign->ub7 ?? 0);
+                        $ub1 = floatval($campaign->ub1 ?? 0);
                         $pinkPink = ($ub7 > 99 && $ub1 > 99);
                         $campaignBudgetMap[$campaignId] = $sbid;
                         $campaignDetails[$campaignId] = [
@@ -420,6 +417,17 @@ class AutoUpdateAmazonKwBids extends Command
             ->where('campaignName', 'NOT LIKE', '% PT.')
             ->get();
 
+        $amazonSpCampaignReportsL30 = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
+            ->where('report_date_range', 'L30')
+            ->where(function ($q) use ($skus) {
+                foreach ($skus as $sku) {
+                    $q->orWhere('campaignName', 'LIKE', '%' . $sku . '%');
+                }
+            })
+            ->where('campaignName', 'NOT LIKE', '% PT')
+            ->where('campaignName', 'NOT LIKE', '% PT.')
+            ->get();
+
         $result = [];
         $processedCampaignIds = []; // Track to avoid processing same campaign multiple times
 
@@ -444,12 +452,18 @@ class AutoUpdateAmazonKwBids extends Command
                 return $campaignName === $cleanSku || $campaignName === $cleanSku . ' KW';
             });
 
-            if (!$matchedCampaignL7 && !$matchedCampaignL1) {
+            $matchedCampaignL30 = $amazonSpCampaignReportsL30->first(function ($item) use ($sku) {
+                $campaignName = preg_replace('/\s+/', ' ', strtoupper(trim(rtrim($item->campaignName, '.'))));
+                $cleanSku = preg_replace('/\s+/', ' ', strtoupper(trim(rtrim($sku, '.'))));
+                return $campaignName === $cleanSku || $campaignName === $cleanSku . ' KW';
+            });
+
+            if (!$matchedCampaignL7 && !$matchedCampaignL1 && !$matchedCampaignL30) {
                 continue;
             }
 
             // Skip if we've already processed this campaign ID (avoid duplicates)
-            $campaignId = $matchedCampaignL7->campaign_id ?? ($matchedCampaignL1->campaign_id ?? '');
+            $campaignId = $matchedCampaignL7->campaign_id ?? ($matchedCampaignL1->campaign_id ?? ($matchedCampaignL30->campaign_id ?? ''));
             if (!empty($campaignId) && isset($processedCampaignIds[$campaignId])) {
                 continue;
             }
@@ -468,13 +482,22 @@ class AutoUpdateAmazonKwBids extends Command
                 ? (int) ($childInvSumByParent[$pm->parent ?? $pm->sku ?? ''] ?? 0)
                 : (int) ($shopify->inv ?? 0);
             $row['campaign_id'] = $campaignId;
-            $row['campaignName'] = $matchedCampaignL7->campaignName ?? ($matchedCampaignL1->campaignName ?? '');
-            $row['campaignStatus'] = strtoupper(trim($matchedCampaignL7->campaignStatus ?? ($matchedCampaignL1->campaignStatus ?? 'PAUSED')));
-            $row['campaignBudgetAmount'] = $matchedCampaignL7->campaignBudgetAmount ?? ($matchedCampaignL1->campaignBudgetAmount ?? 0);
-            $row['l7_spend'] = $matchedCampaignL7->spend ?? 0;
-            $row['l7_cpc'] = $matchedCampaignL7->costPerClick ?? 0;
-            $row['l1_spend'] = $matchedCampaignL1->spend ?? 0;
-            $row['l1_cpc'] = $matchedCampaignL1->costPerClick ?? 0;
+            $row['campaignName'] = $matchedCampaignL7->campaignName ?? ($matchedCampaignL1->campaignName ?? ($matchedCampaignL30->campaignName ?? ''));
+            $row['campaignStatus'] = strtoupper(trim($matchedCampaignL7->campaignStatus ?? ($matchedCampaignL1->campaignStatus ?? ($matchedCampaignL30->campaignStatus ?? 'PAUSED'))));
+            $row['campaignBudgetAmount'] = $matchedCampaignL7->campaignBudgetAmount ?? ($matchedCampaignL1->campaignBudgetAmount ?? ($matchedCampaignL30->campaignBudgetAmount ?? 0));
+            $row['l7_spend'] = $matchedCampaignL7 ? (float)($matchedCampaignL7->spend ?? 0) : 0;
+            $row['l7_cpc'] = $matchedCampaignL7 ? (float)($matchedCampaignL7->costPerClick ?? 0) : 0;
+            $row['l1_spend'] = $matchedCampaignL1 ? (float)($matchedCampaignL1->spend ?? 0) : 0;
+            $row['l1_cpc'] = $matchedCampaignL1 ? (float)($matchedCampaignL1->costPerClick ?? 0) : 0;
+            $row['l30_spend'] = $matchedCampaignL30 ? (float)($matchedCampaignL30->spend ?? 0) : 0;
+
+            if (!$matchedCampaignL7 && !$matchedCampaignL1 && $matchedCampaignL30 && ($row['l30_spend'] ?? 0) > 0) {
+                Log::warning('Over-utilized job: campaign has L30 spend but missing L7/L1 data (possible sync issue)', [
+                    'campaign_id' => $row['campaign_id'],
+                    'campaignName' => $row['campaignName'],
+                    'l30_spend' => $row['l30_spend'],
+                ]);
+            }
 
             // Get price from AmazonDatasheet
             $amazonSheet = $amazonDatasheets[strtoupper($pm->sku)] ?? null;
@@ -530,12 +553,39 @@ class AutoUpdateAmazonKwBids extends Command
             $budget = floatval($row['campaignBudgetAmount']);
             $l7_spend = floatval($row['l7_spend']);
             $l1_spend = floatval($row['l1_spend']);
+            $l30_spend = floatval($row['l30_spend'] ?? 0);
 
-            $ub7 = $budget > 0 ? ($l7_spend / ($budget * 7)) * 100 : 0;
-            $ub1 = $budget > 0 ? ($l1_spend / $budget) * 100 : 0;
+            // UB7: use L7 if available; else estimate from L30 when L7 missing but L30 has spend
+            if ($l7_spend > 0 && $budget > 0) {
+                $ub7 = ($l7_spend / ($budget * 7)) * 100;
+            } elseif ($l30_spend > 0 && $budget > 0) {
+                $estimatedL7Spend = ($l30_spend / 30) * 7;
+                $ub7 = ($estimatedL7Spend / ($budget * 7)) * 100;
+                Log::info('Over-utilized job: using estimated UB7 from L30', [
+                    'campaign_id' => $row['campaign_id'],
+                    'campaignName' => $row['campaignName'],
+                    'l30_spend' => $l30_spend,
+                    'estimated_ub7' => round($ub7, 2),
+                ]);
+            } else {
+                $ub7 = 0;
+            }
 
-            $ub7 = $budget > 0 ? ($l7_spend / ($budget * 7)) * 100 : 0;
-            $ub1 = $budget > 0 ? ($l1_spend / $budget) * 100 : 0;
+            // UB1: use L1 if available; else estimate from L30 when L1 missing but L30 has spend
+            if ($l1_spend > 0 && $budget > 0) {
+                $ub1 = ($l1_spend / $budget) * 100;
+            } elseif ($l30_spend > 0 && $budget > 0) {
+                $estimatedL1Spend = $l30_spend / 30;
+                $ub1 = ($estimatedL1Spend / $budget) * 100;
+                Log::info('Over-utilized job: using estimated UB1 from L30', [
+                    'campaign_id' => $row['campaign_id'],
+                    'campaignName' => $row['campaignName'],
+                    'l30_spend' => $l30_spend,
+                    'estimated_ub1' => round($ub1, 2),
+                ]);
+            } else {
+                $ub1 = 0;
+            }
 
             // Determine utilization type (must match tabulator)
             $rowType = 'all';
@@ -591,6 +641,8 @@ class AutoUpdateAmazonKwBids extends Command
 
             // Include all campaigns with valid SBID and ENABLED (over-, under-, and correctly utilized)
             if (!empty($row['campaign_id']) && is_numeric($row['sbid']) && $row['sbid'] > 0 && ($row['campaignStatus'] ?? '') === 'ENABLED') {
+                $row['ub7'] = $ub7;
+                $row['ub1'] = $ub1;
                 $result[] = (object) $row;
             }
         }
