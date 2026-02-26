@@ -95,7 +95,7 @@ class CvrMasterController extends Controller
     }
 
     /**
-     * Display Pricing Master CVR view (uses same data as CVR Master)
+     * Display Master Analytics CVR view (uses same data as CVR Master)
      */
     public function pricingMasterCvrView(Request $request)
     {
@@ -1016,10 +1016,10 @@ class CvrMasterController extends Controller
                     $saved++;
                 }
                 if ($saved > 0) {
-                    Log::info('Pricing Master SKU snapshot saved', ['date' => $today, 'count' => $saved]);
+                    Log::info('Master Analytics SKU snapshot saved', ['date' => $today, 'count' => $saved]);
                 }
             } catch (\Exception $e) {
-                Log::warning('Pricing Master SKU daily snapshot save failed: ' . $e->getMessage());
+                Log::warning('Master Analytics SKU daily snapshot save failed: ' . $e->getMessage());
             }
 
             return response()->json($finalResult);
@@ -2326,7 +2326,7 @@ class CvrMasterController extends Controller
     }
 
     /**
-     * Get Pricing Master chart data (Rolling L30) for Inv, OV L30, Price, CVR graphs.
+     * Get Master Analytics chart data (Rolling L30) for Inv, OV L30, Price, CVR graphs.
      * Data is read from pricing_master_daily_snapshots_sku (SKU-wise, saved on page load/refresh).
      */
     public function getPricingMasterChartData(Request $request)

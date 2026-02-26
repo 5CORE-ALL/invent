@@ -203,7 +203,7 @@
             <li class="side-nav-item">
                 <a href="{{ url('/pricing-master-cvr') }}" class="side-nav-link">
                     <i class="ri-file-line"></i>
-                    <span>Pricing Master</span>
+                    <span>Master Analytics</span>
                 </a>
             </li>
 

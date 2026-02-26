@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Pricing Master ', 'sidenav' => 'condensed'])
+@extends('layouts.vertical', ['title' => 'Master Analytics ', 'sidenav' => 'condensed'])
 
 @section('css')
     <meta name="csrf-token" content="{{ csrf_token() }}">
@@ -259,8 +259,8 @@
 
 @section('content')
     @include('layouts.shared.page-title', [
-        'page_title' => 'Pricing Master',
-        'sub_title' => 'Pricing Master Data with Editable SPRICE',
+        'page_title' => 'Master Analytics',
+        'sub_title' => 'Master Analytics Data with Editable SPRICE',
     ])
     <div class="toast-container position-fixed top-0 end-0 p-3" style="z-index: 9999;"></div>
     
@@ -447,14 +447,14 @@
         </div>
     </div>
 
-    <!-- Pricing Master Rolling L30 Chart Modal (Inv, OV L30, Price, CVR) -->
+    <!-- Master Analytics Rolling L30 Chart Modal (Inv, OV L30, Price, CVR) -->
     <div class="modal fade" id="pricingMasterChartModal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog shadow-none" style="max-width: 98vw; width: 98vw; margin: 10px auto 0;">
             <div class="modal-content" style="border-radius: 8px; overflow: hidden;">
                 <div class="modal-header bg-info text-white py-1 px-3">
                     <h6 class="modal-title mb-0" style="font-size: 13px;">
                         <i class="fas fa-chart-area me-1"></i>
-                        <span id="pricingMasterChartModalTitle">Pricing Master - Inv (Rolling L30)</span>
+                        <span id="pricingMasterChartModalTitle">Master Analytics - Inv (Rolling L30)</span>
                     </h6>
                     <div class="d-flex align-items-center gap-2">
                         <select id="pricingMasterChartRangeSelect" class="form-select form-select-sm bg-white" style="width: 110px; height: 26px; font-size: 11px; padding: 1px 8px;">
@@ -495,7 +495,7 @@
                     <div id="pricingMasterChartNoData" class="text-center py-3" style="display: none;">
                         <i class="fas fa-exclamation-circle text-warning fa-2x mb-2"></i>
                         <p class="text-muted small mb-0">No daily data for this SKU yet.</p>
-                        <p class="text-muted small mb-0"><strong>Refresh this page (Pricing Master CVR)</strong> once so today’s SKU data is saved, then open the graph again.</p>
+                        <p class="text-muted small mb-0"><strong>Refresh this page (Master Analytics CVR)</strong> once so today’s SKU data is saved, then open the graph again.</p>
                     </div>
                 </div>
             </div>
@@ -552,8 +552,8 @@
 
                     <!-- SKU/Parent Filter -->
                     <select id="sku-parent-filter" class="form-select form-select-sm" style="width: auto;">
-                        <option value="both">Both (SKU + Parent)</option>
-                        <option value="sku" selected>SKU Only</option>
+                        <option value="both" selected>Both (SKU + Parent)</option>
+                        <option value="sku">SKU Only</option>
                         <option value="parent">Parent Only</option>
                     </select>
 
@@ -1173,6 +1173,20 @@
                         return `<span class="parent-sku-dot parent-sku-dot-btn" 
                                     data-parent="${parent.replace(/"/g, '&quot;')}" 
                                     title="Click to view SKUs for parent: ${parent.replace(/"/g, '&quot;')}"></span>`;
+                    }
+                },
+                {
+                    title: "Parent",
+                    field: "parent",
+                    sorter: "string",
+                    headerFilter: "input",
+                    headerFilterPlaceholder: "Search Parent",
+                    width: 120,
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        const parent = rowData.parent;
+                        if (parent === undefined || parent === null || (typeof parent === 'string' && !parent.trim())) return '-';
+                        return (typeof parent === 'string' ? parent : String(parent)).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
                     }
                 },
                 {
@@ -2635,8 +2649,8 @@
                                 visibility[field] ? col.show() : col.hide();
                             }
                         });
-                        buildColumnDropdown();
                     }
+                    buildColumnDropdown();
                 }
             });
         }
@@ -2757,7 +2771,7 @@
             currentPricingChartDays = 30;
             $('#pricingMasterChartRangeSelect').val('30');
             const label = pricingChartMetricLabels[metric] || metric;
-            $('#pricingMasterChartModalTitle').text('Pricing Master - ' + sku + ' - ' + label + ' (Rolling ' + pricingChartRangeLabel(30) + ')');
+            $('#pricingMasterChartModalTitle').text('Master Analytics - ' + sku + ' - ' + label + ' (Rolling ' + pricingChartRangeLabel(30) + ')');
             $('#pricingMasterChartContainer').hide();
             $('#pricingMasterChartNoData').hide();
             $('#pricingMasterChartLoading').show();
