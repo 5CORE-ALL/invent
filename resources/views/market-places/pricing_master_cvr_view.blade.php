@@ -6,10 +6,11 @@
     <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
     <link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
     <style>
+        /* Hide sort icons – sorting still works on header click */
         .tabulator-col .tabulator-col-sorter {
             display: none !important;
         }
-        
+
         /* Vertical column headers */
         .tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-title {
             writing-mode: vertical-rl;
@@ -165,18 +166,6 @@
         .tabulator-row.parent-row {
             background-color: #bde0ff !important;
             font-weight: bold !important;
-        }
-
-        /* Expand/collapse icon */
-        .parent-toggle-icon {
-            cursor: pointer;
-            margin-right: 8px;
-            color: #17a2b8;
-            font-size: 13px;
-        }
-
-        .parent-toggle-icon:hover {
-            color: #0d6efd;
         }
 
         /* Push price button styling */
@@ -470,8 +459,8 @@
 
                     <!-- SKU/Parent Filter -->
                     <select id="sku-parent-filter" class="form-select form-select-sm" style="width: auto;">
-                        <option value="both">Both</option>
-                        <option value="sku" selected>SKU Only</option>
+                        <option value="both" selected>Both (SKU + Parent)</option>
+                        <option value="sku">SKU Only</option>
                         <option value="parent">Parent Only</option>
                     </select>
 
@@ -1066,6 +1055,7 @@
                 {
                     title: "Image",
                     field: "image_path",
+                    sorter: "string",
                     formatter: function(cell) {
                         const value = cell.getValue();
                         if (value) {
@@ -1073,13 +1063,12 @@
                         }
                         return '';
                     },
-                    headerSort: false,
                     width: 80
                 },
                 {
                     title: "P",
                     field: "parent",
-                    headerSort: false,
+                    sorter: "string",
                     width: 40,
                     hozAlign: "center",
                     formatter: function(cell) {
@@ -1095,6 +1084,7 @@
                 {
                     title: "SKU",
                     field: "sku",
+                    sorter: "string",
                     headerFilter: "input",
                     headerFilterPlaceholder: "Search SKU...",
                     cssClass: "text-primary fw-bold",
@@ -1103,19 +1093,7 @@
                     width: 250,
                     formatter: function(cell) {
                         const sku = cell.getValue();
-                        const rowData = cell.getRow().getData();
-                        let html = '';
-                        
-                        // Add toggle icon for parent rows in "Parent Only" view
-                        if (rowData.is_parent_summary === true) {
-                            const isExpanded = rowData._expanded === true;
-                            const iconClass = isExpanded ? 'fa-chevron-up' : 'fa-chevron-down';
-                            html += `<i class="fas ${iconClass} parent-toggle-icon" 
-                                       data-parent="${rowData.parent}" 
-                                       title="Click to expand/collapse"></i>`;
-                        }
-                        
-                        html += `<span>${sku}</span>`;
+                        let html = `<span>${sku}</span>`;
                         html += `<i class="fa fa-copy text-secondary copy-sku-btn" 
                                    style="cursor: pointer; margin-left: 8px; font-size: 14px;" 
                                    data-sku="${sku}" title="Copy SKU"></i>`;
@@ -1201,6 +1179,34 @@
                     width: 80
                 },
                 {
+                    title: "Rating",
+                    field: "rating",
+                    hozAlign: "center",
+                    sorter: "number",
+                    tooltip: "Rating and reviews from Jungle Scout",
+                    formatter: function(cell) {
+                        const rating = cell.getValue();
+                        const rowData = cell.getRow().getData();
+                        const reviews = rowData.reviews || 0;
+                        if (!rating || rating === 0) {
+                            return '<span style="color: #6c757d;">-</span>';
+                        }
+                        let ratingColor = '';
+                        const ratingVal = parseFloat(rating);
+                        if (ratingVal < 3) ratingColor = '#a00211';
+                        else if (ratingVal >= 3 && ratingVal <= 3.5) ratingColor = '#ffc107';
+                        else if (ratingVal >= 3.51 && ratingVal <= 3.99) ratingColor = '#3591dc';
+                        else if (ratingVal >= 4 && ratingVal <= 4.5) ratingColor = '#28a745';
+                        else ratingColor = '#e83e8c';
+                        const reviewColor = reviews < 4 ? '#a00211' : '#6c757d';
+                        return `<div style="display: flex; flex-direction: column; align-items: center; gap: 2px;">
+                            <span style="color: ${ratingColor}; font-weight: 600;"><i class="fa fa-star"></i> ${parseFloat(rating).toFixed(1)}</span>
+                            <span style="font-size: 11px; color: ${reviewColor}; font-weight: 600;">${parseInt(reviews).toLocaleString()} reviews</span>
+                        </div>`;
+                    },
+                    width: 90
+                },
+                {
                     title: "Total Views",
                     field: "total_views",
                     hozAlign: "center",
@@ -1241,27 +1247,42 @@
                     sorter: "number",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
-                        const sku = rowData.sku;
-                        const count = parseInt(rowData.amazon_lmp_count || 0);
+                        const sku = (rowData.sku || '').replace(/"/g, '&quot;');
                         if (rowData.is_parent_summary === true) {
                             const v = cell.getValue();
                             return v != null ? '<span style="font-weight: 600;">$' + parseFloat(v).toFixed(2) + '</span>' : '<span class="text-muted">-</span>';
                         }
                         const value = cell.getValue();
-                        let html = '<div style="display: flex; flex-direction: column; align-items: center; gap: 4px;">';
                         if (value == null || value === '') {
-                            html += '<span class="text-muted">-</span>';
-                        } else {
-                            const price = parseFloat(value);
-                            const avgPrice = parseFloat(rowData.avg_price || 0);
-                            const color = (avgPrice > 0 && price < avgPrice) ? '#dc3545' : '#28a745';
-                            html += `<span style="color: ${color}; font-weight: 600;">$${price.toFixed(2)}</span>`;
+                            return '<span class="text-muted">-</span>';
                         }
-                        if (count > 0) {
-                            html += `<a href="#" class="view-lmp-competitors" data-sku="${(sku || '').replace(/"/g, '&quot;')}" data-marketplace="amazon" style="color: #007bff; text-decoration: none; cursor: pointer; font-size: 11px;"><i class="fa fa-eye"></i> View ${count}</a>`;
+                        const price = parseFloat(value);
+                        const avgPrice = parseFloat(rowData.avg_price || 0);
+                        const color = (avgPrice > 0 && price < avgPrice) ? '#dc3545' : '#28a745';
+                        return `<a href="#" class="lmp-price-link" data-sku="${sku}" data-marketplace="amazon" style="color: ${color}; font-weight: 600; text-decoration: none; cursor: pointer;">$${price.toFixed(2)}</a>`;
+                    },
+                    width: 100
+                },
+                {
+                    title: "eBay LMP",
+                    field: "ebay_lmp_price",
+                    hozAlign: "center",
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        const sku = (rowData.sku || '').replace(/"/g, '&quot;');
+                        if (rowData.is_parent_summary === true) {
+                            const v = cell.getValue();
+                            return v != null ? '<span style="font-weight: 600;">$' + parseFloat(v).toFixed(2) + '</span>' : '<span class="text-muted">-</span>';
                         }
-                        html += '</div>';
-                        return html;
+                        const value = cell.getValue();
+                        if (value == null || value === '') {
+                            return '<span class="text-muted">-</span>';
+                        }
+                        const price = parseFloat(value);
+                        const avgPrice = parseFloat(rowData.avg_price || 0);
+                        const color = (avgPrice > 0 && price < avgPrice) ? '#dc3545' : '#28a745';
+                        return `<a href="#" class="lmp-price-link" data-sku="${sku}" data-marketplace="ebay" style="color: ${color}; font-weight: 600; text-decoration: none; cursor: pointer;">$${price.toFixed(2)}</a>`;
                     },
                     width: 100
                 },
@@ -1560,8 +1581,9 @@
 
         // ==================== LMP COMPETITORS MODAL ====================
         
-        function loadLmpCompetitorsModal(sku) {
+        function loadLmpCompetitorsModal(sku, marketplace) {
             $('#lmpSku').text(sku);
+            $('#lmpModal').data('lmp-marketplace', marketplace || null);
             const modal = new bootstrap.Modal(document.getElementById('lmpModal'));
             modal.show();
             
@@ -1569,93 +1591,151 @@
             
             let amazonData = null;
             let ebayData = null;
+            const onlyAmazon = marketplace === 'amazon';
+            const onlyEbay = marketplace === 'ebay';
+            const needAmazon = !onlyEbay;
+            const needEbay = !onlyAmazon;
             let loaded = 0;
+            const totalNeeded = (needAmazon ? 1 : 0) + (needEbay ? 1 : 0);
             
             function tryRender() {
                 loaded++;
-                if (loaded < 2) return;
-                renderLmpCombined(sku, amazonData, ebayData);
+                if (loaded < totalNeeded) return;
+                renderLmpCombined(sku, amazonData, ebayData, marketplace);
             }
             
-            $.ajax({
-                url: '/amazon/competitors',
-                method: 'GET',
-                data: { sku: sku },
-                success: function(res) {
-                    amazonData = res.success && res.competitors ? res : null;
-                    tryRender();
-                },
-                error: function() {
-                    amazonData = null;
-                    tryRender();
-                }
-            });
+            if (needAmazon) {
+                $.ajax({
+                    url: '/amazon/competitors',
+                    method: 'GET',
+                    data: { sku: sku },
+                    success: function(res) {
+                        amazonData = res.success && res.competitors ? res : null;
+                        tryRender();
+                    },
+                    error: function() {
+                        amazonData = null;
+                        tryRender();
+                    }
+                });
+            }
             
-            $.ajax({
-                url: '/ebay-lmp-data',
-                method: 'GET',
-                data: { sku: sku },
-                success: function(res) {
-                    ebayData = res.success && res.competitors ? res : null;
-                    tryRender();
-                },
-                error: function() {
-                    ebayData = null;
-                    tryRender();
-                }
-            });
+            if (needEbay) {
+                $.ajax({
+                    url: '/ebay-lmp-data',
+                    method: 'GET',
+                    data: { sku: sku },
+                    success: function(res) {
+                        ebayData = res.success && res.competitors ? res : null;
+                        tryRender();
+                    },
+                    error: function() {
+                        ebayData = null;
+                        tryRender();
+                    }
+                });
+            }
         }
         
-        function renderLmpCombined(sku, amazonRes, ebayRes) {
+        function renderLmpCombined(sku, amazonRes, ebayRes, marketplace) {
             const amzList = (amazonRes && amazonRes.competitors) ? amazonRes.competitors : [];
             const ebayList = (ebayRes && ebayRes.competitors) ? ebayRes.competitors : [];
+            const onlyAmazon = marketplace === 'amazon';
+            const onlyEbay = marketplace === 'ebay';
             
             const amzLowest = amzList.length ? Math.min(...amzList.map(c => parseFloat(c.price) || 0).filter(p => p > 0)) : null;
             const ebayTotals = ebayList.map(c => parseFloat(c.total_price || c.price) || 0).filter(t => t > 0);
             const ebayLowest = ebayTotals.length ? Math.min(...ebayTotals) : null;
             
-            if (amzList.length === 0 && ebayList.length === 0) {
+            const listToShow = onlyAmazon ? amzList : (onlyEbay ? ebayList : null);
+            if (onlyAmazon && amzList.length === 0) {
+                $('#lmpDataList').html('<div class="alert alert-info"><i class="fa fa-info-circle"></i> No Amazon competitors found for this SKU</div>');
+                return;
+            }
+            if (onlyEbay && ebayList.length === 0) {
+                $('#lmpDataList').html('<div class="alert alert-info"><i class="fa fa-info-circle"></i> No eBay competitors found for this SKU</div>');
+                return;
+            }
+            if (!onlyAmazon && !onlyEbay && amzList.length === 0 && ebayList.length === 0) {
                 $('#lmpDataList').html('<div class="alert alert-info"><i class="fa fa-info-circle"></i> No Amazon or eBay competitors found for this SKU</div>');
                 return;
             }
             
-            const maxRows = Math.max(amzList.length, ebayList.length);
+            const maxRows = onlyAmazon ? amzList.length : (onlyEbay ? ebayList.length : Math.max(amzList.length, ebayList.length));
             let html = '';
-            if ((amzLowest != null && amzLowest > 0) || (ebayLowest != null && ebayLowest > 0)) {
+            if (onlyAmazon && amzLowest != null && amzLowest > 0) {
+                html += '<div class="mb-3"><span class="badge bg-warning text-dark">Amz lowest: $' + amzLowest.toFixed(2) + '</span></div>';
+            } else if (onlyEbay && ebayLowest != null && ebayLowest > 0) {
+                html += '<div class="mb-3"><span class="badge bg-info text-dark">eBay lowest: $' + ebayLowest.toFixed(2) + '</span></div>';
+            } else if (!onlyAmazon && !onlyEbay && ((amzLowest != null && amzLowest > 0) || (ebayLowest != null && ebayLowest > 0))) {
                 const parts = [];
                 if (amzLowest != null && amzLowest > 0) parts.push('<span class="badge bg-warning text-dark me-1">Amz lowest: $' + amzLowest.toFixed(2) + '</span>');
                 if (ebayLowest != null && ebayLowest > 0) parts.push('<span class="badge bg-info text-dark">eBay lowest: $' + ebayLowest.toFixed(2) + '</span>');
                 html += '<div class="mb-3">' + parts.join(' ') + '</div>';
             }
             
-            html += '<div class="table-responsive"><table class="table table-hover table-bordered table-sm"><thead class="table-light"><tr><th>#</th><th>SKU</th><th>Amz</th><th>eBay</th></tr></thead><tbody>';
-            
-            for (let i = 0; i < maxRows; i++) {
-                const amz = amzList[i];
-                const ebay = ebayList[i];
-                const amzPrice = amz ? (parseFloat(amz.price) || 0) : null;
-                const ebayPrice = ebay ? (parseFloat(ebay.total_price || ebay.price) || 0) : null;
-                const amzLink = amz ? (amz.product_link || amz.link || '') : '';
-                const ebayLink = ebay ? (ebay.link || ebay.product_link || '') : '';
-                const amzImage = amz ? (amz.image || '') : '';
-                const ebayImage = ebay ? (ebay.image || '') : '';
-                
-                const amzLowestFlag = amzPrice > 0 && amzLowest != null && Math.abs(amzPrice - amzLowest) < 0.01;
-                const ebayLowestFlag = ebayPrice > 0 && ebayLowest != null && Math.abs(ebayPrice - ebayLowest) < 0.01;
-                
-                const amzImgHtml = amzImage ? `<img src="${amzImage.replace(/"/g, '&quot;')}" alt="Amz" class="rounded" style="height:40px;width:40px;object-fit:contain;margin-right:6px;" onerror="this.style.display='none'">` : '';
-                const ebayImgHtml = ebayImage ? `<img src="${ebayImage.replace(/"/g, '&quot;')}" alt="eBay" class="rounded" style="height:40px;width:40px;object-fit:contain;margin-right:6px;" onerror="this.style.display='none'">` : '';
-                
-                const amzCell = amzPrice != null && amzPrice > 0
-                    ? `<div class="d-flex align-items-center">${amzImgHtml}<span>${amzLowestFlag ? '<i class="fa fa-trophy text-success me-1"></i>' : ''}<span style="font-weight: 600;">$${amzPrice.toFixed(2)}</span>${amzLink ? ` <a href="${amzLink.replace(/"/g, '&quot;')}" target="_blank" class="text-primary ms-1" title="Open product"><i class="fa fa-external-link"></i></a>` : ''}</span></div>`
-                    : amz ? `<div class="d-flex align-items-center">${amzImgHtml}<span class="text-muted">-</span></div>` : '<span class="text-muted">-</span>';
-                
-                const ebayCell = ebayPrice != null && ebayPrice > 0
-                    ? `<div class="d-flex align-items-center">${ebayImgHtml}<span>${ebayLowestFlag ? '<i class="fa fa-trophy text-success me-1"></i>' : ''}<span style="font-weight: 600;">$${ebayPrice.toFixed(2)}</span>${ebayLink ? ` <a href="${ebayLink.replace(/"/g, '&quot;')}" target="_blank" class="text-primary ms-1" title="Open product"><i class="fa fa-external-link"></i></a>` : ''}</span></div>`
-                    : ebay ? `<div class="d-flex align-items-center">${ebayImgHtml}<span class="text-muted">-</span></div>` : '<span class="text-muted">-</span>';
-                
-                const rowClass = (amzLowestFlag || ebayLowestFlag) ? 'table-success' : '';
-                html += `<tr class="${rowClass}"><td>${i+1}</td><td>${sku}</td><td>${amzCell}</td><td>${ebayCell}</td></tr>`;
+            if (onlyAmazon) {
+                html += '<div class="table-responsive"><table class="table table-hover table-bordered table-sm"><thead class="table-light"><tr><th>#</th><th>SKU</th><th>Amz</th><th>Action</th></tr></thead><tbody>';
+                amzList.forEach(function(amz, i) {
+                    const amzPrice = parseFloat(amz.price) || 0;
+                    const amzLink = amz.product_link || amz.link || '';
+                    const amzImage = amz.image || '';
+                    const amzLowestFlag = amzPrice > 0 && amzLowest != null && Math.abs(amzPrice - amzLowest) < 0.01;
+                    const amzImgHtml = amzImage ? `<img src="${amzImage.replace(/"/g, '&quot;')}" alt="Amz" class="rounded" style="height:40px;width:40px;object-fit:contain;margin-right:6px;" onerror="this.style.display='none'">` : '';
+                    const amzCell = amzPrice > 0
+                        ? `<div class="d-flex align-items-center">${amzImgHtml}<span>${amzLowestFlag ? '<i class="fa fa-trophy text-success me-1"></i>' : ''}<span style="font-weight: 600;">$${amzPrice.toFixed(2)}</span>${amzLink ? ` <a href="${amzLink.replace(/"/g, '&quot;')}" target="_blank" class="text-primary ms-1" title="Open product"><i class="fa fa-external-link"></i></a>` : ''}</span></div>`
+                        : `<div class="d-flex align-items-center">${amzImgHtml}<span class="text-muted">-</span></div>`;
+                    const rowClass = amzLowestFlag ? 'table-success' : '';
+                    const delBtn = '<button type="button" class="btn btn-sm btn-outline-danger delete-lmp-row-btn" data-id="' + amz.id + '" data-marketplace="amazon" data-sku="' + (sku || '').replace(/"/g, '&quot;') + '" data-price="' + amzPrice + '" title="Delete this competitor"><i class="fa fa-trash"></i></button>';
+                    html += `<tr class="${rowClass}"><td>${i+1}</td><td>${sku}</td><td>${amzCell}</td><td>${delBtn}</td></tr>`;
+                });
+            } else if (onlyEbay) {
+                html += '<div class="table-responsive"><table class="table table-hover table-bordered table-sm"><thead class="table-light"><tr><th>#</th><th>SKU</th><th>eBay</th><th>Action</th></tr></thead><tbody>';
+                ebayList.forEach(function(ebay, i) {
+                    const ebayPrice = parseFloat(ebay.total_price || ebay.price) || 0;
+                    const ebayLink = ebay.link || ebay.product_link || '';
+                    const ebayImage = ebay.image || '';
+                    const ebayLowestFlag = ebayPrice > 0 && ebayLowest != null && Math.abs(ebayPrice - ebayLowest) < 0.01;
+                    const ebayImgHtml = ebayImage ? `<img src="${ebayImage.replace(/"/g, '&quot;')}" alt="eBay" class="rounded" style="height:40px;width:40px;object-fit:contain;margin-right:6px;" onerror="this.style.display='none'">` : '';
+                    const ebayCell = ebayPrice > 0
+                        ? `<div class="d-flex align-items-center">${ebayImgHtml}<span>${ebayLowestFlag ? '<i class="fa fa-trophy text-success me-1"></i>' : ''}<span style="font-weight: 600;">$${ebayPrice.toFixed(2)}</span>${ebayLink ? ` <a href="${ebayLink.replace(/"/g, '&quot;')}" target="_blank" class="text-primary ms-1" title="Open product"><i class="fa fa-external-link"></i></a>` : ''}</span></div>`
+                        : `<div class="d-flex align-items-center">${ebayImgHtml}<span class="text-muted">-</span></div>`;
+                    const rowClass = ebayLowestFlag ? 'table-success' : '';
+                    const delBtn = '<button type="button" class="btn btn-sm btn-outline-danger delete-lmp-row-btn" data-id="' + ebay.id + '" data-marketplace="ebay" data-sku="' + (sku || '').replace(/"/g, '&quot;') + '" data-price="' + ebayPrice + '" title="Delete this competitor"><i class="fa fa-trash"></i></button>';
+                    html += `<tr class="${rowClass}"><td>${i+1}</td><td>${sku}</td><td>${ebayCell}</td><td>${delBtn}</td></tr>`;
+                });
+            } else {
+                html += '<div class="table-responsive"><table class="table table-hover table-bordered table-sm"><thead class="table-light"><tr><th>#</th><th>SKU</th><th>Amz</th><th>eBay</th><th>Action</th></tr></thead><tbody>';
+                for (let i = 0; i < maxRows; i++) {
+                    const amz = amzList[i];
+                    const ebay = ebayList[i];
+                    const amzPrice = amz ? (parseFloat(amz.price) || 0) : null;
+                    const ebayPrice = ebay ? (parseFloat(ebay.total_price || ebay.price) || 0) : null;
+                    const amzLink = amz ? (amz.product_link || amz.link || '') : '';
+                    const ebayLink = ebay ? (ebay.link || ebay.product_link || '') : '';
+                    const amzImage = amz ? (amz.image || '') : '';
+                    const ebayImage = ebay ? (ebay.image || '') : '';
+                    const amzLowestFlag = amzPrice > 0 && amzLowest != null && Math.abs(amzPrice - amzLowest) < 0.01;
+                    const ebayLowestFlag = ebayPrice > 0 && ebayLowest != null && Math.abs(ebayPrice - ebayLowest) < 0.01;
+                    const amzImgHtml = amzImage ? `<img src="${amzImage.replace(/"/g, '&quot;')}" alt="Amz" class="rounded" style="height:40px;width:40px;object-fit:contain;margin-right:6px;" onerror="this.style.display='none'">` : '';
+                    const ebayImgHtml = ebayImage ? `<img src="${ebayImage.replace(/"/g, '&quot;')}" alt="eBay" class="rounded" style="height:40px;width:40px;object-fit:contain;margin-right:6px;" onerror="this.style.display='none'">` : '';
+                    const amzCell = amzPrice != null && amzPrice > 0
+                        ? `<div class="d-flex align-items-center">${amzImgHtml}<span>${amzLowestFlag ? '<i class="fa fa-trophy text-success me-1"></i>' : ''}<span style="font-weight: 600;">$${amzPrice.toFixed(2)}</span>${amzLink ? ` <a href="${amzLink.replace(/"/g, '&quot;')}" target="_blank" class="text-primary ms-1" title="Open product"><i class="fa fa-external-link"></i></a>` : ''}</span></div>`
+                        : amz ? `<div class="d-flex align-items-center">${amzImgHtml}<span class="text-muted">-</span></div>` : '<span class="text-muted">-</span>';
+                    const ebayCell = ebayPrice != null && ebayPrice > 0
+                        ? `<div class="d-flex align-items-center">${ebayImgHtml}<span>${ebayLowestFlag ? '<i class="fa fa-trophy text-success me-1"></i>' : ''}<span style="font-weight: 600;">$${ebayPrice.toFixed(2)}</span>${ebayLink ? ` <a href="${ebayLink.replace(/"/g, '&quot;')}" target="_blank" class="text-primary ms-1" title="Open product"><i class="fa fa-external-link"></i></a>` : ''}</span></div>`
+                        : ebay ? `<div class="d-flex align-items-center">${ebayImgHtml}<span class="text-muted">-</span></div>` : '<span class="text-muted">-</span>';
+                    const rowClass = (amzLowestFlag || ebayLowestFlag) ? 'table-success' : '';
+                    let actionCell = '';
+                    if (amz && amz.id) {
+                        actionCell += '<button type="button" class="btn btn-sm btn-outline-danger delete-lmp-row-btn me-1" data-id="' + amz.id + '" data-marketplace="amazon" data-sku="' + (sku || '').replace(/"/g, '&quot;') + '" data-price="' + (amzPrice || 0) + '" title="Delete Amz"><i class="fa fa-trash"></i></button>';
+                    }
+                    if (ebay && ebay.id) {
+                        actionCell += '<button type="button" class="btn btn-sm btn-outline-danger delete-lmp-row-btn" data-id="' + ebay.id + '" data-marketplace="ebay" data-sku="' + (sku || '').replace(/"/g, '&quot;') + '" data-price="' + (ebayPrice || 0) + '" title="Delete eBay"><i class="fa fa-trash"></i></button>';
+                    }
+                    if (!actionCell) actionCell = '<span class="text-muted">-</span>';
+                    html += `<tr class="${rowClass}"><td>${i+1}</td><td>${sku}</td><td>${amzCell}</td><td>${ebayCell}</td><td>${actionCell}</td></tr>`;
+                }
             }
             
             html += '</tbody></table></div>';
@@ -1668,7 +1748,46 @@
             const sku = $(this).data('sku');
             if (sku) loadLmpCompetitorsModal(sku);
         });
-        
+
+        $(document).on('click', '.lmp-price-link', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            const sku = $(this).data('sku');
+            const marketplace = $(this).data('marketplace'); // 'amazon' or 'ebay'
+            if (sku) loadLmpCompetitorsModal(sku, marketplace);
+        });
+
+        $(document).on('click', '.delete-lmp-row-btn', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            const btn = $(this);
+            const id = btn.data('id');
+            const marketplace = btn.data('marketplace');
+            const sku = btn.data('sku') || $('#lmpSku').text();
+            const price = btn.data('price');
+            const label = marketplace === 'amazon' ? 'Amazon' : 'eBay';
+            if (!id) return;
+            if (!confirm('Delete this ' + label + ' competitor ($' + (price ? parseFloat(price).toFixed(2) : '') + ') from LMP? This cannot be undone.')) return;
+            const url = marketplace === 'amazon' ? '/amazon/lmp/delete' : '/ebay-lmp-delete';
+            $.ajax({
+                url: url,
+                method: 'POST',
+                data: { id: id, _token: '{{ csrf_token() }}' },
+                success: function(response) {
+                    if (response.success) {
+                        showToast(response.message || 'Competitor deleted', 'success');
+                        loadLmpCompetitorsModal(sku, marketplace);
+                    } else {
+                        showToast(response.error || 'Failed to delete', 'error');
+                    }
+                },
+                error: function(xhr) {
+                    const msg = (xhr.responseJSON && xhr.responseJSON.error) ? xhr.responseJSON.error : 'Failed to delete competitor';
+                    showToast(msg, 'error');
+                }
+            });
+        });
+
         // ==================== REMARK FUNCTIONS ====================
         
         // Submit remark
@@ -1886,32 +2005,6 @@
             });
         });
 
-        // Parent toggle handler
-        $(document).on('click', '.parent-toggle-icon', function(e) {
-            e.preventDefault();
-            e.stopPropagation();
-            
-            const clickedParent = $(this).data('parent');
-            
-            console.log('=== Parent Toggle Clicked ===');
-            console.log('Clicked parent:', clickedParent);
-            console.log('Current expandedParent:', expandedParent);
-            
-            // Toggle expanded state
-            if (expandedParent === clickedParent) {
-                expandedParent = null; // Collapse
-                console.log('→ Collapsing parent');
-            } else {
-                expandedParent = clickedParent; // Expand
-                console.log('→ Expanding parent:', clickedParent);
-            }
-            
-            // Rebuild parent view
-            buildParentView();
-            
-            return false; // Prevent default action and stop propagation
-        });
-
         function buildParentView() {
             console.log('=== Building Parent View ===');
             console.log('fullDataset length:', fullDataset.length);
@@ -2115,7 +2208,7 @@
 
         $('#remove-filter-btn').on('click', function() {
             $('#inventory-filter').val('more');
-            $('#sku-parent-filter').val('sku');
+            $('#sku-parent-filter').val('both');
             const $allDil = $('.column-filter[data-column="dil_percent"][data-color="all"]');
             $('.column-filter[data-column="dil_percent"]').removeClass('active');
             $allDil.addClass('active');

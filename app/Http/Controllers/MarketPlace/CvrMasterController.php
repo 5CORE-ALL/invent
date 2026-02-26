@@ -67,6 +67,7 @@ use App\Models\ReverbListingStatus;
 use App\Models\TemuListingStatus;
 use App\Models\BestbuyUSAListingStatus;
 use App\Models\TiendamiaListingStatus;
+use App\Models\JungleScoutProductData;
 use Carbon\Carbon;
 use App\Services\AmazonSpApiService;
 use App\Services\DobaApiService;
@@ -362,6 +363,39 @@ class CvrMasterController extends Controller
                 'total_remarks' => $latestRemarks->count()
             ]);
 
+            // Jungle Scout data for rating/reviews (SKU and ASIN lookup)
+            $allJungleScoutData = JungleScoutProductData::all();
+            $jungleScoutBySku = $allJungleScoutData
+                ->filter(fn ($item) => !empty($item->sku))
+                ->groupBy(fn ($item) => strtoupper(trim($item->sku)))
+                ->map(function ($group) {
+                    return [
+                        'all_data' => $group->map(function ($item) {
+                            $data = is_array($item->data) ? $item->data : json_decode($item->data, true);
+                            return is_array($data) ? $data : [];
+                        })->toArray()
+                    ];
+                });
+            $jungleScoutByAsin = $allJungleScoutData
+                ->filter(function ($item) {
+                    $data = is_array($item->data) ? $item->data : json_decode($item->data, true);
+                    return isset($data['id']) && !empty($data['id']);
+                })
+                ->groupBy(function ($item) {
+                    $data = is_array($item->data) ? $item->data : json_decode($item->data, true);
+                    $id = $data['id'] ?? '';
+                    $asin = str_replace('us/', '', $id);
+                    return strtoupper(trim($asin));
+                })
+                ->map(function ($group) {
+                    return [
+                        'all_data' => $group->map(function ($item) {
+                            $data = is_array($item->data) ? $item->data : json_decode($item->data, true);
+                            return is_array($data) ? $data : [];
+                        })->toArray()
+                    ];
+                });
+
             // Process data (skip PARENT rows from database)
             $result = [];
 
@@ -609,7 +643,25 @@ class CvrMasterController extends Controller
                 
                 // Amazon PFT% = GPFT% - AD%
                 $amazonPFT = $amazonGPFT - $amazonAD;
-                
+
+                // Rating/reviews from Jungle Scout (SKU then ASIN fallback)
+                $rating = null;
+                $reviews = null;
+                $jsData = $jungleScoutBySku->get($sku);
+                if (!$jsData && $amazonSheet && !empty($amazonSheet->asin)) {
+                    $asinKey = strtoupper(trim($amazonSheet->asin));
+                    $jsData = $jungleScoutByAsin->get($asinKey);
+                }
+                if ($jsData && !empty($jsData['all_data'])) {
+                    foreach ($jsData['all_data'] as $jsEntry) {
+                        if (isset($jsEntry['rating']) && $jsEntry['rating'] > 0) {
+                            $rating = (float) $jsEntry['rating'];
+                            $reviews = isset($jsEntry['reviews']) ? (int) $jsEntry['reviews'] : null;
+                            break;
+                        }
+                    }
+                }
+
                 // === TEMU CALCULATIONS ===
                 $temuPricing = $temuPricings->get($sku);
                 $temuBasePrice = $temuPricing ? floatval($temuPricing->base_price ?? 0) : 0;
@@ -802,6 +854,8 @@ class CvrMasterController extends Controller
                     "ebay_lmp_link" => $ebayLmpLink,
                     "amazon_lmp_count" => $amazonLmpCount,
                     "ebay_lmp_count" => $ebayLmpCount,
+                    "rating" => $rating,
+                    "reviews" => $reviews,
                     "latest_remark" => $remarkText,
                     "remark_solved" => $remarkSolved,
                 ];
@@ -851,6 +905,9 @@ class CvrMasterController extends Controller
                     'ebay_lmp_link' => null,
                     'amazon_lmp_count' => $rows->sum('amazon_lmp_count'),
                     'ebay_lmp_count' => $rows->sum('ebay_lmp_count'),
+                    'rating' => $rows->filter(fn ($r) => isset($r->rating) && $r->rating > 0)->isNotEmpty()
+                        ? round($rows->filter(fn ($r) => isset($r->rating) && $r->rating > 0)->avg('rating'), 1) : null,
+                    'reviews' => $rows->sum('reviews'),
                     'is_parent_summary' => true,
                 ];
 
