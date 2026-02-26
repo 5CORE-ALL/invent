@@ -10,10 +10,19 @@ use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use GuzzleHttp\Client;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 
 class AmazonSbBudgetController extends Controller
 {
     protected $profileId;
+
+    /** HL (Sponsored Brands) API is slower; use higher timeouts and batching */
+    public const HL_API_TIMEOUT = 120;
+    public const HL_CONNECT_TIMEOUT = 60;
+    public const HL_MAX_RETRIES = 3;
+    public const HL_BATCH_SIZE = 5;
+    public const HL_KEYWORD_CHUNK_SIZE = 50;
+    public const HL_BATCH_DELAY_SECONDS = 2;
 
     public function __construct()
     {
@@ -72,6 +81,8 @@ class AmazonSbBudgetController extends Controller
                 'Accept' => 'application/vnd.sbadgroupresource.v4+json',
             ],
             'json' => $payload,
+            'timeout' => self::HL_API_TIMEOUT,
+            'connect_timeout' => self::HL_CONNECT_TIMEOUT,
         ]);
 
         $data = json_decode($response->getBody(), true);
@@ -84,7 +95,7 @@ class AmazonSbBudgetController extends Controller
         $client = new Client();
 
         $url = 'https://advertising-api.amazon.com/sb/keywords';
-        
+
         $response = $client->get($url, [
             'headers' => [
                 'Amazon-Advertising-API-ClientId' => config('services.amazon_ads.client_id'),
@@ -95,97 +106,235 @@ class AmazonSbBudgetController extends Controller
             'query' => [
                 'adGroupIdFilter' => $adGroupId,
             ],
+            'timeout' => self::HL_API_TIMEOUT,
+            'connect_timeout' => self::HL_CONNECT_TIMEOUT,
         ]);
 
         $data = json_decode($response->getBody(), true);
         return $data ?? [];
     }
-    public function updateAutoCampaignSbKeywordsBid(array $campaignIds, array $newBids)
+
+    /**
+     * Count successful keyword updates from Amazon SB API response(s).
+     * Handles: chunked array of arrays with objects containing "code":"SUCCESS", flat arrays, or single chunk.
+     */
+    public static function countSuccessfulKeywords($responseData): int
     {
-        ini_set('max_execution_time', 300);
-        ini_set('memory_limit', '512M');
-
-        if (empty($campaignIds) || empty($newBids)) {
-            return response()->json([
-                'message' => 'Campaign IDs and new bids are required',
-                'status' => 400
-            ]);
+        if (!is_array($responseData)) {
+            return 0;
         }
-
-        $allKeywords = [];
-
-        foreach ($campaignIds as $index => $campaignId) {
-            $newBid = floatval($newBids[$index] ?? 0);
-
-            AmazonSbCampaignReport::where('campaign_id', $campaignId)
-                ->where('ad_type', 'SPONSORED_BRANDS')
-                ->whereIn('report_date_range', ['L7', 'L1'])
-                ->update([
-                    'apprSbid' => "approved"
-                ]);
-
-            $adGroups = $this->getAdGroupsByCampaigns([$campaignId]);
-            if (empty($adGroups)) continue;
-
-            foreach ($adGroups as $adGroup) {
-                $keywords = $this->getKeywordsByAdGroup($adGroup['adGroupId']);
-                foreach ($keywords as $kw) {
-                    $allKeywords[] = [
-                        'keywordId' => $kw['keywordId'],
-                        'campaignId' => $campaignId,
-                        'adGroupId' => $adGroup['adGroupId'],
-                        'bid' => $newBid,
-                        'state' => $kw['state'] ?? 'enabled'
-                    ];
+        $count = 0;
+        foreach ($responseData as $chunk) {
+            if (!is_array($chunk)) {
+                continue;
+            }
+            foreach ($chunk as $item) {
+                if (is_array($item) && isset($item['code']) && strtoupper((string) $item['code']) === 'SUCCESS') {
+                    $count++;
                 }
             }
         }
+        return $count;
+    }
 
-        if (empty($allKeywords)) {
-            return response()->json([
-                'message' => 'No keywords found to update',
-                'status' => 404,
-            ]);
+    /**
+     * Detect response format and whether it indicates success (for logging).
+     */
+    private static function describeResponseFormat($raw): array
+    {
+        if (!is_array($raw)) {
+            return ['format' => 'non_array', 'success_count' => 0];
+        }
+        if (isset($raw['status']) && array_key_exists('data', $raw)) {
+            $successCount = self::countSuccessfulKeywords($raw['data'] ?? []);
+            return ['format' => 'wrapped_with_status', 'status' => $raw['status'], 'success_count' => $successCount];
+        }
+        $successCount = self::countSuccessfulKeywords($raw);
+        if ($successCount > 0) {
+            return ['format' => 'chunked_or_flat_results', 'success_count' => $successCount];
+        }
+        if (isset($raw['success']) && $raw['success']) {
+            return ['format' => 'object_with_success', 'success_count' => 0];
+        }
+        return ['format' => 'unknown_array', 'success_count' => 0];
+    }
+
+    public function updateAutoCampaignSbKeywordsBid(array $campaignIds, array $newBids)
+    {
+        ini_set('max_execution_time', 600);
+        ini_set('memory_limit', '512M');
+
+        if (empty($campaignIds) || empty($newBids)) {
+            return [
+                'message' => 'Campaign IDs and new bids are required',
+                'status' => 400,
+            ];
         }
 
-        $allKeywords = collect($allKeywords)
-            ->unique('keywordId')
-            ->values()
-            ->toArray();
-
+        Log::info('updateAutoCampaignSbKeywordsBid: start', [
+            'campaigns_count' => count($campaignIds),
+            'batch_size' => self::HL_BATCH_SIZE,
+        ]);
 
         $accessToken = $this->getAccessToken();
         $client = new Client();
         $url = 'https://advertising-api.amazon.com/sb/keywords';
-        $results = [];
+        $allResults = [];
+        $failedBatches = [];
+        $campaignBatches = array_chunk(array_combine($campaignIds, $newBids) ?: [], self::HL_BATCH_SIZE, true);
 
-        try {
-            $chunks = array_chunk($allKeywords, 100);
-            foreach ($chunks as $chunk) {
-                $response = $client->put($url, [
-                    'headers' => [
-                        'Amazon-Advertising-API-ClientId' => config('services.amazon_ads.client_id'),
-                        'Authorization' => 'Bearer ' . $accessToken,
-                        'Amazon-Advertising-API-Scope' => $this->profileId,
-                        'Content-Type' => 'application/json',
-                    ],
-                    'json' => $chunk,
-                    'timeout' => 60,
-                    'connect_timeout' => 30,
+        foreach ($campaignBatches as $batchIndex => $batch) {
+            if ($batchIndex > 0) {
+                Log::info('updateAutoCampaignSbKeywordsBid: batch delay', [
+                    'batch_index' => $batchIndex + 1,
+                    'delay_sec' => self::HL_BATCH_DELAY_SECONDS,
                 ]);
-
-                $results[] = json_decode($response->getBody(), true);
+                sleep(self::HL_BATCH_DELAY_SECONDS);
             }
 
-            return $results;
+            $allKeywords = [];
+            foreach ($batch as $campaignId => $newBid) {
+                $newBid = floatval($newBid);
+                if ($newBid <= 0) {
+                    continue;
+                }
 
-        } catch (\Exception $e) {
+                AmazonSbCampaignReport::where('campaign_id', $campaignId)
+                    ->where('ad_type', 'SPONSORED_BRANDS')
+                    ->whereIn('report_date_range', ['L7', 'L1'])
+                    ->update(['apprSbid' => 'approved']);
+
+                $adGroups = $this->getAdGroupsByCampaigns([$campaignId]);
+                if (empty($adGroups)) {
+                    continue;
+                }
+
+                foreach ($adGroups as $adGroup) {
+                    $keywords = $this->getKeywordsByAdGroup($adGroup['adGroupId']);
+                    foreach ($keywords as $kw) {
+                        $allKeywords[] = [
+                            'keywordId' => $kw['keywordId'],
+                            'campaignId' => $campaignId,
+                            'adGroupId' => $adGroup['adGroupId'],
+                            'bid' => $newBid,
+                            'state' => $kw['state'] ?? 'enabled',
+                        ];
+                    }
+                }
+            }
+
+            if (empty($allKeywords)) {
+                Log::warning('updateAutoCampaignSbKeywordsBid: no keywords in batch', [
+                    'batch_index' => $batchIndex + 1,
+                    'campaign_ids' => array_keys($batch),
+                ]);
+                continue;
+            }
+
+            $allKeywords = collect($allKeywords)->unique('keywordId')->values()->toArray();
+            $chunks = array_chunk($allKeywords, self::HL_KEYWORD_CHUNK_SIZE);
+
+            Log::info('updateAutoCampaignSbKeywordsBid: batch processing', [
+                'batch_index' => $batchIndex + 1,
+                'keywords_count' => count($allKeywords),
+                'chunks_count' => count($chunks),
+            ]);
+
+            foreach ($chunks as $chunkIndex => $chunk) {
+                $chunkSucceeded = false;
+                $lastError = null;
+
+                for ($attempt = 1; $attempt <= self::HL_MAX_RETRIES; $attempt++) {
+                    try {
+                        if ($attempt > 1) {
+                            $delay = (int) pow(2, $attempt - 1);
+                            Log::info('updateAutoCampaignSbKeywordsBid: retry', [
+                                'batch_index' => $batchIndex + 1,
+                                'chunk_index' => $chunkIndex + 1,
+                                'attempt' => $attempt,
+                                'delay_sec' => $delay,
+                            ]);
+                            sleep($delay);
+                        }
+
+                        $start = microtime(true);
+                        $response = $client->put($url, [
+                            'headers' => [
+                                'Amazon-Advertising-API-ClientId' => config('services.amazon_ads.client_id'),
+                                'Authorization' => 'Bearer ' . $accessToken,
+                                'Amazon-Advertising-API-Scope' => $this->profileId,
+                                'Content-Type' => 'application/json',
+                            ],
+                            'json' => $chunk,
+                            'timeout' => self::HL_API_TIMEOUT,
+                            'connect_timeout' => self::HL_CONNECT_TIMEOUT,
+                        ]);
+                        $durationMs = round((microtime(true) - $start) * 1000);
+                        $allResults[] = json_decode($response->getBody(), true);
+                        $chunkSucceeded = true;
+                        Log::info('updateAutoCampaignSbKeywordsBid: chunk success', [
+                            'batch_index' => $batchIndex + 1,
+                            'chunk_index' => $chunkIndex + 1,
+                            'keywords_count' => count($chunk),
+                            'duration_ms' => $durationMs,
+                        ]);
+                        break;
+                    } catch (\Exception $e) {
+                        $lastError = $e;
+                        Log::warning('updateAutoCampaignSbKeywordsBid: chunk attempt failed', [
+                            'batch_index' => $batchIndex + 1,
+                            'chunk_index' => $chunkIndex + 1,
+                            'attempt' => $attempt,
+                            'error' => $e->getMessage(),
+                        ]);
+                    }
+                }
+
+                if (!$chunkSucceeded && $lastError) {
+                    $failedBatches[] = [
+                        'batch_index' => $batchIndex + 1,
+                        'chunk_index' => $chunkIndex + 1,
+                        'error' => $lastError->getMessage(),
+                    ];
+                    Log::error('updateAutoCampaignSbKeywordsBid: chunk failed after retries (continuing)', [
+                        'batch_index' => $batchIndex + 1,
+                        'chunk_index' => $chunkIndex + 1,
+                        'error' => $lastError->getMessage(),
+                    ]);
+                }
+            }
+        }
+
+        $successCount = self::countSuccessfulKeywords($allResults);
+        $summary = self::describeResponseFormat(['status' => 200, 'data' => $allResults]);
+
+        if (!empty($failedBatches)) {
+            Log::warning('updateAutoCampaignSbKeywordsBid: completed with failures', [
+                'failed_count' => count($failedBatches),
+                'failed' => $failedBatches,
+                'success_count' => $successCount,
+                'response_format' => $summary['format'],
+            ]);
             return [
-                'message' => 'Error updating target keywords bid',
-                'error' => $e->getMessage(),
-                'status' => 500,
+                'message' => 'HL bid update completed; some chunks failed after retries.',
+                'data' => $allResults,
+                'failed_batches' => $failedBatches,
+                'status' => 207,
+                'success_count' => $successCount,
             ];
         }
+
+        Log::info('updateAutoCampaignSbKeywordsBid: success', [
+            'total_chunks' => count($allResults),
+            'success_count' => $successCount,
+            'response_format' => $summary['format'],
+        ]);
+        return [
+            'message' => 'HL keywords bid updated successfully',
+            'data' => $allResults,
+            'status' => 200,
+            'success_count' => $successCount,
+        ];
     }
 
     public function updateCampaignKeywordsBid(Request $request)

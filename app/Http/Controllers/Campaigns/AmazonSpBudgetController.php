@@ -21,6 +21,13 @@ class AmazonSpBudgetController extends Controller
 {
     protected $profileId;
 
+    /** HL (Sponsored Brands) API is slower than SP; use higher timeouts and smaller batches */
+    public const HL_API_TIMEOUT = 120;
+    public const HL_CONNECT_TIMEOUT = 60;
+    public const HL_MAX_RETRIES = 3;
+    public const HL_KEYWORD_CHUNK_SIZE = 50;
+    public const HL_BATCH_DELAY_SECONDS = 2;
+
     public function __construct()
     {
         $this->profileId = "4216505535403428";
@@ -146,6 +153,8 @@ class AmazonSpBudgetController extends Controller
                 'Accept' => 'application/vnd.sbadgroupresource.v4+json',
             ],
             'json' => $payload,
+            'timeout' => self::HL_API_TIMEOUT,
+            'connect_timeout' => self::HL_CONNECT_TIMEOUT,
         ]);
 
         $data = json_decode($response->getBody(), true);
@@ -153,7 +162,7 @@ class AmazonSpBudgetController extends Controller
     }
 
     /**
-     * Get SB keywords by ad group (for HL campaigns)
+     * Get SB keywords by ad group (for HL campaigns). Uses HL timeouts (SB API is slower).
      */
     public function getSbKeywordsByAdGroup($adGroupId)
     {
@@ -161,7 +170,7 @@ class AmazonSpBudgetController extends Controller
         $client = new Client();
 
         $url = 'https://advertising-api.amazon.com/sb/keywords';
-        
+
         $response = $client->get($url, [
             'headers' => [
                 'Amazon-Advertising-API-ClientId' => config('services.amazon_ads.client_id'),
@@ -172,6 +181,8 @@ class AmazonSpBudgetController extends Controller
             'query' => [
                 'adGroupIdFilter' => $adGroupId,
             ],
+            'timeout' => self::HL_API_TIMEOUT,
+            'connect_timeout' => self::HL_CONNECT_TIMEOUT,
         ]);
 
         $data = json_decode($response->getBody(), true);
@@ -5653,6 +5664,11 @@ class AmazonSpBudgetController extends Controller
             return $this->updateCampaignBidsOnAmazonPt($campaignId, $newBid);
         }
 
+        // HL (Sponsored Brands) uses SB API with higher timeouts, smaller chunks, and retry
+        if ($campaignType === 'HL') {
+            return $this->updateCampaignBidsOnAmazonHl($campaignId, $newBid);
+        }
+
         // If type not provided, infer PT from campaign name (e.g. "WF 15 140 4OHM 2PCS PT")
         if ($campaignType !== 'HL') {
             $nameRow = DB::table('amazon_sp_campaign_reports')
@@ -5674,14 +5690,8 @@ class AmazonSpBudgetController extends Controller
 
         $allKeywords = [];
 
-        // Get ad groups for the campaign
-        if ($campaignType === 'HL') {
-            // For SB campaigns (HL), use different method
-            $adGroups = $this->getSbAdGroupsByCampaigns([$campaignId]);
-        } else {
-            // For SP campaigns (KW only; PT handled above)
-            $adGroups = $this->getAdGroupsByCampaigns([$campaignId]);
-        }
+        // Get ad groups for the campaign (HL handled above)
+        $adGroups = $this->getAdGroupsByCampaigns([$campaignId]);
 
         if (empty($adGroups)) {
             FacadesLog::error('updateCampaignBidsOnAmazon: no ad groups', [
@@ -5691,33 +5701,14 @@ class AmazonSpBudgetController extends Controller
             throw new \Exception('No ad groups found for campaign');
         }
 
-        // Get keywords for each ad group
+        // Get keywords for each ad group (KW only)
         foreach ($adGroups as $adGroup) {
-            if ($campaignType === 'HL') {
-                // For SB campaigns (HL), use different method
-                $keywords = $this->getSbKeywordsByAdGroup($adGroup['adGroupId']);
-            } else {
-                // For SP campaigns (KW)
-                $keywords = $this->getKeywordsByAdGroup($adGroup['adGroupId']);
-            }
-
+            $keywords = $this->getKeywordsByAdGroup($adGroup['adGroupId']);
             foreach ($keywords as $kw) {
-                if ($campaignType === 'HL') {
-                    // For SB campaigns (HL)
-                    $allKeywords[] = [
-                        'keywordId' => $kw['keywordId'],
-                        'campaignId' => $campaignId,
-                        'adGroupId' => $adGroup['adGroupId'],
-                        'bid' => $newBid,
-                        'state' => $kw['state'] ?? 'enabled'
-                    ];
-                } else {
-                    // For SP campaigns (KW)
-                    $allKeywords[] = [
-                        'keywordId' => $kw['keywordId'],
-                        'bid' => $newBid,
-                    ];
-                }
+                $allKeywords[] = [
+                    'keywordId' => $kw['keywordId'],
+                    'bid' => $newBid,
+                ];
             }
         }
 
@@ -5741,11 +5732,100 @@ class AmazonSpBudgetController extends Controller
         $results = [];
 
         try {
-            if ($campaignType === 'HL') {
-                // Use SB keywords endpoint for HL campaigns
-                $url = 'https://advertising-api.amazon.com/sb/keywords';
-                $chunks = array_chunk($allKeywords, 100);
-                foreach ($chunks as $chunk) {
+            // Use SP keywords endpoint for KW campaigns
+            $url = 'https://advertising-api.amazon.com/sp/keywords';
+            $chunks = array_chunk($allKeywords, 100);
+            foreach ($chunks as $chunk) {
+                $response = $client->put($url, [
+                    'headers' => [
+                        'Amazon-Advertising-API-ClientId' => config('services.amazon_ads.client_id'),
+                        'Authorization' => 'Bearer ' . $accessToken,
+                        'Amazon-Advertising-API-Scope' => $this->profileId,
+                        'Content-Type' => 'application/vnd.spKeyword.v3+json',
+                        'Accept' => 'application/vnd.spKeyword.v3+json',
+                    ],
+                    'json' => [
+                        'keywords' => $chunk
+                    ],
+                    'timeout' => 60,
+                    'connect_timeout' => 30,
+                ]);
+
+                $results[] = json_decode($response->getBody(), true);
+            }
+
+            return $results;
+        } catch (\Exception $e) {
+            throw new \Exception('Amazon API error: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Update HL (Sponsored Brands) campaign bids. Uses longer timeouts, smaller chunks, and retry with backoff.
+     */
+    private function updateCampaignBidsOnAmazonHl($campaignId, $newBid)
+    {
+        ini_set('max_execution_time', 600);
+        ini_set('memory_limit', '512M');
+
+        FacadesLog::info('updateCampaignBidsOnAmazonHl: start', [
+            'campaign_id' => $campaignId,
+            'new_bid' => $newBid,
+        ]);
+
+        $adGroups = $this->getSbAdGroupsByCampaigns([$campaignId]);
+        if (empty($adGroups)) {
+            FacadesLog::error('updateCampaignBidsOnAmazonHl: no ad groups', ['campaign_id' => $campaignId]);
+            throw new \Exception('No ad groups found for HL campaign');
+        }
+
+        $allKeywords = [];
+        foreach ($adGroups as $adGroup) {
+            $keywords = $this->getSbKeywordsByAdGroup($adGroup['adGroupId']);
+            foreach ($keywords as $kw) {
+                $allKeywords[] = [
+                    'keywordId' => $kw['keywordId'],
+                    'campaignId' => $campaignId,
+                    'adGroupId' => $adGroup['adGroupId'],
+                    'bid' => floatval($newBid),
+                    'state' => $kw['state'] ?? 'enabled',
+                ];
+            }
+        }
+
+        if (empty($allKeywords)) {
+            FacadesLog::error('updateCampaignBidsOnAmazonHl: no keywords', [
+                'campaign_id' => $campaignId,
+                'ad_groups_count' => count($adGroups),
+            ]);
+            throw new \Exception('No keywords found for HL campaign');
+        }
+
+        $allKeywords = collect($allKeywords)->unique('keywordId')->values()->toArray();
+        $chunks = array_chunk($allKeywords, self::HL_KEYWORD_CHUNK_SIZE);
+        $accessToken = $this->getAccessToken();
+        $client = new Client();
+        $url = 'https://advertising-api.amazon.com/sb/keywords';
+        $results = [];
+
+        foreach ($chunks as $ci => $chunk) {
+            $lastError = null;
+            $chunkSucceeded = false;
+
+            for ($attempt = 1; $attempt <= self::HL_MAX_RETRIES; $attempt++) {
+                try {
+                    if ($attempt > 1) {
+                        $delay = (int) pow(2, $attempt - 1);
+                        FacadesLog::info('updateCampaignBidsOnAmazonHl: retry', [
+                            'campaign_id' => $campaignId,
+                            'chunk_index' => $ci + 1,
+                            'attempt' => $attempt,
+                            'delay_sec' => $delay,
+                        ]);
+                        sleep($delay);
+                    }
+
+                    $start = microtime(true);
                     $response = $client->put($url, [
                         'headers' => [
                             'Amazon-Advertising-API-ClientId' => config('services.amazon_ads.client_id'),
@@ -5754,40 +5834,47 @@ class AmazonSpBudgetController extends Controller
                             'Content-Type' => 'application/json',
                         ],
                         'json' => $chunk,
-                        'timeout' => 60,
-                        'connect_timeout' => 30,
+                        'timeout' => self::HL_API_TIMEOUT,
+                        'connect_timeout' => self::HL_CONNECT_TIMEOUT,
                     ]);
-
+                    $duration = round((microtime(true) - $start) * 1000);
                     $results[] = json_decode($response->getBody(), true);
-                }
-            } else {
-                // Use SP keywords endpoint for KW campaigns
-                $url = 'https://advertising-api.amazon.com/sp/keywords';
-                $chunks = array_chunk($allKeywords, 100);
-                foreach ($chunks as $chunk) {
-                    $response = $client->put($url, [
-                        'headers' => [
-                            'Amazon-Advertising-API-ClientId' => config('services.amazon_ads.client_id'),
-                            'Authorization' => 'Bearer ' . $accessToken,
-                            'Amazon-Advertising-API-Scope' => $this->profileId,
-                            'Content-Type' => 'application/vnd.spKeyword.v3+json',
-                            'Accept' => 'application/vnd.spKeyword.v3+json',
-                        ],
-                        'json' => [
-                            'keywords' => $chunk
-                        ],
-                        'timeout' => 60,
-                        'connect_timeout' => 30,
+                    $chunkSucceeded = true;
+                    FacadesLog::info('updateCampaignBidsOnAmazonHl: chunk success', [
+                        'campaign_id' => $campaignId,
+                        'chunk_index' => $ci + 1,
+                        'keywords_count' => count($chunk),
+                        'duration_ms' => $duration,
                     ]);
-
-                    $results[] = json_decode($response->getBody(), true);
+                    break;
+                } catch (\Exception $e) {
+                    $lastError = $e;
+                    FacadesLog::warning('updateCampaignBidsOnAmazonHl: chunk attempt failed', [
+                        'campaign_id' => $campaignId,
+                        'chunk_index' => $ci + 1,
+                        'attempt' => $attempt,
+                        'error' => $e->getMessage(),
+                    ]);
                 }
             }
 
-            return $results;
-        } catch (\Exception $e) {
-            throw new \Exception('Amazon API error: ' . $e->getMessage());
+            if (!$chunkSucceeded && $lastError) {
+                FacadesLog::error('updateCampaignBidsOnAmazonHl: chunk failed after retries', [
+                    'campaign_id' => $campaignId,
+                    'chunk_index' => $ci + 1,
+                    'error' => $lastError->getMessage(),
+                ]);
+                throw new \Exception('HL API error after ' . self::HL_MAX_RETRIES . ' attempts: ' . $lastError->getMessage());
+            }
         }
+
+        FacadesLog::info('updateCampaignBidsOnAmazonHl: API success', [
+            'campaign_id' => $campaignId,
+            'chunks_sent' => count($chunks),
+            'keywords_updated' => count($allKeywords),
+        ]);
+
+        return $results;
     }
 
     /**
