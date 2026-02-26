@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Combo TRF', 'sidenav' => 'condensed'])
+d@extends('layouts.vertical', ['title' => 'Combo TRF', 'sidenav' => 'condensed'])
 
 @section('css')
     <meta name="csrf-token" content="{{ csrf_token() }}">
@@ -279,13 +279,13 @@
                     </div>
                 </div>
                 
-                <div id="combo-trf-table-wrapper" style="height: calc(100vh - 250px); display: flex; flex-direction: column;">
+                <div id="combo-trf-table-wrapper" style="height: calc(100vh - 250px); display: flex; flex-direction: column; min-height: 0;">
                     <!-- SKU Search -->
-                    <div class="p-2 bg-light border-bottom">
+                    <div class="p-2 bg-light border-bottom" style="flex-shrink: 0;">
                         <input type="text" id="sku-search" class="form-control" placeholder="Search SKU...">
                     </div>
-                    <!-- Table -->
-                    <div id="combo-trf-table" style="flex: 1;"></div>
+                    <!-- Table: min-height 0 lets flex child shrink so Tabulator gets a height and can scroll -->
+                    <div id="combo-trf-table" style="flex: 1; min-height: 0;"></div>
                 </div>
             </div>
         </div>
@@ -986,6 +986,7 @@
                 allTableData = response.data || [];
                 return response.data || [];
             },
+            height: "100%",
             layout: "fitDataStretch",
             pagination: true,
             paginationSize: 50,
