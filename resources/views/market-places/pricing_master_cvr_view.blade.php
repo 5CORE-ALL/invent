@@ -2259,6 +2259,9 @@
         let fullDataset = [];
         let expandedParent = null;
         let dotExpandedParent = null;
+        // Play/Pause parent navigation (same as product master: show only current parent, ignore other filters)
+        let isPlayNavigationActive = false;
+        let currentPlayParentIndex = 0;
         // Prevent dataLoaded side-effects for local setData operations
         let suppressDataLoadedHandler = false;
 
@@ -2393,7 +2396,7 @@
             });
         }
 
-        // ==================== NAVIGATE PARENTS (no autoplay) ====================
+        // ==================== NAVIGATE PARENTS (Play/Pause like product master) ====================
         function getParentRows() {
             if (!fullDataset || fullDataset.length === 0) return [];
             return fullDataset.filter(row => row.is_parent_summary === true);
@@ -2413,44 +2416,81 @@
             buildParentView();
         }
 
-        function nextParent() {
+        /** Show only current parent's rows (children first, parent row last – like product master). No other filters. */
+        function showCurrentParentPlayView() {
+            if (!fullDataset || fullDataset.length === 0) return;
             const parentRows = getParentRows();
             if (parentRows.length === 0) return;
-            let idx = getCurrentParentIndex();
-            idx = idx < 0 ? 0 : (idx + 1) % parentRows.length;
-            goToParentByIndex(idx);
+            const currentParent = parentRows[currentPlayParentIndex].parent;
+            const childRows = fullDataset.filter(row => row.parent === currentParent && row.is_parent_summary !== true);
+            const parentRow = fullDataset.find(row => row.is_parent_summary === true && row.parent === currentParent);
+            // Children first, then parent row at the end (same order as product master)
+            const displayData = [...childRows];
+            if (parentRow) displayData.push(parentRow);
+            suppressDataLoadedHandler = true;
+            table.clearSort(); // Keep our order: parent row last, don't re-sort by DIL% etc.
+            table.setData(displayData).then(() => {
+                updateSummary();
+                updatePlayButtonStates();
+            });
         }
 
-        function previousParent() {
+        function startPlayNavigation() {
             const parentRows = getParentRows();
             if (parentRows.length === 0) return;
-            let idx = getCurrentParentIndex();
-            idx = idx < 0 ? parentRows.length - 1 : (idx - 1 + parentRows.length) % parentRows.length;
-            goToParentByIndex(idx);
-        }
-
-        $('#play-auto').on('click', function() {
-            nextParent();
-            $(this).hide();
+            isPlayNavigationActive = true;
+            currentPlayParentIndex = 0;
+            dotExpandedParent = null;
+            expandedParent = null;
+            showCurrentParentPlayView();
+            $('#play-auto').hide();
             $('#play-pause').show();
-            $('#play-backward, #play-forward').prop('disabled', false);
-        });
-        $('#play-pause').on('click', function() {
-            $(this).hide();
-            $('#play-auto').show();
-            $('#play-backward, #play-forward').prop('disabled', true);
-            // Reset to normal: restore full data and re-apply current filters (SKU Only / Both / Parent Only)
+            updatePlayButtonStates();
+        }
+
+        function stopPlayNavigation() {
+            isPlayNavigationActive = false;
+            currentPlayParentIndex = 0;
             expandedParent = null;
             dotExpandedParent = null;
+            $('#play-pause').hide();
+            $('#play-auto').show();
+            $('#play-backward, #play-forward').prop('disabled', true);
             if (fullDataset.length > 0) {
                 suppressDataLoadedHandler = true;
                 table.setData(fullDataset).then(applyFilters);
             } else {
                 applyFilters();
             }
-        });
-        $('#play-forward').on('click', nextParent);
-        $('#play-backward').on('click', previousParent);
+        }
+
+        function updatePlayButtonStates() {
+            const parentRows = getParentRows();
+            $('#play-backward').prop('disabled', !isPlayNavigationActive || currentPlayParentIndex <= 0);
+            $('#play-forward').prop('disabled', !isPlayNavigationActive || currentPlayParentIndex >= parentRows.length - 1);
+            $('#play-auto').attr('title', isPlayNavigationActive ? 'Show all' : 'Start parent navigation');
+            $('#play-pause').attr('title', 'Stop navigation and show all');
+        }
+
+        function playNextParent() {
+            if (!isPlayNavigationActive) return;
+            const parentRows = getParentRows();
+            if (currentPlayParentIndex >= parentRows.length - 1) return;
+            currentPlayParentIndex++;
+            showCurrentParentPlayView();
+        }
+
+        function playPreviousParent() {
+            if (!isPlayNavigationActive) return;
+            if (currentPlayParentIndex <= 0) return;
+            currentPlayParentIndex--;
+            showCurrentParentPlayView();
+        }
+
+        $('#play-auto').on('click', startPlayNavigation);
+        $('#play-pause').on('click', stopPlayNavigation);
+        $('#play-forward').on('click', playNextParent);
+        $('#play-backward').on('click', playPreviousParent);
 
         // ==================== FILTER FUNCTIONS ====================
         
@@ -2484,6 +2524,12 @@
         });
 
         function applyFilters() {
+            // When Play navigation is active, ignore all filters and show only current parent (same as product master)
+            if (isPlayNavigationActive) {
+                showCurrentParentPlayView();
+                return;
+            }
+
             const wasInDotView = !!dotExpandedParent;
             dotExpandedParent = null;
 
