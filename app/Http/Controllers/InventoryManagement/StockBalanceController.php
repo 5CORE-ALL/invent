@@ -118,6 +118,34 @@ class StockBalanceController extends Controller
     }
 
     /**
+     * Resolve request SKU to the exact SKU string used in Product Master / shopify_skus
+     * so transfer lookup matches getInventoryData (handles casing and spacing differences).
+     *
+     * @param string $requestSku
+     * @param callable $normalizeSku (sku) => normalized string
+     * @return string|null Resolved SKU or null if not found
+     */
+    private function resolveSkuForTransfer(string $requestSku, callable $normalizeSku): ?string
+    {
+        $normalized = $normalizeSku($requestSku);
+        if ($normalized === '') {
+            return null;
+        }
+        // Match how getInventoryData builds the table: ProductMaster SKUs, then shopify_skus by that SKU
+        $pm = ProductMaster::all()->first(function ($item) use ($normalizeSku, $normalized) {
+            return $normalizeSku($item->sku ?? '') === $normalized;
+        });
+        if ($pm && !empty(trim($pm->sku ?? ''))) {
+            return trim($pm->sku);
+        }
+        // Fallback: find any shopify_skus row whose SKU normalizes to the same (e.g. synced from Shopify with different format)
+        $shopify = ShopifySku::all()->first(function ($item) use ($normalizeSku, $normalized) {
+            return $normalizeSku($item->sku ?? '') === $normalized;
+        });
+        return $shopify ? trim($shopify->sku) : null;
+    }
+
+    /**
      * Store a newly created resource in storage.
      */
     public function store(Request $request)
@@ -143,8 +171,31 @@ class StockBalanceController extends Controller
         ]);
 
         try {
-            $fromSku = trim($request->from_sku);
-            $toSku = trim($request->to_sku);
+            // Normalize SKU the same way as getInventoryData so lookup matches table (avoids "not found" when casing/spacing differs)
+            $normalizeSku = function ($sku) {
+                $sku = strtoupper(trim((string) $sku));
+                $sku = preg_replace('/\s+/u', ' ', $sku);
+                $sku = preg_replace('/[^\S\r\n]+/u', ' ', $sku);
+                return $sku;
+            };
+
+            $fromSkuRaw = trim($request->from_sku);
+            $toSkuRaw = trim($request->to_sku);
+            $fromSku = $this->resolveSkuForTransfer($fromSkuRaw, $normalizeSku);
+            $toSku = $this->resolveSkuForTransfer($toSkuRaw, $normalizeSku);
+            if ($fromSku === null) {
+                return response()->json([
+                    'error' => 'FROM SKU not found',
+                    'details' => "The SKU '{$fromSkuRaw}' was not found in Product Master / Shopify inventory. Check spelling and sync."
+                ], 404);
+            }
+            if ($toSku === null) {
+                return response()->json([
+                    'error' => 'TO SKU not found',
+                    'details' => "The SKU '{$toSkuRaw}' was not found in Product Master / Shopify inventory. Check spelling and sync."
+                ], 404);
+            }
+
             $fromQty = (int) $request->from_adjust_qty;
             $toQty = (int) $request->to_adjust_qty;
 
@@ -296,7 +347,7 @@ class StockBalanceController extends Controller
                 ], 404);
             }
 
-            // Validate that there's enough inventory available
+            // Validate that there's enough inventory available (Shopify live, not table cache)
             $currentAvailable = $fromInfo['available'] ?? 0;
             if ($currentAvailable < $fromQty) {
                 Log::warning("Insufficient inventory for transfer", [
@@ -304,13 +355,17 @@ class StockBalanceController extends Controller
                     'requested_qty' => $fromQty,
                     'available_qty' => $currentAvailable
                 ]);
-                
+                $tableShows = (int) $request->from_available_qty;
+                $hint = ($tableShows > $currentAvailable)
+                    ? "<br><br><strong>Note:</strong> The table shows cached inventory ({$tableShows}). Shopify live available is {$currentAvailable}. Refresh the page and try again, or sync Shopify quantities."
+                    : '';
+
                 return response()->json([
                     'error' => 'Insufficient Inventory',
                     'details' => "Cannot transfer {$fromQty} units from SKU: {$fromSku}<br><br>" .
-                                "<strong>Current Available:</strong> {$currentAvailable} units<br>" .
-                                "<strong>Requested Transfer:</strong> {$fromQty} units<br><br>" .
-                                "You need <strong>" . ($fromQty - $currentAvailable) . " more units</strong> to complete this transfer."
+                                "<strong>Shopify live available:</strong> {$currentAvailable} units<br>" .
+                                "<strong>Requested transfer:</strong> {$fromQty} units<br><br>" .
+                                "You need <strong>" . ($fromQty - $currentAvailable) . " more units</strong> to complete this transfer." . $hint
                 ], 400);
             }
 
