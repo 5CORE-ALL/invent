@@ -15,6 +15,10 @@ class PricingMasterDailySnapshotSku extends Model
         'overall_l30',
         'avg_price',
         'avg_cvr',
+        'dil_percent',
+        'amazon_price',
+        'rating',
+        'total_views',
     ];
 
     protected $casts = [
@@ -23,5 +27,9 @@ class PricingMasterDailySnapshotSku extends Model
         'overall_l30' => 'integer',
         'avg_price' => 'decimal:2',
         'avg_cvr' => 'decimal:2',
+        'dil_percent' => 'decimal:2',
+        'amazon_price' => 'decimal:2',
+        'rating' => 'decimal:2',
+        'total_views' => 'integer',
     ];
 }

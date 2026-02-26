@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Pricing Master ', 'sidenav' => 'condensed'])
+@extends('layouts.vertical', ['title' => 'Master Analytics ', 'sidenav' => 'condensed'])
 
 @section('css')
     <meta name="csrf-token" content="{{ csrf_token() }}">
@@ -259,8 +259,8 @@
 
 @section('content')
     @include('layouts.shared.page-title', [
-        'page_title' => 'Pricing Master',
-        'sub_title' => 'Pricing Master Data with Editable SPRICE',
+        'page_title' => 'Master Analytics',
+        'sub_title' => 'Master Analytics Data with Editable SPRICE',
     ])
     <div class="toast-container position-fixed top-0 end-0 p-3" style="z-index: 9999;"></div>
     
@@ -447,14 +447,14 @@
         </div>
     </div>
 
-    <!-- Pricing Master Rolling L30 Chart Modal (Inv, OV L30, Price, CVR) -->
+    <!-- Master Analytics Rolling L30 Chart Modal (Inv, OV L30, Price, CVR) -->
     <div class="modal fade" id="pricingMasterChartModal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog shadow-none" style="max-width: 98vw; width: 98vw; margin: 10px auto 0;">
             <div class="modal-content" style="border-radius: 8px; overflow: hidden;">
                 <div class="modal-header bg-info text-white py-1 px-3">
                     <h6 class="modal-title mb-0" style="font-size: 13px;">
                         <i class="fas fa-chart-area me-1"></i>
-                        <span id="pricingMasterChartModalTitle">Pricing Master - Inv (Rolling L30)</span>
+                        <span id="pricingMasterChartModalTitle">Master Analytics - Inv (Rolling L30)</span>
                     </h6>
                     <div class="d-flex align-items-center gap-2">
                         <select id="pricingMasterChartRangeSelect" class="form-select form-select-sm bg-white" style="width: 110px; height: 26px; font-size: 11px; padding: 1px 8px;">
@@ -495,7 +495,7 @@
                     <div id="pricingMasterChartNoData" class="text-center py-3" style="display: none;">
                         <i class="fas fa-exclamation-circle text-warning fa-2x mb-2"></i>
                         <p class="text-muted small mb-0">No daily data for this SKU yet.</p>
-                        <p class="text-muted small mb-0"><strong>Refresh this page (Pricing Master CVR)</strong> once so today’s SKU data is saved, then open the graph again.</p>
+                        <p class="text-muted small mb-0"><strong>Refresh this page (Master Analytics CVR)</strong> once so today’s SKU data is saved, then open the graph again.</p>
                     </div>
                 </div>
             </div>
@@ -552,8 +552,8 @@
 
                     <!-- SKU/Parent Filter -->
                     <select id="sku-parent-filter" class="form-select form-select-sm" style="width: auto;">
-                        <option value="both">Both (SKU + Parent)</option>
-                        <option value="sku" selected>SKU Only</option>
+                        <option value="both" selected>Both (SKU + Parent)</option>
+                        <option value="sku">SKU Only</option>
                         <option value="parent">Parent Only</option>
                     </select>
 
@@ -1103,7 +1103,7 @@
         table = new Tabulator("#cvr-table", {
             ajaxURL: "/cvr-master-data-json",
             ajaxSorting: false,
-            layout: "fitDataStretch",
+            layout: "fitDataFill",
             pagination: true,
             paginationSize: 100,
             paginationSizeSelector: [10, 25, 50, 100, 200],
@@ -1116,10 +1116,7 @@
                     }
                 }
             },
-            initialSort: [{
-                column: "dil_percent",
-                dir: "desc"
-            }],
+            initialSort: [{ column: "parent", dir: "asc" }],
             rowFormatter: function(row) {
                 const data = row.getData();
                 if (data.is_parent_summary === true) {
@@ -1133,7 +1130,7 @@
                     title: "#",
                     field: "_selected",
                     headerSort: false,
-                    width: 40,
+                    minWidth: 40,
                     hozAlign: "center",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
@@ -1157,13 +1154,13 @@
                         }
                         return '';
                     },
-                    width: 80
+                    minWidth: 60
                 },
                 {
                     title: "P",
                     field: "parent",
                     sorter: "string",
-                    width: 40,
+                    minWidth: 40,
                     hozAlign: "center",
                     formatter: function(cell) {
                         const parent = cell.getValue();
@@ -1176,6 +1173,20 @@
                     }
                 },
                 {
+                    title: "Parent",
+                    field: "parent",
+                    sorter: "string",
+                    headerFilter: "input",
+                    headerFilterPlaceholder: "Search Parent",
+                    minWidth: 80,
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        const parent = rowData.parent;
+                        if (parent === undefined || parent === null || (typeof parent === 'string' && !parent.trim())) return '-';
+                        return (typeof parent === 'string' ? parent : String(parent)).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+                    }
+                },
+                {
                     title: "SKU",
                     field: "sku",
                     sorter: "string",
@@ -1184,7 +1195,7 @@
                     cssClass: "text-primary fw-bold",
                     tooltip: true,
                     frozen: true,
-                    width: 250,
+                    minWidth: 120,
                     formatter: function(cell) {
                         const sku = cell.getValue();
                         let html = `<span>${sku}</span>`;
@@ -1198,7 +1209,7 @@
                     title: "INV",
                     field: "inventory",
                     hozAlign: "center",
-                    width: 80,
+                    minWidth: 60,
                     sorter: "number",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
@@ -1215,7 +1226,7 @@
                     title: "OV L30",
                     field: "overall_l30",
                     hozAlign: "center",
-                    width: 100,
+                    minWidth: 80,
                     sorter: "number",
                     formatter: function(cell) {
                         const value = parseFloat(cell.getValue() || 0);
@@ -1245,23 +1256,208 @@
                     }
                 },
                 {
+title: "Dil %",
+                    field: "dil_percent",
+                    hozAlign: "center",
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        const value = parseFloat(cell.getValue() || 0);
+                        let color = '';
+
+                        if (value === 0) color = '#6c757d';
+                        else if (value < 16.7) color = '#a00211';
+                        else if (value >= 16.7 && value < 25) color = '#ffc107';
+                        else if (value >= 25 && value < 50) color = '#28a745';
+                        else color = '#e83e8c';
+
+                        let html = `<span style="color: ${color}; font-weight: 600;">${Math.round(value)}%</span>`;
+                        if (rowData.is_parent_summary !== true) {
+                            const skuEsc = (rowData.sku || '').replace(/"/g, '&quot;');
+                            html += ' <i class="fas fa-circle pricing-master-chart-link ms-1" data-metric="dil" data-sku="' + skuEsc + '" style="cursor:pointer;color:#0d6efd;font-size:8px;vertical-align:middle;" title="View DIL history (Rolling L30)"></i>';
+                        }
+                        return html;
+                    },
+                    minWidth: 60
+                },
+                {
+                    title: "CVR",
+                    field: "avg_cvr",
+                    hozAlign: "center",
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        const value = parseFloat(cell.getValue() || 0);
+                        let color = '';
+                        if (value === 0) color = '#6c757d';
+                        else if (value < 1) color = '#a00211';
+                        else if (value >= 1 && value < 3) color = '#ffc107';
+                        else if (value >= 3 && value < 5) color = '#28a745';
+                        else color = '#e83e8c';
+                        let html = `<span style="color: ${color}; font-weight: 600;">${value.toFixed(1)}%</span>`;
+                        if (rowData.is_parent_summary !== true) {
+                            const skuEsc = (rowData.sku || '').replace(/"/g, '&quot;');
+                            html += ' <i class="fas fa-circle pricing-master-chart-link ms-1" data-metric="cvr" data-sku="' + skuEsc + '" style="cursor:pointer;color:#ffc107;font-size:8px;vertical-align:middle;" title="View CVR graph (Rolling L30)"></i>';
+                        }
+                        return html;
+                    },
+                    minWidth: 70
+                },
+                {
                     title: "Amz Price",
                     field: "amazon_price",
                     hozAlign: "right",
-                    width: 95,
+                    minWidth: 70,
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        const value = cell.getValue();
+                        let html = '';
+                        if (value == null || value === '' || parseFloat(value) <= 0) {
+                            html = '-';
+                        } else {
+                            const num = parseFloat(value);
+                            html = `<span style="font-weight: 600;">$` + num.toFixed(2) + '</span>';
+                        }
+                        if (rowData.is_parent_summary !== true) {
+                            const skuEsc = (rowData.sku || '').replace(/"/g, '&quot;');
+                            html += ' <i class="fas fa-circle pricing-master-chart-link ms-1" data-metric="amz_price" data-sku="' + skuEsc + '" style="cursor:pointer;color:#e83e8c;font-size:8px;vertical-align:middle;" title="View Amz Price history (Rolling L30)"></i>';
+                        }
+                        return html;
+                    }
+                },
+                {
+                    title: "Amz GPFT%",
+                    field: "amz_pft",
+                    hozAlign: "center",
+                    minWidth: 60,
                     sorter: "number",
                     formatter: function(cell) {
                         const value = cell.getValue();
-                        if (value == null || value === '' || parseFloat(value) <= 0) return '-';
-                        const num = parseFloat(value);
-                        return `<span style="font-weight: 600;">$` + num.toFixed(2) + '</span>';
+                        if (value == null || value === '') return '-';
+                        const pct = parseFloat(value);
+                        let color = '';
+                        if (pct < 10) color = '#a00211';
+                        else if (pct >= 10 && pct < 20) color = '#ffc107';
+                        else if (pct >= 20 && pct < 50) color = '#28a745';
+                        else color = '#e83e8c';
+                        return `<span style="color: ${color}; font-weight: 600;">${pct.toFixed(1)}%</span>`;
+                    }
+                },
+                {
+                    title: "Amz GROI%",
+                    field: "amz_roi",
+                    hozAlign: "center",
+                    minWidth: 60,
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const value = cell.getValue();
+                        if (value == null || value === '') return '-';
+                        const pct = parseFloat(value);
+                        let color = '';
+                        if (pct < 50) color = '#a00211';
+                        else if (pct >= 50 && pct < 100) color = '#ffc107';
+                        else if (pct >= 100 && pct <= 150) color = '#28a745';
+                        else color = '#e83e8c';
+                        return `<span style="color: ${color}; font-weight: 600;">${pct.toFixed(0)}%</span>`;
+                    }
+                },
+                {
+                    title: "Avg Price",
+                    field: "avg_price",
+                    hozAlign: "center",
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        const value = parseFloat(cell.getValue() || 0);
+                        let html = value === 0 ? '<span style="color: #6c757d;">-</span>' : `<span style="font-weight: 600;">$${value.toFixed(2)}</span>`;
+                        if (rowData.is_parent_summary !== true) {
+                            const skuEsc = (rowData.sku || '').replace(/"/g, '&quot;');
+                            html += ' <i class="fas fa-circle pricing-master-chart-link ms-1" data-metric="price" data-sku="' + skuEsc + '" style="cursor:pointer;color:#e83e8c;font-size:8px;vertical-align:middle;" title="View Price graph (Rolling L30)"></i>';
+                        }
+                        return html;
+                    },
+                    minWidth: 70
+                },
+                {
+                    title: "Avg PFT",
+                    field: "avg_pft",
+                    hozAlign: "center",
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const value = parseFloat(cell.getValue() || 0);
+                        let color = '';
+                        
+                        // Color coding for PFT% (Net Profit)
+                        if (value < 0) color = '#a00211';
+                        else if (value >= 0 && value < 10) color = '#ffc107';
+                        else if (value >= 10 && value < 20) color = '#3591dc';
+                        else if (value >= 20 && value <= 40) color = '#28a745';
+                        else color = '#e83e8c';
+                        
+                        return `<span style="color: ${color}; font-weight: 600;">${Math.round(value)}%</span>`;
+                    },
+                    minWidth: 70
+                },
+                {
+                    title: "Sprice",
+                    field: "sprice_dot",
+                    headerSort: false,
+                    minWidth: 44,
+                    hozAlign: "center",
+                    formatter: function(cell) {
+                        const row = cell.getRow();
+                        const d = row.getData();
+                        const key = (d.sku || '') + '_' + (d.parent || '');
+                        const expanded = spriceDotExpanded.has(key);
+                        const sprice = d.amazon_sprice;
+                        const sgpft = d.amazon_sgpft;
+                        const spft = d.amazon_spft;
+                        const sroi = d.amazon_sroi;
+                        const fmtPct = (v, low, mid1, mid2, high) => {
+                            if (v == null || v === '') return '-';
+                            const pct = parseFloat(v);
+                            let c = '#6c757d';
+                            if (pct < low) c = '#a00211';
+                            else if (pct < mid1) c = '#ffc107';
+                            else if (pct < mid2) c = '#3591dc';
+                            else if (pct <= high) c = '#28a745';
+                            else c = '#e83e8c';
+                            return `<span style="color:${c};font-weight:600;">${Math.round(pct)}%</span>`;
+                        };
+                        const fmtSgpft = () => fmtPct(sgpft, 0, 10, 20, 40);
+                        const fmtSpft = () => fmtPct(spft, 0, 10, 20, 40);
+                        const fmtSroi = () => { if (sroi == null || sroi === '') return '-'; const p = parseFloat(sroi); let c = '#6c757d'; if (p < 50) c = '#a00211'; else if (p < 100) c = '#ffc107'; else if (p <= 150) c = '#28a745'; else c = '#e83e8c'; return `<span style="color:${c};font-weight:600;">${Math.round(p)}%</span>`; };
+                        const spriceStr = (sprice != null && sprice !== '' && parseFloat(sprice) > 0) ? '$' + parseFloat(sprice).toFixed(2) : '-';
+                        if (expanded) {
+                            return `<div class="sprice-dot-toggle" data-sprice-key="${(key || '').replace(/"/g, '&quot;')}" style="cursor:pointer;font-size:10px;line-height:1.4;text-align:left;white-space:nowrap;">
+                                <div>SPRICE: <b>${spriceStr}</b></div>
+                                <div>SGPFT%: ${fmtSgpft()}</div>
+                                <div>SPFT%: ${fmtSpft()}</div>
+                                <div>SROI%: ${fmtSroi()}</div>
+                            </div>`;
+                        }
+                        return `<span class="sprice-dot-btn" data-sprice-key="${(key || '').replace(/"/g, '&quot;')}" style="cursor:pointer;color:#0d6efd;font-size:14px;line-height:1;" title="Click to show Amz SPRICE, SGPFT%, SPFT%, SROI%">●</span>`;
+                    },
+                    cellClick: function(e, cell) {
+                        const row = cell.getRow();
+                        const d = row.getData();
+                        const key = (d.sku || '') + '_' + (d.parent || '');
+                        if (!key) return;
+                        if (spriceDotExpanded.has(key)) {
+                            spriceDotExpanded.delete(key);
+                        } else {
+                            spriceDotExpanded.add(key);
+                        }
+                        cell.reformat();
                     }
                 },
                 {
                     title: "Amz SPRICE",
                     field: "amazon_sprice",
+                    visible: false,
                     hozAlign: "right",
-                    width: 95,
+                    minWidth: 70,
                     sorter: "number",
                     editor: "number",
                     editorParams: { step: 0.01, min: 0 },
@@ -1285,8 +1481,9 @@
                 {
                     title: "Amz SGPFT%",
                     field: "amazon_sgpft",
+                    visible: false,
                     hozAlign: "center",
-                    width: 90,
+                    minWidth: 70,
                     sorter: "number",
                     formatter: function(cell) {
                         const value = cell.getValue();
@@ -1304,8 +1501,9 @@
                 {
                     title: "Amz SPFT%",
                     field: "amazon_spft",
+                    visible: false,
                     hozAlign: "center",
-                    width: 90,
+                    minWidth: 70,
                     sorter: "number",
                     formatter: function(cell) {
                         const value = cell.getValue();
@@ -1323,8 +1521,9 @@
                 {
                     title: "Amz SROI%",
                     field: "amazon_sroi",
+                    visible: false,
                     hozAlign: "center",
-                    width: 90,
+                    minWidth: 70,
                     sorter: "number",
                     formatter: function(cell) {
                         const value = cell.getValue();
@@ -1340,61 +1539,6 @@
                     }
                 },
                 {
-                    title: "Amz PFT",
-                    field: "amz_pft",
-                    hozAlign: "center",
-                    width: 80,
-                    sorter: "number",
-                    formatter: function(cell) {
-                        const value = cell.getValue();
-                        if (value == null || value === '') return '-';
-                        const pct = parseFloat(value);
-                        let color = '';
-                        if (pct < 10) color = '#a00211';
-                        else if (pct >= 10 && pct < 20) color = '#ffc107';
-                        else if (pct >= 20 && pct < 50) color = '#28a745';
-                        else color = '#e83e8c';
-                        return `<span style="color: ${color}; font-weight: 600;">${pct.toFixed(1)}%</span>`;
-                    }
-                },
-                {
-                    title: "Amz ROI",
-                    field: "amz_roi",
-                    hozAlign: "center",
-                    width: 80,
-                    sorter: "number",
-                    formatter: function(cell) {
-                        const value = cell.getValue();
-                        if (value == null || value === '') return '-';
-                        const pct = parseFloat(value);
-                        let color = '';
-                        if (pct < 50) color = '#a00211';
-                        else if (pct >= 50 && pct < 100) color = '#ffc107';
-                        else if (pct >= 100 && pct <= 150) color = '#28a745';
-                        else color = '#e83e8c';
-                        return `<span style="color: ${color}; font-weight: 600;">${pct.toFixed(0)}%</span>`;
-                    }
-                },
-                {
-                    title: "Dil",
-                    field: "dil_percent",
-                    hozAlign: "center",
-                    sorter: "number",
-                    formatter: function(cell) {
-                        const value = parseFloat(cell.getValue() || 0);
-                        let color = '';
-                        
-                        if (value === 0) color = '#6c757d';
-                        else if (value < 16.7) color = '#a00211';
-                        else if (value >= 16.7 && value < 25) color = '#ffc107';
-                        else if (value >= 25 && value < 50) color = '#28a745';
-                        else color = '#e83e8c';
-                        
-                        return `<span style="color: ${color}; font-weight: 600;">${Math.round(value)}%</span>`;
-                    },
-                    width: 80
-                },
-                {
                     title: "Rating",
                     field: "rating",
                     hozAlign: "center",
@@ -1404,23 +1548,30 @@
                         const rating = cell.getValue();
                         const rowData = cell.getRow().getData();
                         const reviews = rowData.reviews || 0;
+                        let html = '';
                         if (!rating || rating === 0) {
-                            return '<span style="color: #6c757d;">-</span>';
+                            html = '<span style="color: #6c757d;">-</span>';
+                        } else {
+                            let ratingColor = '';
+                            const ratingVal = parseFloat(rating);
+                            if (ratingVal < 3) ratingColor = '#a00211';
+                            else if (ratingVal >= 3 && ratingVal <= 3.5) ratingColor = '#ffc107';
+                            else if (ratingVal >= 3.51 && ratingVal <= 3.99) ratingColor = '#3591dc';
+                            else if (ratingVal >= 4 && ratingVal <= 4.5) ratingColor = '#28a745';
+                            else ratingColor = '#e83e8c';
+                            const reviewColor = reviews < 4 ? '#a00211' : '#6c757d';
+                            html = `<div style="display: flex; flex-direction: column; align-items: center; gap: 2px;">
+                                <span style="color: ${ratingColor}; font-weight: 600;"><i class="fa fa-star"></i> ${parseFloat(rating).toFixed(1)}</span>
+                                <span style="font-size: 11px; color: ${reviewColor}; font-weight: 600;">${parseInt(reviews).toLocaleString()} reviews</span>
+                            </div>`;
                         }
-                        let ratingColor = '';
-                        const ratingVal = parseFloat(rating);
-                        if (ratingVal < 3) ratingColor = '#a00211';
-                        else if (ratingVal >= 3 && ratingVal <= 3.5) ratingColor = '#ffc107';
-                        else if (ratingVal >= 3.51 && ratingVal <= 3.99) ratingColor = '#3591dc';
-                        else if (ratingVal >= 4 && ratingVal <= 4.5) ratingColor = '#28a745';
-                        else ratingColor = '#e83e8c';
-                        const reviewColor = reviews < 4 ? '#a00211' : '#6c757d';
-                        return `<div style="display: flex; flex-direction: column; align-items: center; gap: 2px;">
-                            <span style="color: ${ratingColor}; font-weight: 600;"><i class="fa fa-star"></i> ${parseFloat(rating).toFixed(1)}</span>
-                            <span style="font-size: 11px; color: ${reviewColor}; font-weight: 600;">${parseInt(reviews).toLocaleString()} reviews</span>
-                        </div>`;
+                        if (rowData.is_parent_summary !== true) {
+                            const skuEsc = (rowData.sku || '').replace(/"/g, '&quot;');
+                            html += ' <i class="fas fa-circle pricing-master-chart-link ms-1" data-metric="rating" data-sku="' + skuEsc + '" style="cursor:pointer;color:#e83e8c;font-size:8px;vertical-align:middle;" title="View Rating history (Rolling L30)"></i>';
+                        }
+                        return html;
                     },
-                    width: 90
+                    minWidth: 70
                 },
                 {
                     title: "Total Views",
@@ -1428,36 +1579,16 @@
                     hozAlign: "center",
                     sorter: "number",
                     formatter: function(cell) {
-                        const value = parseInt(cell.getValue() || 0);
-                        if (value === 0) {
-                            return '<span style="color: #6c757d;">0</span>';
-                        }
-                        return `<span style="font-weight: 600;">${value.toLocaleString()}</span>`;
-                    },
-                    width: 110
-                },
-                {
-                    title: "Avg CVR",
-                    field: "avg_cvr",
-                    hozAlign: "center",
-                    sorter: "number",
-                    formatter: function(cell) {
                         const rowData = cell.getRow().getData();
-                        const value = parseFloat(cell.getValue() || 0);
-                        let color = '';
-                        if (value === 0) color = '#6c757d';
-                        else if (value < 1) color = '#a00211';
-                        else if (value >= 1 && value < 3) color = '#ffc107';
-                        else if (value >= 3 && value < 5) color = '#28a745';
-                        else color = '#e83e8c';
-                        let html = `<span style="color: ${color}; font-weight: 600;">${value.toFixed(1)}%</span>`;
+                        const value = parseInt(cell.getValue() || 0);
+                        let html = value === 0 ? '<span style="color: #6c757d;">0</span>' : `<span style="font-weight: 600;">${value.toLocaleString()}</span>`;
                         if (rowData.is_parent_summary !== true) {
                             const skuEsc = (rowData.sku || '').replace(/"/g, '&quot;');
-                            html += ' <i class="fas fa-circle pricing-master-chart-link ms-1" data-metric="cvr" data-sku="' + skuEsc + '" style="cursor:pointer;color:#ffc107;font-size:8px;vertical-align:middle;" title="View CVR graph (Rolling L30)"></i>';
+                            html += ' <i class="fas fa-circle pricing-master-chart-link ms-1" data-metric="total_views" data-sku="' + skuEsc + '" style="cursor:pointer;color:#17a2b8;font-size:8px;vertical-align:middle;" title="View Total Views history (Rolling L30)"></i>';
                         }
                         return html;
                     },
-                    width: 90
+                    minWidth: 80
                 },
                 {
                     title: "Amz LMP",
@@ -1482,7 +1613,7 @@
                         const color = (avgPrice > 0 && price < avgPrice) ? '#dc3545' : '#28a745';
                         return `<a href="#" class="lmp-price-link" data-sku="${sku}" data-marketplace="amazon" style="color: ${color}; font-weight: 600; text-decoration: none; cursor: pointer;">$${price.toFixed(2)}</a>`;
                     },
-                    width: 100
+                    minWidth: 70
                 },
                 {
                     title: "eBay LMP",
@@ -1507,24 +1638,7 @@
                         const color = (avgPrice > 0 && price < avgPrice) ? '#dc3545' : '#28a745';
                         return `<a href="#" class="lmp-price-link" data-sku="${sku}" data-marketplace="ebay" style="color: ${color}; font-weight: 600; text-decoration: none; cursor: pointer;">$${price.toFixed(2)}</a>`;
                     },
-                    width: 100
-                },
-                {
-                    title: "Avg Price",
-                    field: "avg_price",
-                    hozAlign: "center",
-                    sorter: "number",
-                    formatter: function(cell) {
-                        const rowData = cell.getRow().getData();
-                        const value = parseFloat(cell.getValue() || 0);
-                        let html = value === 0 ? '<span style="color: #6c757d;">-</span>' : `<span style="font-weight: 600;">$${value.toFixed(2)}</span>`;
-                        if (rowData.is_parent_summary !== true) {
-                            const skuEsc = (rowData.sku || '').replace(/"/g, '&quot;');
-                            html += ' <i class="fas fa-circle pricing-master-chart-link ms-1" data-metric="price" data-sku="' + skuEsc + '" style="cursor:pointer;color:#e83e8c;font-size:8px;vertical-align:middle;" title="View Price graph (Rolling L30)"></i>';
-                        }
-                        return html;
-                    },
-                    width: 100
+                    minWidth: 70
                 },
                 {
                     title: "Avg GPFT",
@@ -1544,7 +1658,7 @@
                         
                         return `<span style="color: ${color}; font-weight: 600;">${Math.round(value)}%</span>`;
                     },
-                    width: 100
+                    minWidth: 70
                 },
                 {
                     title: "Avg AD",
@@ -1565,27 +1679,7 @@
                         
                         return `<span style="color: ${color}; font-weight: 600;">${value.toFixed(1)}%</span>`;
                     },
-                    width: 90
-                },
-                {
-                    title: "Avg PFT",
-                    field: "avg_pft",
-                    hozAlign: "center",
-                    sorter: "number",
-                    formatter: function(cell) {
-                        const value = parseFloat(cell.getValue() || 0);
-                        let color = '';
-                        
-                        // Color coding for PFT% (Net Profit)
-                        if (value < 0) color = '#a00211';
-                        else if (value >= 0 && value < 10) color = '#ffc107';
-                        else if (value >= 10 && value < 20) color = '#3591dc';
-                        else if (value >= 20 && value <= 40) color = '#28a745';
-                        else color = '#e83e8c';
-                        
-                        return `<span style="color: ${color}; font-weight: 600;">${Math.round(value)}%</span>`;
-                    },
-                    width: 90
+                    minWidth: 70
                 }
             ]
         });
@@ -2245,8 +2339,51 @@
         let fullDataset = [];
         let expandedParent = null;
         let dotExpandedParent = null;
+        // Play/Pause parent navigation (same as product master: show only current parent, ignore other filters)
+        let isPlayNavigationActive = false;
+        let currentPlayParentIndex = 0;
         // Prevent dataLoaded side-effects for local setData operations
         let suppressDataLoadedHandler = false;
+        // Rows where sprice-dot is expanded (show 4 values). Key = row sku or index.
+        let spriceDotExpanded = new Set();
+
+        /** Reorder data so "10 FR" group is first, then other groups A-Z by parent; within each group children A-Z by SKU then parent row last. */
+        function reorderDataWith10FRFirst(data) {
+            if (!data || data.length === 0) return data;
+            const parentGroups = {};
+            data.forEach(row => {
+                const p = (row.parent || '').toString().trim();
+                if (!parentGroups[p]) parentGroups[p] = { children: [], parentRow: null };
+                if (row.is_parent_summary === true) {
+                    parentGroups[p].parentRow = row;
+                } else {
+                    parentGroups[p].children.push(row);
+                }
+            });
+            const PREFER_FIRST = '10 FR';
+            const parentNames = Object.keys(parentGroups).filter(p => p !== '');
+            parentNames.sort((a, b) => {
+                if (a === PREFER_FIRST) return -1;
+                if (b === PREFER_FIRST) return 1;
+                return String(a).localeCompare(String(b));
+            });
+            const out = [];
+            parentNames.forEach(p => {
+                const g = parentGroups[p];
+                if (!g) return;
+                g.children.sort((a, b) => String((a.sku || '')).localeCompare(String((b.sku || ''))));
+                out.push(...g.children);
+                if (g.parentRow) out.push(g.parentRow);
+            });
+            // Rows with empty parent at end
+            if (parentGroups['']) {
+                const g = parentGroups[''];
+                g.children.sort((a, b) => String((a.sku || '')).localeCompare(String((b.sku || ''))));
+                out.push(...g.children);
+                if (g.parentRow) out.push(g.parentRow);
+            }
+            return out;
+        }
 
         // Row selection - Set of selected SKUs
         let selectedSkus = new Set();
@@ -2324,6 +2461,33 @@
             });
         });
 
+        // Sprice dot click - toggle show 4 values (Amz SPRICE, SGPFT%, SPFT%, SROI%)
+        $(document).on('click', '.sprice-dot-btn, .sprice-dot-toggle', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            const key = $(this).attr('data-sprice-key');
+            if (key === undefined || key === '') return;
+            if (spriceDotExpanded.has(key)) {
+                spriceDotExpanded.delete(key);
+            } else {
+                spriceDotExpanded.add(key);
+            }
+            if (table) {
+                const target = e.target;
+                const rows = table.getRows();
+                for (let i = 0; i < rows.length; i++) {
+                    const r = rows[i];
+                    if (r.getElement() && r.getElement().contains(target)) {
+                        try {
+                            const cell = r.getCell('sprice_dot');
+                            if (cell) cell.reformat();
+                        } catch (err) { /* column may be hidden */ }
+                        break;
+                    }
+                }
+            }
+        });
+
         function buildParentView() {
             console.log('=== Building Parent View ===');
             console.log('fullDataset length:', fullDataset.length);
@@ -2379,7 +2543,7 @@
             });
         }
 
-        // ==================== NAVIGATE PARENTS (no autoplay) ====================
+        // ==================== NAVIGATE PARENTS (Play/Pause like product master) ====================
         function getParentRows() {
             if (!fullDataset || fullDataset.length === 0) return [];
             return fullDataset.filter(row => row.is_parent_summary === true);
@@ -2399,44 +2563,81 @@
             buildParentView();
         }
 
-        function nextParent() {
+        /** Show only current parent's rows (children first, parent row last – like product master). No other filters. */
+        function showCurrentParentPlayView() {
+            if (!fullDataset || fullDataset.length === 0) return;
             const parentRows = getParentRows();
             if (parentRows.length === 0) return;
-            let idx = getCurrentParentIndex();
-            idx = idx < 0 ? 0 : (idx + 1) % parentRows.length;
-            goToParentByIndex(idx);
+            const currentParent = parentRows[currentPlayParentIndex].parent;
+            const childRows = fullDataset.filter(row => row.parent === currentParent && row.is_parent_summary !== true);
+            const parentRow = fullDataset.find(row => row.is_parent_summary === true && row.parent === currentParent);
+            // Children first, then parent row at the end (same order as product master)
+            const displayData = [...childRows];
+            if (parentRow) displayData.push(parentRow);
+            suppressDataLoadedHandler = true;
+            table.clearSort(); // Keep our order: parent row last, don't re-sort by DIL% etc.
+            table.setData(displayData).then(() => {
+                updateSummary();
+                updatePlayButtonStates();
+            });
         }
 
-        function previousParent() {
+        function startPlayNavigation() {
             const parentRows = getParentRows();
             if (parentRows.length === 0) return;
-            let idx = getCurrentParentIndex();
-            idx = idx < 0 ? parentRows.length - 1 : (idx - 1 + parentRows.length) % parentRows.length;
-            goToParentByIndex(idx);
-        }
-
-        $('#play-auto').on('click', function() {
-            nextParent();
-            $(this).hide();
+            isPlayNavigationActive = true;
+            currentPlayParentIndex = 0;
+            dotExpandedParent = null;
+            expandedParent = null;
+            showCurrentParentPlayView();
+            $('#play-auto').hide();
             $('#play-pause').show();
-            $('#play-backward, #play-forward').prop('disabled', false);
-        });
-        $('#play-pause').on('click', function() {
-            $(this).hide();
-            $('#play-auto').show();
-            $('#play-backward, #play-forward').prop('disabled', true);
-            // Reset to normal: restore full data and re-apply current filters (SKU Only / Both / Parent Only)
+            updatePlayButtonStates();
+        }
+
+        function stopPlayNavigation() {
+            isPlayNavigationActive = false;
+            currentPlayParentIndex = 0;
             expandedParent = null;
             dotExpandedParent = null;
+            $('#play-pause').hide();
+            $('#play-auto').show();
+            $('#play-backward, #play-forward').prop('disabled', true);
             if (fullDataset.length > 0) {
                 suppressDataLoadedHandler = true;
                 table.setData(fullDataset).then(applyFilters);
             } else {
                 applyFilters();
             }
-        });
-        $('#play-forward').on('click', nextParent);
-        $('#play-backward').on('click', previousParent);
+        }
+
+        function updatePlayButtonStates() {
+            const parentRows = getParentRows();
+            $('#play-backward').prop('disabled', !isPlayNavigationActive || currentPlayParentIndex <= 0);
+            $('#play-forward').prop('disabled', !isPlayNavigationActive || currentPlayParentIndex >= parentRows.length - 1);
+            $('#play-auto').attr('title', isPlayNavigationActive ? 'Show all' : 'Start parent navigation');
+            $('#play-pause').attr('title', 'Stop navigation and show all');
+        }
+
+        function playNextParent() {
+            if (!isPlayNavigationActive) return;
+            const parentRows = getParentRows();
+            if (currentPlayParentIndex >= parentRows.length - 1) return;
+            currentPlayParentIndex++;
+            showCurrentParentPlayView();
+        }
+
+        function playPreviousParent() {
+            if (!isPlayNavigationActive) return;
+            if (currentPlayParentIndex <= 0) return;
+            currentPlayParentIndex--;
+            showCurrentParentPlayView();
+        }
+
+        $('#play-auto').on('click', startPlayNavigation);
+        $('#play-pause').on('click', stopPlayNavigation);
+        $('#play-forward').on('click', playNextParent);
+        $('#play-backward').on('click', playPreviousParent);
 
         // ==================== FILTER FUNCTIONS ====================
         
@@ -2470,6 +2671,12 @@
         });
 
         function applyFilters() {
+            // When Play navigation is active, ignore all filters and show only current parent (same as product master)
+            if (isPlayNavigationActive) {
+                showCurrentParentPlayView();
+                return;
+            }
+
             const wasInDotView = !!dotExpandedParent;
             dotExpandedParent = null;
 
@@ -2635,8 +2842,8 @@
                                 visibility[field] ? col.show() : col.hide();
                             }
                         });
-                        buildColumnDropdown();
                     }
+                    buildColumnDropdown();
                 }
             });
         }
@@ -2655,13 +2862,15 @@
                 return;
             }
 
-            // Store full dataset from server load
-            fullDataset = data;
-            
-            setTimeout(function() {
+            // Reorder so "10 FR" group is first, then others A-Z; within group children A-Z then parent row last
+            const reordered = reorderDataWith10FRFirst(data);
+            fullDataset = reordered;
+
+            suppressDataLoadedHandler = true;
+            table.setData(reordered).then(function() {
                 applyFilters();
                 updateSummary();
-            }, 100);
+            });
         });
 
         table.on('renderComplete', function() {
@@ -2741,7 +2950,7 @@
         let currentPricingChartMetric = 'inv';
         let currentPricingChartSku = '';
         let currentPricingChartDays = 30;
-        const pricingChartMetricLabels = { inv: 'Inv', ov_l30: 'OV L30', price: 'Price', cvr: 'CVR' };
+        const pricingChartMetricLabels = { inv: 'Inv', ov_l30: 'OV L30', price: 'Price', cvr: 'CVR', dil: 'DIL', amz_price: 'Amz Price', rating: 'Rating', total_views: 'Total Views' };
         const pricingChartRangeLabel = (days) => 'L' + days;
 
         $(document).on('click', '.pricing-master-chart-link', function(e) {
@@ -2757,7 +2966,7 @@
             currentPricingChartDays = 30;
             $('#pricingMasterChartRangeSelect').val('30');
             const label = pricingChartMetricLabels[metric] || metric;
-            $('#pricingMasterChartModalTitle').text('Pricing Master - ' + sku + ' - ' + label + ' (Rolling ' + pricingChartRangeLabel(30) + ')');
+            $('#pricingMasterChartModalTitle').text('Master Analytics - ' + sku + ' - ' + label + ' (Rolling ' + pricingChartRangeLabel(30) + ')');
             $('#pricingMasterChartContainer').hide();
             $('#pricingMasterChartNoData').hide();
             $('#pricingMasterChartLoading').show();
@@ -2816,8 +3025,10 @@
             const yMin = Math.max(0, dataMin - range * 0.1);
             const yMax = dataMax + range * 0.1;
             const fmtVal = (v) => {
-                if (currentPricingChartMetric === 'price') return '$' + (Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
-                if (currentPricingChartMetric === 'cvr') return Number(v).toFixed(1) + '%';
+                if (currentPricingChartMetric === 'price' || currentPricingChartMetric === 'amz_price') return '$' + (Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+                if (currentPricingChartMetric === 'cvr' || currentPricingChartMetric === 'dil') return Number(v).toFixed(1) + '%';
+                if (currentPricingChartMetric === 'rating') return Number(v).toFixed(1);
+                if (currentPricingChartMetric === 'total_views') return Math.round(v).toLocaleString('en-US');
                 return Math.round(v).toLocaleString('en-US');
             };
             $('#pricingMasterChartHighest').text(fmtVal(dataMax)).css('color', '#dc3545');
