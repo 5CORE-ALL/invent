@@ -5459,73 +5459,75 @@ class AmazonSpBudgetController extends Controller
     }
 
     /**
-     * Approve SBID M and update SBID in campaign reports
+     * Approve SBID M and update SBID in campaign reports.
+     * PT campaigns use targeting clauses API; KW use keywords API; HL use SB keywords API.
      */
     public function approveAmazonSbid(Request $request)
     {
+        $campaignId = $request->input('campaign_id');
+        $sbidM = $request->input('sbid_m');
+        $campaignType = $request->input('campaign_type');
+
+        // Normalize to scalar (avoid cardinality/type errors if frontend sends array)
+        $campaignId = is_array($campaignId) ? (string) reset($campaignId) : trim((string) $campaignId);
+        $campaignType = is_array($campaignType) ? (string) reset($campaignType) : trim((string) $campaignType);
+        $campaignType = $campaignType === '' ? null : $campaignType;
+
+        FacadesLog::info('approveAmazonSbid: request', [
+            'campaign_id' => $campaignId,
+            'sbid_m' => $sbidM,
+            'campaign_type' => $campaignType,
+        ]);
+
+        if ($campaignId === '' || $campaignId === null) {
+            FacadesLog::warning('approveAmazonSbid: missing campaign_id', ['sbid_m' => $sbidM]);
+            return response()->json([
+                'status' => 400,
+                'message' => 'Campaign ID is required',
+            ], 400);
+        }
+
+        if ($sbidM === '' || $sbidM === null) {
+            FacadesLog::warning('approveAmazonSbid: missing sbid_m', ['campaign_id' => $campaignId]);
+            return response()->json([
+                'status' => 400,
+                'message' => 'SBID M is required',
+            ], 400);
+        }
+
+        $sbidM = floatval($sbidM);
+        if ($sbidM <= 0) {
+            FacadesLog::warning('approveAmazonSbid: sbid_m must be > 0', ['sbid_m' => $sbidM]);
+            return response()->json([
+                'status' => 400,
+                'message' => 'SBID M must be greater than 0',
+            ], 400);
+        }
+
+        $sbidMStr = (string) $sbidM;
+        $yesterday = date('Y-m-d', strtotime('-1 day'));
+        // Explicit scalar list — no subqueries, avoids "Operand should contain 1 column(s)"
+        $dateRangeList = [$yesterday, 'L1', 'L7'];
+
         try {
-            $campaignId = $request->input('campaign_id');
-            $sbidM = $request->input('sbid_m');
-            $campaignType = $request->input('campaign_type'); // KW, PT, or HL
-
-            FacadesLog::info('approveAmazonSbid: request', [
-                'campaign_id' => $campaignId,
-                'sbid_m' => $sbidM,
-                'campaign_type' => $campaignType,
-                'source' => 'amazon-tabulator-view',
-            ]);
-
-            if (!$campaignId || !$sbidM) {
-                FacadesLog::warning('approveAmazonSbid: missing campaign_id or sbid_m', [
-                    'campaign_id' => $campaignId,
-                    'sbid_m' => $sbidM,
-                ]);
-                return response()->json([
-                    'status' => 400,
-                    'message' => 'Campaign ID and SBID M are required'
-                ], 400);
-            }
-
-            $sbidM = floatval($sbidM);
-            if ($sbidM <= 0) {
-                FacadesLog::warning('approveAmazonSbid: sbid_m must be > 0', ['sbid_m' => $sbidM]);
-                return response()->json([
-                    'status' => 400,
-                    'message' => 'SBID M must be greater than 0'
-                ], 400);
-            }
-
-            $yesterday = date('Y-m-d', strtotime('-1 day'));
-            
-            // Check all possible date ranges where campaign might exist
-            // Include yesterday, L1, L7, and also check if campaign exists in any date range
-            $dateRanges = [$yesterday, 'L1', 'L7'];
             $updated = 0;
 
-            $sbidMStr = (string)$sbidM;
             if ($campaignType === 'HL') {
-                // First, try to find the campaign in any of the common date ranges
-                $campaignExists = DB::table('amazon_sb_campaign_reports')
-                    ->where('campaign_id', $campaignId)
-                    ->whereIn('report_date_range', $dateRanges)
-                    ->where('ad_type', 'SPONSORED_BRANDS')
-                    ->exists();
-                
-                if ($campaignExists) {
-                    // Update all matching records (sbid, sbid_m, and last_sbid so it displays in tabulator)
+                // Update by date range first (single-column IN list)
+                $updated = DB::table('amazon_sb_campaign_reports')
+                    ->where('campaign_id', '=', $campaignId)
+                    ->where('ad_type', '=', 'SPONSORED_BRANDS')
+                    ->whereIn('report_date_range', $dateRangeList)
+                    ->update([
+                        'sbid' => $sbidMStr,
+                        'sbid_m' => $sbidMStr,
+                        'last_sbid' => $sbidMStr,
+                    ]);
+
+                if ($updated === 0) {
                     $updated = DB::table('amazon_sb_campaign_reports')
-                        ->where('campaign_id', $campaignId)
-                        ->whereIn('report_date_range', $dateRanges)
-                        ->where('ad_type', 'SPONSORED_BRANDS')
-                        ->update([
-                            'sbid' => $sbidMStr,
-                            'sbid_m' => $sbidMStr,
-                            'last_sbid' => $sbidMStr,
-                        ]);
-                } else {
-                    $updated = DB::table('amazon_sb_campaign_reports')
-                        ->where('campaign_id', $campaignId)
-                        ->where('ad_type', 'SPONSORED_BRANDS')
+                        ->where('campaign_id', '=', $campaignId)
+                        ->where('ad_type', '=', 'SPONSORED_BRANDS')
                         ->where('campaignStatus', '!=', 'ARCHIVED')
                         ->update([
                             'sbid' => $sbidMStr,
@@ -5534,28 +5536,21 @@ class AmazonSpBudgetController extends Controller
                         ]);
                 }
             } else {
-                // First, try to find the campaign in any of the common date ranges
-                $campaignExists = DB::table('amazon_sp_campaign_reports')
-                    ->where('campaign_id', $campaignId)
-                    ->whereIn('report_date_range', $dateRanges)
-                    ->where('ad_type', 'SPONSORED_PRODUCTS')
-                    ->exists();
-                
-                if ($campaignExists) {
-                    // Update all matching records (sbid, sbid_m, and last_sbid so it displays in tabulator)
+                // SP (KW and PT): update by date range first (single-column IN list)
+                $updated = DB::table('amazon_sp_campaign_reports')
+                    ->where('campaign_id', '=', $campaignId)
+                    ->where('ad_type', '=', 'SPONSORED_PRODUCTS')
+                    ->whereIn('report_date_range', $dateRangeList)
+                    ->update([
+                        'sbid' => $sbidMStr,
+                        'sbid_m' => $sbidMStr,
+                        'last_sbid' => $sbidMStr,
+                    ]);
+
+                if ($updated === 0) {
                     $updated = DB::table('amazon_sp_campaign_reports')
-                        ->where('campaign_id', $campaignId)
-                        ->whereIn('report_date_range', $dateRanges)
-                        ->where('ad_type', 'SPONSORED_PRODUCTS')
-                        ->update([
-                            'sbid' => $sbidMStr,
-                            'sbid_m' => $sbidMStr,
-                            'last_sbid' => $sbidMStr,
-                        ]);
-                } else {
-                    $updated = DB::table('amazon_sp_campaign_reports')
-                        ->where('campaign_id', $campaignId)
-                        ->where('ad_type', 'SPONSORED_PRODUCTS')
+                        ->where('campaign_id', '=', $campaignId)
+                        ->where('ad_type', '=', 'SPONSORED_PRODUCTS')
                         ->where('campaignStatus', '!=', 'ARCHIVED')
                         ->update([
                             'sbid' => $sbidMStr,
@@ -5571,7 +5566,15 @@ class AmazonSpBudgetController extends Controller
                     'campaign_type' => $campaignType,
                     'rows_updated' => $updated,
                 ]);
-                // Update bids on Amazon Ads site using API
+
+                // Resolve API method: PT → targets, KW → keywords, HL → SB keywords (updateCampaignBidsOnAmazon branches internally)
+                $apiMethod = ($campaignType === 'HL') ? 'HL (SB keywords)' : ($campaignType === 'PT' ? 'PT (targeting clauses)' : 'KW (keywords)');
+                FacadesLog::info('approveAmazonSbid: calling Amazon API', [
+                    'campaign_id' => $campaignId,
+                    'campaign_type' => $campaignType,
+                    'api_method' => $apiMethod,
+                ]);
+
                 try {
                     $apiUpdateResult = $this->updateCampaignBidsOnAmazon($campaignId, $sbidM, $campaignType);
                     FacadesLog::info('approveAmazonSbid: API update success', [
@@ -5582,10 +5585,9 @@ class AmazonSpBudgetController extends Controller
                         'status' => 200,
                         'message' => 'SBID approved and updated successfully on Amazon',
                         'sbid' => $sbidM,
-                        'api_result' => $apiUpdateResult
+                        'api_result' => $apiUpdateResult,
                     ]);
                 } catch (\Exception $e) {
-                    // Database update succeeded but API update failed
                     FacadesLog::error('approveAmazonSbid: API update failed', [
                         'campaign_id' => $campaignId,
                         'campaign_type' => $campaignType,
@@ -5593,38 +5595,47 @@ class AmazonSpBudgetController extends Controller
                         'error' => $e->getMessage(),
                         'trace' => $e->getTraceAsString(),
                     ]);
-                    
                     return response()->json([
                         'status' => 200,
                         'message' => 'SBID approved in database, but Amazon API update failed: ' . $e->getMessage(),
                         'sbid' => $sbidM,
-                        'warning' => true
+                        'warning' => true,
                     ]);
                 }
-            } else {
-                // Log for debugging
-                FacadesLog::error('approveAmazonSbid: no rows updated (campaign not found)', [
-                    'campaign_id' => $campaignId,
-                    'campaign_type' => $campaignType,
-                    'yesterday' => $yesterday,
-                    'date_ranges' => $dateRanges,
-                    'sbid_m' => $sbidM
-                ]);
-                
-                return response()->json([
-                    'status' => 404,
-                    'message' => 'Campaign not found. Please ensure the campaign exists for yesterday\'s date or L1.'
-                ], 404);
             }
-        } catch (\Exception $e) {
-            FacadesLog::error('approveAmazonSbid: exception', [
-                'campaign_id' => $request->input('campaign_id'),
+
+            FacadesLog::error('approveAmazonSbid: no rows updated (campaign not found)', [
+                'campaign_id' => $campaignId,
+                'campaign_type' => $campaignType,
+                'yesterday' => $yesterday,
+                'sbid_m' => $sbidM,
+            ]);
+            return response()->json([
+                'status' => 404,
+                'message' => 'Campaign not found. Please ensure the campaign exists for yesterday\'s date, L1, or L7.',
+            ], 404);
+
+        } catch (\Illuminate\Database\QueryException $e) {
+            FacadesLog::error('approveAmazonSbid: database error', [
+                'campaign_id' => $campaignId,
+                'campaign_type' => $campaignType,
+                'sql_state' => $e->getCode(),
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
             ]);
             return response()->json([
                 'status' => 500,
-                'message' => 'Error approving SBID: ' . $e->getMessage()
+                'message' => 'A database error occurred while approving SBID. Please try again or contact support.',
+            ], 500);
+        } catch (\Exception $e) {
+            FacadesLog::error('approveAmazonSbid: exception', [
+                'campaign_id' => $campaignId,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            return response()->json([
+                'status' => 500,
+                'message' => 'Error approving SBID: ' . $e->getMessage(),
             ], 500);
         }
     }
