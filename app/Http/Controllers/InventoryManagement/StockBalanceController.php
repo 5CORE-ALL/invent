@@ -209,19 +209,8 @@ class StockBalanceController extends Controller
                 'user' => Auth::user()->name ?? 'Unknown'
             ]);
             
-            // Validate that available quantities are not negative
-            if ($request->to_available_qty < 0) {
-                Log::error("Negative inventory detected for TO SKU", [
-                    'to_sku' => $toSku,
-                    'to_available_qty' => $request->to_available_qty
-                ]);
-                
-                return response()->json([
-                    'error' => 'Invalid inventory data: TO SKU has negative inventory (' . $request->to_available_qty . '). Please check Shopify inventory for ' . $toSku,
-                    'details' => 'Cannot transfer to SKU with negative inventory'
-                ], 422);
-            }
-            
+            // Block transferring FROM a SKU that has negative inventory (cannot deduct from negative).
+            // Allow transferring TO a SKU with negative inventory — that is how you fix it (add stock).
             if ($request->from_available_qty < 0) {
                 Log::error("Negative inventory detected for FROM SKU", [
                     'from_sku' => $fromSku,
