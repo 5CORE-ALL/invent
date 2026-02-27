@@ -1000,51 +1000,72 @@ class AmazonSpApiService
     /**
      * GET_MERCHANT_LISTINGS_ALL_DATA is known to return empty image-url. This method fetches
      * listing item details (images, videos, bullet points) via the Listings Items API when available.
-     * Returns ['success' => true, 'images' => [...], 'videos' => [...], 'bullet_points' => [...]] or ['success' => false, ...].
+     * Video extraction only uses explicit video attribute names (product_video, video, etc.);
+     * media_location is not treated as a video key (it is used for images). If Listings Items API
+     * does not return videos for your SKUs, consider: Catalog Items API (/catalog/2022-04-01/items/{asin}),
+     * A+ Content API, or storing video URLs in a separate table for manual maintenance.
+     * Returns:
+     * [
+     *     'success' => true,
+     *     'images' => [...],
+     *     'videos' => [
+     *         ['url' => '...', 'thumbnail' => '...', 'duration' => ''],
+     *     ],
+     *     'bullet_points' => [...],
+     * ].
      */
     public function getListingsItemMedia(string $sellerSku): array
     {
         $empty = ['images' => [], 'videos' => [], 'bullet_points' => []];
+
         try {
             $accessToken = $this->getAccessToken();
             if (! $accessToken) {
                 return ['success' => false, 'message' => 'Could not obtain access token.'] + $empty;
             }
+
             $sellerId = config('services.amazon_sp.seller_id');
             if (empty($sellerId)) {
                 return ['success' => false, 'message' => 'AMAZON_SELLER_ID is not set in .env.'] + $empty;
             }
+
             $marketplaceId = $this->marketplaceId ?? config('services.amazon_sp.marketplace_id');
             if (empty($marketplaceId)) {
                 return ['success' => false, 'message' => 'SPAPI_MARKETPLACE_ID is not set.'] + $empty;
             }
+
             $skuEncoded = rawurlencode($sellerSku);
+            // IMPORTANT: use includedData=attributes so that we always get the rich
+            // attributes block (images, videos, bullet points) rather than summaries only.
             $url = $this->endpoint . '/listings/2021-08-01/items/' . $sellerId . '/' . $skuEncoded
-                . '?marketplaceIds=' . $marketplaceId . '&includedData=summaries,attributes';
+                . '?marketplaceIds=' . $marketplaceId . '&includedData=attributes';
+
             $response = Http::withoutVerifying()->withHeaders([
                 'x-amz-access-token' => $accessToken,
                 'Content-Type' => 'application/json',
             ])->get($url);
+
             $body = $response->json();
+
             if ($response->status() !== 200) {
                 Log::warning('Amazon Listings Item: API error', ['status' => $response->status(), 'body' => $body]);
 
                 return ['success' => false, 'message' => $body['errors'][0]['message'] ?? 'Listings Item API error.'] + $empty;
             }
-            Log::debug('Amazon Listings Item: raw response top-level keys', ['keys' => array_keys($body ?? [])]);
-            $this->logVideoRelatedKeys($body, $sellerSku);
-            $images = $this->extractImageUrlsFromListingsItemResponse($body);
-            $videos = $this->extractVideoUrlsFromListingsItemResponse($body, $images);
+
+            $attributes = isset($body['attributes']) && is_array($body['attributes']) ? $body['attributes'] : [];
+
+            // Prefer explicit extraction from the attributes block, then fall back to the
+            // more generic scanners as a safety net.
+            $imagesFromAttributes = $this->extractImagesFromAttributes($attributes);
+            $genericImages = $this->extractImageUrlsFromListingsItemResponse($body);
+            $images = array_values(array_unique(array_merge($imagesFromAttributes, $genericImages)));
+
+            $videosFromAttributes = $this->extractVideosFromAttributes($attributes, $images);
+            $genericVideos = $this->extractVideoUrlsFromListingsItemResponse($body, $images);
+            $videos = $this->mergeVideoLists($videosFromAttributes, $genericVideos);
+
             $bulletPoints = $this->extractBulletPointsFromListingsItemResponse($body);
-            Log::debug('Amazon Listings Item: media extracted', [
-                'sku' => $sellerSku,
-                'images_count' => count($images),
-                'videos_count' => count($videos),
-                'bullet_points_count' => count($bulletPoints),
-            ]);
-            if (count($bulletPoints) > 0) {
-                Log::debug('Amazon Listings Item: bullet_points sample', ['first' => $bulletPoints[0] ?? null]);
-            }
 
             return ['success' => true, 'images' => $images, 'videos' => $videos, 'bullet_points' => $bulletPoints];
         } catch (\Throwable $e) {
@@ -1054,17 +1075,84 @@ class AmazonSpApiService
         }
     }
 
+    /**
+     * Fetch and return the first image URL for a given seller SKU using the Listings Items API.
+     * Returns the URL string or null when not available.
+     */
+    public function syncThumbnailForSku(string $sellerSku): ?string
+    {
+        $media = $this->getListingsItemMedia($sellerSku);
+
+        if (! is_array($media) || empty($media['success'])) {
+            return null;
+        }
+
+        $images = $media['images'] ?? [];
+        if (! is_array($images) || empty($images)) {
+            return null;
+        }
+
+        $first = $images[0] ?? null;
+        if (is_string($first) && $first !== '') {
+            return $first;
+        }
+        if (is_array($first)) {
+            $url = $first['url'] ?? $first['locator'] ?? $first['media_location'] ?? null;
+            return is_string($url) && $url !== '' ? $url : null;
+        }
+
+        return null;
+    }
+
+    /**
+     * Log only keys that explicitly indicate video (not generic "media" which is used for images).
+     * Avoids treating media_location / media as video and causing false positives.
+     */
     private function logVideoRelatedKeys(array $data, string $sku): void
     {
+        $explicitVideoKeyPattern = '#\bvideo\b|video_|_video|product_video|video_url|video_locator|video_content|video_metadata|main_product_video#i';
         $videoKeys = [];
-        array_walk_recursive($data, function ($v, $k) use (&$videoKeys) {
-            if (is_string($k) && preg_match('#video|media|movie|clip#i', $k)) {
+        array_walk_recursive($data, function ($v, $k) use (&$videoKeys, $explicitVideoKeyPattern) {
+            if (is_string($k) && preg_match($explicitVideoKeyPattern, $k)) {
                 $videoKeys[$k] = is_string($v) ? substr($v, 0, 80) : gettype($v);
             }
         });
         if (count($videoKeys) > 0) {
-            Log::debug('Amazon Listings Item: video-related keys in response', ['sku' => $sku, 'video_keys' => $videoKeys]);
+            Log::debug('Amazon Listings Item: explicit video-related keys in response', ['sku' => $sku, 'video_keys' => $videoKeys]);
         }
+    }
+
+    /**
+     * Recursively find attribute keys that indicate video data (for debugging).
+     * Only keys that explicitly contain "video", not generic "media".
+     */
+    private function logNestedVideoKeysRecursive(array $data, string $sku, array $path = []): void
+    {
+        $explicitVideoKeys = [
+            'product_video', 'videos', 'video', 'external_product_video', 'video_locator',
+            'video_url', 'video_metadata', 'video_content', 'main_product_video_locator',
+        ];
+        foreach ($data as $k => $v) {
+            $keyLower = is_string($k) ? strtolower($k) : '';
+            $currentPath = array_merge($path, [$k]);
+            if (in_array($keyLower, $explicitVideoKeys, true)) {
+                Log::debug('Amazon Listings Item: nested video attribute path', [
+                    'sku' => $sku,
+                    'path' => implode('.', $currentPath),
+                    'type' => is_array($v) ? 'array' : gettype($v),
+                    'sample' => is_string($v) ? substr($v, 0, 100) : (is_array($v) ? 'count=' . count($v) : null),
+                ]);
+            }
+            if (is_array($v) && count($currentPath) < 5) {
+                $this->logNestedVideoKeysRecursive($v, $sku, $currentPath);
+            }
+        }
+    }
+
+    /** Return true if URL looks like an image (by extension). */
+    private function urlLooksLikeImage(string $url): bool
+    {
+        return (bool) preg_match('#\.(jpe?g|png|gif|webp)(\?|$)#i', $url);
     }
 
     private function extractBulletPointsFromListingsItemResponse(array $data): array
@@ -1135,6 +1223,280 @@ class AmazonSpApiService
         return null;
     }
 
+    /**
+     * Extract image URLs from the Listings Items API attributes block.
+     * Focuses on:
+     *  - attributes.main_product_image
+     *  - attributes.other_product_image
+     *  - attributes.product_image
+     */
+    private function extractImagesFromAttributes(array $attributes): array
+    {
+        if (empty($attributes)) {
+            return [];
+        }
+
+        $normalized = [];
+        foreach ($attributes as $k => $v) {
+            $normalized[strtolower((string) $k)] = $v;
+        }
+
+        $imageAttrKeys = [
+            'main_product_image',
+            'other_product_image',
+            'product_image',
+        ];
+
+        $urls = [];
+        $seen = [];
+
+        foreach ($imageAttrKeys as $attrKey) {
+            if (! isset($normalized[$attrKey]) || ! is_array($normalized[$attrKey])) {
+                continue;
+            }
+
+            foreach ($normalized[$attrKey] as $entry) {
+                $value = is_array($entry) && array_key_exists('value', $entry) ? $entry['value'] : $entry;
+
+                // Sometimes value itself is another wrapper with "value" inside.
+                if (is_array($value) && array_key_exists('value', $value) && (is_string($value['value']) || is_array($value['value']))) {
+                    $value = $value['value'];
+                }
+
+                $candidates = [];
+
+                if (is_string($value)) {
+                    $candidates[] = $value;
+                } elseif (is_array($value)) {
+                    foreach (['media_location', 'locator', 'url', 'image_url'] as $key) {
+                        if (! empty($value[$key]) && is_string($value[$key])) {
+                            $candidates[] = $value[$key];
+                        }
+                    }
+                }
+
+                foreach ($candidates as $rawUrl) {
+                    $url = trim($rawUrl);
+                    if ($url === '' || isset($seen[$url])) {
+                        continue;
+                    }
+                    if (! preg_match('#^https?://#i', $url)) {
+                        continue;
+                    }
+                    $seen[$url] = true;
+                    $urls[] = $url;
+                }
+            }
+        }
+
+        return array_values($urls);
+    }
+
+    /**
+     * Extract video metadata (url, thumbnail, duration) from the Listings Items API
+     * attributes block. Only considers explicit video attribute names (not media_location).
+     * Filters out URLs that are clearly images or already in image list to avoid false positives.
+     */
+    private function extractVideosFromAttributes(array $attributes, array $imageUrls): array
+    {
+        if (empty($attributes)) {
+            return [];
+        }
+
+        $normalized = [];
+        foreach ($attributes as $k => $v) {
+            $normalized[strtolower((string) $k)] = $v;
+        }
+
+        $videoAttrKeys = [
+            'product_video',
+            'videos',
+            'video',
+            'external_product_video',
+            'video_locator',
+            'video_url',
+            'video_metadata',
+            'video_content',
+            'main_product_video_locator',
+        ];
+
+        $videos = [];
+        $seen = [];
+        $firstImage = $imageUrls[0] ?? '';
+        $imageSet = array_flip(array_map('strval', $imageUrls));
+
+        $collectEntries = function ($val) use (&$collectEntries): array {
+            if (! is_array($val)) {
+                return [];
+            }
+            $entries = [];
+            foreach ($val as $item) {
+                if (is_array($item) && (isset($item['value']) || isset($item['url']) || isset($item['locator']) || isset($item['media_location']))) {
+                    $entries[] = $item;
+                } elseif (is_string($item) && preg_match('#^https?://#', $item)) {
+                    $entries[] = ['value' => $item];
+                } elseif (is_array($item)) {
+                    $nested = $collectEntries($item);
+                    $entries = array_merge($entries, $nested);
+                }
+            }
+            return $entries;
+        };
+
+        $hasVideoAttributes = false;
+
+        foreach ($videoAttrKeys as $attrKey) {
+            if (! isset($normalized[$attrKey])) {
+                continue;
+            }
+            $val = $normalized[$attrKey];
+            $hasVideoAttributes = true;
+
+            $entries = is_array($val) ? $collectEntries($val) : [];
+            if (empty($entries) && is_array($val) && ! isset($val[0])) {
+                $entries = [$val];
+            }
+
+            foreach ($entries as $entry) {
+                $parsed = $this->parseVideoAttributeEntry($entry);
+                $url = $parsed['url'] ?? null;
+
+                if (! is_string($url)) {
+                    continue;
+                }
+
+                $url = trim($url);
+                if ($url === '' || isset($seen[$url])) {
+                    continue;
+                }
+                if (! preg_match('#^https?://#i', $url)) {
+                    continue;
+                }
+                if ($this->urlLooksLikeImage($url) || isset($imageSet[$url])) {
+                    continue;
+                }
+
+                $seen[$url] = true;
+
+                $thumbnail = $parsed['thumbnail'] ?? '';
+                if (! is_string($thumbnail) || trim($thumbnail) === '') {
+                    $thumbnail = $firstImage;
+                }
+
+                $duration = (string) ($parsed['duration'] ?? '');
+
+                $videos[] = [
+                    'url' => $url,
+                    'thumbnail' => $thumbnail,
+                    'duration' => $duration,
+                ];
+            }
+        }
+
+        return $videos;
+    }
+
+    /**
+     * Parse a single product_video-style attribute entry into a normalized
+     * ['url' => ..., 'thumbnail' => ..., 'duration' => ...] array.
+     *
+     * Handles shapes like:
+     *  - ['value' => 'https://...mp4']
+     *  - ['value' => ['locator' => 'https://...mp4', 'thumbnail' => 'https://...jpg']]
+     *  - ['locator' => 'https://...mp4']
+     */
+    private function parseVideoAttributeEntry(mixed $entry): array
+    {
+        $url = null;
+        $thumbnail = '';
+        $duration = '';
+
+        $value = is_array($entry) && array_key_exists('value', $entry) ? $entry['value'] : $entry;
+
+        // Sometimes there's a nested "value" wrapper as well.
+        if (is_array($value) && array_key_exists('value', $value) && (is_string($value['value']) || is_array($value['value']))) {
+            $inner = $value['value'];
+            if (is_string($inner)) {
+                $value = $inner;
+            } elseif (is_array($inner)) {
+                $value = array_merge($value, $inner);
+            }
+        }
+
+        if (is_string($value)) {
+            $url = $value;
+        } elseif (is_array($value)) {
+            foreach (['locator', 'url', 'media_location', 'asset_url'] as $key) {
+                if (! empty($value[$key]) && is_string($value[$key])) {
+                    $url = $value[$key];
+                    break;
+                }
+            }
+
+            foreach (['thumbnail', 'thumbnail_url', 'thumbnailUrl', 'preview_image', 'preview_image_location', 'previewImageLocation'] as $tKey) {
+                if (! empty($value[$tKey]) && is_string($value[$tKey])) {
+                    $thumbnail = $value[$tKey];
+                    break;
+                }
+            }
+
+            foreach (['duration', 'durationSeconds', 'duration_seconds'] as $dKey) {
+                if (isset($value[$dKey]) && $value[$dKey] !== '' && $value[$dKey] !== null) {
+                    $duration = (string) $value[$dKey];
+                    break;
+                }
+            }
+        }
+
+        if ($url === null && is_array($entry)) {
+            foreach (['url', 'locator', 'media_location'] as $key) {
+                if (! empty($entry[$key]) && is_string($entry[$key])) {
+                    $url = $entry[$key];
+                    break;
+                }
+            }
+        }
+
+        return [
+            'url' => $url,
+            'thumbnail' => $thumbnail,
+            'duration' => $duration,
+        ];
+    }
+
+    /**
+     * Merge two video lists while de-duplicating by URL and ensuring the
+     * structure ['url' => ..., 'thumbnail' => ..., 'duration' => ''].
+     */
+    private function mergeVideoLists(array $primary, array $fallback): array
+    {
+        $merged = [];
+        $seen = [];
+
+        $add = function (array $video) use (&$merged, &$seen) {
+            $url = isset($video['url']) ? trim((string) $video['url']) : '';
+            if ($url === '' || isset($seen[$url])) {
+                return;
+            }
+            $seen[$url] = true;
+
+            $merged[] = [
+                'url' => $url,
+                'thumbnail' => isset($video['thumbnail']) ? (string) $video['thumbnail'] : '',
+                'duration' => isset($video['duration']) ? (string) $video['duration'] : '',
+            ];
+        };
+
+        foreach ($primary as $v) {
+            $add($v);
+        }
+        foreach ($fallback as $v) {
+            $add($v);
+        }
+
+        return $merged;
+    }
+
     private function extractImageUrlsFromListingsItemResponse(array $data): array
     {
         $urls = [];
@@ -1156,13 +1518,19 @@ class AmazonSpApiService
         return array_values(array_unique($urls));
     }
 
+    /**
+     * Extract video URLs from full response only from explicit video keys.
+     * Excludes image URLs (by extension and by membership in imageUrls) to avoid
+     * treating media_location image URLs as videos.
+     */
     private function extractVideoUrlsFromListingsItemResponse(array $data, array $imageUrls): array
     {
         $videos = [];
         $seen = [];
         $firstImage = $imageUrls[0] ?? '';
-        $videoUrlPattern = '#(youtube\.com|youtu\.be|vimeo\.com|\.mp4|video|product-video)#i';
-        $addVideo = function (string $url, string $thumb = '', string $duration = '') use (&$videos, &$seen, $firstImage) {
+        $imageSet = array_flip(array_map('strval', $imageUrls));
+        $videoUrlPattern = '#(youtube\.com|youtu\.be|vimeo\.com|\.mp4|product-video)#i';
+        $addVideo = function (string $url, string $thumb = '', string $duration = '') use (&$videos, &$seen, $firstImage, $imageSet) {
             $url = trim($url);
             if ($url === '' || strlen($url) < 15 || isset($seen[$url])) {
                 return;
@@ -1171,6 +1539,9 @@ class AmazonSpApiService
                 return;
             }
             if (preg_match('#\.(jpe?g|png|gif|webp)(\?|$)#i', $url)) {
+                return;
+            }
+            if (isset($imageSet[$url])) {
                 return;
             }
             $seen[$url] = true;
@@ -1220,9 +1591,9 @@ class AmazonSpApiService
                 return;
             }
             $key = is_string($k) ? strtolower($k) : '';
-            $isVideoKey = str_contains($key, 'video') || str_contains($key, 'video_url');
-            $looksLikeVideo = preg_match($videoUrlPattern, $v) || preg_match($videoUrlPattern, $key);
-            if ($isVideoKey || $looksLikeVideo) {
+            $isVideoKey = str_contains($key, 'video') && ! str_contains($key, 'media_location');
+            $looksLikeVideoUrl = (bool) preg_match($videoUrlPattern, $v);
+            if ($isVideoKey || $looksLikeVideoUrl) {
                 $addVideo($v);
             }
         });

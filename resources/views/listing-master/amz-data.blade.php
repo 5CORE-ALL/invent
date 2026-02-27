@@ -5,69 +5,110 @@
     <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
     <style>
         :root {
-            --amz-nav-blue: #232f3e;
+            --amz-nav: #232f3e;
             --amz-orange: #ff9900;
             --amz-blue: #146eb4;
-            --amz-border: #ddd;
-            --amz-bg: #fafafa;
+            --amz-link: #007185;
+            --amz-border: #c7cacb;
+            --amz-border-light: #e3e6e6;
+            --amz-bg: #eaeded;
+            --amz-text: #111;
+            --amz-text-secondary: #565959;
         }
-        body { font-family: 'Poppins', sans-serif; background-color: var(--amz-bg) !important; }
+        body { font-family: 'Amazon Ember', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif; background-color: var(--amz-bg) !important; color: var(--amz-text); }
 
+        /* Amazon Seller Central header - matches Amazon's top bar */
         .amz-page-header {
-            background: linear-gradient(180deg, var(--amz-nav-blue) 0%, #37475a 100%);
+            background: var(--amz-nav);
             color: #fff;
-            padding: 1.25rem 1.5rem;
-            border-radius: 8px;
-            margin-bottom: 1.5rem;
+            padding: 1rem 1.5rem;
+            margin-bottom: 1.25rem;
             display: flex;
             align-items: center;
             justify-content: space-between;
             flex-wrap: wrap;
             gap: 1rem;
+            border-radius: 2px;
         }
-        .amz-page-header h1 { margin: 0; font-size: 1.5rem; font-weight: 600; }
-        .amz-page-header .sub { opacity: 0.9; font-size: 0.875rem; margin-top: 0.25rem; }
+        .amz-page-header h1 { margin: 0; font-size: 1.25rem; font-weight: 700; letter-spacing: -0.02em; }
+        .amz-page-header .sub { opacity: 0.9; font-size: 0.75rem; margin-top: 0.15rem; }
         .btn-import-amazon {
-            background: var(--amz-blue);
-            color: #fff !important;
-            border: none;
-            padding: 0.5rem 1.25rem;
-            border-radius: 6px;
+            background: var(--amz-orange);
+            color: #232f3e !important;
+            border: 1px solid #e47911;
+            padding: 0.4rem 1rem;
+            border-radius: 2px;
             font-weight: 600;
-            min-width: 180px;
+            min-width: 150px;
+            font-size: 0.8125rem;
         }
-        .btn-import-amazon:hover { background: #0d5a8f; color: #fff; }
-        .btn-import-amazon:disabled { opacity: 0.7; cursor: not-allowed; }
+        .btn-import-amazon:hover { background: #f0c14b; border-color: #e47911; color: #232f3e !important; }
+        .btn-import-amazon:disabled { opacity: 0.6; cursor: not-allowed; }
 
-        .amz-stats-row { display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 1.25rem; }
+        /* Amazon inventory dashboard summary boxes */
+        .amz-stats-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1rem; margin-bottom: 1.25rem; }
         .amz-stat-card {
             background: #fff;
             border: 1px solid var(--amz-border);
-            border-radius: 8px;
+            border-radius: 2px;
             padding: 1rem 1.25rem;
-            min-width: 140px;
-            flex: 1;
         }
-        .amz-stat-card .value { font-size: 1.5rem; font-weight: 700; color: var(--amz-nav-blue); }
-        .amz-stat-card .label { font-size: 0.8rem; color: #666; margin-top: 0.25rem; }
+        .amz-stat-card .value { font-size: 1.5rem; font-weight: 700; color: var(--amz-text); line-height: 1.2; }
+        .amz-stat-card .label { font-size: 0.6875rem; color: var(--amz-text-secondary); margin-top: 0.25rem; text-transform: uppercase; letter-spacing: 0.05em; }
 
+        /* Amazon Manage Inventory table container */
         .amz-table-card {
             background: #fff;
             border: 1px solid var(--amz-border);
-            border-radius: 8px;
+            border-radius: 2px;
             overflow: hidden;
         }
         .amz-table-card .card-body { padding: 0; }
-        .tabulator.amz-tabulator .tabulator-header .tabulator-col {
-            background: var(--amz-nav-blue);
-            color: #fff;
-            border-right: 1px solid rgba(255,255,255,0.1);
+        .amz-table-section-title {
+            background: #f3f3f3;
+            padding: 0.75rem 1rem;
+            font-size: 0.875rem;
+            font-weight: 700;
+            color: var(--amz-text);
+            border-bottom: 1px solid var(--amz-border);
         }
-        .tabulator.amz-tabulator .tabulator-header .tabulator-col .tabulator-col-content { padding: 10px 8px; }
-        .tabulator.amz-tabulator .tabulator-row.tabulator-row-even { background: #f9f9f9; }
-        .tabulator.amz-tabulator .tabulator-cell { border-right: 1px solid var(--amz-border); }
-        .tabulator.amz-tabulator .tabulator-footer { border-top: 2px solid var(--amz-border); background: #f5f5f5; }
+        .tabulator.amz-tabulator .tabulator-header .tabulator-col {
+            background: #f3f3f3;
+            color: var(--amz-text);
+            border-right: 1px solid var(--amz-border-light);
+        }
+        .tabulator.amz-tabulator .tabulator-header .tabulator-col .tabulator-col-content { padding: 10px 12px; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; }
+        .tabulator.amz-tabulator .tabulator-row.tabulator-row-even { background: #fff; }
+        .tabulator.amz-tabulator .tabulator-row:nth-child(even) { background: #f9f9f9; }
+        .tabulator.amz-tabulator .tabulator-row:hover { background: #f0f7fc !important; }
+        .tabulator.amz-tabulator .tabulator-row .tabulator-cell { padding: 10px 12px; }
+        .tabulator.amz-tabulator .tabulator-cell { border-right: 1px solid var(--amz-border-light); font-size: 0.8125rem; color: var(--amz-text); }
+        .tabulator.amz-tabulator .tabulator-footer { border-top: 1px solid var(--amz-border); background: #f3f3f3; }
         #amz-listings-table { min-height: 420px; }
+
+        /* Amazon toolbar above table */
+        .amz-toolbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 0.75rem;
+            padding: 0.6rem 1rem;
+            background: #f6f6f6;
+            border-bottom: 1px solid var(--amz-border-light);
+        }
+        .amz-toolbar .btn-outline-secondary {
+            border-color: var(--amz-border);
+            color: var(--amz-text);
+            font-size: 0.75rem;
+            padding: 0.3rem 0.65rem;
+        }
+        .amz-toolbar .btn-outline-secondary:hover {
+            background: var(--amz-blue);
+            border-color: var(--amz-blue);
+            color: #fff;
+        }
+        .amz-toolbar .amz-page-num { font-size: 0.75rem; color: var(--amz-text-secondary); }
 
         .amz-toast {
             position: fixed;
@@ -89,31 +130,32 @@
         .amz-loading-overlay {
             position: absolute;
             top: 0; left: 0; right: 0; bottom: 0;
-            background: rgba(255,255,255,0.85);
+            background: rgba(255,255,255,0.9);
             display: none;
             align-items: center;
             justify-content: center;
             z-index: 10;
-            border-radius: 8px;
+            backdrop-filter: blur(2px);
         }
         .amz-loading-overlay.show { display: flex; }
+        .amz-loading-overlay .spinner-border { color: var(--amz-blue) !important; }
         .amz-table-wrap { position: relative; }
 
-        /* Dot column */
+        /* Amazon view details action button */
         .amz-dot-btn {
-            display: inline-block;
-            width: 24px;
-            height: 24px;
-            line-height: 22px;
-            text-align: center;
-            border-radius: 50%;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 26px;
+            height: 26px;
+            border-radius: 2px;
             background: var(--amz-blue);
             color: #fff;
             font-weight: bold;
             cursor: pointer;
-            font-size: 16px;
+            font-size: 13px;
         }
-        .amz-dot-btn:hover { background: #0d5a8f; }
+        .amz-dot-btn:hover { background: #185a8e; }
 
         /* Seller Central-style detail stack (slide-out panel) */
         .amz-stack-overlay {
@@ -130,7 +172,7 @@
             position: fixed;
             top: 0;
             right: 0;
-            width: 480px;
+            width: 720px;
             max-width: 100%;
             height: 100%;
             background: #fff;
@@ -143,7 +185,7 @@
         }
         .amz-stack-overlay.show .amz-stack-panel { transform: translateX(0); }
         .amz-stack-header {
-            background: var(--amz-nav-blue);
+            background: var(--amz-nav);
             color: #fff;
             padding: 1rem 1.25rem;
             flex-shrink: 0;
@@ -176,14 +218,14 @@
             margin-bottom: 1.25rem;
         }
         .amz-stack-section-title {
-            font-size: 0.75rem;
+            font-size: 0.6875rem;
             font-weight: 700;
             text-transform: uppercase;
-            letter-spacing: 0.05em;
-            color: #666;
+            letter-spacing: 0.06em;
+            color: var(--amz-text-secondary);
             margin-bottom: 0.5rem;
             padding-bottom: 0.25rem;
-            border-bottom: 1px solid var(--amz-border);
+            border-bottom: 1px solid var(--amz-border-light);
         }
         .amz-stack-row {
             display: flex;
@@ -203,7 +245,7 @@
         /* Detail stack: full-screen width, two columns */
         .amz-stack-panel {
             width: 100%;
-            max-width: 1400px;
+            max-width: 1800px;
             height: 100vh;
             top: 0;
             left: 50%;
@@ -594,24 +636,29 @@
 
     <div class="row">
         <div class="col-12">
-            <div class="card amz-table-card shadow-sm">
+            <div class="card amz-table-card">
                 <div class="card-body">
+                    <div class="amz-table-section-title">
+                        <span>Manage Inventory</span>
+                    </div>
+                    <div class="amz-toolbar">
+                        <div class="amz-toolbar-info">
+                            <span class="text-muted" style="font-size:0.75rem;color:var(--amz-text-secondary);">
+                                Showing <strong id="row-count">0</strong> of <strong id="total-count">0</strong> rows
+                                <span class="ms-2" id="page-info"></span>
+                            </span>
+                        </div>
+                        <div id="pagination-controls" class="amz-pagination-controls d-none">
+                            <button type="button" class="btn btn-sm btn-outline-secondary me-1" id="btn-prev">Previous</button>
+                            <span class="amz-page-num mx-2" id="page-num">Page 1</span>
+                            <button type="button" class="btn btn-sm btn-outline-secondary" id="btn-next">Next</button>
+                        </div>
+                    </div>
                     <div class="amz-table-wrap">
                         <div class="amz-loading-overlay" id="table-loading">
                             <div class="text-center">
                                 <div class="spinner-border text-primary mb-2" role="status"></div>
                                 <div>Loading listings…</div>
-                            </div>
-                        </div>
-                        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 px-3 pt-2 pb-1">
-                            <div class="text-muted small">
-                                Showing <strong id="row-count">0</strong> of <strong id="total-count">0</strong> rows
-                                <span class="ms-2" id="page-info"></span>
-                            </div>
-                            <div id="pagination-controls" class="d-none">
-                                <button type="button" class="btn btn-sm btn-outline-secondary me-1" id="btn-prev">Prev</button>
-                                <span class="align-middle mx-2" id="page-num">Page 1</span>
-                                <button type="button" class="btn btn-sm btn-outline-secondary" id="btn-next">Next</button>
                             </div>
                         </div>
                         <div id="amz-listings-table"></div>
@@ -693,7 +740,28 @@
                     return [dotCol, { title: 'No data', field: 'id', width: 100 }];
                 }
                 var numFields = ['price', 'quantity', 'fulfillment-channel', 'id'];
-                var dataCols = columns.map(function(col) {
+
+                var imageCol = {
+                    title: 'Image',
+                    field: 'thumbnail_image',
+                    width: 80,
+                    headerSort: false,
+                    formatter: function(cell) {
+                        var img = cell.getValue();
+                        if (!img) {
+                            return '<div style="width:50px;height:50px;background:#eee;border-radius:4px;"></div>';
+                        }
+                        return '<img src="' + img + '" style="width:50px;height:50px;object-fit:contain;border:1px solid #ddd;border-radius:4px;" />';
+                    },
+                };
+
+                var dataCols = [];
+                columns.forEach(function(col) {
+                    // The thumbnail_image column is rendered via the custom Image column above.
+                    if (col === 'thumbnail_image') {
+                        return;
+                    }
+
                     var def = {
                         title: formatColumnTitle(col),
                         field: col,
@@ -712,8 +780,17 @@
                         def.sorter = 'string';
                         def.width = 120;
                     }
-                    return def;
+                    dataCols.push(def);
                 });
+
+                // Insert Image column after dot column and before seller_sku when present.
+                var insertIndex = dataCols.findIndex(function(c) { return c.field === 'seller_sku'; });
+                if (insertIndex === -1) {
+                    dataCols.unshift(imageCol);
+                } else {
+                    dataCols.splice(insertIndex, 0, imageCol);
+                }
+
                 return [dotCol].concat(dataCols);
             }
 
@@ -1337,7 +1414,8 @@
 
             var currentPage = 1;
             var totalRecords = 0;
-            var perPage = 100;
+            // Default 25 per page so backend can fetch thumbnails for all visible rows (limit 25 per request).
+            var perPage = 25;
             var lastColumnDefs = null;
 
             function loadData(page) {
@@ -1379,7 +1457,7 @@
                                 layout: "fitDataStretch",
                                 pagination: true,
                                 paginationSize: perPage,
-                                paginationSizeSelector: [25, 50, 100],
+                                paginationSizeSelector: [25, 50],
                                 paginationCounter: "rows",
                                 cssClass: "amz-tabulator",
                             });
