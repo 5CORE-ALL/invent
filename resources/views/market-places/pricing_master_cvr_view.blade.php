@@ -849,6 +849,8 @@
             let totalPrice = 0;
             let totalViews = 0;
             let totalL30 = 0;
+            let totalViewsForCVR = 0;  // Exclude Reverb for avg CVR
+            let totalL30ForCVR = 0;    // Exclude Reverb for avg CVR
             let totalCVR = 0;
             let totalPftAmount = 0; // Sum of PFT amounts
             let totalNpftAmount = 0; // Sum of NPFT amounts
@@ -967,6 +969,12 @@
                     totalPrice += soldAmount;
                     totalViews += views;
                     totalL30 += l30;
+                    // For avg CVR: exclude Reverb views and L30
+                    const isReverb = (item.marketplace || '').toLowerCase() === 'reverb';
+                    if (!isReverb) {
+                        totalViewsForCVR += views;
+                        totalL30ForCVR += l30;
+                    }
                     
                     // Calculate PFT amount = Sales Amount × GPFT%
                     const pftAmount = soldAmount * (gpft / 100);
@@ -1076,8 +1084,8 @@
             $('#ovl30DetailsTableBody').html(html);
             
             // Calculate averages
-            // Avg CVR using CVR formula: (Total L30 / Total Views) × 100
-            const avgCVR = totalViews > 0 ? (totalL30 / totalViews) * 100 : 0;
+            // Avg CVR using CVR formula: (Total L30 / Total Views) × 100 — exclude Reverb
+            const avgCVR = totalViewsForCVR > 0 ? (totalL30ForCVR / totalViewsForCVR) * 100 : 0;
             // Avg GPFT% = (Total PFT Amount / Total Sales Amount) × 100
             const avgGPFT = totalSalesAmount > 0 ? (totalPftAmount / totalSalesAmount) * 100 : 0;
             const avgAD = adCount > 0 ? totalAD / adCount : 0;
