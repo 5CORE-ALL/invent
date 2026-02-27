@@ -568,6 +568,7 @@
                 {
                     title: "MSL",
                     field: "msl",
+                    accessor: row => (row && (row["msl"] !== undefined && row["msl"] !== null)) ? row["msl"] : 0,
                     formatter: function(cell) {
                         const value = cell.getValue() || 0;
                         return `
@@ -584,18 +585,18 @@
                             const row = cell.getRow().getData();
                             const sku = row["SKU"] || '';
                             const monthData = {
-                                "JAN": row["jan"],
-                                "FEB": row["feb"],
-                                "MAR": row["Mar"],
-                                "APR": row["Apr"],
-                                "MAY": row["May"],
-                                "JUN": row["Jun"],
-                                "JUL": row["Jul"],
-                                "AUG": row["Aug"],
-                                "SEP": row["Sep"],
-                                "OCT": row["Oct"],
-                                "NOV": row["Nov"],
-                                "DEC": row["Dec"]
+                                "JAN": row["Jan"] ?? 0,
+                                "FEB": row["Feb"] ?? 0,
+                                "MAR": row["Mar"] ?? 0,
+                                "APR": row["Apr"] ?? 0,
+                                "MAY": row["May"] ?? 0,
+                                "JUN": row["Jun"] ?? 0,
+                                "JUL": row["Jul"] ?? 0,
+                                "AUG": row["Aug"] ?? 0,
+                                "SEP": row["Sep"] ?? 0,
+                                "OCT": row["Oct"] ?? 0,
+                                "NOV": row["Nov"] ?? 0,
+                                "DEC": row["Dec"] ?? 0
                             };
                             openMonthModal(monthData, sku);
                         }
@@ -989,11 +990,16 @@
             ajaxResponse: function(url, params, response) {
                 groupedSkuData = {}; // clear previous
 
-                // Update total MSL_C from server response
+                // Update total MSL_C and MSL_SP from server response (connected to MSL data)
                 const totalMslCElement = document.getElementById('total_msl_c_value');
                 if (totalMslCElement && response.total_msl_c !== undefined) {
                     const wholeNumber = Math.round(parseFloat(response.total_msl_c));
                     totalMslCElement.textContent = wholeNumber.toLocaleString('en-US');
+                }
+                const totalMslSpElement = document.getElementById('total_msl_sp_value');
+                if (totalMslSpElement && response.total_msl_sp !== undefined) {
+                    const wholeNumber = Math.round(parseFloat(response.total_msl_sp));
+                    totalMslSpElement.textContent = wholeNumber.toLocaleString('en-US');
                 }
 
                 // Calculate and update total INV Value

@@ -369,6 +369,10 @@ class ForecastAnalysisController extends Controller
                 $item->{'MSL_Four'} = round($msl / 4, 2);
 
                 $item->{'MSL_SP'} = floor($shopifyb2c_price * $effectiveMsl / 4);
+
+                $item->msl = (int) round($msl);
+            } else {
+                $item->msl = 0;
             }
 
             $cp = (float)($item->{'CP'} ?? 0);
@@ -429,6 +433,14 @@ class ForecastAnalysisController extends Controller
                     return floatval($item->{'MSL_C'} ?? 0);
                 });
 
+            $totalMslSp = collect($processedData)
+                ->filter(function ($item) {
+                    return !$item->is_parent;
+                })
+                ->sum(function ($item) {
+                    return floatval($item->{'MSL_SP'} ?? 0);
+                });
+
             // Calculate total Transit Value from ALL transit_container_details records (like transit-container-details page)
             // This matches the transit-container-details page calculation: sum of (qty * rate) for ALL rows across ALL tabs
             $totalTransitValue = TransitContainerDetail::whereNull('deleted_at')
@@ -449,6 +461,7 @@ class ForecastAnalysisController extends Controller
                 'message' => 'Data fetched successfully',
                 'data' => $processedData,
                 'total_msl_c' => round($totalMslC, 2),
+                'total_msl_sp' => round($totalMslSp, 0),
                 'total_transit_value' => round($totalTransitValue, 2), // Total Transit Value from ALL transit_container_details records
                 'status' => 200,
             ]);

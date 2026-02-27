@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Carbon\Carbon;
 
 class GenerateMovementAnalysis extends Command
@@ -51,6 +52,21 @@ class GenerateMovementAnalysis extends Command
                 ->whereBetween('order_date', [$startDate, $endDate])
                 ->groupBy('month', 'sku')
                 ->orderBy('sku')
+                ->get();
+
+            // SKU-wise order count per (year, month) for sku_monthly_orders table
+            $monthlyOrderData = DB::connection('apicentral')->table('shopify_order_items')
+                ->selectRaw('
+                    sku,
+                    YEAR(order_date) as year,
+                    MONTH(order_date) as month,
+                    SUM(quantity) as order_count
+                ')
+                ->whereBetween('order_date', [$startDate, $endDate])
+                ->groupBy('sku', 'year', 'month')
+                ->orderBy('sku')
+                ->orderBy('year')
+                ->orderBy('month')
                 ->get();
             
             DB::connection('apicentral')->disconnect();
@@ -102,6 +118,27 @@ class GenerateMovementAnalysis extends Command
                     );
                 }
                 DB::connection()->disconnect();
+            }
+
+            // Populate sku_monthly_orders: one row per (sku, year, month) with order count
+            if (Schema::hasTable('sku_monthly_orders') && $monthlyOrderData->isNotEmpty()) {
+                foreach ($monthlyOrderData as $row) {
+                    $sku = $row->sku ?? '';
+                    if (empty($sku)) continue;
+                    $sku = strtoupper(trim($sku));
+                    DB::table('sku_monthly_orders')->updateOrInsert(
+                        [
+                            'sku' => $sku,
+                            'year' => (int) $row->year,
+                            'month' => (int) $row->month,
+                        ],
+                        [
+                            'order_count' => (int) ($row->order_count ?? 0),
+                            'updated_at' => now(),
+                        ]
+                    );
+                }
+                $this->info('✅ sku_monthly_orders updated: ' . $monthlyOrderData->count() . ' rows.');
             }
 
             $this->info('✅ movement_analysis data generated successfully for ' . count($grouped) . ' SKUs.');
