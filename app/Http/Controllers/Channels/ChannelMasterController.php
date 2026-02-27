@@ -176,6 +176,22 @@ class ChannelMasterController extends Controller
     }
 
     /**
+     * Sum of (inventory * Amazon price) across all SKUs for the INV Val badge.
+     * Uses product_stock_mappings.inventory_amazon and amazon_datsheets.price.
+     */
+    private function getInventoryValueAmazon(): float
+    {
+        $total = DB::table('product_stock_mappings as psm')
+            ->join('amazon_datsheets as ad', DB::raw('TRIM(UPPER(psm.sku))'), '=', DB::raw('TRIM(UPPER(ad.sku))'))
+            ->whereNotNull('psm.sku')
+            ->whereNotNull('ad.sku')
+            ->selectRaw('SUM(COALESCE(psm.inventory_amazon, 0) * COALESCE(ad.price, 0)) as total')
+            ->value('total');
+
+        return (float) ($total ?? 0);
+    }
+
+    /**
      * Fetch Amazon ad spend breakdown (KW, PT, HL) - same logic as Amazon KW/PT/HL Utilized charts.
      * Uses daily date rows (not L30) with default range: 31 days ago to 2 days ago.
      *
@@ -940,10 +956,14 @@ class ChannelMasterController extends Controller
             \Illuminate\Support\Facades\Log::warning('saveChannelDailySummaries failed: ' . $e->getMessage(), ['exception' => $e]);
         }
 
+        // Sum of (inventory * Amazon price) across SKUs for the INV Val badge
+        $inventoryValueAmazon = $this->getInventoryValueAmazon();
+
         return response()->json([
             'status'  => 200,
             'message' => 'Channel data fetched successfully',
             'data'    => $finalData,
+            'inventory_value_amazon' => round($inventoryValueAmazon, 2),
         ]);
     }
 
@@ -6422,21 +6442,10 @@ class ChannelMasterController extends Controller
                 ];
             }
 
-            // ==================================================================================
-            // SCALE chart data so the latest value matches the table value
-            // Table uses marketplace_daily_metrics / fetchAdMetricsFromTables as source
-            // Chart uses ChannelMasterSummary which may have different values
-            // ==================================================================================
-            if (!empty($chartData)) {
-                // If the frontend passed the exact cell/badge value, use it directly
-                $cellValue = $request->input('badge_value');
-                if ($cellValue !== null) {
-                    $tableRef = (float) $cellValue;
-                } elseif ($isAll) {
-                    $tableRef = $this->getAllChannelsTableReference($metric);
-                } else {
-                    $tableRef = $this->getTableReferenceValue($channel, $metric);
-                }
+            // For single-channel: show exact DB values (no scaling) so graph matches table data.
+            // For "all" channels: scale to match badge total if needed.
+            if (!empty($chartData) && $isAll) {
+                $tableRef = $this->getAllChannelsTableReference($metric);
                 if ($tableRef !== null && $tableRef != 0) {
                     $chartLatest = (float) end($chartData)['value'];
                     if ($chartLatest != 0 && abs($chartLatest - $tableRef) > 0.01) {
@@ -6449,8 +6458,9 @@ class ChannelMasterController extends Controller
                 }
             }
 
-            // Smooth out consecutive duplicate values
-            $chartData = $this->interpolateChartData($chartData);
+            // Do NOT interpolate channel-metric chart: values are exact snapshots from DB.
+            // Interpolation would replace same-value points (e.g. 88630, 88630) with smoothed
+            // values and make the graph show incorrect numbers vs table.
 
             return response()->json([
                 'success' => true,
