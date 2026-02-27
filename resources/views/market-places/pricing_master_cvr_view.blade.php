@@ -403,6 +403,7 @@
                                 <tr class="modal-vertical-header">
                                     <th>M</th>
                                     <th>SKU</th>
+                                    <th>L30</th>
                                     <th>Price</th>
                                     <th>Views</th>
                                     <th>CVR%</th>
@@ -422,6 +423,7 @@
                                 <tr class="modal-totals-row">
                                     <th><img id="modal-product-image" src="" alt="" style="width: 50px; height: 50px; object-fit: cover; display: none;"></th>
                                     <th>Total</th>
+                                    <th class="text-end" id="modal-total-l30">0</th>
                                     <th class="text-end" id="modal-total-price">$0.00</th>
                                     <th class="text-end" id="modal-total-views">0</th>
                                     <th class="text-end" id="modal-avg-cvr">0%</th>
@@ -442,7 +444,7 @@
                             <tbody id="ovl30DetailsTableBody">
                                 <!-- Table rows will be populated dynamically -->
                                 <tr>
-                                    <td colspan="17" class="text-center text-muted py-4">No data available</td>
+                                    <td colspan="18" class="text-center text-muted py-4">No data available</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -802,7 +804,7 @@
         function showModalLoading(sku) {
             $('#ovl30DetailsTableBody').html(`
                 <tr>
-                    <td colspan="17" class="text-center text-muted py-4">
+                    <td colspan="18" class="text-center text-muted py-4">
                         <div class="spinner-border spinner-border-sm text-info me-2" role="status"></div>
                         Loading data for ${sku}...
                     </td>
@@ -813,7 +815,7 @@
         function showModalEmpty(sku) {
             $('#ovl30DetailsTableBody').html(`
                 <tr>
-                    <td colspan="17" class="text-center text-muted py-4">
+                    <td colspan="18" class="text-center text-muted py-4">
                         No marketplace data available for ${sku}
                     </td>
                 </tr>
@@ -823,7 +825,7 @@
         function showModalError(message) {
             $('#ovl30DetailsTableBody').html(`
                 <tr>
-                    <td colspan="17" class="text-center text-danger py-4">
+                    <td colspan="18" class="text-center text-danger py-4">
                         <i class="fas fa-exclamation-circle me-2"></i>${message}
                     </td>
                 </tr>
@@ -1014,6 +1016,7 @@
                         data-lp="${lp}" data-ship="${ship}" data-ad="${ad}" data-margin="${margin}" data-l30="${l30}">
                         <td class="${textClass}">${item.marketplace || '-'}</td>
                         <td class="${textClass}" style="white-space: nowrap; min-width: 250px;">${item.sku || '-'}</td>
+                        <td class="text-end ${textClass}">${isListed ? l30.toLocaleString() : '-'}</td>
                         <td class="text-end ${textClass}">${isListed ? '$' + parseFloat(item.price || 0).toFixed(2) : '-'}</td>
                         <td class="text-end ${textClass}">${isListed ? views.toLocaleString() : '-'}</td>
                         <td class="text-end ${textClass}">${isListed && views > 0 ? '<span style="color: ' + cvrColor + '; font-weight: 600;">' + cvr.toFixed(1) + '%</span>' : '-'}</td>
@@ -1153,6 +1156,7 @@
             const avgPrice = totalL30 > 0 ? totalPrice / totalL30 : 0;
             $('#modal-total-price').text('$' + avgPrice.toFixed(2));
             $('#modal-total-views').text(totalViews.toLocaleString());
+            $('#modal-total-l30').text(totalL30.toLocaleString());
             $('#modal-avg-cvr').html(`<span style="color: ${cvrColorTotal}; font-weight: 600;">${avgCVR.toFixed(1)}%</span>`);
             $('#modal-avg-gpft').html(`<span style="color: ${gpftColorTotal}; font-weight: 600;">${avgGPFT.toFixed(1)}%</span>`);
             $('#modal-avg-ad').html(`<span style="color: ${adColorTotal}; font-weight: 600;">${avgAD.toFixed(1)}%</span>`);
