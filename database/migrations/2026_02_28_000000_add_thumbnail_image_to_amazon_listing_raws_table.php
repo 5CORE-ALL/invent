@@ -7,8 +7,9 @@ use Illuminate\Support\Facades\Schema;
 return new class extends Migration {
     public function up(): void
     {
-        Schema::table('amazon_listing_raws', function (Blueprint $table) {
-            if (! Schema::hasColumn('amazon_listing_raws', 'thumbnail_image')) {
+        $tableName = 'amazon_listings_raw';
+        Schema::table($tableName, function (Blueprint $table) use ($tableName) {
+            if (! Schema::hasColumn($tableName, 'thumbnail_image')) {
                 $table->string('thumbnail_image')->nullable()->after('asin1');
             }
         });
@@ -16,8 +17,9 @@ return new class extends Migration {
 
     public function down(): void
     {
-        Schema::table('amazon_listing_raws', function (Blueprint $table) {
-            if (Schema::hasColumn('amazon_listing_raws', 'thumbnail_image')) {
+        $tableName = 'amazon_listings_raw';
+        Schema::table($tableName, function (Blueprint $table) use ($tableName) {
+            if (Schema::hasColumn($tableName, 'thumbnail_image')) {
                 $table->dropColumn('thumbnail_image');
             }
         });

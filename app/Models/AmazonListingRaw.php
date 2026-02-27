@@ -13,6 +13,7 @@ class AmazonListingRaw extends Model
         'seller_sku',
         'asin1',
         'raw_data',
+        'thumbnail_image',
     ];
 
     protected $casts = [
