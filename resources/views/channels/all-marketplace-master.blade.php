@@ -277,7 +277,10 @@
                             Missing L : <span id="total-miss">0</span>
                         </span>
                         <span class="badge bg-info fs-6 p-2" style="color: black; font-weight: bold;" title="Sum of (Inventory × Amazon Price)">
-                            INV Val (Amz): $<span id="inventory-value-amazon">0</span>
+                            INV Val: $<span id="inventory-value-amazon">0</span>
+                        </span>
+                        <span class="badge bg-secondary fs-6 p-2" style="color: white; font-weight: bold;" title="Inventory Value ÷ Sales (months of stock at current sales)">
+                            TAT: <span id="tat-badge">0</span>
                         </span>
                     </div>
                 </div>
@@ -862,11 +865,23 @@
                             showToast('info', response.message || 'No channels to display.');
                         }
                         updateSummaryStats(response.data);
-                        // Update INV Val (Inventory × Amazon Price) badge
+                        // Update INV Val badge
                         const invValEl = document.getElementById('inventory-value-amazon');
                         if (invValEl && response.inventory_value_amazon != null) {
                             const val = parseFloat(response.inventory_value_amazon) || 0;
                             invValEl.textContent = Math.round(val).toLocaleString('en-US');
+                        }
+                        // Update TAT badge (INV Val / Sales)
+                        const tatEl = document.getElementById('tat-badge');
+                        if (tatEl && response.inventory_value_amazon != null && response.data && response.data.length) {
+                            const invVal = parseFloat(response.inventory_value_amazon) || 0;
+                            let totalSales = 0;
+                            response.data.forEach(function(row) {
+                                const s = (row['L30 Sales'] || 0);
+                                totalSales += (typeof parseNumber === 'function' ? parseNumber(s) : parseFloat(String(s).replace(/[^0-9.-]/g, ''))) || 0;
+                            });
+                            const tat = totalSales > 0 ? invVal / totalSales : 0;
+                            tatEl.textContent = tat > 0 ? tat.toFixed(2) : '0';
                         }
                         if (!dotTrendsLoadedOnce) {
                             dotTrendsLoadedOnce = true;
@@ -2527,7 +2542,7 @@
                         field: "Total PFT",
                         hozAlign: "center",
                         sorter: "number",
-                        visible: true,
+                        visible: false,
                         formatter: function(cell) {
                             // Calculate Total PFT from L30 Sales × NPFT%
                             const rowData = cell.getRow().getData();
@@ -2542,7 +2557,7 @@
                         field: "cogs",
                         hozAlign: "center",
                         sorter: "number",
-                        visible: true,
+                        visible: false,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
                             return `<span>$${value.toFixed(0)}</span>`;
