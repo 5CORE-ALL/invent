@@ -1055,6 +1055,13 @@ class AmazonSpApiService
 
             $attributes = isset($body['attributes']) && is_array($body['attributes']) ? $body['attributes'] : [];
 
+            Log::info('Amazon Listings Item: attributes keys', [
+                'sku' => $sellerSku,
+                'attribute_keys' => array_keys($attributes),
+            ]);
+
+            $this->logAplusContentIfPresent($body, $attributes, $sellerSku);
+
             // Prefer explicit extraction from the attributes block, then fall back to the
             // more generic scanners as a safety net.
             $imagesFromAttributes = $this->extractImagesFromAttributes($attributes);
@@ -1102,6 +1109,35 @@ class AmazonSpApiService
         }
 
         return null;
+    }
+
+    /**
+     * Check and log if A+ Content (Enhanced Brand Content) is present in the API response.
+     * A+ content keys may include: a_plus_content, aplus_content, aplus, brand_content,
+     * enhanced_content, rich_content, etc.
+     */
+    private function logAplusContentIfPresent(array $body, array $attributes, string $sku): void
+    {
+        $aplusPattern = '#a_?plus|aplus|brand_content|enhanced_content|rich_content|brand_story#i';
+        $found = [];
+        foreach (array_keys($attributes) as $k) {
+            if (preg_match($aplusPattern, (string) $k)) {
+                $found[$k] = is_array($attributes[$k]) ? 'array(' . count($attributes[$k]) . ')' : gettype($attributes[$k]);
+            }
+        }
+        array_walk_recursive($body, function ($v, $k) use (&$found, $aplusPattern) {
+            if (is_string($k) && preg_match($aplusPattern, $k)) {
+                $found[$k] = is_string($v) ? substr($v, 0, 100) : gettype($v);
+            }
+        });
+        if (count($found) > 0) {
+            Log::info('Amazon Listings Item: A+ Content keys found', [
+                'sku' => $sku,
+                'aplus_keys' => $found,
+            ]);
+        } else {
+            Log::debug('Amazon Listings Item: no A+ Content keys in response', ['sku' => $sku]);
+        }
     }
 
     /**
@@ -1158,7 +1194,7 @@ class AmazonSpApiService
     private function extractBulletPointsFromListingsItemResponse(array $data): array
     {
         $bullets = [];
-        $keysToTry = ['bullet_points', 'feature_bullets', 'bullet_point', 'features', 'product_description', 'item_description', 'key_product_features'];
+        $keysToTry = ['bullet_points', 'feature_bullets', 'bullet_point', 'features', 'product_description', 'item_description', 'key_product_features', 'item_notes', 'generic_keyword'];
         foreach ($keysToTry as $key) {
             $val = $this->getNestedValue($data, $key);
             if ($val === null) {
@@ -1245,6 +1281,11 @@ class AmazonSpApiService
             'main_product_image',
             'other_product_image',
             'product_image',
+            'images',
+            'product_images',
+            'other_product_images',
+            'main_image',
+            'variant_images',
         ];
 
         $urls = [];

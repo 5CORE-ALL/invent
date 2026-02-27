@@ -910,9 +910,9 @@
                     if (isEmpty(v)) return;
                     extractUrlsFromValue(v).forEach(function(u) { addImage(u, k); });
                 });
-                var mainFirst = (rowData['main-image-url'] || rowData['main-image-url-1'] || rowData['image-url'] || rowData['image-url-1']);
+                var mainFirst = (rowData['main-image-url'] || rowData['main-image-url-1'] || rowData['image-url'] || rowData['image-url-1'] || rowData.thumbnail_image);
                 if (mainFirst && typeof mainFirst === 'string' && mainFirst.trim()) addImage(mainFirst);
-                for (var i = 1; i <= 8; i++) {
+                for (var i = 1; i <= 12; i++) {
                     var u = rowData['image-url-' + i] || rowData['picture-url-' + i];
                     if (u && typeof u === 'string' && u.trim()) addImage(u);
                 }
@@ -985,10 +985,38 @@
                 return html.join('');
             }
 
+            function flattenForDisplay(obj, prefix) {
+                if (!obj || typeof obj !== 'object') return {};
+                prefix = prefix || '';
+                var out = {};
+                Object.keys(obj).forEach(function(k) {
+                    if (k === 'raw_data') return;
+                    var v = obj[k];
+                    var key = prefix ? prefix + '.' + k : k;
+                    if (v !== null && typeof v === 'object' && !Array.isArray(v) && !(v instanceof Date)) {
+                        Object.assign(out, flattenForDisplay(v, key));
+                    } else {
+                        out[key] = v;
+                    }
+                });
+                return out;
+            }
+
             function openDetailStack(rowData) {
-                console.log('Amz detail stack: full row data', JSON.parse(JSON.stringify(rowData)));
-                var allKeys = Object.keys(rowData);
-                console.log('Amz detail stack: keys count ' + allKeys.length, allKeys);
+                var expanded = Object.assign({}, rowData);
+                if (rowData && rowData.raw_data) {
+                    try {
+                        var parsed = typeof rowData.raw_data === 'string' ? JSON.parse(rowData.raw_data) : rowData.raw_data;
+                        if (parsed && typeof parsed === 'object') {
+                            var flat = flattenForDisplay(parsed);
+                            Object.keys(flat).forEach(function(k) {
+                                if (expanded[k] === undefined) expanded[k] = flat[k];
+                            });
+                        }
+                    } catch (e) {}
+                }
+                rowData = expanded;
+                var allKeys = Object.keys(rowData).filter(function(k) { return k !== 'raw_data'; });
 
                 var title = rowData.seller_sku || rowData['seller-sku'] || rowData.asin1 || rowData.asin || rowData['item-name'] || 'Listing details';
                 document.getElementById('amz-stack-title').textContent = title;
@@ -1286,8 +1314,8 @@
                         }, { passive: true });
                     }
                     setGalleryIndex(0);
-                    if (hasOnlyPlaceholder && copySku) {
-                        if (typeof console !== 'undefined' && console.log) console.log('[Amz Gallery] Auto-fetching product media for SKU:', copySku);
+                    var needsMedia = hasOnlyPlaceholder || !(rowData.bullet_points && rowData.bullet_points.length);
+                    if (copySku && needsMedia) {
                         fetch(imagesUrl + '?seller_sku=' + encodeURIComponent(copySku))
                             .then(function(r) { return r.json(); })
                             .then(function(res) {
@@ -1296,22 +1324,29 @@
                                 if (typeof console !== 'undefined' && console.log) console.log('[Amz Gallery] Media API response:', imgCount, 'images', vidCount, 'videos', res);
                                 if (res.status === 200 && (imgCount > 0 || vidCount > 0 || (res.bullet_points && res.bullet_points.length > 0))) {
                                     var enhanced = Object.assign({}, rowData);
-                                    if (res.images) res.images.forEach(function(u, i) { enhanced['image-url-' + (i + 1)] = u; });
-                                    if (res.videos) res.videos.forEach(function(v, i) {
-                                        var url = typeof v === 'string' ? v : (v && v.url);
-                                        if (url) enhanced['video-url-' + (i + 1)] = url;
-                                        if (v && v.thumbnail) enhanced['video-thumbnail-' + (i + 1)] = v.thumbnail;
-                                        if (v && v.duration) enhanced['video-duration-' + (i + 1)] = (v.duration || '').toString();
-                                    });
+                                    if (res.images && res.images.length) {
+                                        res.images.forEach(function(u, i) {
+                                            var url = typeof u === 'string' ? u : (u && (u.url || u.locator || u.media_location));
+                                            if (url) enhanced['image-url-' + (i + 1)] = url;
+                                        });
+                                    }
+                                    if (res.videos && res.videos.length) {
+                                        res.videos.forEach(function(v, i) {
+                                            var url = typeof v === 'string' ? v : (v && v.url);
+                                            if (url) {
+                                                enhanced['video-url-' + (i + 1)] = url;
+                                                if (v.thumbnail) enhanced['video-thumbnail-' + (i + 1)] = v.thumbnail;
+                                                if (v.duration) enhanced['video-duration-' + (i + 1)] = (v.duration || '').toString();
+                                            }
+                                        });
+                                    }
                                     if (res.bullet_points && res.bullet_points.length) enhanced.bullet_points = res.bullet_points;
-                                    if (typeof console !== 'undefined' && console.log) console.log('[Amz Gallery] Reopening detail stack with enhanced media:', imgCount, 'images', vidCount, 'videos', (res.bullet_points && res.bullet_points.length) || 0, 'bullet_points');
                                     openDetailStack(enhanced);
-                                } else {
+                                } else if (hasOnlyPlaceholder) {
                                     var loadingEl = document.getElementById('amz-gallery-loading-msg');
                                     if (loadingEl) loadingEl.classList.add('d-none');
                                     var noMsg = document.getElementById('amz-gallery-no-media-msg');
                                     if (noMsg) noMsg.classList.remove('d-none');
-                                    if (typeof console !== 'undefined' && console.log) console.log('[Amz Gallery] No media found after fetch, keeping placeholder');
                                 }
                             })
                             .catch(function(err) {

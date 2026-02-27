@@ -72,8 +72,9 @@ class AmzListingController extends Controller
     {
         try {
             $perPage = (int) ($request->get('size') ?: $request->get('per_page', self::DEFAULT_PER_PAGE));
-            $perPage = max(1, min($perPage, self::MAX_PER_PAGE));
             $page = max(1, (int) $request->get('page', 1));
+            Log::info('AmzListingController: Amazon list data request', ['per_page' => $perPage, 'page' => $page]);
+            $perPage = max(1, min($perPage, self::MAX_PER_PAGE));
 
             $query = AmazonListingRaw::query()->orderBy('id');
             $total = AmazonListingRaw::count();
@@ -97,10 +98,11 @@ class AmzListingController extends Controller
 
             $allKeys = ['id', 'seller_sku', 'asin1', 'report_imported_at', 'thumbnail_image'];
             $data = [];
-            $autoFetchLimit = min($perPage, 25);
+            $autoFetchLimit = $perPage;
             $fetchCount = 0;
             $mediaService = new AmazonSpApiService();
-            $canPersistThumbnail = Schema::hasColumn('amazon_listings_raw', 'thumbnail_image');
+            $model = new AmazonListingRaw;
+            $canPersistThumbnail = Schema::hasColumn($model->getTable(), 'thumbnail_image');
 
             foreach ($rows as $row) {
                 $raw = $this->decodeRawData($row->raw_data);
@@ -145,6 +147,14 @@ class AmzListingController extends Controller
             }
 
             $columns = array_values($allKeys);
+
+            $thumbnailsWithImage = count(array_filter($data, fn ($r) => ! empty($r['thumbnail_image'] ?? null)));
+            Log::info('AmzListingController: Amazon list data response', [
+                'page' => $page,
+                'returned' => count($data),
+                'thumbnails_fetched' => $fetchCount,
+                'thumbnails_with_image' => $thumbnailsWithImage,
+            ]);
 
             return response()->json([
                 'status' => 200,
