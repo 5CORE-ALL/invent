@@ -59,9 +59,8 @@
             color: #0f172a !important;
             border-color: #cbd5e1 !important;
         }
-        /* Exception for M and SKU columns - keep them horizontal */
-        #ovl30DetailsModal .modal-vertical-header th:nth-child(1),
-        #ovl30DetailsModal .modal-vertical-header th:nth-child(2) {
+        /* Exception for M column - keep it horizontal */
+        #ovl30DetailsModal .modal-vertical-header th:nth-child(1) {
             writing-mode: horizontal-tb;
             transform: none;
             height: auto;
@@ -213,13 +212,6 @@
         /* Modal width - 95% of screen */
         .modal-xxl {
             max-width: 90% !important;
-        }
-
-        /* SKU column - prevent wrapping */
-        #ovl30DetailsModal table td:nth-child(2),
-        #ovl30DetailsModal table th:nth-child(2) {
-            white-space: nowrap !important;
-            min-width: 280px !important;
         }
 
         /* Parent SKU dot - P column */
@@ -402,7 +394,6 @@
                             <thead style="background-color: #e2e8f0; color: #0f172a;">
                                 <tr class="modal-vertical-header">
                                     <th>M</th>
-                                    <th>SKU</th>
                                     <th>L30</th>
                                     <th>Price</th>
                                     <th>Views</th>
@@ -421,8 +412,7 @@
                                     <th>Pushed By</th>
                                 </tr>
                                 <tr class="modal-totals-row">
-                                    <th><img id="modal-product-image" src="" alt="" style="width: 50px; height: 50px; object-fit: cover; display: none;"></th>
-                                    <th>Total</th>
+                                    <th><img id="modal-product-image" src="" alt="" style="width: 50px; height: 50px; object-fit: cover; display: none;"><span class="ms-1">Total</span></th>
                                     <th class="text-end" id="modal-total-l30">0</th>
                                     <th class="text-end" id="modal-total-price">$0.00</th>
                                     <th class="text-end" id="modal-total-views">0</th>
@@ -444,7 +434,7 @@
                             <tbody id="ovl30DetailsTableBody">
                                 <!-- Table rows will be populated dynamically -->
                                 <tr>
-                                    <td colspan="18" class="text-center text-muted py-4">No data available</td>
+                                    <td colspan="17" class="text-center text-muted py-4">No data available</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -804,7 +794,7 @@
         function showModalLoading(sku) {
             $('#ovl30DetailsTableBody').html(`
                 <tr>
-                    <td colspan="18" class="text-center text-muted py-4">
+                    <td colspan="17" class="text-center text-muted py-4">
                         <div class="spinner-border spinner-border-sm text-info me-2" role="status"></div>
                         Loading data for ${sku}...
                     </td>
@@ -815,7 +805,7 @@
         function showModalEmpty(sku) {
             $('#ovl30DetailsTableBody').html(`
                 <tr>
-                    <td colspan="18" class="text-center text-muted py-4">
+                    <td colspan="17" class="text-center text-muted py-4">
                         No marketplace data available for ${sku}
                     </td>
                 </tr>
@@ -825,7 +815,7 @@
         function showModalError(message) {
             $('#ovl30DetailsTableBody').html(`
                 <tr>
-                    <td colspan="18" class="text-center text-danger py-4">
+                    <td colspan="17" class="text-center text-danger py-4">
                         <i class="fas fa-exclamation-circle me-2"></i>${message}
                     </td>
                 </tr>
@@ -1023,7 +1013,6 @@
                     <tr class="${rowClass}" data-marketplace="${item.marketplace}" data-sku="${item.sku}" 
                         data-lp="${lp}" data-ship="${ship}" data-ad="${ad}" data-margin="${margin}" data-l30="${l30}">
                         <td class="${textClass}">${item.marketplace || '-'}</td>
-                        <td class="${textClass}" style="white-space: nowrap; min-width: 250px;">${item.sku || '-'}</td>
                         <td class="text-end ${textClass}">${isListed ? l30.toLocaleString() : '-'}</td>
                         <td class="text-end ${textClass}">${isListed ? '$' + parseFloat(item.price || 0).toFixed(2) : '-'}</td>
                         <td class="text-end ${textClass}">${isListed ? views.toLocaleString() : '-'}</td>
