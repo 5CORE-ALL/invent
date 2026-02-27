@@ -613,14 +613,9 @@ class AutoUpdateAmazonKwBids extends Command
                     $row['sbid'] = 1.00;
                 }
             } elseif ($rowType === 'under') {
-                if ($l1_cpc >= 0.01 && $l1_cpc <= 0.20) {
-                    $row['sbid'] = floor(($l1_cpc + 0.10) * 100) / 100;
-                } elseif ($l1_cpc >= 0.201 && $l1_cpc <= 0.30) {
-                    $row['sbid'] = floor(($l1_cpc + 0.05) * 100) / 100;
-                } elseif ($l1_cpc > 0) {
+                // Under-utilized: L1 CPC → L7 CPC → AVG CPC → 1.00, all increase by 10%
+                if ($l1_cpc > 0) {
                     $row['sbid'] = floor($l1_cpc * 1.10 * 100) / 100;
-                } elseif ($l7_cpc >= 0.20 && $l7_cpc <= 0.30) {
-                    $row['sbid'] = floor(($l7_cpc + 0.05) * 100) / 100;
                 } elseif ($l7_cpc > 0) {
                     $row['sbid'] = floor($l7_cpc * 1.10 * 100) / 100;
                 } elseif ($avgCpc > 0) {

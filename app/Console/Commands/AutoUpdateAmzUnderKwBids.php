@@ -477,17 +477,9 @@ class AutoUpdateAmzUnderKwBids extends Command
                         $row['sbid'] = 2.00;
                     }
                 } else {
-                    // Under-utilized: match frontend/over-utilized formula exactly
-                    // L1 0.01-0.20 → +0.10; L1 0.201-0.30 → +0.05; L1 > 0 → *1.10
-                    // L7 0.20-0.30 (when L1=0) → +0.05; L7 > 0 → *1.10; else avgCpc or 1.00
-                    if ($l1_cpc >= 0.01 && $l1_cpc <= 0.20) {
-                        $row['sbid'] = floor(($l1_cpc + 0.10) * 100) / 100;
-                    } elseif ($l1_cpc >= 0.201 && $l1_cpc <= 0.30) {
-                        $row['sbid'] = floor(($l1_cpc + 0.05) * 100) / 100;
-                    } elseif ($l1_cpc > 0) {
+                    // Under-utilized: L1 CPC → L7 CPC → AVG CPC → 1.00, all increase by 10%
+                    if ($l1_cpc > 0) {
                         $row['sbid'] = floor($l1_cpc * 1.10 * 100) / 100;
-                    } elseif ($l1_cpc === 0 && $l7_cpc >= 0.20 && $l7_cpc <= 0.30) {
-                        $row['sbid'] = floor(($l7_cpc + 0.05) * 100) / 100;
                     } elseif ($l7_cpc > 0) {
                         $row['sbid'] = floor($l7_cpc * 1.10 * 100) / 100;
                     } elseif ($avgCpc > 0) {

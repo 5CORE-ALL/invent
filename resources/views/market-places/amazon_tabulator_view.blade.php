@@ -4493,15 +4493,9 @@
                                     sbid = 1.00;
                                 }
                             } else if (rowType === 'under') {
-                                // L1 0.01–0.20 → +0.10; L1 0.201–0.30 → +0.05; L1=0 and L7 0.20–0.30 → +0.05; else 10%
-                                if (l1Cpc >= 0.01 && l1Cpc <= 0.20) {
-                                    sbid = Math.floor((l1Cpc + 0.10) * 100) / 100;
-                                } else if (l1Cpc >= 0.201 && l1Cpc <= 0.30) {
-                                    sbid = Math.floor((l1Cpc + 0.05) * 100) / 100;
-                                } else if (l1Cpc > 0) {
+                                // Under-utilized: L1 CPC → L7 CPC → AVG CPC → 1.00, all increase by 10%
+                                if (l1Cpc > 0) {
                                     sbid = Math.floor(l1Cpc * 1.10 * 100) / 100;
-                                } else if (l1Cpc === 0 && l7Cpc >= 0.20 && l7Cpc <= 0.30) {
-                                    sbid = Math.floor((l7Cpc + 0.05) * 100) / 100;
                                 } else if (l7Cpc > 0) {
                                     sbid = Math.floor(l7Cpc * 1.10 * 100) / 100;
                                 } else if (avgCpc > 0) {
