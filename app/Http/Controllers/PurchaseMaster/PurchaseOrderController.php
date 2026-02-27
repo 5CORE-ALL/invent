@@ -166,7 +166,9 @@ class PurchaseOrderController extends Controller
             ->with('supplier:id,name');
 
         if ($filter === 'active') {
-            $query->where('is_archived', false);
+            $query->where(function ($q) {
+                $q->where('is_archived', false)->orWhereNull('is_archived');
+            });
         } elseif ($filter === 'archived') {
             $query->where('is_archived', true);
         }

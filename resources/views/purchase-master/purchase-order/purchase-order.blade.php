@@ -724,9 +724,18 @@
     function getPurchaseOrderData(){
         const filter = document.getElementById("archive-filter").value;
         fetch('/purchase-orders/list?filter=' + encodeURIComponent(filter))
-        .then(res => res.json())
+        .then(res => {
+            if (!res.ok) throw new Error('Failed to load data');
+            return res.json();
+        })
         .then(data => {
-            allPurchaseOrders = data;
+            allPurchaseOrders = Array.isArray(data) ? data : [];
+            renderPurchaseOrderTable();
+            renderPaginationControls();
+        })
+        .catch(err => {
+            console.error(err);
+            allPurchaseOrders = [];
             renderPurchaseOrderTable();
             renderPaginationControls();
         });
@@ -736,10 +745,19 @@
         const tbody = document.getElementById("po-table-body");
         tbody.innerHTML = "";
 
+        const source = Array.isArray(data) ? data : allPurchaseOrders;
         const startIndex = (currentPage - 1) * itemsPerPage;
         const endIndex = startIndex + itemsPerPage;
-        const currentItems = data.slice(startIndex, endIndex);
+        const currentItems = source.slice(startIndex, endIndex);
         const filterVal = document.getElementById("archive-filter").value;
+
+        if (currentItems.length === 0) {
+            const colCount = document.querySelectorAll("#po-table thead th").length;
+            const tr = document.createElement("tr");
+            tr.innerHTML = `<td colspan="${colCount}" class="text-center text-muted py-4">No data found</td>`;
+            tbody.appendChild(tr);
+            return;
+        }
 
         currentItems.forEach(order => {
             const items = JSON.parse(order.items_json || '[]');
