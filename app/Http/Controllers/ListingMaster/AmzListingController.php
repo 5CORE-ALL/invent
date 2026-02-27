@@ -8,6 +8,7 @@ use App\Services\AmazonSpApiService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 
 class AmzListingController extends Controller
 {
@@ -69,17 +70,10 @@ class AmzListingController extends Controller
 
     public function data(Request $request)
     {
-        $startTime = microtime(true);
-
         try {
             $perPage = (int) ($request->get('size') ?: $request->get('per_page', self::DEFAULT_PER_PAGE));
             $perPage = max(1, min($perPage, self::MAX_PER_PAGE));
             $page = max(1, (int) $request->get('page', 1));
-
-            Log::debug('AmzListingController: data request', [
-                'per_page' => $perPage,
-                'page' => $page,
-            ]);
 
             $query = AmazonListingRaw::query()->orderBy('id');
             $total = AmazonListingRaw::count();
@@ -101,9 +95,13 @@ class AmzListingController extends Controller
 
             $rows = $query->offset(($page - 1) * $perPage)->limit($perPage)->get();
 
-            $allKeys = ['id', 'seller_sku', 'asin1', 'report_imported_at'];
+            $allKeys = ['id', 'seller_sku', 'asin1', 'report_imported_at', 'thumbnail_image'];
             $data = [];
-            $rowIndex = 0;
+            $autoFetchLimit = min($perPage, 25);
+            $fetchCount = 0;
+            $mediaService = new AmazonSpApiService();
+            $canPersistThumbnail = Schema::hasColumn('amazon_listings_raw', 'thumbnail_image');
+
             foreach ($rows as $row) {
                 $raw = $this->decodeRawData($row->raw_data);
                 $allKeys = array_unique(array_merge($allKeys, array_keys($raw)));
@@ -114,33 +112,39 @@ class AmzListingController extends Controller
                 if ($rawDataString === null && is_array($raw)) {
                     $rawDataString = json_encode($raw, JSON_UNESCAPED_UNICODE);
                 }
+
+                $thumbnail = $row->thumbnail_image;
+
+                if (! $thumbnail && $row->seller_sku && $fetchCount < $autoFetchLimit) {
+                    try {
+                        $thumbnail = $mediaService->syncThumbnailForSku($row->seller_sku);
+                        if ($thumbnail && $canPersistThumbnail) {
+                            $row->thumbnail_image = $thumbnail;
+                            $row->save();
+                        }
+                    } catch (\Throwable $e) {
+                        Log::warning('AmzListingController: thumbnail sync failed', [
+                            'sku' => $row->seller_sku,
+                            'error' => $e->getMessage(),
+                        ]);
+                    }
+                    $fetchCount++;
+                }
+
                 $data[] = array_merge(
                     [
                         'id' => $row->id ?? null,
                         'seller_sku' => $row->seller_sku ?? '',
                         'asin1' => $row->asin1 ?? '',
                         'report_imported_at' => $reportImportedAt,
+                        'thumbnail_image' => $thumbnail,
                     ],
                     $raw,
                     ['raw_data' => $rawDataString]
                 );
-
-                if ($rowIndex === 0 && !empty($raw)) {
-                    Log::debug('AmzListingController: first record raw_data keys', ['keys' => array_keys($raw)]);
-                    Log::debug('AmzListingController: first record full raw_data sample', ['raw_data' => $raw]);
-                }
-                $rowIndex++;
             }
 
             $columns = array_values($allKeys);
-            $duration = round((microtime(true) - $startTime) * 1000);
-            Log::debug('AmzListingController: data response', [
-                'total' => $total,
-                'returned' => count($data),
-                'page' => $page,
-                'per_page' => $perPage,
-                'duration_ms' => $duration,
-            ]);
 
             return response()->json([
                 'status' => 200,
@@ -191,16 +195,23 @@ class AmzListingController extends Controller
                 'bullet_points' => [],
             ], 422);
         }
+
+        // Allow cache bypass while debugging media issues:
+        // /listing-master/amz-data/media?seller_sku=...&no_cache=1
+        $useCache = ! $request->boolean('no_cache') && ! $request->boolean('debug');
         $cacheKey = 'amz_listing_media_' . md5($sellerSku);
-        $cached = \Illuminate\Support\Facades\Cache::get($cacheKey);
-        if ($cached !== null && is_array($cached)) {
-            return response()->json([
-                'status' => 200,
-                'images' => $cached['images'] ?? [],
-                'videos' => $cached['videos'] ?? [],
-                'bullet_points' => $cached['bullet_points'] ?? [],
-                'from_cache' => true,
-            ]);
+
+        if ($useCache) {
+            $cached = \Illuminate\Support\Facades\Cache::get($cacheKey);
+            if ($cached !== null && is_array($cached)) {
+                return response()->json([
+                    'status' => 200,
+                    'images' => $cached['images'] ?? [],
+                    'videos' => $cached['videos'] ?? [],
+                    'bullet_points' => $cached['bullet_points'] ?? [],
+                    'from_cache' => true,
+                ]);
+            }
         }
         $service = new AmazonSpApiService();
         $result = $service->getListingsItemMedia($sellerSku);
@@ -216,11 +227,14 @@ class AmzListingController extends Controller
         $images = $result['images'] ?? [];
         $videos = $result['videos'] ?? [];
         $bulletPoints = $result['bullet_points'] ?? [];
-        \Illuminate\Support\Facades\Cache::put($cacheKey, [
-            'images' => $images,
-            'videos' => $videos,
-            'bullet_points' => $bulletPoints,
-        ], now()->addHours(1));
+
+        if ($useCache) {
+            \Illuminate\Support\Facades\Cache::put($cacheKey, [
+                'images' => $images,
+                'videos' => $videos,
+                'bullet_points' => $bulletPoints,
+            ], now()->addHours(1));
+        }
 
         return response()->json([
             'status' => 200,
