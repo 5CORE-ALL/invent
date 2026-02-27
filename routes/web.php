@@ -1521,8 +1521,11 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
     //Supplier routes
     Route::get('/supplier.list', [SupplierController::class, 'supplierList'])->name('supplier.list');
+    Route::get('/supplier.list.json', [SupplierController::class, 'getSuppliersJson'])->name('supplier.list.json');
+    Route::get('/supplier/categories.json', [SupplierController::class, 'getCategoriesJson'])->name('supplier.categories.json');
     Route::post('/supplier.create', [SupplierController::class, 'postSupplier'])->name('supplier.create');
     Route::delete('/supplier/delete/{id}', [SupplierController::class, 'deleteSupplier'])->name('supplier.delete');
+    Route::post('/forecast-analysis/link-supplier-parent', [\App\Http\Controllers\ProductMaster\ForecastAnalysisController::class, 'linkSupplierToParent'])->name('forecast.link-supplier-parent');
     Route::post('/supplier/import', [SupplierController::class, 'bulkImport'])->name('supplier.import');
     Route::post('/supplier-rating', [SupplierController::class, 'storeRating'])->name('supplier.rating.save');
 

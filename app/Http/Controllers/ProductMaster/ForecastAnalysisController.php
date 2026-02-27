@@ -507,6 +507,31 @@ class ForecastAnalysisController extends Controller
         ]);
     }
 
+    /**
+     * Link a supplier to a parent (add parent to supplier's Parents list). Used from forecast analysis Supplier dropdown.
+     */
+    public function linkSupplierToParent(Request $request)
+    {
+        $supplierId = (int) $request->input('supplier_id');
+        $parent = strtoupper(trim($request->input('parent') ?? ''));
+        if (!$supplierId || $parent === '') {
+            return response()->json(['success' => false, 'message' => 'Supplier and parent are required.']);
+        }
+        $supplier = Supplier::find($supplierId);
+        if (!$supplier) {
+            return response()->json(['success' => false, 'message' => 'Supplier not found.']);
+        }
+        $current = array_map('trim', explode(',', $supplier->parent ?? ''));
+        $current = array_filter($current);
+        $parentNormalized = strtoupper(trim($parent));
+        if (!in_array($parentNormalized, array_map('strtoupper', $current))) {
+            $current[] = $parent;
+            $supplier->parent = implode(', ', $current);
+            $supplier->save();
+        }
+        return response()->json(['success' => true, 'message' => 'Supplier linked to parent.', 'supplier_tag' => $supplier->name]);
+    }
+
     public function updateForcastSheet(Request $request)
     {        
         $sku = trim($request->input('sku'));

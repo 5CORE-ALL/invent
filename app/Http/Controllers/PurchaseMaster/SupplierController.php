@@ -65,6 +65,27 @@ class SupplierController extends Controller
         return view('purchase-master.supplier.suppliers' , compact('suppliers', 'categories', 'filteredCount', 'totalCount'));
     }
 
+    /**
+     * Return suppliers list as JSON for dropdowns (e.g. forecast analysis).
+     */
+    public function getSuppliersJson(Request $request)
+    {
+        $suppliers = Supplier::where('type', 'Supplier')
+            ->orderBy('name')
+            ->get(['id', 'name'])
+            ->map(fn($s) => ['id' => $s->id, 'name' => $s->name]);
+        return response()->json(['suppliers' => $suppliers]);
+    }
+
+    /**
+     * Return categories as JSON for add-supplier form (e.g. on forecast page).
+     */
+    public function getCategoriesJson(Request $request)
+    {
+        $categories = Category::orderBy('name')->get(['id', 'name']);
+        return response()->json(['categories' => $categories]);
+    }
+
     public function postSupplier(Request $request)
     {
         $data = $request->except('_token');
@@ -120,14 +141,27 @@ class SupplierController extends Controller
             $supplier->bank_details = !empty($inputs['bank_details']) ? trim($inputs['bank_details']) : null;
 
             if ($supplier->save()) {
-                $msg = !empty($inputs['supplier_id']) 
-                    ? 'Supplier successfully updated.' 
+                $msg = !empty($inputs['supplier_id'])
+                    ? 'Supplier successfully updated.'
                     : 'Supplier successfully created.';
+                if ($request->ajax() || $request->wantsJson()) {
+                    return response()->json([
+                        'success' => true,
+                        'message' => $msg,
+                        'supplier' => ['id' => $supplier->id, 'name' => $supplier->name],
+                    ]);
+                }
                 Session::flash('flash_message', $msg);
             } else {
+                if ($request->ajax() || $request->wantsJson()) {
+                    return response()->json(['success' => false, 'message' => 'Something went wrong while saving.']);
+                }
                 Session::flash('flash_message', 'Something went wrong while saving.');
             }
         } catch (\Exception $e) {
+            if ($request->ajax() || $request->wantsJson()) {
+                return response()->json(['success' => false, 'message' => 'Error: ' . $e->getMessage()], 422);
+            }
             Session::flash('flash_message', 'Error: ' . $e->getMessage());
         }
 

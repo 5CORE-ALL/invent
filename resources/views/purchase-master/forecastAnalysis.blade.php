@@ -173,11 +173,6 @@
                                  MSL_LP: $<span id="total_msl_c_value" class="fw-semibold text-dark">0.00</span>
                             </button>
 
-                            <button id="total_msl_sp" class="btn btn-sm btn-primary fw-semibold text-dark">
-                                 MSL_SP: $<span id="total_msl_sp_value" class="fw-semibold text-dark">0</span>
-                            </button>
-
-
                             <button id="total_inv_value" class="btn btn-sm btn-info fw-semibold text-dark">
                                  INV Val: $<span id="total_inv_value_display" class="fw-semibold text-dark">0</span>
                             </button>
@@ -350,6 +345,7 @@
             </div>
         </div>
     </div>
+
 @endsection
 
 @section('script')
@@ -849,7 +845,29 @@
                 {
                     title: "Supplier",
                     field: "Supplier Tag",
-                    accessor: row => row["Supplier Tag"]
+                    accessor: row => row["Supplier Tag"],
+                    headerSort: false,
+                    formatter: function(cell) {
+                        const tag = cell.getValue() || '';
+                        const rowData = cell.getRow().getData();
+                        const parent = (rowData["Parent"] || '').replace(/'/g, "\\'");
+                        const sku = (rowData["SKU"] || '').replace(/'/g, "\\'");
+                        const list = window.forecastSuppliersList || [];
+                        let opts = '<option value="">Select supplier...</option>';
+                        list.forEach(function(s) {
+                            opts += '<option value="' + s.id + '">' + (s.name || '').replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</option>';
+                        });
+                        return `
+                            <div class="d-flex flex-column gap-1 supplier-cell">
+                                <small class="text-muted supplier-tag-text" style="min-height:1.2em;">${(tag || '-').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</small>
+                                <select class="form-select form-select-sm forecast-supplier-select" data-parent="${parent.replace(/"/g, '&quot;')}" data-sku="${sku.replace(/"/g, '&quot;')}" style="min-width:120px;">
+                                    ${opts}
+                                </select>
+                            </div>`;
+                    },
+                    cellClick: function(e, cell) {
+                        if (e.target.classList.contains('forecast-supplier-select')) return;
+                    }
                 },
                 {
                     title: "NRP",
@@ -957,21 +975,11 @@
                     `;
                     }
                 },
-                {
-                    title: "MSL SP",
-                    field: "MSL_SP",
-                    accessor: row => row["MSL_SP"],
-                    formatter: function(cell) {
-                        const value = cell.getValue() || 0;
-                        const roundedValue = Math.floor(parseFloat(value));
-                        return `<div style="text-align:center; font-weight:bold;">$${roundedValue.toLocaleString()}</div>`;
-                    }
-                },
-
                  {
                     title: "CP",
                     field: "CP",
                     accessor: row => row["CP"],
+                    visible: false,
                     formatter: function(cell) {
                         const value = cell.getValue() || 0;
                         return `<span style="display:block; text-align:center; font-weight:bold;">$${value.toLocaleString()}</span>`;
@@ -981,6 +989,7 @@
                     title: "LP",
                     field: "LP",
                     accessor: row => row["LP"],
+                    visible: false,
                     formatter: function(cell) {
                         const value = cell.getValue() || 0;
                         return `<span style="display:block; text-align:center; font-weight:bold;">$${value.toLocaleString()}</span>`;
@@ -990,16 +999,11 @@
             ajaxResponse: function(url, params, response) {
                 groupedSkuData = {}; // clear previous
 
-                // Update total MSL_C and MSL_SP from server response (connected to MSL data)
+                // Update total MSL_C from server response (connected to MSL data)
                 const totalMslCElement = document.getElementById('total_msl_c_value');
                 if (totalMslCElement && response.total_msl_c !== undefined) {
                     const wholeNumber = Math.round(parseFloat(response.total_msl_c));
                     totalMslCElement.textContent = wholeNumber.toLocaleString('en-US');
-                }
-                const totalMslSpElement = document.getElementById('total_msl_sp_value');
-                if (totalMslSpElement && response.total_msl_sp !== undefined) {
-                    const wholeNumber = Math.round(parseFloat(response.total_msl_sp));
-                    totalMslSpElement.textContent = wholeNumber.toLocaleString('en-US');
                 }
 
                 // Calculate and update total INV Value
@@ -1311,6 +1315,44 @@
             },
         });
 
+        window.forecastSuppliersList = [];
+        function loadForecastSuppliers(callback) {
+            fetch('/supplier.list.json')
+                .then(r => r.json())
+                .then(function(data) {
+                    window.forecastSuppliersList = data.suppliers || [];
+                    if (table) table.redraw();
+                    if (typeof callback === 'function') callback();
+                })
+                .catch(function() { window.forecastSuppliersList = []; });
+        }
+        loadForecastSuppliers();
+
+        $(document).on('change', '.forecast-supplier-select', function() {
+            const sel = this;
+            const supplierId = (sel.value || '').trim();
+            if (!supplierId) return;
+            const parent = (sel.getAttribute('data-parent') || '').trim();
+            if (!parent) return;
+            const $sel = $(sel);
+            $sel.prop('disabled', true);
+            const fd = new FormData();
+            fd.append('supplier_id', supplierId);
+            fd.append('parent', parent);
+            fd.append('_token', document.querySelector('input[name="_token"]')?.value || '');
+            fetch('{{ route("forecast.link-supplier-parent") }}', {
+                method: 'POST',
+                body: fd,
+                headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' }
+            }).then(function(r) { return r.json(); }).then(function(res) {
+                if (res.success) {
+                    table.replaceData(); // reload table so Supplier Tag updates
+                }
+                $sel.prop('disabled', false);
+                sel.value = '';
+            }).catch(function() { $sel.prop('disabled', false); sel.value = ''; });
+        });
+
         let currentParentFilter = null;
         let currentColorFilter = null;
         let hideNRYes = true;
@@ -1483,16 +1525,14 @@
             setTimeout(() => {
                 updateParentTotalsBasedOnVisibleRows();
                 
-                // Calculate total MSL_C and MSL_SP for visible rows
+                // Calculate total MSL_C for visible rows
                 const visibleRows = table.getRows(true);
                 let totalMslC = 0;
-                let totalMslSp = 0;
                 
                 visibleRows.forEach(row => {
                     const data = row.getData();
                     if (!data.is_parent) {
                         totalMslC += parseFloat(data.MSL_C) || 0;
-                        totalMslSp += parseFloat(data.MSL_SP) || 0;
                     }
                 });
                 
@@ -1501,13 +1541,6 @@
                 if (totalMslCElement) {
                     const wholeNumber = Math.round(totalMslC);
                     totalMslCElement.textContent = wholeNumber.toLocaleString('en-US');
-                }
-                
-                // Update total MSL_SP display
-                const totalMslSpElement = document.getElementById('total_msl_sp_value');
-                if (totalMslSpElement) {
-                    const wholeNumber = Math.round(totalMslSp);
-                    totalMslSpElement.textContent = wholeNumber.toLocaleString('en-US');
                 }
 
                 // Calculate total Restock MSL for visible rows
@@ -1832,7 +1865,6 @@
                 LP: row['LP'],
                 "Shopify Price": row['shopifyb2c_price'],
                 "MSL_C": row['MSL_C'],
-                "MSL_SP": row['MSL_SP'],
                 Freight: row['Freight'],
                 "GW (KG)": row['GW (KG)'],
                 "GW (LB)": row['GW (LB)'],
@@ -1870,13 +1902,16 @@
 
             columns.forEach(col => {
                 const field = col.getField();
-                const title = col.getDefinition().title;
+                const def = col.getDefinition();
+                const title = def.title;
 
-                // Apply saved visibility on table
-                if (savedVisibility[field] === false) {
-                    col.hide();
+                // Apply saved visibility, or fall back to column definition default (e.g. CP/LP hidden by default)
+                if (savedVisibility[field] !== undefined) {
+                    if (savedVisibility[field] === false) col.hide();
+                    else col.show();
                 } else {
-                    col.show();
+                    if (def.visible === false) col.hide();
+                    else col.show();
                 }
 
                 const li = document.createElement("li");
