@@ -38,7 +38,13 @@
             margin-right: 5px;
         }
 
-        /* Vertical headers for modal table */
+        /* OV L30 Modal – light bg with dark text */
+        #ovl30DetailsModal .modal-header,
+        #ovl30DetailsModal .table thead {
+            background-color: #e2e8f0 !important;
+            color: #0f172a !important;
+            border-color: #cbd5e1 !important;
+        }
         #ovl30DetailsModal .modal-vertical-header th {
             writing-mode: vertical-rl;
             text-orientation: mixed;
@@ -49,8 +55,10 @@
             font-size: 11px;
             font-weight: 600;
             padding: 5px;
+            background-color: #e2e8f0 !important;
+            color: #0f172a !important;
+            border-color: #cbd5e1 !important;
         }
-        
         /* Exception for M and SKU columns - keep them horizontal */
         #ovl30DetailsModal .modal-vertical-header th:nth-child(1),
         #ovl30DetailsModal .modal-vertical-header th:nth-child(2) {
@@ -94,22 +102,25 @@
             background-color: #e83e8c;
         }
         
-        /* Totals row styling - bold text with dark background */
+        /* Totals row – light background, dark text */
         #ovl30DetailsModal .modal-totals-row {
-            background-color: #172426d1 !important;
-            font-weight: bold !important;
-            color: #000 !important;
+            background-color: #f1f5f9 !important;
+            font-weight: 600 !important;
+            color: #0f172a !important;
+            border-top: 2px solid #cbd5e1 !important;
         }
-        
         #ovl30DetailsModal .modal-totals-row th {
-            font-weight: bold !important;
+            font-weight: 600 !important;
+            color: #0f172a !important;
+            border-color: #e2e8f0 !important;
         }
-        
-        /* White text for specific total columns (Price, Views, SPRICE) */
-        #ovl30DetailsModal .modal-totals-row #modal-total-price,
-        #ovl30DetailsModal .modal-totals-row #modal-total-views,
-        #ovl30DetailsModal .modal-totals-row #modal-avg-sprice {
-            color: white !important;
+        #ovl30DetailsModal .modal-body,
+        #ovl30DetailsModal .table tbody {
+            background-color: #fff !important;
+            color: #0f172a !important;
+        }
+        #ovl30DetailsModal .table td {
+            color: #334155 !important;
         }
 
         /* ========== DROPDOWN STYLING ========== */
@@ -249,6 +260,19 @@
             margin-right: 4px;
         }
 
+        /* Sprice modal: top-center position and draggable header */
+        #spriceDetailsModal.modal {
+            align-items: flex-start;
+            padding-top: 1.5rem;
+        }
+        #spriceDetailsModal .sprice-modal-dialog {
+            margin-top: 0;
+        }
+        #spriceDetailsModal .modal-header.sprice-modal-drag-header {
+            cursor: move;
+            user-select: none;
+        }
+
     </style>
 @endsection
 
@@ -302,12 +326,55 @@
         </div>
     </div>
 
+    <!-- Sprice Details Modal (top-center, draggable by header) -->
+    <div class="modal fade" id="spriceDetailsModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog sprice-modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header sprice-modal-drag-header" style="background-color: #0d6efd;">
+                    <h5 class="modal-title text-white">
+                        <i class="fas fa-dollar-sign me-2"></i>
+                        Sprice – <span id="spriceModalSkuName"></span>
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <table class="table table-bordered mb-0">
+                        <tbody>
+                            <tr>
+                                <th style="width: 40%;">Amz SPRICE</th>
+                                <td class="text-end">
+                                    <span class="text-muted me-1">$</span>
+                                    <input type="number" class="form-control form-control-sm d-inline-block sprice-modal-sprice-input" id="spriceModalAmzSpriceInput" value="" step="0.01" min="0" placeholder="0.00" style="width: 90px; text-align: right;">
+                                </td>
+                            </tr>
+                            <tr>
+                                <th>Amz SGPFT%</th>
+                                <td class="text-end" id="spriceModalSgpft">-</td>
+                            </tr>
+                            <tr>
+                                <th>Amz SPFT%</th>
+                                <td class="text-end" id="spriceModalSpft">-</td>
+                            </tr>
+                            <tr>
+                                <th>Amz SROI%</th>
+                                <td class="text-end" id="spriceModalSroi">-</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- OV L30 Details Modal -->
     <div class="modal fade" id="ovl30DetailsModal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog modal-xxl modal-dialog-centered">
             <div class="modal-content">
-                <div class="modal-header" style="background-color: #17a2b8;">
-                    <div class="modal-title text-white d-flex align-items-center justify-content-between w-100" style="font-size: 2em;">
+                <div class="modal-header" style="background-color: #e2e8f0; color: #0f172a;">
+                    <div class="modal-title d-flex align-items-center justify-content-between w-100" style="font-size: 2em; color: #0f172a;">
                         <div class="d-flex align-items-center gap-3">
                             <i class="fas fa-mouse-pointer me-2"></i> 
                             <span id="modalSkuName" style="font-weight: bold;">SKU</span>
@@ -327,15 +394,16 @@
                             </span>
                         </div>
                     </div>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
-                <div class="modal-body">
+                <div class="modal-body" style="background-color: #fff;">
                     <div class="table-responsive">
                         <table class="table table-bordered table-hover mb-0">
-                            <thead style="background-color: #17a2b8; color: white;">
+                            <thead style="background-color: #e2e8f0; color: #0f172a;">
                                 <tr class="modal-vertical-header">
                                     <th>M</th>
                                     <th>SKU</th>
+                                    <th>L30</th>
                                     <th>Price</th>
                                     <th>Views</th>
                                     <th>CVR%</th>
@@ -355,6 +423,7 @@
                                 <tr class="modal-totals-row">
                                     <th><img id="modal-product-image" src="" alt="" style="width: 50px; height: 50px; object-fit: cover; display: none;"></th>
                                     <th>Total</th>
+                                    <th class="text-end" id="modal-total-l30">0</th>
                                     <th class="text-end" id="modal-total-price">$0.00</th>
                                     <th class="text-end" id="modal-total-views">0</th>
                                     <th class="text-end" id="modal-avg-cvr">0%</th>
@@ -375,7 +444,7 @@
                             <tbody id="ovl30DetailsTableBody">
                                 <!-- Table rows will be populated dynamically -->
                                 <tr>
-                                    <td colspan="17" class="text-center text-muted py-4">No data available</td>
+                                    <td colspan="18" class="text-center text-muted py-4">No data available</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -735,7 +804,7 @@
         function showModalLoading(sku) {
             $('#ovl30DetailsTableBody').html(`
                 <tr>
-                    <td colspan="17" class="text-center text-muted py-4">
+                    <td colspan="18" class="text-center text-muted py-4">
                         <div class="spinner-border spinner-border-sm text-info me-2" role="status"></div>
                         Loading data for ${sku}...
                     </td>
@@ -746,7 +815,7 @@
         function showModalEmpty(sku) {
             $('#ovl30DetailsTableBody').html(`
                 <tr>
-                    <td colspan="17" class="text-center text-muted py-4">
+                    <td colspan="18" class="text-center text-muted py-4">
                         No marketplace data available for ${sku}
                     </td>
                 </tr>
@@ -756,7 +825,7 @@
         function showModalError(message) {
             $('#ovl30DetailsTableBody').html(`
                 <tr>
-                    <td colspan="17" class="text-center text-danger py-4">
+                    <td colspan="18" class="text-center text-danger py-4">
                         <i class="fas fa-exclamation-circle me-2"></i>${message}
                     </td>
                 </tr>
@@ -947,6 +1016,7 @@
                         data-lp="${lp}" data-ship="${ship}" data-ad="${ad}" data-margin="${margin}" data-l30="${l30}">
                         <td class="${textClass}">${item.marketplace || '-'}</td>
                         <td class="${textClass}" style="white-space: nowrap; min-width: 250px;">${item.sku || '-'}</td>
+                        <td class="text-end ${textClass}">${isListed ? l30.toLocaleString() : '-'}</td>
                         <td class="text-end ${textClass}">${isListed ? '$' + parseFloat(item.price || 0).toFixed(2) : '-'}</td>
                         <td class="text-end ${textClass}">${isListed ? views.toLocaleString() : '-'}</td>
                         <td class="text-end ${textClass}">${isListed && views > 0 ? '<span style="color: ' + cvrColor + '; font-weight: 600;">' + cvr.toFixed(1) + '%</span>' : '-'}</td>
@@ -1086,6 +1156,7 @@
             const avgPrice = totalL30 > 0 ? totalPrice / totalL30 : 0;
             $('#modal-total-price').text('$' + avgPrice.toFixed(2));
             $('#modal-total-views').text(totalViews.toLocaleString());
+            $('#modal-total-l30').text(totalL30.toLocaleString());
             $('#modal-avg-cvr').html(`<span style="color: ${cvrColorTotal}; font-weight: 600;">${avgCVR.toFixed(1)}%</span>`);
             $('#modal-avg-gpft').html(`<span style="color: ${gpftColorTotal}; font-weight: 600;">${avgGPFT.toFixed(1)}%</span>`);
             $('#modal-avg-ad').html(`<span style="color: ${adColorTotal}; font-weight: 600;">${avgAD.toFixed(1)}%</span>`);
@@ -1232,27 +1303,36 @@
                         const value = parseFloat(cell.getValue() || 0);
                         const rowData = cell.getRow().getData();
                         const sku = rowData.sku;
-                        const imagePath = rowData.image_path || '';
-                        const inv = rowData.inventory ?? rowData.inv ?? 0;
-                        const dilPercent = rowData.dil_percent || 0;
-                        
-                        // Don't show info icon for parent rows
                         if (rowData.is_parent_summary === true) {
                             return `<span style="font-weight: 600;">${value}</span>`;
                         }
-                        
-                        return `
-                            <span style="font-weight: 600;">${value}</span>
-                            <i class="fas fa-info-circle text-info ovl30-info-icon" 
-                               style="cursor: pointer; font-size: 12px; margin-left: 6px;" 
+                        const skuEsc = (sku || '').replace(/"/g, '&quot;');
+                        return `<span style="font-weight: 600;">${value}</span>
+                            <i class="fas fa-circle pricing-master-chart-link ms-1" data-metric="ov_l30" data-sku="${skuEsc}" style="cursor:pointer;color:#28a745;font-size:8px;vertical-align:middle;" title="View OV L30 graph (Rolling L30)"></i>`;
+                    }
+                },
+                {
+                    title: "Details",
+                    field: "details_dot",
+                    headerSort: false,
+                    hozAlign: "center",
+                    minWidth: 52,
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        if (rowData.is_parent_summary === true) return '';
+                        const sku = rowData.sku;
+                        const imagePath = rowData.image_path || '';
+                        const inv = rowData.inventory ?? rowData.inv ?? 0;
+                        const value = parseFloat(cell.getRow().getData().overall_l30 || 0);
+                        const dilPercent = rowData.dil_percent || 0;
+                        return `<i class="fas fa-info-circle text-info ovl30-info-icon" 
+                               style="cursor: pointer; font-size: 12px;" 
                                data-sku="${sku}"
                                data-image="${imagePath}"
                                data-inv="${inv}"
                                data-l30="${value}"
                                data-dil="${dilPercent}"
-                               title="View breakdown for ${sku}"></i>
-                            <i class="fas fa-circle pricing-master-chart-link ms-1" data-metric="ov_l30" data-sku="${(sku || '').replace(/"/g, '&quot;')}" style="cursor:pointer;color:#28a745;font-size:8px;vertical-align:middle;" title="View OV L30 graph (Rolling L30)"></i>
-                        `;
+                               title="View breakdown for ${sku}"></i>`;
                     }
                 },
                 {
@@ -1406,50 +1486,7 @@ title: "Dil %",
                     minWidth: 44,
                     hozAlign: "center",
                     formatter: function(cell) {
-                        const row = cell.getRow();
-                        const d = row.getData();
-                        const key = (d.sku || '') + '_' + (d.parent || '');
-                        const expanded = spriceDotExpanded.has(key);
-                        const sprice = d.amazon_sprice;
-                        const sgpft = d.amazon_sgpft;
-                        const spft = d.amazon_spft;
-                        const sroi = d.amazon_sroi;
-                        const fmtPct = (v, low, mid1, mid2, high) => {
-                            if (v == null || v === '') return '-';
-                            const pct = parseFloat(v);
-                            let c = '#6c757d';
-                            if (pct < low) c = '#a00211';
-                            else if (pct < mid1) c = '#ffc107';
-                            else if (pct < mid2) c = '#3591dc';
-                            else if (pct <= high) c = '#28a745';
-                            else c = '#e83e8c';
-                            return `<span style="color:${c};font-weight:600;">${Math.round(pct)}%</span>`;
-                        };
-                        const fmtSgpft = () => fmtPct(sgpft, 0, 10, 20, 40);
-                        const fmtSpft = () => fmtPct(spft, 0, 10, 20, 40);
-                        const fmtSroi = () => { if (sroi == null || sroi === '') return '-'; const p = parseFloat(sroi); let c = '#6c757d'; if (p < 50) c = '#a00211'; else if (p < 100) c = '#ffc107'; else if (p <= 150) c = '#28a745'; else c = '#e83e8c'; return `<span style="color:${c};font-weight:600;">${Math.round(p)}%</span>`; };
-                        const spriceStr = (sprice != null && sprice !== '' && parseFloat(sprice) > 0) ? '$' + parseFloat(sprice).toFixed(2) : '-';
-                        if (expanded) {
-                            return `<div class="sprice-dot-toggle" data-sprice-key="${(key || '').replace(/"/g, '&quot;')}" style="cursor:pointer;font-size:10px;line-height:1.4;text-align:left;white-space:nowrap;">
-                                <div>SPRICE: <b>${spriceStr}</b></div>
-                                <div>SGPFT%: ${fmtSgpft()}</div>
-                                <div>SPFT%: ${fmtSpft()}</div>
-                                <div>SROI%: ${fmtSroi()}</div>
-                            </div>`;
-                        }
-                        return `<span class="sprice-dot-btn" data-sprice-key="${(key || '').replace(/"/g, '&quot;')}" style="cursor:pointer;color:#0d6efd;font-size:14px;line-height:1;" title="Click to show Amz SPRICE, SGPFT%, SPFT%, SROI%">●</span>`;
-                    },
-                    cellClick: function(e, cell) {
-                        const row = cell.getRow();
-                        const d = row.getData();
-                        const key = (d.sku || '') + '_' + (d.parent || '');
-                        if (!key) return;
-                        if (spriceDotExpanded.has(key)) {
-                            spriceDotExpanded.delete(key);
-                        } else {
-                            spriceDotExpanded.add(key);
-                        }
-                        cell.reformat();
+                        return '<span style="cursor:pointer;color:#0d6efd;font-size:14px;line-height:1;" title="Click to show Sprice details">●</span>';
                     }
                 },
                 {
@@ -1684,6 +1721,95 @@ title: "Dil %",
             ]
         });
 
+        // Row reference for Sprice modal save (set when modal opens, used on blur)
+        let spriceModalCurrentRow = null;
+
+        // Sprice dot click: open modal with editable Amz SPRICE and instant SGPFT/SPFT/SROI
+        table.on('cellClick', function(e, cell) {
+            if (cell.getField() !== 'sprice_dot') return;
+            const row = cell.getRow();
+            const d = row.getData();
+            if (d.is_parent_summary === true) return;
+            spriceModalCurrentRow = row;
+            const skuName = (d.sku || '-') + (d.parent ? ' (' + d.parent + ')' : '');
+            const lp = parseFloat(d.amazon_lp) || 0;
+            const ship = parseFloat(d.amazon_ship) || 0;
+            const ad = parseFloat(d.amazon_ad) || 0;
+            const margin = parseFloat(d.amazon_margin) || 0.80;
+            const l30 = parseInt(d.amazon_l30, 10) || 0;
+            const sprice = d.amazon_sprice;
+            const sgpft = d.amazon_sgpft;
+            const spft = d.amazon_spft;
+            const sroi = d.amazon_sroi;
+            $('#spriceModalSkuName').text(skuName);
+            const $modal = $('#spriceDetailsModal');
+            $modal.attr('data-sku', d.sku || '');
+            $modal.attr('data-lp', lp);
+            $modal.attr('data-ship', ship);
+            $modal.attr('data-ad', ad);
+            $modal.attr('data-margin', margin);
+            $modal.attr('data-l30', l30);
+            const spriceVal = (sprice != null && sprice !== '' && parseFloat(sprice) > 0) ? parseFloat(sprice) : '';
+            $('#spriceModalAmzSpriceInput').val(spriceVal === '' ? '' : spriceVal.toFixed(2));
+            function updateSpriceModalCalculated(spriceNum) {
+                if (spriceNum <= 0) {
+                    $('#spriceModalSgpft').css('color', '#6c757d').text('-');
+                    $('#spriceModalSpft').css('color', '#6c757d').text('-');
+                    $('#spriceModalSroi').css('color', '#6c757d').text('-');
+                    return;
+                }
+                const sgpftVal = ((spriceNum * margin - ship - lp) / spriceNum) * 100;
+                const spftVal = l30 === 0 ? sgpftVal : (sgpftVal - ad);
+                const sroiVal = lp > 0 ? ((spriceNum * margin - lp - ship) / lp) * 100 : 0;
+                $('#spriceModalSgpft').css('color', getSgpftSpftColor(sgpftVal)).text(Math.round(sgpftVal) + '%');
+                $('#spriceModalSpft').css('color', getSgpftSpftColor(spftVal)).text(Math.round(spftVal) + '%');
+                $('#spriceModalSroi').css('color', getSroiColor(sroiVal)).text(Math.round(sroiVal) + '%');
+            }
+            if (spriceVal !== '') updateSpriceModalCalculated(parseFloat(spriceVal));
+            else { $('#spriceModalSgpft').css('color', '#6c757d').text('-'); $('#spriceModalSpft').css('color', '#6c757d').text('-'); $('#spriceModalSroi').css('color', '#6c757d').text('-'); }
+            new bootstrap.Modal(document.getElementById('spriceDetailsModal')).show();
+        });
+
+        // Sprice modal: top-center position and draggable by header
+        $('#spriceDetailsModal').on('shown.bs.modal', function() {
+            const modal = document.getElementById('spriceDetailsModal');
+            const dialog = modal.querySelector('.modal-dialog');
+            if (!dialog) return;
+            dialog.style.position = 'fixed';
+            dialog.style.left = '50%';
+            dialog.style.top = '1.5rem';
+            dialog.style.transform = 'translateX(-50%)';
+            dialog.style.margin = '0';
+        });
+        (function() {
+            let startX = 0, startY = 0, startLeft = 0, startTop = 0;
+            const modal = document.getElementById('spriceDetailsModal');
+            if (!modal) return;
+            const header = modal.querySelector('.sprice-modal-drag-header');
+            const dialog = modal.querySelector('.modal-dialog');
+            if (!header || !dialog) return;
+            function onMove(e) {
+                dialog.style.left = (startLeft + (e.clientX - startX)) + 'px';
+                dialog.style.top = (startTop + (e.clientY - startY)) + 'px';
+                dialog.style.transform = 'none';
+            }
+            function onUp() {
+                document.removeEventListener('mousemove', onMove);
+                document.removeEventListener('mouseup', onUp);
+            }
+            header.addEventListener('mousedown', function(e) {
+                if (e.target.closest('.btn-close')) return;
+                const r = dialog.getBoundingClientRect();
+                startLeft = r.left;
+                startTop = r.top;
+                startX = e.clientX;
+                startY = e.clientY;
+                document.addEventListener('mousemove', onMove);
+                document.addEventListener('mouseup', onUp);
+                e.preventDefault();
+            });
+        })();
+
         // Amz SPRICE edited in table: save and recalculate SGPFT, SPFT, SROI
         table.on('cellEdited', function(cell) {
             if (cell.getField() !== 'amazon_sprice') return;
@@ -1760,6 +1886,74 @@ title: "Dil %",
             if (pct >= 100 && pct <= 150) return '#28a745';
             return '#e83e8c';
         }
+
+        // Sprice modal: instant recalc when Amz SPRICE input changes
+        $(document).on('input', '.sprice-modal-sprice-input', function() {
+            const $modal = $('#spriceDetailsModal');
+            const sprice = parseFloat($(this).val()) || 0;
+            const lp = parseFloat($modal.attr('data-lp')) || 0;
+            const ship = parseFloat($modal.attr('data-ship')) || 0;
+            const ad = parseFloat($modal.attr('data-ad')) || 0;
+            const margin = parseFloat($modal.attr('data-margin')) || 0.80;
+            const l30 = parseInt($modal.attr('data-l30'), 10) || 0;
+            if (sprice <= 0) {
+                $('#spriceModalSgpft').css('color', '#6c757d').text('-');
+                $('#spriceModalSpft').css('color', '#6c757d').text('-');
+                $('#spriceModalSroi').css('color', '#6c757d').text('-');
+                return;
+            }
+            const sgpft = ((sprice * margin - ship - lp) / sprice) * 100;
+            const spft = l30 === 0 ? sgpft : (sgpft - ad);
+            const sroi = lp > 0 ? ((sprice * margin - lp - ship) / lp) * 100 : 0;
+            $('#spriceModalSgpft').css('color', getSgpftSpftColor(sgpft)).text(Math.round(sgpft) + '%');
+            $('#spriceModalSpft').css('color', getSgpftSpftColor(spft)).text(Math.round(spft) + '%');
+            $('#spriceModalSroi').css('color', getSroiColor(sroi)).text(Math.round(sroi) + '%');
+        });
+
+        // Sprice modal: save on blur and update table row
+        $(document).on('blur', '.sprice-modal-sprice-input', function() {
+            const input = $(this);
+            const sprice = parseFloat(input.val()) || 0;
+            const $modal = $('#spriceDetailsModal');
+            const sku = $modal.attr('data-sku');
+            if (!sku || sprice <= 0) return;
+            const lp = parseFloat($modal.attr('data-lp')) || 0;
+            const ship = parseFloat($modal.attr('data-ship')) || 0;
+            const ad = parseFloat($modal.attr('data-ad')) || 0;
+            const margin = parseFloat($modal.attr('data-margin')) || 0.80;
+            const l30 = parseInt($modal.attr('data-l30'), 10) || 0;
+            const sgpft = ((sprice * margin - ship - lp) / sprice) * 100;
+            const spft = l30 === 0 ? sgpft : (sgpft - ad);
+            const sroi = lp > 0 ? ((sprice * margin - lp - ship) / lp) * 100 : 0;
+            $.ajax({
+                url: '/cvr-master-save-suggested-data',
+                method: 'POST',
+                data: {
+                    sku: sku,
+                    marketplace: 'amazon',
+                    sprice: sprice,
+                    sgpft: Math.round(sgpft * 100) / 100,
+                    spft: Math.round(spft * 100) / 100,
+                    sroi: Math.round(sroi * 100) / 100,
+                    amazon_margin: margin,
+                    _token: '{{ csrf_token() }}'
+                },
+                success: function() {
+                    if (spriceModalCurrentRow) {
+                        spriceModalCurrentRow.update({
+                            amazon_sprice: Math.round(sprice * 100) / 100,
+                            amazon_sgpft: Math.round(sgpft * 100) / 100,
+                            amazon_spft: Math.round(spft * 100) / 100,
+                            amazon_sroi: Math.round(sroi * 100) / 100
+                        });
+                    }
+                    showToast('Sprice saved', 'success');
+                },
+                error: function() {
+                    showToast('Failed to save Sprice', 'error');
+                }
+            });
+        });
 
         // Real-time calculation when SPRICE changes (OVL30 modal – same formula as main table)
         $(document).on('input', '.editable-sprice', function() {
@@ -2344,8 +2538,6 @@ title: "Dil %",
         let currentPlayParentIndex = 0;
         // Prevent dataLoaded side-effects for local setData operations
         let suppressDataLoadedHandler = false;
-        // Rows where sprice-dot is expanded (show 4 values). Key = row sku or index.
-        let spriceDotExpanded = new Set();
 
         /** Reorder data so "10 FR" group is first, then other groups A-Z by parent; within each group children A-Z by SKU then parent row last. */
         function reorderDataWith10FRFirst(data) {
@@ -2459,33 +2651,6 @@ title: "Dil %",
             table.setData(displayData).then(() => {
                 updateSummary();
             });
-        });
-
-        // Sprice dot click - toggle show 4 values (Amz SPRICE, SGPFT%, SPFT%, SROI%)
-        $(document).on('click', '.sprice-dot-btn, .sprice-dot-toggle', function(e) {
-            e.preventDefault();
-            e.stopPropagation();
-            const key = $(this).attr('data-sprice-key');
-            if (key === undefined || key === '') return;
-            if (spriceDotExpanded.has(key)) {
-                spriceDotExpanded.delete(key);
-            } else {
-                spriceDotExpanded.add(key);
-            }
-            if (table) {
-                const target = e.target;
-                const rows = table.getRows();
-                for (let i = 0; i < rows.length; i++) {
-                    const r = rows[i];
-                    if (r.getElement() && r.getElement().contains(target)) {
-                        try {
-                            const cell = r.getCell('sprice_dot');
-                            if (cell) cell.reformat();
-                        } catch (err) { /* column may be hidden */ }
-                        break;
-                    }
-                }
-            }
         });
 
         function buildParentView() {
