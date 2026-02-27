@@ -4450,7 +4450,12 @@
                                 return '<span style="color: #999;">-</span>';
                             }
                             
-                            // Calculate SBID dynamically like KW page
+                            // Prefer sbid from DB when available (job-updated bid)
+                            var sbidFromDb = parseFloat(row.sbid) || 0;
+                            if (sbidFromDb > 0) {
+                                return sbidFromDb.toFixed(2);
+                            }
+                            // Fallback: calculate SBID dynamically like KW page
                             var l1Cpc = parseFloat(row.l1_cpc) || 0;
                             var l7Cpc = parseFloat(row.l7_cpc) || 0;
                             var avgCpc = parseFloat(row.avg_cpc) || 0;

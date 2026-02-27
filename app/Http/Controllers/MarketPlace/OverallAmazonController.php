@@ -1793,7 +1793,7 @@ class OverallAmazonController extends Controller
         $yesterday = date('Y-m-d', strtotime('-1 day'));
         
         $lastSbidReports = DB::table('amazon_sp_campaign_reports')
-            ->select('campaignName', 'campaign_id', 'last_sbid', 'sbid_m')
+            ->select('campaignName', 'campaign_id', 'last_sbid', 'sbid_m', 'sbid')
             ->where('ad_type', 'SPONSORED_PRODUCTS')
             ->where(function($q) use ($dayBeforeYesterday, $yesterday) {
                 $q->where('report_date_range', $dayBeforeYesterday)
@@ -1811,9 +1811,10 @@ class OverallAmazonController extends Controller
             ->orderByRaw("CASE WHEN report_date_range = ? THEN 0 ELSE 1 END", [$dayBeforeYesterday])
             ->get();
         
-        // Build last_sbid and sbid_m maps by campaign_id and campaignName
+        // Build last_sbid, sbid_m, and sbid maps by campaign_id and campaignName
         $lastSbidMap = [];
         $sbidMMap = [];
+        $sbidMap = [];
         foreach ($lastSbidReports as $report) {
             $campaignIdStr = (string)$report->campaign_id;
             if (!empty($campaignIdStr) && !isset($lastSbidMap[$campaignIdStr]) && !empty($report->last_sbid)) {
@@ -1821,6 +1822,9 @@ class OverallAmazonController extends Controller
             }
             if (!empty($campaignIdStr) && !isset($sbidMMap[$campaignIdStr]) && !empty($report->sbid_m)) {
                 $sbidMMap[$campaignIdStr] = $report->sbid_m;
+            }
+            if (!empty($campaignIdStr) && !isset($sbidMap[$campaignIdStr]) && isset($report->sbid) && (float)($report->sbid ?? 0) > 0) {
+                $sbidMap[$campaignIdStr] = $report->sbid;
             }
             // Also map by normalized campaign name for fallback
             if (!empty($report->campaignName)) {
@@ -1831,12 +1835,15 @@ class OverallAmazonController extends Controller
                 if (!isset($sbidMMap['name_' . $normalizedName]) && !empty($report->sbid_m)) {
                     $sbidMMap['name_' . $normalizedName] = $report->sbid_m;
                 }
+                if (!isset($sbidMap['name_' . $normalizedName]) && isset($report->sbid) && (float)($report->sbid ?? 0) > 0) {
+                    $sbidMap['name_' . $normalizedName] = $report->sbid;
+                }
             }
         }
 
         // Fallback: KW last_sbid from L1/L7 when no day-specific row exists yet
         $kwLastSbidFallback = DB::table('amazon_sp_campaign_reports')
-            ->select('campaignName', 'campaign_id', 'last_sbid', 'sbid_m')
+            ->select('campaignName', 'campaign_id', 'last_sbid', 'sbid_m', 'sbid')
             ->where('ad_type', 'SPONSORED_PRODUCTS')
             ->whereIn('report_date_range', ['L1', 'L7'])
             ->whereRaw("campaignName NOT REGEXP '(PT\\.?$|FBA$)'")
@@ -1856,6 +1863,9 @@ class OverallAmazonController extends Controller
             if (!empty($campaignIdStr) && !isset($sbidMMap[$campaignIdStr]) && !empty($report->sbid_m)) {
                 $sbidMMap[$campaignIdStr] = $report->sbid_m;
             }
+            if (!empty($campaignIdStr) && !isset($sbidMap[$campaignIdStr]) && isset($report->sbid) && (float)($report->sbid ?? 0) > 0) {
+                $sbidMap[$campaignIdStr] = $report->sbid;
+            }
             if (!empty($report->campaignName)) {
                 $normalizedName = strtoupper(trim(rtrim($report->campaignName, '.')));
                 if (!isset($lastSbidMap['name_' . $normalizedName]) && !empty($report->last_sbid)) {
@@ -1863,6 +1873,9 @@ class OverallAmazonController extends Controller
                 }
                 if (!isset($sbidMMap['name_' . $normalizedName]) && !empty($report->sbid_m)) {
                     $sbidMMap['name_' . $normalizedName] = $report->sbid_m;
+                }
+                if (!isset($sbidMap['name_' . $normalizedName]) && isset($report->sbid) && (float)($report->sbid ?? 0) > 0) {
+                    $sbidMap['name_' . $normalizedName] = $report->sbid;
                 }
             }
         }
@@ -2564,7 +2577,7 @@ class OverallAmazonController extends Controller
             $row['pt_sbid_m'] = $ptSbidM;
             
             // SBID fields - only for KW campaigns that exist in L30 and INV > 0 (do not show SBID when INV is 0)
-            $row['sbid'] = 0;
+            $sbidFromDb = 0;
             $cleanParent = strtoupper(trim($parent));
             $lastSbid = '';
             $sbidM = '';
@@ -2590,7 +2603,18 @@ class OverallAmazonController extends Controller
                         $sbidM = $sbidMMap['name_' . $cleanParent];
                     }
                 }
+                if ($campaignIdStr && isset($sbidMap[$campaignIdStr])) {
+                    $sbidFromDb = (float)$sbidMap[$campaignIdStr];
+                } else {
+                    $nameKey = 'name_' . $cleanSku;
+                    if (isset($sbidMap[$nameKey])) {
+                        $sbidFromDb = (float)$sbidMap[$nameKey];
+                    } elseif (isset($sbidMap['name_' . $cleanParent])) {
+                        $sbidFromDb = (float)$sbidMap['name_' . $cleanParent];
+                    }
+                }
             }
+            $row['sbid'] = $sbidFromDb;
             $row['last_sbid'] = $lastSbid;
             $row['sbid_m'] = $sbidM;
             
@@ -3252,9 +3276,17 @@ class OverallAmazonController extends Controller
             } elseif (isset($sbidMMap['name_' . $parentNorm])) {
                 $parentSbidM = $sbidMMap['name_' . $parentNorm];
             }
+            $parentSbid = 0;
+            if ($parentCampaignIdStr && isset($sbidMap[$parentCampaignIdStr])) {
+                $parentSbid = (float)$sbidMap[$parentCampaignIdStr];
+            } elseif (isset($sbidMap['name_' . $parentCampaignName])) {
+                $parentSbid = (float)$sbidMap['name_' . $parentCampaignName];
+            } elseif (isset($sbidMap['name_' . $parentNorm])) {
+                $parentSbid = (float)$sbidMap['name_' . $parentNorm];
+            }
             $sumRow['last_sbid'] = $parentLastSbid;
             $sumRow['sbid_m'] = $parentSbidM;
-            $sumRow['sbid'] = 0; // Calculated on frontend
+            $sumRow['sbid'] = $parentSbid;
             $sumRow['sbid_approved'] = false;
             $sumRow['utilization_budget'] = $sumRow['campaignBudgetAmount'];
             
