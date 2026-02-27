@@ -250,7 +250,7 @@
                             GPFT: <span id="avg-gprofit">0%</span>
                         </span>
                         <span class="badge bg-danger fs-6 p-2 badge-chart-link" data-metric="groi" style="color: white; font-weight: bold; cursor:pointer;" title="View trend">
-                            G ROI %: <span id="avg-groi">0%</span>
+                            G ROI: <span id="avg-groi">0%</span>
                         </span>
                         <span class="badge bg-secondary fs-6 p-2 badge-chart-link" data-metric="ad_spend" style="color: white; font-weight: bold; cursor:pointer;" title="View trend">
                             Ads Spend: <span id="total-ad-spend">$0</span>
@@ -259,10 +259,10 @@
                             NPFT: <span id="total-pft">$0</span>
                         </span>
                         <span class="badge bg-dark fs-6 p-2 badge-chart-link" data-metric="npft" style="color: white; font-weight: bold; cursor:pointer;" title="View trend">
-                            NPFT%: <span id="avg-npft">0%</span>
+                            NPFT: <span id="avg-npft">0%</span>
                         </span>
                         <span class="badge bg-primary fs-6 p-2 badge-chart-link" data-metric="nroi" style="color: white; font-weight: bold; cursor:pointer;" title="View trend">
-                            Nroi%: <span id="avg-nroi">0%</span>
+                            NROI: <span id="avg-nroi">0%</span>
                         </span>
                         <span class="badge bg-info fs-6 p-2 badge-chart-link" data-metric="clicks" style="color: black; font-weight: bold; cursor:pointer;" title="View trend">
                             Clicks: <span id="total-clicks">0</span>
@@ -275,6 +275,9 @@
                         </span>
                         <span class="badge bg-danger fs-6 p-2 badge-chart-link" data-metric="missing_l" style="color: white; font-weight: bold; cursor:pointer;" title="View trend">
                             Missing L : <span id="total-miss">0</span>
+                        </span>
+                        <span class="badge bg-info fs-6 p-2" style="color: black; font-weight: bold;" title="Sum of (Inventory × Amazon Price)">
+                            INV Val (Amz): $<span id="inventory-value-amazon">0</span>
                         </span>
                     </div>
                 </div>
@@ -859,6 +862,12 @@
                             showToast('info', response.message || 'No channels to display.');
                         }
                         updateSummaryStats(response.data);
+                        // Update INV Val (Inventory × Amazon Price) badge
+                        const invValEl = document.getElementById('inventory-value-amazon');
+                        if (invValEl && response.inventory_value_amazon != null) {
+                            const val = parseFloat(response.inventory_value_amazon) || 0;
+                            invValEl.textContent = Math.round(val).toLocaleString('en-US');
+                        }
                         if (!dotTrendsLoadedOnce) {
                             dotTrendsLoadedOnce = true;
                             loadMetricDotTrends(response.data);
@@ -929,6 +938,7 @@
                         field: "Miss",
                         hozAlign: "center",
                         sorter: "number",
+                        visible: false,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
                             const rowData = cell.getRow().getData();
@@ -982,6 +992,7 @@
                         field: "NMap",
                         hozAlign: "center",
                         sorter: "number",
+                        visible: false,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
                             const channel = (cell.getRow().getData()['Channel '] || '').trim();
@@ -1013,7 +1024,7 @@
                         hozAlign: "center",
                         sorter: "number",
                         width: 110,
-                        visible: true,
+                        visible: false,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
                             const rowData = cell.getRow().getData();
@@ -1322,7 +1333,7 @@
                         title: "KW $",
                         field: "KW Spent",
                         hozAlign: "center",
-                        visible: true,
+                        visible: false,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
                             const rowData = cell.getRow().getData();
@@ -1349,7 +1360,7 @@
                         title: "PT $",
                         field: "PT Spent",
                         hozAlign: "center",
-                        visible: true,
+                        visible: false,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
                             const rowData = cell.getRow().getData();
@@ -1376,7 +1387,7 @@
                         title: "HL $",
                         field: "HL Spent",
                         hozAlign: "center",
-                        visible: true,
+                        visible: false,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
                             const rowData = cell.getRow().getData();
@@ -1403,7 +1414,7 @@
                         title: "PMT $",
                         field: "PMT Spent",
                         hozAlign: "center",
-                        visible: true,
+                        visible: false,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
                             const rowData = cell.getRow().getData();
@@ -1430,7 +1441,7 @@
                         title: "Shop $",
                         field: "Shopping Spent",
                         hozAlign: "center",
-                        visible: true,
+                        visible: false,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
                             const rowData = cell.getRow().getData();
@@ -1457,7 +1468,7 @@
                         title: "SERP $",
                         field: "SERP Spent",
                         hozAlign: "center",
-                        visible: true,
+                        visible: false,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
                             const rowData = cell.getRow().getData();
@@ -1485,7 +1496,7 @@
                         field: "clicks",
                         hozAlign: "center",
                         sorter: "number",
-                        visible: true,
+                        visible: false,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
                             const channel = (cell.getRow().getData()['Channel '] || '').trim();
@@ -1517,7 +1528,7 @@
                         title: "KW Clicks",
                         field: "KW Clicks",
                         hozAlign: "center",
-                        visible: true,
+                        visible: false,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
                             const rowData = cell.getRow().getData();
@@ -1543,7 +1554,7 @@
                         title: "PT Clicks",
                         field: "PT Clicks",
                         hozAlign: "center",
-                        visible: true,
+                        visible: false,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
                             const rowData = cell.getRow().getData();
@@ -1569,7 +1580,7 @@
                         title: "HL Clicks",
                         field: "HL Clicks",
                         hozAlign: "center",
-                        visible: true,
+                        visible: false,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
                             const rowData = cell.getRow().getData();
@@ -1595,7 +1606,7 @@
                         title: "PMT Clicks",
                         field: "PMT Clicks",
                         hozAlign: "center",
-                        visible: true,
+                        visible: false,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
                             const rowData = cell.getRow().getData();
@@ -1621,7 +1632,7 @@
                         title: "Shop Clicks",
                         field: "Shopping Clicks",
                         hozAlign: "center",
-                        visible: true,
+                        visible: false,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
                             const rowData = cell.getRow().getData();
@@ -1647,7 +1658,7 @@
                         title: "SERP Clicks",
                         field: "SERP Clicks",
                         hozAlign: "center",
-                        visible: true,
+                        visible: false,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
                             const rowData = cell.getRow().getData();
@@ -1675,7 +1686,7 @@
                         hozAlign: "center",
                         sorter: "number",
                         width: 120,
-                        visible: true,
+                        visible: false,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
                             const channel = (cell.getRow().getData()['Channel '] || '').trim();
@@ -1708,7 +1719,7 @@
                         title: "KW Sales",
                         field: "KW Sales",
                         hozAlign: "center",
-                        visible: true,
+                        visible: false,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
                             const rowData = cell.getRow().getData();
@@ -1734,7 +1745,7 @@
                         title: "PT Sales",
                         field: "PT Sales",
                         hozAlign: "center",
-                        visible: true,
+                        visible: false,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
                             const rowData = cell.getRow().getData();
@@ -1760,7 +1771,7 @@
                         title: "HL Sales",
                         field: "HL Sales",
                         hozAlign: "center",
-                        visible: true,
+                        visible: false,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
                             const rowData = cell.getRow().getData();
@@ -1786,7 +1797,7 @@
                         title: "PMT Sales",
                         field: "PMT Sales",
                         hozAlign: "center",
-                        visible: true,
+                        visible: false,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
                             const rowData = cell.getRow().getData();
@@ -1812,7 +1823,7 @@
                         title: "Shop Sales",
                         field: "Shopping Sales",
                         hozAlign: "center",
-                        visible: true,
+                        visible: false,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
                             const rowData = cell.getRow().getData();
@@ -1838,7 +1849,7 @@
                         title: "SERP Sales",
                         field: "SERP Sales",
                         hozAlign: "center",
-                        visible: true,
+                        visible: false,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
                             const rowData = cell.getRow().getData();
@@ -1866,7 +1877,7 @@
                         hozAlign: "center",
                         sorter: "number",
                         width: 100,
-                        visible: true,
+                        visible: false,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
                             const channel = (cell.getRow().getData()['Channel '] || '').trim();
@@ -1898,7 +1909,7 @@
                         title: "KW Sold",
                         field: "KW Sold",
                         hozAlign: "center",
-                        visible: true,
+                        visible: false,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
                             const rowData = cell.getRow().getData();
@@ -1924,7 +1935,7 @@
                         title: "PT Sold",
                         field: "PT Sold",
                         hozAlign: "center",
-                        visible: true,
+                        visible: false,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
                             const rowData = cell.getRow().getData();
@@ -1950,7 +1961,7 @@
                         title: "HL Sold",
                         field: "HL Sold",
                         hozAlign: "center",
-                        visible: true,
+                        visible: false,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
                             const rowData = cell.getRow().getData();
@@ -1976,7 +1987,7 @@
                         title: "PMT Sold",
                         field: "PMT Sold",
                         hozAlign: "center",
-                        visible: true,
+                        visible: false,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
                             const rowData = cell.getRow().getData();
@@ -2002,7 +2013,7 @@
                         title: "Shop Sold",
                         field: "Shopping Sold",
                         hozAlign: "center",
-                        visible: true,
+                        visible: false,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
                             const rowData = cell.getRow().getData();
@@ -2028,7 +2039,7 @@
                         title: "SERP Sold",
                         field: "SERP Sold",
                         hozAlign: "center",
-                        visible: true,
+                        visible: false,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
                             const rowData = cell.getRow().getData();
@@ -2056,7 +2067,7 @@
                         hozAlign: "center",
                         sorter: "number",
                         width: 90,
-                        visible: true,
+                        visible: false,
                         formatter: function(cell) {
                             const value = asPercent(cell.getValue());
                             const channel = (cell.getRow().getData()['Channel '] || '').trim();
@@ -2097,7 +2108,7 @@
                         title: "KW ACOS",
                         field: "KW ACOS",
                         hozAlign: "center",
-                        visible: true,
+                        visible: false,
                         formatter: function(cell) {
                             const value = asPercent(cell.getValue());
                             const rowData = cell.getRow().getData();
@@ -2119,7 +2130,7 @@
                         title: "PT ACOS",
                         field: "PT ACOS",
                         hozAlign: "center",
-                        visible: true,
+                        visible: false,
                         formatter: function(cell) {
                             const value = asPercent(cell.getValue());
                             const rowData = cell.getRow().getData();
@@ -2141,7 +2152,7 @@
                         title: "HL ACOS",
                         field: "HL ACOS",
                         hozAlign: "center",
-                        visible: true,
+                        visible: false,
                         formatter: function(cell) {
                             const value = asPercent(cell.getValue());
                             const rowData = cell.getRow().getData();
@@ -2163,7 +2174,7 @@
                         title: "PMT ACOS",
                         field: "PMT ACOS",
                         hozAlign: "center",
-                        visible: true,
+                        visible: false,
                         formatter: function(cell) {
                             const value = asPercent(cell.getValue());
                             const rowData = cell.getRow().getData();
@@ -2185,7 +2196,7 @@
                         title: "Shop ACOS",
                         field: "Shopping ACOS",
                         hozAlign: "center",
-                        visible: true,
+                        visible: false,
                         formatter: function(cell) {
                             const value = asPercent(cell.getValue());
                             const rowData = cell.getRow().getData();
@@ -2207,7 +2218,7 @@
                         title: "SERP ACOS",
                         field: "SERP ACOS",
                         hozAlign: "center",
-                        visible: true,
+                        visible: false,
                         formatter: function(cell) {
                             const value = asPercent(cell.getValue());
                             const rowData = cell.getRow().getData();
@@ -2231,7 +2242,7 @@
                         hozAlign: "center",
                         sorter: "number",
                         width: 100,
-                        visible: true,
+                        visible: false,
                         formatter: function(cell) {
                             const value = asPercent(cell.getValue());
                             const channel = (cell.getRow().getData()['Channel '] || '').trim();
@@ -2272,7 +2283,7 @@
                         title: "KW CVR",
                         field: "KW CVR",
                         hozAlign: "center",
-                        visible: true,
+                        visible: false,
                         formatter: function(cell) {
                             const value = asPercent(cell.getValue());
                             const rowData = cell.getRow().getData();
@@ -2294,7 +2305,7 @@
                         title: "PT CVR",
                         field: "PT CVR",
                         hozAlign: "center",
-                        visible: true,
+                        visible: false,
                         formatter: function(cell) {
                             const value = asPercent(cell.getValue());
                             const rowData = cell.getRow().getData();
@@ -2316,7 +2327,7 @@
                         title: "HL CVR",
                         field: "HL CVR",
                         hozAlign: "center",
-                        visible: true,
+                        visible: false,
                         formatter: function(cell) {
                             const value = asPercent(cell.getValue());
                             const rowData = cell.getRow().getData();
@@ -2338,7 +2349,7 @@
                         title: "PMT CVR",
                         field: "PMT CVR",
                         hozAlign: "center",
-                        visible: true,
+                        visible: false,
                         formatter: function(cell) {
                             const value = asPercent(cell.getValue());
                             const rowData = cell.getRow().getData();
@@ -2360,7 +2371,7 @@
                         title: "Shop CVR",
                         field: "Shopping CVR",
                         hozAlign: "center",
-                        visible: true,
+                        visible: false,
                         formatter: function(cell) {
                             const value = asPercent(cell.getValue());
                             const rowData = cell.getRow().getData();
@@ -2382,7 +2393,7 @@
                         title: "SERP CVR",
                         field: "SERP CVR",
                         hozAlign: "center",
-                        visible: true,
+                        visible: false,
                         formatter: function(cell) {
                             const value = asPercent(cell.getValue());
                             const rowData = cell.getRow().getData();
@@ -2696,7 +2707,7 @@
                 $('#total-qty').text(Math.round(totalQty).toLocaleString('en-US'));
                 $('#total-clicks').text(Math.round(totalClicks).toLocaleString('en-US'));
                 $('#avg-gprofit').text(avgGprofit.toFixed(1) + '%');
-                $('#avg-groi').text(avgGroi.toFixed(1) + '%');
+                $('#avg-groi').text(Math.round(avgGroi) + '%');
                 $('#total-ad-spend').text('$' + Math.round(totalAdSpend).toLocaleString('en-US'));
                 $('#total-pft').text('$' + Math.round(totalPft).toLocaleString('en-US'));
                 $('#avg-npft').text(avgNpft.toFixed(1) + '%');
@@ -2780,7 +2791,7 @@
             
             const sectionColumns = {
                 'all': 'ALL', // Show all columns
-                'ads': ['Total Ad Spend', 'KW Spent', 'PT Spent', 'HL Spent', 'PMT Spent', 'Shopping Spent', 'SERP Spent', 'clicks', 'Ad Sales', 'ad_sold', 'ACOS', 'Ads CVR', 'TAcos %', 'Missing Ads'],
+                'ads': ['Total Ad Spend', 'KW Spent', 'PT Spent', 'HL Spent', 'PMT Spent', 'Shopping Spent', 'SERP Spent', 'clicks', 'KW Clicks', 'PT Clicks', 'HL Clicks', 'PMT Clicks', 'Shopping Clicks', 'SERP Clicks', 'Ad Sales', 'KW Sales', 'PT Sales', 'HL Sales', 'PMT Sales', 'Shopping Sales', 'SERP Sales', 'ad_sold', 'KW Sold', 'PT Sold', 'HL Sold', 'PMT Sold', 'Shopping Sold', 'SERP Sold', 'ACOS', 'KW ACOS', 'PT ACOS', 'HL ACOS', 'PMT ACOS', 'Shopping ACOS', 'SERP ACOS', 'Ads CVR', 'KW CVR', 'PT CVR', 'HL CVR', 'PMT CVR', 'Shopping CVR', 'SERP CVR', 'TAcos %', 'Missing Ads'],
                 'inv': ['Avl', 'Res', 'Inb', 'Unf', 'Wrk', 'Total Inv', 'Allocated'],
                 'margins': ['G PFT%', 'G ROI%', 'N PFT%', 'N ROI%', 'COGS', 'Total Ad Spend', 'TAcos %'],
                 'movement': ['L30 Sales', 'L30 Orders', 'Qty items', 'Velocity'],
@@ -3600,8 +3611,8 @@
                                 ticks: {
                                     maxRotation: 45,
                                     minRotation: 45,
-                                    autoSkip: true,
-                                    maxTicksLimit: 30,
+                                    autoSkip: currentChartMode === 'metric' ? false : labels.length > 14,
+                                    maxTicksLimit: currentChartMode === 'metric' ? Math.max(labels.length, 31) : (labels.length > 14 ? 14 : labels.length),
                                     font: { size: 8 }
                                 }
                             }
