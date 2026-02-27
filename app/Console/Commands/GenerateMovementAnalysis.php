@@ -31,16 +31,8 @@ class GenerateMovementAnalysis extends Command
 
             $now = Carbon::now();
 
-            $currentYear = $now->year;
-            $currentMonth = $now->month;
-
-            if ($currentMonth >= 11) {
-                $previousMonths = 12 - $currentMonth; 
-            } else {
-                $previousMonths = 2; 
-            }
-
-            $startDate = Carbon::create($currentYear - 1, 12 - $previousMonths + 1, 1)->startOfMonth();
+            // Use last 12 months of order data (inclusive of current month) so we get May, Jun, Jul, Aug, Sep, Oct etc.
+            $startDate = $now->copy()->subMonths(11)->startOfMonth();
             $endDate = $now->copy()->endOfMonth();
 
             $orderData = DB::connection('apicentral')->table('shopify_order_items')
