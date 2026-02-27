@@ -243,7 +243,13 @@
                         <span class="input-group-text bg-white border-end-0">
                             <i class="fas fa-search text-muted"></i>
                         </span>
-                        <input type="text" id="purchase-order-search" class="form-control border-start-0" placeholder="Search PO Number, Supplier name...">
+                        <input type="text" id="purchase-order-search" class="form-control border-start-0" placeholder="Search Supplier name...">
+                    </div>
+                    <div class="input-group" style="max-width: 320px;">
+                        <span class="input-group-text bg-white border-end-0">
+                            <i class="fas fa-box-open text-muted"></i>
+                        </span>
+                        <input type="text" id="search-items" class="form-control border-start-0" placeholder="Search items...">
                     </div>
                     <div class="input-group" style="max-width: 200px;">
                         <label class="input-group-text bg-white border-end-0">Status</label>
@@ -265,16 +271,24 @@
                         </button>
                     </div>
                 </div>
+                <div class="mb-2 d-flex flex-wrap gap-2 align-items-center" id="po-summary-badges">
+                    <span class="badge bg-info fs-6 px-3 py-2">O Amount: <span id="badge-sum-oamount">0</span></span>
+                    <span class="badge bg-primary fs-6 px-3 py-2">Advance: <span id="badge-sum-advance">0</span></span>
+                    <span class="badge bg-success fs-6 px-3 py-2">Balance: <span id="badge-sum-balance">0</span></span>
+                    <span class="badge bg-secondary fs-6 px-3 py-2">CBM: <span id="badge-sum-cbm">0</span></span>
+                </div>
                 <div class="table-responsive">
                     <table class="table table-bordered table-hover align-middle mb-0" id="po-table">
                         <thead class="table-light text-center align-middle">
                             <tr>
                                 <th style="width: 40px;"><input type="checkbox" id="select-all-po" title="Select all"></th>
-                                <th>PO Number</th>
-                                <th>PO Date</th>
-                                <th>Supplier</th>
-                                <th>Advance Amount</th>
-                                <th>SKU List</th>
+                                <th class="po-sortable" data-sort="po_date" style="cursor: pointer; user-select: none;">PO Date <i class="fas fa-sort ms-1 sort-icon"></i></th>
+                                <th class="po-sortable" data-sort="supplier_name" style="cursor: pointer; user-select: none;">Supplier <i class="fas fa-sort ms-1 sort-icon"></i></th>
+                                <th class="po-sortable" data-sort="sku_list" style="cursor: pointer; user-select: none;">Summary <i class="fas fa-sort ms-1 sort-icon"></i></th>
+                                <th class="po-sortable" data-sort="total_amount" style="cursor: pointer; user-select: none;">O Amount <i class="fas fa-sort ms-1 sort-icon"></i></th>
+                                <th class="po-sortable" data-sort="advance_amount" style="cursor: pointer; user-select: none;">Advance <i class="fas fa-sort ms-1 sort-icon"></i></th>
+                                <th class="po-sortable" data-sort="balance" style="cursor: pointer; user-select: none;">Balance <i class="fas fa-sort ms-1 sort-icon"></i></th>
+                                <th class="po-sortable" data-sort="total_cbm" style="cursor: pointer; user-select: none;">CBM <i class="fas fa-sort ms-1 sort-icon"></i></th>
                                 <th style="min-width: 220px;">Actions</th>
                             </tr>
                         </thead>
@@ -320,7 +334,7 @@
                 <div class="modal-body">
                     {{-- PO Header Section --}}
                     <div class="row g-2">
-                        <div class="col-md-3">
+                        <div class="col-md-3 d-none">
                             <label class="form-label fw-semibold">PO Number</label>
                             <input type="text" class="form-control" name="po_number" value="{{ $poNumber }}" readonly>
                         </div>
@@ -360,16 +374,12 @@
                                     <input type="text" class="form-control" name="sku[]" required>
                                 </div>
                                 <div class="col-md-3">
-                                    <label class="form-label fw-semibold">Supplier SKU <span class="text-danger">*</span></label>
-                                    <input type="text" class="form-control" name="supplier_sku[]" required>
+                                    <label class="form-label fw-semibold">Supplier SKU</label>
+                                    <input type="text" class="form-control" name="supplier_sku[]">
                                 </div>
                                 <div class="col-md-3">
                                     <label class="form-label fw-semibold">Product Photo</label>
                                     <input type="file" class="form-control" name="photo[]" accept="image/*">
-                                </div>
-                                <div class="col-md-3">
-                                    <label class="form-label fw-semibold">Barcode</label>
-                                    <input type="file" class="form-control" name="barcode[]" accept="image/*">
                                 </div>
                                 <div class="col-md-3">
                                     <label class="form-label fw-semibold">Tech</label>
@@ -449,7 +459,7 @@
                 <div class="modal-body">
                     {{-- PO Header Section --}}
                     <div class="row g-2">
-                        <div class="col-md-3">
+                        <div class="col-md-3 d-none">
                             <label class="form-label fw-semibold">PO Number</label>
                             <input type="text" class="form-control" name="po_number" readonly>
                         </div>
@@ -512,16 +522,31 @@
     let currentPage = 1;
     const itemsPerPage = 12;
     let allPurchaseOrders = [];
+    let sortColumn = '';
+    let sortDir = 'asc';
 
     document.body.style.zoom = "90%";
     document.addEventListener("DOMContentLoaded", function () {
         getPurchaseOrderData();
 
         document.getElementById("purchase-order-search").addEventListener("input", applyFilters);
+        document.getElementById("search-items").addEventListener("input", applyFilters);
         document.getElementById("po-date-filter").addEventListener("change", applyFilters);
         document.getElementById("archive-filter").addEventListener("change", function() {
             currentPage = 1;
             getPurchaseOrderData();
+        });
+
+        document.querySelectorAll('.po-sortable').forEach(th => {
+            th.addEventListener('click', function() {
+                const key = this.getAttribute('data-sort');
+                if (sortColumn === key) sortDir = sortDir === 'asc' ? 'desc' : 'asc';
+                else { sortColumn = key; sortDir = 'asc'; }
+                currentPage = 1;
+                const filtered = getFilteredData();
+                renderPurchaseOrderTable(filtered);
+                renderPaginationControls(filtered);
+            });
         });
         document.addEventListener('click', function(e) {
             if (e.target.closest('.generate-pdf-btn')) {
@@ -584,10 +609,6 @@
                             <div class="col-md-3">
                                 <label class="form-label fw-semibold">Product Photo</label>
                                 <input type="file" class="form-control" name="photo[]" accept="image/*">
-                            </div>
-                            <div class="col-md-3">
-                                <label class="form-label fw-semibold">Barcode</label>
-                                <input type="file" class="form-control" name="barcode[]" accept="image/*">
                             </div>
                             <div class="col-md-3">
                                 <label class="form-label fw-semibold">Tech</label>
@@ -658,10 +679,6 @@
                     <div class="col-md-3">
                         <label class="form-label fw-semibold">Product Photo</label>
                         <input type="file" class="form-control" name="photo[]" accept="image/*">
-                    </div>
-                    <div class="col-md-3">
-                        <label class="form-label fw-semibold">Barcode</label>
-                        <input type="file" class="form-control" name="barcode[]" accept="image/*">
                     </div>
                     <div class="col-md-3">
                         <label class="form-label fw-semibold">Tech</label>
@@ -741,15 +758,77 @@
         });
     }
 
-    function renderPurchaseOrderTable(data = allPurchaseOrders) {
+    function formatNum(val) {
+        if (val == null || val === '') return '-';
+        const n = parseFloat(val);
+        if (isNaN(n)) return '-';
+        return n % 1 === 0 ? n : n.toFixed(2);
+    }
+
+    function getFilteredData() {
+        const searchValue = document.getElementById("purchase-order-search").value.toLowerCase();
+        const searchItemsValue = document.getElementById("search-items").value.toLowerCase();
+        const selectedDate = document.getElementById("po-date-filter").value;
+        return allPurchaseOrders.filter(order => {
+            const matchesSearch = !searchValue || (order.supplier_name && order.supplier_name.toLowerCase().includes(searchValue));
+            const matchesItems = !searchItemsValue || (order.sku_list && order.sku_list.toLowerCase().includes(searchItemsValue));
+            const matchesDate = selectedDate ? order.po_date === selectedDate : true;
+            return matchesSearch && matchesItems && matchesDate;
+        });
+    }
+
+    function sortData(arr, key, dir) {
+        if (!key || !arr.length) return arr;
+        const mult = dir === 'asc' ? 1 : -1;
+        return [...arr].sort((a, b) => {
+            let va = a[key];
+            let vb = b[key];
+            const isNum = ['total_amount', 'advance_amount', 'balance', 'total_cbm'].includes(key);
+            if (isNum) {
+                va = parseFloat(va) || 0;
+                vb = parseFloat(vb) || 0;
+                return mult * (va - vb);
+            }
+            va = (va ?? '').toString().toLowerCase();
+            vb = (vb ?? '').toString().toLowerCase();
+            return mult * va.localeCompare(vb);
+        });
+    }
+
+    function updateSortIcons() {
+        document.querySelectorAll('.po-sortable').forEach(th => {
+            const key = th.getAttribute('data-sort');
+            const icon = th.querySelector('.sort-icon');
+            if (!icon) return;
+            icon.className = 'fas ms-1 sort-icon ' + (sortColumn === key ? (sortDir === 'asc' ? 'fa-sort-up' : 'fa-sort-down') : 'fa-sort');
+        });
+    }
+
+    function renderPurchaseOrderTable(data) {
         const tbody = document.getElementById("po-table-body");
         tbody.innerHTML = "";
 
-        const source = Array.isArray(data) ? data : allPurchaseOrders;
+        let source = Array.isArray(data) ? data : getFilteredData();
+        if (sortColumn) source = sortData(source, sortColumn, sortDir);
+        updateSortIcons();
+
         const startIndex = (currentPage - 1) * itemsPerPage;
         const endIndex = startIndex + itemsPerPage;
         const currentItems = source.slice(startIndex, endIndex);
         const filterVal = document.getElementById("archive-filter").value;
+
+        // Update summary badges from full source
+        let sumAdvance = 0, sumOAmount = 0, sumBalance = 0, sumCbm = 0;
+        source.forEach(o => {
+            sumAdvance += parseFloat(o.advance_amount) || 0;
+            sumOAmount += parseFloat(o.total_amount) || 0;
+            sumBalance += parseFloat(o.balance) || 0;
+            sumCbm += parseFloat(o.total_cbm) || 0;
+        });
+        document.getElementById("badge-sum-advance").textContent = formatNum(sumAdvance);
+        document.getElementById("badge-sum-oamount").textContent = formatNum(sumOAmount);
+        document.getElementById("badge-sum-balance").textContent = formatNum(sumBalance);
+        document.getElementById("badge-sum-cbm").textContent = formatNum(sumCbm);
 
         if (currentItems.length === 0) {
             const colCount = document.querySelectorAll("#po-table thead th").length;
@@ -765,21 +844,23 @@
             const itemsEsc = JSON.stringify(items).replace(/'/g, "&#39;");
             const isArchived = !!order.is_archived;
             const archiveBtn = (filterVal === "archived" || isArchived)
-                ? `<button type="button" class="btn btn-sm btn-outline-success restore-order-btn" data-order-id="${order.id}" title="Restore">
-                        <i class="fas fa-undo"></i> Restore
+                ? `<button type="button" class="btn btn-sm btn-success restore-order-btn" data-order-id="${order.id}" title="Restore">
+                        <i class="fas fa-undo"></i>
                    </button>`
-                : `<button type="button" class="btn btn-sm btn-outline-secondary archive-order-btn" data-order-id="${order.id}" title="Archive">
-                        <i class="fas fa-archive"></i> Archive
+                : `<button type="button" class="btn btn-sm btn-secondary archive-order-btn" data-order-id="${order.id}" title="Archive">
+                        <i class="fas fa-archive"></i>
                    </button>`;
 
             const tr = document.createElement("tr");
             tr.innerHTML = `
                 <td class="text-center"><input type="checkbox" class="order-checkbox" data-order-id="${order.id}"/></td>
-                <td class="fw-semibold text-primary">${order.po_number || '-'}</td>
                 <td class="text-center">${order.po_date || '-'}</td>
                 <td>${order.supplier_name || '-'}</td>
-                <td class="text-center">${order.advance_amount != null && order.advance_amount !== '' ? order.advance_amount : '-'}</td>
                 <td class="small">${order.sku_list || '-'}</td>
+                <td class="text-center">${formatNum(order.total_amount)}</td>
+                <td class="text-center">${formatNum(order.advance_amount)}</td>
+                <td class="text-center">${formatNum(order.balance)}</td>
+                <td class="text-center">${formatNum(order.total_cbm)}</td>
                 <td class="text-center">
                     <div class="btn-group btn-group-actions flex-wrap gap-1 justify-content-center">
                         <button type="button" class="btn btn-sm btn-warning edit-order-btn" data-order='${orderEsc}' data-items='${itemsEsc}' title="Edit">
@@ -876,7 +957,6 @@
                                 <tr>
                                     <th>Photo</th>
                                     <th>5 Core SKU</th>
-                                    <th>Barcode</th>
                                     <th>Supplier SKU</th>
                                     <th>Tech</th>
                                     <th>Qty</th>
@@ -907,16 +987,6 @@
                                     : '<span class="text-muted">No Image</span>'}
                             </td>
                             <td><span class="fw-semibold">${item.sku || '-'}</span></td>
-                            <td>
-                                ${item.barcode 
-                                    ? `<div class="img-hover-barcode">
-                                            <img src="/storage/${item.barcode}" alt="Barcode" class="barcode-img">
-                                            <div class="zoomed-barcode">
-                                                <img src="/storage/${item.barcode}" alt="Zoomed Barcode">
-                                            </div>
-                                        </div>`
-                                    : '<span class="text-muted">No Image</span>'}
-                            </td>
                             <td>${item.supplier_sku || '-'}</td>
                             <td>${item.tech || '-'}</td>
                             <td><span class="badge bg-primary-subtle text-dark">${item.qty || 0}</span></td>
@@ -980,19 +1050,17 @@
 
     function applyFilters() {
         const searchValue = document.getElementById("purchase-order-search").value.toLowerCase();
+        const searchItemsValue = document.getElementById("search-items").value.toLowerCase();
         const selectedDate = document.getElementById("po-date-filter").value;
 
         currentPage = 1;
 
         const filtered = allPurchaseOrders.filter(order => {
-            const matchesSearch = (
-                (order.po_number && order.po_number.toLowerCase().includes(searchValue)) ||
-                (order.supplier_name && order.supplier_name.toLowerCase().includes(searchValue))
-            );
-
+            const matchesSearch = !searchValue || (order.supplier_name && order.supplier_name.toLowerCase().includes(searchValue));
+            const matchesItems = !searchItemsValue || (order.sku_list && order.sku_list.toLowerCase().includes(searchItemsValue));
             const matchesDate = selectedDate ? order.po_date === selectedDate : true;
 
-            return matchesSearch && matchesDate;
+            return matchesSearch && matchesItems && matchesDate;
         });
 
         renderPurchaseOrderTable(filtered);

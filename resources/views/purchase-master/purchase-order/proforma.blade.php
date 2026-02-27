@@ -143,10 +143,25 @@
             }
         }
         .wrap-text {
-            max-width: 150px;     
             word-wrap: break-word;
-            white-space: normal;  
-            font-size: 12px;      
+            white-space: normal;
+            font-size: 12px;
+        }
+
+        .col-5core-sku {
+            max-width: 110px;
+            width: 110px;
+            word-wrap: break-word;
+            white-space: normal;
+            font-size: 12px;
+        }
+
+        .col-tech {
+            min-width: 280px;
+            max-width: 320px;
+            word-wrap: break-word;
+            white-space: normal;
+            font-size: 12px;
         }
     </style>
 </head>
@@ -206,9 +221,8 @@
             <thead>
                 <tr>
                     <th>Photo</th>
-                    <th>5 Core + Supplier SKU</th>
-                    <th>Barcode</th>
-                    <th>Tech</th>
+                    <th class="col-5core-sku">5 Core + Supplier SKU</th>
+                    <th class="col-tech">Tech</th>
                     <th>NW + GW (KG)</th>
                     <th>CBM</th>
                     <th>QTY</th>
@@ -217,11 +231,12 @@
                 </tr>
             </thead>
             <tbody>
-                @php $subtotal = 0; @endphp
+                @php $subtotal = 0; $cbmTotal = 0; @endphp
                 @foreach ($items as $i => $item)
                     @php
                         $lineTotal = $item->qty * $item->price;
                         $subtotal += $lineTotal;
+                        $cbmTotal += ($item->qty ?? 0) * (float)($item->cbm ?? 0);
 
                         // Currency symbol
                         $currencySymbol = '$'; // default
@@ -236,9 +251,8 @@
                     @endphp
                     <tr>
                         <td><img src="/storage/{{ $item->photo }}" width="50px" height="50px" /></td>
-                        <td>{{ $item->sku ?? '' }} + {{ $item->supplier_sku }}</td>
-                        <td><img src="/storage/{{ $item->barcode }}" width="50px" height="50px" /></td>
-                        <td class="wrap-text">{{ $item->tech }}</td>
+                        <td class="col-5core-sku">{{ $item->sku ?? '' }} + {{ $item->supplier_sku }}</td>
+                        <td class="wrap-text col-tech">{{ $item->tech }}</td>
                         <td>{{ $item->nw }} / {{ $item->gw }}</td>
                         <td>{{ $item->cbm }}</td>
                         <td>{{ $item->qty }}</td>
@@ -249,7 +263,7 @@
             </tbody>
             <tfoot>
                 <tr>
-                    <td colspan="8" class="text-end">Grand Total</td>
+                    <td colspan="7" class="text-end">Grand Total</td>
                     <td>{{ $currencySymbol }}{{ number_format($subtotal, 2) }}</td>
                 </tr>
             </tfoot>
@@ -268,7 +282,7 @@
                         </svg>
                     </h6>
                     <ul class="mb-0">
-                        <li>Delivery: 25 days after advance payment.</li>
+                        <li>Delivery: 25 days within advance payment.</li>
                         <li>Product quality as per approved samples.</li>
                     </ul>
                 </div>
@@ -293,8 +307,9 @@
                         @endphp
                         <div>Subtotal: <span class="float-end">{{ $currencySymbol }}{{ number_format($total, 2) }}</span></div>
                         <div>Advance: <span class="float-end">{{ $currencySymbol }}{{ number_format($order->advance_amount ?? 0, 2) }}</span></div>
-                        <div>Balance Due: <span class="float-end">{{ $currencySymbol }}{{ number_format($total - ($order->advance_amount ?? 0), 2) }}</span></div>
+                        <div>Balance Due: <span class="float-end">{{ $currencySymbol }}{{ number_format(round($total - ($order->advance_amount ?? 0), 0), 0) }}</span></div>
                     @endforeach
+                    <div class="mt-2 pt-2" style="border-top: 1px solid rgba(106,27,154,0.3);">CBM Total: <span class="float-end">{{ number_format($cbmTotal, 2) }}</span></div>
                 </div>
             </div>
 
@@ -307,29 +322,32 @@
                     '• We want to have repeat order if all quality and packaging is 100% okay.',
                 ],
                 'Time' => [
-                    '• Delivery after 25 days of deposit.',
-                    '• No printing any Chinese letters. Only "made in China" on outer box.',
+                    '• Delivery within 25 days of deposit',
                 ],
                 'Packaging' => [
+                    '• No printing any Chinese letters. Only "made in China" on outer box.',
                     '• Customized packing - 2 color logo on product, customized color gift box, customized manual book / inner box 3ply & outer box 5ply.',
-                    '• Print logo & "www.5CORE.com" & company certification logo & barcode & model/ref number on the individual GIFT boxes.',
+                    '• Inner Box - Print logo, www.5CORE.com, certification, logo, barcode, SKU on GIFT boxes + inner box.',
                     '• Need to put a sticker/print with Barcode and sku on top of polymailer bag/brown inner box.',
-                    '• Master carton should weigh less than 20LB and max size of 25x25x25 inch (63x63x63 cm).',
-                    '• Master carton must contain 5 Core Logo, SKU, Quantity, Gross Weight (in Lbs), Dimensions (in Inches), Box No. - xx/xxx.',
-                    '• SKU should be printed on 5 sides of the outer carton (except bottom). Mention color variation if any.',
+                    '• Master carton should weigh within (15 KG to 22 kg maximum) and within size of 18x18x18 to max 25x25x25 inch.',
+                    '• Master carton must contain 5 Core Logo, SKU, QTY, GW (Lbs), Size (in Inch), Box No. xx.',
                     '• Provide extra color and brown gift boxes for repackaging damaged items.',
                     '• Add color stickers on each gift and outer carton for color variants.',
                     '• Apply cello tape on corners of inner/outer box for secure packaging.',
+                    '• Use standard pallet size for small loose items that are very heavy.',
                 ],
                 'Payment Terms' => [
-                    '• Delivery after 25 days of 20% deposit, balance before shipping.',
+                    '• 20% deposit, balance before shipping.',
+                    '• 20% deposit, balance before Release of BL.',
+                    '• 10% deposit, balance before Release of BL.',
+                    '• 30% deposit, balance before Release of BL.',
                     '• Each item includes 2% additional free goods for damages.',
                 ],
                 'Replacements' => [
                     '• High-quality (8 pics) HD pictures + 1 video + description + specifications with client logo for marketing.',
                 ],
                 'Others' => [
-                    '• Manual book required in English and Spanish with 5CORE logo printed on it.',
+                    '• User Manual /Assembly book required in English and Spanish with 5CORE logo printed on it.',
                 ],
             ];
         @endphp

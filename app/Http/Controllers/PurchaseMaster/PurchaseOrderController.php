@@ -50,14 +50,12 @@ class PurchaseOrderController extends Controller
         $cbms = $request->cbm ?? [];
 
         $photos = $request->file('photo') ?? [];
-        $barcodes = $request->file('barcode') ?? [];
 
         $items = [];
         $totalAmount = 0;
 
         foreach ($skus as $index => $sku) {
             $photoPath = isset($photos[$index]) ? $photos[$index]->store('purchase_orders/photos', 'public') : null;
-            $barcodePath = isset($barcodes[$index]) ? $barcodes[$index]->store('purchase_orders/barcodes', 'public') : null;
 
             $qty = $qtys[$index] ?? 0;
             $price = $prices[$index] ?? 0;
@@ -77,7 +75,6 @@ class PurchaseOrderController extends Controller
                 'gw' => $gws[$index] ?? null,
                 'cbm' => $cbms[$index] ?? null,
                 'photo' => $photoPath,
-                'barcode' => $barcodePath,
             ];
         }
 
@@ -122,11 +119,9 @@ class PurchaseOrderController extends Controller
             for ($i = 0; $i < count($request->sku); $i++) {
                 
                 $photoPath = $request->hasFile("photo.$i") ? $request->file("photo.$i")->store('purchase_orders/photos', 'public') : null;
-                $barcodePath = $request->hasFile("barcode.$i") ? $request->file("barcode.$i")->store('purchase_orders/barcodes', 'public') : null;
 
                 $existingItems = json_decode($po->items, true);
                 $existingPhoto = $existingItems[$i]['photo'] ?? null;
-                $existingBarcode = $existingItems[$i]['barcode'] ?? null;
 
                 $qty = $request->qty[$i] ?? 0;
                 $price = $request->price[$i] ?? 0;
@@ -146,7 +141,6 @@ class PurchaseOrderController extends Controller
                     'gw' => $request->gw[$i] ?? 0,
                     'cbm' => $request->cbm[$i] ?? 0,
                     'photo' => $photoPath ?? $existingPhoto,
-                    'barcode' => $barcodePath ?? $existingBarcode,
                 ];
             }
         }
@@ -162,7 +156,7 @@ class PurchaseOrderController extends Controller
     {
         $filter = $request->query('filter', 'active'); // active | archived | all
 
-        $query = PurchaseOrder::select('id', 'po_number', 'po_date', 'supplier_id', 'items', 'advance_amount', 'is_archived')
+        $query = PurchaseOrder::select('id', 'po_number', 'po_date', 'supplier_id', 'items', 'advance_amount', 'total_amount', 'is_archived')
             ->with('supplier:id,name');
 
         if ($filter === 'active') {
@@ -173,7 +167,7 @@ class PurchaseOrderController extends Controller
             $query->where('is_archived', true);
         }
 
-        $orders = $query->latest()->get();
+        $orders = $query->oldest()->get();
 
         $orders = $orders->map(function ($order) {
             $items = collect(json_decode($order->items));
@@ -184,6 +178,14 @@ class PurchaseOrderController extends Controller
                 $skuList .= '...';
             }
 
+            $advance = (float) ($order->advance_amount ?? 0);
+            $totalAmount = (float) ($order->total_amount ?? 0);
+            $balance = $totalAmount - $advance;
+
+            $totalCbm = $items->sum(function ($item) {
+                return (float) ($item->cbm ?? 0);
+            });
+
             return [
                 'id' => $order->id,
                 'po_number' => $order->po_number,
@@ -191,10 +193,12 @@ class PurchaseOrderController extends Controller
                 'supplier_name' => $order->supplier->name ?? '',
                 'supplier_id' => $order->supplier_id ?? '',
                 'advance_amount' => $order->advance_amount ?? '',
+                'total_amount' => $totalAmount,
+                'balance' => $balance,
+                'total_cbm' => $totalCbm,
                 'is_archived' => (bool) ($order->is_archived ?? false),
                 'sku_list' => $skuList,
                 'photo' => $firstItem->photo ?? '',
-                'barcode' => $firstItem->barcode ?? '',
                 'items_json' => $order->items,
             ];
         });
