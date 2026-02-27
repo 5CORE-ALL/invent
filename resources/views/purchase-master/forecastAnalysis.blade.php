@@ -1967,6 +1967,21 @@
                 saveColumnVisibilityToLocalStorage();
             });
 
+            // On focus, select all text in MOQ so user can replace whole value in one go
+            $(document).off('focus', '.editable-qty').on('focus', '.editable-qty', function() {
+                const $cell = $(this);
+                if ($cell.data('field') !== 'MOQ') return;
+                const el = this;
+                setTimeout(function() {
+                    if (typeof window.getSelection !== 'undefined' && typeof document.createRange !== 'undefined') {
+                        const range = document.createRange();
+                        range.selectNodeContents(el);
+                        const sel = window.getSelection();
+                        if (sel) { sel.removeAllRanges(); sel.addRange(range); }
+                    }
+                }, 0);
+            });
+
             // Handle editable field
             $(document).off('blur', '.editable-qty').on('blur', '.editable-qty', function() {
                 const $cell = $(this);
