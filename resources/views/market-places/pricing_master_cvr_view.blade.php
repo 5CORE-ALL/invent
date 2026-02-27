@@ -2326,7 +2326,7 @@ title: "Dil %",
             }
             
             if (onlyAmazon) {
-                html += '<div class="table-responsive"><table class="table table-hover table-bordered table-sm"><thead class="table-light"><tr><th>#</th><th>SKU</th><th>ASIN</th><th>Amz</th><th>Title</th><th>Rating</th><th>Reviews</th><th>Old Price</th><th>Delivery</th><th>Action</th></tr></thead><tbody>';
+                html += '<div class="table-responsive"><table class="table table-hover table-bordered table-sm"><thead class="table-light"><tr><th>#</th><th>Amz</th><th>Title</th><th>Rating</th><th>Reviews</th><th>Old Price</th><th>Delivery</th><th>Action</th></tr></thead><tbody>';
                 amzList.forEach(function(amz, i) {
                     const sn = 'L' + (i + 1);
                     const amzPrice = parseFloat(amz.price) || 0;
@@ -2346,10 +2346,10 @@ title: "Dil %",
                     const deliveryCell = (amz.delivery || '').substring(0, 50) + ((amz.delivery || '').length > 50 ? '...' : '') || '<span class="text-muted">-</span>';
                     const rowClass = amzLowestFlag ? 'table-success' : '';
                     const delBtn = '<button type="button" class="btn btn-sm btn-outline-danger delete-lmp-row-btn" data-id="' + amz.id + '" data-marketplace="amazon" data-sku="' + (sku || '').replace(/"/g, '&quot;') + '" data-price="' + amzPrice + '" title="Delete this competitor"><i class="fa fa-trash"></i></button>';
-                    html += `<tr class="${rowClass}"><td>${sn}</td><td>${sku}</td><td>${amz.asin || '-'}</td><td>${amzCell}</td><td title="${(amz.product_title || '').replace(/"/g, '&quot;')}">${title || '-'}</td><td>${ratingCell}</td><td>${reviewsCell}</td><td>${oldPriceCell}</td><td title="${(amz.delivery || '').replace(/"/g, '&quot;')}">${deliveryCell}</td><td>${delBtn}</td></tr>`;
+                    html += `<tr class="${rowClass}"><td>${sn}</td><td>${amzCell}</td><td title="${(amz.product_title || '').replace(/"/g, '&quot;')}">${title || '-'}</td><td>${ratingCell}</td><td>${reviewsCell}</td><td>${oldPriceCell}</td><td title="${(amz.delivery || '').replace(/"/g, '&quot;')}">${deliveryCell}</td><td>${delBtn}</td></tr>`;
                 });
             } else if (onlyEbay) {
-                html += '<div class="table-responsive"><table class="table table-hover table-bordered table-sm"><thead class="table-light"><tr><th>#</th><th>SKU</th><th>eBay</th><th>Action</th></tr></thead><tbody>';
+                html += '<div class="table-responsive"><table class="table table-hover table-bordered table-sm"><thead class="table-light"><tr><th>#</th><th>eBay</th><th>Action</th></tr></thead><tbody>';
                 ebayList.forEach(function(ebay, i) {
                     const sn = 'L' + (i + 1);
                     const ebayPrice = parseFloat(ebay.total_price || ebay.price) || 0;
@@ -2362,10 +2362,10 @@ title: "Dil %",
                         : `<div class="d-flex align-items-center">${ebayImgHtml}<span class="text-muted">-</span></div>`;
                     const rowClass = ebayLowestFlag ? 'table-success' : '';
                     const delBtn = '<button type="button" class="btn btn-sm btn-outline-danger delete-lmp-row-btn" data-id="' + ebay.id + '" data-marketplace="ebay" data-sku="' + (sku || '').replace(/"/g, '&quot;') + '" data-price="' + ebayPrice + '" title="Delete this competitor"><i class="fa fa-trash"></i></button>';
-                    html += `<tr class="${rowClass}"><td>${sn}</td><td>${sku}</td><td>${ebayCell}</td><td>${delBtn}</td></tr>`;
+                    html += `<tr class="${rowClass}"><td>${sn}</td><td>${ebayCell}</td><td>${delBtn}</td></tr>`;
                 });
             } else {
-                html += '<div class="table-responsive"><table class="table table-hover table-bordered table-sm"><thead class="table-light"><tr><th>#</th><th>SKU</th><th>Amz</th><th>Rating</th><th>Reviews</th><th>Old Price</th><th>Delivery</th><th>eBay</th><th>Action</th></tr></thead><tbody>';
+                html += '<div class="table-responsive"><table class="table table-hover table-bordered table-sm"><thead class="table-light"><tr><th>#</th><th>Amz</th><th>Rating</th><th>Reviews</th><th>Old Price</th><th>Delivery</th><th>eBay</th><th>Action</th></tr></thead><tbody>';
                 for (let i = 0; i < maxRows; i++) {
                     const sn = 'L' + (i + 1);
                     const amz = amzList[i];
@@ -2401,7 +2401,7 @@ title: "Dil %",
                         actionCell += '<button type="button" class="btn btn-sm btn-outline-danger delete-lmp-row-btn" data-id="' + ebay.id + '" data-marketplace="ebay" data-sku="' + (sku || '').replace(/"/g, '&quot;') + '" data-price="' + (ebayPrice || 0) + '" title="Delete eBay"><i class="fa fa-trash"></i></button>';
                     }
                     if (!actionCell) actionCell = '<span class="text-muted">-</span>';
-                    html += `<tr class="${rowClass}"><td>${sn}</td><td>${sku}</td><td>${amzCell}</td><td>${ratingCell}</td><td>${reviewsCell}</td><td>${oldPriceCell}</td><td title="${(amz && amz.delivery) ? (amz.delivery + '').replace(/"/g, '&quot;') : ''}">${deliveryCell}</td><td>${ebayCell}</td><td>${actionCell}</td></tr>`;
+                    html += `<tr class="${rowClass}"><td>${sn}</td><td>${amzCell}</td><td>${ratingCell}</td><td>${reviewsCell}</td><td>${oldPriceCell}</td><td title="${(amz && amz.delivery) ? (amz.delivery + '').replace(/"/g, '&quot;') : ''}">${deliveryCell}</td><td>${ebayCell}</td><td>${actionCell}</td></tr>`;
                 }
             }
             
