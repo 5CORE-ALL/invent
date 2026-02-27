@@ -658,9 +658,10 @@
             </div>
             <div class="card-body" style="padding: 0;">
                 <div id="cvr-table-wrapper" style="height: calc(100vh - 200px); display: flex; flex-direction: column;">
-                    <!-- SKU Search -->
-                    <div class="p-2 bg-light border-bottom">
-                        <input type="text" id="sku-search" class="form-control" placeholder="Search SKU...">
+                    <!-- SKU & Parent Search -->
+                    <div class="p-2 bg-light border-bottom d-flex flex-wrap gap-2 align-items-center">
+                        <input type="text" id="sku-search" class="form-control" placeholder="Search SKU..." style="max-width: 220px;">
+                        <input type="text" id="parent-search" class="form-control" placeholder="Search Parent..." style="max-width: 220px;">
                     </div>
                     <!-- Table body -->
                     <div id="cvr-table" style="flex: 1;"></div>
@@ -774,7 +775,7 @@
             else if (dilValue >= 5 && dilValue < 10) dilColor = '#28a745'; // Green
             else dilColor = '#e83e8c'; // Pink
             
-            $('#modal-header-dil').html(`<span style="color: ${dilColor}; font-weight: 600;">${dilValue.toFixed(1)}%</span>`);
+            $('#modal-header-dil').html(`<span style="${styleForCellColor(dilColor)}">${dilValue.toFixed(1)}%</span>`);
             
             showModalLoading(sku);
             
@@ -1016,13 +1017,13 @@
                         <td class="text-end ${textClass}">${isListed ? l30.toLocaleString() : '-'}</td>
                         <td class="text-end ${textClass}">${isListed ? '$' + parseFloat(item.price || 0).toFixed(2) : '-'}</td>
                         <td class="text-end ${textClass}">${isListed ? views.toLocaleString() : '-'}</td>
-                        <td class="text-end ${textClass}">${isListed && views > 0 ? '<span style="color: ' + cvrColor + '; font-weight: 600;">' + cvr.toFixed(1) + '%</span>' : '-'}</td>
-                        <td class="text-end ${textClass}">${isListed && gpft !== 0 ? '<span style="color: ' + gpftColor + '; font-weight: 600;">' + Math.round(gpft) + '%</span>' : '-'}</td>
-                        <td class="text-end ${textClass}">${isListed ? '<span style="color: ' + adColor + '; font-weight: 600;">' + ad.toFixed(1) + '%</span>' : '-'}</td>
+                        <td class="text-end ${textClass}">${isListed && views > 0 ? '<span style="' + styleForCellColor(cvrColor) + '">' + cvr.toFixed(1) + '%</span>' : '-'}</td>
+                        <td class="text-end ${textClass}">${isListed && gpft !== 0 ? '<span style="' + styleForCellColor(gpftColor) + '">' + Math.round(gpft) + '%</span>' : '-'}</td>
+                        <td class="text-end ${textClass}">${isListed ? '<span style="' + styleForCellColor(adColor) + '">' + ad.toFixed(1) + '%</span>' : '-'}</td>
                         <td class="text-end ${textClass}">
-                            ${isListed && tacosCh !== 0 ? '<span style="color: ' + tacosColor + '; font-weight: 600;">' + tacosCh.toFixed(1) + '%</span>' : '-'}
+                            ${isListed && tacosCh !== 0 ? '<span style="' + styleForCellColor(tacosColor) + '">' + tacosCh.toFixed(1) + '%</span>' : '-'}
                         </td>
-                        <td class="text-end ${textClass}">${isListed && npft !== 0 ? '<span style="color: ' + npftColor + '; font-weight: 600;">' + Math.round(npft) + '%</span>' : '-'}</td>
+                        <td class="text-end ${textClass}">${isListed && npft !== 0 ? '<span style="' + styleForCellColor(npftColor) + '">' + Math.round(npft) + '%</span>' : '-'}</td>
                         <td class="text-center ${textClass}">
                             ${isListed ? 
                                 '<i class="fas fa-circle lmp-info-icon" style="cursor: pointer; color: #17a2b8; font-size: 10px;" ' +
@@ -1043,13 +1044,13 @@
                                 : (sprice > 0 ? '$' + sprice.toFixed(2) : '-')}
                         </td>
                         <td class="text-end ${textClass}">
-                            <span class="calculated-sgpft" style="color: ${sgpftColor}; font-weight: 600;">${Math.round(sgpft)}%</span>
+                            <span class="calculated-sgpft" style="${styleForCellColor(sgpftColor)}">${Math.round(sgpft)}%</span>
                         </td>
                         <td class="text-end ${textClass}">
-                            <span class="calculated-spft" style="color: ${spftColor}; font-weight: 600;">${Math.round(spft)}%</span>
+                            <span class="calculated-spft" style="${styleForCellColor(spftColor)}">${Math.round(spft)}%</span>
                         </td>
                         <td class="text-end ${textClass}">
-                            <span class="calculated-sroi" style="color: ${sroiColor}; font-weight: 600;">${Math.round(sroi)}%</span>
+                            <span class="calculated-sroi" style="${styleForCellColor(sroiColor)}">${Math.round(sroi)}%</span>
                         </td>
                         <td class="text-center ${textClass}">
                             ${canPushPrice ? 
@@ -1154,16 +1155,16 @@
             $('#modal-total-price').text('$' + avgPrice.toFixed(2));
             $('#modal-total-views').text(totalViews.toLocaleString());
             $('#modal-total-l30').text(totalL30.toLocaleString());
-            $('#modal-avg-cvr').html(`<span style="color: ${cvrColorTotal}; font-weight: 600;">${avgCVR.toFixed(1)}%</span>`);
-            $('#modal-avg-gpft').html(`<span style="color: ${gpftColorTotal}; font-weight: 600;">${avgGPFT.toFixed(1)}%</span>`);
-            $('#modal-avg-ad').html(`<span style="color: ${adColorTotal}; font-weight: 600;">${avgAD.toFixed(1)}%</span>`);
-            $('#modal-avg-tacos').html(`<span style="color: ${tacosColorTotal}; font-weight: 600;">${avgTACOS.toFixed(1)}%</span>`);
-            $('#modal-avg-npft').html(`<span style="color: ${npftColorTotal}; font-weight: 600;">${avgNPFT.toFixed(1)}%</span>`);
+            $('#modal-avg-cvr').html(`<span style="${styleForCellColor(cvrColorTotal)}">${avgCVR.toFixed(1)}%</span>`);
+            $('#modal-avg-gpft').html(`<span style="${styleForCellColor(gpftColorTotal)}">${avgGPFT.toFixed(1)}%</span>`);
+            $('#modal-avg-ad').html(`<span style="${styleForCellColor(adColorTotal)}">${avgAD.toFixed(1)}%</span>`);
+            $('#modal-avg-tacos').html(`<span style="${styleForCellColor(tacosColorTotal)}">${avgTACOS.toFixed(1)}%</span>`);
+            $('#modal-avg-npft').html(`<span style="${styleForCellColor(npftColorTotal)}">${avgNPFT.toFixed(1)}%</span>`);
             
             $('#modal-avg-sprice').text('$' + (spriceCount > 0 ? totalSPRICE / spriceCount : 0).toFixed(2));
-            $('#modal-avg-sgpft').html(`<span style="color: ${sgpftColorTotal}; font-weight: 600;">${avgSGPFT.toFixed(1)}%</span>`);
-            $('#modal-avg-spft').html(`<span style="color: ${spftColorTotal}; font-weight: 600;">${avgSPFT.toFixed(1)}%</span>`);
-            $('#modal-avg-sroi').html(`<span style="color: ${sroiColorTotal}; font-weight: 600;">${avgSROI.toFixed(1)}%</span>`);
+            $('#modal-avg-sgpft').html(`<span style="${styleForCellColor(sgpftColorTotal)}">${avgSGPFT.toFixed(1)}%</span>`);
+            $('#modal-avg-spft').html(`<span style="${styleForCellColor(spftColorTotal)}">${avgSPFT.toFixed(1)}%</span>`);
+            $('#modal-avg-sroi').html(`<span style="${styleForCellColor(sroiColorTotal)}">${avgSROI.toFixed(1)}%</span>`);
         }
 
         // ==================== TABULATOR INITIALIZATION ====================
@@ -1283,8 +1284,11 @@
                         const rowData = cell.getRow().getData();
                         const value = parseFloat(cell.getValue() || 0);
                         let html = value === 0 ? '<span style="color: #dc3545; font-weight: 600;">0</span>' : `<span style="font-weight: 600;">${value}</span>`;
-                        if (rowData.is_parent_summary !== true) {
-                            const skuEsc = (rowData.sku || '').replace(/"/g, '&quot;');
+                        const parentEsc = (rowData.parent || '').replace(/"/g, '&quot;');
+                        const skuEsc = (rowData.sku || '').replace(/"/g, '&quot;');
+                        if (rowData.is_parent_summary === true) {
+                            html += ' <i class="fas fa-circle pricing-master-chart-link ms-1" data-metric="inv" data-parent="' + parentEsc + '" data-sku="' + skuEsc + '" style="cursor:pointer;color:#4361ee;font-size:8px;vertical-align:middle;" title="View Inv graph (Parent, Rolling L30)"></i>';
+                        } else {
                             html += ' <i class="fas fa-circle pricing-master-chart-link ms-1" data-metric="inv" data-sku="' + skuEsc + '" style="cursor:pointer;color:#4361ee;font-size:8px;vertical-align:middle;" title="View Inv graph (Rolling L30)"></i>';
                         }
                         return html;
@@ -1300,10 +1304,12 @@
                         const value = parseFloat(cell.getValue() || 0);
                         const rowData = cell.getRow().getData();
                         const sku = rowData.sku;
-                        if (rowData.is_parent_summary === true) {
-                            return `<span style="font-weight: 600;">${value}</span>`;
-                        }
+                        const parentEsc = (rowData.parent || '').replace(/"/g, '&quot;');
                         const skuEsc = (sku || '').replace(/"/g, '&quot;');
+                        if (rowData.is_parent_summary === true) {
+                            return `<span style="font-weight: 600;">${value}</span>
+                            <i class="fas fa-circle pricing-master-chart-link ms-1" data-metric="ov_l30" data-parent="${parentEsc}" data-sku="${skuEsc}" style="cursor:pointer;color:#28a745;font-size:8px;vertical-align:middle;" title="View OV L30 graph (Parent, Rolling L30)"></i>`;
+                        }
                         return `<span style="font-weight: 600;">${value}</span>
                             <i class="fas fa-circle pricing-master-chart-link ms-1" data-metric="ov_l30" data-sku="${skuEsc}" style="cursor:pointer;color:#28a745;font-size:8px;vertical-align:middle;" title="View OV L30 graph (Rolling L30)"></i>`;
                     }
@@ -1348,10 +1354,13 @@ title: "Dil %",
                         else if (value >= 25 && value < 50) color = '#28a745';
                         else color = '#e83e8c';
 
-                        let html = `<span style="color: ${color}; font-weight: 600;">${Math.round(value)}%</span>`;
-                        if (rowData.is_parent_summary !== true) {
-                            const skuEsc = (rowData.sku || '').replace(/"/g, '&quot;');
-                            html += ' <i class="fas fa-circle pricing-master-chart-link ms-1" data-metric="dil" data-sku="' + skuEsc + '" style="cursor:pointer;color:#0d6efd;font-size:8px;vertical-align:middle;" title="View DIL history (Rolling L30)"></i>';
+                        let html = `<span style="${styleForCellColor(color)}">${Math.round(value)}%</span>`;
+                        const parentEscDil = (rowData.parent || '').replace(/"/g, '&quot;');
+                        const skuEscDil = (rowData.sku || '').replace(/"/g, '&quot;');
+                        if (rowData.is_parent_summary === true) {
+                            html += ' <i class="fas fa-circle pricing-master-chart-link ms-1" data-metric="dil" data-parent="' + parentEscDil + '" data-sku="' + skuEscDil + '" style="cursor:pointer;color:#0d6efd;font-size:8px;vertical-align:middle;" title="View DIL history (Parent, Rolling L30)"></i>';
+                        } else {
+                            html += ' <i class="fas fa-circle pricing-master-chart-link ms-1" data-metric="dil" data-sku="' + skuEscDil + '" style="cursor:pointer;color:#0d6efd;font-size:8px;vertical-align:middle;" title="View DIL history (Rolling L30)"></i>';
                         }
                         return html;
                     },
@@ -1371,10 +1380,13 @@ title: "Dil %",
                         else if (value >= 1 && value < 3) color = '#ffc107';
                         else if (value >= 3 && value < 5) color = '#28a745';
                         else color = '#e83e8c';
-                        let html = `<span style="color: ${color}; font-weight: 600;">${value.toFixed(1)}%</span>`;
-                        if (rowData.is_parent_summary !== true) {
-                            const skuEsc = (rowData.sku || '').replace(/"/g, '&quot;');
-                            html += ' <i class="fas fa-circle pricing-master-chart-link ms-1" data-metric="cvr" data-sku="' + skuEsc + '" style="cursor:pointer;color:#ffc107;font-size:8px;vertical-align:middle;" title="View CVR graph (Rolling L30)"></i>';
+                        let html = `<span style="${styleForCellColor(color)}">${value.toFixed(1)}%</span>`;
+                        const parentEscCvr = (rowData.parent || '').replace(/"/g, '&quot;');
+                        const skuEscCvr = (rowData.sku || '').replace(/"/g, '&quot;');
+                        if (rowData.is_parent_summary === true) {
+                            html += ' <i class="fas fa-circle pricing-master-chart-link ms-1" data-metric="cvr" data-parent="' + parentEscCvr + '" data-sku="' + skuEscCvr + '" style="cursor:pointer;background-color:#ffc107;color:#0f172a;font-size:8px;vertical-align:middle;border-radius:50%;" title="View CVR graph (Parent, Rolling L30)"></i>';
+                        } else {
+                            html += ' <i class="fas fa-circle pricing-master-chart-link ms-1" data-metric="cvr" data-sku="' + skuEscCvr + '" style="cursor:pointer;background-color:#ffc107;color:#0f172a;font-size:8px;vertical-align:middle;border-radius:50%;" title="View CVR graph (Rolling L30)"></i>';
                         }
                         return html;
                     },
@@ -1396,9 +1408,12 @@ title: "Dil %",
                             const num = parseFloat(value);
                             html = `<span style="font-weight: 600;">$` + num.toFixed(2) + '</span>';
                         }
-                        if (rowData.is_parent_summary !== true) {
-                            const skuEsc = (rowData.sku || '').replace(/"/g, '&quot;');
-                            html += ' <i class="fas fa-circle pricing-master-chart-link ms-1" data-metric="amz_price" data-sku="' + skuEsc + '" style="cursor:pointer;color:#e83e8c;font-size:8px;vertical-align:middle;" title="View Amz Price history (Rolling L30)"></i>';
+                        const parentEscAmz = (rowData.parent || '').replace(/"/g, '&quot;');
+                        const skuEscAmz = (rowData.sku || '').replace(/"/g, '&quot;');
+                        if (rowData.is_parent_summary === true) {
+                            html += ' <i class="fas fa-circle pricing-master-chart-link ms-1" data-metric="amz_price" data-parent="' + parentEscAmz + '" data-sku="' + skuEscAmz + '" style="cursor:pointer;color:#e83e8c;font-size:8px;vertical-align:middle;" title="View Amz Price history (Parent, Rolling L30)"></i>';
+                        } else {
+                            html += ' <i class="fas fa-circle pricing-master-chart-link ms-1" data-metric="amz_price" data-sku="' + skuEscAmz + '" style="cursor:pointer;color:#e83e8c;font-size:8px;vertical-align:middle;" title="View Amz Price history (Rolling L30)"></i>';
                         }
                         return html;
                     }
@@ -1418,7 +1433,7 @@ title: "Dil %",
                         else if (pct >= 10 && pct < 20) color = '#ffc107';
                         else if (pct >= 20 && pct < 50) color = '#28a745';
                         else color = '#e83e8c';
-                        return `<span style="color: ${color}; font-weight: 600;">${pct.toFixed(1)}%</span>`;
+                        return `<span style="${styleForCellColor(color)}">${pct.toFixed(1)}%</span>`;
                     }
                 },
                 {
@@ -1436,7 +1451,7 @@ title: "Dil %",
                         else if (pct >= 50 && pct < 100) color = '#ffc107';
                         else if (pct >= 100 && pct <= 150) color = '#28a745';
                         else color = '#e83e8c';
-                        return `<span style="color: ${color}; font-weight: 600;">${pct.toFixed(0)}%</span>`;
+                        return `<span style="${styleForCellColor(color)}">${pct.toFixed(0)}%</span>`;
                     }
                 },
                 {
@@ -1448,9 +1463,12 @@ title: "Dil %",
                         const rowData = cell.getRow().getData();
                         const value = parseFloat(cell.getValue() || 0);
                         let html = value === 0 ? '<span style="color: #6c757d;">-</span>' : `<span style="font-weight: 600;">$${value.toFixed(2)}</span>`;
-                        if (rowData.is_parent_summary !== true) {
-                            const skuEsc = (rowData.sku || '').replace(/"/g, '&quot;');
-                            html += ' <i class="fas fa-circle pricing-master-chart-link ms-1" data-metric="price" data-sku="' + skuEsc + '" style="cursor:pointer;color:#e83e8c;font-size:8px;vertical-align:middle;" title="View Price graph (Rolling L30)"></i>';
+                        const parentEscPrice = (rowData.parent || '').replace(/"/g, '&quot;');
+                        const skuEscPrice = (rowData.sku || '').replace(/"/g, '&quot;');
+                        if (rowData.is_parent_summary === true) {
+                            html += ' <i class="fas fa-circle pricing-master-chart-link ms-1" data-metric="price" data-parent="' + parentEscPrice + '" data-sku="' + skuEscPrice + '" style="cursor:pointer;color:#e83e8c;font-size:8px;vertical-align:middle;" title="View Price graph (Parent, Rolling L30)"></i>';
+                        } else {
+                            html += ' <i class="fas fa-circle pricing-master-chart-link ms-1" data-metric="price" data-sku="' + skuEscPrice + '" style="cursor:pointer;color:#e83e8c;font-size:8px;vertical-align:middle;" title="View Price graph (Rolling L30)"></i>';
                         }
                         return html;
                     },
@@ -1472,7 +1490,7 @@ title: "Dil %",
                         else if (value >= 20 && value <= 40) color = '#28a745';
                         else color = '#e83e8c';
                         
-                        return `<span style="color: ${color}; font-weight: 600;">${Math.round(value)}%</span>`;
+                        return `<span style="${styleForCellColor(color)}">${Math.round(value)}%</span>`;
                     },
                     minWidth: 70
                 },
@@ -1529,7 +1547,7 @@ title: "Dil %",
                         else if (pct >= 10 && pct < 20) color = '#3591dc';
                         else if (pct >= 20 && pct <= 40) color = '#28a745';
                         else color = '#e83e8c';
-                        return `<span style="color: ${color}; font-weight: 600;">${Math.round(pct)}%</span>`;
+                        return `<span style="${styleForCellColor(color)}">${Math.round(pct)}%</span>`;
                     }
                 },
                 {
@@ -1549,7 +1567,7 @@ title: "Dil %",
                         else if (pct >= 10 && pct < 20) color = '#3591dc';
                         else if (pct >= 20 && pct <= 40) color = '#28a745';
                         else color = '#e83e8c';
-                        return `<span style="color: ${color}; font-weight: 600;">${Math.round(pct)}%</span>`;
+                        return `<span style="${styleForCellColor(color)}">${Math.round(pct)}%</span>`;
                     }
                 },
                 {
@@ -1569,7 +1587,7 @@ title: "Dil %",
                         else if (pct >= 50 && pct < 100) color = '#3591dc';
                         else if (pct >= 100 && pct <= 150) color = '#28a745';
                         else color = '#e83e8c';
-                        return `<span style="color: ${color}; font-weight: 600;">${Math.round(pct)}%</span>`;
+                        return `<span style="${styleForCellColor(color)}">${Math.round(pct)}%</span>`;
                     }
                 },
                 {
@@ -1595,13 +1613,16 @@ title: "Dil %",
                             else ratingColor = '#e83e8c';
                             const reviewColor = reviews < 4 ? '#a00211' : '#6c757d';
                             html = `<div style="display: flex; flex-direction: column; align-items: center; gap: 2px;">
-                                <span style="color: ${ratingColor}; font-weight: 600;"><i class="fa fa-star"></i> ${parseFloat(rating).toFixed(1)}</span>
-                                <span style="font-size: 11px; color: ${reviewColor}; font-weight: 600;">${parseInt(reviews).toLocaleString()} reviews</span>
+                                <span style="${styleForCellColor(ratingColor)}"><i class="fa fa-star"></i> ${parseFloat(rating).toFixed(1)}</span>
+                                <span style="font-size: 11px; ${styleForCellColor(reviewColor)}">${parseInt(reviews).toLocaleString()} reviews</span>
                             </div>`;
                         }
-                        if (rowData.is_parent_summary !== true) {
-                            const skuEsc = (rowData.sku || '').replace(/"/g, '&quot;');
-                            html += ' <i class="fas fa-circle pricing-master-chart-link ms-1" data-metric="rating" data-sku="' + skuEsc + '" style="cursor:pointer;color:#e83e8c;font-size:8px;vertical-align:middle;" title="View Rating history (Rolling L30)"></i>';
+                        const parentEscRat = (rowData.parent || '').replace(/"/g, '&quot;');
+                        const skuEscRat = (rowData.sku || '').replace(/"/g, '&quot;');
+                        if (rowData.is_parent_summary === true) {
+                            html += ' <i class="fas fa-circle pricing-master-chart-link ms-1" data-metric="rating" data-parent="' + parentEscRat + '" data-sku="' + skuEscRat + '" style="cursor:pointer;color:#e83e8c;font-size:8px;vertical-align:middle;" title="View Rating history (Parent, Rolling L30)"></i>';
+                        } else {
+                            html += ' <i class="fas fa-circle pricing-master-chart-link ms-1" data-metric="rating" data-sku="' + skuEscRat + '" style="cursor:pointer;color:#e83e8c;font-size:8px;vertical-align:middle;" title="View Rating history (Rolling L30)"></i>';
                         }
                         return html;
                     },
@@ -1616,9 +1637,12 @@ title: "Dil %",
                         const rowData = cell.getRow().getData();
                         const value = parseInt(cell.getValue() || 0);
                         let html = value === 0 ? '<span style="color: #6c757d;">0</span>' : `<span style="font-weight: 600;">${value.toLocaleString()}</span>`;
-                        if (rowData.is_parent_summary !== true) {
-                            const skuEsc = (rowData.sku || '').replace(/"/g, '&quot;');
-                            html += ' <i class="fas fa-circle pricing-master-chart-link ms-1" data-metric="total_views" data-sku="' + skuEsc + '" style="cursor:pointer;color:#17a2b8;font-size:8px;vertical-align:middle;" title="View Total Views history (Rolling L30)"></i>';
+                        const parentEscTv = (rowData.parent || '').replace(/"/g, '&quot;');
+                        const skuEscTv = (rowData.sku || '').replace(/"/g, '&quot;');
+                        if (rowData.is_parent_summary === true) {
+                            html += ' <i class="fas fa-circle pricing-master-chart-link ms-1" data-metric="total_views" data-parent="' + parentEscTv + '" data-sku="' + skuEscTv + '" style="cursor:pointer;color:#17a2b8;font-size:8px;vertical-align:middle;" title="View Total Views history (Parent, Rolling L30)"></i>';
+                        } else {
+                            html += ' <i class="fas fa-circle pricing-master-chart-link ms-1" data-metric="total_views" data-sku="' + skuEscTv + '" style="cursor:pointer;color:#17a2b8;font-size:8px;vertical-align:middle;" title="View Total Views history (Rolling L30)"></i>';
                         }
                         return html;
                     },
@@ -1641,11 +1665,11 @@ title: "Dil %",
                         const price = value != null && value !== '' ? parseFloat(value) : null;
                         if (price == null || price <= 0) {
                             const url = '/repricer/amazon-search' + (skuEnc ? '?sku=' + skuEnc : '');
-                            return '<a href="' + url + '" target="_blank" rel="noopener" class="lmp-no-data-link" title="No LMP – open Amazon repricer search"><i class="fas fa-circle" style="color: #ffc107; font-size: 10px;"></i></a>';
+                            return '<a href="' + url + '" target="_blank" rel="noopener" class="lmp-no-data-link" title="No LMP – open Amazon repricer search"><i class="fas fa-circle" style="background-color: #ffc107; color: #0f172a; font-size: 10px; border-radius: 50%;"></i></a>';
                         }
                         const avgPrice = parseFloat(rowData.avg_price || 0);
                         const color = (avgPrice > 0 && price < avgPrice) ? '#dc3545' : '#28a745';
-                        return `<a href="#" class="lmp-price-link" data-sku="${sku}" data-marketplace="amazon" style="color: ${color}; font-weight: 600; text-decoration: none; cursor: pointer;">$${price.toFixed(2)}</a>`;
+                        return `<a href="#" class="lmp-price-link" data-sku="${sku}" data-marketplace="amazon" style="${styleForCellColor(color)} text-decoration: none; cursor: pointer;">$${price.toFixed(2)}</a>`;
                     },
                     minWidth: 70
                 },
@@ -1666,11 +1690,11 @@ title: "Dil %",
                         const price = value != null && value !== '' ? parseFloat(value) : null;
                         if (price == null || price <= 0) {
                             const url = '/repricer/ebay-search' + (skuEnc ? '?sku=' + skuEnc : '');
-                            return '<a href="' + url + '" target="_blank" rel="noopener" class="lmp-no-data-link" title="No LMP – open eBay repricer search"><i class="fas fa-circle" style="color: #ffc107; font-size: 10px;"></i></a>';
+                            return '<a href="' + url + '" target="_blank" rel="noopener" class="lmp-no-data-link" title="No LMP – open eBay repricer search"><i class="fas fa-circle" style="background-color: #ffc107; color: #0f172a; font-size: 10px; border-radius: 50%;"></i></a>';
                         }
                         const avgPrice = parseFloat(rowData.avg_price || 0);
                         const color = (avgPrice > 0 && price < avgPrice) ? '#dc3545' : '#28a745';
-                        return `<a href="#" class="lmp-price-link" data-sku="${sku}" data-marketplace="ebay" style="color: ${color}; font-weight: 600; text-decoration: none; cursor: pointer;">$${price.toFixed(2)}</a>`;
+                        return `<a href="#" class="lmp-price-link" data-sku="${sku}" data-marketplace="ebay" style="${styleForCellColor(color)} text-decoration: none; cursor: pointer;">$${price.toFixed(2)}</a>`;
                     },
                     minWidth: 70
                 },
@@ -1690,7 +1714,7 @@ title: "Dil %",
                         else if (value >= 20 && value <= 40) color = '#28a745';
                         else color = '#e83e8c';
                         
-                        return `<span style="color: ${color}; font-weight: 600;">${Math.round(value)}%</span>`;
+                        return `<span style="${styleForCellColor(color)}">${Math.round(value)}%</span>`;
                     },
                     minWidth: 70
                 },
@@ -1711,7 +1735,7 @@ title: "Dil %",
                         else if (value > 0) color = '#28a745';
                         else color = '#6c757d';
                         
-                        return `<span style="color: ${color}; font-weight: 600;">${value.toFixed(1)}%</span>`;
+                        return `<span style="${styleForCellColor(color)}">${value.toFixed(1)}%</span>`;
                     },
                     minWidth: 70
                 }
@@ -1750,20 +1774,33 @@ title: "Dil %",
             $('#spriceModalAmzSpriceInput').val(spriceVal === '' ? '' : spriceVal.toFixed(2));
             function updateSpriceModalCalculated(spriceNum) {
                 if (spriceNum <= 0) {
-                    $('#spriceModalSgpft').css('color', '#6c757d').text('-');
-                    $('#spriceModalSpft').css('color', '#6c757d').text('-');
-                    $('#spriceModalSroi').css('color', '#6c757d').text('-');
+                    applyCellColor($('#spriceModalSgpft'), '#6c757d');
+                    $('#spriceModalSgpft').text('-');
+                    applyCellColor($('#spriceModalSpft'), '#6c757d');
+                    $('#spriceModalSpft').text('-');
+                    applyCellColor($('#spriceModalSroi'), '#6c757d');
+                    $('#spriceModalSroi').text('-');
                     return;
                 }
                 const sgpftVal = ((spriceNum * margin - ship - lp) / spriceNum) * 100;
                 const spftVal = l30 === 0 ? sgpftVal : (sgpftVal - ad);
                 const sroiVal = lp > 0 ? ((spriceNum * margin - lp - ship) / lp) * 100 : 0;
-                $('#spriceModalSgpft').css('color', getSgpftSpftColor(sgpftVal)).text(Math.round(sgpftVal) + '%');
-                $('#spriceModalSpft').css('color', getSgpftSpftColor(spftVal)).text(Math.round(spftVal) + '%');
-                $('#spriceModalSroi').css('color', getSroiColor(sroiVal)).text(Math.round(sroiVal) + '%');
+                applyCellColor($('#spriceModalSgpft'), getSgpftSpftColor(sgpftVal));
+                $('#spriceModalSgpft').text(Math.round(sgpftVal) + '%');
+                applyCellColor($('#spriceModalSpft'), getSgpftSpftColor(spftVal));
+                $('#spriceModalSpft').text(Math.round(spftVal) + '%');
+                applyCellColor($('#spriceModalSroi'), getSroiColor(sroiVal));
+                $('#spriceModalSroi').text(Math.round(sroiVal) + '%');
             }
             if (spriceVal !== '') updateSpriceModalCalculated(parseFloat(spriceVal));
-            else { $('#spriceModalSgpft').css('color', '#6c757d').text('-'); $('#spriceModalSpft').css('color', '#6c757d').text('-'); $('#spriceModalSroi').css('color', '#6c757d').text('-'); }
+            else {
+                applyCellColor($('#spriceModalSgpft'), '#6c757d');
+                $('#spriceModalSgpft').text('-');
+                applyCellColor($('#spriceModalSpft'), '#6c757d');
+                $('#spriceModalSpft').text('-');
+                applyCellColor($('#spriceModalSroi'), '#6c757d');
+                $('#spriceModalSroi').text('-');
+            }
             new bootstrap.Modal(document.getElementById('spriceDetailsModal')).show();
         });
 
@@ -1857,6 +1894,10 @@ title: "Dil %",
             const value = $(this).val();
             table.setFilter("sku", "like", value);
         });
+        $('#parent-search').on('keyup', function() {
+            const value = $(this).val();
+            table.setFilter("parent", "like", value);
+        });
 
         $(document).on('click', '.copy-sku-btn', function(e) {
             e.stopPropagation();
@@ -1883,6 +1924,16 @@ title: "Dil %",
             if (pct >= 100 && pct <= 150) return '#28a745';
             return '#e83e8c';
         }
+        // Yellow: use yellow bg + dark text instead of yellow text
+        function styleForCellColor(c) {
+            if (!c) return 'font-weight:600;';
+            if (c === '#ffc107') return 'background-color:#ffc107;color:#0f172a;font-weight:600;padding:0 3px;border-radius:2px;';
+            return 'color:' + c + ';font-weight:600;';
+        }
+        function applyCellColor($el, c) {
+            if (c === '#ffc107') { $el.css({ backgroundColor: '#ffc107', color: '#0f172a' }); }
+            else { $el.css({ backgroundColor: '', color: c || '#6c757d' }); }
+        }
 
         // Sprice modal: instant recalc when Amz SPRICE input changes
         $(document).on('input', '.sprice-modal-sprice-input', function() {
@@ -1894,17 +1945,23 @@ title: "Dil %",
             const margin = parseFloat($modal.attr('data-margin')) || 0.80;
             const l30 = parseInt($modal.attr('data-l30'), 10) || 0;
             if (sprice <= 0) {
-                $('#spriceModalSgpft').css('color', '#6c757d').text('-');
-                $('#spriceModalSpft').css('color', '#6c757d').text('-');
-                $('#spriceModalSroi').css('color', '#6c757d').text('-');
+                applyCellColor($('#spriceModalSgpft'), '#6c757d');
+                $('#spriceModalSgpft').text('-');
+                applyCellColor($('#spriceModalSpft'), '#6c757d');
+                $('#spriceModalSpft').text('-');
+                applyCellColor($('#spriceModalSroi'), '#6c757d');
+                $('#spriceModalSroi').text('-');
                 return;
             }
             const sgpft = ((sprice * margin - ship - lp) / sprice) * 100;
             const spft = l30 === 0 ? sgpft : (sgpft - ad);
             const sroi = lp > 0 ? ((sprice * margin - lp - ship) / lp) * 100 : 0;
-            $('#spriceModalSgpft').css('color', getSgpftSpftColor(sgpft)).text(Math.round(sgpft) + '%');
-            $('#spriceModalSpft').css('color', getSgpftSpftColor(spft)).text(Math.round(spft) + '%');
-            $('#spriceModalSroi').css('color', getSroiColor(sroi)).text(Math.round(sroi) + '%');
+            applyCellColor($('#spriceModalSgpft'), getSgpftSpftColor(sgpft));
+            $('#spriceModalSgpft').text(Math.round(sgpft) + '%');
+            applyCellColor($('#spriceModalSpft'), getSgpftSpftColor(spft));
+            $('#spriceModalSpft').text(Math.round(spft) + '%');
+            applyCellColor($('#spriceModalSroi'), getSroiColor(sroi));
+            $('#spriceModalSroi').text(Math.round(sroi) + '%');
         });
 
         // Sprice modal: save on blur and update table row
@@ -1972,13 +2029,19 @@ title: "Dil %",
                 const spft = l30 == 0 ? sgpft : (sgpft - ad);
                 const sroi = lp > 0 ? ((sprice * margin - lp - ship) / lp) * 100 : 0;
                 
-                $sgpftSpan.css('color', getSgpftSpftColor(sgpft)).text(Math.round(sgpft) + '%');
-                $spftSpan.css('color', getSgpftSpftColor(spft)).text(Math.round(spft) + '%');
-                $roiSpan.css('color', getSroiColor(sroi)).text(Math.round(sroi) + '%');
+                applyCellColor($sgpftSpan, getSgpftSpftColor(sgpft));
+                $sgpftSpan.text(Math.round(sgpft) + '%');
+                applyCellColor($spftSpan, getSgpftSpftColor(spft));
+                $spftSpan.text(Math.round(spft) + '%');
+                applyCellColor($roiSpan, getSroiColor(sroi));
+                $roiSpan.text(Math.round(sroi) + '%');
             } else {
-                $sgpftSpan.css('color', '#6c757d').text('-');
-                $spftSpan.css('color', '#6c757d').text('-');
-                $roiSpan.css('color', '#6c757d').text('-');
+                applyCellColor($sgpftSpan, '#6c757d');
+                $sgpftSpan.text('-');
+                applyCellColor($spftSpan, '#6c757d');
+                $spftSpan.text('-');
+                applyCellColor($roiSpan, '#6c757d');
+                $roiSpan.text('-');
             }
         });
         
@@ -2721,6 +2784,11 @@ title: "Dil %",
             suppressDataLoadedHandler = true;
             table.setData(displayData).then(() => {
                 console.log('✓ Table updated successfully');
+                // Re-apply SKU and Parent search when in parent view
+                const skuVal = $('#sku-search').val();
+                if (skuVal) table.addFilter("sku", "like", skuVal);
+                const parentVal = $('#parent-search').val();
+                if (parentVal) table.addFilter("parent", "like", parentVal);
                 updateSummary();
             }).catch(err => {
                 console.error('❌ Error updating table:', err);
@@ -2901,6 +2969,12 @@ title: "Dil %",
                     });
                 }
 
+                // Apply SKU and Parent search filters
+                const skuVal = $('#sku-search').val();
+                if (skuVal) table.addFilter("sku", "like", skuVal);
+                const parentVal = $('#parent-search').val();
+                if (parentVal) table.addFilter("parent", "like", parentVal);
+
                 updateSummary();
             };
 
@@ -2919,6 +2993,8 @@ title: "Dil %",
         $('#remove-filter-btn').on('click', function() {
             $('#inventory-filter').val('more');
             $('#sku-parent-filter').val('both');
+            $('#sku-search').val('');
+            $('#parent-search').val('');
             const $allDil = $('.column-filter[data-column="dil_percent"][data-color="all"]');
             $('.column-filter[data-column="dil_percent"]').removeClass('active');
             $allDil.addClass('active');
@@ -3133,6 +3209,7 @@ title: "Dil %",
         let pricingMasterChartInstance = null;
         let currentPricingChartMetric = 'inv';
         let currentPricingChartSku = '';
+        let currentPricingChartParent = '';
         let currentPricingChartDays = 30;
         const pricingChartMetricLabels = { inv: 'Inv', ov_l30: 'OV L30', price: 'Price', cvr: 'CVR', dil: 'DIL', amz_price: 'Amz Price', rating: 'Rating', total_views: 'Total Views' };
         const pricingChartRangeLabel = (days) => 'L' + days;
@@ -3142,15 +3219,23 @@ title: "Dil %",
             e.stopPropagation();
             const metric = $(e.currentTarget).attr('data-metric') || $(e.currentTarget).data('metric');
             const sku = String($(e.currentTarget).attr('data-sku') || $(e.currentTarget).data('sku') || '').trim();
+            const parent = String($(e.currentTarget).attr('data-parent') || $(e.currentTarget).data('parent') || '').trim();
             if (!metric) return;
-            if (!sku) { showToast('SKU not found for chart', 'error'); return; }
-            if (sku.indexOf('PARENT ') === 0) { showToast('Chart is available for child SKU rows only, not parent summary rows.', 'warning'); return; }
+            const isParentChart = parent !== '' || (sku.indexOf('PARENT ') === 0);
+            const displayName = isParentChart ? (parent || sku.replace(/^PARENT\s+/i, '')) : sku;
+            if (!isParentChart && !sku) { showToast('SKU not found for chart', 'error'); return; }
+            if (isParentChart) {
+                currentPricingChartParent = parent || sku.replace(/^PARENT\s+/i, '').trim();
+                currentPricingChartSku = '';
+            } else {
+                currentPricingChartParent = '';
+                currentPricingChartSku = sku;
+            }
             currentPricingChartMetric = metric;
-            currentPricingChartSku = sku;
             currentPricingChartDays = 30;
             $('#pricingMasterChartRangeSelect').val('30');
             const label = pricingChartMetricLabels[metric] || metric;
-            $('#pricingMasterChartModalTitle').text('Master Analytics - ' + sku + ' - ' + label + ' (Rolling ' + pricingChartRangeLabel(30) + ')');
+            $('#pricingMasterChartModalTitle').text('Master Analytics - ' + displayName + (isParentChart ? ' (Parent)' : '') + ' - ' + label + ' (Rolling ' + pricingChartRangeLabel(30) + ')');
             $('#pricingMasterChartContainer').hide();
             $('#pricingMasterChartNoData').hide();
             $('#pricingMasterChartLoading').show();
@@ -3171,10 +3256,13 @@ title: "Dil %",
             $('#pricingMasterChartLoading').show();
             $('#pricingMasterChartContainer').hide();
             $('#pricingMasterChartNoData').hide();
+            const payload = { metric: currentPricingChartMetric, days: currentPricingChartDays };
+            if (currentPricingChartParent) payload.parent = currentPricingChartParent;
+            else payload.sku = currentPricingChartSku;
             $.ajax({
                 url: '/cvr-master-chart-data',
                 method: 'GET',
-                data: { metric: currentPricingChartMetric, sku: currentPricingChartSku, days: currentPricingChartDays },
+                data: payload,
                 success: function(response) {
                     $('#pricingMasterChartLoading').hide();
                     if (response.success && response.data && response.data.length > 0) {

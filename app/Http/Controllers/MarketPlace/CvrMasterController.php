@@ -2332,52 +2332,94 @@ class CvrMasterController extends Controller
     /**
      * Get Master Analytics chart data (Rolling L30) for Inv, OV L30, Price, CVR graphs.
      * Data is read from pricing_master_daily_snapshots_sku (SKU-wise, saved on page load/refresh).
+     * When "parent" is provided, aggregates data for all SKUs under that parent by snapshot_date.
      */
     public function getPricingMasterChartData(Request $request)
     {
         $metric = strtolower(trim($request->input('metric', 'inv')));
         $days = (int) $request->input('days', 30);
         $skuRaw = $request->input('sku', '');
+        $parentRaw = preg_replace('/\s+/', ' ', trim($request->input('parent', '')));
         $allowed = ['inv', 'ov_l30', 'price', 'cvr', 'dil', 'amz_price', 'rating', 'total_views'];
         if (!in_array($metric, $allowed)) {
             return response()->json(['success' => false, 'message' => 'Invalid metric'], 400);
         }
-        // Normalize: trim and collapse multiple spaces (same as when saving snapshots)
-        $sku = preg_replace('/\s+/', ' ', trim($skuRaw));
-        if ($sku === '') {
-            return response()->json(['success' => false, 'message' => 'SKU is required for chart'], 400);
+
+        $isParent = $parentRaw !== '';
+
+        if ($isParent) {
+            // Parent-level: get all SKUs for this parent from ProductMaster
+            $skus = ProductMaster::where('parent', $parentRaw)->pluck('sku')->toArray();
+            if (empty($skus)) {
+                return response()->json(['success' => true, 'data' => []]);
+            }
+            $query = PricingMasterDailySnapshotSku::whereIn('sku', $skus)->orderBy('snapshot_date', 'asc');
+        } else {
+            $sku = preg_replace('/\s+/', ' ', trim($skuRaw));
+            if ($sku === '') {
+                return response()->json(['success' => false, 'message' => 'SKU or parent is required for chart'], 400);
+            }
+            $skuNorm = strtolower($sku);
+            $query = PricingMasterDailySnapshotSku::whereRaw('LOWER(TRIM(sku)) = ?', [$skuNorm])->orderBy('snapshot_date', 'asc');
         }
 
-        $column = match ($metric) {
-            'inv' => 'inventory',
-            'ov_l30' => 'overall_l30',
-            'price' => 'avg_price',
-            'cvr' => 'avg_cvr',
-            'dil' => 'dil_percent',
-            'amz_price' => 'amazon_price',
-            'rating' => 'rating',
-            'total_views' => 'total_views',
-            default => 'inventory',
-        };
-
-        // Match SKU: normalized (trim + single space) and case-insensitive so DB/request differences don't break lookup
-        $skuNorm = strtolower($sku);
-        $query = PricingMasterDailySnapshotSku::whereRaw('LOWER(TRIM(sku)) = ?', [$skuNorm])
-            ->orderBy('snapshot_date', 'asc');
         if ($days > 0) {
             $start = now('America/Los_Angeles')->subDays($days)->toDateString();
             $query->where('snapshot_date', '>=', $start);
         }
         $rows = $query->get();
 
-        $data = $rows->map(function ($row) use ($column) {
-            $val = $row->{$column};
-            $value = $val !== null ? (is_numeric($val) ? (float) $val : 0) : 0;
-            return [
-                'date' => Carbon::parse($row->snapshot_date)->format('M j'),
-                'value' => $value,
-            ];
-        })->values()->all();
+        if ($isParent && $rows->isEmpty()) {
+            return response()->json(['success' => true, 'data' => []]);
+        }
+
+        if ($isParent) {
+            // Aggregate by snapshot_date
+            $byDate = $rows->groupBy(function ($row) {
+                return $row->snapshot_date->format('Y-m-d');
+            });
+            $data = collect($byDate)->map(function ($dateRows, $dateStr) use ($metric) {
+                $invSum = $dateRows->sum('inventory');
+                $l30Sum = $dateRows->sum('overall_l30');
+                $viewsSum = $dateRows->sum('total_views');
+                $value = match ($metric) {
+                    'inv' => (float) $invSum,
+                    'ov_l30' => (float) $l30Sum,
+                    'total_views' => (float) $viewsSum,
+                    'price' => (float) $dateRows->avg('avg_price'),
+                    'cvr' => $viewsSum > 0 ? round(($l30Sum / $viewsSum) * 100, 2) : 0,
+                    'dil' => $invSum > 0 ? round(($l30Sum / $invSum) * 100, 2) : 0,
+                    'amz_price' => (float) $dateRows->avg('amazon_price'),
+                    'rating' => (float) $dateRows->avg('rating'),
+                    default => (float) $invSum,
+                };
+                return [
+                    'date' => Carbon::parse($dateStr)->format('M j'),
+                    'value' => $value,
+                    '_key' => $dateStr,
+                ];
+            })->sortBy('_key')->map(fn ($d) => ['date' => $d['date'], 'value' => $d['value']])->values()->all();
+        } else {
+            $column = match ($metric) {
+                'inv' => 'inventory',
+                'ov_l30' => 'overall_l30',
+                'price' => 'avg_price',
+                'cvr' => 'avg_cvr',
+                'dil' => 'dil_percent',
+                'amz_price' => 'amazon_price',
+                'rating' => 'rating',
+                'total_views' => 'total_views',
+                default => 'inventory',
+            };
+            $data = $rows->map(function ($row) use ($column) {
+                $val = $row->{$column};
+                $value = $val !== null ? (is_numeric($val) ? (float) $val : 0) : 0;
+                return [
+                    'date' => Carbon::parse($row->snapshot_date)->format('M j'),
+                    'value' => $value,
+                ];
+            })->values()->all();
+        }
 
         return response()->json(['success' => true, 'data' => $data]);
     }
