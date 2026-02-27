@@ -203,7 +203,25 @@
         display: block;
     }
 
-        
+    #po-table {
+        border-radius: 8px;
+        overflow: hidden;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    }
+    #po-table thead th {
+        background: linear-gradient(90deg, #e0e7ff 0%, #f4f7fa 100%);
+        color: #1a2942;
+        font-weight: 700;
+        border-color: #e5e7eb;
+        padding: 12px 10px;
+    }
+    #po-table tbody tr:hover {
+        background-color: #f0f9ff;
+    }
+    #po-table .btn-group-actions .btn {
+        padding: 4px 8px;
+    }
+
 </style>
 @endsection
 @section('content')
@@ -227,6 +245,14 @@
                         </span>
                         <input type="text" id="purchase-order-search" class="form-control border-start-0" placeholder="Search PO Number, Supplier name...">
                     </div>
+                    <div class="input-group" style="max-width: 200px;">
+                        <label class="input-group-text bg-white border-end-0">Status</label>
+                        <select id="archive-filter" class="form-select">
+                            <option value="active">Active</option>
+                            <option value="archived">Archived</option>
+                            <option value="all">All</option>
+                        </select>
+                    </div>
                     <div class="input-group" style="max-width: 320px;">
                         <input type="date" id="po-date-filter" class="form-control" placeholder="Filter by PO Date">
                     </div>
@@ -239,7 +265,23 @@
                         </button>
                     </div>
                 </div>
-                <div class="row" id="po-cards-container"></div>
+                <div class="table-responsive">
+                    <table class="table table-bordered table-hover align-middle mb-0" id="po-table">
+                        <thead class="table-light text-center align-middle">
+                            <tr>
+                                <th style="width: 40px;"><input type="checkbox" id="select-all-po" title="Select all"></th>
+                                <th>PO Number</th>
+                                <th>PO Date</th>
+                                <th>Supplier</th>
+                                <th>Advance Amount</th>
+                                <th>SKU List</th>
+                                <th style="min-width: 220px;">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="po-table-body">
+                        </tbody>
+                    </table>
+                </div>
                 <div class="text-center mt-3" id="po-pagination"></div>
 
                 <!-- Modal for Items -->
@@ -477,6 +519,10 @@
 
         document.getElementById("purchase-order-search").addEventListener("input", applyFilters);
         document.getElementById("po-date-filter").addEventListener("change", applyFilters);
+        document.getElementById("archive-filter").addEventListener("change", function() {
+            currentPage = 1;
+            getPurchaseOrderData();
+        });
         document.addEventListener('click', function(e) {
             if (e.target.closest('.generate-pdf-btn')) {
                 const orderId = e.target.closest('.generate-pdf-btn').dataset.orderId;
@@ -676,81 +722,75 @@
     });
 
     function getPurchaseOrderData(){
-        fetch('/purchase-orders/list')
+        const filter = document.getElementById("archive-filter").value;
+        fetch('/purchase-orders/list?filter=' + encodeURIComponent(filter))
         .then(res => res.json())
         .then(data => {
             allPurchaseOrders = data;
-            renderPurchaseOrderCards();
+            renderPurchaseOrderTable();
             renderPaginationControls();
         });
     }
 
-    function renderPurchaseOrderCards(data = allPurchaseOrders) {
-        const container = document.getElementById("po-cards-container");
-        container.innerHTML = "";
+    function renderPurchaseOrderTable(data = allPurchaseOrders) {
+        const tbody = document.getElementById("po-table-body");
+        tbody.innerHTML = "";
 
         const startIndex = (currentPage - 1) * itemsPerPage;
         const endIndex = startIndex + itemsPerPage;
         const currentItems = data.slice(startIndex, endIndex);
+        const filterVal = document.getElementById("archive-filter").value;
 
         currentItems.forEach(order => {
-            const card = document.createElement("div");
-            card.className = "col-md-6 col-lg-3";
-
             const items = JSON.parse(order.items_json || '[]');
+            const orderEsc = JSON.stringify(order).replace(/'/g, "&#39;");
+            const itemsEsc = JSON.stringify(items).replace(/'/g, "&#39;");
+            const isArchived = !!order.is_archived;
+            const archiveBtn = (filterVal === "archived" || isArchived)
+                ? `<button type="button" class="btn btn-sm btn-outline-success restore-order-btn" data-order-id="${order.id}" title="Restore">
+                        <i class="fas fa-undo"></i> Restore
+                   </button>`
+                : `<button type="button" class="btn btn-sm btn-outline-secondary archive-order-btn" data-order-id="${order.id}" title="Archive">
+                        <i class="fas fa-archive"></i> Archive
+                   </button>`;
 
-            card.innerHTML = `
-                <div class="card shadow-sm border-1 rounded-3 h-80" style="border-color: #3BBFC2;">
-                    <div class="card-body p-3">
-                        <div class="d-flex justify-content-between">
-                            <h6 class="fw-semibold text-primary mb-2">PO Number: ${order.po_number}</h6>
-                            <input type="checkbox" class="order-checkbox" data-order-id="${order.id}"/>
-                        </div>
-                        <div class="small text-muted mb-1">
-                            <strong>PO Date:</strong> ${order.po_date}
-                        </div>
-                        <div class="small text-muted mb-3">
-                            <strong>Supplier:</strong> ${order.supplier_name}
-                        </div>
-                        <!-- Button Row -->
-                        <div class="d-flex justify-content-between gap-2">
-                            <button class="btn btn-sm btn-warning edit-order-btn" 
-                                    data-order='${JSON.stringify(order)}'
-                                    data-items='${JSON.stringify(items)}'
-                                    title="Edit Order">
-                                <i class="fas fa-edit"></i>
-                            </button>
-                            <button class="btn btn-sm btn-primary view-items-btn" 
-                                    data-items='${JSON.stringify(items)}' 
-                                    title="View Items">
-                                <i class="fas fa-box-open"></i>
-                            </button>
-                            <button class="btn btn-sm btn-info export-items-btn" 
-                                data-order='${JSON.stringify(order)}'
-                                data-items='${JSON.stringify(items)}'
-                                title="Export Items">
-                                <i class="fas fa-file-excel"></i>
-                            </button>
-
-                            <button class="btn btn-sm btn-success generate-pdf-btn" 
-                                    data-order-id="${order.id}" 
-                                    title="Generate PDF">
-                                <i class="fas fa-file-pdf"></i>
-                            </button>
-                        </div>
+            const tr = document.createElement("tr");
+            tr.innerHTML = `
+                <td class="text-center"><input type="checkbox" class="order-checkbox" data-order-id="${order.id}"/></td>
+                <td class="fw-semibold text-primary">${order.po_number || '-'}</td>
+                <td class="text-center">${order.po_date || '-'}</td>
+                <td>${order.supplier_name || '-'}</td>
+                <td class="text-center">${order.advance_amount != null && order.advance_amount !== '' ? order.advance_amount : '-'}</td>
+                <td class="small">${order.sku_list || '-'}</td>
+                <td class="text-center">
+                    <div class="btn-group btn-group-actions flex-wrap gap-1 justify-content-center">
+                        <button type="button" class="btn btn-sm btn-warning edit-order-btn" data-order='${orderEsc}' data-items='${itemsEsc}' title="Edit">
+                            <i class="fas fa-edit"></i>
+                        </button>
+                        <button type="button" class="btn btn-sm btn-primary view-items-btn" data-items='${itemsEsc}' title="View Items">
+                            <i class="fas fa-box-open"></i>
+                        </button>
+                        <button type="button" class="btn btn-sm btn-info export-items-btn" data-order='${orderEsc}' data-items='${itemsEsc}' title="Export">
+                            <i class="fas fa-file-excel"></i>
+                        </button>
+                        <button type="button" class="btn btn-sm btn-success generate-pdf-btn" data-order-id="${order.id}" title="PDF">
+                            <i class="fas fa-file-pdf"></i>
+                        </button>
+                        ${archiveBtn}
                     </div>
-                </div>
+                </td>
             `;
-
-            container.appendChild(card);
+            tbody.appendChild(tr);
         });
 
         attachItemModalListeners();
         attachExportExcelListeners();
+        attachArchiveRestoreListeners();
     }
 
-    function renderPaginationControls() {
-        const totalPages = Math.ceil(allPurchaseOrders.length / itemsPerPage);
+    function renderPaginationControls(data) {
+        const source = data && data.length >= 0 ? data : allPurchaseOrders;
+        const totalPages = Math.max(1, Math.ceil(source.length / itemsPerPage));
         const paginationContainer = document.getElementById("po-pagination");
         paginationContainer.innerHTML = "";
 
@@ -760,11 +800,50 @@
             btn.innerText = i;
             btn.addEventListener("click", function () {
                 currentPage = i;
-                renderPurchaseOrderCards();
-                renderPaginationControls();
+                renderPurchaseOrderTable(data);
+                renderPaginationControls(data);
             });
             paginationContainer.appendChild(btn);
         }
+    }
+
+    function attachArchiveRestoreListeners() {
+        document.querySelectorAll(".archive-order-btn").forEach(btn => {
+            btn.addEventListener("click", function () {
+                const id = this.getAttribute("data-order-id");
+                if (!confirm("Archive this purchase order?")) return;
+                fetch("/purchase-orders/" + id + "/archive", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]').content,
+                        "Accept": "application/json"
+                    },
+                    body: JSON.stringify({})
+                })
+                .then(res => res.json())
+                .then(() => getPurchaseOrderData())
+                .catch(err => console.error(err));
+            });
+        });
+        document.querySelectorAll(".restore-order-btn").forEach(btn => {
+            btn.addEventListener("click", function () {
+                const id = this.getAttribute("data-order-id");
+                if (!confirm("Restore this purchase order to active?")) return;
+                fetch("/purchase-orders/" + id + "/restore", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]').content,
+                        "Accept": "application/json"
+                    },
+                    body: JSON.stringify({})
+                })
+                .then(res => res.json())
+                .then(() => getPurchaseOrderData())
+                .catch(err => console.error(err));
+            });
+        });
     }
 
     function attachItemModalListeners() {
@@ -898,7 +977,7 @@
             return matchesSearch && matchesDate;
         });
 
-        renderPurchaseOrderCards(filtered);
+        renderPurchaseOrderTable(filtered);
         renderPaginationControls(filtered);
     }
 
@@ -939,6 +1018,13 @@
                 const anyChecked = document.querySelectorAll(".order-checkbox:checked").length > 0;
                 document.getElementById("delete-selected-btn").style.display = anyChecked ? "inline-block" : "none";
             }
+            if (e.target.id === "select-all-po") {
+                document.querySelectorAll("#po-table-body .order-checkbox").forEach(cb => {
+                    cb.checked = e.target.checked;
+                });
+                const anyChecked = document.querySelectorAll(".order-checkbox:checked").length > 0;
+                document.getElementById("delete-selected-btn").style.display = anyChecked ? "inline-block" : "none";
+            }
         });
 
         // Handle delete button click
@@ -951,8 +1037,8 @@
             // Get all selected order IDs
             const ids = Array.from(checkedBoxes).map(cb => cb.dataset.orderId);
 
-            // Remove cards from UI
-            checkedBoxes.forEach(cb => cb.closest(".col-md-6").remove());
+            // Remove rows from UI
+            checkedBoxes.forEach(cb => { const row = cb.closest("tr"); if (row) row.remove(); });
 
             // Send delete request to Laravel
             fetch("/purchase-orders/delete", {

@@ -685,6 +685,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/purchase-orders/convert', 'convert')->name('purchase-orders.convert');
         Route::get('/purchase-order/{id}/generate-pdf', 'generatePdf')->name('generate-pdf');
         Route::post('/purchase-orders/delete', 'deletePurchaseOrders');
+        Route::post('/purchase-orders/{id}/archive', 'archivePurchaseOrder');
+        Route::post('/purchase-orders/{id}/restore', 'restorePurchaseOrder');
         Route::get('/purchase-orders/{id}', 'showPurchaseOrders');
         Route::post('/purchase-orders/{id}', 'updatePurchaseOrder');
     });

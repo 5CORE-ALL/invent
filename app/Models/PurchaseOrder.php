@@ -15,7 +15,12 @@ class PurchaseOrder extends Model
         'po_date',            
         'supplier_id', 
         'items',
-        'advance_amount'
+        'advance_amount',
+        'is_archived'
+    ];
+
+    protected $casts = [
+        'is_archived' => 'boolean',
     ];
 
     public function supplier()

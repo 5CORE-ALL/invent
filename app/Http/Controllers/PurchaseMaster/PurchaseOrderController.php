@@ -158,11 +158,20 @@ class PurchaseOrderController extends Controller
         return redirect()->back()->with('success', 'Purchase Order updated successfully!');
     }
 
-    public function getPurchaseOrdersData()
+    public function getPurchaseOrdersData(Request $request)
     {
-        $orders = PurchaseOrder::select('id', 'po_number', 'po_date', 'supplier_id', 'items', 'advance_amount')
-        ->with('supplier:id,name')
-        ->get();
+        $filter = $request->query('filter', 'active'); // active | archived | all
+
+        $query = PurchaseOrder::select('id', 'po_number', 'po_date', 'supplier_id', 'items', 'advance_amount', 'is_archived')
+            ->with('supplier:id,name');
+
+        if ($filter === 'active') {
+            $query->where('is_archived', false);
+        } elseif ($filter === 'archived') {
+            $query->where('is_archived', true);
+        }
+
+        $orders = $query->latest()->get();
 
         $orders = $orders->map(function ($order) {
             $items = collect(json_decode($order->items));
@@ -180,6 +189,7 @@ class PurchaseOrderController extends Controller
                 'supplier_name' => $order->supplier->name ?? '',
                 'supplier_id' => $order->supplier_id ?? '',
                 'advance_amount' => $order->advance_amount ?? '',
+                'is_archived' => (bool) ($order->is_archived ?? false),
                 'sku_list' => $skuList,
                 'photo' => $firstItem->photo ?? '',
                 'barcode' => $firstItem->barcode ?? '',
@@ -188,6 +198,20 @@ class PurchaseOrderController extends Controller
         });
 
         return response()->json($orders);
+    }
+
+    public function archivePurchaseOrder($id)
+    {
+        $po = PurchaseOrder::findOrFail($id);
+        $po->update(['is_archived' => true]);
+        return response()->json(['success' => true, 'message' => 'Purchase order archived.']);
+    }
+
+    public function restorePurchaseOrder($id)
+    {
+        $po = PurchaseOrder::findOrFail($id);
+        $po->update(['is_archived' => false]);
+        return response()->json(['success' => true, 'message' => 'Purchase order restored.']);
     }
 
     public function generatePdf($orderId){
@@ -248,10 +272,12 @@ class PurchaseOrderController extends Controller
 
     public function deletePurchaseOrders(Request $request)
     {
-        $ids = $request->ids;
+        $ids = $request->ids ?? [];
         PurchaseOrder::whereIn('id', $ids)->delete();
 
+        if ($request->wantsJson()) {
+            return response()->json(['success' => true, 'message' => 'Selected orders deleted successfully.']);
+        }
         return redirect()->back()->with('flash_message', 'Selected orders deleted successfully.');
-
     }
 }
