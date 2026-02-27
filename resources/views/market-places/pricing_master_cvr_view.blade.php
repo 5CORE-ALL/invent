@@ -2692,6 +2692,28 @@ title: "Dil %",
                 }
             });
             
+            // Apply inventory filter to parent view (so "More than 0" hides parent rows with INV 0)
+            const inventoryFilter = $('#inventory-filter').val();
+            if (inventoryFilter === 'zero') {
+                displayData = displayData.filter(row => (parseFloat(row.inventory) || 0) === 0);
+            } else if (inventoryFilter === 'more') {
+                displayData = displayData.filter(row => (parseFloat(row.inventory) || 0) > 0);
+            }
+            // Apply DIL% filter to parent view
+            const dilFilter = $('.column-filter[data-column="dil_percent"].active')?.data('color') || 'all';
+            if (dilFilter !== 'all') {
+                displayData = displayData.filter(row => {
+                    const inv = parseFloat(row.inventory) || 0;
+                    const l30 = parseFloat(row.overall_l30) || 0;
+                    const dil = inv === 0 ? 0 : (l30 / inv) * 100;
+                    if (dilFilter === 'red') return dil < 16.7;
+                    if (dilFilter === 'yellow') return dil >= 16.7 && dil < 25;
+                    if (dilFilter === 'green') return dil >= 25 && dil < 50;
+                    if (dilFilter === 'pink') return dil >= 50;
+                    return true;
+                });
+            }
+            
             console.log('Final display data length:', displayData.length);
             console.log('Expected:', parentRows.length, '+ children if expanded');
             
