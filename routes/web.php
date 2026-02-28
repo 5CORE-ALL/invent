@@ -433,6 +433,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/listing-master/amz-data/media', [AmzListingController::class, 'media'])->name('listing.master.amz.data.media');
     Route::post('/listing-master/amz-data/import', [AmzListingController::class, 'import'])->name('listing.master.amz.data.import');
 
+
     // Marketplace Sync: dynamic routes per marketplace (reverb, amazon, ebay, walmart)
     Route::prefix('marketplace/{marketplace}')->where(['marketplace' => 'reverb|amazon|ebay|walmart|topdawg'])->group(function () {
         Route::get('/products', [\App\Http\Controllers\MarketplaceController::class, 'products'])->name('marketplace.products');
