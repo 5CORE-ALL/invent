@@ -96,7 +96,16 @@ class AmzListingController extends Controller
 
             $rows = $query->offset(($page - 1) * $perPage)->limit($perPage)->get();
 
-            $allKeys = ['id', 'seller_sku', 'asin1', 'report_imported_at', 'thumbnail_image'];
+            $attributeColumns = [
+                'item_name', 'brand', 'external_product_id', 'condition_type', 'condition_type_display',
+                'color', 'material', 'style', 'size',
+                'model_number', 'model_name', 'part_number', 'manufacturer',
+                'exterior_finish', 'number_of_items', 'assembly_required', 'item_type_keyword', 'generic_keyword',
+                'handling_time', 'merchant_shipping_group', 'minimum_advertised_price', 'your_price', 'list_price',
+                'country_of_origin', 'warranty_description', 'voltage', 'noise_level', 'item_dimensions',
+                'included_components', 'product_description', 'product_type', 'quantity', 'bullet_point',
+            ];
+            $allKeys = array_merge(['id', 'seller_sku', 'asin1', 'report_imported_at', 'thumbnail_image'], $attributeColumns);
             $data = [];
             $autoFetchLimit = $perPage;
             $fetchCount = 0;
@@ -133,17 +142,24 @@ class AmzListingController extends Controller
                     $fetchCount++;
                 }
 
-                $data[] = array_merge(
-                    [
-                        'id' => $row->id ?? null,
-                        'seller_sku' => $row->seller_sku ?? '',
-                        'asin1' => $row->asin1 ?? '',
-                        'report_imported_at' => $reportImportedAt,
-                        'thumbnail_image' => $thumbnail,
-                    ],
-                    $raw,
-                    ['raw_data' => $rawDataString]
-                );
+                $base = [
+                    'id' => $row->id ?? null,
+                    'seller_sku' => $row->seller_sku ?? '',
+                    'asin1' => $row->asin1 ?? '',
+                    'report_imported_at' => $reportImportedAt,
+                    'thumbnail_image' => $thumbnail,
+                ];
+                foreach ($attributeColumns as $col) {
+                    if (Schema::hasColumn($model->getTable(), $col)) {
+                        $base[$col] = $row->{$col};
+                    }
+                }
+                // Map condition-type from raw_data to display if not already set
+                $condRaw = $raw['condition-type'] ?? $raw['condition_type'] ?? null;
+                if ($condRaw !== null && empty($base['condition_type_display'])) {
+                    $base['condition_type_display'] = \App\Services\AmazonSpApiService::mapConditionType((string) $condRaw);
+                }
+                $data[] = array_merge($base, $raw, ['raw_data' => $rawDataString]);
             }
 
             $columns = array_values($allKeys);
@@ -277,6 +293,38 @@ class AmzListingController extends Controller
             'status' => 422,
             'message' => $result['message'] ?? 'Import failed.',
         ], 422);
+    }
+
+    /**
+     * Enrich a single SKU (e.g. 3501 USB) for testing.
+     * POST /listing-master/amz-data/enrich-single with seller_sku=3501 USB
+     */
+    public function enrichSingle(Request $request)
+    {
+        $sellerSku = $request->input('seller_sku') ?: $request->input('sku');
+        if (empty($sellerSku) || ! is_string($sellerSku)) {
+            return response()->json([
+                'status' => 422,
+                'message' => 'seller_sku or sku is required.',
+            ], 422);
+        }
+        $service = new AmazonSpApiService();
+        $result = $service->enrichSingleSku(trim($sellerSku), true);
+        if (isset($result['error'])) {
+            return response()->json([
+                'status' => 422,
+                'message' => $result['error'],
+            ], 422);
+        }
+
+        return response()->json([
+            'status' => 200,
+            'message' => 'Enriched successfully.',
+            'sku' => $result['sku'],
+            'asin' => $result['asin'],
+            'updates_count' => $result['updates_count'],
+            'warnings' => $result['warnings'] ?? [],
+        ]);
     }
 
     /**

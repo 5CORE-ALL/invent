@@ -86,6 +86,8 @@ class Kernel extends ConsoleKernel
         \App\Console\Commands\UpdateEbaySkuCompetitorPrices::class,
         \App\Console\Commands\UpdateAmazonCompetitorPrices::class,
         \App\Console\Commands\UpdateAmazonSkuCompetitorPrices::class,
+        \App\Console\Commands\SyncAmazonProducts::class,
+        \App\Console\Commands\AmazonDebugSku::class,
     ];
 
     /**
@@ -164,6 +166,14 @@ class Kernel extends ConsoleKernel
         $schedule->command('app:fetch-amazon-listings')
             ->dailyAt('06:00')
             ->timezone('America/Los_Angeles');
+
+        $schedule->command('amazon:sync-products --enrich --enrich-limit=200')
+            ->dailyAt('02:00')
+            ->timezone('America/Los_Angeles')
+            ->name('amazon-sync-products')
+            ->withoutOverlapping(120)
+            ->runInBackground()
+            ->appendOutputTo($log);
         // Reverb: full sync (orders + Shopify→Reverb inventory) every 5 minutes
         $schedule->command('reverb:sync-all')
             ->everyThirtyMinutes()

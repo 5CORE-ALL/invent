@@ -9,6 +9,7 @@ use Aws\Credentials\Credentials;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Schema;
 use App\Models\AmazonListingRaw;
 use App\Models\ProductStockMapping;
 
@@ -274,7 +275,7 @@ class AmazonSpApiService
                     ];
                     
                     if ($attempt < $maxRetries) {
-                        sleep(1); // Wait before retry
+                        sleep(0.5); // Wait before retry
                         continue;
                     }
                     return $lastError;
@@ -883,7 +884,7 @@ class AmazonSpApiService
     /**
      * Request GET_MERCHANT_LISTINGS_ALL_DATA report, download, parse and store all rows in amazon_listings_raw.
      * Uses SP-API credentials from config (services.amazon_sp).
-     * Reports API returns a single document (no pagination). Uses Http + retry for reliable download.
+     * Reports API returns a single document. Includes retry logic, download verification, and comprehensive logging.
      * Returns ['success' => true, 'count' => N] or ['success' => false, 'message' => '...'].
      */
     public function fetchAndStoreListingsReport(): array
@@ -1002,21 +1003,43 @@ class AmazonSpApiService
             // Step 4: Download document with retry (critical - partial download causes missing rows)
             $maxRetries = 3;
             $rawContent = null;
+            $expectedBytes = null;
             for ($attempt = 1; $attempt <= $maxRetries; $attempt++) {
                 Log::info('Amazon Listings Report: Downloading document', [
                     'attempt' => $attempt,
                     'max_retries' => $maxRetries,
+                    'url_length' => strlen($url),
                 ]);
 
-                $downloadResponse = Http::timeout(120)->withHeaders(['Accept' => '*/*'])->get($url);
+                $downloadResponse = Http::timeout(180)->withHeaders(['Accept' => '*/*'])->get($url);
                 $rawContent = $downloadResponse->body();
                 $bytesReceived = strlen($rawContent);
+                $contentLength = $downloadResponse->header('Content-Length');
+                if ($contentLength !== null && is_numeric($contentLength)) {
+                    $expectedBytes = (int) $contentLength;
+                }
 
                 Log::info('Amazon Listings Report: Download result', [
                     'attempt' => $attempt,
                     'bytes_received' => $bytesReceived,
+                    'expected_bytes' => $expectedBytes,
                     'status' => $downloadResponse->status(),
+                    'complete' => $expectedBytes === null ? 'unknown' : ($bytesReceived >= $expectedBytes ? 'yes' : 'no'),
                 ]);
+
+                // Verify download completeness when Content-Length is available
+                if ($expectedBytes !== null && $bytesReceived < $expectedBytes) {
+                    Log::warning('Amazon Listings Report: Possible truncated download', [
+                        'bytes_received' => $bytesReceived,
+                        'expected' => $expectedBytes,
+                        'short_by' => $expectedBytes - $bytesReceived,
+                    ]);
+                    if ($attempt < $maxRetries) {
+                        sleep(5);
+                        continue;
+                    }
+                    return ['success' => false, 'message' => 'Report download truncated: received ' . $bytesReceived . ' bytes, expected ' . $expectedBytes];
+                }
 
                 if ($downloadResponse->successful() && $bytesReceived > 0) {
                     break;
@@ -1080,6 +1103,25 @@ class AmazonSpApiService
                 $sellerSku = isset($data['seller-sku']) ? preg_replace('/[^\x20-\x7E]/', '', trim($data['seller-sku'])) : null;
                 $asin1 = isset($data['asin1']) ? trim($data['asin1']) : null;
 
+                // Map report columns to our system fields (report uses hyphenated names)
+                $listPrice = isset($data['list-price']) && is_numeric($data['list-price'])
+                    ? (float) $data['list-price']
+                    : (isset($data['list_price']) && is_numeric($data['list_price']) ? (float) $data['list_price'] : null);
+                $minAdvertisedPrice = isset($data['minimum-advertised-price']) && is_numeric($data['minimum-advertised-price'])
+                    ? (float) $data['minimum-advertised-price']
+                    : (isset($data['minimum_advertised_price']) && is_numeric($data['minimum_advertised_price']) ? (float) $data['minimum_advertised_price'] : null);
+
+                // Preserve all image columns in raw_data (report may have image-url, image-url-1..9)
+                $imageKeys = ['image-url'];
+                for ($i = 1; $i <= 9; $i++) {
+                    $imageKeys[] = 'image-url-' . $i;
+                }
+                foreach ($imageKeys as $imgKey) {
+                    if (isset($data[$imgKey]) && is_string($data[$imgKey]) && trim($data[$imgKey]) !== '') {
+                        $data[$imgKey] = trim($data[$imgKey]);
+                    }
+                }
+
                 $rawJson = json_encode($data, JSON_UNESCAPED_UNICODE);
                 if ($rawJson === false || json_last_error() !== JSON_ERROR_NONE) {
                     Log::warning('Amazon Listings Report: json_encode failed for row', [
@@ -1091,7 +1133,7 @@ class AmazonSpApiService
                     continue;
                 }
 
-                $batch[] = [
+                $rowData = [
                     'report_imported_at' => $reportImportedAt,
                     'seller_sku' => $sellerSku,
                     'asin1' => $asin1,
@@ -1099,6 +1141,43 @@ class AmazonSpApiService
                     'created_at' => now()->toDateTimeString(),
                     'updated_at' => now()->toDateTimeString(),
                 ];
+                $tableName = (new AmazonListingRaw)->getTable();
+
+                // Thumbnail from report: image-url or first of image-url-1..9
+                $thumbnailUrl = null;
+                if (! empty(trim((string) ($data['image-url'] ?? '')))) {
+                    $thumbnailUrl = trim($data['image-url']);
+                } else {
+                    for ($i = 1; $i <= 9; $i++) {
+                        $v = $data['image-url-' . $i] ?? '';
+                        if (is_string($v) && trim($v) !== '') {
+                            $thumbnailUrl = trim($v);
+                            break;
+                        }
+                    }
+                }
+                if (Schema::hasColumn($tableName, 'thumbnail_image') && $thumbnailUrl !== null) {
+                    $rowData['thumbnail_image'] = $thumbnailUrl;
+                    if ($inserted < 3) {
+                        Log::debug('Amazon Listings Report: thumbnail from report', [
+                            'seller_sku' => $sellerSku,
+                            'thumbnail_image' => substr($thumbnailUrl, 0, 80) . '...',
+                        ]);
+                    }
+                }
+
+                if (Schema::hasColumn($tableName, 'list_price') && $listPrice !== null) {
+                    $rowData['list_price'] = $listPrice;
+                }
+                if (Schema::hasColumn($tableName, 'minimum_advertised_price') && $minAdvertisedPrice !== null) {
+                    $rowData['minimum_advertised_price'] = $minAdvertisedPrice;
+                }
+                $condType = $data['condition-type'] ?? $data['condition_type'] ?? null;
+                if (Schema::hasColumn($tableName, 'condition_type') && $condType !== null && $condType !== '') {
+                    $rowData['condition_type'] = trim((string) $condType);
+                    $rowData['condition_type_display'] = self::mapConditionType($rowData['condition_type']);
+                }
+                $batch[] = $rowData;
                 if (count($batch) >= $batchSize) {
                     $inserted += $this->insertBatchWithRetry($batch);
                     $batch = [];
@@ -1127,6 +1206,662 @@ class AmazonSpApiService
             Log::error('Amazon Listings Report: Exception', ['error' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
             return ['success' => false, 'message' => $e->getMessage()];
         }
+    }
+
+    /**
+     * Field mapping: Amazon API/UI field names → our amazon_listings_raw columns.
+     */
+    private static function amazonFieldMapping(): array
+    {
+        return [
+            'item_name' => 'item_name',
+            'product_title' => 'item_name',
+            'brand' => 'brand',
+            'bullet_point' => 'bullet_point',
+            'product_description' => 'product_description',
+            'model_number' => 'model_number',
+            'manufacturer' => 'manufacturer',
+            'part_number' => 'part_number',
+            'product_id' => 'product_id',
+            'color' => 'color',
+            'material' => 'material',
+            'style' => 'style',
+            'item_dimensions' => 'item_dimensions',
+            'exterior_finish' => 'exterior_finish',
+            'voltage' => 'voltage',
+            'noise_level' => 'noise_level',
+            'country_of_origin' => 'country_of_origin',
+            'warranty_description' => 'warranty_description',
+            'included_components' => 'included_components',
+            'number_of_items' => 'number_of_items',
+            'assembly_required' => 'assembly_required',
+            'handling_time' => 'handling_time',
+            'minimum_advertised_price' => 'minimum_advertised_price',
+            'list_price' => 'list_price',
+            'merchant_shipping_group' => 'merchant_shipping_group',
+            'item_type_keyword' => 'item_type_keyword',
+            'generic_keyword' => 'generic_keyword',
+        ];
+    }
+
+    /**
+     * Get Catalog Item details by ASIN for product attributes enrichment.
+     * Uses Catalog Items API v2022-04-01.
+     * @param array{catalog_raw?: array} $context Optional - stores raw response for debug
+     */
+    public function getCatalogItemByAsin(string $asin, array &$context = []): ?array
+    {
+        try {
+            $accessToken = $this->getAccessToken();
+            if (! $accessToken) {
+                Log::warning('Catalog API: No access token');
+                return null;
+            }
+            $marketplaceId = config('services.amazon_sp.marketplace_id') ?: $this->marketplaceId;
+            if (empty($marketplaceId)) {
+                Log::warning('Catalog API: No marketplace_id configured');
+                return null;
+            }
+            $asinEncoded = rawurlencode($asin);
+            $url = 'https://sellingpartnerapi-na.amazon.com/catalog/2022-04-01/items/' . $asinEncoded
+                . '?marketplaceIds=' . $marketplaceId
+                . '&includedData=attributes,dimensions,identifiers,productTypes,summaries';
+
+            Log::info('Catalog API: Calling getCatalogItem', ['asin' => $asin, 'url' => $url]);
+
+            $response = Http::withoutVerifying()->timeout(30)->withHeaders([
+                'x-amz-access-token' => $accessToken,
+                'Content-Type' => 'application/json',
+            ])->get($url);
+
+            $body = $response->json();
+            $status = $response->status();
+
+            if ($response->failed()) {
+                Log::warning('Catalog API: Request failed', [
+                    'asin' => $asin,
+                    'status' => $status,
+                    'body' => $body,
+                ]);
+                return null;
+            }
+
+            $context['catalog_raw'] = $body;
+            Log::info('Catalog API: Success', [
+                'asin' => $asin,
+                'has_summaries' => ! empty($body['summaries']),
+                'has_attributes' => ! empty($body['attributes']),
+                'has_dimensions' => ! empty($body['dimensions']),
+                'has_identifiers' => ! empty($body['identifiers']),
+            ]);
+
+            return $body;
+        } catch (\Throwable $e) {
+            Log::warning('Catalog API: Exception', ['asin' => $asin, 'error' => $e->getMessage()]);
+            return null;
+        }
+    }
+
+    /**
+     * Extract product attributes from Catalog API v2022-04-01 response.
+     * Maps: summaries[0], dimensions[0], identifiers[0], attributes.
+     */
+    public function extractCatalogAttributes(array $catalogData): array
+    {
+        $out = [];
+        $attributes = $catalogData['attributes'] ?? [];
+        $summaries = $catalogData['summaries'] ?? [];
+        $dimensions = $catalogData['dimensions'] ?? [];
+        $identifiers = $catalogData['identifiers'] ?? [];
+        $productTypes = $catalogData['productTypes'] ?? [];
+        $summary = $summaries[0] ?? [];
+        $dim = $dimensions[0] ?? [];
+        // Handle dimensions as object (length/width/height/weight)
+        if (is_array($dim) && isset($dim['item'])) {
+            $dim = $dim['item'] ?? $dim;
+        }
+
+        $extractAttrValue = function ($val) {
+            if (is_string($val)) {
+                return trim($val) === '' ? null : trim($val);
+            }
+            if (is_array($val) && isset($val[0]['value'])) {
+                $v = $val[0]['value'] ?? null;
+                return is_string($v) ? trim($v) : (is_array($v) ? json_encode($v) : null);
+            }
+            if (is_array($val) && isset($val[0]['marketplace_id'])) {
+                return $val[0]['value'] ?? null;
+            }
+            return null;
+        };
+
+        // summaries[0] mapping - API may use brandName or brand, itemName, etc.
+        $summaryMap = [
+            'brand' => 'brand',
+            'brandName' => 'brand',
+            'color' => 'color',
+            'size' => 'size',
+            'style' => 'style',
+            'modelNumber' => 'model_number',
+            'modelName' => 'model_name',
+            'partNumber' => 'part_number',
+            'manufacturer' => 'manufacturer',
+            'packageQuantity' => 'number_of_items',
+            'itemName' => 'item_name',
+        ];
+        foreach ($summaryMap as $apiKey => $ourKey) {
+            $v = $summary[$apiKey] ?? null;
+            if ($v !== null && $v !== '') {
+                if ($ourKey === 'number_of_items' && is_numeric($v)) {
+                    $out[$ourKey] = (int) $v;
+                } elseif ($ourKey === 'model_name' || $ourKey === 'item_name' || $ourKey === 'brand') {
+                    $out[$ourKey] = is_string($v) ? trim($v) : (string) $v;
+                } else {
+                    $out[$ourKey] = is_string($v) ? trim($v) : (string) $v;
+                }
+            }
+        }
+        if (empty($out['item_name']) && ! empty($summary['itemName'])) {
+            $out['item_name'] = is_string($summary['itemName']) ? trim($summary['itemName']) : (string) $summary['itemName'];
+        }
+
+        // dimensions[0] → item_dimensions - may be object with length/width/height/weight
+        if (! empty($dim)) {
+            if (is_string($dim)) {
+                $out['item_dimensions'] = trim($dim);
+            } elseif (is_array($dim)) {
+                $out['item_dimensions'] = json_encode($dim, JSON_UNESCAPED_UNICODE);
+            }
+        }
+        if (empty($out['item_dimensions']) && ! empty($dimensions)) {
+            $first = $dimensions[0] ?? null;
+            if (is_array($first)) {
+                $out['item_dimensions'] = json_encode($first, JSON_UNESCAPED_UNICODE);
+            }
+        }
+
+        // identifiers[0].identifiers → external_product_id (UPC/EAN)
+        $idRow = $identifiers[0] ?? null;
+        if (is_array($idRow)) {
+            $idents = $idRow['identifiers'] ?? $idRow;
+            if (! is_array($idents)) {
+                $idents = [$idRow];
+            }
+            foreach ($idents as $id) {
+                if (! is_array($id)) {
+                    continue;
+                }
+                $type = strtoupper((string) ($id['identifierType'] ?? $id['type'] ?? ''));
+                $val = $id['identifier'] ?? $id['value'] ?? null;
+                if ($val && in_array($type, ['UPC', 'EAN'], true)) {
+                    $out['external_product_id'] = is_string($val) ? trim($val) : (string) $val;
+                    break;
+                }
+            }
+        }
+
+        // product_description: attributes.product_description[0].value or summaries[0].description
+        $prodDesc = $attributes['product_description'] ?? null;
+        if ($prodDesc !== null) {
+            $extracted = $extractAttrValue($prodDesc);
+            if (is_string($extracted) && trim($extracted) !== '') {
+                $out['product_description'] = trim($extracted);
+            }
+        }
+        if (empty($out['product_description']) && ! empty($summary['description'])) {
+            $d = $summary['description'];
+            $out['product_description'] = is_string($d) ? trim($d) : (string) $d;
+        }
+
+        // attributes mapping
+        $attrKeys = [
+            'country_of_origin' => 'country_of_origin',
+            'finish_type' => 'exterior_finish',
+            'assembly_required' => 'assembly_required',
+            'voltage' => 'voltage',
+            'generic_keyword' => 'generic_keyword',
+            'material' => 'material',
+            'model_number' => 'model_number',
+            'manufacturer' => 'manufacturer',
+            'part_number' => 'part_number',
+            'included_components' => 'included_components',
+            'item_type_keyword' => 'item_type_keyword',
+        ];
+        foreach ($attrKeys as $apiKey => $ourKey) {
+            $val = $attributes[$apiKey] ?? null;
+            if ($val !== null) {
+                $extracted = $extractAttrValue($val);
+                if ($extracted !== null) {
+                    if ($ourKey === 'assembly_required') {
+                        $out[$ourKey] = in_array(strtolower((string) $extracted), ['yes', 'true', '1'], true);
+                    } elseif ($ourKey === 'number_of_items' && is_numeric($extracted)) {
+                        $out[$ourKey] = (int) $extracted;
+                    } else {
+                        $out[$ourKey] = $extracted;
+                    }
+                }
+            }
+        }
+
+        // productTypes for item_type_keyword and product_type
+        if (! empty($productTypes[0]['productType'])) {
+            $pt = trim((string) $productTypes[0]['productType']);
+            $out['item_type_keyword'] = $out['item_type_keyword'] ?? $pt;
+            $out['product_type'] = $out['product_type'] ?? $pt;
+        }
+
+        // model_name (from summary or attributes)
+        if (! empty($summary['modelName'])) {
+            $out['model_name'] = is_string($summary['modelName']) ? trim($summary['modelName']) : (string) $summary['modelName'];
+        }
+
+        return $out;
+    }
+
+    /**
+     * Get full Listings Item details from Listings Items API v2021-08-01.
+     * Include: attributes, offers, fulfillmentAvailability, productTypes.
+     * Maps: quantity, handling_time, your_price, minimum_advertised_price, list_price,
+     * merchant_shipping_group, warranty_description, product_description, bullet_point, item_name.
+     */
+    public function getListingsItemFullDetails(string $sellerSku): array
+    {
+        $empty = [
+            'item_name' => null,
+            'product_description' => null,
+            'bullet_point' => [],
+            'quantity' => null,
+            'handling_time' => null,
+            'your_price' => null,
+            'minimum_advertised_price' => null,
+            'list_price' => null,
+            'merchant_shipping_group' => null,
+            'warranty_description' => null,
+            'product_type' => null,
+            'condition_type' => null,
+            'images' => [],
+        ];
+
+        try {
+            $accessToken = $this->getAccessToken();
+            $sellerId = config('services.amazon_sp.seller_id');
+            $marketplaceId = $this->marketplaceId ?? config('services.amazon_sp.marketplace_id');
+            if (empty($sellerId) || empty($marketplaceId)) {
+                return $empty;
+            }
+
+            $skuEncoded = rawurlencode($sellerSku);
+            $url = $this->endpoint . '/listings/2021-08-01/items/' . $sellerId . '/' . $skuEncoded
+                . '?marketplaceIds=' . $marketplaceId
+                . '&includedData=attributes,offers,fulfillmentAvailability,productTypes';
+
+            $response = Http::withoutVerifying()->timeout(30)->withHeaders([
+                'x-amz-access-token' => $accessToken,
+                'Content-Type' => 'application/json',
+            ])->get($url);
+
+            $body = $response->json();
+            if ($response->status() !== 200) {
+                return $empty;
+            }
+
+            $attrs = $body['attributes'] ?? [];
+            $offers = $body['offers'] ?? [];
+            $fulfillmentAvail = $body['fulfillmentAvailability'] ?? [];
+            $productTypes = $body['productTypes'] ?? [];
+            $summaries = $body['summaries'] ?? [];
+
+            $extractAttr = function ($v) {
+                if (is_array($v) && isset($v[0]['value'])) {
+                    return is_string($v[0]['value']) ? trim($v[0]['value']) : (is_numeric($v[0]['value']) ? $v[0]['value'] : null);
+                }
+                return is_string($v) && trim($v) !== '' ? trim($v) : (is_numeric($v) ? $v : null);
+            };
+
+            $out = $empty;
+
+            // fulfillmentAvailability[0]
+            $fa = $fulfillmentAvail[0] ?? [];
+            if (isset($fa['quantity']) && is_numeric($fa['quantity'])) {
+                $out['quantity'] = (int) $fa['quantity'];
+            }
+            if (isset($fa['handlingTime']['value']) && is_numeric($fa['handlingTime']['value'])) {
+                $out['handling_time'] = (int) $fa['handlingTime']['value'];
+            } elseif (isset($fa['handlingTime']) && is_numeric($fa['handlingTime'])) {
+                $out['handling_time'] = (int) $fa['handlingTime'];
+            }
+
+            // Price extraction from multiple possible paths
+            $getPriceFromSchedule = function ($v): ?float {
+                if ($v === null) {
+                    return null;
+                }
+                if (is_array($v) && isset($v[0]['schedule'][0]['value_with_tax'])) {
+                    return (float) $v[0]['schedule'][0]['value_with_tax'];
+                }
+                if (is_array($v) && isset($v[0]['value_with_tax'])) {
+                    return (float) $v[0]['value_with_tax'];
+                }
+                if (is_numeric($v)) {
+                    return (float) $v;
+                }
+                return null;
+            };
+            $getPriceFromOffer = function (array $o, string $key) use ($getPriceFromSchedule): ?float {
+                $v = $o[$key] ?? null;
+                return $getPriceFromSchedule($v);
+            };
+
+            // Path 1: offers[0] or summaries[0].offers[0]
+            $offer = $offers[0] ?? ($summaries[0]['offers'][0] ?? []);
+            if (($p = $getPriceFromOffer($offer, 'ourPrice')) !== null) {
+                $out['your_price'] = $p;
+            }
+            if (($p = $getPriceFromOffer($offer, 'minimumSellerAllowedPrice')) !== null) {
+                $out['minimum_advertised_price'] = $p;
+            }
+            if (($p = $getPriceFromOffer($offer, 'listPrice')) !== null) {
+                $out['list_price'] = $p;
+            }
+
+            // Path 2: attributes.purchasable_offer[0].our_price / list_price / minimum_advertised_price
+            $purchasable = $attrs['purchasable_offer'] ?? null;
+            if (is_array($purchasable) && isset($purchasable[0])) {
+                $po = $purchasable[0];
+                if ($out['your_price'] === null && ($p = $getPriceFromSchedule($po['our_price'] ?? null)) !== null) {
+                    $out['your_price'] = $p;
+                }
+                if ($out['list_price'] === null && ($p = $getPriceFromSchedule($po['list_price'] ?? null)) !== null) {
+                    $out['list_price'] = $p;
+                }
+                if ($out['minimum_advertised_price'] === null && ($p = $getPriceFromSchedule($po['minimum_advertised_price'] ?? $po['minimumSellerAllowedPrice'] ?? null)) !== null) {
+                    $out['minimum_advertised_price'] = $p;
+                }
+            }
+
+            // Path 3: summaries[0].offers[0].ourPrice (already tried above; try summaries.ourPrice directly)
+            if ($out['your_price'] === null && ! empty($summaries[0]['offers'][0]['ourPrice'])) {
+                $p = $getPriceFromSchedule($summaries[0]['offers'][0]['ourPrice']);
+                if ($p !== null) {
+                    $out['your_price'] = $p;
+                }
+            }
+
+            // attributes including condition_type (API may return numeric code e.g. 11 = New)
+            $condAttr = $attrs['condition_type'] ?? $attrs['condition_note_condition'] ?? null;
+            if ($condAttr !== null) {
+                $ex = $extractAttr($condAttr);
+                if ($ex !== null) {
+                    $out['condition_type'] = is_string($ex) ? trim($ex) : (string) $ex;
+                }
+            }
+            foreach (['item_name', 'product_description', 'merchant_shipping_group', 'warranty_description'] as $k) {
+                $v = $attrs[$k] ?? null;
+                if ($v !== null) {
+                    $ex = $extractAttr($v);
+                    if ($ex !== null) {
+                        $out[$k] = $ex;
+                    }
+                }
+            }
+
+            // bullet_point (features tab → bullet points)
+            $bp = $attrs['bullet_point'] ?? $attrs['bullet_points'] ?? $attrs['feature_bullets'] ?? null;
+            if (is_array($bp)) {
+                $bullets = [];
+                foreach ($bp as $item) {
+                    if (is_string($item) && trim($item) !== '') {
+                        $bullets[] = trim($item);
+                    } elseif (is_array($item) && isset($item['value']) && is_string($item['value']) && trim($item['value']) !== '') {
+                        $bullets[] = trim($item['value']);
+                    }
+                }
+                if (! empty($bullets)) {
+                    $out['bullet_point'] = $bullets;
+                }
+            }
+
+            // productTypes
+            if (! empty($productTypes[0]['productType'])) {
+                $out['product_type'] = trim((string) $productTypes[0]['productType']);
+            }
+
+            // summaries fallback for item_name
+            if (empty($out['item_name']) && ! empty($summaries[0]['itemName'])) {
+                $out['item_name'] = trim((string) $summaries[0]['itemName']);
+            }
+
+            $filled = array_filter($out, fn ($v) => $v !== null && $v !== '' && (! is_array($v) || ! empty($v)));
+            Log::debug('Listings Item full details: extracted', [
+                'sku' => $sellerSku,
+                'field_count' => count($filled),
+                'your_price' => $out['your_price'] ?? null,
+                'list_price' => $out['list_price'] ?? null,
+                'minimum_advertised_price' => $out['minimum_advertised_price'] ?? null,
+                'handling_time' => $out['handling_time'] ?? null,
+            ]);
+
+            return $out;
+        } catch (\Throwable $e) {
+            Log::debug('Listings Item full details: Exception', ['sku' => $sellerSku, 'error' => $e->getMessage()]);
+            return $empty;
+        }
+    }
+
+    /**
+     * Map Amazon condition type code to display value.
+     */
+    public static function mapConditionType(?string $code): ?string
+    {
+        if ($code === null || $code === '') {
+            return null;
+        }
+        $map = [
+            '11' => 'New',
+            '10' => 'Refurbished',
+            '9' => 'Not Used',
+            '1' => 'Used - Like New',
+            '2' => 'Used - Very Good',
+            '3' => 'Used - Good',
+            '4' => 'Used - Acceptable',
+        ];
+
+        return $map[trim((string) $code)] ?? $code;
+    }
+
+    /**
+     * Enrich an AmazonListingRaw record with Catalog API and Listings Items API data.
+     * Merges all 26 required fields. Catalog API: 1/sec rate limit. Listings API: 5/sec.
+     * @param array{warnings?: array, api_response?: array} $context Optional context for logging
+     */
+    public function enrichListingData(string $asin, string $sellerSku, array &$context = []): array
+    {
+        $updates = [];
+        $maxRetries = 3;
+
+        // 1. Catalog API (rate limit 1/sec) - MUST be called first for brand, color, material, dimensions, etc.
+        sleep(1); // Rate limit: 1 req/sec before first Catalog call
+        for ($attempt = 1; $attempt <= $maxRetries; $attempt++) {
+            $catalogData = $this->getCatalogItemByAsin($asin, $context);
+            if ($catalogData !== null) {
+                $catalogAttrs = $this->extractCatalogAttributes($catalogData);
+                foreach ($catalogAttrs as $k => $v) {
+                    if ($v !== null && $v !== '' && (! is_array($v) || ! empty($v))) {
+                        $updates[$k] = $v;
+                    }
+                }
+                break;
+            }
+            if ($attempt < $maxRetries) {
+                sleep(1);
+            } else {
+                $context['warnings'] = ($context['warnings'] ?? []);
+                $context['warnings'][] = "Catalog API failed for ASIN {$asin} after {$maxRetries} attempts";
+            }
+        }
+
+        sleep(1); // Catalog API rate limit: 1 req/sec
+
+        // 2. Listings Items API (rate limit 5/sec, use 200ms delay)
+        usleep(200000);
+        for ($attempt = 1; $attempt <= $maxRetries; $attempt++) {
+            $listingsData = $this->getListingsItemFullDetails($sellerSku);
+            $listingsFields = [
+                'item_name', 'product_description', 'bullet_point', 'quantity', 'handling_time',
+                'your_price', 'minimum_advertised_price', 'list_price', 'merchant_shipping_group',
+                'warranty_description', 'product_type', 'condition_type',
+            ];
+            $merged = false;
+            foreach ($listingsFields as $k) {
+                $v = $listingsData[$k] ?? null;
+                if ($v !== null && $v !== '' && (! is_array($v) || ! empty($v))) {
+                    $updates[$k] = $v;
+                    if ($k === 'condition_type') {
+                        $updates['condition_type_display'] = self::mapConditionType(is_string($v) ? $v : (string) $v);
+                    }
+                    $merged = true;
+                }
+            }
+            if ($merged || $attempt === $maxRetries) {
+                break;
+            }
+            usleep(500000); // 500ms before retry
+        }
+
+        // Ensure bullet_point is array for JSON casting
+        if (isset($updates['bullet_point']) && ! is_array($updates['bullet_point'])) {
+            $bp = $updates['bullet_point'];
+            $updates['bullet_point'] = is_string($bp) ? (json_decode($bp, true) ?? [$bp]) : (array) $bp;
+        }
+
+        // 3. Fetch images via Listings Item Media and add thumbnail + image-url-1..9 for raw_data
+        usleep(200000);
+        $media = $this->getListingsItemMedia($sellerSku);
+        if (! empty($media['images']) && is_array($media['images'])) {
+            $images = array_values($media['images']);
+            $first = $images[0] ?? null;
+            if (is_string($first) && $first !== '') {
+                $updates['thumbnail_image'] = $first;
+            } elseif (is_array($first) && ! empty($first['url'])) {
+                $updates['thumbnail_image'] = $first['url'];
+            }
+            $imageUrlsForRaw = [];
+            foreach ($images as $idx => $url) {
+                $u = is_string($url) ? $url : (is_array($url) ? ($url['url'] ?? $url['locator'] ?? null) : null);
+                if (is_string($u) && $u !== '') {
+                    if ($idx === 0) {
+                        $imageUrlsForRaw['image-url'] = $u;
+                    } elseif ($idx >= 1 && $idx <= 9) {
+                        $imageUrlsForRaw['image-url-' . $idx] = $u;
+                    }
+                }
+            }
+            if (empty($imageUrlsForRaw['image-url']) && ! empty($images[0])) {
+                $first = $images[0];
+                $imageUrlsForRaw['image-url'] = is_string($first) ? $first : ($first['url'] ?? $first['locator'] ?? '');
+            }
+            $updates['_image_urls_for_raw_data'] = $imageUrlsForRaw;
+            $context['image_count'] = count($images);
+            Log::debug('Amazon enrichment: images for raw_data', [
+                'sku' => $sellerSku,
+                'count' => count($imageUrlsForRaw),
+                'thumbnail_set' => isset($updates['thumbnail_image']),
+            ]);
+        }
+
+        $context['updates_count'] = count($updates);
+        Log::debug('Amazon enrichment: merged updates', [
+            'sku' => $sellerSku,
+            'field_count' => count($updates),
+            'has_your_price' => isset($updates['your_price']),
+            'has_product_description' => isset($updates['product_description']),
+            'has_thumbnail' => isset($updates['thumbnail_image']),
+        ]);
+
+        return $updates;
+    }
+
+    /**
+     * Enrich a single SKU and return updates. For testing (e.g. 3501 USB).
+     */
+    public function enrichSingleSku(string $sellerSku, bool $debug = true): array
+    {
+        $listing = AmazonListingRaw::where('seller_sku', $sellerSku)->first()
+            ?? AmazonListingRaw::where('seller_sku', 'like', '%' . str_replace(['%', '_'], ['\\%', '\\_'], $sellerSku) . '%')->first();
+        if (! $listing) {
+            return ['error' => "SKU '{$sellerSku}' not found in amazon_listings_raw. Run report import first."];
+        }
+        $asin = $listing->asin1;
+        if (empty($asin)) {
+            return ['error' => "ASIN empty for SKU '{$sellerSku}'."];
+        }
+
+        $context = [];
+        $updates = $this->enrichListingData($asin, $listing->seller_sku, $context);
+
+        if ($debug) {
+            Log::info('AmazonSpApiService: enrichSingleSku before save', [
+                'sku' => $listing->seller_sku,
+                'asin' => $asin,
+                'updates_keys' => array_keys($updates),
+                'updates_count' => count($updates),
+                'bullet_point_type' => isset($updates['bullet_point']) ? gettype($updates['bullet_point']) : null,
+            ]);
+        }
+
+        // Merge image URLs into raw_data (image-url, image-url-1..9)
+        $imageUrlsForRaw = $updates['_image_urls_for_raw_data'] ?? null;
+        unset($updates['_image_urls_for_raw_data']);
+        if ($imageUrlsForRaw !== null && is_array($imageUrlsForRaw)) {
+            $rawData = $listing->raw_data;
+            if (! is_array($rawData)) {
+                $rawData = is_string($rawData) ? (json_decode($rawData, true) ?? []) : [];
+            }
+            foreach ($imageUrlsForRaw as $k => $v) {
+                if (is_string($v) && $v !== '') {
+                    $rawData[$k] = $v;
+                }
+            }
+            $updates['raw_data'] = $rawData;
+        }
+
+        // Filter to fillable columns only for correct persistence
+        $fillable = (new AmazonListingRaw)->getFillable();
+        $filtered = [];
+        foreach ($updates as $k => $v) {
+            if (in_array($k, $fillable, true)) {
+                $filtered[$k] = $v;
+            }
+        }
+        $filteredCount = count($filtered);
+
+        if (! empty($updates)) {
+            if ($filteredCount < count($updates)) {
+                $dropped = array_diff_key($updates, $filtered);
+                Log::warning('AmazonSpApiService: enrichSingleSku - dropped non-fillable keys', [
+                    'dropped' => array_keys($dropped),
+                ]);
+            }
+            $listing->update($filtered);
+            if ($debug) {
+                $listing->refresh();
+                Log::info('AmazonSpApiService: enrichSingleSku after save', [
+                    'sku' => $listing->seller_sku,
+                    'fields_saved' => $filteredCount,
+                    'bullet_point_saved' => $listing->bullet_point,
+                    'condition_type' => $listing->condition_type ?? 'N/A',
+                    'condition_type_display' => $listing->condition_type_display ?? 'N/A',
+                ]);
+            }
+        }
+
+        return [
+            'success' => true,
+            'sku' => $listing->seller_sku,
+            'asin' => $asin,
+            'updates_count' => $filteredCount,
+            'warnings' => $context['warnings'] ?? [],
+        ];
     }
 
     /**
@@ -1199,6 +1934,12 @@ class AmazonSpApiService
             $imagesFromAttributes = $this->extractImagesFromAttributes($attributes);
             $genericImages = $this->extractImageUrlsFromListingsItemResponse($body);
             $images = array_values(array_unique(array_merge($imagesFromAttributes, $genericImages)));
+
+            Log::info('Amazon Listings Item: image sequence', [
+                'sku' => $sellerSku,
+                'count' => count($images),
+                'order' => array_map(fn ($u) => substr($u, -40), $images),
+            ]);
 
             $videosFromAttributes = $this->extractVideosFromAttributes($attributes, $images);
             $genericVideos = $this->extractVideoUrlsFromListingsItemResponse($body, $images);

@@ -875,7 +875,6 @@
             function buildGalleryItems(rowData) {
                 if (typeof console !== 'undefined' && console.log) {
                     console.log('🔍 [Amz Gallery] Searching for images in rowData. Keys:', rowData ? Object.keys(rowData || {}) : []);
-                    console.log('🔍 [Amz Gallery] raw_data field present:', !!(rowData && rowData.raw_data), typeof (rowData && rowData.raw_data));
                 }
                 var items = [];
                 var seen = {};
@@ -899,23 +898,36 @@
                     if (typeof v === 'string' && !v.trim()) return true;
                     return false;
                 }
-                var imageKeys = [];
                 var videoKeys = [];
                 Object.keys(rowData || {}).forEach(function(k) {
-                    if (imageKeyMatch(k)) imageKeys.push(k);
                     if (k.toLowerCase().indexOf('video') !== -1) videoKeys.push(k);
+                });
+                var orderedImageKeys = ['main-image-url', 'main-image-url-1', 'image-url', 'image-url-1', 'thumbnail_image'];
+                for (var oi = 0; oi < orderedImageKeys.length; oi++) {
+                    var u = rowData[orderedImageKeys[oi]];
+                    if (u && typeof u === 'string' && u.trim()) addImage(u);
+                }
+                for (var i = 1; i <= 9; i++) {
+                    var u = rowData['image-url-' + i] || rowData['picture-url-' + i];
+                    if (u && typeof u === 'string' && u.trim()) addImage(u);
+                }
+                for (var i = 10; i <= 12; i++) {
+                    var u = rowData['image-url-' + i] || rowData['picture-url-' + i];
+                    if (u && typeof u === 'string' && u.trim()) addImage(u);
+                }
+                var imageKeys = [];
+                Object.keys(rowData || {}).forEach(function(k) {
+                    if (imageKeyMatch(k) && orderedImageKeys.indexOf(k) === -1) {
+                        var skip = false;
+                        for (var si = 1; si <= 12; si++) { if (k === 'image-url-' + si || k === 'picture-url-' + si) { skip = true; break; } }
+                        if (!skip) imageKeys.push(k);
+                    }
                 });
                 imageKeys.forEach(function(k) {
                     var v = rowData[k];
                     if (isEmpty(v)) return;
                     extractUrlsFromValue(v).forEach(function(u) { addImage(u, k); });
                 });
-                var mainFirst = (rowData['main-image-url'] || rowData['main-image-url-1'] || rowData['image-url'] || rowData['image-url-1'] || rowData.thumbnail_image);
-                if (mainFirst && typeof mainFirst === 'string' && mainFirst.trim()) addImage(mainFirst);
-                for (var i = 1; i <= 12; i++) {
-                    var u = rowData['image-url-' + i] || rowData['picture-url-' + i];
-                    if (u && typeof u === 'string' && u.trim()) addImage(u);
-                }
                 if (items.length === 0) {
                     Object.keys(rowData || {}).forEach(function(k) {
                         var v = rowData[k];
@@ -968,7 +980,7 @@
             var FIELD_SECTIONS = {
                 'Identifiers': ['id', 'seller_sku', 'seller-sku', 'asin1', 'asin2', 'asin', 'listing-id', 'product-id', 'item-name', 'parent-sku', 'relationship-type', 'sku'],
                 'Pricing & Quantity': ['price', 'quantity', 'fulfillment-channel', 'business-price', 'quantity-price-type', 'quantity-lower-bound', 'quantity-upper-bound', 'merchant-shipping-group'],
-                'Product Info': ['item-description', 'item-name', 'product-id-type', 'condition-type', 'condition-note', 'brand', 'manufacturer', 'part-number', 'model', 'bullet-point', 'generic-keyword', 'target-audience', 'item-note', 'variation-theme'],
+                'Product Info': ['item-description', 'item-name', 'product-id-type', 'condition-type', 'condition-note', 'brand', 'manufacturer', 'part-number', 'model', 'generic-keyword', 'target-audience', 'item-note', 'variation-theme'],
                 'Status & Dates': ['status', 'report_imported_at', 'open-date', 'last-update-date', 'pending-quantity', 'fulfillment-channel', 'will-ship-internationally'],
                 'Offer': ['fulfillment-channel', 'merchant-shipping-group', 'handling-time', 'max-order-quantity'],
             };
@@ -1055,12 +1067,16 @@
                     var rows = renderFieldRows(rowData, keys);
                     if (rows) detailsHtml += '<div class="amz-stack-section"><div class="amz-stack-section-title">' + sectionTitle + '</div>' + rows + '</div>';
                 });
-                var otherKeys = allKeys.filter(function(k) { return !usedKeys[k]; });
+                var bulletKeys = ['bullet-point', 'bullet_point', 'bullet_points', '_bullet_points'];
+                bulletKeys.forEach(function(k) { usedKeys[k] = true; });
+                var otherKeys = allKeys.filter(function(k) { return !usedKeys[k] && bulletKeys.indexOf(k) === -1; });
                 if (otherKeys.length > 0) {
                     detailsHtml += '<div class="amz-stack-section"><div class="amz-stack-section-title">More fields</div>' + renderFieldRows(rowData, otherKeys) + '</div>';
                 }
                 var allFieldsHtml = '';
+                var excludeFromAll = ['bullet-point', 'bullet_point', 'bullet_points', '_bullet_points'];
                 allKeys.forEach(function(k) {
+                    if (excludeFromAll.indexOf(k) !== -1) return;
                     var v = rowData[k];
                     if (v === undefined && v !== 0) return;
                     allFieldsHtml += '<div class="amz-stack-row"><span class="amz-stack-label">' + escapeHtml(formatLabel(k)) + '</span><span class="amz-stack-value">' + formatValue(k, v) + '</span></div>';
@@ -1068,8 +1084,10 @@
                 if (allFieldsHtml === '') allFieldsHtml = '<div class="text-muted small">No fields</div>';
 
                 var priceStr = rowData.price !== undefined && rowData.price !== null && rowData.price !== '' ? ('$' + Number(rowData.price).toFixed(2)) : '—';
-                var conditionStr = (rowData['condition-type'] || rowData.condition_type || '').toString().trim() || '—';
-                var bulletPoints = rowData.bullet_points || rowData._bullet_points || [];
+                var conditionDisplay = (rowData.condition_type_display || '').toString().trim();
+                var conditionCode = (rowData['condition-type'] || rowData.condition_type || '').toString().trim();
+                var conditionStr = conditionDisplay || (conditionCode && /^11$/.test(conditionCode) ? 'New' : conditionCode && /^10$/.test(conditionCode) ? 'Refurbished' : conditionCode && /^[1-4]$/.test(conditionCode) ? 'Used' : conditionCode) || '—';
+                var bulletPoints = rowData.bullet_point || rowData.bullet_points || rowData._bullet_points || [];
                 if (!Array.isArray(bulletPoints)) bulletPoints = [];
                 if (bulletPoints.length === 0 && (rowData['bullet-point'] || rowData['item-description'])) {
                     var desc = (rowData['bullet-point'] || rowData['item-description'] || '').toString();
@@ -1118,7 +1136,7 @@
                     });
                     featuresTabHtml += '</ul>';
                 } else {
-                    featuresTabHtml = '<p class="text-muted">No feature bullets available.</p>';
+                    featuresTabHtml = '<p class="text-muted">No bullet points available.</p>';
                 }
 
                 var galleryLeftHtml = '';
@@ -1165,7 +1183,7 @@
                     '<div class="amz-stack-tabs">' +
                     '<span class="amz-stack-tab" data-tab="images">Images</span>' +
                     '<span class="amz-stack-tab" data-tab="videos">Videos</span>' +
-                    '<span class="amz-stack-tab" data-tab="features">Features</span>' +
+                    '<span class="amz-stack-tab" data-tab="features">Bullet Points</span>' +
                     '<span class="amz-stack-tab active" data-tab="details">Details</span>' +
                     '<span class="amz-stack-tab" data-tab="all">All fields</span>' +
                     '</div>' +
@@ -1314,14 +1332,17 @@
                         }, { passive: true });
                     }
                     setGalleryIndex(0);
-                    var needsMedia = hasOnlyPlaceholder || !(rowData.bullet_points && rowData.bullet_points.length);
-                    if (copySku && needsMedia) {
+                    var needsMedia = hasOnlyPlaceholder || !(rowData.bullet_point && rowData.bullet_point.length) && !(rowData.bullet_points && rowData.bullet_points.length);
+                    var mediaCacheKey = 'amz_media_' + (copySku || '');
+                    var alreadyFetched = (window._amzMediaFetched || (window._amzMediaFetched = {}))[mediaCacheKey];
+                    if (copySku && needsMedia && !alreadyFetched) {
+                        (window._amzMediaFetched || (window._amzMediaFetched = {}))[mediaCacheKey] = true;
                         fetch(imagesUrl + '?seller_sku=' + encodeURIComponent(copySku))
                             .then(function(r) { return r.json(); })
                             .then(function(res) {
                                 var imgCount = (res.images && res.images.length) || 0;
                                 var vidCount = (res.videos && res.videos.length) || 0;
-                                if (typeof console !== 'undefined' && console.log) console.log('[Amz Gallery] Media API response:', imgCount, 'images', vidCount, 'videos', res);
+                                if (typeof console !== 'undefined' && console.log) console.log('[Amz Gallery] Media API response:', imgCount, 'images in order (image-url-1..' + imgCount + ')', vidCount, 'videos', res);
                                 if (res.status === 200 && (imgCount > 0 || vidCount > 0 || (res.bullet_points && res.bullet_points.length > 0))) {
                                     var enhanced = Object.assign({}, rowData);
                                     if (res.images && res.images.length) {
