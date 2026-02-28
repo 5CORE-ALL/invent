@@ -598,6 +598,11 @@ class TaskController extends Controller
         // Either based on is_automated flag or specific actions only for automated tasks
         $isAutomatedTask = $request->boolean('is_automated') || in_array($request->action, ['duplicate', 'freq', 'assignor']);
         
+        // Ensure task_ids are integers (frontend may send strings); filter out invalid
+        $request->merge([
+            'task_ids' => array_values(array_filter(array_map('intval', $request->input('task_ids', [])), fn ($id) => $id > 0)),
+        ]);
+
         $validated = $request->validate([
             'action' => 'required|in:delete,priority,tid,assignee,etc,assign_assignee,assign_assignor,duplicate,assignor,freq',
             'task_ids' => 'required|array',
@@ -636,53 +641,73 @@ class TaskController extends Controller
                         'message' => "$deletedCount automated task(s) deleted successfully!"
                     ]);
                 } else {
-                    // Special permission: Jasmine, Ritu mam, Joy sir can delete any task; others only their own
-                    if (TaskPolicy::userHasSpecialTaskPermission($user)) {
-                        $tasksToDelete = Task::whereIn('id', $taskIds)->get();
-                    } else {
-                        $tasksToDelete = Task::whereIn('id', $taskIds)
-                            ->where('assignor', $user->email)
-                            ->get();
-                    }
-                    
-                    $deletedCount = $tasksToDelete->count();
-                    $requestedCount = count($taskIds);
-                    
-                    if ($deletedCount === 0) {
+                    try {
+                        // Special permission: Jasmine, Ritu mam, Joy sir can delete any task; others only their own
+                        if (TaskPolicy::userHasSpecialTaskPermission($user)) {
+                            $tasksToDelete = Task::whereIn('id', $taskIds)->get();
+                        } else {
+                            $tasksToDelete = Task::whereIn('id', $taskIds)
+                                ->where('assignor', $user->email)
+                                ->get();
+                        }
+
+                        $deletedCount = $tasksToDelete->count();
+                        $requestedCount = count($taskIds);
+
+                        if ($deletedCount === 0) {
+                            return response()->json([
+                                'success' => false,
+                                'message' => 'You can only delete tasks you created. None of the selected tasks belong to you.'
+                            ], 403);
+                        }
+
+                        // Delete images and save to deleted_tasks before deletion
+                        $imagesDeleted = 0;
+                        foreach ($tasksToDelete as $task) {
+                            // Delete image file if exists (don't fail bulk delete if file delete fails)
+                            if (!empty($task->image)) {
+                                $imagePath = public_path('uploads/tasks/' . $task->image);
+                                if (file_exists($imagePath) && is_file($imagePath)) {
+                                    try {
+                                        if (@unlink($imagePath)) {
+                                            $imagesDeleted++;
+                                            \Log::info('🗑️ Image deleted:', ['task_id' => $task->id, 'image' => $task->image]);
+                                        }
+                                    } catch (\Throwable $e) {
+                                        \Log::warning('Bulk delete: could not delete image file', ['path' => $imagePath, 'error' => $e->getMessage()]);
+                                    }
+                                }
+                            }
+                            $this->saveDeletedTask($task);
+                        }
+
+                        Task::whereIn('id', $tasksToDelete->pluck('id'))->delete();
+
+                        if ($imagesDeleted > 0) {
+                            \Log::info("🗑️ Bulk delete: $imagesDeleted image(s) deleted");
+                        }
+
+                        $message = "$deletedCount task(s) deleted successfully!";
+                        if ($deletedCount < $requestedCount) {
+                            $skipped = $requestedCount - $deletedCount;
+                            $message .= " ($skipped task(s) skipped - you can only delete tasks you created)";
+                        }
+
+                        return response()->json([
+                            'success' => true,
+                            'message' => $message
+                        ]);
+                    } catch (\Throwable $e) {
+                        \Log::error('Bulk delete tasks failed', [
+                            'error' => $e->getMessage(),
+                            'trace' => $e->getTraceAsString(),
+                            'task_ids' => $taskIds,
+                        ]);
                         return response()->json([
                             'success' => false,
-                            'message' => 'You can only delete tasks you created. None of the selected tasks belong to you.'
-                        ], 403);
+                            'message' => 'Failed to delete tasks: ' . (config('app.debug') ? $e->getMessage() : 'Please try again or contact support.'),
+                        ], 500);
                     }
-                    
-                    // Delete images and save to deleted_tasks before deletion
-                    $imagesDeleted = 0;
-                    foreach ($tasksToDelete as $task) {
-                        // Delete image file if exists
-                        if ($task->image && file_exists(public_path('uploads/tasks/' . $task->image))) {
-                            unlink(public_path('uploads/tasks/' . $task->image));
-                            $imagesDeleted++;
-                            \Log::info('🗑️ Image deleted:', ['task_id' => $task->id, 'image' => $task->image]);
-                        }
-                        $this->saveDeletedTask($task);
-                    }
-                    
-                    Task::whereIn('id', $tasksToDelete->pluck('id'))->delete();
-                    
-                    if ($imagesDeleted > 0) {
-                        \Log::info("🗑️ Bulk delete: $imagesDeleted image(s) deleted");
-                    }
-                    
-                    $message = "$deletedCount task(s) deleted successfully!";
-                    if ($deletedCount < $requestedCount) {
-                        $skipped = $requestedCount - $deletedCount;
-                        $message .= " ($skipped task(s) skipped - you can only delete tasks you created)";
-                    }
-                    
-                    return response()->json([
-                        'success' => true,
-                        'message' => $message
-                    ]);
                 }
 
             case 'priority':
@@ -1326,30 +1351,45 @@ class TaskController extends Controller
     private function saveDeletedTask(Task $task)
     {
         $user = Auth::user();
-        
-        // Get assignor and assignee names
-        $assignorUser = User::where('email', $task->assignor)->first();
-        $assigneeUser = User::where('email', $task->assign_to)->first();
-        
+
+        // Get assignor and assignee names (assign_to can be comma-separated emails)
+        $assignorUser = !empty($task->assignor) ? User::where('email', $task->assignor)->first() : null;
+        $firstAssigneeEmail = !empty($task->assign_to) ? trim(explode(',', $task->assign_to)[0]) : null;
+        $assigneeUser = $firstAssigneeEmail ? User::where('email', $firstAssigneeEmail)->first() : null;
+
+        // Cast booleans to 0/1 for deleted_tasks tinyInteger columns
+        $splitTasks = $task->split_tasks;
+        $isMissed = $task->is_missed;
+        $isMissedTrack = $task->is_missed_track;
+        if (!is_numeric($splitTasks)) {
+            $splitTasks = $splitTasks ? 1 : 0;
+        }
+        if (!is_numeric($isMissed)) {
+            $isMissed = $isMissed ? 1 : 0;
+        }
+        if (!is_numeric($isMissedTrack)) {
+            $isMissedTrack = $isMissedTrack ? 1 : 0;
+        }
+
         DeletedTask::create([
             'original_task_id' => $task->id,
-            'title' => $task->title,
+            'title' => $task->title ?? '',
             'description' => $task->description,
             'group' => $task->group,
             'priority' => $task->priority,
             'status' => $task->status,
             'assignor' => $task->assignor,
             'assign_to' => $task->assign_to,
-            'assignor_name' => $assignorUser ? $assignorUser->name : $task->assignor,
-            'assignee_name' => $assigneeUser ? $assigneeUser->name : $task->assign_to,
-            'eta_time' => $task->eta_time,
-            'etc_done' => $task->etc_done,
+            'assignor_name' => $assignorUser ? $assignorUser->name : ($task->assignor ?? ''),
+            'assignee_name' => $assigneeUser ? $assigneeUser->name : ($task->assign_to ?? ''),
+            'eta_time' => $task->eta_time !== null && $task->eta_time !== '' ? (int) $task->eta_time : null,
+            'etc_done' => $task->etc_done !== null && $task->etc_done !== '' ? (int) $task->etc_done : null,
             'start_date' => $task->start_date ?: null,
             'completion_date' => $task->completion_date ?: null,
-            'completion_day' => $task->completion_day,
-            'split_tasks' => $task->split_tasks,
-            'is_missed' => $task->is_missed,
-            'is_missed_track' => $task->is_missed_track,
+            'completion_day' => $task->completion_day !== null && $task->completion_day !== '' ? (int) $task->completion_day : null,
+            'split_tasks' => (int) $splitTasks,
+            'is_missed' => (int) $isMissed,
+            'is_missed_track' => (int) $isMissedTrack,
             'link1' => $task->link1,
             'link2' => $task->link2,
             'link3' => $task->link3,
