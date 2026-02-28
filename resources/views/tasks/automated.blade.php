@@ -1009,31 +1009,45 @@
                         }
                     });
                     
-                    // ASSIGNER (first name only)
+                    // ASSIGNER (avatar + first name)
                     cols.push({
-                        title: "ASSIGNER", 
-                        field: "assignor_name", 
-                        width: 90, 
+                        title: "ASSIGNER",
+                        field: "assignor_name",
+                        width: 120,
+                        hozAlign: "center",
                         formatter: function(cell) {
+                            var row = cell.getRow().getData();
                             var value = cell.getValue();
                             if (value && value !== '-') {
                                 var firstName = value.trim().split(' ')[0];
-                                return '<strong>' + firstName + '</strong>';
+                                var imgSrc = (row.assignor_avatar || "{{ asset('images/users/avatar-2.jpg') }}").replace(/&/g, '&amp;');
+                                var nameEsc = String(firstName).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                                return '<div class="d-flex align-items-center justify-content-center gap-2 flex-nowrap">' +
+                                    '<img src="' + imgSrc + '" alt="" class="rounded-circle" style="width:28px;height:28px;object-fit:cover;flex-shrink:0;">' +
+                                    '<strong style="font-size: 11px;">' + nameEsc + '</strong>' +
+                                    '</div>';
                             }
                             return '<span style="color: #adb5bd;">-</span>';
                         }
                     });
-                    
-                    // ASSIGNEE (first name only)
+
+                    // ASSIGNEE (avatar + first name)
                     cols.push({
-                        title: "ASSIGNEE", 
-                        field: "assignee_name", 
-                        width: 90, 
+                        title: "ASSIGNEE",
+                        field: "assignee_name",
+                        width: 120,
+                        hozAlign: "center",
                         formatter: function(cell) {
+                            var row = cell.getRow().getData();
                             var value = cell.getValue();
                             if (value && value !== '-') {
                                 var firstName = value.trim().split(' ')[0];
-                                return '<strong>' + firstName + '</strong>';
+                                var imgSrc = (row.assignee_avatar || "{{ asset('images/users/avatar-2.jpg') }}").replace(/&/g, '&amp;');
+                                var nameEsc = String(firstName).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                                return '<div class="d-flex align-items-center justify-content-center gap-2 flex-nowrap">' +
+                                    '<img src="' + imgSrc + '" alt="" class="rounded-circle" style="width:28px;height:28px;object-fit:cover;flex-shrink:0;">' +
+                                    '<strong style="font-size: 11px;">' + nameEsc + '</strong>' +
+                                    '</div>';
                             }
                             return '<span style="color: #adb5bd;">-</span>';
                         }
