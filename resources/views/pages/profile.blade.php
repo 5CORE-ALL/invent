@@ -9,8 +9,8 @@
             <div class="profile-user-box">
                 <div class="row">
                     <div class="col-sm-6">
-                        <div class="profile-user-img">
-                            <img src="{{ $user->avatar ?? '/images/users/avatar-2.jpg' }}" alt=""
+                        <div class="profile-user-img position-relative d-inline-block">
+                            <img id="profile-avatar-preview" src="{{ $user->avatar ? asset('storage/' . $user->avatar) : '/images/users/avatar-2.jpg' }}" alt=""
                                 class="avatar-lg rounded-circle">
                         </div>
                         <div>
@@ -41,11 +41,28 @@
                         <div class="tab-content p-4">
                             <div id="edit-profile" class="tab-pane active">
                                 <div class="user-profile-content">
-                                    <form method="POST" action="{{ route('profile.update') }}">
+                                    <form method="POST" action="{{ route('profile.update') }}" enctype="multipart/form-data">
                                         @csrf
                                         @method('PUT')
 
                                         <div class="row row-cols-sm-2 row-cols-1">
+                                            <div class="mb-3 col-12">
+                                                <label class="form-label">Profile Image</label>
+                                                <div class="d-flex align-items-center gap-3 flex-wrap">
+                                                    <div class="position-relative">
+                                                        <img id="avatar-preview" src="{{ $user->avatar ? asset('storage/' . $user->avatar) : '/images/users/avatar-2.jpg' }}" alt="Avatar" class="rounded-circle border" style="width: 80px; height: 80px; object-fit: cover;">
+                                                    </div>
+                                                    <div class="flex-grow-1">
+                                                        <input type="file" name="avatar" id="avatar" accept="image/jpeg,image/jpg,image/png,image/gif,image/webp"
+                                                            class="form-control form-control-sm @error('avatar') is-invalid @enderror">
+                                                        <small class="text-muted">JPG, PNG, GIF or WebP. Max 2 MB.</small>
+                                                        @error('avatar')
+                                                            <div class="invalid-feedback d-block">{{ $message }}</div>
+                                                        @enderror
+                                                    </div>
+                                                </div>
+                                            </div>
+
                                             <div class="mb-3">
                                                 <label class="form-label">Full Name</label>
                                                 <input type="text" name="name" value="{{ old('name', $user->name) }}"
@@ -177,6 +194,19 @@
 
 @section('script')
     <script>
+        // Avatar image preview on file select
+        document.getElementById('avatar')?.addEventListener('change', function(e) {
+            const file = e.target.files?.[0];
+            if (!file || !file.type.startsWith('image/')) return;
+            const reader = new FileReader();
+            reader.onload = function() {
+                const url = reader.result;
+                document.getElementById('avatar-preview')?.setAttribute('src', url);
+                document.getElementById('profile-avatar-preview')?.setAttribute('src', url);
+            };
+            reader.readAsDataURL(file);
+        });
+
         // Toggle password visibility
         document.querySelectorAll('.toggle-password').forEach(button => {
             button.addEventListener('click', function() {

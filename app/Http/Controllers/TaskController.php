@@ -75,45 +75,59 @@ class TaskController extends Controller
 
         $tasks = $tasksQuery->orderBy('start_date', 'asc')->get();
 
-        // Map emails to names for display
-        $tasks->each(function($task) {
-            // Find users by email and get their names
+        // Map emails to names and avatar URLs for display
+        $defaultAvatar = asset('images/users/avatar-2.jpg');
+        $tasks->each(function($task) use ($defaultAvatar) {
+            // Find users by email and get their names + avatars
             if ($task->assignor) {
                 $assignorUser = User::where('email', $task->assignor)->first();
                 $task->assignor_name = $assignorUser ? $assignorUser->name : $task->assignor;
                 $task->assignor_id = $assignorUser ? $assignorUser->id : null;
+                $task->assignor_avatar = $assignorUser && $assignorUser->avatar
+                    ? asset('storage/' . $assignorUser->avatar)
+                    : $defaultAvatar;
             } else {
                 $task->assignor_name = '-';
                 $task->assignor_id = null;
+                $task->assignor_avatar = null;
             }
-            
+
             if ($task->assign_to) {
                 // Handle multiple assignees (comma-separated emails)
                 $assigneeEmails = array_map('trim', explode(',', $task->assign_to));
                 $assigneeNames = [];
                 $assigneeIds = [];
-                
+                $assigneeAvatars = [];
+
                 foreach ($assigneeEmails as $email) {
                     $assigneeUser = User::where('email', $email)->first();
                     if ($assigneeUser) {
                         $assigneeNames[] = $assigneeUser->name;
                         $assigneeIds[] = $assigneeUser->id;
+                        $assigneeAvatars[] = $assigneeUser->avatar
+                            ? asset('storage/' . $assigneeUser->avatar)
+                            : $defaultAvatar;
                     } else {
                         $assigneeNames[] = $email;
+                        $assigneeAvatars[] = $defaultAvatar;
                     }
                 }
-                
+
                 $task->assignee_name = implode(', ', $assigneeNames);
                 $task->assignee_id = !empty($assigneeIds) ? $assigneeIds[0] : null; // First ID for compatibility
-                $task->assignee_ids = $assigneeIds; // All IDs
+                $task->assignee_ids = $assigneeIds;
                 $task->assignee_count = count($assigneeNames);
+                $task->assignee_avatar = !empty($assigneeAvatars) ? $assigneeAvatars[0] : null;
+                $task->assignee_avatars = $assigneeAvatars;
             } else {
                 $task->assignee_name = '-';
                 $task->assignee_id = null;
                 $task->assignee_ids = [];
                 $task->assignee_count = 0;
+                $task->assignee_avatar = null;
+                $task->assignee_avatars = [];
             }
-            
+
             // For permission checks
             $task->assignor_email = $task->assignor;
             $task->assignee_email = $task->assign_to;
