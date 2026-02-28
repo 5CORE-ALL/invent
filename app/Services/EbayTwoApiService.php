@@ -17,9 +17,6 @@ class EbayTwoApiService
     protected $siteId;
     protected $compatLevel;
 
-    /** @var string|null Outbound IP for eBay2 API calls (e.g. 31.59.184.9). Set via EBAY_2_OUTBOUND_IP. Leave empty locally. */
-    protected $outboundIp;
-
     public function __construct()
     {
         $this->appId       = env('EBAY2_APP_ID');
@@ -28,21 +25,7 @@ class EbayTwoApiService
         $this->endpoint    = env('EBAY_TRADING_API_ENDPOINT', 'https://api.ebay.com/ws/api.dll');
         $this->siteId      = env('EBAY_SITE_ID', 0); // US = 0
         $this->compatLevel = env('EBAY_COMPAT_LEVEL', '1189');
-        $this->outboundIp  = trim((string) env('EBAY_2_OUTBOUND_IP', '')) ?: null;
     }
-
-    /**
-     * HTTP client for eBay2 API. When EBAY_2_OUTBOUND_IP is set, forces outbound requests to use that IP (CURLOPT_INTERFACE).
-     */
-    protected function ebayHttp()
-    {
-        $opts = [];
-        if ($this->outboundIp !== null && $this->outboundIp !== '') {
-            $opts['curl'] = [CURLOPT_INTERFACE => $this->outboundIp];
-        }
-        return empty($opts) ? Http::withOptions([]) : Http::withOptions($opts);
-    }
-
     public function generateBearerToken()
     {
         // 1. If cached token exists, return it immediately
@@ -60,33 +43,13 @@ class EbayTwoApiService
         $clientSecret = env('EBAY2_CERT_ID');
         $refreshToken = env('EBAY2_REFRESH_TOKEN');
 
-        try {
-            $response = $this->ebayHttp()->asForm()
-                ->withBasicAuth($clientId, $clientSecret)
-                ->post('https://api.ebay.com/identity/v1/oauth2/token', [
-                    'grant_type'    => 'refresh_token',
-                    'refresh_token' => $refreshToken,
-                    'scope'         => 'https://api.ebay.com/oauth/api_scope https://api.ebay.com/oauth/api_scope/sell.inventory',
-                ]);
-        } catch (\Exception $e) {
-            $msg = $e->getMessage();
-            if (($this->outboundIp !== null && $this->outboundIp !== '') && (strpos($msg, 'cURL error 45') !== false || strpos($msg, 'bind failed') !== false)) {
-                \Illuminate\Support\Facades\Log::warning('eBay2: bind to EBAY_2_OUTBOUND_IP failed, retrying with default interface', [
-                    'outboundIp' => $this->outboundIp,
-                    'error'      => $msg,
-                ]);
-                $this->outboundIp = null;
-                $response = $this->ebayHttp()->asForm()
-                    ->withBasicAuth($clientId, $clientSecret)
-                    ->post('https://api.ebay.com/identity/v1/oauth2/token', [
-                        'grant_type'    => 'refresh_token',
-                        'refresh_token' => $refreshToken,
-                        'scope'         => 'https://api.ebay.com/oauth/api_scope https://api.ebay.com/oauth/api_scope/sell.inventory',
-                    ]);
-            } else {
-                throw $e;
-            }
-        }
+        $response = Http::asForm()
+            ->withBasicAuth($clientId, $clientSecret)
+            ->post('https://api.ebay.com/identity/v1/oauth2/token', [
+                'grant_type'    => 'refresh_token',
+                'refresh_token' => $refreshToken,
+                'scope'         => 'https://api.ebay.com/oauth/api_scope https://api.ebay.com/oauth/api_scope/sell.inventory',
+            ]);
 
         if ($response->failed()) {
             throw new \Exception('Failed to get eBay token: ' . $response->body());
@@ -172,7 +135,7 @@ class EbayTwoApiService
         ];
 
         // Send API request
-        $response = $this->ebayHttp()->withHeaders($headers)
+        $response = Http::withHeaders($headers)
             ->withBody($xmlBody, 'text/xml')
             ->post($this->endpoint);
 

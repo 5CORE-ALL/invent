@@ -17,9 +17,6 @@ class EbayThreeApiService
     protected $siteId;
     protected $compatLevel;
 
-    /** @var string|null Outbound IP for eBay API calls (e.g. secondary server IP 31.59.184.9). Set via EBAY_OUTBOUND_IP. */
-    protected $outboundIp;
-
     public function __construct()
     {
         $this->appId       = env('EBAY_3_APP_ID');
@@ -28,20 +25,6 @@ class EbayThreeApiService
         $this->endpoint    = env('EBAY_TRADING_API_ENDPOINT', 'https://api.ebay.com/ws/api.dll');
         $this->siteId      = env('EBAY_SITE_ID', 0); // US = 0
         $this->compatLevel = env('EBAY_COMPAT_LEVEL', '1189');
-        // Set only on server where secondary IP exists (e.g. 31.59.184.9). Leave unset locally to avoid cURL 45 "bind failed".
-        $this->outboundIp  = trim((string) env('EBAY_OUTBOUND_IP', '')) ?: null;
-    }
-
-    /**
-     * HTTP client for eBay API calls. When EBAY_OUTBOUND_IP is set, forces outbound requests to use that IP (CURLOPT_INTERFACE).
-     */
-    protected function ebayHttp()
-    {
-        $opts = [];
-        if ($this->outboundIp !== null && $this->outboundIp !== '') {
-            $opts['curl'] = [CURLOPT_INTERFACE => $this->outboundIp];
-        }
-        return empty($opts) ? Http::withOptions([]) : Http::withOptions($opts);
     }
     public function generateBearerToken()
     {
@@ -49,50 +32,16 @@ class EbayThreeApiService
         $clientSecret = env('EBAY_3_CERT_ID');
         $refreshToken = env('EBAY_3_REFRESH_TOKEN');
 
-        if (empty($refreshToken)) {
-            \Illuminate\Support\Facades\Log::error('eBay3 token: EBAY_3_REFRESH_TOKEN is not set in .env');
-            throw new \Exception('eBay credentials: EBAY_3_REFRESH_TOKEN is missing. Add a valid refresh token from eBay Developer Portal.');
-        }
-
-        try {
-            $response = $this->ebayHttp()->withoutVerifying()->asForm()
-                ->withBasicAuth($clientId, $clientSecret)
-                ->post('https://api.ebay.com/identity/v1/oauth2/token', [
-                    'grant_type'    => 'refresh_token',
-                    'refresh_token' => $refreshToken,
-                    'scope'         => 'https://api.ebay.com/oauth/api_scope/sell.analytics.readonly https://api.ebay.com/oauth/api_scope/sell.inventory',
-                ]);
-        } catch (\Exception $e) {
-            $msg = $e->getMessage();
-            if (($this->outboundIp !== null && $this->outboundIp !== '') && (strpos($msg, 'cURL error 45') !== false || strpos($msg, 'bind failed') !== false)) {
-                \Illuminate\Support\Facades\Log::warning('eBay3: bind to EBAY_OUTBOUND_IP failed, retrying with default interface', [
-                    'outboundIp' => $this->outboundIp,
-                    'error'      => $msg,
-                ]);
-                $this->outboundIp = null;
-                $response = $this->ebayHttp()->withoutVerifying()->asForm()
-                    ->withBasicAuth($clientId, $clientSecret)
-                    ->post('https://api.ebay.com/identity/v1/oauth2/token', [
-                        'grant_type'    => 'refresh_token',
-                        'refresh_token' => $refreshToken,
-                        'scope'         => 'https://api.ebay.com/oauth/api_scope/sell.analytics.readonly https://api.ebay.com/oauth/api_scope/sell.inventory',
-                    ]);
-            } else {
-                throw $e;
-            }
-        }
+        $response = Http::withoutVerifying()->asForm()
+            ->withBasicAuth($clientId, $clientSecret)
+            ->post('https://api.ebay.com/identity/v1/oauth2/token', [
+                'grant_type'    => 'refresh_token',
+                'refresh_token' => $refreshToken,
+                'scope'         => 'https://api.ebay.com/oauth/api_scope/sell.analytics.readonly https://api.ebay.com/oauth/api_scope/sell.inventory',
+            ]);
 
         if ($response->failed()) {
-            $body = $response->body();
-            \Illuminate\Support\Facades\Log::error('eBay3 token failed', [
-                'status' => $response->status(),
-                'body'   => $body,
-            ]);
-            $hint = '';
-            if (strpos($body, 'invalid') !== false || strpos($body, 'another client') !== false) {
-                $hint = ' Refresh token may be expired or revoked, or App ID/Cert ID do not match. Generate a new refresh token in eBay Developer Portal and set EBAY_3_REFRESH_TOKEN in .env.';
-            }
-            throw new \Exception('Failed to get eBay token: ' . $body . $hint);
+            throw new \Exception('Failed to get eBay token: ' . $response->body());
         }
 
         $data        = $response->json();
@@ -131,7 +80,7 @@ class EbayThreeApiService
                 'Content-Type'                   => 'text/xml',
             ];
             
-            $response = $this->ebayHttp()->withHeaders($headers)
+            $response = Http::withHeaders($headers)
                 ->withBody($xmlBody, 'text/xml')
                 ->post($this->endpoint);
             
@@ -158,83 +107,10 @@ class EbayThreeApiService
         }
     }
 
-    /**
-     * Extract variation specifics for a given SKU from GetItem response (for multi-variation listings).
-     * Returns [variationSpecifics, variationSpecificsSet] or [null, null] if not found or not variation listing.
-     */
-    protected function getVariationDataForSku(array $itemDetails, string $sku): array
-    {
-        $existingItem = $itemDetails['Item'] ?? [];
-        $variations = $existingItem['Variations']['Variation'] ?? null;
-        if ($variations === null) {
-            return [null, null];
-        }
-        if (isset($variations['SKU'])) {
-            $variations = [$variations];
-        }
-        $skuNorm = strtoupper(trim($sku));
-        foreach ($variations as $var) {
-            $varSku = isset($var['SKU']) ? strtoupper(trim((string) $var['SKU'])) : '';
-            if ($varSku !== $skuNorm) {
-                continue;
-            }
-            $variationSpecifics = [];
-            $nvl = $var['VariationSpecifics']['NameValueList'] ?? null;
-            if ($nvl !== null) {
-                if (isset($nvl['Name'])) {
-                    $nvl = [$nvl];
-                }
-                foreach ($nvl as $pair) {
-                    $name = $pair['Name'] ?? '';
-                    $value = $pair['Value'] ?? '';
-                    if ($name !== '') {
-                        $variationSpecifics[$name] = $value;
-                    }
-                }
-            }
-            $variationSpecificsSet = [];
-            $set = $existingItem['VariationSpecificsSet']['NameValueList'] ?? null;
-            if ($set !== null) {
-                if (isset($set['Name'])) {
-                    $set = [$set];
-                }
-                foreach ($set as $pair) {
-                    $name = $pair['Name'] ?? '';
-                    $values = $pair['Value'] ?? [];
-                    if (!is_array($values)) {
-                        $values = $values !== '' ? [$values] : [];
-                    }
-                    if ($name !== '') {
-                        $variationSpecificsSet[$name] = $values;
-                    }
-                }
-            }
-            if (!empty($variationSpecifics)) {
-                if (empty($variationSpecificsSet)) {
-                    $variationSpecificsSet = [];
-                    foreach ($variationSpecifics as $name => $value) {
-                        $variationSpecificsSet[$name] = [$value];
-                    }
-                }
-                return [$variationSpecifics, $variationSpecificsSet];
-            }
-        }
-        return [null, null];
-    }
-
     public function reviseFixedPriceItem($itemId, $price, $quantity = null, $sku = null, $variationSpecifics = null, $variationSpecificsSet = null)
     {
         // First, try to get item details to ensure we have all required fields
         $itemDetails = $this->getItem($itemId);
-        
-        // If caller did not pass variation data but we have a variation listing and SKU, derive it from GetItem
-        $existingItem = $itemDetails['Item'] ?? null;
-        $isVariationListing = $existingItem && !empty($existingItem['Variations']);
-        if ($sku !== null && $sku !== '' && $isVariationListing && (!$variationSpecifics || !$variationSpecificsSet)) {
-            [$variationSpecifics, $variationSpecificsSet] = $this->getVariationDataForSku($itemDetails, $sku);
-        }
-        
-        $useVariationStructure = $variationSpecifics && $variationSpecificsSet;
         
         // Build XML body
         $xml = new SimpleXMLElement('<?xml version="1.0" encoding="utf-8"?><ReviseFixedPriceItemRequest xmlns="urn:ebay:apis:eBLBaseComponents"/>');
@@ -252,26 +128,31 @@ class EbayThreeApiService
         $item = $xml->addChild('Item');
         $item->addChild('ItemID', $itemId);
 
-        // For multi-variation listings we must send price in Variations block only; item-level StartPrice is ignored
-        if (!$useVariationStructure) {
-            $item->addChild('StartPrice', $price);
-            if ($quantity !== null) {
-                $item->addChild('Quantity', $quantity);
-            }
+        // Update price
+        $item->addChild('StartPrice', $price);
+
+        // Optionally update quantity
+        if ($quantity !== null) {
+            $item->addChild('Quantity', $quantity);
         }
         
         // If we have item details, include required fields to pass validation
-        if ($existingItem) {
-            if (!$useVariationStructure && isset($existingItem['SKU']) && !empty($existingItem['SKU'])) {
+        if ($itemDetails && isset($itemDetails['Item'])) {
+            $existingItem = $itemDetails['Item'];
+            
+            // Include SKU if available (helps with validation)
+            if (isset($existingItem['SKU']) && !empty($existingItem['SKU'])) {
                 $item->addChild('SKU', $existingItem['SKU']);
             }
+            
+            // Include ListingType if available
             if (isset($existingItem['ListingType'])) {
                 $item->addChild('ListingType', $existingItem['ListingType']);
             }
         }
 
-        // For variation listings: send variation block so eBay updates the correct variation's price
-        if ($useVariationStructure) {
+        // If variation exists, use variation structure
+        if ($variationSpecifics && $variationSpecificsSet) {
             $variations = $item->addChild('Variations');
             $variation = $variations->addChild('Variation');
 
@@ -284,6 +165,7 @@ class EbayThreeApiService
                 $variation->addChild('Quantity', $quantity);
             }
 
+            // VariationSpecifics
             $vs = $variation->addChild('VariationSpecifics');
             foreach ($variationSpecifics as $name => $value) {
                 $nvl = $vs->addChild('NameValueList');
@@ -291,8 +173,8 @@ class EbayThreeApiService
                 $nvl->addChild('Value', $value);
             }
 
-            // VariationSpecificsSet must be inside Variations (sibling to Variation), not under Item (schema requirement)
-            $vss = $variations->addChild('VariationSpecificsSet');
+            // VariationSpecificsSet
+            $vss = $item->addChild('VariationSpecificsSet');
             foreach ($variationSpecificsSet as $name => $values) {
                 $nvl = $vss->addChild('NameValueList');
                 $nvl->addChild('Name', $name);
@@ -324,7 +206,7 @@ class EbayThreeApiService
         ]);
 
         // Send API request
-        $response = $this->ebayHttp()->withHeaders($headers)
+        $response = Http::withHeaders($headers)
             ->withBody($xmlBody, 'text/xml')
             ->post($this->endpoint);
 
@@ -582,7 +464,7 @@ class EbayThreeApiService
                 'xmlRequest' => $xmlBody
             ]);
             
-            $response = $this->ebayHttp()->withHeaders($headers)
+            $response = Http::withHeaders($headers)
                 ->withBody($xmlBody, 'text/xml')
                 ->post($this->endpoint);
             
@@ -712,7 +594,7 @@ class EbayThreeApiService
                 'xmlRequest' => $xmlBody
             ]);
             
-            $response = $this->ebayHttp()->withHeaders($headers)
+            $response = Http::withHeaders($headers)
                 ->withBody($xmlBody, 'text/xml')
                 ->post($this->endpoint);
             
@@ -848,7 +730,7 @@ class EbayThreeApiService
             $pageCount++;
             
             try {
-                $response = $this->ebayHttp()->withToken($token)
+                $response = Http::withToken($token)
                     ->timeout(30)
                     ->connectTimeout(15)
                     ->get($url);
@@ -929,7 +811,7 @@ class EbayThreeApiService
             $pageCount++;
             
             try {
-                $response = $this->ebayHttp()->withToken($token)
+                $response = Http::withToken($token)
                     ->timeout(30)
                     ->connectTimeout(15)
                     ->get($url);
@@ -995,7 +877,7 @@ class EbayThreeApiService
         $clientSecret = env('EBAY_3_CERT_ID');
 
         try {
-            $response = $this->ebayHttp()->asForm()
+            $response = Http::asForm()
                 ->withBasicAuth($clientId, $clientSecret)
                 ->post('https://api.ebay.com/identity/v1/oauth2/token', [
                     'grant_type' => 'client_credentials',
