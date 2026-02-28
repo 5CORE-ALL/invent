@@ -2763,7 +2763,7 @@
                         const sprice = parseFloat(rowData['sprice']) || 0;
                         const lp = parseFloat(rowData['lp']) || 0;
                         const temuShip = parseFloat(rowData['temu_ship']) || 0;
-                        const percentage = 0.91; // Temu marketplace percentage
+                        const percentage = 0.96; // Temu marketplace percentage (margin 96)
                         
                         if (sprice === 0) return '';
                         
@@ -2788,7 +2788,7 @@
                         const lp = parseFloat(rowData['lp']) || 0;
                         const temuShip = parseFloat(rowData['temu_ship']) || 0;
                         const adsPercent = parseFloat(rowData['ads_percent']) || 0;
-                        const percentage = 0.91; // Temu marketplace percentage
+                        const percentage = 0.96; // Temu marketplace percentage (margin 96)
                         
                         if (sprice === 0) return '';
                         
