@@ -1229,7 +1229,7 @@ class EbayThreeController extends Controller
 
             // Push price to eBay using EbayThreeApiService (pass SKU so variation listings update the correct variation)
             $ebayService = new \App\Services\EbayThreeApiService();
-            $result = $ebayService->reviseFixedPriceItem($ebayMetric->item_id, $priceFloat, null, $sku);
+            $result = $ebayService->reviseFixedPriceItem($ebayMetric->item_id, $priceFloat);
 
             if (isset($result['success']) && $result['success']) {
                 $this->saveSpriceStatus($sku, 'pushed');
