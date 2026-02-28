@@ -77,6 +77,17 @@
         .stat-card-pink {
             border-left-color: #e83e8c;
         }
+
+        /* Missed status row - light yellow background */
+        .deleted-row-missed,
+        .deleted-row-missed .tabulator-cell {
+            background-color: #fffde7 !important;
+        }
+        .deleted-row-missed:hover,
+        .deleted-row-missed:hover .tabulator-cell {
+            background-color: #fff9c4 !important;
+        }
+
         .stat-card-pink .stat-icon {
             background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
         }
@@ -287,6 +298,16 @@
                 placeholder: "No Deleted Tasks Found",
                 height: "600px",
                 layoutColumnsOnNewData: true,
+                rowFormatter: function(row) {
+                    var data = row.getData();
+                    if (data.status && String(data.status).trim().toLowerCase() === 'missed') {
+                        var el = row.getElement();
+                        if (el) {
+                            el.classList.add('deleted-row-missed');
+                            el.style.setProperty('background-color', '#fffde7', 'important');
+                        }
+                    }
+                },
                 columns: [
                     {
                         title: "ID", 
@@ -430,6 +451,23 @@
                     },
                 ],
             });
+
+            // Apply light yellow background to Missed rows (after data load / redraw)
+            function styleMissedRows() {
+                table.getRows().forEach(function(row) {
+                    var data = row.getData();
+                    if (data.status && String(data.status).trim().toLowerCase() === 'missed') {
+                        var el = row.getElement();
+                        if (el) {
+                            el.classList.add('deleted-row-missed');
+                            el.style.setProperty('background-color', '#fffde7', 'important');
+                        }
+                    }
+                });
+            }
+            table.on('dataLoaded', function() { setTimeout(styleMissedRows, 0); });
+            table.on('dataProcessed', function() { setTimeout(styleMissedRows, 0); });
+            table.on('renderComplete', styleMissedRows);
 
             // Filter functionality
             function applyFilters() {
