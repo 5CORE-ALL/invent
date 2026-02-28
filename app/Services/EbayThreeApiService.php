@@ -291,7 +291,8 @@ class EbayThreeApiService
                 $nvl->addChild('Value', $value);
             }
 
-            $vss = $item->addChild('VariationSpecificsSet');
+            // VariationSpecificsSet must be inside Variations (sibling to Variation), not under Item (schema requirement)
+            $vss = $variations->addChild('VariationSpecificsSet');
             foreach ($variationSpecificsSet as $name => $values) {
                 $nvl = $vss->addChild('NameValueList');
                 $nvl->addChild('Name', $name);
