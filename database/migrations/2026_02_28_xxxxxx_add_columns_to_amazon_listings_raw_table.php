@@ -1,0 +1,38 @@
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    /**
+     * Run the migrations.
+     */
+    public function up(): void
+    {
+        Schema::table('amazon_listings_raw', function (Blueprint $table) {
+            $table->timestamp('report_imported_at')->nullable()->after('id');
+            $table->string('seller_sku')->index()->after('report_imported_at');
+            $table->string('asin1')->nullable()->index()->after('seller_sku');
+            $table->json('raw_data')->nullable()->after('asin1');
+            $table->string('thumbnail_image')->nullable()->after('raw_data');
+        });
+    }
+
+    /**
+     * Reverse the migrations.
+     */
+    public function down(): void
+    {
+        Schema::table('amazon_listings_raw', function (Blueprint $table) {
+            $table->dropColumn([
+                'report_imported_at',
+                'seller_sku',
+                'asin1',
+                'raw_data',
+                'thumbnail_image'
+            ]);
+        });
+    }
+};

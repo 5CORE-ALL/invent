@@ -57,7 +57,7 @@
     </div>
     <!-- END wrapper -->
 
-    <!-- Floating Add Task Button -->
+    <!-- Floating Add Task Button (Chat bot / Help desk icon) -->
     <button type="button" 
             class="btn floating-task-btn" 
             id="open-task-form-btn"
@@ -67,8 +67,8 @@
                    z-index: 1000; 
                    border-radius: 50%; 
                    padding: 0;
-                   width: 56px;
-                   height: 56px;
+                   width: 42px;
+                   height: 42px;
                    display: flex;
                    align-items: center;
                    justify-content: center;

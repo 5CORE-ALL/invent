@@ -40,8 +40,8 @@
 
             .ai-chat-toggle {
                 position: relative;
-                width: 144px;
-                height: 144px;
+                width: 100px;
+                height: 100px;
                 border-radius: 50%;
                 background: transparent;
                 border: none;
