@@ -610,20 +610,23 @@ class TaskController extends Controller
                 })),
             ]);
 
-            $validated = $request->validate([
-            'action' => 'required|in:delete,priority,tid,assignee,etc,assign_assignee,assign_assignor,duplicate,assignor,freq',
-            'task_ids' => 'required|array',
-            'task_ids.*' => $isAutomatedTask ? 'integer' : 'exists:tasks,id',
-            'is_automated' => 'nullable|boolean',
-            'priority' => 'nullable|in:low,normal,high',
-            'tid' => 'nullable|date',
-            'assignee_id' => 'nullable|exists:users,id',
-            'assignor_id' => 'nullable|exists:users,id',
-            'assignee' => 'nullable|string',
-            'assignor' => 'nullable|string',
-            'etc_minutes' => 'nullable|integer|min:1',
-            'freq' => 'nullable|in:daily,weekly,monthly',
-        ]);
+            $action = $request->input('action');
+            $taskIdRule = $isAutomatedTask ? 'integer' : (($action === 'delete') ? 'integer' : 'exists:tasks,id');
+            $rules = [
+                'action' => 'required|in:delete,priority,tid,assignee,etc,assign_assignee,assign_assignor,duplicate,assignor,freq',
+                'task_ids' => 'required|array',
+                'task_ids.*' => $taskIdRule,
+                'is_automated' => 'nullable|boolean',
+                'priority' => 'nullable|in:low,normal,high',
+                'tid' => 'nullable|date',
+                'assignee_id' => 'nullable|exists:users,id',
+                'assignor_id' => 'nullable|exists:users,id',
+                'assignee' => 'nullable|string',
+                'assignor' => 'nullable|string',
+                'etc_minutes' => 'nullable|integer|min:1',
+                'freq' => 'nullable|in:daily,weekly,monthly',
+            ];
+            $validated = $request->validate($rules);
 
         $taskIds = $validated['task_ids'];
         $action = $validated['action'];
@@ -1381,127 +1384,111 @@ class TaskController extends Controller
 
     /**
      * Save task to deleted_tasks table before deletion.
-     * Uses only columns that exist in the table and a minimal fallback if full insert fails.
+     * Never throws: safe for server (no Schema calls, all errors caught).
      */
     private function saveDeletedTask(Task $task)
     {
-        $user = Auth::user();
-        $str = function ($v, $max = 255) {
-            if ($v === null || $v === '') {
-                return null;
-            }
-            $s = (string) $v;
-            return strlen($s) > $max ? substr($s, 0, $max) : $s;
-        };
-        $date = function ($v) {
-            if ($v === null || $v === '') {
-                return null;
-            }
-            if ($v instanceof \DateTimeInterface) {
-                return $v->format('Y-m-d H:i:s');
-            }
-            return (string) $v;
-        };
-
-        $assignToRaw = $task->assign_to;
-        $assignorUser = !empty($task->assignor) ? User::where('email', $task->assignor)->first() : null;
-        $firstAssignee = !empty($assignToRaw) ? trim(explode(',', (string) $assignToRaw)[0]) : null;
-        $assigneeUser = $firstAssignee ? User::where('email', $firstAssignee)->first() : null;
-
-        $splitTasks = $task->split_tasks;
-        $isMissed = $task->is_missed;
-        $isMissedTrack = $task->is_missed_track;
-        if (!is_numeric($splitTasks)) {
-            $splitTasks = $splitTasks ? 1 : 0;
-        }
-        if (!is_numeric($isMissed)) {
-            $isMissed = $isMissed ? 1 : 0;
-        }
-        if (!is_numeric($isMissedTrack)) {
-            $isMissedTrack = $isMissedTrack ? 1 : 0;
-        }
-
-        $now = now()->format('Y-m-d H:i:s');
-        $fullRow = [
-            'original_task_id' => (int) $task->id,
-            'title' => $str($task->title ?? '', 255),
-            'description' => $task->description !== null ? $str((string) $task->description, 65535) : null,
-            'group' => $str($task->group),
-            'priority' => $str($task->priority),
-            'status' => $str($task->status),
-            'assignor' => $str($task->assignor),
-            'assign_to' => $str($assignToRaw),
-            'assignor_name' => $str($assignorUser ? $assignorUser->name : $task->assignor),
-            'assignee_name' => $str($assigneeUser ? $assigneeUser->name : $assignToRaw),
-            'eta_time' => $task->eta_time !== null && $task->eta_time !== '' ? (int) $task->eta_time : null,
-            'etc_done' => $task->etc_done !== null && $task->etc_done !== '' ? (int) $task->etc_done : null,
-            'start_date' => $date($task->start_date),
-            'completion_date' => $date($task->completion_date),
-            'completion_day' => $task->completion_day !== null && $task->completion_day !== '' ? (int) $task->completion_day : null,
-            'split_tasks' => (int) $splitTasks,
-            'is_missed' => (int) $isMissed,
-            'is_missed_track' => (int) $isMissedTrack,
-            'link1' => $str($task->link1),
-            'link2' => $str($task->link2),
-            'link3' => $str($task->link3),
-            'link4' => $str($task->link4),
-            'link5' => $str($task->link5),
-            'link6' => $str($task->link6),
-            'link7' => $str($task->link7),
-            'link8' => $str($task->link8),
-            'link9' => $str($task->link9),
-            'image' => $str($task->image),
-            'task_type' => $str($task->task_type),
-            'rework_reason' => $task->rework_reason !== null ? $str((string) $task->rework_reason, 65535) : null,
-            'deleted_by_email' => $str($user->email ?? ''),
-            'deleted_by_name' => $str($user->name ?? ''),
-            'deleted_at' => $now,
-            'created_at' => $now,
-            'updated_at' => $now,
-        ];
-
-        if (!\Schema::hasTable('deleted_tasks')) {
-            \Log::warning('saveDeletedTask: deleted_tasks table does not exist, skipping archive');
-            return;
-        }
-
-        $row = $fullRow;
         try {
-            $columns = \Schema::getColumnListing('deleted_tasks');
-            if (!empty($columns)) {
-                $row = array_intersect_key($fullRow, array_flip($columns));
-            }
-        } catch (\Throwable $e) {
-            \Log::warning('saveDeletedTask: could not get column listing', ['error' => $e->getMessage()]);
-        }
+            $user = Auth::user();
+            $str = function ($v, $max = 255) {
+                if ($v === null || $v === '') {
+                    return null;
+                }
+                $s = (string) $v;
+                return strlen($s) > $max ? substr($s, 0, $max) : $s;
+            };
+            $date = function ($v) {
+                if ($v === null || $v === '') {
+                    return null;
+                }
+                if ($v instanceof \DateTimeInterface) {
+                    return $v->format('Y-m-d H:i:s');
+                }
+                return (string) $v;
+            };
 
-        try {
-            \DB::table('deleted_tasks')->insert($row);
-        } catch (\Throwable $e) {
-            \Log::warning('saveDeletedTask: full insert failed, trying minimal', [
-                'task_id' => $task->id,
-                'error' => $e->getMessage(),
-            ]);
-            $minimal = [
+            $assignToRaw = $task->assign_to;
+            $assignorUser = !empty($task->assignor) ? User::where('email', $task->assignor)->first() : null;
+            $firstAssignee = !empty($assignToRaw) ? trim(explode(',', (string) $assignToRaw)[0]) : null;
+            $assigneeUser = $firstAssignee ? User::where('email', $firstAssignee)->first() : null;
+
+            $splitTasks = $task->split_tasks;
+            $isMissed = $task->is_missed;
+            $isMissedTrack = $task->is_missed_track;
+            if (!is_numeric($splitTasks)) {
+                $splitTasks = $splitTasks ? 1 : 0;
+            }
+            if (!is_numeric($isMissed)) {
+                $isMissed = $isMissed ? 1 : 0;
+            }
+            if (!is_numeric($isMissedTrack)) {
+                $isMissedTrack = $isMissedTrack ? 1 : 0;
+            }
+
+            $now = now()->format('Y-m-d H:i:s');
+            $fullRow = [
                 'original_task_id' => (int) $task->id,
                 'title' => $str($task->title ?? '', 255),
+                'description' => $task->description !== null ? $str((string) $task->description, 65535) : null,
+                'group' => $str($task->group),
+                'priority' => $str($task->priority),
+                'status' => $str($task->status),
                 'assignor' => $str($task->assignor),
                 'assign_to' => $str($assignToRaw),
+                'assignor_name' => $str($assignorUser ? $assignorUser->name : $task->assignor),
+                'assignee_name' => $str($assigneeUser ? $assigneeUser->name : $assignToRaw),
+                'eta_time' => $task->eta_time !== null && $task->eta_time !== '' ? (int) $task->eta_time : null,
+                'etc_done' => $task->etc_done !== null && $task->etc_done !== '' ? (int) $task->etc_done : null,
+                'start_date' => $date($task->start_date),
+                'completion_date' => $date($task->completion_date),
+                'completion_day' => $task->completion_day !== null && $task->completion_day !== '' ? (int) $task->completion_day : null,
+                'split_tasks' => (int) $splitTasks,
+                'is_missed' => (int) $isMissed,
+                'is_missed_track' => (int) $isMissedTrack,
+                'link1' => $str($task->link1),
+                'link2' => $str($task->link2),
+                'link3' => $str($task->link3),
+                'link4' => $str($task->link4),
+                'link5' => $str($task->link5),
+                'link6' => $str($task->link6),
+                'link7' => $str($task->link7),
+                'link8' => $str($task->link8),
+                'link9' => $str($task->link9),
+                'image' => $str($task->image),
+                'task_type' => $str($task->task_type),
+                'rework_reason' => $task->rework_reason !== null ? $str((string) $task->rework_reason, 65535) : null,
                 'deleted_by_email' => $str($user->email ?? ''),
                 'deleted_by_name' => $str($user->name ?? ''),
                 'deleted_at' => $now,
                 'created_at' => $now,
                 'updated_at' => $now,
             ];
+
             try {
-                \DB::table('deleted_tasks')->insert($minimal);
-            } catch (\Throwable $e2) {
-                \Log::error('saveDeletedTask: minimal insert also failed', [
-                    'task_id' => $task->id,
-                    'error' => $e2->getMessage(),
-                ]);
-                throw $e2;
+                \DB::table('deleted_tasks')->insert($fullRow);
+            } catch (\Throwable $e) {
+                $minimal = [
+                    'original_task_id' => (int) $task->id,
+                    'title' => $str($task->title ?? '', 255),
+                    'assignor' => $str($task->assignor),
+                    'assign_to' => $str($assignToRaw),
+                    'deleted_by_email' => $str($user->email ?? ''),
+                    'deleted_by_name' => $str($user->name ?? ''),
+                    'deleted_at' => $now,
+                    'created_at' => $now,
+                    'updated_at' => $now,
+                ];
+                try {
+                    \DB::table('deleted_tasks')->insert($minimal);
+                } catch (\Throwable $e2) {
+                    \Log::warning('saveDeletedTask: archive skipped (table missing or insert failed)', [
+                        'task_id' => $task->id,
+                        'error' => $e2->getMessage(),
+                    ]);
+                }
             }
+        } catch (\Throwable $e) {
+            \Log::warning('saveDeletedTask: archive skipped', ['task_id' => $task->id, 'error' => $e->getMessage()]);
         }
     }
 
