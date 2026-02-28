@@ -432,6 +432,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/listing-master/amz-data/images', [AmzListingController::class, 'images'])->name('listing.master.amz.data.images');
     Route::get('/listing-master/amz-data/media', [AmzListingController::class, 'media'])->name('listing.master.amz.data.media');
     Route::post('/listing-master/amz-data/import', [AmzListingController::class, 'import'])->name('listing.master.amz.data.import');
+    Route::get('/listing-master/amz-data/import-debug', [AmzListingController::class, 'importDebug'])->name('listing.master.amz.data.import.debug');
 
 
     // Marketplace Sync: dynamic routes per marketplace (reverb, amazon, ebay, walmart)

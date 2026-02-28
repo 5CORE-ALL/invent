@@ -18,6 +18,7 @@ class TaskPolicy
         'inventory@5core.com',
         'president@5core.com',
         'ineetkalra@5core.com',
+        'software5@5core.com',
     ];
 
     /**

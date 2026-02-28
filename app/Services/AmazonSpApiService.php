@@ -855,13 +855,47 @@ class AmazonSpApiService
     }
 
     /**
+     * Insert a batch with up to 3 retries on failure.
+     */
+    private function insertBatchWithRetry(array $batch): int
+    {
+        $count = count($batch);
+        for ($attempt = 1; $attempt <= 3; $attempt++) {
+            try {
+                AmazonListingRaw::insert($batch);
+                return $count;
+            } catch (\Throwable $e) {
+                Log::warning('Amazon Listings Report: Batch insert failed', [
+                    'attempt' => $attempt,
+                    'count' => $count,
+                    'error' => $e->getMessage(),
+                ]);
+                if ($attempt < 3) {
+                    sleep(2);
+                } else {
+                    throw $e;
+                }
+            }
+        }
+        return 0;
+    }
+
+    /**
      * Request GET_MERCHANT_LISTINGS_ALL_DATA report, download, parse and store all rows in amazon_listings_raw.
      * Uses SP-API credentials from config (services.amazon_sp).
+     * Reports API returns a single document (no pagination). Uses Http + retry for reliable download.
      * Returns ['success' => true, 'count' => N] or ['success' => false, 'message' => '...'].
      */
     public function fetchAndStoreListingsReport(): array
     {
         try {
+            set_time_limit(3600); // Allow up to 1 hour for polling + download + parse
+            Log::info('Amazon Listings Report: Starting import', [
+                'memory_limit' => ini_get('memory_limit'),
+                'max_execution_time' => ini_get('max_execution_time'),
+                'marketplace_id' => config('services.amazon_sp.marketplace_id'),
+            ]);
+
             $accessToken = $this->getAccessToken();
             if (!$accessToken) {
                 return ['success' => false, 'message' => 'Could not obtain Amazon API access token. Check SPAPI credentials in .env.'];
@@ -873,70 +907,157 @@ class AmazonSpApiService
             }
 
             // Step 1: Request the report
-            $response = Http::withoutVerifying()->withHeaders([
-                'x-amz-access-token' => $accessToken,
-                'Content-Type' => 'application/json',
-            ])->post('https://sellingpartnerapi-na.amazon.com/reports/2021-06-30/reports', [
+            $reportRequestUrl = 'https://sellingpartnerapi-na.amazon.com/reports/2021-06-30/reports';
+            $reportPayload = [
                 'reportType' => 'GET_MERCHANT_LISTINGS_ALL_DATA',
                 'marketplaceIds' => [$marketplaceId],
+            ];
+            Log::info('Amazon Listings Report: Requesting report', [
+                'url' => $reportRequestUrl,
+                'payload' => $reportPayload,
             ]);
+
+            $response = Http::withoutVerifying()->timeout(30)->withHeaders([
+                'x-amz-access-token' => $accessToken,
+                'Content-Type' => 'application/json',
+            ])->post($reportRequestUrl, $reportPayload);
 
             $body = $response->json();
             $reportId = $body['reportId'] ?? null;
             if (!$reportId) {
-                Log::error('Amazon Listings Report: Failed to request report', ['response' => $body]);
+                Log::error('Amazon Listings Report: Failed to request report', [
+                    'status' => $response->status(),
+                    'response' => $body,
+                ]);
                 return ['success' => false, 'message' => 'Failed to request report: ' . ($body['errors'][0]['message'] ?? $response->body())];
             }
 
-            // Step 2: Poll until report is DONE (max ~10 minutes)
+            Log::info('Amazon Listings Report: Report requested', ['report_id' => $reportId]);
+
+            // Step 2: Poll until report is DONE (max 60 minutes)
             $maxWait = 60;
             $waited = 0;
+            $pollCount = 0;
+            $statusUrl = "https://sellingpartnerapi-na.amazon.com/reports/2021-06-30/reports/{$reportId}";
             do {
                 sleep(15);
                 $waited += 15;
-                $statusResponse = Http::withoutVerifying()->withHeaders([
+                $pollCount++;
+                Log::info('Amazon Listings Report: Polling status', [
+                    'poll_count' => $pollCount,
+                    'waited_seconds' => $waited,
+                    'url' => $statusUrl,
+                ]);
+
+                $statusResponse = Http::withoutVerifying()->timeout(30)->withHeaders([
                     'x-amz-access-token' => $accessToken,
-                ])->get("https://sellingpartnerapi-na.amazon.com/reports/2021-06-30/reports/{$reportId}");
+                ])->get($statusUrl);
+
                 $status = $statusResponse->json();
                 $processingStatus = $status['processingStatus'] ?? 'UNKNOWN';
+
+                Log::info('Amazon Listings Report: Poll response', [
+                    'processing_status' => $processingStatus,
+                    'response_keys' => array_keys($status),
+                ]);
+
                 if ($processingStatus === 'CANCELLED' || $processingStatus === 'FATAL') {
+                    Log::error('Amazon Listings Report: Report failed', ['status' => $processingStatus, 'response' => $status]);
                     return ['success' => false, 'message' => 'Report processing status: ' . $processingStatus];
                 }
                 if ($waited >= $maxWait * 60) {
+                    Log::error('Amazon Listings Report: Poll timeout', ['waited_seconds' => $waited]);
                     return ['success' => false, 'message' => 'Report timed out waiting for DONE.'];
                 }
             } while ($processingStatus !== 'DONE');
 
             $documentId = $status['reportDocumentId'] ?? null;
             if (!$documentId) {
+                Log::error('Amazon Listings Report: Document ID missing', ['status_response' => $status]);
                 return ['success' => false, 'message' => 'Report document ID missing.'];
             }
 
-            $docResponse = Http::withoutVerifying()->withHeaders([
+            Log::info('Amazon Listings Report: Report DONE', ['document_id' => $documentId]);
+
+            // Step 3: Get document URL
+            $docUrl = "https://sellingpartnerapi-na.amazon.com/reports/2021-06-30/documents/{$documentId}";
+            $docResponse = Http::withoutVerifying()->timeout(30)->withHeaders([
                 'x-amz-access-token' => $accessToken,
-            ])->get("https://sellingpartnerapi-na.amazon.com/reports/2021-06-30/documents/{$documentId}");
+            ])->get($docUrl);
+
             $doc = $docResponse->json();
             $url = $doc['url'] ?? null;
             $compression = $doc['compressionAlgorithm'] ?? 'GZIP';
+
+            Log::info('Amazon Listings Report: Document metadata', [
+                'compression' => $compression,
+                'url_present' => !empty($url),
+            ]);
+
             if (!$url) {
+                Log::error('Amazon Listings Report: Document URL missing', ['doc' => $doc]);
                 return ['success' => false, 'message' => 'Report document URL not found.'];
             }
 
-            $rawContent = file_get_contents($url);
-            if ($rawContent === false) {
-                return ['success' => false, 'message' => 'Failed to download report document.'];
+            // Step 4: Download document with retry (critical - partial download causes missing rows)
+            $maxRetries = 3;
+            $rawContent = null;
+            for ($attempt = 1; $attempt <= $maxRetries; $attempt++) {
+                Log::info('Amazon Listings Report: Downloading document', [
+                    'attempt' => $attempt,
+                    'max_retries' => $maxRetries,
+                ]);
+
+                $downloadResponse = Http::timeout(120)->withHeaders(['Accept' => '*/*'])->get($url);
+                $rawContent = $downloadResponse->body();
+                $bytesReceived = strlen($rawContent);
+
+                Log::info('Amazon Listings Report: Download result', [
+                    'attempt' => $attempt,
+                    'bytes_received' => $bytesReceived,
+                    'status' => $downloadResponse->status(),
+                ]);
+
+                if ($downloadResponse->successful() && $bytesReceived > 0) {
+                    break;
+                }
+                if ($attempt < $maxRetries) {
+                    sleep(5);
+                } else {
+                    return ['success' => false, 'message' => 'Failed to download report after ' . $maxRetries . ' attempts. Bytes: ' . $bytesReceived];
+                }
             }
+
             $csv = strtoupper($compression) === 'GZIP' ? gzdecode($rawContent) : $rawContent;
-            if (!$csv) {
+            if ($csv === false || $csv === '') {
+                Log::error('Amazon Listings Report: GZIP decode failed', [
+                    'compression' => $compression,
+                    'raw_size' => strlen($rawContent ?? ''),
+                ]);
                 return ['success' => false, 'message' => 'Failed to decode report content (GZIP).'];
             }
 
+            $csvLength = strlen($csv);
+            Log::info('Amazon Listings Report: Content decoded', ['csv_bytes' => $csvLength]);
+
             $lines = explode("\n", trim($csv));
+            $lineCount = count($lines);
+            Log::info('Amazon Listings Report: Lines parsed', [
+                'total_lines' => $lineCount,
+                'memory_usage_mb' => round(memory_get_usage(true) / 1024 / 1024, 2),
+            ]);
+
             if (empty($lines)) {
                 return ['success' => false, 'message' => 'Report has no content.'];
             }
             $headers = array_map('trim', explode("\t", array_shift($lines)));
+            $headerCount = count($headers);
             $reportImportedAt = now()->toDateTimeString();
+
+            Log::info('Amazon Listings Report: Headers', [
+                'count' => $headerCount,
+                'sample' => array_slice($headers, 0, 5),
+            ]);
 
             // Replace existing data with this report snapshot
             AmazonListingRaw::query()->delete();
@@ -945,7 +1066,9 @@ class AmazonSpApiService
             $batch = [];
             $batchSize = 200;
             $skippedInvalid = 0;
+            $lineIndex = 0;
             foreach ($lines as $line) {
+                $lineIndex++;
                 $line = trim($line);
                 if ($line === '') continue;
                 $row = str_getcsv($line, "\t");
@@ -962,6 +1085,7 @@ class AmazonSpApiService
                     Log::warning('Amazon Listings Report: json_encode failed for row', [
                         'json_error' => json_last_error_msg(),
                         'seller_sku' => $sellerSku,
+                        'line_index' => $lineIndex,
                     ]);
                     $skippedInvalid++;
                     continue;
@@ -976,20 +1100,28 @@ class AmazonSpApiService
                     'updated_at' => now()->toDateTimeString(),
                 ];
                 if (count($batch) >= $batchSize) {
-                    AmazonListingRaw::insert($batch);
-                    $inserted += count($batch);
+                    $inserted += $this->insertBatchWithRetry($batch);
                     $batch = [];
+                    if ($inserted % 1000 === 0 && $inserted > 0) {
+                        Log::info('Amazon Listings Report: Progress', [
+                            'inserted' => $inserted,
+                            'memory_mb' => round(memory_get_usage(true) / 1024 / 1024, 2),
+                        ]);
+                    }
                 }
             }
             if (!empty($batch)) {
-                AmazonListingRaw::insert($batch);
-                $inserted += count($batch);
+                $inserted += $this->insertBatchWithRetry($batch);
             }
 
             if ($skippedInvalid > 0) {
                 Log::info('Amazon Listings Report: Skipped invalid rows', ['count' => $skippedInvalid]);
             }
-            Log::info('Amazon Listings Report: Stored ' . $inserted . ' rows in amazon_listings_raw.');
+            Log::info('Amazon Listings Report: Import complete', [
+                'total_inserted' => $inserted,
+                'skipped_invalid' => $skippedInvalid,
+                'memory_mb' => round(memory_get_usage(true) / 1024 / 1024, 2),
+            ]);
             return ['success' => true, 'count' => $inserted];
         } catch (\Throwable $e) {
             Log::error('Amazon Listings Report: Exception', ['error' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);

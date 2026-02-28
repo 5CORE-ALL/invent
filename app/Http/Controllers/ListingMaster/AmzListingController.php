@@ -278,4 +278,23 @@ class AmzListingController extends Controller
             'message' => $result['message'] ?? 'Import failed.',
         ], 422);
     }
+
+    /**
+     * Debug endpoint to compare local vs production config.
+     * GET /listing-master/amz-data/import-debug
+     */
+    public function importDebug()
+    {
+        $service = new \App\Services\AmazonSpApiService();
+        $accessToken = $service->getAccessToken();
+        $rawCount = \App\Models\AmazonListingRaw::count();
+
+        return response()->json([
+            'memory_limit' => ini_get('memory_limit'),
+            'max_execution_time' => ini_get('max_execution_time'),
+            'marketplace_id' => config('services.amazon_sp.marketplace_id'),
+            'access_token_ok' => !empty($accessToken),
+            'amazon_listings_raw_count' => $rawCount,
+        ]);
+    }
 }
