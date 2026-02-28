@@ -591,32 +591,42 @@ class TaskController extends Controller
 
     public function bulkUpdate(Request $request)
     {
-        $user = Auth::user();
-        $isAdmin = strtolower($user->role ?? '') === 'admin';
+        try {
+            $user = Auth::user();
+            $isAdmin = strtolower($user->role ?? '') === 'admin';
 
-        // Check if this is for automated tasks
-        // Either based on is_automated flag or specific actions only for automated tasks
-        $isAutomatedTask = $request->boolean('is_automated') || in_array($request->action, ['duplicate', 'freq', 'assignor']);
-        
-        // Ensure task_ids are integers (frontend may send strings); filter out invalid
-        $request->merge([
-            'task_ids' => array_values(array_filter(array_map('intval', $request->input('task_ids', [])), fn ($id) => $id > 0)),
-        ]);
+            // Check if this is for automated tasks
+            // Either based on is_automated flag or specific actions only for automated tasks
+            $isAutomatedTask = $request->boolean('is_automated') || in_array($request->action, ['duplicate', 'freq', 'assignor']);
 
-        $validated = $request->validate([
-            'action' => 'required|in:delete,priority,tid,assignee,etc,assign_assignee,assign_assignor,duplicate,assignor,freq',
-            'task_ids' => 'required|array',
-            'task_ids.*' => $isAutomatedTask ? 'integer' : 'exists:tasks,id',
-            'is_automated' => 'nullable|boolean',
-            'priority' => 'nullable|in:low,normal,high',
-            'tid' => 'nullable|date',
-            'assignee_id' => 'nullable|exists:users,id',
-            'assignor_id' => 'nullable|exists:users,id',
-            'assignee' => 'nullable|string',
-            'assignor' => 'nullable|string',
-            'etc_minutes' => 'nullable|integer|min:1',
-            'freq' => 'nullable|in:daily,weekly,monthly',
-        ]);
+            // Ensure task_ids are integers (frontend may send strings); filter out invalid
+            $taskIdsInput = $request->input('task_ids', []);
+            if (!is_array($taskIdsInput)) {
+                $taskIdsInput = [];
+            }
+            $request->merge([
+                'task_ids' => array_values(array_filter(array_map('intval', $taskIdsInput), function ($id) {
+                    return $id > 0;
+                })),
+            ]);
+
+            $action = $request->input('action');
+            $taskIdRule = $isAutomatedTask ? 'integer' : (($action === 'delete') ? 'integer' : 'exists:tasks,id');
+            $rules = [
+                'action' => 'required|in:delete,priority,tid,assignee,etc,assign_assignee,assign_assignor,duplicate,assignor,freq',
+                'task_ids' => 'required|array',
+                'task_ids.*' => $taskIdRule,
+                'is_automated' => 'nullable|boolean',
+                'priority' => 'nullable|in:low,normal,high',
+                'tid' => 'nullable|date',
+                'assignee_id' => 'nullable|exists:users,id',
+                'assignor_id' => 'nullable|exists:users,id',
+                'assignee' => 'nullable|string',
+                'assignor' => 'nullable|string',
+                'etc_minutes' => 'nullable|integer|min:1',
+                'freq' => 'nullable|in:daily,weekly,monthly',
+            ];
+            $validated = $request->validate($rules);
 
         $taskIds = $validated['task_ids'];
         $action = $validated['action'];
@@ -663,6 +673,7 @@ class TaskController extends Controller
 
                         // Delete images and save to deleted_tasks before deletion
                         $imagesDeleted = 0;
+                        $archiveFailed = 0;
                         foreach ($tasksToDelete as $task) {
                             // Delete image file if exists (don't fail bulk delete if file delete fails)
                             if (!empty($task->image)) {
@@ -678,7 +689,16 @@ class TaskController extends Controller
                                     }
                                 }
                             }
-                            $this->saveDeletedTask($task);
+                            // Archive to deleted_tasks (best-effort: don't fail bulk delete when archiving other users' tasks)
+                            try {
+                                $this->saveDeletedTask($task);
+                            } catch (\Throwable $e) {
+                                $archiveFailed++;
+                                \Log::warning('Bulk delete: could not archive task to deleted_tasks', [
+                                    'task_id' => $task->id,
+                                    'error' => $e->getMessage(),
+                                ]);
+                            }
                         }
 
                         Task::whereIn('id', $tasksToDelete->pluck('id'))->delete();
@@ -691,6 +711,9 @@ class TaskController extends Controller
                         if ($deletedCount < $requestedCount) {
                             $skipped = $requestedCount - $deletedCount;
                             $message .= " ($skipped task(s) skipped - you can only delete tasks you created)";
+                        }
+                        if ($archiveFailed > 0) {
+                            $message .= " (Archive failed for {$archiveFailed} task(s).)";
                         }
 
                         return response()->json([
@@ -921,6 +944,20 @@ class TaskController extends Controller
                     'success' => false,
                     'message' => 'Invalid action'
                 ], 400);
+        }
+        } catch (\Throwable $e) {
+            \Log::error('Bulk update failed', [
+                'error' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+                'trace' => $e->getTraceAsString(),
+                'action' => $request->input('action'),
+                'task_ids' => $request->input('task_ids'),
+            ]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Bulk update failed: ' . (config('app.debug') ? $e->getMessage() : 'Please try again or contact support.'),
+            ], 500);
         }
     }
 
@@ -1346,66 +1383,113 @@ class TaskController extends Controller
     }
 
     /**
-     * Save task to deleted_tasks table before deletion
+     * Save task to deleted_tasks table before deletion.
+     * Never throws: safe for server (no Schema calls, all errors caught).
      */
     private function saveDeletedTask(Task $task)
     {
-        $user = Auth::user();
+        try {
+            $user = Auth::user();
+            $str = function ($v, $max = 255) {
+                if ($v === null || $v === '') {
+                    return null;
+                }
+                $s = (string) $v;
+                return strlen($s) > $max ? substr($s, 0, $max) : $s;
+            };
+            $date = function ($v) {
+                if ($v === null || $v === '') {
+                    return null;
+                }
+                if ($v instanceof \DateTimeInterface) {
+                    return $v->format('Y-m-d H:i:s');
+                }
+                return (string) $v;
+            };
 
-        // Get assignor and assignee names (assign_to can be comma-separated emails)
-        $assignorUser = !empty($task->assignor) ? User::where('email', $task->assignor)->first() : null;
-        $firstAssigneeEmail = !empty($task->assign_to) ? trim(explode(',', $task->assign_to)[0]) : null;
-        $assigneeUser = $firstAssigneeEmail ? User::where('email', $firstAssigneeEmail)->first() : null;
+            $assignToRaw = $task->assign_to;
+            $assignorUser = !empty($task->assignor) ? User::where('email', $task->assignor)->first() : null;
+            $firstAssignee = !empty($assignToRaw) ? trim(explode(',', (string) $assignToRaw)[0]) : null;
+            $assigneeUser = $firstAssignee ? User::where('email', $firstAssignee)->first() : null;
 
-        // Cast booleans to 0/1 for deleted_tasks tinyInteger columns
-        $splitTasks = $task->split_tasks;
-        $isMissed = $task->is_missed;
-        $isMissedTrack = $task->is_missed_track;
-        if (!is_numeric($splitTasks)) {
-            $splitTasks = $splitTasks ? 1 : 0;
-        }
-        if (!is_numeric($isMissed)) {
-            $isMissed = $isMissed ? 1 : 0;
-        }
-        if (!is_numeric($isMissedTrack)) {
-            $isMissedTrack = $isMissedTrack ? 1 : 0;
-        }
+            $splitTasks = $task->split_tasks;
+            $isMissed = $task->is_missed;
+            $isMissedTrack = $task->is_missed_track;
+            if (!is_numeric($splitTasks)) {
+                $splitTasks = $splitTasks ? 1 : 0;
+            }
+            if (!is_numeric($isMissed)) {
+                $isMissed = $isMissed ? 1 : 0;
+            }
+            if (!is_numeric($isMissedTrack)) {
+                $isMissedTrack = $isMissedTrack ? 1 : 0;
+            }
 
-        DeletedTask::create([
-            'original_task_id' => $task->id,
-            'title' => $task->title ?? '',
-            'description' => $task->description,
-            'group' => $task->group,
-            'priority' => $task->priority,
-            'status' => $task->status,
-            'assignor' => $task->assignor,
-            'assign_to' => $task->assign_to,
-            'assignor_name' => $assignorUser ? $assignorUser->name : ($task->assignor ?? ''),
-            'assignee_name' => $assigneeUser ? $assigneeUser->name : ($task->assign_to ?? ''),
-            'eta_time' => $task->eta_time !== null && $task->eta_time !== '' ? (int) $task->eta_time : null,
-            'etc_done' => $task->etc_done !== null && $task->etc_done !== '' ? (int) $task->etc_done : null,
-            'start_date' => $task->start_date ?: null,
-            'completion_date' => $task->completion_date ?: null,
-            'completion_day' => $task->completion_day !== null && $task->completion_day !== '' ? (int) $task->completion_day : null,
-            'split_tasks' => (int) $splitTasks,
-            'is_missed' => (int) $isMissed,
-            'is_missed_track' => (int) $isMissedTrack,
-            'link1' => $task->link1,
-            'link2' => $task->link2,
-            'link3' => $task->link3,
-            'link4' => $task->link4,
-            'link5' => $task->link5,
-            'link6' => $task->link6,
-            'link7' => $task->link7,
-            'link8' => $task->link8,
-            'link9' => $task->link9,
-            'image' => $task->image,
-            'task_type' => $task->task_type,
-            'rework_reason' => $task->rework_reason,
-            'deleted_by_email' => $user->email,
-            'deleted_by_name' => $user->name,
-            'deleted_at' => now(),
-        ]);
+            $now = now()->format('Y-m-d H:i:s');
+            $fullRow = [
+                'original_task_id' => (int) $task->id,
+                'title' => $str($task->title ?? '', 255),
+                'description' => $task->description !== null ? $str((string) $task->description, 65535) : null,
+                'group' => $str($task->group),
+                'priority' => $str($task->priority),
+                'status' => $str($task->status),
+                'assignor' => $str($task->assignor),
+                'assign_to' => $str($assignToRaw),
+                'assignor_name' => $str($assignorUser ? $assignorUser->name : $task->assignor),
+                'assignee_name' => $str($assigneeUser ? $assigneeUser->name : $assignToRaw),
+                'eta_time' => $task->eta_time !== null && $task->eta_time !== '' ? (int) $task->eta_time : null,
+                'etc_done' => $task->etc_done !== null && $task->etc_done !== '' ? (int) $task->etc_done : null,
+                'start_date' => $date($task->start_date),
+                'completion_date' => $date($task->completion_date),
+                'completion_day' => $task->completion_day !== null && $task->completion_day !== '' ? (int) $task->completion_day : null,
+                'split_tasks' => (int) $splitTasks,
+                'is_missed' => (int) $isMissed,
+                'is_missed_track' => (int) $isMissedTrack,
+                'link1' => $str($task->link1),
+                'link2' => $str($task->link2),
+                'link3' => $str($task->link3),
+                'link4' => $str($task->link4),
+                'link5' => $str($task->link5),
+                'link6' => $str($task->link6),
+                'link7' => $str($task->link7),
+                'link8' => $str($task->link8),
+                'link9' => $str($task->link9),
+                'image' => $str($task->image),
+                'task_type' => $str($task->task_type),
+                'rework_reason' => $task->rework_reason !== null ? $str((string) $task->rework_reason, 65535) : null,
+                'deleted_by_email' => $str($user->email ?? ''),
+                'deleted_by_name' => $str($user->name ?? ''),
+                'deleted_at' => $now,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ];
+
+            try {
+                \DB::table('deleted_tasks')->insert($fullRow);
+            } catch (\Throwable $e) {
+                $minimal = [
+                    'original_task_id' => (int) $task->id,
+                    'title' => $str($task->title ?? '', 255),
+                    'assignor' => $str($task->assignor),
+                    'assign_to' => $str($assignToRaw),
+                    'deleted_by_email' => $str($user->email ?? ''),
+                    'deleted_by_name' => $str($user->name ?? ''),
+                    'deleted_at' => $now,
+                    'created_at' => $now,
+                    'updated_at' => $now,
+                ];
+                try {
+                    \DB::table('deleted_tasks')->insert($minimal);
+                } catch (\Throwable $e2) {
+                    \Log::warning('saveDeletedTask: archive skipped (table missing or insert failed)', [
+                        'task_id' => $task->id,
+                        'error' => $e2->getMessage(),
+                    ]);
+                }
+            }
+        } catch (\Throwable $e) {
+            \Log::warning('saveDeletedTask: archive skipped', ['task_id' => $task->id, 'error' => $e->getMessage()]);
+        }
     }
 
     /**
