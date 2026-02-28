@@ -54,13 +54,33 @@ class EbayThreeApiService
             throw new \Exception('eBay credentials: EBAY_3_REFRESH_TOKEN is missing. Add a valid refresh token from eBay Developer Portal.');
         }
 
-        $response = $this->ebayHttp()->withoutVerifying()->asForm()
-            ->withBasicAuth($clientId, $clientSecret)
-            ->post('https://api.ebay.com/identity/v1/oauth2/token', [
-                'grant_type'    => 'refresh_token',
-                'refresh_token' => $refreshToken,
-                'scope'         => 'https://api.ebay.com/oauth/api_scope/sell.analytics.readonly https://api.ebay.com/oauth/api_scope/sell.inventory',
-            ]);
+        try {
+            $response = $this->ebayHttp()->withoutVerifying()->asForm()
+                ->withBasicAuth($clientId, $clientSecret)
+                ->post('https://api.ebay.com/identity/v1/oauth2/token', [
+                    'grant_type'    => 'refresh_token',
+                    'refresh_token' => $refreshToken,
+                    'scope'         => 'https://api.ebay.com/oauth/api_scope/sell.analytics.readonly https://api.ebay.com/oauth/api_scope/sell.inventory',
+                ]);
+        } catch (\Exception $e) {
+            $msg = $e->getMessage();
+            if (($this->outboundIp !== null && $this->outboundIp !== '') && (strpos($msg, 'cURL error 45') !== false || strpos($msg, 'bind failed') !== false)) {
+                \Illuminate\Support\Facades\Log::warning('eBay3: bind to EBAY_OUTBOUND_IP failed, retrying with default interface', [
+                    'outboundIp' => $this->outboundIp,
+                    'error'      => $msg,
+                ]);
+                $this->outboundIp = null;
+                $response = $this->ebayHttp()->withoutVerifying()->asForm()
+                    ->withBasicAuth($clientId, $clientSecret)
+                    ->post('https://api.ebay.com/identity/v1/oauth2/token', [
+                        'grant_type'    => 'refresh_token',
+                        'refresh_token' => $refreshToken,
+                        'scope'         => 'https://api.ebay.com/oauth/api_scope/sell.analytics.readonly https://api.ebay.com/oauth/api_scope/sell.inventory',
+                    ]);
+            } else {
+                throw $e;
+            }
+        }
 
         if ($response->failed()) {
             $body = $response->body();
