@@ -61,6 +61,91 @@
             padding: 20px 25px !important;
             letter-spacing: 0.5px;
         }
+        
+        /* FROM SKU column: allow dropdown to show (no clip) */
+        .tabulator-cell.from-sku-column,
+        .tabulator-cell[data-field="to_sku"] {
+            overflow: visible !important;
+        }
+        .from-sku-column .custom-from-sku-wrap.open {
+            z-index: 100;
+        }
+        /* FROM SKU column: same header style as FROM SOLD (vertical label, default look) */
+        /* Custom FROM SKU select with search (combo-trf style, single-select) */
+        .from-sku-column .custom-from-sku-wrap {
+            width: 100%;
+            min-width: 200px;
+            max-width: 230px;
+            border: 1px solid #ced4da;
+            border-radius: 6px;
+            background: #fff;
+            padding: 4px 28px 4px 10px;
+            min-height: 34px;
+            position: relative;
+        }
+        .from-sku-column .custom-from-sku-wrap.open {
+            border-color: #80bdff;
+            box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
+        }
+        .from-sku-column .custom-sku-search {
+            width: 100%;
+            border: none !important;
+            outline: none !important;
+            box-shadow: none !important;
+            padding: 0 2px;
+            font-size: 13px;
+            background: transparent;
+        }
+        .from-sku-column .custom-sku-search::placeholder {
+            color: #6c757d;
+        }
+        .from-sku-column .custom-from-sku-wrap .custom-sku-arrow {
+            position: absolute;
+            right: 10px;
+            top: 50%;
+            transform: translateY(-60%) rotate(-45deg);
+            pointer-events: none;
+            border: solid #212529;
+            border-width: 0 0 2px 2px;
+            width: 8px;
+            height: 8px;
+            display: inline-block;
+        }
+        .from-sku-column .custom-sku-dropdown {
+            display: none;
+            position: absolute;
+            left: 0;
+            right: 0;
+            top: 100%;
+            margin-top: 2px;
+            max-height: 260px;
+            overflow-y: auto;
+            background: #fff;
+            border: 1px solid #ced4da;
+            border-radius: 4px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            z-index: 9999;
+        }
+        .from-sku-column .custom-from-sku-wrap.open .custom-sku-dropdown {
+            display: block;
+        }
+        .from-sku-column .custom-sku-option {
+            padding: 6px 10px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            border-bottom: 1px solid #f0f0f0;
+        }
+        .from-sku-column .custom-sku-option:hover {
+            background: #e7f3ff;
+        }
+        .from-sku-column .custom-sku-option.selected {
+            background: #e7f3ff;
+            color: #0d6efd;
+        }
+        .from-sku-column .custom-sku-option:last-child {
+            border-bottom: none;
+        }
     </style>
 @endsection
 
@@ -445,9 +530,9 @@
                 // Reduce ACTION column width to save space
                 table.getColumn('ACTION').updateDefinition({width: 100});
                 
-                // Initialize Select2 immediately when Transfer Mode is activated
+                // Custom FROM SKU is already in DOM; restore saved and sync display
                 setTimeout(function() {
-                    initializeSelect2FromSku();
+                    restoreSavedFromSku();
                 }, 100);
             } else {
                 $(this).removeClass('btn-danger').addClass('btn-primary').html('<i class="fas fa-exchange-alt"></i> Transfer Mode');
@@ -511,6 +596,66 @@
             });
         });
         
+        // Custom FROM SKU select (combo-trf style): fill dropdown list (single-select)
+        function fillCustomSkuDropdownSingle($wrap, searchTerm) {
+            const currentSku = $wrap.attr('data-from-sku') || '';
+            const $cell = $wrap.closest('.tabulator-cell');
+            const $select = $cell.find('.to-sku-select');
+            const selected = $select.val() || '';
+            const term = (searchTerm || '').trim().toLowerCase().replace(/\s+/g, ' ');
+            const list = [];
+            allTableData.forEach(function(item) {
+                if (!item.SKU || item.SKU === currentSku || (item.SKU + '').toUpperCase().indexOf('PARENT') !== -1) return;
+                const searchStr = ((item.SKU || '') + ' ' + (item.Parent || '')).toLowerCase();
+                if (term && searchStr.indexOf(term) === -1) return;
+                list.push({ sku: item.SKU, selected: item.SKU === selected });
+            });
+            const $dd = $wrap.find('.custom-sku-dropdown');
+            const esc = function(s) { return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); };
+            if (list.length === 0) {
+                $dd.html('<div class="custom-sku-option text-muted" style="cursor:default;">No matching SKU</div>');
+            } else {
+                $dd.html(list.map(function(o) {
+                    return '<div class="custom-sku-option' + (o.selected ? ' selected' : '') + '" data-sku="' + esc(o.sku) + '">' + esc(o.sku) + '</div>';
+                }).join(''));
+            }
+        }
+        function syncDisplayFromSkuSingle($row) {
+            const $select = $row.find('.to-sku-select');
+            const $input = $row.find('.custom-sku-search');
+            if (!$input.length) return;
+            const val = $select.val();
+            $input.val(val || '');
+        }
+        $(document).on('focus', '.custom-sku-search', function() {
+            const $wrap = $(this).closest('.custom-from-sku-wrap');
+            $wrap.addClass('open');
+            fillCustomSkuDropdownSingle($wrap, $(this).val());
+        });
+        $(document).on('click', '.custom-from-sku-wrap', function(e) {
+            if ($(e.target).closest('.custom-sku-dropdown').length) return;
+            $(this).find('.custom-sku-search').focus();
+        });
+        $(document).on('input', '.custom-sku-search', function() {
+            const $wrap = $(this).closest('.custom-from-sku-wrap');
+            fillCustomSkuDropdownSingle($wrap, $(this).val());
+        });
+        $(document).on('click', '.custom-sku-option', function(e) {
+            e.preventDefault();
+            const sku = $(this).attr('data-sku');
+            if (!sku || $(this).hasClass('text-muted')) return;
+            const $row = $(this).closest('.tabulator-row');
+            const $select = $row.find('.to-sku-select');
+            $select.val(sku).trigger('change');
+            $(this).closest('.custom-from-sku-wrap').removeClass('open');
+            syncDisplayFromSkuSingle($row);
+        });
+        $(document).on('click', function(e) {
+            if (!$(e.target).closest('.custom-from-sku-wrap').length) {
+                $('.custom-from-sku-wrap.open').removeClass('open');
+            }
+        });
+        
         // FROM SKU dropdown change handler (inline in table)
         $(document).on('change', '.to-sku-select', function() {
             const $select = $(this);
@@ -559,6 +704,7 @@
                 $row.find('.from-qty-input').val('');
                 $row.find('.from-dil-percent').attr('class', 'from-dil-percent').text('-');
             }
+            syncDisplayFromSkuSingle($row);
         });
         
         // Ratio change handler (inline in table)
@@ -847,20 +993,24 @@
                     hozAlign: "center",
                     width: 240,
                     visible: true,
+                    cssClass: "from-sku-column",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
-                        const currentSku = rowData.SKU;
-                        let html = '<select class="form-select form-select-sm to-sku-select" data-from-sku="' + currentSku + '" style="width:230px;"><option value="">Search FROM SKU...</option>';
+                        const currentSku = (rowData.SKU || '').replace(/"/g, '&quot;');
+                        const esc = function(s) { return (s || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); };
+                        const escAttr = function(s) { return (s || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;'); };
+                        let selectOpts = '';
                         allTableData.forEach(function(item) {
-                            // Exclude SKUs that contain "PARENT" in the SKU name
-                            if (item.SKU && item.SKU !== currentSku && item.SKU.toUpperCase().indexOf('PARENT') === -1) {
-                                // Show SKU only
-                                const displayText = item.SKU;
-                                html += '<option value="' + item.SKU + '" data-parent="' + (item.Parent || '') + '" data-inv="' + (item.INV || 0) + '" data-search="' + item.SKU + ' ' + (item.Parent || '') + '">' + displayText + '</option>';
+                            if (item.SKU && item.SKU !== rowData.SKU && (item.SKU + '').toUpperCase().indexOf('PARENT') === -1) {
+                                selectOpts += '<option value="' + escAttr(item.SKU) + '" data-parent="' + escAttr(item.Parent || '') + '" data-inv="' + (item.INV || 0) + '" data-search="' + escAttr((item.SKU || '') + ' ' + (item.Parent || '')) + '">' + esc(item.SKU) + '</option>';
                             }
                         });
-                        html += '</select>';
-                        return html;
+                        return '<select class="to-sku-select" data-from-sku="' + escAttr(rowData.SKU) + '" style="display:none;">' +
+                            '<option value="">Search FROM SKU...</option>' + selectOpts + '</select>' +
+                            '<div class="custom-from-sku-wrap" data-from-sku="' + escAttr(rowData.SKU) + '">' +
+                            '<input type="text" class="form-control form-control-sm custom-sku-search" placeholder="Search FROM SKU..." autocomplete="off">' +
+                            '<span class="custom-sku-arrow"></span>' +
+                            '<div class="custom-sku-dropdown"></div></div>';
                     }
                 },
                 {
@@ -1057,64 +1207,29 @@
             applyAllFilters();
         });
         
-        // Initialize Select2 on FROM SKU dropdowns
-        function initializeSelect2FromSku() {
+        // Restore saved FROM SKU and sync custom select display (combo-trf style, no Select2)
+        function restoreSavedFromSku() {
             $('.to-sku-select').each(function() {
                 const $select = $(this);
                 const $row = $select.closest('.tabulator-row');
                 const row = table.getRow($row[0]);
+                if (!row) return;
                 const rowData = row.getData();
-                const toSku = rowData.SKU; // Current row's SKU (TO SKU)
-                
-                // Load saved data for THIS specific TO SKU
+                const toSku = rowData.SKU;
                 const savedData = JSON.parse(localStorage.getItem('transfer_' + toSku) || '{}');
                 const savedFromSku = savedData.fromSku || null;
                 const savedRatio = savedData.ratio || '1:1';
-                
-                // Destroy existing Select2 if any
-                if ($select.hasClass('select2-hidden-accessible')) {
-                    $select.select2('destroy');
-                }
-                
-                // Initialize Select2
-                $select.select2({
-                    placeholder: 'Search FROM SKU...',
-                    allowClear: true,
-                    width: '230px',
-                    dropdownAutoWidth: false,
-                    matcher: function(params, data) {
-                        // If no search term, return all
-                        if ($.trim(params.term) === '') {
-                            return data;
-                        }
-                        
-                        // Search in both SKU and Parent
-                        const searchTerm = params.term.toLowerCase();
-                        const text = (data.text || '').toLowerCase();
-                        const searchData = $(data.element).attr('data-search') || '';
-                        
-                        if (text.indexOf(searchTerm) > -1 || searchData.toLowerCase().indexOf(searchTerm) > -1) {
-                            return data;
-                        }
-                        
-                        return null;
-                    }
-                });
-                
-                // Auto-load saved FROM SKU for THIS specific row
+                $row.find('.ratio-select').val(savedRatio);
                 if (savedFromSku) {
                     $select.val(savedFromSku).trigger('change');
                 }
-                
-                // Set saved ratio for THIS row
-                $row.find('.ratio-select').val(savedRatio);
+                syncDisplayFromSkuSingle($row);
             });
         }
         
         // Update table on render complete
         table.on('renderComplete', function() {
-            // Always initialize Select2 for FROM SKU search dropdown
-            initializeSelect2FromSku();
+            restoreSavedFromSku();
         });
         
     });
