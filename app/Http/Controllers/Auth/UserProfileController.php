@@ -7,6 +7,7 @@ use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rules\Password;
 use Illuminate\Validation\Rule;
 
@@ -19,7 +20,7 @@ class UserProfileController extends Controller
     }
 
     /**
-     * Update basic profile information (name and email)
+     * Update basic profile information (name, email, and optional avatar)
      */
     public function updateProfile(Request $request)
     {
@@ -35,13 +36,25 @@ class UserProfileController extends Controller
                 Rule::unique('users')->ignore($user->id)
             ],
             'phone' => ['nullable', 'string', 'max:20'],
+            'avatar' => ['nullable', 'image', 'mimes:jpeg,jpg,png,gif,webp', 'max:2048'],
         ]);
 
-        $user->update([
+        $data = [
             'name' => $request->name,
             'email' => $request->email,
             'phone' => $request->filled('phone') ? $request->phone : null,
-        ]);
+        ];
+
+        if ($request->hasFile('avatar')) {
+            // Delete old avatar if exists
+            if ($user->avatar) {
+                Storage::disk('public')->delete($user->avatar);
+            }
+            $path = $request->file('avatar')->store('avatars', 'public');
+            $data['avatar'] = $path;
+        }
+
+        $user->update($data);
 
         return back()->with('success', 'Profile updated successfully');
     }
