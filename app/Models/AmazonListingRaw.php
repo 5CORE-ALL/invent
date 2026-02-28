@@ -50,9 +50,12 @@ class AmazonListingRaw extends Model
     ];
 
     protected $casts = [
-        'report_imported_at' => 'datetime',
-        'raw_data' => 'array',
-        'assembly_required' => 'boolean',
-        'bullet_point' => 'array',
-    ];
+    'report_imported_at' => 'datetime',
+    'raw_data' => 'array',
+    'assembly_required' => 'boolean',
+    'bullet_point' => 'array',
+    'item_dimensions' => 'array',      // ✅ ADD THIS
+    'included_components' => 'array',  // ✅ ADD THIS
+];
+
 }
