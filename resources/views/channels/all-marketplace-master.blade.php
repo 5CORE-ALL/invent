@@ -265,6 +265,12 @@
                         <span class="badge bg-secondary fs-6 p-2 badge-chart-link" data-metric="ad_spend" style="color: white; font-weight: bold; cursor:pointer;" title="View trend">
                             Ads Spend: <span id="total-ad-spend">$0</span>
                         </span>
+                        <span class="badge bg-info fs-6 p-2 badge-chart-link" data-metric="total_views" style="color: black; font-weight: bold; cursor:pointer;" title="View Total Views trend">
+                            Total Views: <span id="total-views-badge">0</span>
+                        </span>
+                        <span class="badge bg-primary fs-6 p-2 badge-chart-link" data-metric="cvr" style="color: white; font-weight: bold; cursor:pointer;" title="CVR % = Orders / Total Views">
+                            CVR %: <span id="cvr-pct-badge">0%</span>
+                        </span>
                         <span class="badge bg-success fs-6 p-2 badge-chart-link" data-metric="pft" style="color: white; font-weight: bold; cursor:pointer;" title="View trend">
                             NPFT: <span id="total-pft">$0</span>
                         </span>
@@ -1063,24 +1069,6 @@
                         }
                     },
                     {
-                        title: "Total Views",
-                        field: "Total Views",
-                        hozAlign: "center",
-                        sorter: "number",
-                        width: 100,
-                        visible: true,
-                        formatter: function(cell) {
-                            const value = parseNumber(cell.getValue());
-                            if (value == null || value === 0) return '-';
-                            return value.toLocaleString('en-US');
-                        },
-                        bottomCalc: "sum",
-                        bottomCalcFormatter: function(cell) {
-                            const value = cell.getValue();
-                            return `<strong>${parseNumber(value).toLocaleString('en-US')}</strong>`;
-                        }
-                    },
-                    {
                         title: "Sales",
                         field: "L30 Sales",
                         hozAlign: "center",
@@ -1135,6 +1123,80 @@
                         bottomCalcFormatter: function(cell) {
                             const value = cell.getValue();
                             return `<strong>$${parseNumber(value).toFixed(0)}</strong>`;
+                        }
+                    },
+                    {
+                        title: "Total Views",
+                        field: "Total Views",
+                        hozAlign: "center",
+                        sorter: "number",
+                        width: 100,
+                        visible: true,
+                        formatter: function(cell) {
+                            const value = parseNumber(cell.getValue());
+                            const rowData = cell.getRow().getData();
+                            const channel = (rowData['Channel '] || '').trim();
+                            if (value == null || value === 0) return '-';
+                            const dotColor = getMetricDotColor(channel, 'total_views');
+                            const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="total_views" style="cursor:pointer;color:${dotColor};font-size:8px;" title="View Chart"></i>`;
+                            return `<span>${value.toLocaleString('en-US')}</span>${chartIcon}`;
+                        },
+                        cellClick: function(e, cell) {
+                            if (e.target.classList.contains('metric-chart-icon')) {
+                                e.stopPropagation();
+                                const span = cell.getElement().querySelector('span');
+                                const cv = span ? parseFloat(span.textContent.replace(/[,$%\s]/g, '')) : null;
+                                showMetricChart($(e.target).data('channel'), $(e.target).data('metric'), cv);
+                            }
+                        },
+                        bottomCalc: "sum",
+                        bottomCalcFormatter: function(cell) {
+                            const value = cell.getValue();
+                            return `<strong>${parseNumber(value).toLocaleString('en-US')}</strong>`;
+                        }
+                    },
+                    {
+                        title: "CVR",
+                        field: "CVR",
+                        hozAlign: "center",
+                        sorter: function(a, b, aRow, bRow) {
+                            const ordersA = parseNumber(aRow.getData()['L30 Orders'] || 0);
+                            const viewsA = parseNumber(aRow.getData()['Total Views'] || 0);
+                            const ordersB = parseNumber(bRow.getData()['L30 Orders'] || 0);
+                            const viewsB = parseNumber(bRow.getData()['Total Views'] || 0);
+                            const cvrA = viewsA > 0 ? (ordersA / viewsA) * 100 : 0;
+                            const cvrB = viewsB > 0 ? (ordersB / viewsB) * 100 : 0;
+                            return cvrA - cvrB;
+                        },
+                        width: 70,
+                        visible: true,
+                        formatter: function(cell) {
+                            const row = cell.getRow().getData();
+                            const channel = (row['Channel '] || '').trim();
+                            const orders = parseNumber(row['L30 Orders'] || 0);
+                            const views = parseNumber(row['Total Views'] || 0);
+                            if (views === 0) return '-';
+                            const pct = (orders / views) * 100;
+                            const dotColor = getMetricDotColor(channel, 'cvr');
+                            const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="cvr" style="cursor:pointer;color:${dotColor};font-size:8px;" title="View CVR trend"></i>`;
+                            return `<span style="font-weight:600;color:${dotColor};">${pct.toFixed(1)}%</span>${chartIcon}`;
+                        },
+                        cellClick: function(e, cell) {
+                            if (e.target.classList.contains('metric-chart-icon')) {
+                                e.stopPropagation();
+                                var span = cell.getElement().querySelector('span');
+                                var cv = span ? parseFloat(span.textContent.replace(/[$,%,\s]/g, '')) : null;
+                                showMetricChart($(e.target).data('channel'), $(e.target).data('metric'), cv);
+                            }
+                        },
+                        bottomCalc: function(values, data) {
+                            let totalOrders = 0, totalViews = 0;
+                            data.forEach(function(row) {
+                                totalOrders += parseNumber(row['L30 Orders'] || 0);
+                                totalViews += parseNumber(row['Total Views'] || 0);
+                            });
+                            if (totalViews === 0) return '-';
+                            return '<strong>' + ((totalOrders / totalViews) * 100).toFixed(1) + '%</strong>';
                         }
                     },
                     {
@@ -2588,7 +2650,7 @@
             });
 
             // Initial load only: set column dot color from last-two values (same red/green/gray logic as chart).
-            var metricDotMetricKeys = ['missing_l','nmap','l30_sales','ad_spend','l30_orders','qty','gprofit','groi','ads_pct','npft','nroi','clicks','ad_sales','ad_sold','acos','ads_cvr','inv_at_lp'];
+            var metricDotMetricKeys = ['missing_l','nmap','l30_sales','ad_spend','l30_orders','qty','gprofit','groi','ads_pct','npft','nroi','clicks','ad_sales','ad_sold','acos','ads_cvr','cvr','total_views','inv_at_lp'];
             function loadMetricDotTrends(tableData) {
                 if (typeof lastDotColorByKey === 'undefined') return;
                 var data = tableData && Array.isArray(tableData) ? tableData : (typeof table !== 'undefined' && table.getData ? table.getData() : []);
@@ -2661,6 +2723,7 @@
                 let totalPft = 0;
                 let totalCogs = 0;
                 let totalAdSpend = 0;
+                let totalViews = 0;
                 let totalMap = 0;
                 let totalMiss = 0;
                 let totalNMap = 0;
@@ -2687,12 +2750,14 @@
 
                     // Use Total Ad Spend directly (already computed correctly per channel)
                     const adSpend = parseNumber(row['Total Ad Spend'] || 0);
+                    const views = parseNumber(row['Total Views'] || 0);
 
                     totalL30Sales += l30Sales;
                     totalL30Orders += l30Orders;
                     totalQty += qty;
                     totalClicks += clicks;
                     totalAdSpend += adSpend;
+                    totalViews += views;
                     totalCogs += cogs;
                     totalMap += mapCount;
                     totalMiss += missCount;
@@ -2734,6 +2799,10 @@
                 $('#avg-gprofit').text(avgGprofit.toFixed(1) + '%');
                 $('#avg-groi').text(Math.round(avgGroi) + '%');
                 $('#total-ad-spend').text('$' + Math.round(totalAdSpend).toLocaleString('en-US'));
+                $('#total-views-badge').text(Math.round(totalViews).toLocaleString('en-US'));
+                // CVR % = Orders / Total Views (overall)
+                const cvrPct = totalViews > 0 ? (totalL30Orders / totalViews) * 100 : null;
+                $('#cvr-pct-badge').text(cvrPct !== null ? cvrPct.toFixed(1) + '%' : '-');
                 $('#total-pft').text('$' + Math.round(totalPft).toLocaleString('en-US'));
                 $('#avg-npft').text(avgNpft.toFixed(1) + '%');
                 $('#avg-nroi').text(avgNroi.toFixed(1) + '%');
@@ -2816,14 +2885,14 @@
             
             const sectionColumns = {
                 'all': 'ALL', // Show all columns
-                'ads': ['Total Ad Spend', 'KW Spent', 'PT Spent', 'HL Spent', 'PMT Spent', 'Shopping Spent', 'SERP Spent', 'clicks', 'KW Clicks', 'PT Clicks', 'HL Clicks', 'PMT Clicks', 'Shopping Clicks', 'SERP Clicks', 'Ad Sales', 'KW Sales', 'PT Sales', 'HL Sales', 'PMT Sales', 'Shopping Sales', 'SERP Sales', 'ad_sold', 'KW Sold', 'PT Sold', 'HL Sold', 'PMT Sold', 'Shopping Sold', 'SERP Sold', 'ACOS', 'KW ACOS', 'PT ACOS', 'HL ACOS', 'PMT ACOS', 'Shopping ACOS', 'SERP ACOS', 'Ads CVR', 'KW CVR', 'PT CVR', 'HL CVR', 'PMT CVR', 'Shopping CVR', 'SERP CVR', 'TAcos %', 'Missing Ads'],
+                'ads': ['Total Ad Spend', 'Total Views', 'CVR', 'KW Spent', 'PT Spent', 'HL Spent', 'PMT Spent', 'Shopping Spent', 'SERP Spent', 'clicks', 'KW Clicks', 'PT Clicks', 'HL Clicks', 'PMT Clicks', 'Shopping Clicks', 'SERP Clicks', 'Ad Sales', 'KW Sales', 'PT Sales', 'HL Sales', 'PMT Sales', 'Shopping Sales', 'SERP Sales', 'ad_sold', 'KW Sold', 'PT Sold', 'HL Sold', 'PMT Sold', 'Shopping Sold', 'SERP Sold', 'ACOS', 'KW ACOS', 'PT ACOS', 'HL ACOS', 'PMT ACOS', 'Shopping ACOS', 'SERP ACOS', 'Ads CVR', 'KW CVR', 'PT CVR', 'HL CVR', 'PMT CVR', 'Shopping CVR', 'SERP CVR', 'TAcos %', 'Missing Ads'],
                 'inv': ['Avl', 'Res', 'Inb', 'Unf', 'Wrk', 'Total Inv', 'Allocated'],
                 'margins': ['G PFT%', 'G ROI%', 'N PFT%', 'N ROI%', 'COGS', 'Total Ad Spend', 'TAcos %'],
                 'movement': ['L30 Sales', 'L30 Orders', 'Qty items', 'Velocity'],
                 'returns': ['Return Rate', 'Return Units', 'Return Value'],
                 'ah': ['AH Score', 'Policy Violations', 'Customer Complaints'],
                 'expenses': ['Total Ad Spend', 'Shipping Cost', 'FBA Fees', 'Storage Fees'],
-                'traffic': ['clicks', 'Sessions', 'Page Views', 'Conversion Rate', 'Total Views'],
+                'traffic': ['clicks', 'Sessions', 'Page Views', 'Conversion Rate', 'Total Views', 'CVR'],
                 'reviews': ['Total Reviews', 'Avg Rating', '5-Star', '4-Star', '1-Star'],
                 'missing': ['Miss', 'NMap', 'Missing Ads', 'Total Views']
             };
@@ -3414,6 +3483,8 @@
                 'ad_sold': 'AD Sold',
                 'acos': 'ACOS',
                 'ads_cvr': 'AD CVR',
+                'cvr': 'CVR',
+                'total_views': 'Total Views',
                 'inv_at_lp': 'Inv@LP',
                 'tat': 'TAT',
             };
@@ -3464,39 +3535,32 @@
                 showMetricChart('All', metricKey, badgeValue);
             });
 
-            // Load Sales, Orders, Qty bar chart (metric mode only) — same channel & days as line chart
+            // Load daily bar chart for the clicked metric only (metric mode) — same channel & days as line chart
             function loadSalesOrdersItemsBarChart() {
                 const channel = currentChartChannel;
                 const days = currentChartDays;
-                const baseParams = { channel: channel, days: days };
-                const metrics = ['l30_sales', 'l30_orders', 'qty'];
-                const promises = metrics.map(m => $.get('/channel-metric-chart-data', Object.assign({}, baseParams, { metric: m })));
-                $.when.apply($, promises).done(function() {
-                    const raw = Array.prototype.slice.call(arguments);
-                    const results = raw.map(function(a) { return (Array.isArray(a) && a.length) ? a[0] : a; });
-                    const byDate = {};
-                    results.forEach((resp, idx) => {
-                        const data = (resp && resp.data) ? resp.data : [];
-                        const key = metrics[idx];
-                        data.forEach(function(d) {
-                            const dt = d.date || d.label;
-                            if (!byDate[dt]) byDate[dt] = { date: dt, sales: 0, orders: 0, qty: 0 };
-                            byDate[dt][key === 'l30_sales' ? 'sales' : key === 'l30_orders' ? 'orders' : 'qty'] = parseFloat(d.value) || 0;
-                        });
-                    });
+                const metricKey = currentMetricKey || 'l30_sales';
+                $.get('/channel-metric-chart-data', { channel: channel, days: days, metric: metricKey }).done(function(resp) {
+                    const data = (resp && resp.data) ? resp.data : [];
+                    if (data.length === 0) {
+                        $('#salesOrdersItemsBarContainer').css('display', 'none').hide();
+                        if (salesOrdersItemsBarChartInstance) {
+                            salesOrdersItemsBarChartInstance.destroy();
+                            salesOrdersItemsBarChartInstance = null;
+                        }
+                        return;
+                    }
                     const year = new Date().getFullYear();
-                    const sorted = Object.keys(byDate).sort(function(a, b) {
-                        const dA = new Date(a + ' ' + year);
-                        const dB = new Date(b + ' ' + year);
-                        if (isNaN(dA.getTime()) || isNaN(dB.getTime())) return String(a).localeCompare(String(b));
+                    const sorted = [...data].sort(function(a, b) {
+                        const dA = new Date((a.date || a.label) + ' ' + year);
+                        const dB = new Date((b.date || b.label) + ' ' + year);
+                        if (isNaN(dA.getTime()) || isNaN(dB.getTime())) return String(a.date || a.label).localeCompare(String(b.date || b.label));
                         return dA - dB;
                     });
-                    const labels = sorted;
-                    const sales = sorted.map(d => byDate[d].sales);
-                    const orders = sorted.map(d => byDate[d].orders);
-                    const qty = sorted.map(d => byDate[d].qty);
+                    const labels = sorted.map(d => d.date || d.label);
+                    const values = sorted.map(d => parseFloat(d.value) || 0);
                     $('#salesOrdersItemsBarContainer').css('display', 'flex').show();
-                    renderSalesOrdersItemsBarChart({ labels, sales, orders, qty });
+                    renderSingleMetricBarChart({ labels, values, metricKey });
                 }).fail(function() {
                     $('#salesOrdersItemsBarContainer').css('display', 'none').hide();
                     if (salesOrdersItemsBarChartInstance) {
@@ -3506,7 +3570,18 @@
                 });
             }
 
-            function renderSalesOrdersItemsBarChart(barData) {
+            function barChartFmtVal(metricKey, v) {
+                if (metricKey === 'l30_sales' || metricKey === 'ad_spend' || metricKey === 'ad_sales' || metricKey === 'pft' || metricKey === 'inv_at_lp') {
+                    return '$' + Math.round(v).toLocaleString('en-US');
+                }
+                if (metricKey === 'acos' || metricKey === 'cvr' || metricKey === 'ads_cvr' || metricKey === 'gprofit' || metricKey === 'groi' || metricKey === 'ads_pct' || metricKey === 'npft' || metricKey === 'nroi') {
+                    return v.toFixed(1) + '%';
+                }
+                if (metricKey === 'tat') return v.toFixed(2);
+                return Math.round(v).toLocaleString('en-US');
+            }
+
+            function renderSingleMetricBarChart(barData) {
                 const ctx = document.getElementById('salesOrdersItemsBarChart');
                 if (!ctx) return;
                 const g = ctx.getContext('2d');
@@ -3515,17 +3590,18 @@
                     salesOrdersItemsBarChartInstance = null;
                 }
                 const labels = barData.labels || [];
-                const sales = barData.sales || [];
-                const orders = barData.orders || [];
-                const qty = barData.qty || [];
+                const values = barData.values || [];
+                const metricKey = barData.metricKey || 'l30_sales';
+                const seriesLabel = metricLabels[metricKey] || metricKey;
+                const isCurrency = ['l30_sales', 'ad_spend', 'ad_sales', 'pft', 'inv_at_lp'].includes(metricKey);
+                const isPercent = ['acos', 'cvr', 'ads_cvr', 'gprofit', 'groi', 'ads_pct', 'npft', 'nroi'].includes(metricKey);
+                const yTitle = isCurrency ? seriesLabel + ' ($)' : isPercent ? seriesLabel + ' (%)' : seriesLabel;
                 salesOrdersItemsBarChartInstance = new Chart(g, {
                     type: 'bar',
                     data: {
                         labels: labels,
                         datasets: [
-                            { label: 'Sales', data: sales, backgroundColor: 'rgba(30,136,229,0.8)', borderColor: '#1e88e5', borderWidth: 1, yAxisID: 'y' },
-                            { label: 'Orders', data: orders, backgroundColor: 'rgba(255,152,0,0.8)', borderColor: '#ff9800', borderWidth: 1, yAxisID: 'y1' },
-                            { label: 'Qty', data: qty, backgroundColor: 'rgba(0,188,212,0.8)', borderColor: '#00bcd4', borderWidth: 1, yAxisID: 'y1' }
+                            { label: seriesLabel, data: values, backgroundColor: 'rgba(30,136,229,0.8)', borderColor: '#1e88e5', borderWidth: 1 }
                         ]
                     },
                     options: {
@@ -3538,8 +3614,7 @@
                                 callbacks: {
                                     label: function(ctx) {
                                         const v = ctx.raw;
-                                        if (ctx.dataset.label === 'Sales') return 'Sales: $' + Math.round(v).toLocaleString('en-US');
-                                        return ctx.dataset.label + ': ' + Math.round(v).toLocaleString('en-US');
+                                        return seriesLabel + ': ' + barChartFmtVal(metricKey, v);
                                     }
                                 }
                             }
@@ -3557,15 +3632,15 @@
                             y: {
                                 type: 'linear',
                                 position: 'left',
-                                title: { display: true, text: 'Sales ($)', font: { size: 9 } },
-                                ticks: { font: { size: 9 }, callback: v => '$' + (v >= 1000 ? (v/1000)+'k' : v) }
-                            },
-                            y1: {
-                                type: 'linear',
-                                position: 'right',
-                                title: { display: true, text: 'Orders / Qty', font: { size: 9 } },
-                                grid: { drawOnChartArea: false },
-                                ticks: { font: { size: 9 } }
+                                title: { display: true, text: yTitle, font: { size: 9 } },
+                                ticks: {
+                                    font: { size: 9 },
+                                    callback: function(v) {
+                                        if (isCurrency) return '$' + (v >= 1000 ? (v/1000)+'k' : v);
+                                        if (isPercent) return v + '%';
+                                        return Math.round(v).toLocaleString('en-US');
+                                    }
+                                }
                             }
                         }
                     }
@@ -3673,7 +3748,7 @@
                         const ctx = chart.ctx;
 
                         ctx.save();
-                        ctx.font = 'bold 7px Inter, system-ui, sans-serif';
+                        ctx.font = 'bold 11px Inter, system-ui, sans-serif';
                         ctx.textAlign = 'center';
                         ctx.textBaseline = 'bottom';
 
@@ -3683,7 +3758,7 @@
                             const y = point.y;
 
                             // Alternate label position to reduce overlap
-                            const offsetY = (i % 2 === 0) ? -7 : -14;
+                            const offsetY = (i % 2 === 0) ? -10 : -20;
 
                             ctx.fillStyle = labelColors[i];
                             ctx.fillText(fmtVal(val), x, y + offsetY);
@@ -3716,7 +3791,7 @@
                         responsive: true,
                         maintainAspectRatio: false,
                         layout: {
-                            padding: { top: 18, left: 2, right: 2, bottom: 2 }
+                            padding: { top: 26, left: 2, right: 2, bottom: 2 }
                         },
                         plugins: {
                             legend: { display: false },

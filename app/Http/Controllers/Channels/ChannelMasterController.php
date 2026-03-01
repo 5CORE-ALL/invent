@@ -6337,6 +6337,8 @@ class ChannelMasterController extends Controller
                 'ad_sold' => null,   // uses ad_sold with clicks × cvr ratio fallback
                 'acos' => null,      // computed: (ad_spend / ad_sales) * 100
                 'ads_cvr' => null,   // computed: (ad_sold / clicks) * 100
+                'cvr' => null,      // computed: (l30_orders / total_views) * 100
+                'total_views' => 'total_views',
                 'inv_at_lp' => 'inv_at_lp',
                 'tat' => null,  // computed: inventory_value_amazon / total l30_sales (all only)
             ];
@@ -6349,7 +6351,7 @@ class ChannelMasterController extends Controller
             }
 
             // Metrics that should be averaged (percentages) vs summed (counts/amounts)
-            $avgMetrics = ['gprofit', 'groi', 'ads_pct', 'npft', 'nroi', 'acos', 'ads_cvr'];
+            $avgMetrics = ['gprofit', 'groi', 'ads_pct', 'npft', 'nroi', 'acos', 'ads_cvr', 'cvr'];
             $shouldAvg = in_array($metric, $avgMetrics);
 
             // Determine date range
@@ -6392,6 +6394,8 @@ class ChannelMasterController extends Controller
                     $totalNpft = 0;
                     $totalTcos = 0;
                     $totalInvAmazon = 0;
+                    $totalOrdersCvr = 0;
+                    $totalViewsCvr = 0;
                     $count = 0;
 
                     foreach ($rows as $row) {
@@ -6413,6 +6417,9 @@ class ChannelMasterController extends Controller
                         } elseif ($metric === 'ads_cvr' || $metric === 'ad_sold') {
                             $totalAdSold += floatval($sd['ad_sold'] ?? 0);
                             $totalClicks += floatval($sd['clicks'] ?? 0);
+                        } elseif ($metric === 'cvr') {
+                            $totalOrdersCvr += floatval($sd['l30_orders'] ?? 0);
+                            $totalViewsCvr += floatval($sd['total_views'] ?? 0);
                         } elseif ($metric === 'gprofit' || $metric === 'npft' || $metric === 'pft') {
                             $totalPft += $channelPft;
                             $totalSales += $channelL30Sales;
@@ -6443,6 +6450,8 @@ class ChannelMasterController extends Controller
                         $value = round($totalAdSales, 2);
                     } elseif ($metric === 'ads_cvr') {
                         $value = $totalClicks > 0 ? round(($totalAdSold / $totalClicks) * 100, 1) : 0;
+                    } elseif ($metric === 'cvr') {
+                        $value = $totalViewsCvr > 0 ? round(($totalOrdersCvr / $totalViewsCvr) * 100, 1) : 0;
                     } elseif ($metric === 'ad_sold') {
                         $value = round($totalAdSold);
                     } elseif ($metric === 'gprofit') {
@@ -6504,6 +6513,10 @@ class ChannelMasterController extends Controller
                             $adSold = $clicks * $this->getAdCvrRatio($channel);
                         }
                         $value = $clicks > 0 ? round(($adSold / $clicks) * 100, 1) : 0;
+                    } elseif ($metric === 'cvr') {
+                        $orders = floatval($summaryData['l30_orders'] ?? 0);
+                        $views = floatval($summaryData['total_views'] ?? 0);
+                        $value = $views > 0 ? round(($orders / $views) * 100, 1) : 0;
                     } elseif ($metric === 'pft') {
                         // Calculate profit amount from gprofit%
                         $gprofitPercent = floatval($summaryData['gprofit_percent'] ?? 0);
@@ -6587,9 +6600,10 @@ class ChannelMasterController extends Controller
                 'nmap' => 'nmap_count',
                 'ad_spend' => 'total_ad_spend',
                 'clicks' => 'clicks',
+                'total_views' => 'total_views',
                 'inv_at_lp' => 'inv_at_lp',
             ];
-            $metrics = ['missing_l', 'nmap', 'l30_sales', 'ad_spend', 'l30_orders', 'qty', 'gprofit', 'groi', 'ads_pct', 'npft', 'nroi', 'clicks', 'ad_sales', 'ad_sold', 'acos', 'ads_cvr', 'inv_at_lp'];
+            $metrics = ['missing_l', 'nmap', 'l30_sales', 'ad_spend', 'l30_orders', 'qty', 'gprofit', 'groi', 'ads_pct', 'npft', 'nroi', 'clicks', 'ad_sales', 'ad_sold', 'acos', 'ads_cvr', 'cvr', 'total_views', 'inv_at_lp'];
             $out = [];
 
             foreach ($channelKeys as $channel) {
@@ -6695,6 +6709,11 @@ class ChannelMasterController extends Controller
                 $adSold = $clicks * $this->getAdCvrRatio($channel);
             }
             return $clicks > 0 ? round(($adSold / $clicks) * 100, 1) : null;
+        }
+        if ($metric === 'cvr') {
+            $orders = floatval($summaryData['l30_orders'] ?? 0);
+            $views = floatval($summaryData['total_views'] ?? 0);
+            return $views > 0 ? round(($orders / $views) * 100, 1) : null;
         }
         if ($metric === 'nroi') {
             $groi = floatval($summaryData['groi_percent'] ?? 0);
@@ -7077,6 +7096,7 @@ class ChannelMasterController extends Controller
                     'l60_orders' => floatval($row['L60 Orders'] ?? 0),
                     'l30_orders' => floatval($row['L30 Orders'] ?? 0),
                     'total_quantity' => floatval($totalQuantity), // Total quantity (units sold) from marketplace_daily_metrics
+                    'total_views' => floatval($row['Total Views'] ?? 0),
                     'growth' => floatval($row['Growth'] ?? 0),
                     'clicks' => intval($row['clicks'] ?? 0),
                     
