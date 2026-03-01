@@ -2038,24 +2038,28 @@
             let moreAmzCount = 0;
             
             data.forEach(row => {
-                // Use temu_l30 (L30 sold) for Total Quantity to match tabulator view (quantity_purchased)
                 const temuL30 = parseInt(row['temu_l30']) || 0;
                 const price = parseFloat(row['base_price']) || 0;
+                const temuPrice = parseFloat(row['temu_price']) || 0;  // Temu Price column = price for PFT formula
+                const lpPerUnit = parseFloat(row['lp']) || 0;
+                const temuShip = parseFloat(row['temu_ship']) || 0;
+
                 totalQuantity += temuL30;
                 totalPriceWeighted += price * temuL30;
                 totalQty += temuL30;
-                
-                // Total Revenue = base_price × quantity (same formula as tabulator sales page)
-                totalRevenue += price * temuL30;
-                const temuPrice = parseFloat(row['temu_price']) || 0;
-                
-                // Profit from row data
-                totalProfit += parseFloat(row['profit']) || 0;
-                
-                // LP (Landing Price / COGS) from row data
-                totalLp += parseFloat(row['lp']) || 0;
-                
-                // Percentage metrics (for averaging)
+
+                // Only include rows with sales (Temu L30 > 0 and Temu Price > 0) in PFT/revenue/COGS
+                const hasSales = temuL30 > 0 && temuPrice > 0;
+                if (hasSales) {
+                    // PFT % formula: (price * 0.96 - lp - temuship) / price — use Temu Price column as price
+                    const pftDecimal = (temuPrice * 0.96 - lpPerUnit - temuShip) / temuPrice;
+                    const rowProfit = pftDecimal * temuPrice * temuL30;
+                    totalRevenue += temuPrice * temuL30;
+                    totalProfit += rowProfit;
+                    totalLp += lpPerUnit * temuL30;
+                }
+
+                // Percentage metrics (for fallback simple average when no revenue/COGS)
                 totalGprft += parseFloat(row['profit_percent']) || 0;
                 totalGroi += parseFloat(row['roi_percent']) || 0;
                 totalAds += parseFloat(row['ads_percent']) || 0;
@@ -2129,14 +2133,18 @@
             
             // Calculate averages
             const avgPrice = totalQty > 0 ? totalPriceWeighted / totalQty : 0;
-            const avgGprft = totalProducts > 0 ? totalGprft / totalProducts : 0;
-            const avgGroi = totalProducts > 0 ? totalGroi / totalProducts : 0;
+            // Avg GPRFT% = (Total Profit / Total Revenue) * 100 — profit from PFT formula (Temu Price * 0.96 - lp - temuship) / Temu Price
+            const avgGprft = totalRevenue > 0 ? (totalProfit / totalRevenue) * 100 : (totalProducts > 0 ? totalGprft / totalProducts : 0);
+            // Weighted GROI% = (Total Profit / Total LP/COGS) × 100
+            const avgGroi = totalLp > 0 ? (totalProfit / totalLp) * 100 : (totalProducts > 0 ? totalGroi / totalProducts : 0);
             const avgAds = totalProducts > 0 ? totalAds / totalProducts : 0;
-            const avgNpft = totalProducts > 0 ? totalNpft / totalProducts : 0;
-            const avgNroi = totalProducts > 0 ? totalNroi / totalProducts : 0;
+            // Weighted NPFT% and NROI% using Total Net Profit (Profit - Spend)
+            const totalNetProfit = totalProfit - totalSpend;
+            const avgNpft = totalRevenue > 0 ? (totalNetProfit / totalRevenue) * 100 : (totalProducts > 0 ? totalNpft / totalProducts : 0);
+            const avgNroi = totalLp > 0 ? (totalNetProfit / totalLp) * 100 : (totalProducts > 0 ? totalNroi / totalProducts : 0);
             const avgCvr = cvrCount > 0 ? totalCvr / cvrCount : 0;
             const avgDil = dilCount > 0 ? totalDil / dilCount : 0;
-            
+
             // Calculate TCOS: (Total Ad Spend / Total Revenue) × 100
             const totalTcos = totalRevenue > 0 ? (totalSpend / totalRevenue) * 100 : 0;
             
@@ -2602,11 +2610,25 @@
                     title: "GPRFT %",
                     field: "profit_percent",
                     hozAlign: "center",
-                    sorter: "number",
+                    sorter: function(a, b, aRow, bRow) {
+                        const calc = (row) => {
+                            const price = parseFloat(row['temu_price']) || 0;
+                            if (price <= 0) return 0;
+                            const lp = parseFloat(row['lp']) || 0;
+                            const temuShip = parseFloat(row['temu_ship']) || 0;
+                            return ((price * 0.96 - lp - temuShip) / price) * 100;
+                        };
+                        return calc(aRow.getData()) - calc(bRow.getData());
+                    },
                     formatter: function(cell) {
-                        const value = parseFloat(cell.getValue()) || 0;
+                        const rowData = cell.getRow().getData();
+                        const price = parseFloat(rowData['temu_price']) || 0;  // Temu Price column
+                        const lp = parseFloat(rowData['lp']) || 0;
+                        const temuShip = parseFloat(rowData['temu_ship']) || 0;
+                        // PFT % = (price * 0.96 - lp - temuship) / price * 100
+                        const value = price > 0 ? ((price * 0.96 - lp - temuShip) / price) * 100 : 0;
                         const colorClass = getPftColor(value);
-                        return `<span class="dil-percent-value ${colorClass}">${Math.round(value)}%</span>`;
+                        return `<span class="dil-percent-value ${colorClass}">${value.toFixed(1)}%</span>`;
                     }
                 },
                 {
@@ -3321,11 +3343,11 @@
                 });
             }
 
-            // GPFT filter
+            // GPFT filter — use same formula as column: (temu_price * 0.96 - lp - temu_ship) / temu_price * 100
             if (gpftFilter !== 'all') {
                 table.addFilter(function(data) {
-                    const gpft = parseFloat(data.profit_percent) || 0;
-                    
+                    const price = parseFloat(data.temu_price) || 0;
+                    const gpft = price > 0 ? ((price * 0.96 - (parseFloat(data.lp) || 0) - (parseFloat(data.temu_ship) || 0)) / price) * 100 : 0;
                     if (gpftFilter === 'negative') return gpft < 0;
                     if (gpftFilter === '0-10') return gpft >= 0 && gpft < 10;
                     if (gpftFilter === '10-20') return gpft >= 10 && gpft < 20;
