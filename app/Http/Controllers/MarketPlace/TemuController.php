@@ -1767,7 +1767,7 @@ class TemuController extends Controller
                     $temuPrice = 0;
                 }
                 
-                // Apply percentage like eBay does
+                // GPRFT% = ((FB Prc * 0.96 - LP - Temu Ship) / FB Prc) * 100 (temuPrice = FB Prc)
                 $profit = $temuPrice * $percentage - $lp - $temuShip;
                 $profitPercent = $temuPrice > 0 ? (($temuPrice * $percentage - $lp - $temuShip) / $temuPrice) * 100 : 0;
                 $roiPercent = $lp > 0 ? (($temuPrice * $percentage - $lp - $temuShip) / $lp) * 100 : 0;
