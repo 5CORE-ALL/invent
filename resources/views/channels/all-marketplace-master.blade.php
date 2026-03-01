@@ -292,7 +292,7 @@
                         <span class="badge bg-warning fs-6 p-2 badge-chart-link" data-metric="inv_at_lp" style="color: black; font-weight: bold; cursor:pointer;" title="View trend - Sum of (Shopify inventory × LP)">
                             Inv@LP: $<span id="inv-at-lp">0</span>
                         </span>
-                        <span class="badge bg-secondary fs-6 p-2" style="color: white; font-weight: bold;" title="Inventory Value ÷ Sales (months of stock at current sales)">
+                        <span class="badge bg-secondary fs-6 p-2 badge-chart-link" data-metric="tat" style="color: white; font-weight: bold; cursor:pointer;" title="View trend - Inventory Value ÷ Sales (months of stock at current sales)">
                             TAT: <span id="tat-badge">0</span>
                         </span>
                     </div>
@@ -628,6 +628,16 @@
                                 <div style="font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #198754; margin-bottom: 1px;">Lowest</div>
                                 <div id="adChartLowest" style="font-size: 13px; font-weight: 700; color: #198754;">-</div>
                             </div>
+                        </div>
+                    </div>
+                    <div id="salesOrdersItemsBarContainer" style="height: 20vh; margin-top: 8px; align-items: stretch; display: none;">
+                        <div style="flex: 1; min-width: 0; position: relative;">
+                            <canvas id="salesOrdersItemsBarChart"></canvas>
+                        </div>
+                        <div id="salesOrdersItemsBarRefPanel" style="width: 100px; display: flex; flex-direction: column; justify-content: center; gap: 6px; padding: 6px 8px; border-left: 1px solid #e9ecef; background: #f8f9fa; border-radius: 0 4px 4px 0;">
+                            <div style="text-align: center; font-size: 8px; font-weight: 700; color: #1e88e5;">Sales</div>
+                            <div style="text-align: center; font-size: 8px; font-weight: 700; color: #ff9800;">Orders</div>
+                            <div style="text-align: center; font-size: 8px; font-weight: 700; color: #00bcd4;">Qty</div>
                         </div>
                     </div>
                     <div id="adChartLoading" class="text-center py-3" style="display: none;">
@@ -1050,6 +1060,24 @@
                             const value = cell.getValue();
                             if (!value || value === 0) return '<strong>-</strong>';
                             return `<strong style="color:#dc3545;">${parseNumber(value).toLocaleString('en-US')}</strong>`;
+                        }
+                    },
+                    {
+                        title: "Total Views",
+                        field: "Total Views",
+                        hozAlign: "center",
+                        sorter: "number",
+                        width: 100,
+                        visible: true,
+                        formatter: function(cell) {
+                            const value = parseNumber(cell.getValue());
+                            if (value == null || value === 0) return '-';
+                            return value.toLocaleString('en-US');
+                        },
+                        bottomCalc: "sum",
+                        bottomCalcFormatter: function(cell) {
+                            const value = cell.getValue();
+                            return `<strong>${parseNumber(value).toLocaleString('en-US')}</strong>`;
                         }
                     },
                     {
@@ -2795,9 +2823,9 @@
                 'returns': ['Return Rate', 'Return Units', 'Return Value'],
                 'ah': ['AH Score', 'Policy Violations', 'Customer Complaints'],
                 'expenses': ['Total Ad Spend', 'Shipping Cost', 'FBA Fees', 'Storage Fees'],
-                'traffic': ['clicks', 'Sessions', 'Page Views', 'Conversion Rate'],
+                'traffic': ['clicks', 'Sessions', 'Page Views', 'Conversion Rate', 'Total Views'],
                 'reviews': ['Total Reviews', 'Avg Rating', '5-Star', '4-Star', '1-Star'],
-                'missing': ['Miss', 'NMap', 'Missing Ads']
+                'missing': ['Miss', 'NMap', 'Missing Ads', 'Total Views']
             };
             
             $('.section-option').on('click', function(e) {
@@ -3193,6 +3221,7 @@
 
             // Ad Breakdown Chart variables
             let adBreakdownChartInstance = null;
+            let salesOrdersItemsBarChartInstance = null;
             let currentChartChannel = '';
             let currentChartAdType = '';
             let currentChartMetric = 'spend';
@@ -3333,8 +3362,22 @@
                         if (response.success && response.data && response.data.length > 0) {
                             $('#adBreakdownChartContainer').show();
                             renderAdBreakdownChart(response.data);
+                            if (currentChartMode === 'metric') {
+                                loadSalesOrdersItemsBarChart();
+                            } else {
+                                $('#salesOrdersItemsBarContainer').hide();
+                                if (salesOrdersItemsBarChartInstance) {
+                                    salesOrdersItemsBarChartInstance.destroy();
+                                    salesOrdersItemsBarChartInstance = null;
+                                }
+                            }
                         } else {
                             $('#adChartNoData').show();
+                            $('#salesOrdersItemsBarContainer').hide();
+                            if (salesOrdersItemsBarChartInstance) {
+                                salesOrdersItemsBarChartInstance.destroy();
+                                salesOrdersItemsBarChartInstance = null;
+                            }
                         }
                     },
                     error: function(xhr, status) {
@@ -3343,6 +3386,11 @@
                         console.error('Error fetching chart data:', xhr);
                         $('#adChartLoading').hide();
                         $('#adChartNoData').show();
+                        $('#salesOrdersItemsBarContainer').hide();
+                        if (salesOrdersItemsBarChartInstance) {
+                            salesOrdersItemsBarChartInstance.destroy();
+                            salesOrdersItemsBarChartInstance = null;
+                        }
                     }
                 });
             }
@@ -3367,6 +3415,7 @@
                 'acos': 'ACOS',
                 'ads_cvr': 'AD CVR',
                 'inv_at_lp': 'Inv@LP',
+                'tat': 'TAT',
             };
 
             // Show metric chart (for non-ad-breakdown columns)
@@ -3415,6 +3464,114 @@
                 showMetricChart('All', metricKey, badgeValue);
             });
 
+            // Load Sales, Orders, Qty bar chart (metric mode only) — same channel & days as line chart
+            function loadSalesOrdersItemsBarChart() {
+                const channel = currentChartChannel;
+                const days = currentChartDays;
+                const baseParams = { channel: channel, days: days };
+                const metrics = ['l30_sales', 'l30_orders', 'qty'];
+                const promises = metrics.map(m => $.get('/channel-metric-chart-data', Object.assign({}, baseParams, { metric: m })));
+                $.when.apply($, promises).done(function() {
+                    const raw = Array.prototype.slice.call(arguments);
+                    const results = raw.map(function(a) { return (Array.isArray(a) && a.length) ? a[0] : a; });
+                    const byDate = {};
+                    results.forEach((resp, idx) => {
+                        const data = (resp && resp.data) ? resp.data : [];
+                        const key = metrics[idx];
+                        data.forEach(function(d) {
+                            const dt = d.date || d.label;
+                            if (!byDate[dt]) byDate[dt] = { date: dt, sales: 0, orders: 0, qty: 0 };
+                            byDate[dt][key === 'l30_sales' ? 'sales' : key === 'l30_orders' ? 'orders' : 'qty'] = parseFloat(d.value) || 0;
+                        });
+                    });
+                    const year = new Date().getFullYear();
+                    const sorted = Object.keys(byDate).sort(function(a, b) {
+                        const dA = new Date(a + ' ' + year);
+                        const dB = new Date(b + ' ' + year);
+                        if (isNaN(dA.getTime()) || isNaN(dB.getTime())) return String(a).localeCompare(String(b));
+                        return dA - dB;
+                    });
+                    const labels = sorted;
+                    const sales = sorted.map(d => byDate[d].sales);
+                    const orders = sorted.map(d => byDate[d].orders);
+                    const qty = sorted.map(d => byDate[d].qty);
+                    $('#salesOrdersItemsBarContainer').css('display', 'flex').show();
+                    renderSalesOrdersItemsBarChart({ labels, sales, orders, qty });
+                }).fail(function() {
+                    $('#salesOrdersItemsBarContainer').css('display', 'none').hide();
+                    if (salesOrdersItemsBarChartInstance) {
+                        salesOrdersItemsBarChartInstance.destroy();
+                        salesOrdersItemsBarChartInstance = null;
+                    }
+                });
+            }
+
+            function renderSalesOrdersItemsBarChart(barData) {
+                const ctx = document.getElementById('salesOrdersItemsBarChart');
+                if (!ctx) return;
+                const g = ctx.getContext('2d');
+                if (salesOrdersItemsBarChartInstance) {
+                    salesOrdersItemsBarChartInstance.destroy();
+                    salesOrdersItemsBarChartInstance = null;
+                }
+                const labels = barData.labels || [];
+                const sales = barData.sales || [];
+                const orders = barData.orders || [];
+                const qty = barData.qty || [];
+                salesOrdersItemsBarChartInstance = new Chart(g, {
+                    type: 'bar',
+                    data: {
+                        labels: labels,
+                        datasets: [
+                            { label: 'Sales', data: sales, backgroundColor: 'rgba(30,136,229,0.8)', borderColor: '#1e88e5', borderWidth: 1, yAxisID: 'y' },
+                            { label: 'Orders', data: orders, backgroundColor: 'rgba(255,152,0,0.8)', borderColor: '#ff9800', borderWidth: 1, yAxisID: 'y1' },
+                            { label: 'Qty', data: qty, backgroundColor: 'rgba(0,188,212,0.8)', borderColor: '#00bcd4', borderWidth: 1, yAxisID: 'y1' }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        layout: { padding: { top: 8, left: 4, right: 4, bottom: 20 } },
+                        plugins: {
+                            legend: { display: true, position: 'top', labels: { font: { size: 9 }, boxWidth: 12 } },
+                            tooltip: {
+                                callbacks: {
+                                    label: function(ctx) {
+                                        const v = ctx.raw;
+                                        if (ctx.dataset.label === 'Sales') return 'Sales: $' + Math.round(v).toLocaleString('en-US');
+                                        return ctx.dataset.label + ': ' + Math.round(v).toLocaleString('en-US');
+                                    }
+                                }
+                            }
+                        },
+                        scales: {
+                            x: {
+                                ticks: {
+                                    maxRotation: 45,
+                                    minRotation: 45,
+                                    font: { size: labels.length > 25 ? 7 : 8 },
+                                    autoSkip: false,
+                                    maxTicksLimit: Math.max(labels.length, 31)
+                                }
+                            },
+                            y: {
+                                type: 'linear',
+                                position: 'left',
+                                title: { display: true, text: 'Sales ($)', font: { size: 9 } },
+                                ticks: { font: { size: 9 }, callback: v => '$' + (v >= 1000 ? (v/1000)+'k' : v) }
+                            },
+                            y1: {
+                                type: 'linear',
+                                position: 'right',
+                                title: { display: true, text: 'Orders / Qty', font: { size: 9 } },
+                                grid: { drawOnChartArea: false },
+                                ticks: { font: { size: 9 } }
+                            }
+                        }
+                    }
+                });
+            }
+
             // Render chart
             function renderAdBreakdownChart(data) {
                 const ctx = document.getElementById('adBreakdownChart').getContext('2d');
@@ -3450,6 +3607,7 @@
                     if (m === 'acos' || m === 'cvr' || m === 'ads_cvr' || m === 'gprofit' || m === 'groi' || m === 'ads_pct' || m === 'npft' || m === 'nroi') {
                         return v.toFixed(1) + '%';
                     }
+                    if (m === 'tat') return v.toFixed(2);
                     return Math.round(v).toLocaleString('en-US');
                 };
 
