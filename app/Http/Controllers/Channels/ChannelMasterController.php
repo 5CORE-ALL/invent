@@ -192,6 +192,38 @@ class ChannelMasterController extends Controller
     }
 
     /**
+     * Sum of (Shopify inventory * LP) across all SKUs for the Inv@LP badge.
+     * Uses shopify_skus.inv and product_master LP (from Values->lp or lp column).
+     */
+    private function getInvAtLpShopify(): float
+    {
+        $shopifySkus = ShopifySku::whereNotNull('sku')->get(['sku', 'inv']);
+        $skus = $shopifySkus->pluck('sku')->unique()->filter()->values()->toArray();
+        if (empty($skus)) {
+            return 0.0;
+        }
+        $productMasters = ProductMaster::whereNull('deleted_at')->whereIn('sku', $skus)->get();
+        $pmBySku = $productMasters->keyBy(function ($item) {
+            return strtoupper(trim((string) $item->sku));
+        });
+
+        $total = 0.0;
+        foreach ($shopifySkus as $row) {
+            $sku = trim((string) $row->sku);
+            if ($sku === '') continue;
+            $inv = is_numeric($row->inv) ? (float) $row->inv : 0;
+            $pm = $pmBySku->get(strtoupper($sku));
+            $lp = 0.0;
+            if ($pm) {
+                $values = is_array($pm->Values ?? null) ? $pm->Values : (is_string($pm->Values ?? null) ? json_decode($pm->Values, true) : []);
+                $lp = isset($values['lp']) ? (float) $values['lp'] : (isset($pm->lp) ? (float) $pm->lp : 0);
+            }
+            $total += $inv * $lp;
+        }
+        return round($total, 2);
+    }
+
+    /**
      * Fetch Amazon ad spend breakdown (KW, PT, HL) - same logic as Amazon KW/PT/HL Utilized charts.
      * Uses daily date rows (not L30) with default range: 31 days ago to 2 days ago.
      *
@@ -958,12 +990,15 @@ class ChannelMasterController extends Controller
 
         // Sum of (inventory * Amazon price) across SKUs for the INV Val badge
         $inventoryValueAmazon = $this->getInventoryValueAmazon();
+        // Sum of (Shopify inventory * LP) for Inv@LP badge and chart
+        $invAtLp = $this->getInvAtLpShopify();
 
         return response()->json([
             'status'  => 200,
             'message' => 'Channel data fetched successfully',
             'data'    => $finalData,
             'inventory_value_amazon' => round($inventoryValueAmazon, 2),
+            'inv_at_lp' => round($invAtLp, 2),
         ]);
     }
 
@@ -5070,6 +5105,7 @@ class ChannelMasterController extends Controller
             'Map'        => $mapMissCounts['map'],
             'Miss'       => $mapMissCounts['miss'],
             'NMap'       => $mapMissCounts['nmap'],
+            'Inv at LP'  => $this->getInvAtLpShopify(),
         ];
 
         return response()->json([
@@ -6266,6 +6302,7 @@ class ChannelMasterController extends Controller
                 'ad_sold' => null,   // uses ad_sold with clicks × cvr ratio fallback
                 'acos' => null,      // computed: (ad_spend / ad_sales) * 100
                 'ads_cvr' => null,   // computed: (ad_sold / clicks) * 100
+                'inv_at_lp' => 'inv_at_lp',
             ];
 
             $metricKey = $metricMap[$metric] ?? $metric;
@@ -6504,8 +6541,9 @@ class ChannelMasterController extends Controller
                 'nmap' => 'nmap_count',
                 'ad_spend' => 'total_ad_spend',
                 'clicks' => 'clicks',
+                'inv_at_lp' => 'inv_at_lp',
             ];
-            $metrics = ['missing_l', 'nmap', 'l30_sales', 'ad_spend', 'l30_orders', 'qty', 'gprofit', 'groi', 'ads_pct', 'npft', 'nroi', 'clicks', 'ad_sales', 'ad_sold', 'acos', 'ads_cvr'];
+            $metrics = ['missing_l', 'nmap', 'l30_sales', 'ad_spend', 'l30_orders', 'qty', 'gprofit', 'groi', 'ads_pct', 'npft', 'nroi', 'clicks', 'ad_sales', 'ad_sold', 'acos', 'ads_cvr', 'inv_at_lp'];
             $out = [];
 
             foreach ($channelKeys as $channel) {
@@ -6674,6 +6712,11 @@ class ChannelMasterController extends Controller
                 };
             }
             return $totalSales > 0 ? round($weightedSum / $totalSales, 2) : ($count > 0 ? round($weightedSum / $count, 2) : null);
+        }
+
+        // Inv@LP: from Shopify inventory × ProductMaster LP (not in marketplace_daily_metrics)
+        if ($metric === 'inv_at_lp') {
+            return $this->getInvAtLpShopify();
         }
 
         // For summable metrics (counts, amounts): sum across all channels
@@ -7002,6 +7045,9 @@ class ChannelMasterController extends Controller
                     'type' => $row['type'] ?? 'B2C',
                     'w_ads' => intval($row['W/Ads'] ?? 0),
                     'update' => intval($row['Update'] ?? 0),
+                    
+                    // Inv@LP (Shopify inv * PM LP) — only non-zero for Shopify B2C
+                    'inv_at_lp' => floatval($row['Inv at LP'] ?? 0),
                     
                     // Metadata
                     'calculated_at' => now()->toDateTimeString(),
