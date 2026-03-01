@@ -132,7 +132,7 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * Get Map, Miss, and NMap counts from amazon_channel_summary_data table
+     * Get Map, Miss, NMap, and total_views from amazon_channel_summary_data table
      * This is a generic helper that works for all channels
      */
     private function getMapAndMissCounts($channelName)
@@ -144,6 +144,7 @@ class ChannelMasterController extends Controller
         $mapCount = 0;
         $missCount = 0;
         $nmapCount = 0;
+        $totalViews = 0;
         
         if ($summaryData && $summaryData->summary_data) {
             // Check for 'map_count', 'mapping_count', or 'mapped_count' field names
@@ -166,12 +167,16 @@ class ChannelMasterController extends Controller
                       ?? $summaryData->summary_data['inv_r_stock_count']  // Reverb
                       ?? $summaryData->summary_data['inv_tt_stock_count']  // TikTok
                       ?? 0;
+            
+            // Total views from same summary (e.g. Amazon saves total_views in summary_data)
+            $totalViews = (int) ($summaryData->summary_data['total_views'] ?? 0);
         }
         
         return [
             'map' => $mapCount, 
             'miss' => $missCount,
-            'nmap' => $nmapCount
+            'nmap' => $nmapCount,
+            'total_views' => $totalViews,
         ];
     }
 
@@ -189,6 +194,38 @@ class ChannelMasterController extends Controller
             ->value('total');
 
         return (float) ($total ?? 0);
+    }
+
+    /**
+     * Sum of (Shopify inventory * LP) across all SKUs for the Inv@LP badge.
+     * Uses shopify_skus.inv and product_master LP (from Values->lp or lp column).
+     */
+    private function getInvAtLpShopify(): float
+    {
+        $shopifySkus = ShopifySku::whereNotNull('sku')->get(['sku', 'inv']);
+        $skus = $shopifySkus->pluck('sku')->unique()->filter()->values()->toArray();
+        if (empty($skus)) {
+            return 0.0;
+        }
+        $productMasters = ProductMaster::whereNull('deleted_at')->whereIn('sku', $skus)->get();
+        $pmBySku = $productMasters->keyBy(function ($item) {
+            return strtoupper(trim((string) $item->sku));
+        });
+
+        $total = 0.0;
+        foreach ($shopifySkus as $row) {
+            $sku = trim((string) $row->sku);
+            if ($sku === '') continue;
+            $inv = is_numeric($row->inv) ? (float) $row->inv : 0;
+            $pm = $pmBySku->get(strtoupper($sku));
+            $lp = 0.0;
+            if ($pm) {
+                $values = is_array($pm->Values ?? null) ? $pm->Values : (is_string($pm->Values ?? null) ? json_decode($pm->Values, true) : []);
+                $lp = isset($values['lp']) ? (float) $values['lp'] : (isset($pm->lp) ? (float) $pm->lp : 0);
+            }
+            $total += $inv * $lp;
+        }
+        return round($total, 2);
     }
 
     /**
@@ -949,21 +986,27 @@ class ChannelMasterController extends Controller
             $finalData[] = $row;
         }
 
+        // Sum of (inventory * Amazon price) for INV Val badge and TAT (save in first row for daily history)
+        $inventoryValueAmazon = $this->getInventoryValueAmazon();
+        if (!empty($finalData)) {
+            $finalData[0]['inventory_value_amazon'] = $inventoryValueAmazon;
+        }
+
         // Auto-save channel-wise daily summaries
         try {
             $this->saveChannelDailySummaries($finalData);
         } catch (\Throwable $e) {
             \Illuminate\Support\Facades\Log::warning('saveChannelDailySummaries failed: ' . $e->getMessage(), ['exception' => $e]);
         }
-
-        // Sum of (inventory * Amazon price) across SKUs for the INV Val badge
-        $inventoryValueAmazon = $this->getInventoryValueAmazon();
+        // Sum of (Shopify inventory * LP) for Inv@LP badge and chart
+        $invAtLp = $this->getInvAtLpShopify();
 
         return response()->json([
             'status'  => 200,
             'message' => 'Channel data fetched successfully',
             'data'    => $finalData,
             'inventory_value_amazon' => round($inventoryValueAmazon, 2),
+            'inv_at_lp' => round($invAtLp, 2),
         ]);
     }
 
@@ -1185,6 +1228,7 @@ class ChannelMasterController extends Controller
             'Map'        => $mapMissCounts['map'],
             'Miss'       => $mapMissCounts['miss'],
             'NMap'       => $mapMissCounts['nmap'],
+            'Total Views' => $mapMissCounts['total_views'] ?? 0,
         ];
 
         return response()->json([
@@ -1325,6 +1369,7 @@ class ChannelMasterController extends Controller
             'Map'        => $mapMissCounts['map'],
             'Miss'       => $mapMissCounts['miss'],
             'NMap'       => $mapMissCounts['nmap'],
+            'Total Views' => $mapMissCounts['total_views'] ?? 0,
         ];
 
         return response()->json([
@@ -1532,6 +1577,7 @@ class ChannelMasterController extends Controller
             'Map'        => $mapMissCounts['map'],
             'Miss'       => $mapMissCounts['miss'],
             'NMap'       => $mapMissCounts['nmap'],
+            'Total Views' => $mapMissCounts['total_views'] ?? 0,
         ];
 
         return response()->json([
@@ -1675,6 +1721,7 @@ class ChannelMasterController extends Controller
             'Map'        => $mapMissCounts['map'],
             'Miss'       => $mapMissCounts['miss'],
             'NMap'       => $mapMissCounts['nmap'],
+            'Total Views' => $mapMissCounts['total_views'] ?? 0,
         ];
 
         return response()->json([
@@ -1838,6 +1885,7 @@ class ChannelMasterController extends Controller
             'Map' => $mapMissCounts['map'],
             'Miss' => $mapMissCounts['miss'],
             'NMap' => $mapMissCounts['nmap'],
+            'Total Views' => $mapMissCounts['total_views'] ?? 0,
         ];
 
         return response()->json([
@@ -1959,6 +2007,7 @@ class ChannelMasterController extends Controller
             'Map' => $mapMissCounts['map'],
             'Miss' => $mapMissCounts['miss'],
             'NMap' => $mapMissCounts['nmap'],
+            'Total Views' => $mapMissCounts['total_views'] ?? 0,
         ];
 
         return response()->json([
@@ -2129,6 +2178,7 @@ class ChannelMasterController extends Controller
             'Map' => $mapMissCounts['map'],
             'Miss' => $mapMissCounts['miss'],
             'NMap' => $mapMissCounts['nmap'],
+            'Total Views' => $mapMissCounts['total_views'] ?? 0,
         ];
 
         return response()->json([
@@ -2253,6 +2303,7 @@ class ChannelMasterController extends Controller
             'Map' => $mapMissCounts['map'],
             'Miss' => $mapMissCounts['miss'],
             'NMap' => $mapMissCounts['nmap'],
+            'Total Views' => $mapMissCounts['total_views'] ?? 0,
         ];
 
         return response()->json([
@@ -2337,6 +2388,7 @@ class ChannelMasterController extends Controller
                 'Map'        => $mapMissCounts['map'],
                 'Miss'       => $mapMissCounts['miss'],
                 'NMap'       => $mapMissCounts['nmap'],
+                'Total Views' => $mapMissCounts['total_views'] ?? 0,
             ];
             return response()->json([
                 'status' => 200,
@@ -2412,6 +2464,7 @@ class ChannelMasterController extends Controller
             'Map'        => $mapMissCounts['map'],
             'Miss'       => $mapMissCounts['miss'],
             'NMap'       => $mapMissCounts['nmap'],
+            'Total Views' => $mapMissCounts['total_views'] ?? 0,
         ];
 
         return response()->json([
@@ -2695,6 +2748,7 @@ class ChannelMasterController extends Controller
             'Map' => $mapMissCounts['map'],
             'Miss' => $mapMissCounts['miss'],
             'NMap' => $mapMissCounts['nmap'],
+            'Total Views' => $mapMissCounts['total_views'] ?? 0,
         ];
         
         return response()->json([
@@ -2807,6 +2861,7 @@ class ChannelMasterController extends Controller
             'Map' => $mapMissCounts['map'],
             'Miss' => $mapMissCounts['miss'],
             'NMap' => $mapMissCounts['nmap'],
+            'Total Views' => $mapMissCounts['total_views'] ?? 0,
         ];
 
         return response()->json([
@@ -2925,6 +2980,7 @@ class ChannelMasterController extends Controller
             'Map' => $mapMissCounts['map'],
             'Miss' => $mapMissCounts['miss'],
             'NMap' => $mapMissCounts['nmap'],
+            'Total Views' => $mapMissCounts['total_views'] ?? 0,
         ];
 
         return response()->json([
@@ -3103,6 +3159,7 @@ class ChannelMasterController extends Controller
             'Map' => $mapMissCounts['map'],
             'Miss' => $mapMissCounts['miss'],
             'NMap' => $mapMissCounts['nmap'],
+            'Total Views' => $mapMissCounts['total_views'] ?? 0,
         ];
 
         return response()->json([
@@ -3274,6 +3331,7 @@ class ChannelMasterController extends Controller
             'Map' => $mapMissCounts['map'],
             'Miss' => $mapMissCounts['miss'],
             'NMap' => $mapMissCounts['nmap'],
+            'Total Views' => $mapMissCounts['total_views'] ?? 0,
         ];
 
         return response()->json([
@@ -3444,6 +3502,7 @@ class ChannelMasterController extends Controller
             'Map' => $mapMissCounts['map'],
             'Miss' => $mapMissCounts['miss'],
             'NMap' => $mapMissCounts['nmap'],
+            'Total Views' => $mapMissCounts['total_views'] ?? 0,
         ];
 
         return response()->json([
@@ -3519,6 +3578,7 @@ class ChannelMasterController extends Controller
             'Map' => $mapMissCounts['map'],
             'Miss' => $mapMissCounts['miss'],
             'NMap' => $mapMissCounts['nmap'],
+            'Total Views' => $mapMissCounts['total_views'] ?? 0,
         ];
 
         return response()->json([
@@ -3991,6 +4051,7 @@ class ChannelMasterController extends Controller
             'Map' => $mapMissCounts['map'],
             'Miss' => $mapMissCounts['miss'],
             'NMap' => $mapMissCounts['nmap'],
+            'Total Views' => $mapMissCounts['total_views'] ?? 0,
         ];
 
         return response()->json([
@@ -4106,6 +4167,7 @@ class ChannelMasterController extends Controller
             'Map' => $mapMissCounts['map'],
             'Miss' => $mapMissCounts['miss'],
             'NMap' => $mapMissCounts['nmap'],
+            'Total Views' => $mapMissCounts['total_views'] ?? 0,
         ];
 
         return response()->json([
@@ -4224,6 +4286,7 @@ class ChannelMasterController extends Controller
             'Map' => $mapMissCounts['map'],
             'Miss' => $mapMissCounts['miss'],
             'NMap' => $mapMissCounts['nmap'],
+            'Total Views' => $mapMissCounts['total_views'] ?? 0,
         ];
 
         return response()->json([
@@ -4338,6 +4401,7 @@ class ChannelMasterController extends Controller
             'Map' => $mapMissCounts['map'],
             'Miss' => $mapMissCounts['miss'],
             'NMap' => $mapMissCounts['nmap'],
+            'Total Views' => $mapMissCounts['total_views'] ?? 0,
         ];
 
         return response()->json([
@@ -4513,6 +4577,7 @@ class ChannelMasterController extends Controller
             'Map' => $mapMissCounts['map'],
             'Miss' => $mapMissCounts['miss'],
             'NMap' => $mapMissCounts['nmap'],
+            'Total Views' => $mapMissCounts['total_views'] ?? 0,
         ];
 
         return response()->json([
@@ -4688,6 +4753,7 @@ class ChannelMasterController extends Controller
             'Map' => $mapMissCounts['map'],
             'Miss' => $mapMissCounts['miss'],
             'NMap' => $mapMissCounts['nmap'],
+            'Total Views' => $mapMissCounts['total_views'] ?? 0,
         ];
 
         return response()->json([
@@ -4828,6 +4894,7 @@ class ChannelMasterController extends Controller
             'Map' => $mapMissCounts['map'],
             'Miss' => $mapMissCounts['miss'],
             'NMap' => $mapMissCounts['nmap'],
+            'Total Views' => $mapMissCounts['total_views'] ?? 0,
         ];
 
         return response()->json([
@@ -4968,6 +5035,7 @@ class ChannelMasterController extends Controller
             'Map' => $mapMissCounts['map'],
             'Miss' => $mapMissCounts['miss'],
             'NMap' => $mapMissCounts['nmap'],
+            'Total Views' => $mapMissCounts['total_views'] ?? 0,
         ];
 
         return response()->json([
@@ -5070,6 +5138,8 @@ class ChannelMasterController extends Controller
             'Map'        => $mapMissCounts['map'],
             'Miss'       => $mapMissCounts['miss'],
             'NMap'       => $mapMissCounts['nmap'],
+            'Total Views' => $mapMissCounts['total_views'] ?? 0,
+            'Inv at LP'  => $this->getInvAtLpShopify(),
         ];
 
         return response()->json([
@@ -5192,6 +5262,7 @@ class ChannelMasterController extends Controller
             'Map' => $mapMissCounts['map'],
             'Miss' => $mapMissCounts['miss'],
             'NMap' => $mapMissCounts['nmap'],
+            'Total Views' => $mapMissCounts['total_views'] ?? 0,
         ];
 
         return response()->json([
@@ -6266,10 +6337,16 @@ class ChannelMasterController extends Controller
                 'ad_sold' => null,   // uses ad_sold with clicks × cvr ratio fallback
                 'acos' => null,      // computed: (ad_spend / ad_sales) * 100
                 'ads_cvr' => null,   // computed: (ad_sold / clicks) * 100
+                'inv_at_lp' => 'inv_at_lp',
+                'tat' => null,  // computed: inventory_value_amazon / total l30_sales (all only)
             ];
 
             $metricKey = $metricMap[$metric] ?? $metric;
             $isAll = ($channel === 'all');
+
+            if ($metric === 'tat' && !$isAll) {
+                return response()->json(['success' => true, 'data' => []]);
+            }
 
             // Metrics that should be averaged (percentages) vs summed (counts/amounts)
             $avgMetrics = ['gprofit', 'groi', 'ads_pct', 'npft', 'nroi', 'acos', 'ads_cvr'];
@@ -6314,6 +6391,7 @@ class ChannelMasterController extends Controller
                     $totalPft = 0;
                     $totalNpft = 0;
                     $totalTcos = 0;
+                    $totalInvAmazon = 0;
                     $count = 0;
 
                     foreach ($rows as $row) {
@@ -6347,6 +6425,9 @@ class ChannelMasterController extends Controller
                         } elseif ($metric === 'ads_pct') {
                             $totalSpend += $channelAdSpend;
                             $totalSales += $channelL30Sales;
+                        } elseif ($metric === 'tat') {
+                            $totalInvAmazon += floatval($sd['inventory_value_amazon'] ?? 0);
+                            $totalSales += $channelL30Sales;
                         } elseif ($shouldAvg) {
                             $totalVal += floatval($sd[$metricKey] ?? 0);
                         } else {
@@ -6354,7 +6435,9 @@ class ChannelMasterController extends Controller
                         }
                     }
 
-                    if ($metric === 'acos') {
+                    if ($metric === 'tat') {
+                        $value = $totalSales > 0 ? round($totalInvAmazon / $totalSales, 2) : 0;
+                    } elseif ($metric === 'acos') {
                         $value = $totalAdSales > 0 ? round(($totalSpend / $totalAdSales) * 100, 1) : 0;
                     } elseif ($metric === 'ad_sales') {
                         $value = round($totalAdSales, 2);
@@ -6504,8 +6587,9 @@ class ChannelMasterController extends Controller
                 'nmap' => 'nmap_count',
                 'ad_spend' => 'total_ad_spend',
                 'clicks' => 'clicks',
+                'inv_at_lp' => 'inv_at_lp',
             ];
-            $metrics = ['missing_l', 'nmap', 'l30_sales', 'ad_spend', 'l30_orders', 'qty', 'gprofit', 'groi', 'ads_pct', 'npft', 'nroi', 'clicks', 'ad_sales', 'ad_sold', 'acos', 'ads_cvr'];
+            $metrics = ['missing_l', 'nmap', 'l30_sales', 'ad_spend', 'l30_orders', 'qty', 'gprofit', 'groi', 'ads_pct', 'npft', 'nroi', 'clicks', 'ad_sales', 'ad_sold', 'acos', 'ads_cvr', 'inv_at_lp'];
             $out = [];
 
             foreach ($channelKeys as $channel) {
@@ -6579,6 +6663,9 @@ class ChannelMasterController extends Controller
     {
         $metricKey = $metricMap[$metric] ?? $metric;
 
+        if ($metric === 'tat') {
+            return null;
+        }
         if ($metric === 'acos') {
             $spend = floatval($summaryData['total_ad_spend'] ?? 0);
             $l30Sales = floatval($summaryData['l30_sales'] ?? 0);
@@ -6674,6 +6761,28 @@ class ChannelMasterController extends Controller
                 };
             }
             return $totalSales > 0 ? round($weightedSum / $totalSales, 2) : ($count > 0 ? round($weightedSum / $count, 2) : null);
+        }
+
+        // Inv@LP: from Shopify inventory × ProductMaster LP (not in marketplace_daily_metrics)
+        if ($metric === 'inv_at_lp') {
+            return $this->getInvAtLpShopify();
+        }
+
+        // TAT: inventory_value_amazon / total L30 sales (all channels)
+        if ($metric === 'tat') {
+            $inv = $this->getInventoryValueAmazon();
+            $allMdm = MarketplaceDailyMetric::selectRaw('channel, MAX(date) as max_date')
+                ->groupBy('channel')
+                ->get();
+            $totalSales = 0;
+            foreach ($allMdm as $row) {
+                $mdm = MarketplaceDailyMetric::where('channel', $row->channel)
+                    ->where('date', $row->max_date)->first();
+                if ($mdm) {
+                    $totalSales += (float) ($mdm->total_sales ?? 0);
+                }
+            }
+            return $totalSales > 0 ? round($inv / $totalSales, 2) : null;
         }
 
         // For summable metrics (counts, amounts): sum across all channels
@@ -7002,6 +7111,11 @@ class ChannelMasterController extends Controller
                     'type' => $row['type'] ?? 'B2C',
                     'w_ads' => intval($row['W/Ads'] ?? 0),
                     'update' => intval($row['Update'] ?? 0),
+                    
+                    // Inv@LP (Shopify inv * PM LP) — only non-zero for Shopify B2C
+                    'inv_at_lp' => floatval($row['Inv at LP'] ?? 0),
+                    // INV Val (for TAT = inv / sales) — only first channel has it
+                    'inventory_value_amazon' => floatval($row['inventory_value_amazon'] ?? 0),
                     
                     // Metadata
                     'calculated_at' => now()->toDateTimeString(),

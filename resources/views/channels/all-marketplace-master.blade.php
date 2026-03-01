@@ -183,6 +183,16 @@
                             <li><a class="dropdown-item section-option" href="#" data-section="missing">
                                 <i class="fas fa-exclamation-triangle"></i> Missing
                             </a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item section-option" href="#" data-section="B2C">
+                                <i class="fas fa-shopping-cart"></i> B2C
+                            </a></li>
+                            <li><a class="dropdown-item section-option" href="#" data-section="B2B">
+                                <i class="fas fa-building"></i> B2B
+                            </a></li>
+                            <li><a class="dropdown-item section-option" href="#" data-section="Dropship">
+                                <i class="fas fa-box"></i> Dropshipping
+                            </a></li>
                         </ul>
                     </div>
                     
@@ -190,8 +200,8 @@
                     <input type="text" id="channel-search" class="form-control form-control-sm"
                         placeholder="Search Channel..." style="width: 150px; display: inline-block;">
 
-                    <!-- Type Filter -->
-                    <select id="type-filter" class="form-select form-select-sm" style="width: auto; display: inline-block;">
+                    <!-- Type Filter (hidden from UI) -->
+                    <select id="type-filter" class="form-select form-select-sm" style="width: auto; display: none;">
                         <option value="all">All Types</option>
                         <option value="B2C">🛒 B2C</option>
                         <option value="B2B">🏢 B2B</option>
@@ -247,7 +257,7 @@
                             Qty items: <span id="total-qty">0</span>
                         </span>
                         <span class="badge bg-warning fs-6 p-2 badge-chart-link" data-metric="gprofit" style="color: black; font-weight: bold; cursor:pointer;" title="View trend">
-                            GPFT: <span id="avg-gprofit">0%</span>
+                            GPFT%: <span id="avg-gprofit">0%</span>
                         </span>
                         <span class="badge bg-danger fs-6 p-2 badge-chart-link" data-metric="groi" style="color: white; font-weight: bold; cursor:pointer;" title="View trend">
                             G ROI: <span id="avg-groi">0%</span>
@@ -279,7 +289,10 @@
                         <span class="badge bg-info fs-6 p-2" style="color: black; font-weight: bold;" title="Sum of (Inventory × Amazon Price)">
                             INV Val: $<span id="inventory-value-amazon">0</span>
                         </span>
-                        <span class="badge bg-secondary fs-6 p-2" style="color: white; font-weight: bold;" title="Inventory Value ÷ Sales (months of stock at current sales)">
+                        <span class="badge bg-warning fs-6 p-2 badge-chart-link" data-metric="inv_at_lp" style="color: black; font-weight: bold; cursor:pointer;" title="View trend - Sum of (Shopify inventory × LP)">
+                            Inv@LP: $<span id="inv-at-lp">0</span>
+                        </span>
+                        <span class="badge bg-secondary fs-6 p-2 badge-chart-link" data-metric="tat" style="color: white; font-weight: bold; cursor:pointer;" title="View trend - Inventory Value ÷ Sales (months of stock at current sales)">
                             TAT: <span id="tat-badge">0</span>
                         </span>
                     </div>
@@ -617,6 +630,16 @@
                             </div>
                         </div>
                     </div>
+                    <div id="salesOrdersItemsBarContainer" style="height: 20vh; margin-top: 8px; align-items: stretch; display: none;">
+                        <div style="flex: 1; min-width: 0; position: relative;">
+                            <canvas id="salesOrdersItemsBarChart"></canvas>
+                        </div>
+                        <div id="salesOrdersItemsBarRefPanel" style="width: 100px; display: flex; flex-direction: column; justify-content: center; gap: 6px; padding: 6px 8px; border-left: 1px solid #e9ecef; background: #f8f9fa; border-radius: 0 4px 4px 0;">
+                            <div style="text-align: center; font-size: 8px; font-weight: 700; color: #1e88e5;">Sales</div>
+                            <div style="text-align: center; font-size: 8px; font-weight: 700; color: #ff9800;">Orders</div>
+                            <div style="text-align: center; font-size: 8px; font-weight: 700; color: #00bcd4;">Qty</div>
+                        </div>
+                    </div>
                     <div id="adChartLoading" class="text-center py-3" style="display: none;">
                         <div class="spinner-border spinner-border-sm text-primary" role="status">
                             <span class="visually-hidden">Loading...</span>
@@ -871,6 +894,12 @@
                             const val = parseFloat(response.inventory_value_amazon) || 0;
                             invValEl.textContent = Math.round(val).toLocaleString('en-US');
                         }
+                        // Update Inv@LP badge (Shopify inv × LP)
+                        const invAtLpEl = document.getElementById('inv-at-lp');
+                        if (invAtLpEl && response.inv_at_lp != null) {
+                            const val = parseFloat(response.inv_at_lp) || 0;
+                            invAtLpEl.textContent = Math.round(val).toLocaleString('en-US');
+                        }
                         // Update TAT badge (INV Val / Sales)
                         const tatEl = document.getElementById('tat-badge');
                         if (tatEl && response.inventory_value_amazon != null && response.data && response.data.length) {
@@ -902,50 +931,13 @@
                         formatter: function(cell) {
                             const channel = cell.getValue();
                             const rowData = cell.getRow().getData();
-                            const type = rowData.type || 'B2C';
                             const missingLink = rowData['missing_link'] || '';
-
-                            // Determine type badge class
-                            let typeBadgeClass = 'type-b2c';
-                            if (type === 'B2B') typeBadgeClass = 'type-b2b';
-                            else if (type === 'Dropship') typeBadgeClass = 'type-dropship';
-
-                            const historyIcon =
-                                `<i class="fas fa-chart-line history-table-icon" style="cursor:pointer;color:#4361ee;font-size:14px;margin-left:5px;" title="View Historical Table" data-channel="${channel}"></i>`;
-                            const graphIcon =
-                                `<i class="fas fa-chart-area history-graph-icon" style="cursor:pointer;color:#28a745;font-size:14px;margin-left:5px;" title="View Historical Graph" data-channel="${channel}"></i>`;
 
                             const channelDisplay = missingLink
                                 ? `<a href="${missingLink}" target="_blank" class="missing-l-link channel-name-link" style="color:inherit;font-weight:inherit;text-decoration:none;" title="View missing items">${channel}</a>`
                                 : `<span>${channel}</span>`;
 
-                            return `<div>
-                                <div>
-                                    ${channelDisplay}
-                                    ${historyIcon}
-                                    ${graphIcon}
-                                </div>
-                                <span class="type-badge ${typeBadgeClass}">${type}</span>
-                            </div>`;
-                        },
-                        cellClick: function(e, cell) {
-                            if (e.target.closest && e.target.closest('a.channel-name-link')) return;
-                            // Handle icon clicks directly
-                            if (e.target.classList.contains('history-table-icon')) {
-                                e.stopPropagation();
-                                const channelName = $(e.target).data('channel');
-                                console.log('Table icon clicked for:', channelName);
-                                showChannelHistory(channelName);
-                                return;
-                            }
-
-                            if (e.target.classList.contains('history-graph-icon')) {
-                                e.stopPropagation();
-                                const channelName = $(e.target).data('channel');
-                                console.log('Graph icon clicked for:', channelName);
-                                showChannelHistoryGraph(channelName);
-                                return;
-                            }
+                            return `<div>${channelDisplay}</div>`;
                         }
                     },
                     {
@@ -1071,6 +1063,24 @@
                         }
                     },
                     {
+                        title: "Total Views",
+                        field: "Total Views",
+                        hozAlign: "center",
+                        sorter: "number",
+                        width: 100,
+                        visible: true,
+                        formatter: function(cell) {
+                            const value = parseNumber(cell.getValue());
+                            if (value == null || value === 0) return '-';
+                            return value.toLocaleString('en-US');
+                        },
+                        bottomCalc: "sum",
+                        bottomCalcFormatter: function(cell) {
+                            const value = cell.getValue();
+                            return `<strong>${parseNumber(value).toLocaleString('en-US')}</strong>`;
+                        }
+                    },
+                    {
                         title: "Sales",
                         field: "L30 Sales",
                         hozAlign: "center",
@@ -1178,7 +1188,7 @@
                         }
                     },
                     {
-                        title: "GPFT",
+                        title: "GPFT%",
                         field: "Gprofit%",
                         hozAlign: "center",
                         sorter: "number",
@@ -1243,7 +1253,7 @@
                         }
                     },
                     {
-                        title: "TAcos %",
+                        title: "Ads %",
                         field: "Ads%",
                         hozAlign: "center",
                         sorter: "number",
@@ -1314,7 +1324,7 @@
                         }
                     },
                     {
-                        title: "Nroi%",
+                        title: "NROI %",
                         field: "N ROI",
                         hozAlign: "center",
                         sorter: "number",
@@ -2578,7 +2588,7 @@
             });
 
             // Initial load only: set column dot color from last-two values (same red/green/gray logic as chart).
-            var metricDotMetricKeys = ['missing_l','nmap','l30_sales','ad_spend','l30_orders','qty','gprofit','groi','ads_pct','npft','nroi','clicks','ad_sales','ad_sold','acos','ads_cvr'];
+            var metricDotMetricKeys = ['missing_l','nmap','l30_sales','ad_spend','l30_orders','qty','gprofit','groi','ads_pct','npft','nroi','clicks','ad_sales','ad_sold','acos','ads_cvr','inv_at_lp'];
             function loadMetricDotTrends(tableData) {
                 if (typeof lastDotColorByKey === 'undefined') return;
                 var data = tableData && Array.isArray(tableData) ? tableData : (typeof table !== 'undefined' && table.getData ? table.getData() : []);
@@ -2813,9 +2823,9 @@
                 'returns': ['Return Rate', 'Return Units', 'Return Value'],
                 'ah': ['AH Score', 'Policy Violations', 'Customer Complaints'],
                 'expenses': ['Total Ad Spend', 'Shipping Cost', 'FBA Fees', 'Storage Fees'],
-                'traffic': ['clicks', 'Sessions', 'Page Views', 'Conversion Rate'],
+                'traffic': ['clicks', 'Sessions', 'Page Views', 'Conversion Rate', 'Total Views'],
                 'reviews': ['Total Reviews', 'Avg Rating', '5-Star', '4-Star', '1-Star'],
-                'missing': ['Miss', 'NMap', 'Missing Ads']
+                'missing': ['Miss', 'NMap', 'Missing Ads', 'Total Views']
             };
             
             $('.section-option').on('click', function(e) {
@@ -2826,7 +2836,16 @@
                 console.log('Section selected:', section);
                 $('#current-section').text(sectionName);
                 
+                // Type filter: B2C, B2B, Dropship — filter rows by channel type
+                if (section === 'B2C' || section === 'B2B' || section === 'Dropship') {
+                    table.setFilter('type', '=', section);
+                    $('#type-filter').val(section);
+                    return;
+                }
+                
                 if (section === 'all') {
+                    table.clearFilter(true);
+                    $('#type-filter').val('all');
                     // Show all columns
                     table.getColumns().forEach(col => {
                         if (col.getField() !== 'Channel ') { // Keep channel column always visible
@@ -2835,7 +2854,7 @@
                     });
                     console.log('✓ All columns visible');
                 } else {
-                    // Hide all columns first
+                    // Column section: show/hide column groups
                     table.getColumns().forEach(col => {
                         const field = col.getField();
                         if (field !== 'Channel ') { // Keep channel column
@@ -2843,7 +2862,6 @@
                         }
                     });
                     
-                    // Show only selected section columns
                     const columnsToShow = sectionColumns[section] || [];
                     columnsToShow.forEach(field => {
                         const column = table.getColumn(field);
@@ -2870,22 +2888,6 @@
                     dotTrendsLoadedOnce = true;
                     loadMetricDotTrends(table.getData());
                 }
-            });
-
-            // History table icon click handler
-            $(document).on('click', '.history-table-icon', function(e) {
-                e.preventDefault();
-                e.stopPropagation();
-                const channelName = $(this).data('channel');
-                showChannelHistory(channelName);
-            });
-
-            // History graph icon click handler
-            $(document).on('click', '.history-graph-icon', function(e) {
-                e.preventDefault();
-                e.stopPropagation();
-                const channelName = $(this).data('channel');
-                showChannelHistoryGraph(channelName);
             });
 
             // Show clicks breakdown modal - Fetch data from adv_masters_datas table
@@ -3219,6 +3221,7 @@
 
             // Ad Breakdown Chart variables
             let adBreakdownChartInstance = null;
+            let salesOrdersItemsBarChartInstance = null;
             let currentChartChannel = '';
             let currentChartAdType = '';
             let currentChartMetric = 'spend';
@@ -3359,8 +3362,22 @@
                         if (response.success && response.data && response.data.length > 0) {
                             $('#adBreakdownChartContainer').show();
                             renderAdBreakdownChart(response.data);
+                            if (currentChartMode === 'metric') {
+                                loadSalesOrdersItemsBarChart();
+                            } else {
+                                $('#salesOrdersItemsBarContainer').hide();
+                                if (salesOrdersItemsBarChartInstance) {
+                                    salesOrdersItemsBarChartInstance.destroy();
+                                    salesOrdersItemsBarChartInstance = null;
+                                }
+                            }
                         } else {
                             $('#adChartNoData').show();
+                            $('#salesOrdersItemsBarContainer').hide();
+                            if (salesOrdersItemsBarChartInstance) {
+                                salesOrdersItemsBarChartInstance.destroy();
+                                salesOrdersItemsBarChartInstance = null;
+                            }
                         }
                     },
                     error: function(xhr, status) {
@@ -3369,6 +3386,11 @@
                         console.error('Error fetching chart data:', xhr);
                         $('#adChartLoading').hide();
                         $('#adChartNoData').show();
+                        $('#salesOrdersItemsBarContainer').hide();
+                        if (salesOrdersItemsBarChartInstance) {
+                            salesOrdersItemsBarChartInstance.destroy();
+                            salesOrdersItemsBarChartInstance = null;
+                        }
                     }
                 });
             }
@@ -3392,6 +3414,8 @@
                 'ad_sold': 'AD Sold',
                 'acos': 'ACOS',
                 'ads_cvr': 'AD CVR',
+                'inv_at_lp': 'Inv@LP',
+                'tat': 'TAT',
             };
 
             // Show metric chart (for non-ad-breakdown columns)
@@ -3440,6 +3464,114 @@
                 showMetricChart('All', metricKey, badgeValue);
             });
 
+            // Load Sales, Orders, Qty bar chart (metric mode only) — same channel & days as line chart
+            function loadSalesOrdersItemsBarChart() {
+                const channel = currentChartChannel;
+                const days = currentChartDays;
+                const baseParams = { channel: channel, days: days };
+                const metrics = ['l30_sales', 'l30_orders', 'qty'];
+                const promises = metrics.map(m => $.get('/channel-metric-chart-data', Object.assign({}, baseParams, { metric: m })));
+                $.when.apply($, promises).done(function() {
+                    const raw = Array.prototype.slice.call(arguments);
+                    const results = raw.map(function(a) { return (Array.isArray(a) && a.length) ? a[0] : a; });
+                    const byDate = {};
+                    results.forEach((resp, idx) => {
+                        const data = (resp && resp.data) ? resp.data : [];
+                        const key = metrics[idx];
+                        data.forEach(function(d) {
+                            const dt = d.date || d.label;
+                            if (!byDate[dt]) byDate[dt] = { date: dt, sales: 0, orders: 0, qty: 0 };
+                            byDate[dt][key === 'l30_sales' ? 'sales' : key === 'l30_orders' ? 'orders' : 'qty'] = parseFloat(d.value) || 0;
+                        });
+                    });
+                    const year = new Date().getFullYear();
+                    const sorted = Object.keys(byDate).sort(function(a, b) {
+                        const dA = new Date(a + ' ' + year);
+                        const dB = new Date(b + ' ' + year);
+                        if (isNaN(dA.getTime()) || isNaN(dB.getTime())) return String(a).localeCompare(String(b));
+                        return dA - dB;
+                    });
+                    const labels = sorted;
+                    const sales = sorted.map(d => byDate[d].sales);
+                    const orders = sorted.map(d => byDate[d].orders);
+                    const qty = sorted.map(d => byDate[d].qty);
+                    $('#salesOrdersItemsBarContainer').css('display', 'flex').show();
+                    renderSalesOrdersItemsBarChart({ labels, sales, orders, qty });
+                }).fail(function() {
+                    $('#salesOrdersItemsBarContainer').css('display', 'none').hide();
+                    if (salesOrdersItemsBarChartInstance) {
+                        salesOrdersItemsBarChartInstance.destroy();
+                        salesOrdersItemsBarChartInstance = null;
+                    }
+                });
+            }
+
+            function renderSalesOrdersItemsBarChart(barData) {
+                const ctx = document.getElementById('salesOrdersItemsBarChart');
+                if (!ctx) return;
+                const g = ctx.getContext('2d');
+                if (salesOrdersItemsBarChartInstance) {
+                    salesOrdersItemsBarChartInstance.destroy();
+                    salesOrdersItemsBarChartInstance = null;
+                }
+                const labels = barData.labels || [];
+                const sales = barData.sales || [];
+                const orders = barData.orders || [];
+                const qty = barData.qty || [];
+                salesOrdersItemsBarChartInstance = new Chart(g, {
+                    type: 'bar',
+                    data: {
+                        labels: labels,
+                        datasets: [
+                            { label: 'Sales', data: sales, backgroundColor: 'rgba(30,136,229,0.8)', borderColor: '#1e88e5', borderWidth: 1, yAxisID: 'y' },
+                            { label: 'Orders', data: orders, backgroundColor: 'rgba(255,152,0,0.8)', borderColor: '#ff9800', borderWidth: 1, yAxisID: 'y1' },
+                            { label: 'Qty', data: qty, backgroundColor: 'rgba(0,188,212,0.8)', borderColor: '#00bcd4', borderWidth: 1, yAxisID: 'y1' }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        layout: { padding: { top: 8, left: 4, right: 4, bottom: 20 } },
+                        plugins: {
+                            legend: { display: true, position: 'top', labels: { font: { size: 9 }, boxWidth: 12 } },
+                            tooltip: {
+                                callbacks: {
+                                    label: function(ctx) {
+                                        const v = ctx.raw;
+                                        if (ctx.dataset.label === 'Sales') return 'Sales: $' + Math.round(v).toLocaleString('en-US');
+                                        return ctx.dataset.label + ': ' + Math.round(v).toLocaleString('en-US');
+                                    }
+                                }
+                            }
+                        },
+                        scales: {
+                            x: {
+                                ticks: {
+                                    maxRotation: 45,
+                                    minRotation: 45,
+                                    font: { size: labels.length > 25 ? 7 : 8 },
+                                    autoSkip: false,
+                                    maxTicksLimit: Math.max(labels.length, 31)
+                                }
+                            },
+                            y: {
+                                type: 'linear',
+                                position: 'left',
+                                title: { display: true, text: 'Sales ($)', font: { size: 9 } },
+                                ticks: { font: { size: 9 }, callback: v => '$' + (v >= 1000 ? (v/1000)+'k' : v) }
+                            },
+                            y1: {
+                                type: 'linear',
+                                position: 'right',
+                                title: { display: true, text: 'Orders / Qty', font: { size: 9 } },
+                                grid: { drawOnChartArea: false },
+                                ticks: { font: { size: 9 } }
+                            }
+                        }
+                    }
+                });
+            }
+
             // Render chart
             function renderAdBreakdownChart(data) {
                 const ctx = document.getElementById('adBreakdownChart').getContext('2d');
@@ -3469,12 +3601,13 @@
                 // --- Format helper (no decimals for spend/sales) ---
                 const fmtVal = (v) => {
                     const m = currentChartMetric;
-                    if (m === 'spend' || m === 'sales' || m === 'l30_sales' || m === 'ad_spend' || m === 'ad_sales' || m === 'pft') {
+                    if (m === 'spend' || m === 'sales' || m === 'l30_sales' || m === 'ad_spend' || m === 'ad_sales' || m === 'pft' || m === 'inv_at_lp') {
                         return '$' + Math.round(v).toLocaleString('en-US');
                     }
                     if (m === 'acos' || m === 'cvr' || m === 'ads_cvr' || m === 'gprofit' || m === 'groi' || m === 'ads_pct' || m === 'npft' || m === 'nroi') {
                         return v.toFixed(1) + '%';
                     }
+                    if (m === 'tat') return v.toFixed(2);
                     return Math.round(v).toLocaleString('en-US');
                 };
 
@@ -3730,413 +3863,6 @@
                     $select.val('total');
                 }, 2000); // Reset after 2 seconds
             });
-
-            // Show channel history modal
-            function showChannelHistory(channelName) {
-                console.log('Opening history table for:', channelName);
-
-                if (typeof bootstrap === 'undefined') {
-                    console.error('Bootstrap is not loaded!');
-                    alert('Bootstrap is not loaded. Please refresh the page.');
-                    return;
-                }
-
-                $('#modalChannelName').text(channelName);
-                $('#historyTableBody').html('<tr><td colspan="5" class="text-center">Loading...</td></tr>');
-
-                const modalElement = document.getElementById('channelHistoryModal');
-                if (!modalElement) {
-                    console.error('channelHistoryModal element not found!');
-                    return;
-                }
-
-                const modal = new bootstrap.Modal(modalElement);
-                modal.show();
-
-                const channelKey = channelName.toLowerCase().replace(/\s+/g, '');
-
-                $.ajax({
-                    url: '/channel-master-history/' + channelKey,
-                    method: 'GET',
-                    success: function(response) {
-                        if (response.status === 200 && response.data) {
-                            renderHistoryTable(response.data);
-                        } else {
-                            $('#historyTableBody').html(
-                                '<tr><td colspan="5" class="text-center">No historical data found</td></tr>'
-                                );
-                        }
-                    },
-                    error: function() {
-                        $('#historyTableBody').html(
-                            '<tr><td colspan="5" class="text-center text-danger">Error loading data</td></tr>'
-                            );
-                    }
-                });
-            }
-
-            // Render history table
-            function renderHistoryTable(data) {
-                const formatDate = (dateStr) => {
-                    if (!dateStr) return '';
-                    const datePart = dateStr.split('T')[0];
-                    return datePart;
-                };
-
-                let html = '';
-                data.forEach(row => {
-                    const summaryData = row.summary_data || {};
-                    const npft = parseNumber(summaryData.gprofit_percent || 0) - parseNumber(summaryData
-                        .tcos_percent || 0);
-                    const clicks = parseNumber(summaryData.clicks || 0);
-                    const totalQty = parseNumber(summaryData.total_quantity || 0);
-
-                    html += `
-                        <tr>
-                            <td>${formatDate(row.snapshot_date)}</td>
-                            <td class="text-end">$${parseNumber(summaryData.l30_sales).toLocaleString()}</td>
-                            <td class="text-end">${parseNumber(summaryData.l30_orders).toLocaleString()}</td>
-                            <td class="text-end">${totalQty > 0 ? totalQty.toLocaleString() : '-'}</td>
-                            <td class="text-end">${clicks > 0 ? clicks.toLocaleString() : '-'}</td>
-                            <td class="text-end">${parseNumber(summaryData.gprofit_percent).toFixed(1)}%</td>
-                            <td class="text-end">${npft.toFixed(1)}%</td>
-                        </tr>
-                    `;
-                });
-
-                if (html === '') {
-                    html = '<tr><td colspan="7" class="text-center">No data available</td></tr>';
-                }
-
-                $('#historyTableBody').html(html);
-            }
-
-            // Show channel history graph modal
-            function showChannelHistoryGraph(channelName) {
-                console.log('Opening history graph for:', channelName);
-
-                if (typeof bootstrap === 'undefined') {
-                    console.error('Bootstrap is not loaded!');
-                    alert('Bootstrap is not loaded. Please refresh the page.');
-                    return;
-                }
-
-                $('#modalGraphChannelName').text(channelName);
-                $('#loadingGraphMessage').show();
-                $('#historyGraphContainer').hide();
-
-                const modalElement = document.getElementById('channelHistoryGraphModal');
-                if (!modalElement) {
-                    console.error('Modal element not found!');
-                    return;
-                }
-
-                const modal = new bootstrap.Modal(modalElement);
-                modal.show();
-
-                const channelKey = channelName.toLowerCase().replace(/\s+/g, '');
-
-                $.ajax({
-                    url: '/channel-master-history/' + channelKey,
-                    method: 'GET',
-                    success: function(response) {
-                        if (response.status === 200 && response.data && response.data.length > 0) {
-                            renderHistoryGraph(response.data, channelName);
-                        } else {
-                            $('#loadingGraphMessage').html(
-                                '<p class="text-center text-muted">No historical data found</p>');
-                        }
-                    },
-                    error: function() {
-                        $('#loadingGraphMessage').html(
-                            '<p class="text-center text-danger">Error loading data</p>');
-                    }
-                });
-            }
-
-            // Render history graph using Google Charts
-            function renderHistoryGraph(data, channelName) {
-                const toNum = (v, def = 0) => {
-                    const n = parseFloat(String(v).replace(/,/g, ''));
-                    return Number.isFinite(n) ? n : def;
-                };
-
-                const formatDate = (dateStr) => {
-                    if (!dateStr) return '';
-                    return dateStr.split('T')[0];
-                };
-
-                // Prepare data for Google Charts
-                const chartData = [
-                    ['Date', 'Sales', 'Orders', 'Qty items', 'Clicks', 'GPFT', 'NPFT%']
-                ];
-
-                const reversedData = [...data].reverse();
-
-                reversedData.forEach(row => {
-                    const summaryData = row.summary_data || {};
-                    const npft = toNum(summaryData.gprofit_percent || 0) - toNum(summaryData.tcos_percent ||
-                        0);
-                    const clicks = toNum(summaryData.clicks || 0);
-                    const totalQty = toNum(summaryData.total_quantity || 0);
-
-                    chartData.push([
-                        formatDate(row.snapshot_date),
-                        toNum(summaryData.l30_sales),
-                        toNum(summaryData.l30_orders),
-                        totalQty,
-                        clicks,
-                        toNum(summaryData.gprofit_percent),
-                        npft
-                    ]);
-                });
-
-                // Calculate min/max for dynamic axis scaling
-                let minSales = Infinity,
-                    maxSales = -Infinity;
-                let minOrders = Infinity,
-                    maxOrders = -Infinity;
-                let minQty = Infinity,
-                    maxQty = -Infinity;
-                let minClicks = Infinity,
-                    maxClicks = -Infinity;
-                let minGprofit = Infinity,
-                    maxGprofit = -Infinity;
-                let minNPFT = Infinity,
-                    maxNPFT = -Infinity;
-
-                for (let i = 1; i < chartData.length; i++) {
-                    const row = chartData[i];
-                    const sales = row[1];
-                    const orders = row[2];
-                    const qty = row[3];
-                    const clicks = row[4];
-                    const gprofit = row[5];
-                    const npft = row[6];
-
-                    if (sales < minSales) minSales = sales;
-                    if (sales > maxSales) maxSales = sales;
-                    if (orders < minOrders) minOrders = orders;
-                    if (orders > maxOrders) maxOrders = orders;
-                    if (qty < minQty) minQty = qty;
-                    if (qty > maxQty) maxQty = qty;
-                    if (clicks < minClicks) minClicks = clicks;
-                    if (clicks > maxClicks) maxClicks = clicks;
-                    if (gprofit < minGprofit) minGprofit = gprofit;
-                    if (gprofit > maxGprofit) maxGprofit = gprofit;
-                    if (npft < minNPFT) minNPFT = npft;
-                    if (npft > maxNPFT) maxNPFT = npft;
-                }
-
-                // Calculate combined min/max for axes with 15% buffer
-                const leftMin = Math.min(minSales, minOrders, minQty, minClicks);
-                const leftMax = Math.max(maxSales, maxOrders, maxQty, maxClicks);
-                const leftRange = leftMax - leftMin;
-                const leftAxisMin = Math.max(0, leftMin - (leftRange * 0.15));
-                const leftAxisMax = leftMax + (leftRange * 0.15);
-
-                const rightMin = Math.min(minGprofit, minNPFT);
-                const rightMax = Math.max(maxGprofit, maxNPFT);
-                const rightRange = rightMax - rightMin;
-                const rightAxisMin = Math.max(0, rightMin - (rightRange * 0.15));
-                const rightAxisMax = rightMax + (rightRange * 0.15);
-
-                google.charts.load('current', {
-                    packages: ['corechart', 'line']
-                });
-                google.charts.setOnLoadCallback(() => {
-                    const dataTable = google.visualization.arrayToDataTable(chartData);
-
-                    const options = {
-                        title: `${channelName} - Historical Trends (Last ${data.length} Days)`,
-                        titleTextStyle: {
-                            fontSize: 18,
-                            bold: true,
-                            color: '#333333'
-                        },
-                        curveType: 'none',
-                        legend: {
-                            position: 'bottom',
-                            textStyle: {
-                                fontSize: 12
-                            },
-                            alignment: 'center'
-                        },
-                        interpolateNulls: false,
-                        hAxis: {
-                            title: 'Date',
-                            titleTextStyle: {
-                                fontSize: 13,
-                                bold: true,
-                                color: '#333'
-                            },
-                            slantedText: true,
-                            slantedTextAngle: 45,
-                            textStyle: {
-                                fontSize: 11,
-                                color: '#333',
-                                bold: true
-                            },
-                            gridlines: {
-                                color: '#e0e0e0',
-                                count: -1
-                            },
-                            minorGridlines: {
-                                color: '#f5f5f5',
-                                count: 2
-                            },
-                            baselineColor: '#999',
-                            showTextEvery: 1
-                        },
-                        series: {
-                            0: {
-                                color: '#1e88e5',
-                                lineWidth: 3,
-                                pointSize: 6,
-                                pointShape: 'circle',
-                                targetAxisIndex: 0,
-                                visibleInLegend: true
-                            },
-                            1: {
-                                color: '#ff9800',
-                                lineWidth: 3,
-                                pointSize: 6,
-                                pointShape: 'circle',
-                                targetAxisIndex: 0,
-                                visibleInLegend: true
-                            },
-                            2: {
-                                color: '#00bcd4',
-                                lineWidth: 3,
-                                pointSize: 6,
-                                pointShape: 'circle',
-                                targetAxisIndex: 0,
-                                visibleInLegend: true
-                            },
-                            3: {
-                                color: '#9c27b0',
-                                lineWidth: 3,
-                                pointSize: 6,
-                                pointShape: 'circle',
-                                targetAxisIndex: 0,
-                                visibleInLegend: true
-                            },
-                            4: {
-                                color: '#e53935',
-                                lineWidth: 3,
-                                pointSize: 6,
-                                pointShape: 'circle',
-                                targetAxisIndex: 1,
-                                visibleInLegend: true
-                            },
-                            5: {
-                                color: '#43a047',
-                                lineWidth: 3,
-                                pointSize: 6,
-                                pointShape: 'circle',
-                                targetAxisIndex: 1,
-                                visibleInLegend: true
-                            }
-                        },
-                        vAxes: {
-                            0: {
-                                title: 'Sales, Orders, Qty & Clicks',
-                                titleTextStyle: {
-                                    color: '#1e88e5',
-                                    fontSize: 14,
-                                    bold: true
-                                },
-                                textStyle: {
-                                    color: '#000000',
-                                    fontSize: 14,
-                                    bold: true
-                                },
-                                gridlines: {
-                                    color: '#d0d0d0',
-                                    count: 6
-                                },
-                                format: 'short',
-                                viewWindow: {
-                                    min: leftAxisMin,
-                                    max: leftAxisMax
-                                }
-                            },
-                            1: {
-                                title: 'Profit % (Gprofit% & NPFT%)',
-                                titleTextStyle: {
-                                    color: '#e53935',
-                                    fontSize: 14,
-                                    bold: true
-                                },
-                                textStyle: {
-                                    color: '#000000',
-                                    fontSize: 14,
-                                    bold: true
-                                },
-                                gridlines: {
-                                    color: '#d0d0d0',
-                                    count: 6
-                                },
-                                format: 'short',
-                                viewWindow: {
-                                    min: rightAxisMin,
-                                    max: rightAxisMax
-                                }
-                            }
-                        },
-                        chartArea: {
-                            left: 120,
-                            top: 80,
-                            right: 150,
-                            bottom: 120,
-                            backgroundColor: '#ffffff'
-                        },
-                        backgroundColor: {
-                            fill: '#ffffff',
-                            strokeWidth: 1,
-                            stroke: '#cccccc'
-                        },
-                        tooltip: {
-                            isHtml: false,
-                            textStyle: {
-                                fontSize: 11
-                            },
-                            showColorCode: true
-                        },
-                        animation: {
-                            startup: true,
-                            duration: 800,
-                            easing: 'out'
-                        },
-                        pointsVisible: true
-                    };
-
-                    $('#loadingGraphMessage').hide();
-                    $('#historyGraphContainer').show();
-
-                    if (data.length < 30) {
-                        $('#dataPointsInfo').text(
-                            `Showing ${data.length} days of available data. Data accumulates daily.`);
-                        $('#dataInfoMessage').show();
-                    } else {
-                        $('#dataInfoMessage').hide();
-                    }
-
-                    const chart = new google.visualization.LineChart(document.getElementById(
-                        'historyGraphContainer'));
-                    chart.draw(dataTable, options);
-
-                    // Redraw on window resize
-                    window.addEventListener('resize', function() {
-                        chart.draw(dataTable, options);
-                    });
-
-                    // Redraw after modal is fully shown
-                    setTimeout(function() {
-                        chart.draw(dataTable, options);
-                    }, 300);
-                });
-            }
 
             // Save channel form handler
             $(document).on('click', '#saveChannelBtn', function() {
