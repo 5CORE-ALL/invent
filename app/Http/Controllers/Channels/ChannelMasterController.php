@@ -181,6 +181,24 @@ class ChannelMasterController extends Controller
     }
 
     /**
+     * Stub values for Shipping Health, CC Health, Returns %, A2Z Claims, Ratings & Reviews columns.
+     * Override in channel-specific data when sources (e.g. AccountHealthMaster, ChannelsReviewsData) are wired.
+     */
+    private function getChannelHealthAndReviewsStub(): array
+    {
+        return [
+            'Shipping Health' => '-',
+            'CC Health' => '-',
+            'Returns %' => 0,
+            'A2Z Claims' => 0,
+            'Avg Rating' => 0,
+            'Total Reviews' => 0,
+            'Seller Avg Rating' => 0,
+            'Seller Total Reviews' => 0,
+        ];
+    }
+
+    /**
      * Sum of (inventory * Amazon price) across all SKUs for the INV Val badge.
      * Uses product_stock_mappings.inventory_amazon and amazon_datsheets.price.
      */
@@ -1229,6 +1247,7 @@ class ChannelMasterController extends Controller
             'Miss'       => $mapMissCounts['miss'],
             'NMap'       => $mapMissCounts['nmap'],
             'Total Views' => $mapMissCounts['total_views'] ?? 0,
+            ...$this->getChannelHealthAndReviewsStub(),
         ];
 
         return response()->json([
@@ -1370,6 +1389,7 @@ class ChannelMasterController extends Controller
             'Miss'       => $mapMissCounts['miss'],
             'NMap'       => $mapMissCounts['nmap'],
             'Total Views' => $mapMissCounts['total_views'] ?? 0,
+            ...$this->getChannelHealthAndReviewsStub(),
         ];
 
         return response()->json([
@@ -1578,6 +1598,7 @@ class ChannelMasterController extends Controller
             'Miss'       => $mapMissCounts['miss'],
             'NMap'       => $mapMissCounts['nmap'],
             'Total Views' => $mapMissCounts['total_views'] ?? 0,
+            ...$this->getChannelHealthAndReviewsStub(),
         ];
 
         return response()->json([
@@ -1722,6 +1743,7 @@ class ChannelMasterController extends Controller
             'Miss'       => $mapMissCounts['miss'],
             'NMap'       => $mapMissCounts['nmap'],
             'Total Views' => $mapMissCounts['total_views'] ?? 0,
+            ...$this->getChannelHealthAndReviewsStub(),
         ];
 
         return response()->json([
@@ -1886,6 +1908,7 @@ class ChannelMasterController extends Controller
             'Miss' => $mapMissCounts['miss'],
             'NMap' => $mapMissCounts['nmap'],
             'Total Views' => $mapMissCounts['total_views'] ?? 0,
+            ...$this->getChannelHealthAndReviewsStub(),
         ];
 
         return response()->json([
@@ -2008,6 +2031,7 @@ class ChannelMasterController extends Controller
             'Miss' => $mapMissCounts['miss'],
             'NMap' => $mapMissCounts['nmap'],
             'Total Views' => $mapMissCounts['total_views'] ?? 0,
+            ...$this->getChannelHealthAndReviewsStub(),
         ];
 
         return response()->json([
@@ -2179,6 +2203,7 @@ class ChannelMasterController extends Controller
             'Miss' => $mapMissCounts['miss'],
             'NMap' => $mapMissCounts['nmap'],
             'Total Views' => $mapMissCounts['total_views'] ?? 0,
+            ...$this->getChannelHealthAndReviewsStub(),
         ];
 
         return response()->json([
@@ -2304,6 +2329,7 @@ class ChannelMasterController extends Controller
             'Miss' => $mapMissCounts['miss'],
             'NMap' => $mapMissCounts['nmap'],
             'Total Views' => $mapMissCounts['total_views'] ?? 0,
+            ...$this->getChannelHealthAndReviewsStub(),
         ];
 
         return response()->json([
@@ -2389,6 +2415,7 @@ class ChannelMasterController extends Controller
                 'Miss'       => $mapMissCounts['miss'],
                 'NMap'       => $mapMissCounts['nmap'],
                 'Total Views' => $mapMissCounts['total_views'] ?? 0,
+                ...$this->getChannelHealthAndReviewsStub(),
             ];
             return response()->json([
                 'status' => 200,
@@ -2465,6 +2492,7 @@ class ChannelMasterController extends Controller
             'Miss'       => $mapMissCounts['miss'],
             'NMap'       => $mapMissCounts['nmap'],
             'Total Views' => $mapMissCounts['total_views'] ?? 0,
+            ...$this->getChannelHealthAndReviewsStub(),
         ];
 
         return response()->json([
@@ -2749,6 +2777,7 @@ class ChannelMasterController extends Controller
             'Miss' => $mapMissCounts['miss'],
             'NMap' => $mapMissCounts['nmap'],
             'Total Views' => $mapMissCounts['total_views'] ?? 0,
+            ...$this->getChannelHealthAndReviewsStub(),
         ];
         
         return response()->json([
@@ -2862,6 +2891,7 @@ class ChannelMasterController extends Controller
             'Miss' => $mapMissCounts['miss'],
             'NMap' => $mapMissCounts['nmap'],
             'Total Views' => $mapMissCounts['total_views'] ?? 0,
+            ...$this->getChannelHealthAndReviewsStub(),
         ];
 
         return response()->json([
@@ -2981,6 +3011,7 @@ class ChannelMasterController extends Controller
             'Miss' => $mapMissCounts['miss'],
             'NMap' => $mapMissCounts['nmap'],
             'Total Views' => $mapMissCounts['total_views'] ?? 0,
+            ...$this->getChannelHealthAndReviewsStub(),
         ];
 
         return response()->json([
@@ -3160,6 +3191,7 @@ class ChannelMasterController extends Controller
             'Miss' => $mapMissCounts['miss'],
             'NMap' => $mapMissCounts['nmap'],
             'Total Views' => $mapMissCounts['total_views'] ?? 0,
+            ...$this->getChannelHealthAndReviewsStub(),
         ];
 
         return response()->json([
@@ -3332,6 +3364,7 @@ class ChannelMasterController extends Controller
             'Miss' => $mapMissCounts['miss'],
             'NMap' => $mapMissCounts['nmap'],
             'Total Views' => $mapMissCounts['total_views'] ?? 0,
+            ...$this->getChannelHealthAndReviewsStub(),
         ];
 
         return response()->json([
@@ -3503,6 +3536,7 @@ class ChannelMasterController extends Controller
             'Miss' => $mapMissCounts['miss'],
             'NMap' => $mapMissCounts['nmap'],
             'Total Views' => $mapMissCounts['total_views'] ?? 0,
+            ...$this->getChannelHealthAndReviewsStub(),
         ];
 
         return response()->json([
@@ -3579,6 +3613,7 @@ class ChannelMasterController extends Controller
             'Miss' => $mapMissCounts['miss'],
             'NMap' => $mapMissCounts['nmap'],
             'Total Views' => $mapMissCounts['total_views'] ?? 0,
+            ...$this->getChannelHealthAndReviewsStub(),
         ];
 
         return response()->json([
@@ -4052,6 +4087,7 @@ class ChannelMasterController extends Controller
             'Miss' => $mapMissCounts['miss'],
             'NMap' => $mapMissCounts['nmap'],
             'Total Views' => $mapMissCounts['total_views'] ?? 0,
+            ...$this->getChannelHealthAndReviewsStub(),
         ];
 
         return response()->json([
@@ -4168,6 +4204,7 @@ class ChannelMasterController extends Controller
             'Miss' => $mapMissCounts['miss'],
             'NMap' => $mapMissCounts['nmap'],
             'Total Views' => $mapMissCounts['total_views'] ?? 0,
+            ...$this->getChannelHealthAndReviewsStub(),
         ];
 
         return response()->json([
@@ -4287,6 +4324,7 @@ class ChannelMasterController extends Controller
             'Miss' => $mapMissCounts['miss'],
             'NMap' => $mapMissCounts['nmap'],
             'Total Views' => $mapMissCounts['total_views'] ?? 0,
+            ...$this->getChannelHealthAndReviewsStub(),
         ];
 
         return response()->json([
@@ -4402,6 +4440,7 @@ class ChannelMasterController extends Controller
             'Miss' => $mapMissCounts['miss'],
             'NMap' => $mapMissCounts['nmap'],
             'Total Views' => $mapMissCounts['total_views'] ?? 0,
+            ...$this->getChannelHealthAndReviewsStub(),
         ];
 
         return response()->json([
@@ -4578,6 +4617,7 @@ class ChannelMasterController extends Controller
             'Miss' => $mapMissCounts['miss'],
             'NMap' => $mapMissCounts['nmap'],
             'Total Views' => $mapMissCounts['total_views'] ?? 0,
+            ...$this->getChannelHealthAndReviewsStub(),
         ];
 
         return response()->json([
@@ -4754,6 +4794,7 @@ class ChannelMasterController extends Controller
             'Miss' => $mapMissCounts['miss'],
             'NMap' => $mapMissCounts['nmap'],
             'Total Views' => $mapMissCounts['total_views'] ?? 0,
+            ...$this->getChannelHealthAndReviewsStub(),
         ];
 
         return response()->json([
@@ -4895,6 +4936,7 @@ class ChannelMasterController extends Controller
             'Miss' => $mapMissCounts['miss'],
             'NMap' => $mapMissCounts['nmap'],
             'Total Views' => $mapMissCounts['total_views'] ?? 0,
+            ...$this->getChannelHealthAndReviewsStub(),
         ];
 
         return response()->json([
@@ -5036,6 +5078,7 @@ class ChannelMasterController extends Controller
             'Miss' => $mapMissCounts['miss'],
             'NMap' => $mapMissCounts['nmap'],
             'Total Views' => $mapMissCounts['total_views'] ?? 0,
+            ...$this->getChannelHealthAndReviewsStub(),
         ];
 
         return response()->json([
@@ -5139,6 +5182,7 @@ class ChannelMasterController extends Controller
             'Miss'       => $mapMissCounts['miss'],
             'NMap'       => $mapMissCounts['nmap'],
             'Total Views' => $mapMissCounts['total_views'] ?? 0,
+            ...$this->getChannelHealthAndReviewsStub(),
             'Inv at LP'  => $this->getInvAtLpShopify(),
         ];
 
@@ -5263,6 +5307,7 @@ class ChannelMasterController extends Controller
             'Miss' => $mapMissCounts['miss'],
             'NMap' => $mapMissCounts['nmap'],
             'Total Views' => $mapMissCounts['total_views'] ?? 0,
+            ...$this->getChannelHealthAndReviewsStub(),
         ];
 
         return response()->json([

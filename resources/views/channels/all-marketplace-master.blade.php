@@ -146,11 +146,11 @@
                     <!-- Section Filter Dropdown -->
                     <div class="btn-group">
                         <button type="button" class="btn btn-sm btn-primary dropdown-toggle" data-bs-toggle="dropdown">
-                            <i class="fas fa-layer-group"></i> <span id="current-section">All Sections</span>
+                            <i class="fas fa-layer-group"></i> <span id="current-section">Main Section</span>
                         </button>
                         <ul class="dropdown-menu" id="section-dropdown">
                             <li><a class="dropdown-item section-option" href="#" data-section="all">
-                                <i class="fas fa-th"></i> All Sections
+                                <i class="fas fa-th"></i> Main Section
                             </a></li>
                             <li><hr class="dropdown-divider"></li>
                             <li><a class="dropdown-item section-option" href="#" data-section="ads">
@@ -300,6 +300,12 @@
                         </span>
                         <span class="badge bg-secondary fs-6 p-2 badge-chart-link" data-metric="tat" style="color: white; font-weight: bold; cursor:pointer;" title="View trend - Inventory Value ÷ Sales (months of stock at current sales)">
                             TAT: <span id="tat-badge">0</span>
+                        </span>
+                        <span class="badge bg-info fs-6 p-2" style="color: black; font-weight: bold;" title="Sum of ratings (weighted avg), average of reviews">
+                            Ratings &amp; Reviews: <span id="ratings-reviews-badge">0 ★ | 0</span>
+                        </span>
+                        <span class="badge bg-dark fs-6 p-2" style="color: white; font-weight: bold;" title="Seller: sum of ratings (weighted avg), average of reviews">
+                            Seller Rating &amp; Reviews: <span id="seller-ratings-reviews-badge">0 ★ | 0</span>
                         </span>
                     </div>
                 </div>
@@ -2499,6 +2505,92 @@
                         }
                     },
                     {
+                        title: "Shipping Health",
+                        field: "Shipping Health",
+                        hozAlign: "center",
+                        sorter: "number",
+                        width: 110,
+                        visible: false,
+                        formatter: function(cell) {
+                            const v = cell.getValue();
+                            if (v == null || v === '' || v === '-') return '-';
+                            return typeof v === 'number' ? (v + '%') : v;
+                        }
+                    },
+                    {
+                        title: "CC Health",
+                        field: "CC Health",
+                        hozAlign: "center",
+                        sorter: "number",
+                        width: 90,
+                        visible: false,
+                        formatter: function(cell) {
+                            const v = cell.getValue();
+                            if (v == null || v === '' || v === '-') return '-';
+                            return typeof v === 'number' ? (v + '%') : v;
+                        }
+                    },
+                    {
+                        title: "Returns %",
+                        field: "Returns %",
+                        hozAlign: "center",
+                        sorter: "number",
+                        width: 90,
+                        visible: false,
+                        formatter: function(cell) {
+                            const v = parseNumber(cell.getValue());
+                            if (v == null || isNaN(v) || v === 0) return '-';
+                            return v.toFixed(1) + '%';
+                        }
+                    },
+                    {
+                        title: "A2Z Claims",
+                        field: "A2Z Claims",
+                        hozAlign: "center",
+                        sorter: "number",
+                        width: 95,
+                        visible: false,
+                        formatter: function(cell) {
+                            const v = parseNumber(cell.getValue());
+                            if (v == null || isNaN(v)) return '-';
+                            return v.toLocaleString('en-US');
+                        }
+                    },
+                    {
+                        title: "Ratings & Reviews",
+                        field: "Ratings & Reviews",
+                        hozAlign: "center",
+                        sorter: "number",
+                        width: 130,
+                        visible: false,
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+                            const avg = parseNumber(rowData['Avg Rating'] || 0);
+                            const total = parseNumber(rowData['Total Reviews'] || 0);
+                            if ((avg == null || isNaN(avg)) && (total == null || isNaN(total) || total === 0)) return '-';
+                            const r = (!isNaN(avg) && avg > 0) ? avg.toFixed(1) + ' ★' : '';
+                            const rev = (!isNaN(total) && total > 0) ? total.toLocaleString('en-US') : '';
+                            return [r, rev].filter(Boolean).join(' | ') || '-';
+                        }
+                    },
+                    {
+                        title: "Seller Rating & Reviews",
+                        field: "Seller Rating & Reviews",
+                        hozAlign: "center",
+                        sorter: "number",
+                        width: 150,
+                        visible: false,
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+                            const avg = parseNumber(rowData['Seller Avg Rating'] || 0);
+                            const total = parseNumber(rowData['Seller Total Reviews'] || 0);
+                            if ((avg == null || isNaN(avg)) && (total == null || isNaN(total) || total === 0)) return '-';
+                            const r = (!isNaN(avg) && avg > 0) ? avg.toFixed(1) + ' ★' : '';
+                            const rev = (!isNaN(total) && total > 0) ? total.toLocaleString('en-US') : '';
+                            return [r, rev].filter(Boolean).join(' | ') || '-';
+                        }
+                    },
+                    {
                         title: "Action",
                         field: "_action",
                         hozAlign: "center",
@@ -2809,6 +2901,23 @@
                 $('#total-map').text(Math.round(totalMap).toLocaleString('en-US'));
                 $('#total-nmap').text(Math.round(totalNMap).toLocaleString('en-US'));
                 $('#total-miss').text(Math.round(totalMiss).toLocaleString('en-US'));
+
+                // Ratings & Reviews badge: weighted avg rating (sum(rating*reviews)/sum(reviews)), total reviews (sum)
+                let ratingSum = 0, reviewsSum = 0, sellerRatingSum = 0, sellerReviewsSum = 0;
+                data.forEach(row => {
+                    const r = parseNumber(row['Avg Rating'] || 0);
+                    const rev = parseNumber(row['Total Reviews'] || 0);
+                    const sr = parseNumber(row['Seller Avg Rating'] || 0);
+                    const srev = parseNumber(row['Seller Total Reviews'] || 0);
+                    if (!isNaN(r) && !isNaN(rev) && rev > 0) { ratingSum += r * rev; reviewsSum += rev; }
+                    if (!isNaN(sr) && !isNaN(srev) && srev > 0) { sellerRatingSum += sr * srev; sellerReviewsSum += srev; }
+                });
+                const weightedAvgRating = reviewsSum > 0 ? (ratingSum / reviewsSum).toFixed(1) : '0';
+                const totalReviews = Math.round(reviewsSum).toLocaleString('en-US');
+                const sellerWeightedAvg = sellerReviewsSum > 0 ? (sellerRatingSum / sellerReviewsSum).toFixed(1) : '0';
+                const sellerTotalRev = Math.round(sellerReviewsSum).toLocaleString('en-US');
+                $('#ratings-reviews-badge').text(weightedAvgRating + ' ★ | ' + totalReviews);
+                $('#seller-ratings-reviews-badge').text(sellerWeightedAvg + ' ★ | ' + sellerTotalRev);
             }
 
             // Channel Search
@@ -2885,15 +2994,15 @@
             
             const sectionColumns = {
                 'all': 'ALL', // Show all columns
-                'ads': ['Total Ad Spend', 'Total Views', 'CVR', 'KW Spent', 'PT Spent', 'HL Spent', 'PMT Spent', 'Shopping Spent', 'SERP Spent', 'clicks', 'KW Clicks', 'PT Clicks', 'HL Clicks', 'PMT Clicks', 'Shopping Clicks', 'SERP Clicks', 'Ad Sales', 'KW Sales', 'PT Sales', 'HL Sales', 'PMT Sales', 'Shopping Sales', 'SERP Sales', 'ad_sold', 'KW Sold', 'PT Sold', 'HL Sold', 'PMT Sold', 'Shopping Sold', 'SERP Sold', 'ACOS', 'KW ACOS', 'PT ACOS', 'HL ACOS', 'PMT ACOS', 'Shopping ACOS', 'SERP ACOS', 'Ads CVR', 'KW CVR', 'PT CVR', 'HL CVR', 'PMT CVR', 'Shopping CVR', 'SERP CVR', 'TAcos %', 'Missing Ads'],
+                'ads': ['L30 Sales', 'Total Ad Spend', 'Total Views', 'CVR', 'KW Spent', 'PT Spent', 'HL Spent', 'PMT Spent', 'KW ACOS', 'PT ACOS', 'HL ACOS', 'PMT ACOS', 'Shopping Spent', 'SERP Spent', 'clicks', 'KW Clicks', 'PT Clicks', 'HL Clicks', 'PMT Clicks', 'Shopping Clicks', 'SERP Clicks', 'Ad Sales', 'KW Sales', 'PT Sales', 'HL Sales', 'PMT Sales', 'Shopping Sales', 'SERP Sales', 'ad_sold', 'KW Sold', 'PT Sold', 'HL Sold', 'PMT Sold', 'Shopping Sold', 'SERP Sold', 'ACOS', 'Shopping ACOS', 'SERP ACOS', 'Ads CVR', 'KW CVR', 'PT CVR', 'HL CVR', 'PMT CVR', 'Shopping CVR', 'SERP CVR', 'TAcos %', 'Missing Ads'],
                 'inv': ['Avl', 'Res', 'Inb', 'Unf', 'Wrk', 'Total Inv', 'Allocated'],
                 'margins': ['G PFT%', 'G ROI%', 'N PFT%', 'N ROI%', 'COGS', 'Total Ad Spend', 'TAcos %'],
                 'movement': ['L30 Sales', 'L30 Orders', 'Qty items', 'Velocity'],
                 'returns': ['Return Rate', 'Return Units', 'Return Value'],
-                'ah': ['AH Score', 'Policy Violations', 'Customer Complaints'],
+                'ah': ['AH Score', 'Policy Violations', 'Customer Complaints', 'Shipping Health', 'CC Health', 'Returns %', 'A2Z Claims', 'Ratings & Reviews', 'Seller Rating & Reviews'],
                 'expenses': ['Total Ad Spend', 'Shipping Cost', 'FBA Fees', 'Storage Fees'],
                 'traffic': ['clicks', 'Sessions', 'Page Views', 'Conversion Rate', 'Total Views', 'CVR'],
-                'reviews': ['Total Reviews', 'Avg Rating', '5-Star', '4-Star', '1-Star'],
+                'reviews': ['Total Reviews', 'Avg Rating', '5-Star', '4-Star', '1-Star', 'Ratings & Reviews', 'Seller Rating & Reviews'],
                 'missing': ['Miss', 'NMap', 'Missing Ads', 'Total Views']
             };
             
