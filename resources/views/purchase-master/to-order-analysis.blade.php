@@ -561,6 +561,8 @@
                     {
                         title: "DOA",
                         field: "Date of Appr",
+                        width: 150,
+                        minWidth: 145,
                         formatter: function (cell) {
                             const value = cell.getValue() || "";
                             const rowData = cell.getRow().getData();
@@ -583,7 +585,7 @@
 
                             const html = `
                                 <div style="display: flex; flex-direction: column; align-items: flex-start;">
-                                    <input type="date" class="form-control form-control-sm doa-input" value="${value}" style="width:82px; ${bgColor}">
+                                    <input type="date" class="form-control form-control-sm doa-input" value="${value}" style="width:100%; min-width:140px; max-width:145px; ${bgColor}">
                                 </div>
                             `;
 
@@ -697,7 +699,7 @@
 
                             const html = `
                                 <div style="display: flex; flex-direction: column; align-items: flex-start;">
-                                    <input type="date" class="form-control form-control-sm adv_date_input" value="${value}" style="width:82px;">
+                                    <input type="date" class="form-control form-control-sm adv_date_input" value="${value}" style="width:100%; min-width:140px; max-width:145px;">
                                 </div>
                             `;
 
