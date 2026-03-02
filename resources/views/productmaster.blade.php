@@ -7,7 +7,6 @@
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
 
     <style>
-        /* Your existing CSS styles remain unchanged */
         .table-responsive {
             position: relative;
             border: 1px solid #e9ecef;
@@ -32,6 +31,7 @@
             letter-spacing: 0.5px;
             text-transform: uppercase;
             transition: all 0.2s ease;
+            text-align: center;
         }
 
         .table-responsive thead th:hover {
@@ -89,6 +89,35 @@
             border-color: #ef4444;
         }
 
+        .status-badges-full {
+            width: 100%;
+            flex-wrap: wrap;
+        }
+        .status-badges-full .status-badge-item {
+            flex: 1;
+            min-width: 100px;
+            padding: 10px 16px;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 700;
+            color: #000;
+            text-align: center;
+            white-space: nowrap;
+        }
+        .status-badges-full .status-badge-item.bg-active { background-color: #bbf7d0; }
+        .status-badges-full .status-badge-item.bg-inactive { background-color: #fecaca; }
+        .status-badges-full .status-badge-item.bg-dc { background-color: #fecaca; }
+        .status-badges-full .status-badge-item.bg-upcoming { background-color: #fef08a; }
+        .status-badges-full .status-badge-item.bg-2bdc { background-color: #bfdbfe; }
+
+        .status-dot {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            vertical-align: middle;
+        }
+
         .table-responsive tbody td {
             padding: 12px 18px;
             vertical-align: middle;
@@ -96,6 +125,7 @@
             font-size: 13px;
             color: #495057;
             transition: all 0.2s ease;
+            text-align: center;
         }
 
         .table-responsive tbody tr:nth-child(even) {
@@ -122,24 +152,32 @@
             border-collapse: separate;
             border-spacing: 0;
         }
+        .table-responsive .table {
+            table-layout: auto;
+            width: 100%;
+        }
+        .table-responsive .table thead th,
+        .table-responsive .table tbody td {
+            box-sizing: border-box;
+        }
 
-        .edit-btn {
+        .edit-btn.btn-outline-warning {
             border-radius: 6px;
             padding: 6px 12px;
             transition: all 0.2s;
-            background: #fff;
-            border: 1px solid #1a56b7;
-            color: #1a56b7;
+            background: transparent !important;
+            border: 1px solid #b38600 !important;
+            color: #b38600 !important;
         }
 
-        .edit-btn:hover {
-            background: #1a56b7;
-            color: white;
+        .edit-btn.btn-outline-warning:hover {
+            background: #b38600 !important;
+            color: white !important;
+            border-color: #b38600 !important;
             transform: translateY(-2px);
-            box-shadow: 0 3px 8px rgba(26, 86, 183, 0.2);
+            box-shadow: 0 3px 8px rgba(179, 134, 0, 0.3);
         }
 
-        /* Additional styles remain unchanged */
         .form-control {
             border: 2px solid #E2E8F0;
             border-radius: 6px;
@@ -181,50 +219,10 @@
             font-weight: bold;
         }
 
-        /* Add these new styles for the plus button and multi-select functionality */
-        .selection-controls {
-            position: relative;
-            z-index: 100;
-            display: inline-flex;
-            align-items: center;
-            opacity: 0;
-            transition: opacity 0.3s;
-        }
-
-        .card-body:hover .selection-controls {
-            opacity: 1;
-        }
-
-        .select-toggle-btn {
-            background: linear-gradient(135deg, #4ADE80 0%, #22C55E 100%);
-            color: white;
-            border: none;
-            border-radius: 50%;
-            width: 36px;
-            height: 36px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            box-shadow: 0 3px 10px rgba(34, 197, 94, 0.3);
-            transition: all 0.2s;
-        }
-
-        .select-toggle-btn:hover {
-            transform: scale(1.1);
-            box-shadow: 0 5px 15px rgba(34, 197, 94, 0.4);
-        }
-
-        .select-toggle-text {
-            margin-right: 10px;
-            font-weight: 600;
-            color: #333;
-        }
-
         .checkbox-column {
             width: 40px;
             text-align: center;
-            display: none;
+            display: table-cell;
         }
 
         .select-all-checkbox {
@@ -275,7 +273,6 @@
             display: inline-block;
         }
 
-        /* Add these styles to your CSS section */
         .field-operation {
             padding: 10px;
             border-radius: 6px;
@@ -569,77 +566,68 @@
             position: relative;
         }
 
-        /* Verified Data Dropdown Styling */
+        /* Verified column – green/red dot dropdown */
         .verified-data-dropdown {
-            min-width: 140px;
-            padding: 6px 10px;
-            border-radius: 4px;
-            border: 2px solid;
-            font-size: 13px;
-            font-weight: 500;
+            width: 32px;
+            height: 32px;
+            min-width: 32px;
+            padding: 0;
+            border-radius: 50%;
+            border: 2px solid rgba(0,0,0,0.15);
+            font-size: 18px;
+            line-height: 1;
             cursor: pointer;
             transition: all 0.2s ease;
             text-align: center;
             outline: none;
+            appearance: none;
+            -webkit-appearance: none;
+            background-repeat: no-repeat;
+            background-position: center;
         }
 
-        /* Not Verified state - Red (default) */
         .verified-data-dropdown.not-verified {
+            background-color: #fff;
             border-color: #dc3545;
-            background-color: #dc3545;
-            color: white;
+            color: #dc3545;
         }
 
         .verified-data-dropdown.not-verified:hover {
-            background-color: #c82333;
-            border-color: #c82333;
+            background-color: rgba(220, 53, 69, 0.1);
+            box-shadow: 0 0 0 2px rgba(220, 53, 69, 0.3);
         }
 
-        .verified-data-dropdown.not-verified:focus {
-            box-shadow: 0 0 0 3px rgba(220, 53, 69, 0.25);
-        }
-
-        /* Verified state - Green */
         .verified-data-dropdown.verified {
+            background-color: #fff;
             border-color: #28a745;
-            background-color: #28a745;
-            color: white;
+            color: #28a745;
         }
 
         .verified-data-dropdown.verified:hover {
-            background-color: #218838;
-            border-color: #218838;
+            background-color: rgba(40, 167, 69, 0.1);
+            box-shadow: 0 0 0 2px rgba(40, 167, 69, 0.3);
         }
 
-        .verified-data-dropdown.verified:focus {
-            box-shadow: 0 0 0 3px rgba(40, 167, 69, 0.25);
-        }
-
-        /* Dropdown options styling */
         .verified-data-dropdown option {
             padding: 8px;
-            background-color: white;
+            background: #fff;
             color: #333;
+            font-size: 14px;
         }
 
         .verified-data-dropdown option[value="0"] {
             color: #dc3545;
-            font-weight: 500;
         }
 
         .verified-data-dropdown option[value="1"] {
             color: #28a745;
-            font-weight: 500;
         }
 
-        /* Add green background to the cell when verified */
-        td:has(.verified-data-dropdown.verified) {
-            background-color: rgba(40, 167, 69, 0.1) !important;
-        }
-
-        /* Add red background to the cell when not verified */
-        td:has(.verified-data-dropdown.not-verified) {
-            background-color: rgba(220, 53, 69, 0.05) !important;
+        /* Column header badges (Parent count, SKU count) – 2x size */
+        .column-badge {
+            font-size: 2em;
+            font-weight: 700;
+            line-height: 1;
         }
     </style>
 @endsection
@@ -659,36 +647,6 @@
                     <div class="row mb-3">
                         <div class="col-md-6">
                             <div class="d-flex align-items-center gap-3">
-                                <!-- Keep selection-controls unchanged -->
-                                <div class="selection-controls" 
-                                    style="position: relative; opacity: 1; display: inline-flex; margin-right: 15px;">
-                                    <span class="select-toggle-text">Multi Add</span>
-                                    <button type="button" class="select-toggle-btn" id="toggleSelection">
-                                        <i class="fas fa-plus"></i>
-                                    </button>
-                                </div>
-                                <!-- Compact field selector -->
-                                <div class="field-selector-wrapper" style="width: 200px;">
-                                    <select class="form-select form-select-md" style="border-radius: 6px; border: 1px solid #92c1ff; font-size: 13px;">
-                                        <option value="">Filter By...</option>
-                                        <option value="lp">LP</option>
-                                        <option value="cp">CP</option>
-                                        <option value="frght">FRGHT</option>
-                                        <option value="ship">SHIP</option>
-                                        <option value="temu_ship">TEMU SHIP</option>
-                                        <option value="moq">MOQ</option>
-                                        <option value="ebay2_ship">EBAY2 SHIP</option>
-                                        <option value="initial_quantity">INITIAL QTY</option>
-                                        <option value="label_qty">Label QTY</option>
-                                        <option value="wt_act">WT ACT</option>
-                                        <option value="wt_decl">WT DECL</option>
-                                        <option value="l">L</option>
-                                        <option value="w">W</option>
-                                        <option value="h">H</option>
-                                        <option value="status">Status</option>
-                                    </select>
-                                </div>
-
                                 <div class="btn-group time-navigation-group" role="group" aria-label="Parent navigation">
                                     <button id="play-backward" class="btn btn-light rounded-circle" title="Previous parent">
                                         <i class="fas fa-step-backward"></i>
@@ -706,60 +664,32 @@
                                 </div>
                             </div>
                         </div>
-                        <div class="col-md-6 text-end">
-                            <div class="input-group mb-3">
-                                <span class="input-group-text"><i class="fas fa-search"></i></span>
-                                <input type="text" id="customSearch" class="form-control"
-                                    placeholder="Search products...">
-                                <button class="btn btn-outline-secondary" type="button" id="clearSearch">Clear</button>
-
-                                <!-- @php
-                                    $isAdmin =
-                                        auth()->check() && in_array(auth()->user()->role, ['admin', 'superadmin']);
-                                    @endphp -->
-
-                                <!-- @if ($isAdmin) -->
-                                    <button class="btn btn-outline-primary ms-2" type="button" id="culomnPermissionBtn">
-                                        <i class="fas"></i> Permission
-                                    </button>
-                                <!-- @endif -->
-                            </div>
-                        </div>
                     </div>
 
-                    <div class="col-md-6 text-end mb-3">
-                            <button type="button" class="btn btn-primary" data-bs-toggle="modal"
-                                data-bs-target="#addProductModal">
-                                <i class="fas fa-plus me-1"></i> ADD PRODUCT
-                            </button>
-
-                        <button type="button" class="btn btn-success ms-2" id="downloadExcel">
-                            <i class="fas fa-file-excel me-1"></i> Download Excel
-                        </button>
-
-                        <button type="button" class="btn btn-info ms-2" data-bs-toggle="modal" data-bs-target="#importExcelModal">
-                            <i class="fas fa-file-upload me-1"></i> Import Missing Data
-                        </button>
-
-                        <button type="button" class="btn btn-warning ms-2" data-bs-toggle="modal" data-bs-target="#bulkUpdateAllModal">
-                            <i class="fas fa-sync-alt me-1"></i> Bulk Update All Data
-                        </button>
-
-                        <button type="button" class="btn btn-danger ms-2" id="restoreBtn" style="display: none;">
-                            <i class="fas fa-undo me-1"></i> Restore Previous Values
-                        </button>
-
-                        {{-- <button id="missingImagesBtn" class="btn btn-success ms-2">
-                            <i class="bi bi-image"></i> Show Missing Data
-                        </button> --}}
-
-                        <button type="button" class="btn btn-success ms-2" id="viewArchivedBtn">
-                            <i class="fas fa-box-archive me-1"></i> View Archived Products
-                        </button>
-
-                        <button type="button" class="btn btn-warning ms-2" id="importFromApiBtn" hidden>
-                            <i class="fas fa-cloud-download-alt me-1"></i> Import from API Sheet
-                        </button>
+                    <div class="col-12 mb-2">
+                            <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
+                                <div class="d-flex flex-wrap align-items-center gap-2">
+                                    <button type="button" class="btn btn-primary" data-bs-toggle="modal"
+                                        data-bs-target="#addProductModal" title="Add product">
+                                        <i class="fas fa-plus"></i>
+                                    </button>
+                                    <button type="button" class="btn btn-success" id="downloadExcel">
+                                        <i class="fas fa-file-excel me-1"></i> Export
+                                    </button>
+                                    <button type="button" class="btn btn-info" data-bs-toggle="modal" data-bs-target="#importExcelModal">
+                                        <i class="fas fa-file-upload me-1"></i> Import
+                                    </button>
+                                    <button type="button" class="btn btn-success" id="viewArchivedBtn">
+                                        <i class="fas fa-eye me-1"></i> DC
+                                    </button>
+                                    <button type="button" class="btn btn-warning" id="importFromApiBtn" hidden>
+                                        <i class="fas fa-cloud-download-alt me-1"></i> Import from API Sheet
+                                    </button>
+                                </div>
+                            </div>
+                    </div>
+                    <div class="col-12 mb-3">
+                        <div id="statusBadgesBar" class="status-badges-full d-flex align-items-center justify-content-between gap-2"></div>
                     </div>
 
 
@@ -848,50 +778,6 @@
                         </div>
                     </div>
 
-                    <!-- Permission Modal -->
-                    <div class="modal fade" id="permissionModal" tabindex="-1" aria-labelledby="permissionModalLabel"
-                        aria-hidden="true">
-                        <div class="modal-dialog">
-                            <div class="modal-content" style="background: #fff;">
-                                <div class="modal-header modal-header-gradient">
-                                    <h5 class="modal-title" id="permissionModalLabel" style="color: white;">Column
-                                        Permission</h5>
-                                    <button type="button" class="btn-close" data-bs-dismiss="modal"
-                                        aria-label="Close"></button>
-                                </div>
-                                <div class="modal-body">
-                                    <!-- Email Dropdown -->
-                                    <div class="mb-3" style="position:relative;">
-                                        <label for="emailInput" class="form-label">Select Email</label>
-                                        <input type="text" id="emailInput" class="form-control" autocomplete="off"
-                                            placeholder="Type to search email...">
-                                        <div id="emailDropdownList" class="custom-dropdown"></div>
-                                    </div>
-                                    <!-- Column Dropdown & Add -->
-                                    <div class="mb-3" style="position:relative;">
-                                        <label for="columnInput" class="form-label">Add Column</label>
-                                        <input type="text" id="columnInput" class="form-control" autocomplete="off"
-                                            placeholder="Type to search column...">
-                                        <div id="columnDropdownList" class="custom-dropdown"></div>
-                                        <button type="button" class="btn btn-sm btn-success mt-2" id="addColumnBtn">Add
-                                            Column</button>
-                                    </div>
-                                    <!-- Current Columns -->
-                                    <div class="mb-3">
-                                        <label class="form-label">Current Columns</label>
-                                        <div id="currentColumns"></div>
-                                    </div>
-                                    <p class="mt-3">Set column permissions here.</p>
-                                </div>
-                                <div class="modal-footer modal-footer-gradient">
-                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                                    <button type="button" class="btn btn-primary" id="savePermissionBtn">Save
-                                        changes</button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
                     <!-- Add Product Modal -->
                     <div class="modal fade" id="addProductModal" tabindex="-1" aria-labelledby="addProductModalLabel"
                         aria-hidden="true">
@@ -960,11 +846,11 @@
                                                     <select class="form-control" id="status" name="status"
                                                         style="border: 2px solid #E2E8F0; border-radius: 6px; padding: 0.75rem; background-color: white;">
                                                         <option value="">Select Status</option>
-                                                        <option value="active">Active</option>
-                                                        <option value="inactive">Inactive</option>
-                                                        <option value="DC">DC</option>
-                                                        <option value="upcoming">Upcoming</option>
-                                                        <option value="2BDC">2BDC</option>
+                                                        <option value="active">🟢 Active</option>
+                                                        <option value="inactive">🔴 Inactive</option>
+                                                        <option value="DC">🔴 DC</option>
+                                                        <option value="upcoming">🟡 Upcoming</option>
+                                                        <option value="2BDC">🔵 2BDC</option>
                                                     </select>
                                                     <div class="invalid-feedback"></div>
                                                 </div>
@@ -1002,16 +888,6 @@
                                                         style="color: #4A5568;">LP</label>
                                                     <input type="text" class="form-control" id="lp"
                                                         placeholder="Enter LP"
-                                                        style="border: 2px solid #E2E8F0; border-radius: 6px; padding: 0.75rem; background-color: #EDF2F7;"
-                                                        readonly>
-                                                </div>
-                                            </div>
-                                            <div class="col-md-3">
-                                                <div class="form-group">
-                                                    <label for="freght" class="form-label fw-bold"
-                                                        style="color: #4A5568;">FRGHT</label>
-                                                    <input type="text" class="form-control" id="freght"
-                                                        placeholder="Enter FRIGHT"
                                                         style="border: 2px solid #E2E8F0; border-radius: 6px; padding: 0.75rem; background-color: #EDF2F7;"
                                                         readonly>
                                                 </div>
@@ -1092,19 +968,10 @@
                                             </div>
                                             <div class="col-md-3">
                                                 <div class="form-group">
-                                                    <label for="initial_quantity" class="form-label fw-bold"
-                                                        style="color: #4A5568;">INITIAL QUANTITY</label>
-                                                    <input type="text" class="form-control" id="initial_quantity"
-                                                        placeholder="Enter INITIAL QUANTITY"
-                                                        style="border: 2px solid #E2E8F0; border-radius: 6px; padding: 0.75rem; background-color: white;">
-                                                </div>
-                                            </div>
-                                            <div class="col-md-3">
-                                                <div class="form-group">
                                                     <label for="w" class="form-label fw-bold"
-                                                        style="color: #4A5568;">W</label>
+                                                        style="color: #4A5568;">Width</label>
                                                     <input type="text" class="form-control" id="w"
-                                                        placeholder="Enter W (inches)"
+                                                        placeholder="Enter Width (inches)"
                                                         style="border: 2px solid #E2E8F0; border-radius: 6px; padding: 0.75rem; background-color: white;">
                                                     <div class="invalid-feedback"></div>
                                                 </div>
@@ -1112,35 +979,20 @@
                                             <div class="col-md-3">
                                                 <div class="form-group">
                                                     <label for="l" class="form-label fw-bold"
-                                                        style="color: #4A5568;">L</label>
+                                                        style="color: #4A5568;">Length</label>
                                                     <input type="text" class="form-control" id="l"
-                                                        placeholder="Enter L (inches)"
+                                                        placeholder="Enter Length (inches)"
                                                         style="border: 2px solid #E2E8F0; border-radius: 6px; padding: 0.75rem; background-color: white;">
                                                     <div class="invalid-feedback"></div>
                                                 </div>
                                             </div>
-                                        </div>
-
-                                        <!-- Row 4 -->
-                                        <div class="row mb-4">
                                             <div class="col-md-3">
                                                 <div class="form-group">
                                                     <label for="h" class="form-label fw-bold"
-                                                        style="color: #4A5568;">H</label>
+                                                        style="color: #4A5568;">Height</label>
                                                     <input type="text" class="form-control" id="h"
-                                                        placeholder="Enter H (inches)"
+                                                        placeholder="Enter Height (inches)"
                                                         style="border: 2px solid #E2E8F0; border-radius: 6px; padding: 0.75rem; background-color: white;">
-                                                    <div class="invalid-feedback"></div>
-                                                </div>
-                                            </div>
-                                            <div class="col-md-3">
-                                                <div class="form-group">
-                                                    <label for="cbm" class="form-label fw-bold"
-                                                        style="color: #4A5568;">CBM</label>
-                                                    <input type="text" class="form-control" id="cbm"
-                                                        placeholder="Enter CBM"
-                                                        style="border: 2px solid #E2E8F0; border-radius: 6px; padding: 0.75rem; background-color: #EDF2F7;"
-                                                        readonly>
                                                     <div class="invalid-feedback"></div>
                                                 </div>
                                             </div>
@@ -1150,15 +1002,6 @@
                                                         style="color: #4A5568;">Pcs/Box</label>
                                                     <input type="text" class="form-control" id="pcbox"
                                                         placeholder="Enter Pcs/Box"
-                                                        style="border: 2px solid #E2E8F0; border-radius: 6px; padding: 0.75rem; background-color: white;">
-                                                </div>
-                                            </div>
-                                            <div class="col-md-3">
-                                                <div class="form-group">
-                                                    <label for="l1" class="form-label fw-bold"
-                                                        style="color: #4A5568;">L1</label>
-                                                    <input type="text" class="form-control" id="l1"
-                                                        placeholder="Enter L1"
                                                         style="border: 2px solid #E2E8F0; border-radius: 6px; padding: 0.75rem; background-color: white;">
                                                 </div>
                                             </div>
@@ -1197,9 +1040,9 @@
                                             <div class="col-md-3">
                                                 <div class="form-group">
                                                     <label for="l2Url" class="form-label fw-bold"
-                                                        style="color: #4A5568;">L(2) URL</label>
+                                                        style="color: #4A5568;">Url</label>
                                                     <input type="text" class="form-control" id="l2Url"
-                                                        placeholder="Enter URL"
+                                                        placeholder="Enter Url"
                                                         style="border: 2px solid #E2E8F0; border-radius: 6px; padding: 0.75rem; background-color: white;">
                                                 </div>
                                             </div>
@@ -1320,13 +1163,12 @@
                                                         <option value="temu_ship">TEMU SHIP</option>
                                                         <option value="moq">MOQ</option>
                                                         <option value="ebay2_ship">EBAY2 SHIP</option>
-                                                        <option value="initial_quantity">INITIAL QUANTITY</option>
                                                         <option value="label_qty">Label QTY</option>
                                                         <option value="wt_act">WT ACT</option>
                                                         <option value="wt_decl">WT DECL</option>
-                                                        <option value="l">L</option>
-                                                        <option value="w">W</option>
-                                                        <option value="h">H</option>
+                                                        <option value="l">Length</option>
+                                                        <option value="w">Width</option>
+                                                        <option value="h">Height</option>
                                                         <option value="status">Status</option>
                                                     </select>
                                                 </div>
@@ -1428,7 +1270,7 @@
                                         <i class="fas fa-info-circle me-2"></i>
                                         <strong>Instructions:</strong>
                                         <ol class="mb-0 mt-2">
-                                            <li>Export the Excel file using the "Download Excel" button</li>
+                                            <li>Export the Excel file using the "Export" button</li>
                                             <li>Fill in the missing data (only missing fields will be updated)</li>
                                             <li>Upload the completed file</li>
                                         </ol>
@@ -1457,65 +1299,65 @@
                         </div>
                     </div>
 
-                    <!-- Bulk Update All Modal (Updates ALL Data) -->
-                    <div class="modal fade" id="bulkUpdateAllModal" tabindex="-1" aria-labelledby="bulkUpdateAllModalLabel" aria-hidden="true">
-                        <div class="modal-dialog modal-dialog-centered modal-lg">
-                            <div class="modal-content border-0" style="border-radius: 18px; overflow: hidden;">
-                                <div class="modal-header" style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); color: white;">
-                                    <h5 class="modal-title" id="bulkUpdateAllModalLabel">
-                                        <i class="fas fa-sync-alt me-2"></i>Bulk Update All Product Data
+                    <!-- Bulk Actions Modal (Parent, CP, Unit, MOQ) - same style as Tasks -->
+                    <div class="modal fade" id="bulkActionsModal" tabindex="-1" aria-hidden="true">
+                        <div class="modal-dialog modal-lg">
+                            <div class="modal-content">
+                                <div class="modal-header" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white;">
+                                    <h5 class="modal-title">
+                                        <i class="fas fa-tasks me-2"></i>Bulk Actions
                                     </h5>
-                                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                                 </div>
                                 <div class="modal-body">
-                                    <div class="alert alert-warning">
-                                        <i class="fas fa-exclamation-triangle me-2"></i>
-                                        <strong>⚠️ Warning: This will REPLACE all existing data!</strong>
-                                        <ul class="mb-0 mt-2">
-                                            <li><strong>Updates ALL fields</strong> from the Excel file</li>
-                                            <li>Skips only: INV & OV L30 (Inventory) columns</li>
-                                            <li>Empty cells keep existing database values</li>
-                                            <li>Creates backup for restore option</li>
-                                        </ul>
-                                    </div>
-
-                                    <div class="alert alert-info">
+                                    <p class="mb-3">
                                         <i class="fas fa-info-circle me-2"></i>
-                                        <strong>Instructions:</strong>
-                                        <ol class="mb-0 mt-2">
-                                            <li>Download template or current data using buttons below</li>
-                                            <li>Update the values you want to change</li>
-                                            <li>Upload the file (backup will be created automatically)</li>
-                                            <li>Use "Restore Previous Values" button if needed</li>
-                                        </ol>
-                                    </div>
-
-                                    <div class="mb-3 d-flex gap-2">
-                                        <a href="/product-master/download-template" class="btn btn-outline-primary btn-sm">
-                                            <i class="fas fa-download me-1"></i> Download Template
+                                        <strong><span id="bulkSelectedCount">0</span> product(s) selected</strong>
+                                    </p>
+                                    <div class="list-group">
+                                        <a href="#" class="list-group-item list-group-item-action" id="bulk-change-parent-btn">
+                                            <i class="fas fa-sitemap text-primary me-2"></i>
+                                            <strong>Change Parent</strong>
+                                            <small class="d-block text-muted">Set the same parent for all selected products</small>
                                         </a>
-                                        <button type="button" class="btn btn-outline-success btn-sm" id="downloadCurrentData">
-                                            <i class="fas fa-file-excel me-1"></i> Download Current Data
-                                        </button>
+                                        <a href="#" class="list-group-item list-group-item-action" id="bulk-change-cp-btn">
+                                            <i class="fas fa-dollar-sign text-success me-2"></i>
+                                            <strong>Change CP (Cost)</strong>
+                                            <small class="d-block text-muted">Set cost price for all selected products</small>
+                                        </a>
+                                        <a href="#" class="list-group-item list-group-item-action" id="bulk-change-unit-btn">
+                                            <i class="fas fa-cubes text-info me-2"></i>
+                                            <strong>Change Unit</strong>
+                                            <small class="d-block text-muted">Set unit (e.g. Pieces, Pair) for all selected products</small>
+                                        </a>
+                                        <a href="#" class="list-group-item list-group-item-action" id="bulk-change-moq-btn">
+                                            <i class="fas fa-sort-numeric-up text-warning me-2"></i>
+                                            <strong>Change MOQ</strong>
+                                            <small class="d-block text-muted">Set minimum order quantity for all selected products</small>
+                                        </a>
                                     </div>
-
-                                    <div class="mb-3">
-                                        <label for="bulkUpdateFile" class="form-label fw-bold">Select Excel File</label>
-                                        <input type="file" class="form-control" id="bulkUpdateFile" accept=".xlsx,.xls,.csv">
-                                        <div class="form-text">Supported formats: .xlsx, .xls, .csv</div>
-                                        <div id="bulkUpdateFileError" class="text-danger mt-2" style="display: none;"></div>
-                                    </div>
-
-                                    <div id="bulkUpdateProgress" class="progress mb-3" style="display: none;">
-                                        <div class="progress-bar progress-bar-striped progress-bar-animated bg-warning" role="progressbar" style="width: 0%"></div>
-                                    </div>
-
-                                    <div id="bulkUpdateResult" class="alert" style="display: none;"></div>
                                 </div>
                                 <div class="modal-footer">
-                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                                    <button type="button" class="btn btn-warning" id="bulkUpdateBtn" disabled>
-                                        <i class="fas fa-sync-alt me-2"></i>Update All Data
+                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Bulk Update Form Modal (single field value) -->
+                    <div class="modal fade" id="bulkUpdateFormModal" tabindex="-1" aria-hidden="true">
+                        <div class="modal-dialog">
+                            <div class="modal-content">
+                                <div class="modal-header bg-primary text-white">
+                                    <h5 class="modal-title" id="bulkUpdateFormModalTitle">Bulk Update</h5>
+                                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                                </div>
+                                <div class="modal-body" id="bulkUpdateFormModalBody">
+                                    <!-- Dynamic content -->
+                                </div>
+                                <div class="modal-footer">
+                                    <button type="button" class="btn btn-primary" id="confirmBulkUpdateFormBtn">
+                                        <i class="fas fa-check me-1"></i>Update
                                     </button>
                                 </div>
                             </div>
@@ -1526,7 +1368,10 @@
                     <div class="selection-actions" id="selectionActions">
                         <span class="selection-count">0 items selected</span>
                         <button class="btn btn-sm btn-light" id="cancelSelection">Cancel</button>
-                        <button class="btn btn-sm btn-success" id="processSelected">Process Selected</button>
+                        <button class="btn btn-sm btn-info" id="bulkActionsBtn" title="Bulk edit Parent, CP, Unit, MOQ">
+                            <i class="fas fa-tasks me-1"></i>Bulk Actions
+                        </button>
+                        <button class="btn btn-sm btn-success" id="processSelected" title="Update price, status, etc. for selected products"><i class="fas fa-edit me-1"></i> Update selected</button>
                     </div>
 
                     <div class="table-responsive">
@@ -1541,7 +1386,7 @@
                                     <th>
                                         <div style="display: flex; align-items: center; gap: 10px;">
                                             <span>Parent</span>
-                                            <span id="parentCount">(0)</span>
+                                            <span id="parentCount" class="column-badge">(0)</span>
                                         </div>
                                         <input type="text" id="parentSearch" class="form-control-sm"
                                             placeholder="Search Parent">
@@ -1549,7 +1394,7 @@
                                     <th>
                                         <div style="display: flex; align-items: center; gap: 10px;">
                                             <span>SKU</span>
-                                            <span id="skuCount">(0)</span>
+                                            <span id="skuCount" class="column-badge">(0)</span>
                                         </div>
                                         <input type="text" id="skuSearch" class="form-control-sm"
                                             placeholder="Search SKU">
@@ -1570,11 +1415,11 @@
                                     <th>Label QTY</th>
                                     <th>WT ACT</th>
                                     <th>WT DECL</th>
-                                    <th>L</th>
-                                    <th>W</th>
-                                    <th>H</th>
+                                    <th>Length</th>
+                                    <th>Width</th>
+                                    <th>Height</th>
                                     <th>CBM</th>
-                                    <th>L(2)</th>
+                                    <th>Url</th>
                                     <th>Action</th>
                                 </tr>
                             </thead>
@@ -1602,212 +1447,7 @@
         window.userPermissions = @json($permissions ?? []);
         const productPermissions = window.userPermissions['cp_masters'] || [];
         const emailColumnMap = @json($emailColumnMap ?? []);
-        // Add this to the top of your DOMContentLoaded event handler
         const currentUserEmail = @json(auth()->user()->email ?? '');
-        console.log('Current user email:', currentUserEmail);
-
-        document.addEventListener('DOMContentLoaded', function() {
-            // Emails and columns setup
-            const emails = @json($emails ?? []);
-            const columns = ["UPC","INV", "OV L30", "STATUS", "Unit", "LP", "CP$", "FRGHT", "SHIP",
-                "TEMU SHIP", "MOQ", "EBAY2 SHIP", "INITIAL QUANTITY", "Label QTY", "WT ACT", "WT DECL", "L", "W", "H", "CBM", "L(2)", "Action"
-            ];
-            let selectedColumns = [];
-            let selectedEmail = '';
-
-            // Email dropdown logic
-            const input = document.getElementById('emailInput');
-            const dropdown = document.getElementById('emailDropdownList');
-            if (input) {
-                input.addEventListener('focus', () => showDropdown(emails));
-                input.addEventListener('input', function() {
-                    const value = this.value.toLowerCase();
-                    showDropdown(emails.filter(email => email.toLowerCase().includes(value)));
-                });
-            }
-            if (dropdown) {
-                dropdown.addEventListener('mousedown', function(e) {
-                    if (e.target.classList.contains('dropdown-item')) {
-                        if (input) input.value = e.target.textContent;
-                        hideDropdown();
-                        if (input) selectedEmail = input.value;
-                        loadUserColumns(selectedEmail); // Now uses local data
-                    }
-                });
-            }
-            document.addEventListener('mousedown', function(e) {
-                if (input && dropdown && !input.contains(e.target) && !dropdown.contains(e.target)) {
-                    hideDropdown();
-                }
-            });
-
-            function showDropdown(list) {
-                dropdown.innerHTML = '';
-                if (list.length === 0) return hideDropdown();
-                list.forEach(email => {
-                    const item = document.createElement('div');
-                    item.className = 'dropdown-item';
-                    item.textContent = email;
-                    dropdown.appendChild(item);
-                });
-                dropdown.style.display = 'block';
-            }
-
-            function hideDropdown() {
-                dropdown.style.display = 'none';
-            }
-
-            // Column dropdown logic
-            const columnInput = document.getElementById('columnInput');
-            const columnDropdown = document.getElementById('columnDropdownList');
-            columnInput.addEventListener('focus', () => showColumnDropdown(columns));
-            columnInput.addEventListener('input', function() {
-                const value = this.value.toLowerCase();
-                showColumnDropdown(columns.filter(col => col.toLowerCase().includes(value)));
-            });
-            columnDropdown.addEventListener('mousedown', function(e) {
-                if (e.target.classList.contains('dropdown-item')) {
-                    columnInput.value = e.target.textContent;
-                    hideColumnDropdown();
-                }
-            });
-            document.addEventListener('mousedown', function(e) {
-                if (!columnInput.contains(e.target) && !columnDropdown.contains(e.target))
-                    hideColumnDropdown();
-            });
-
-            function showColumnDropdown(list) {
-                columnDropdown.innerHTML = '';
-                if (list.length === 0) return hideColumnDropdown();
-                list.forEach(col => {
-                    const item = document.createElement('div');
-                    item.className = 'dropdown-item';
-                    item.textContent = col;
-                    columnDropdown.appendChild(item);
-                });
-                columnDropdown.style.display = 'block';
-            }
-
-            function hideColumnDropdown() {
-                columnDropdown.style.display = 'none';
-            }
-
-            // Add column to selectedColumns
-            const addColumnBtn = document.getElementById('addColumnBtn');
-            if (addColumnBtn) {
-                addColumnBtn.addEventListener('click', function() {
-                    const col = columnInput.value.trim();
-                    if (col && !selectedColumns.includes(col)) {
-                        selectedColumns.push(col);
-                        renderCurrentColumns();
-                        columnInput.value = '';
-                    }
-                });
-            }
-
-            // Render current columns with remove buttons
-            function renderCurrentColumns() {
-                const container = document.getElementById('currentColumns');
-                container.innerHTML = '';
-                selectedColumns.forEach(col => {
-                    const tag = document.createElement('span');
-                    tag.className = 'badge bg-primary me-2';
-                    tag.textContent = col;
-                    const removeBtn = document.createElement('button');
-                    removeBtn.className = 'btn btn-sm btn-danger ms-1';
-                    removeBtn.textContent = '×';
-                    removeBtn.onclick = () => {
-                        selectedColumns = selectedColumns.filter(c => c !== col);
-                        renderCurrentColumns();
-                    };
-                    tag.appendChild(removeBtn);
-                    container.appendChild(tag);
-                });
-            }
-
-            // Load user's current columns from backend
-            function loadUserColumns(email) {
-                selectedColumns = emailColumnMap[email] || [];
-                renderCurrentColumns();
-            }
-
-            // Open permission modal on button click
-            // document.getElementById('culomnPermissionBtn').addEventListener('click', function() {
-            //     const modal = document.getElementById('permissionModal');
-            //     if (modal && typeof bootstrap !== 'undefined' && bootstrap.Modal) {
-            //         const permissionModal = new bootstrap.Modal(modal);
-            //         permissionModal.show();
-            //     }
-            // });
-
-            // Save permission AJAX
-            const savePermissionBtn = document.getElementById('savePermissionBtn');
-            if (savePermissionBtn) {
-                savePermissionBtn.addEventListener('click', function() {
-                    if (!selectedEmail) {
-                        showToast('danger', 'Please select an email');
-                        return;
-                    }
-                    fetch('/auth/save-column-permission', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
-                        },
-                        body: JSON.stringify({
-                            user_email: selectedEmail,
-                            columns: selectedColumns,
-                            module: 'product_master'
-                        })
-                    })
-                    .then(res => res.json())
-                    .then(data => {
-                        if (data.success) {
-                            showToast('success', 'Permission saved!');
-                            document.getElementById('permissionModal').classList.remove('show');
-                            document.getElementById('permissionModal').setAttribute('aria-hidden',
-                                'true');
-                            document.body.classList.remove('modal-open');
-                            document.querySelector('.modal-backdrop')?.remove();
-                        } else {
-                            showToast('danger', data.message || 'Error saving permission');
-                        }
-                    })
-                    .catch(() => {
-                        showToast('danger', 'Error saving permission');
-                    });
-                });
-            }
-
-            // Toast notification function
-            function showToast(type, message) {
-                document.querySelectorAll('.custom-toast').forEach(t => t.remove());
-                const toast = document.createElement('div');
-                toast.className =
-                    `custom-toast toast align-items-center text-bg-${type} border-0 show position-fixed top-0 end-0 m-4`;
-                toast.style.zIndex = 2000;
-                toast.setAttribute('role', 'alert');
-                toast.setAttribute('aria-live', 'assertive');
-                toast.setAttribute('aria-atomic', 'true');
-                toast.innerHTML = `
-                    <div class="d-flex">
-                        <div class="toast-body">${message}</div>
-                        <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
-                    </div>
-                `;
-                document.body.appendChild(toast);
-
-                setTimeout(() => {
-                    toast.classList.remove('show');
-                    setTimeout(() => toast.remove(), 500);
-                }, 3000);
-
-                toast.querySelector('[data-bs-dismiss="toast"]').onclick = () => {
-                    toast.classList.remove('show');
-                    setTimeout(() => toast.remove(), 500);
-                };
-            }
-        });
     </script>
     <script src="https://code.jquery.com/jquery-3.6.4.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -1823,7 +1463,7 @@
             let isProductNavigationActive = false;
             let currentProductParentIndex = -1;
             let filteredProductData = [];
-            let selectionMode = false; // Global selection mode flag
+            let selectionMode = true; // Selection always on (Multi Add removed)
 
             // Track selected items with both SKU and ID
             let selectedItems = {}; // Format: { sku: { id: 123, checked: true } }
@@ -1965,8 +1605,8 @@
                 // All available columns
                 const allColumns = [
                     "Image", "Parent", "SKU", "UPC", "Status", "INV", "OV L30", "Unit", "LP", "CP$",
-                    "FRGHT", "SHIP", "TEMU SHIP", "MOQ", "EBAY2 SHIP", "Label QTY", "WT ACT", "WT DECL", "L", "W", "H",
-                    "CBM", "L(2)", "Verified Data", "Action"
+                    "FRGHT", "SHIP", "TEMU SHIP", "MOQ", "EBAY2 SHIP", "Label QTY", "WT ACT", "WT DECL", "Length", "Width", "Height",
+                    "CBM", "Url", "Verified", "Action"
                 ];
 
                 // Filter to get visible columns
@@ -2029,6 +1669,33 @@
                             ovl30: 0
                         };
 
+                        // Checkbox for parent row when selection mode is active
+                        if (selectionMode) {
+                            const isChecked = selectedItems[item.SKU] ? 'checked' : '';
+                            const checkboxCell = document.createElement('td');
+                            checkboxCell.className = 'checkbox-cell';
+                            checkboxCell.style.textAlign = 'center';
+                            let itemId = item.id;
+                            if (!itemId || itemId === '' || itemId === null || itemId === undefined) {
+                                const product = productMap.get(item.SKU);
+                                if (product && product.id) itemId = product.id;
+                            }
+                            const numericId = itemId ? parseInt(itemId, 10) : null;
+                            const idValue = (numericId && !isNaN(numericId) && numericId > 0) ? numericId.toString() : '';
+                            const checkbox = document.createElement('input');
+                            checkbox.type = 'checkbox';
+                            checkbox.className = 'row-checkbox';
+                            checkbox.setAttribute('data-sku', escapeHtml(item.SKU || ''));
+                            checkbox.setAttribute('data-id', idValue);
+                            checkbox.style.cursor = 'pointer';
+                            checkbox.style.pointerEvents = 'auto';
+                            checkbox.disabled = false;
+                            if (isChecked) checkbox.checked = true;
+                            checkbox.addEventListener('click', function(e) { e.stopPropagation(); });
+                            checkboxCell.appendChild(checkbox);
+                            row.appendChild(checkboxCell);
+                        }
+
                         visibleColumns.forEach(col => {
                             let cell = document.createElement('td');
                             
@@ -2055,7 +1722,7 @@
                                     cell.innerHTML = `<b>${totals.ovl30}</b>`;
                                     break;
                                 case "STATUS":
-                                    cell.textContent = escapeHtml(item.status) || '-';
+                                    cell.innerHTML = getStatusDot(item.status);
                                     break;
                                 case "Unit":
                                     cell.textContent = item.unit || '-';
@@ -2095,15 +1762,15 @@
                                     cell.className = 'text-center';
                                     cell.textContent = formatNumber(item.wt_decl || 0, 2);
                                     break;
-                                case "L":
+                                case "Length":
                                     cell.className = 'text-center';
                                     cell.textContent = formatNumber(item.l || 0, 2);
                                     break;
-                                case "W":
+                                case "Width":
                                     cell.className = 'text-center';
                                     cell.textContent = formatNumber(item.w || 0, 2);
                                     break;
-                                case "H":
+                                case "Height":
                                     cell.className = 'text-center';
                                     cell.textContent = formatNumber(item.h || 0, 2);
                                     break;
@@ -2111,13 +1778,13 @@
                                     cell.className = 'text-center';
                                     cell.textContent = formatNumber(item.cbm, 4);
                                     break;
-                                case "L(2)":
+                                case "Url":
                                     cell.className = 'text-center';
                                     cell.innerHTML = item.l2_url ?
                                         `<a href="${escapeHtml(item.l2_url)}" target="_blank"><i class="fas fa-external-link-alt"></i></a>` :
                                         '-';
                                     break;
-                                case "Verified Data":
+                                case "Verified":
                                     cell.className = 'text-center';
                                     cell.textContent = '-';
                                     break;
@@ -2216,7 +1883,7 @@
                         switch (col) {
                             case "Status":
                                 isMissing = isDataMissing(item.status);
-                                cellContent = isMissing ? '' : escapeHtml(item.status);
+                                cellContent = getStatusDot(item.status);
                                 cell.innerHTML = addMissingIndicator(cellContent, isMissing, item.SKU || '', 'status', 'Status');
                                 break;
                             case "Image":
@@ -2279,8 +1946,8 @@
                                 break;
                             case "STATUS":
                                 isMissing = isDataMissing(item.status);
-                                cellContent = isMissing ? '' : escapeHtml(item.status);
-                                cell.innerHTML = addMissingIndicator(cellContent, isMissing);
+                                cellContent = getStatusDot(item.status);
+                                cell.innerHTML = addMissingIndicator(cellContent, isMissing, item.SKU || '', 'status', 'Status');
                                 break;
                             case "Unit":
                                 isMissing = isDataMissing(item.unit);
@@ -2382,43 +2049,43 @@
                                     }
                                 }
                                 break;
-                            case "L":
+                            case "Length":
                                 cell.className = 'text-center';
                                 isMissing = isDataMissing(item.l, true) || (item.l === 0 || item.l === '0');
                                 if (isMissing) {
-                                    cell.innerHTML = createMissingDataButton(item.SKU || '', 'l', 'L');
+                                    cell.innerHTML = createMissingDataButton(item.SKU || '', 'l', 'Length');
                                 } else {
                                     const formatted = formatNumber(item.l, 2);
                                     if (formatted === '-') {
-                                        cell.innerHTML = createMissingDataButton(item.SKU || '', 'l', 'L');
+                                        cell.innerHTML = createMissingDataButton(item.SKU || '', 'l', 'Length');
                                     } else {
                                         cell.textContent = formatted;
                                     }
                                 }
                                 break;
-                            case "W":
+                            case "Width":
                                 cell.className = 'text-center';
                                 isMissing = isDataMissing(item.w, true) || (item.w === 0 || item.w === '0');
                                 if (isMissing) {
-                                    cell.innerHTML = createMissingDataButton(item.SKU || '', 'w', 'W');
+                                    cell.innerHTML = createMissingDataButton(item.SKU || '', 'w', 'Width');
                                 } else {
                                     const formatted = formatNumber(item.w, 2);
                                     if (formatted === '-') {
-                                        cell.innerHTML = createMissingDataButton(item.SKU || '', 'w', 'W');
+                                        cell.innerHTML = createMissingDataButton(item.SKU || '', 'w', 'Width');
                                     } else {
                                         cell.textContent = formatted;
                                     }
                                 }
                                 break;
-                            case "H":
+                            case "Height":
                                 cell.className = 'text-center';
                                 isMissing = isDataMissing(item.h, true) || (item.h === 0 || item.h === '0');
                                 if (isMissing) {
-                                    cell.innerHTML = createMissingDataButton(item.SKU || '', 'h', 'H');
+                                    cell.innerHTML = createMissingDataButton(item.SKU || '', 'h', 'Height');
                                 } else {
                                     const formatted = formatNumber(item.h, 2);
                                     if (formatted === '-') {
-                                        cell.innerHTML = createMissingDataButton(item.SKU || '', 'h', 'H');
+                                        cell.innerHTML = createMissingDataButton(item.SKU || '', 'h', 'Height');
                                     } else {
                                         cell.textContent = formatted;
                                     }
@@ -2438,25 +2105,25 @@
                                     }
                                 }
                                 break;
-                            case "L(2)":
+                            case "Url":
                                 cell.className = 'text-center';
                                 isMissing = isDataMissing(item.l2_url);
                                 if (isMissing) {
-                                    cell.innerHTML = createMissingDataButton(item.SKU || '', 'l2_url', 'L(2)');
+                                    cell.innerHTML = createMissingDataButton(item.SKU || '', 'l2_url', 'Url');
                                 } else {
                                     cell.innerHTML = `<a href="${escapeHtml(item.l2_url)}" target="_blank"><i class="fas fa-external-link-alt"></i></a>`;
                                 }
                                 break;
-                            case "Verified Data":
+                            case "Verified":
                                 cell.className = 'text-center';
                                 const isVerified = item.verified_data === 1 || item.verified_data === true || (item.Values && item.Values.verified_data === 1) || (item.Values && item.Values.verified_data === true);
                                 const verifiedClass = isVerified ? 'verified' : 'not-verified';
                                 const verifiedValue = isVerified ? '1' : '0';
                                 cell.innerHTML = `
                                     <select class="verified-data-dropdown ${verifiedClass}" 
-                                        data-sku="${escapeHtml(item.SKU)}">
-                                        <option value="0" ${!isVerified ? 'selected' : ''}>Not Verified</option>
-                                        <option value="1" ${isVerified ? 'selected' : ''}>Verified</option>
+                                        data-sku="${escapeHtml(item.SKU)}" title="${isVerified ? 'Verified' : 'Not verified'}">
+                                        <option value="0" ${!isVerified ? 'selected' : ''}>🔴</option>
+                                        <option value="1" ${isVerified ? 'selected' : ''}>🟢</option>
                                     </select>
                                 `;
                                 break;
@@ -3046,7 +2713,7 @@
                         tr.innerHTML = `
                             <td>${escapeHtml(item.Parent || '-')}</td>
                             <td>${escapeHtml(item.SKU || '-')}</td>
-                            <td>${escapeHtml(item.status || '-')}</td>
+                            <td>${getStatusDot(item.status)}</td>
 
                             <td class="${isMissingCP ? 'text-danger fw-bold' : ''}">
                                 ${isMissingCP ? 'Missing CP' : formatNumber(item.cp, 2)}
@@ -3088,7 +2755,6 @@
                 // Preserve current search input values so re-rendering header doesn't clear them
                 const existingParentVal = document.getElementById('parentSearch')?.value || '';
                 const existingSkuVal = document.getElementById('skuSearch')?.value || '';
-                const existingCustomVal = document.getElementById('customSearch')?.value || '';
 
                 // Preserve missing data filter values - use global currentFilterValues if available, otherwise get from DOM
                 const existingFilterValues = Object.keys(currentFilterValues).length > 0 ? currentFilterValues : {};
@@ -3106,7 +2772,7 @@
 
                 // Preserve focus and selection so user's typing isn't interrupted
                 const activeEl = document.activeElement;
-                const activeId = (activeEl && ['parentSearch', 'skuSearch', 'customSearch'].includes(activeEl.id)) ? activeEl.id : null;
+                const activeId = (activeEl && ['parentSearch', 'skuSearch'].includes(activeEl.id)) ? activeEl.id : null;
                 const activeSelectionStart = activeEl && activeId ? activeEl.selectionStart : null;
                 const activeSelectionEnd = activeEl && activeId ? activeEl.selectionEnd : null;
 
@@ -3124,8 +2790,8 @@
                 // All available columns
                 const allColumns = [
                     "Images", "Parent", "SKU", "UPC","STATUS", "INV", "OV L30", "Unit", "LP", "CP$",
-                    "FRGHT", "SHIP", "TEMU SHIP", "MOQ", "EBAY2 SHIP", "Label QTY", "WT ACT", "WT DECL", "L", "W", "H",
-                    "CBM", "L(2)", "Verified Data", "Action"
+                    "FRGHT", "SHIP", "TEMU SHIP", "MOQ", "EBAY2 SHIP", "Label QTY", "WT ACT", "WT DECL", "Length", "Width", "Height",
+                    "CBM", "Url", "Verified", "Action"
                 ];
 
                 // Add only columns that are not in the hidden list
@@ -3137,11 +2803,11 @@
                             th.innerHTML = `
                     <div style="display: flex; align-items: center; gap: 10px;">
                         <span>${colName}</span>
-                        <span id="${colName.toLowerCase()}Count">(0)</span>
+                        <span id="${colName.toLowerCase()}Count" class="column-badge">(0)</span>
                     </div>
                     <input type="text" id="${colName.toLowerCase()}Search" class="form-control-sm" placeholder="Search ${colName}">
                 `;
-                        } else if (colName === "Action" || colName === "Verified Data") {
+                        } else if (colName === "Action" || colName === "Verified") {
                             th.textContent = colName;
                         } else if (colName === "STATUS") {
                             // Special handling for STATUS column with all status options
@@ -3152,11 +2818,11 @@
                     <select id="${filterId}" class="form-control form-control-sm mt-1 missing-data-filter" style="font-size: 9px; padding: 2px 4px;" data-column="${colName}">
                         <option value="all" ${savedFilterValue === 'all' ? 'selected' : ''}>All</option>
                         <option value="missing" ${savedFilterValue === 'missing' ? 'selected' : ''}>Missing</option>
-                        <option value="active" ${savedFilterValue === 'active' ? 'selected' : ''}>Active</option>
-                        <option value="inactive" ${savedFilterValue === 'inactive' ? 'selected' : ''}>Inactive</option>
-                        <option value="DC" ${savedFilterValue === 'DC' ? 'selected' : ''}>DC</option>
-                        <option value="upcoming" ${savedFilterValue === 'upcoming' ? 'selected' : ''}>Upcoming</option>
-                        <option value="2BDC" ${savedFilterValue === '2BDC' ? 'selected' : ''}>2BDC</option>
+                        <option value="active" ${savedFilterValue === 'active' ? 'selected' : ''}>🟢 Active</option>
+                        <option value="inactive" ${savedFilterValue === 'inactive' ? 'selected' : ''}>🔴 Inactive</option>
+                        <option value="DC" ${savedFilterValue === 'DC' ? 'selected' : ''}>🔴 DC</option>
+                        <option value="upcoming" ${savedFilterValue === 'upcoming' ? 'selected' : ''}>🟡 Upcoming</option>
+                        <option value="2BDC" ${savedFilterValue === '2BDC' ? 'selected' : ''}>🔵 2BDC</option>
                     </select>
                 `;
                         } else {
@@ -3204,7 +2870,6 @@
                 // Restore any preserved search values to inputs that were recreated
                 if (document.getElementById('parentSearch')) document.getElementById('parentSearch').value = existingParentVal;
                 if (document.getElementById('skuSearch')) document.getElementById('skuSearch').value = existingSkuVal;
-                if (document.getElementById('customSearch')) document.getElementById('customSearch').value = existingCustomVal;
 
                 // Restore missing data filter values and apply styling
                 document.querySelectorAll('.missing-data-filter').forEach(filter => {
@@ -3233,20 +2898,51 @@
 
                 if (parentCount && skuCount) {
                     const parentSet = new Set();
-                    let skuCount = 0;
+                    let skuCountNum = 0;
                     tableData.forEach(item => {
                         if (item.Parent) parentSet.add(item.Parent);
                         // Only count SKUs that do NOT contain 'PARENT'
                         if (item.SKU && !String(item.SKU).toUpperCase().includes('PARENT'))
-                            skuCount++;
+                            skuCountNum++;
                     });
 
                     document.getElementById('parentCount').textContent = `(${parentSet.size})`;
-                    document.getElementById('skuCount').textContent = `(${skuCount})`;
+                    document.getElementById('skuCount').textContent = `(${skuCountNum})`;
                 }
+
+                updateStatusBadgesBar();
 
                 // Setup missing data filter event listeners
                 setupMissingDataFilters();
+            }
+
+            function updateStatusBadgesBar() {
+                const bar = document.getElementById('statusBadgesBar');
+                if (!bar) return;
+                const statusCounts = { active: 0, inactive: 0, DC: 0, upcoming: 0, '2BDC': 0 };
+                (tableData || []).forEach(item => {
+                    const sku = String(item.SKU || item.sku || '').toUpperCase();
+                    if (sku.includes('PARENT')) return;
+                    let raw = item.status;
+                    if ((raw == null || raw === '') && item.Values) {
+                        const V = typeof item.Values === 'string' ? (function(){ try { return JSON.parse(item.Values); } catch(e) { return {}; } })() : item.Values;
+                        raw = V && V.status;
+                    }
+                    const s = String(raw || '').trim();
+                    const lower = s.toLowerCase();
+                    if (lower === 'active') statusCounts.active++;
+                    else if (lower === 'inactive') statusCounts.inactive++;
+                    else if (s.toUpperCase() === 'DC') statusCounts.DC++;
+                    else if (lower === 'upcoming') statusCounts.upcoming++;
+                    else if (s.toUpperCase() === '2BDC') statusCounts['2BDC']++;
+                });
+                bar.innerHTML = `
+                    <span class="status-badge-item bg-active">Active ${statusCounts.active}</span>
+                    <span class="status-badge-item bg-inactive">Inactive ${statusCounts.inactive}</span>
+                    <span class="status-badge-item bg-dc">DC ${statusCounts.DC}</span>
+                    <span class="status-badge-item bg-upcoming">Upcoming ${statusCounts.upcoming}</span>
+                    <span class="status-badge-item bg-2bdc">2BDC ${statusCounts['2BDC']}</span>
+                `;
             }
 
             // Update filter styling based on selected value
@@ -3282,8 +2978,8 @@
                     row.style.fontWeight = '500';
                 }
 
-                // If in selection mode, add checkbox first
-                if (selectionMode && !isParent) {
+                // If in selection mode, add checkbox first (including parent rows)
+                if (selectionMode) {
                     const isChecked = selectedItems[item.SKU] ? 'checked' : '';
                     const checkboxCell = document.createElement('td');
                     checkboxCell.className = 'checkbox-cell';
@@ -3393,15 +3089,14 @@
                 // Rest of initialization...
                 loadData();
                 setupSearch();
-                setupSelectFilter();
                 setupHeaderColumnSearch();
                 setupExcelExport();
                 setupImport();
-                setupBulkUpdateAll(); // New bulk update functionality
                 setupAddProductModal();
                 setupProgressModal();
                 setupSelectionMode();
                 setupBatchProcessing();
+                setupBulkActionsModal();
                 setupMissingDataButtons();
             }
 
@@ -3501,51 +3196,10 @@
 
 
 
-            function setupSelectFilter(){
-                const fieldSelect = document.querySelector('.field-selector-wrapper select');
-                let fieldInput = null; 
-                let selectedField = "";
-
-                fieldSelect.addEventListener('change', function () {
-                    selectedField = this.value.trim();
-
-                    if (fieldInput) fieldInput.remove();
-
-                    if (selectedField) {
-                        fieldInput = document.createElement('input');
-                        fieldInput.type = 'text';
-                        fieldInput.placeholder = `Search ${selectedField.toUpperCase()}...`;
-                        fieldInput.classList.add('form-control', 'mt-2');
-                        fieldInput.style.fontSize = '13px';
-                        fieldInput.style.border = '1px solid #92c1ff';
-                        fieldInput.style.borderRadius = '6px';
-
-                        fieldSelect.parentElement.appendChild(fieldInput);
-
-                        fieldInput.addEventListener('input', debounce(function () {
-                            const searchTerm = fieldInput.value.toLowerCase().trim();
-
-                            let filteredData = [...tableData];
-
-                            if (searchTerm) {
-                                filteredData = filteredData.filter(item => {
-                                    const value = String(item[selectedField] ?? '').toLowerCase();
-                                    return value === searchTerm;
-                                });
-                            }
-
-                            renderTable(filteredData);
-                        }, 300));
-                    }
-                });
-            }
-            
             // Global applyFilters function that can be called from anywhere
             function applyFilters() {
                 const parentValue = (document.getElementById('parentSearch')?.value || '').toLowerCase().trim();
                 const skuValue = (document.getElementById('skuSearch')?.value || '').toLowerCase().trim();
-                const globalValue = (document.getElementById('customSearch')?.value || '').toLowerCase().trim();
-
                 let filteredData = [...tableData];
 
                 if (parentValue) {
@@ -3557,14 +3211,6 @@
                 if (skuValue) {
                     filteredData = filteredData.filter(item =>
                         ((item.SKU || item.sku || '') + '').toLowerCase().includes(skuValue)
-                    );
-                }
-
-                if (globalValue) {
-                    filteredData = filteredData.filter(item =>
-                        Object.values(item).some(value =>
-                            String(value || '').toLowerCase().includes(globalValue)
-                        )
                     );
                 }
 
@@ -3659,7 +3305,7 @@
                             }
                             
                             // Determine if numeric based on column
-                            const numericColumns = ['LP', 'CP$', 'FRGHT', 'SHIP', 'TEMU SHIP', 'MOQ', 'EBAY2 SHIP', 'Label QTY', 'WT ACT', 'WT DECL', 'L', 'W', 'H', 'CBM', 'UPC', 'INV', 'OV L30'];
+                            const numericColumns = ['LP', 'CP$', 'FRGHT', 'SHIP', 'TEMU SHIP', 'MOQ', 'EBAY2 SHIP', 'Label QTY', 'WT ACT', 'WT DECL', 'Length', 'Width', 'Height', 'CBM', 'UPC', 'INV', 'OV L30'];
                             const isNumeric = numericColumns.includes(columnName);
                             
                             // Special handling for dimensions and weights - treat 0 as missing
@@ -3682,7 +3328,7 @@
                 document.addEventListener('input', debounce(function (e) {
                     const id = e.target && e.target.id;
                     if (!id) return;
-                    if (id === 'customSearch' || id === 'skuSearch' || id === 'parentSearch') {
+                    if (id === 'skuSearch' || id === 'parentSearch') {
                         applyFilters();
                     }
                 }, 250));
@@ -3704,24 +3350,6 @@
                     }
                 });
 
-                // Clear button (delegated click) - resets inputs and renders full table
-                document.addEventListener('click', function (e) {
-                    const target = e.target.closest ? e.target.closest('#clearSearch') : (e.target.id === 'clearSearch' ? e.target : null);
-                    if (!target) return;
-                    const custom = document.getElementById('customSearch');
-                    const sku = document.getElementById('skuSearch');
-                    const parent = document.getElementById('parentSearch');
-                    if (custom) custom.value = '';
-                    if (sku) sku.value = '';
-                    if (parent) parent.value = '';
-                    // Reset all missing data filters
-                    document.querySelectorAll('.missing-data-filter').forEach(filter => {
-                        filter.value = 'all';
-                    });
-                    // Clear global filter values
-                    currentFilterValues = {};
-                    renderTable(tableData);
-                });
             }
 
             // Header column search is intentionally a no-op because we handle header inputs
@@ -3736,7 +3364,7 @@
             // Function to get columns to hide for current user
             function getUserHiddenColumns() {
                 // Always hide these columns
-                const alwaysHiddenColumns = ['WT ACT', 'WT DECL', 'W', 'H', 'L', 'Label QTY', 'CBM', 'SHIP', 'TEMU SHIP', 'EBAY2 SHIP'];
+                const alwaysHiddenColumns = ['WT ACT', 'WT DECL', 'Width', 'Height', 'Length', 'Label QTY', 'CBM', 'SHIP', 'TEMU SHIP', 'EBAY2 SHIP'];
                 
                 // Default columns to hide if user has no specific permissions
                 const defaultHiddenColumns = [...alwaysHiddenColumns];
@@ -3758,8 +3386,8 @@
                     const hiddenColumns = getUserHiddenColumns();
                     const allColumns = [
                         "Parent", "SKU", "UPC", "INV", "OV L30", "STATUS", "Unit", "LP", "CP$",
-                        "FRGHT", "SHIP", "TEMU SHIP", "MOQ", "EBAY2 SHIP", "INITIAL QUANTITY", "Label QTY", "WT ACT", "WT DECL", "L", "W", "H",
-                        "CBM", "Image", "L(2)", "Verified Data", "DC", "Pcs/Box", "L1", "B", "H1", "Weight", "MSRP", "MAP"
+                        "FRGHT", "SHIP", "TEMU SHIP", "MOQ", "EBAY2 SHIP", "Label QTY", "WT ACT", "WT DECL", "Length", "Width", "Height",
+                        "CBM", "Image", "Url", "Verified", "DC", "Pcs/Box", "B", "H1", "Weight", "MSRP", "MAP"
                     ];
 
                     // Filter out hidden columns
@@ -3809,9 +3437,6 @@
                         "EBAY2 SHIP": {
                             key: "ebay2_ship"
                         },
-                        "INITIAL QUANTITY": {
-                            key: "initial_quantity"
-                        },
                         "Label QTY": {
                             key: "label_qty"
                         },
@@ -3821,13 +3446,13 @@
                         "WT DECL": {
                             key: "wt_decl"
                         },
-                        "L": {
+                        "Length": {
                             key: "l"
                         },
-                        "W": {
+                        "Width": {
                             key: "w"
                         },
-                        "H": {
+                        "Height": {
                             key: "h"
                         },
                         "CBM": {
@@ -3836,10 +3461,10 @@
                         "Image": {
                             key: "image_path"
                         },
-                        "L(2)": {
+                        "Url": {
                             key: "l2_url"
                         },
-                        "Verified Data": {
+                        "Verified": {
                             key: "verified_data"
                         },
                         "DC": {
@@ -3847,9 +3472,6 @@
                         },
                         "Pcs/Box": {
                             key: "pcs_per_box"
-                        },
-                        "L1": {
-                            key: "l1"
                         },
                         "B": {
                             key: "b"
@@ -3940,7 +3562,7 @@
                                     return {
                                         wch: 12
                                     };
-                                } else if (["Image", "L(2)"].includes(col)) {
+                                } else if (["Image", "Url"].includes(col)) {
                                     return {
                                         wch: 50
                                     }; // Wider for URL columns
@@ -3994,7 +3616,7 @@
                         } finally {
                             // Reset button state
                             downloadExcelBtn.innerHTML =
-                                '<i class="fas fa-file-excel me-1"></i> Download Excel';
+                                '<i class="fas fa-file-excel me-1"></i> Export';
                             downloadExcelBtn.disabled = false;
                         }
                     }, 100); // Small timeout to allow UI to update
@@ -4142,221 +3764,6 @@
                 });
             }
 
-            // Setup Bulk Update All functionality (Updates ALL data)
-            function setupBulkUpdateAll() {
-                const bulkUpdateFile = document.getElementById('bulkUpdateFile');
-                const bulkUpdateBtn = document.getElementById('bulkUpdateBtn');
-                const bulkUpdateModal = document.getElementById('bulkUpdateAllModal');
-                const bulkUpdateFileError = document.getElementById('bulkUpdateFileError');
-                const bulkUpdateProgress = document.getElementById('bulkUpdateProgress');
-                const bulkUpdateResult = document.getElementById('bulkUpdateResult');
-                const restoreBtn = document.getElementById('restoreBtn');
-                const downloadCurrentDataBtn = document.getElementById('downloadCurrentData');
-
-                // Download current data as Excel (same as main download but triggered from modal)
-                if (downloadCurrentDataBtn) {
-                    downloadCurrentDataBtn.addEventListener('click', function() {
-                        // Trigger the main download excel functionality
-                        document.getElementById('downloadExcel')?.click();
-                    });
-                }
-
-                // Enable/disable button based on file selection
-                bulkUpdateFile.addEventListener('change', function() {
-                    if (this.files && this.files.length > 0) {
-                        const file = this.files[0];
-                        const fileName = file.name.toLowerCase();
-                        const validExtensions = ['.xlsx', '.xls', '.csv'];
-                        const isValid = validExtensions.some(ext => fileName.endsWith(ext));
-
-                        if (isValid) {
-                            bulkUpdateBtn.disabled = false;
-                            bulkUpdateFileError.style.display = 'none';
-                        } else {
-                            bulkUpdateBtn.disabled = true;
-                            bulkUpdateFileError.textContent = 'Please select a valid Excel file (.xlsx, .xls, or .csv)';
-                            bulkUpdateFileError.style.display = 'block';
-                        }
-                    } else {
-                        bulkUpdateBtn.disabled = true;
-                    }
-                });
-
-                // Handle bulk update
-                bulkUpdateBtn.addEventListener('click', async function() {
-                    const file = bulkUpdateFile.files[0];
-                    if (!file) {
-                        showToast('danger', 'Please select a file to upload');
-                        return;
-                    }
-
-                    // Confirm action
-                    if (!confirm('⚠️ This will UPDATE ALL product data from the Excel file (except INV). Continue?')) {
-                        return;
-                    }
-
-                    // Disable button and show progress
-                    bulkUpdateBtn.disabled = true;
-                    bulkUpdateProgress.style.display = 'block';
-                    bulkUpdateResult.style.display = 'none';
-                    bulkUpdateFileError.style.display = 'none';
-
-                    const formData = new FormData();
-                    formData.append('excel_file', file);
-                    formData.append('_token', csrfToken);
-
-                    try {
-                        const response = await fetch('/product-master/bulk-update-all', {
-                            method: 'POST',
-                            headers: {
-                                'X-CSRF-TOKEN': csrfToken
-                            },
-                            body: formData
-                        });
-
-                        const result = await response.json();
-
-                        // Update progress bar
-                        const progressBar = bulkUpdateProgress.querySelector('.progress-bar');
-                        progressBar.style.width = '100%';
-
-                        if (response.ok && result.success) {
-                            // Build detailed message
-                            let detailsHtml = '';
-                            if (result.details && result.details.length > 0) {
-                                detailsHtml = '<br><br><strong>Updated Products:</strong><ul style="max-height: 150px; overflow-y: auto; font-size: 12px;">';
-                                result.details.slice(0, 10).forEach(detail => {
-                                    detailsHtml += `<li><strong>${detail.sku}</strong>: ${detail.fields.length} field(s) changed</li>`;
-                                });
-                                if (result.details.length > 10) {
-                                    detailsHtml += `<li>... and ${result.details.length - 10} more</li>`;
-                                }
-                                detailsHtml += '</ul>';
-                            }
-
-                            bulkUpdateResult.className = 'alert alert-success';
-                            bulkUpdateResult.innerHTML = `
-                                <div class="d-flex justify-content-between align-items-start">
-                                    <div style="flex: 1;">
-                                        <i class="fas fa-check-circle me-2"></i>
-                                        <strong>Bulk Update Successful!</strong><br>
-                                        ${result.message || `Successfully updated ${result.updated || 0} products.`}
-                                        ${result.errors && result.errors.length > 0 ? `<br><br><strong class="text-danger">Errors (${result.errors.length}):</strong><br><small>${result.errors.slice(0, 5).join('<br>')}</small>` : ''}
-                                        ${detailsHtml}
-                                    </div>
-                                    <button type="button" class="btn btn-sm btn-success ms-3" id="bulkUpdateOkBtn" style="white-space: nowrap;">
-                                        <i class="fas fa-check me-1"></i> OK
-                                    </button>
-                                </div>
-                            `;
-                            bulkUpdateResult.style.display = 'block';
-
-                            // Show restore button if backup is available
-                            if (result.backup_available) {
-                                restoreBtn.style.display = 'inline-block';
-                                console.log('✅ Restore button shown - backup available');
-                            }
-
-                            // Reload data after successful update
-                            setTimeout(() => {
-                                loadData();
-                            }, 500);
-
-                            // Handle OK button click
-                            const okBtn = document.getElementById('bulkUpdateOkBtn');
-                            if (okBtn) {
-                                okBtn.addEventListener('click', function() {
-                                    const modal = bootstrap.Modal.getInstance(bulkUpdateModal);
-                                    if (modal) modal.hide();
-                                    // Reset form
-                                    bulkUpdateFile.value = '';
-                                    bulkUpdateBtn.disabled = true;
-                                    bulkUpdateProgress.style.display = 'none';
-                                    bulkUpdateResult.style.display = 'none';
-                                    progressBar.style.width = '0%';
-                                });
-                            }
-                        } else {
-                            bulkUpdateResult.className = 'alert alert-danger';
-                            bulkUpdateResult.innerHTML = `
-                                <i class="fas fa-exclamation-triangle me-2"></i>
-                                <strong>Update Failed!</strong><br>
-                                ${result.message || 'An error occurred during update.'}
-                                ${result.errors && result.errors.length > 0 ? `<br><details><summary>View Errors</summary><pre>${result.errors.slice(0, 10).join('\n')}</pre></details>` : ''}
-                            `;
-                            bulkUpdateResult.style.display = 'block';
-                            bulkUpdateBtn.disabled = false;
-                        }
-                    } catch (error) {
-                        console.error('Bulk update error:', error);
-                        bulkUpdateResult.className = 'alert alert-danger';
-                        bulkUpdateResult.innerHTML = `
-                            <i class="fas fa-exclamation-triangle me-2"></i>
-                            <strong>Update Failed!</strong><br>
-                            ${error.message || 'An error occurred during update.'}
-                        `;
-                        bulkUpdateResult.style.display = 'block';
-                        bulkUpdateBtn.disabled = false;
-                    } finally {
-                        // Reset progress bar after a delay
-                        setTimeout(() => {
-                            const progressBar = bulkUpdateProgress.querySelector('.progress-bar');
-                            progressBar.style.width = '0%';
-                        }, 2000);
-                    }
-                });
-
-                // Reset form when modal is closed
-                bulkUpdateModal.addEventListener('hidden.bs.modal', function() {
-                    bulkUpdateFile.value = '';
-                    bulkUpdateBtn.disabled = true;
-                    bulkUpdateProgress.style.display = 'none';
-                    bulkUpdateResult.style.display = 'none';
-                    bulkUpdateFileError.style.display = 'none';
-                    const progressBar = bulkUpdateProgress.querySelector('.progress-bar');
-                    if (progressBar) progressBar.style.width = '0%';
-                });
-
-                // Setup restore functionality
-                if (restoreBtn) {
-                    restoreBtn.addEventListener('click', async function() {
-                        if (!confirm('⚠️ This will restore all products to their previous values before the last bulk update. Continue?')) {
-                            return;
-                        }
-
-                        // Disable button and show loading
-                        restoreBtn.disabled = true;
-                        restoreBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Restoring...';
-
-                        try {
-                            const response = await makeRequest('/product-master/restore-bulk-update', 'POST');
-                            const result = await response.json();
-
-                            if (response.ok && result.success) {
-                                showToast('success', result.message || 'Products restored successfully!');
-                                
-                                // Hide restore button after successful restore
-                                restoreBtn.style.display = 'none';
-                                
-                                // Reload data
-                                setTimeout(() => {
-                                    loadData();
-                                }, 500);
-                            } else {
-                                showToast('danger', result.message || 'Restore failed');
-                                restoreBtn.disabled = false;
-                                restoreBtn.innerHTML = '<i class="fas fa-undo me-1"></i> Restore Previous Values';
-                            }
-                        } catch (error) {
-                            console.error('Restore error:', error);
-                            showToast('danger', 'Restore failed: ' + error.message);
-                            restoreBtn.disabled = false;
-                            restoreBtn.innerHTML = '<i class="fas fa-undo me-1"></i> Restore Previous Values';
-                        }
-                    });
-                }
-            }
-
             // Initialize the add product modal
             function setupAddProductModal() {
                 const modal = document.getElementById('addProductModal');
@@ -4480,23 +3887,24 @@
                 if (w > 0 && l > 0 && h > 0) {
                     cbm = ((l * 2.54) * (w * 2.54) * (h * 2.54)) / 1000000;
                 }
-                document.getElementById('cbm').value = cbm ? cbm.toFixed(4) : '';
-
-                // FRGHT formula: CBM * 200
-                const frght = cbm * 200;
-                document.getElementById('freght').value = cbm ? frght.toFixed(2) : '';
-
-                // Recalculate LP as well
+                // CBM and FRGHT removed from form; recalc LP from CP + (CBM*200)
                 calculateLP();
             }
 
-            // Calculate LP based on CP and FRGHT
+            // Calculate LP based on CP and FRGHT (FRGHT = CBM * 200; CBM from dimensions)
             function calculateLP() {
                 const cp = parseFloat(document.getElementById('cp').value) || 0;
-                const frght = parseFloat(document.getElementById('freght').value) || 0;
-                // LP formula: CP + FRGHT
+                const w = parseFloat(document.getElementById('w').value) || 0;
+                const l = parseFloat(document.getElementById('l').value) || 0;
+                const h = parseFloat(document.getElementById('h').value) || 0;
+                let cbm = 0;
+                if (w > 0 && l > 0 && h > 0) {
+                    cbm = ((l * 2.54) * (w * 2.54) * (h * 2.54)) / 1000000;
+                }
+                const frght = cbm * 200;
                 const lp = cp + frght;
-                document.getElementById('lp').value = lp.toFixed(2);
+                const lpEl = document.getElementById('lp');
+                if (lpEl) lpEl.value = lp.toFixed(2);
             }
             
             // Function to check if SKU already exists in our data
@@ -4592,27 +4000,33 @@
                 formData.append('sku', document.getElementById('sku').value);
 
                 // Build Values JSON
+                const w = parseFloat(document.getElementById('w').value) || 0;
+                const l = parseFloat(document.getElementById('l').value) || 0;
+                const h = parseFloat(document.getElementById('h').value) || 0;
+                let cbm = null, frght = null;
+                if (w > 0 && l > 0 && h > 0) {
+                    cbm = ((l * 2.54) * (w * 2.54) * (h * 2.54)) / 1000000;
+                    frght = cbm * 200;
+                }
                 const values = {
                     lp: document.getElementById('lp').value || null,
                     cp: document.getElementById('cp').value || null,
-                    frght: document.getElementById('freght').value || null,
-                    lps: document.getElementById('lps').value || null,
+                    frght: frght != null ? frght.toFixed(2) : null,
+                    lps: document.getElementById('lps')?.value || null,
                     ship: document.getElementById('ship').value || null,
                     temu_ship: document.getElementById('temu_ship').value || null,
                     moq: document.getElementById('moq').value || null,
                     ebay2_ship: document.getElementById('ebay2_ship').value || null,
-                    initial_quantity: document.getElementById('initial_quantity').value || null,
                     label_qty: document.getElementById('labelQty').value || null,
                     wt_act: document.getElementById('wtAct').value || null,
                     wt_decl: document.getElementById('wtDecl').value || null,
                     l: document.getElementById('l').value || null,
                     w: document.getElementById('w').value || null,
                     h: document.getElementById('h').value || null,
-                    cbm: document.getElementById('cbm').value || null,
-                    dc: document.getElementById('dc').value || null,
+                    cbm: cbm != null ? cbm.toFixed(4) : null,
+                    dc: document.getElementById('dc')?.value || null,
                     l2_url: document.getElementById('l2Url').value || null,
                     pcs_per_box: document.getElementById('pcbox').value || null,
-                    l1: document.getElementById('l1').value || null,
                     b: document.getElementById('b').value || null,
                     h1: document.getElementById('h1').value || null,
                     weight: document.getElementById('weight').value || null,
@@ -4735,28 +4149,18 @@
                         if (data.data) {
                             const updatedProduct = data.data;
                             
-                            // Debug logging
-                            console.log('Raw server response:', updatedProduct);
-                            console.log('Values type:', typeof updatedProduct.Values);
-                            console.log('Values value:', updatedProduct.Values);
-                            
                             // Extract Values JSON and flatten to top level for table rendering
                             let valuesObj = {};
                             if (updatedProduct.Values) {
                                 if (typeof updatedProduct.Values === 'string') {
                                     try {
                                         valuesObj = JSON.parse(updatedProduct.Values);
-                                        console.log('Parsed Values JSON:', valuesObj);
                                     } catch (e) {
-                                        console.error('Error parsing Values JSON:', e);
                                         valuesObj = {};
                                     }
                                 } else if (typeof updatedProduct.Values === 'object' && updatedProduct.Values !== null) {
                                     valuesObj = updatedProduct.Values;
-                                    console.log('Values is already object:', valuesObj);
                                 }
-                            } else {
-                                console.log('No Values in response');
                             }
                             
                             // Merge Values JSON fields into top level for easier access
@@ -4872,8 +4276,6 @@
                             // If image was updated, reload data to ensure proper image path from server
                             // Server handles image path formatting (Shopify URLs, local paths with proper slashes, etc.)
                             if (isImageUpdate) {
-                                console.log('Image was updated, reloading data...');
-                                console.log('Flattened product image_path:', flattenedProduct.image_path);
                                 // Reload data to get properly formatted image path from server
                                 // This ensures image shows correctly after update
                                 loadData();
@@ -4932,7 +4334,6 @@
                     temu_ship: product.temu_ship || '',
                     moq: product.moq || '',
                     ebay2_ship: product.ebay2_ship || '',
-                    initial_quantity: product.initial_quantity || '',
                     wtAct: product.wt_act || '',
                     wtDecl: product.wt_decl || '',
                     w: product.w || '',
@@ -4940,14 +4341,12 @@
                     h: product.h || '',
                     l2Url: product.l2_url || '',
                     pcbox: product.pcs_per_box || '',
-                    l1: product.l1 || '',
                     b: product.b || '',
                     h1: product.h1 || '',
                     upc: product.upc || '',
                     unit: product.unit || '',
                  
                     status: normalizedStatus,
-                    cbm: product.cbm || '',
                     dc: product.dc || '',
                     weight: product.weight || '',
                     msrp: product.msrp || '',
@@ -5091,65 +4490,24 @@
                 };
             }
 
-            // Setup selection mode functionality
+            // Setup selection mode functionality (Multi Add removed – checkboxes always visible)
             function setupSelectionMode() {
-                const toggleButton = document.getElementById('toggleSelection');
-                const checkboxColumn = document.querySelectorAll('.checkbox-column');
                 const selectAllCheckbox = document.getElementById('selectAll');
                 const selectionActions = document.getElementById('selectionActions');
-                const selectionCount = selectionActions.querySelector('.selection-count');
+                const selectionCount = selectionActions ? selectionActions.querySelector('.selection-count') : null;
                 const cancelButton = document.getElementById('cancelSelection');
 
-                // Toggle selection mode
-                toggleButton.addEventListener('click', function() {
-                    selectionMode = !selectionMode;
-
-                    if (!selectionMode) {
-                        // Clear selections when turning off selection mode
+                // Cancel selection – clear selections and hide selection bar only
+                if (cancelButton && selectionActions) {
+                    cancelButton.addEventListener('click', function() {
                         selectedItems = {};
-                        document.querySelectorAll('.checkbox-column').forEach(col => col.style.display = 'none'); // ✅ hide header col
-                        document.querySelectorAll('.checkbox-cell').forEach(cell => cell.style.display = 'none'); // ✅ hide body cells
                         selectionActions.style.display = 'none';
-                        this.innerHTML = '<i class="fas fa-plus"></i>';
-
-                        // Re-render table without checkboxes
+                        updateSelectionCount();
                         const currentFilters = getCurrentFilters();
                         let filteredData = applyFiltersToData(currentFilters);
                         renderTable(filteredData);
-                    } else {
-                        // ✅ Show header checkbox column
-                        document.querySelectorAll('.checkbox-column').forEach(col => col.style.display = 'table-cell');
-
-                        selectionActions.style.display = 'block';
-                        this.innerHTML = '<i class="fas fa-times"></i>';
-                        
-                        // Re-render table with checkboxes included
-                        const currentFilters = getCurrentFilters();
-                        let filteredData = applyFiltersToData(currentFilters);
-                        renderTable(filteredData);
-                        
-                        // Also add checkboxes to any rows that might have been missed
-                        setTimeout(() => {
-                            addCheckboxesToRows();
-                        }, 100);
-                    }
-
-                    updateSelectionCount();
-                });
-
-                // Cancel selection
-                cancelButton.addEventListener('click', function() {
-                    selectedItems = {};
-                    selectionMode = false;
-                    checkboxColumn.forEach(col => col.style.display = 'none');
-                    selectionActions.style.display = 'none';
-                    toggleButton.innerHTML = '<i class="fas fa-plus"></i>';
-
-                    // Re-render table without checkboxes
-                    const currentFilters = getCurrentFilters();
-                    let filteredData = applyFiltersToData(currentFilters);
-                    renderTable(filteredData);
-                });
+                    });
+                }
 
                 // Handle individual checkbox clicks - use event delegation
                 // Use 'click' event instead of 'change' for better compatibility
@@ -5264,9 +4622,11 @@
             function updateSelectionCount() {
                 const selectionActions = document.getElementById('selectionActions');
                 if (!selectionActions) return;
+                const count = Object.keys(selectedItems).length;
+                selectionActions.style.display = count > 0 ? 'block' : 'none';
                 const selectionCount = selectionActions.querySelector('.selection-count');
                 if (selectionCount) {
-                    selectionCount.textContent = `${Object.keys(selectedItems).length} items selected`;
+                    selectionCount.textContent = `${count} items selected`;
                 }
             }
             function restoreSelectAllState() {
@@ -5354,15 +4714,10 @@
             }
 
 
-            // Add checkboxes to existing rows when entering selection mode
+            // Add checkboxes to existing rows when entering selection mode (including parent rows)
             function addCheckboxesToRows() {
                 const rows = document.querySelectorAll('#table-body tr');
                 rows.forEach(row => {
-                    // Skip parent rows
-                    if (row.style.backgroundColor && row.style.backgroundColor.includes('rgba(13, 110, 253')) {
-                        return;
-                    }
-                    
                     if (!row.querySelector('.row-checkbox')) {
                         const firstCell = row.cells[0];
                         
@@ -5375,11 +4730,10 @@
                                 sku = skuSpan.getAttribute('data-sku') || skuSpan.textContent.trim();
                                 break;
                             }
-                            // Also check if cell text looks like a SKU
+                            // Also check if cell text looks like a SKU (include PARENT rows e.g. "PARENT 10 FR")
                             const cellText = cell.textContent.trim();
-                            if (cellText && !cellText.match(/^\d+$/) && cellText.length > 0 && !cellText.includes('PARENT')) {
-                                // Check if it's not a number-only cell and not empty
-                                const isLikelySku = !cellText.match(/^[\d.,\s%]+$/); // Not just numbers, decimals, commas
+                            if (cellText && !cellText.match(/^\d+$/) && cellText.length > 0) {
+                                const isLikelySku = !cellText.match(/^[\d.,\s%]+$/);
                                 if (isLikelySku && cellText.length > 2) {
                                     sku = cellText;
                                     break;
@@ -5438,7 +4792,7 @@
                 return {
                     parent: document.getElementById('parentSearch').value.toLowerCase().trim(),
                     sku: document.getElementById('skuSearch').value.toLowerCase().trim(),
-                    global: document.getElementById('customSearch').value.toLowerCase().trim()
+                    global: ''
                 };
             }
 
@@ -5520,7 +4874,7 @@
                             }
                             
                             // Determine if numeric based on column
-                            const numericColumns = ['LP', 'CP$', 'FRGHT', 'SHIP', 'TEMU SHIP', 'MOQ', 'EBAY2 SHIP', 'Label QTY', 'WT ACT', 'WT DECL', 'L', 'W', 'H', 'CBM', 'UPC', 'INV', 'OV L30'];
+                            const numericColumns = ['LP', 'CP$', 'FRGHT', 'SHIP', 'TEMU SHIP', 'MOQ', 'EBAY2 SHIP', 'Label QTY', 'WT ACT', 'WT DECL', 'Length', 'Width', 'Height', 'CBM', 'UPC', 'INV', 'OV L30'];
                             const isNumeric = numericColumns.includes(columnName);
                             
                             // Special handling for dimensions and weights - treat 0 as missing
@@ -5578,8 +4932,6 @@
                         text: 'EBAY2 SHIP'
                     },
                     {
-                        value: 'initial_quantity',
-                        text: 'INITIAL QUANTITY'
                     },
                     {
                         value: 'label_qty',
@@ -5595,15 +4947,15 @@
                     },
                     {
                         value: 'l',
-                        text: 'L'
+                        text: 'Length'
                     },
                     {
                         value: 'w',
-                        text: 'W'
+                        text: 'Width'
                     },
                     {
                         value: 'h',
-                        text: 'H'
+                        text: 'Height'
                     },
                     {
                         value: 'status',
@@ -5654,11 +5006,11 @@
                             valueInput.outerHTML = `
                             <select class="form-select field-value">
                                 <option value="">Select Status</option>
-                                <option value="active">Active</option>
-                                <option value="inactive">Inactive</option>
-                                <option value="DC">DC</option>
-                                <option value="upcoming">Upcoming</option>
-                                <option value="2BDC">2BDC</option>
+                                <option value="active">🟢 Active</option>
+                                <option value="inactive">🔴 Inactive</option>
+                                <option value="DC">🔴 DC</option>
+                                <option value="upcoming">🟡 Upcoming</option>
+                                <option value="2BDC">🔵 2BDC</option>
                             </select>
                             `;
 
@@ -6050,6 +5402,178 @@
                 }
             }
 
+            // Bulk Actions Modal (Parent, CP, Unit, MOQ) - same pattern as Tasks page
+            function setupBulkActionsModal() {
+                const bulkActionsBtn = document.getElementById('bulkActionsBtn');
+                const bulkActionsModal = document.getElementById('bulkActionsModal');
+                const bulkSelectedCount = document.getElementById('bulkSelectedCount');
+                const bulkUpdateFormModal = document.getElementById('bulkUpdateFormModal');
+                const bulkUpdateFormModalTitle = document.getElementById('bulkUpdateFormModalTitle');
+                const bulkUpdateFormModalBody = document.getElementById('bulkUpdateFormModalBody');
+                const confirmBulkUpdateFormBtn = document.getElementById('confirmBulkUpdateFormBtn');
+
+                if (!bulkActionsBtn || !bulkActionsModal) return;
+
+                function getSelectedItemsForBulk() {
+                    const itemsWithIssues = [];
+                    const items = Object.entries(selectedItems)
+                        .map(([sku, item]) => {
+                            let id = item.id;
+                            if (!id || id === '' || id === 'undefined' || id === null || id === undefined) {
+                                const product = productMap.get(sku);
+                                if (product && product.id) id = product.id;
+                                else {
+                                    if (!itemsWithIssues.includes(sku)) itemsWithIssues.push(sku);
+                                    return null;
+                                }
+                            }
+                            if (!id || id === '' || id === 'undefined' || id === null || id === undefined) {
+                                const checkbox = document.querySelector(`.row-checkbox[data-sku="${sku}"]`);
+                                if (checkbox && checkbox.dataset.id && checkbox.dataset.id !== '') id = checkbox.dataset.id;
+                                else {
+                                    if (!itemsWithIssues.includes(sku)) itemsWithIssues.push(sku);
+                                    return null;
+                                }
+                            }
+                            let numericId = parseInt(id, 10);
+                            if (isNaN(numericId) || numericId <= 0) {
+                                if (!itemsWithIssues.includes(sku)) itemsWithIssues.push(sku);
+                                return null;
+                            }
+                            return { sku: sku, id: numericId };
+                        })
+                        .filter(item => item !== null);
+                    return { items, itemsWithIssues };
+                }
+
+                function showBulkForm(title, bodyHtml, getValue) {
+                    bulkUpdateFormModalTitle.textContent = title;
+                    bulkUpdateFormModalBody.innerHTML = bodyHtml;
+                    const modal = bootstrap.Modal.getOrCreateInstance(bulkUpdateFormModal);
+                    modal.show();
+
+                    const once = function() {
+                        const value = getValue();
+                        if (value === null) return;
+                        confirmBulkUpdateFormBtn.removeEventListener('click', once);
+                        const { items, itemsWithIssues } = getSelectedItemsForBulk();
+                        if (items.length === 0) {
+                            alert('No valid products selected. Please refresh and try again.');
+                            return;
+                        }
+                        confirmBulkUpdateFormBtn.disabled = true;
+                        confirmBulkUpdateFormBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Updating...';
+                        makeRequest('/product-master/batch-update', 'POST', {
+                            items: items,
+                            operations: [{ field: window._bulkActionField, operation: 'set', value: value }]
+                        })
+                            .then(res => res.json())
+                            .then(function(result) {
+                                bootstrap.Modal.getInstance(bulkUpdateFormModal).hide();
+                                if (result.success) {
+                                    if (typeof showToast === 'function') showToast('success', result.message || 'Products updated.');
+                                    else alert(result.message || 'Products updated.');
+                                    if (typeof loadData === 'function') loadData();
+                                } else {
+                                    alert(result.message || 'Update failed.');
+                                }
+                            })
+                            .catch(function(err) {
+                                console.error(err);
+                                alert('Update failed. Please try again.');
+                            })
+                            .finally(function() {
+                                confirmBulkUpdateFormBtn.disabled = false;
+                                confirmBulkUpdateFormBtn.innerHTML = '<i class="fas fa-check me-1"></i>Update';
+                            });
+                    };
+                    confirmBulkUpdateFormBtn.replaceWith(confirmBulkUpdateFormBtn.cloneNode(true));
+                    document.getElementById('confirmBulkUpdateFormBtn').addEventListener('click', once);
+                }
+
+                bulkActionsBtn.addEventListener('click', function() {
+                    const count = Object.keys(selectedItems).length;
+                    if (count === 0) {
+                        alert('Please select one or more products first (use the checkboxes on the left).');
+                        return;
+                    }
+                    if (bulkSelectedCount) bulkSelectedCount.textContent = count;
+                    bootstrap.Modal.getOrCreateInstance(bulkActionsModal).show();
+                });
+
+                document.getElementById('bulk-change-parent-btn').addEventListener('click', function(e) {
+                    e.preventDefault();
+                    bootstrap.Modal.getInstance(bulkActionsModal).hide();
+                    window._bulkActionField = 'parent';
+                    const n = Object.keys(selectedItems).length;
+                    showBulkForm('Change Parent', `
+                        <p class="mb-3"><strong>Set parent for ${n} product(s):</strong></p>
+                        <div class="mb-3">
+                            <label for="bulk-parent-input" class="form-label">Parent:</label>
+                            <input type="text" class="form-control" id="bulk-parent-input" placeholder="e.g. 10 FR">
+                        </div>
+                    `, function() {
+                        const v = document.getElementById('bulk-parent-input').value.trim();
+                        if (v === '') { alert('Please enter a parent value.'); return null; }
+                        return v;
+                    });
+                });
+
+                document.getElementById('bulk-change-cp-btn').addEventListener('click', function(e) {
+                    e.preventDefault();
+                    bootstrap.Modal.getInstance(bulkActionsModal).hide();
+                    window._bulkActionField = 'cp';
+                    const n = Object.keys(selectedItems).length;
+                    showBulkForm('Change CP (Cost)', `
+                        <p class="mb-3"><strong>Set cost for ${n} product(s):</strong></p>
+                        <div class="mb-3">
+                            <label for="bulk-cp-input" class="form-label">CP (Cost):</label>
+                            <input type="text" class="form-control" id="bulk-cp-input" placeholder="e.g. 5.99">
+                        </div>
+                    `, function() {
+                        const v = document.getElementById('bulk-cp-input').value.trim();
+                        if (v === '') { alert('Please enter a cost value.'); return null; }
+                        return v;
+                    });
+                });
+
+                document.getElementById('bulk-change-unit-btn').addEventListener('click', function(e) {
+                    e.preventDefault();
+                    bootstrap.Modal.getInstance(bulkActionsModal).hide();
+                    window._bulkActionField = 'unit';
+                    const n = Object.keys(selectedItems).length;
+                    showBulkForm('Change Unit', `
+                        <p class="mb-3"><strong>Set unit for ${n} product(s):</strong></p>
+                        <div class="mb-3">
+                            <label for="bulk-unit-input" class="form-label">Unit:</label>
+                            <input type="text" class="form-control" id="bulk-unit-input" placeholder="e.g. Pieces, Pair">
+                        </div>
+                    `, function() {
+                        const v = document.getElementById('bulk-unit-input').value.trim();
+                        if (v === '') { alert('Please enter a unit value.'); return null; }
+                        return v;
+                    });
+                });
+
+                document.getElementById('bulk-change-moq-btn').addEventListener('click', function(e) {
+                    e.preventDefault();
+                    bootstrap.Modal.getInstance(bulkActionsModal).hide();
+                    window._bulkActionField = 'moq';
+                    const n = Object.keys(selectedItems).length;
+                    showBulkForm('Change MOQ', `
+                        <p class="mb-3"><strong>Set MOQ for ${n} product(s):</strong></p>
+                        <div class="mb-3">
+                            <label for="bulk-moq-input" class="form-label">MOQ (Minimum Order Qty):</label>
+                            <input type="text" class="form-control" id="bulk-moq-input" placeholder="e.g. 100">
+                        </div>
+                    `, function() {
+                        const v = document.getElementById('bulk-moq-input').value.trim();
+                        if (v === '') { alert('Please enter an MOQ value.'); return null; }
+                        return v;
+                    });
+                });
+            }
+
             // Initialize import from API functionality
             const importFromApiBtn = document.getElementById('importFromApiBtn');
             if (importFromApiBtn) {
@@ -6157,11 +5681,11 @@
                     "Label QTY": "label_qty",
                     "WT ACT": "wt_act",
                     "WT DECL": "wt_decl",
-                    "L": "l",
-                    "W": "w",
-                    "H": "h",
+                    "Length": "l",
+                    "Width": "w",
+                    "Height": "h",
                     "CBM": "cbm",
-                    "L(2)": "l2_url"
+                    "Url": "l2_url"
                 };
                 return fieldMap[columnName] || columnName.toLowerCase().replace(/\s+/g, '_');
             }
@@ -6191,7 +5715,7 @@
                     "w": "W",
                     "h": "H",
                     "cbm": "CBM",
-                    "l2_url": "L(2)"
+                    "l2_url": "Url"
                 };
                 return columnMap[fieldName] || fieldName;
             }
@@ -6262,7 +5786,7 @@
                     cell.innerHTML = newValue ? `<img src="${newValue}" style="width:40px;height:40px;object-fit:cover;border-radius:4px;">` : '<span class="missing-data-indicator" title="Missing Data">M</span>';
                 } else if (fieldName === 'l2_url') {
                     cell.className = 'text-center';
-                    cell.innerHTML = newValue ? `<a href="${escapeHtml(newValue)}" target="_blank"><i class="fas fa-external-link-alt"></i></a>` : createMissingDataButton(sku, 'l2_url', 'L(2)');
+                    cell.innerHTML = newValue ? `<a href="${escapeHtml(newValue)}" target="_blank"><i class="fas fa-external-link-alt"></i></a>` : createMissingDataButton(sku, 'l2_url', 'Url');
                 } else if (isNumeric) {
                     cell.className = 'text-center';
                     const numValue = parseFloat(newValue);
@@ -6309,6 +5833,20 @@
                     data-field-label="${escapeHtml(fieldLabel)}">
                     M
                 </button>`;
+            }
+
+            function getStatusDot(status) {
+                const raw = String(status || '').trim();
+                const s = raw.toLowerCase();
+                const upper = raw.toUpperCase();
+                let color = '#9ca3af';
+                if (s === 'active') color = '#22c55e';
+                else if (s === 'inactive') color = '#dc2626';
+                else if (upper === 'DC') color = '#dc2626';
+                else if (s === 'upcoming') color = '#eab308';
+                else if (upper === '2BDC') color = '#2563eb';
+                const title = raw || '-';
+                return `<span class="status-dot" style="background-color:${color}" title="${escapeHtml(title)}"></span>`;
             }
 
             // Helper function to add missing data indicator
@@ -6553,7 +6091,6 @@
                 });
             }
 
-            // Add this helper function for toast notifications (place it with your other utility functions)
             function showToast(type, message) {
                 // Remove any existing toast
                 document.querySelectorAll('.custom-toast').forEach(t => t.remove());
@@ -6584,39 +6121,38 @@
                     setTimeout(() => toast.remove(), 500);
                 }, 5000);
 
-                // Removed duplicate timeout
-
                 toast.querySelector('[data-bs-dismiss="toast"]').onclick = () => {
                     toast.classList.remove('show');
                     setTimeout(() => toast.remove(), 500);
                 };
             }
 
+            const tooltipEl = document.getElementById('skuImageTooltip');
+            let tooltipRAF = null;
             document.addEventListener('mouseover', function(e) {
                 const target = e.target.closest('.sku-hover');
-                const tooltip = document.getElementById('skuImageTooltip');
-                if (target && tooltip) {
+                if (target && tooltipEl) {
                     const image = target.getAttribute('data-image');
                     if (image) {
-                        tooltip.innerHTML = `<img src="${image}" alt="Product Image">`;
-                        tooltip.style.display = 'block';
+                        tooltipEl.innerHTML = `<img src="${image}" alt="Product Image">`;
+                        tooltipEl.style.display = 'block';
                     } else {
-                        tooltip.style.display = 'none';
+                        tooltipEl.style.display = 'none';
                     }
                 }
             });
             document.addEventListener('mousemove', function(e) {
-                const tooltip = document.getElementById('skuImageTooltip');
-                if (tooltip && tooltip.style.display === 'block') {
-                    tooltip.style.left = (e.pageX + 20) + 'px';
-                    tooltip.style.top = (e.pageY + 10) + 'px';
-                }
+                if (!tooltipEl || tooltipEl.style.display !== 'block') return;
+                if (tooltipRAF) cancelAnimationFrame(tooltipRAF);
+                tooltipRAF = requestAnimationFrame(function() {
+                    tooltipEl.style.left = (e.pageX + 20) + 'px';
+                    tooltipEl.style.top = (e.pageY + 10) + 'px';
+                    tooltipRAF = null;
+                });
             });
             document.addEventListener('mouseout', function(e) {
-                const target = e.target.closest('.sku-hover');
-                const tooltip = document.getElementById('skuImageTooltip');
-                if (target && tooltip) {
-                    tooltip.style.display = 'none';
+                if (e.target.closest('.sku-hover') && tooltipEl) {
+                    tooltipEl.style.display = 'none';
                 }
             });
         });
