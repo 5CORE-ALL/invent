@@ -251,6 +251,50 @@
             color: #212529;
             margin-right: 4px;
         }
+        .summary-chart-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-weight: 600;
+            font-size: 13px;
+            color: #212529;
+            background-color: #fff;
+            border: 1px solid #dee2e6;
+            cursor: pointer;
+            text-decoration: none;
+            transition: background-color 0.15s, border-color 0.15s, box-shadow 0.15s;
+        }
+        .summary-chart-badge:hover {
+            background-color: #f8f9fa;
+            border-color: #ff9c00;
+            box-shadow: 0 1px 4px rgba(255, 156, 0, 0.2);
+        }
+        .summary-chart-badge .summary-badge-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+        .summary-chart-badge .summary-badge-value {
+            font-weight: 700;
+        }
+        .summary-badge-only {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-weight: 600;
+            font-size: 13px;
+            color: #212529;
+            background-color: #fff;
+            border: 1px solid #dee2e6;
+        }
+        .summary-badge-only .summary-badge-value {
+            font-weight: 700;
+        }
 
         /* Sprice modal: top-center position and draggable header */
         #spriceDetailsModal.modal {
@@ -563,16 +607,44 @@
 
     <div class="row">
         <div class="card shadow-sm">
-            <!-- Header Bar - Totals -->
-            <div class="summary-header-bar px-4 py-3 d-flex flex-wrap align-items-center gap-4 border-bottom">
-                <span class="summary-item"><strong>Total INV:</strong> <span id="total-inv-badge">0</span></span>
-                <span class="summary-item"><strong>Total OV L30:</strong> <span id="total-l30-badge">0</span></span>
-                <span class="summary-item"><strong>DIL:</strong> <span id="avg-dil-badge">0%</span></span>
-                <span class="summary-item"><strong>Total Views:</strong> <span id="total-views-badge">0</span></span>
-                <span class="summary-item"><strong>CVR:</strong> <span id="avg-cvr-badge">0%</span></span>
-                <span class="summary-item"><strong>Avg Price:</strong> <span id="avg-price-badge">$0.00</span></span>
-                <span class="summary-item"><strong>Amz LMP:</strong> <span id="amz-lmp-badge">$0.00</span></span>
-                <span class="summary-item d-flex align-items-center gap-2 ms-auto">
+            <!-- Header Bar - Totals (badges with chart links) -->
+            <div class="summary-header-bar px-4 py-3 d-flex flex-wrap align-items-center gap-3 border-bottom">
+                <a href="#" class="summary-chart-badge" data-metric="inv" data-aggregate="1" title="Click to view Inv line graph">
+                    <span class="summary-badge-dot" style="background-color: #4361ee;"></span>
+                    <span>Total INV:</span>
+                    <span class="summary-badge-value" id="total-inv-badge">0</span>
+                </a>
+                <a href="#" class="summary-chart-badge" data-metric="ov_l30" data-aggregate="1" title="Click to view OV L30 line graph">
+                    <span class="summary-badge-dot" style="background-color: #28a745;"></span>
+                    <span>Total OV L30:</span>
+                    <span class="summary-badge-value" id="total-l30-badge">0</span>
+                </a>
+                <a href="#" class="summary-chart-badge" data-metric="dil" data-aggregate="1" title="Click to view DIL line graph">
+                    <span class="summary-badge-dot" style="background-color: #0d6efd;"></span>
+                    <span>DIL:</span>
+                    <span class="summary-badge-value" id="avg-dil-badge">0%</span>
+                </a>
+                <a href="#" class="summary-chart-badge" data-metric="total_views" data-aggregate="1" title="Click to view Total Views line graph">
+                    <span class="summary-badge-dot" style="background-color: #17a2b8;"></span>
+                    <span>Total Views:</span>
+                    <span class="summary-badge-value" id="total-views-badge">0</span>
+                </a>
+                <a href="#" class="summary-chart-badge" data-metric="cvr" data-aggregate="1" title="Click to view CVR line graph">
+                    <span class="summary-badge-dot" style="background-color: #ff9c00;"></span>
+                    <span>CVR:</span>
+                    <span class="summary-badge-value" id="avg-cvr-badge">0%</span>
+                </a>
+                <a href="#" class="summary-chart-badge" data-metric="price" data-aggregate="1" title="Click to view Avg Price line graph">
+                    <span class="summary-badge-dot" style="background-color: #e83e8c;"></span>
+                    <span>Avg Price:</span>
+                    <span class="summary-badge-value" id="avg-price-badge">$0.00</span>
+                </a>
+                <span class="summary-badge-only">
+                    <span class="summary-badge-dot" style="background-color: #6c757d;"></span>
+                    <span>Amz LMP:</span>
+                    <span class="summary-badge-value" id="amz-lmp-badge">$0.00</span>
+                </span>
+                <span class="d-flex align-items-center gap-2 ms-auto">
                     <label class="mb-0 fw-semibold">Change Price:</label>
                     <input type="number" id="change-price-input" class="form-control form-control-sm" placeholder="Enter price" step="0.01" min="0" style="width: 100px;">
                     <button type="button" id="apply-change-price-btn" class="btn btn-sm btn-primary">
@@ -3361,9 +3433,31 @@ title: "Dil %",
         let currentPricingChartMetric = 'inv';
         let currentPricingChartSku = '';
         let currentPricingChartParent = '';
+        let currentPricingChartAggregate = false;
         let currentPricingChartDays = 30;
         const pricingChartMetricLabels = { inv: 'Inv', ov_l30: 'OV L30', price: 'Price', cvr: 'CVR', dil: 'DIL', amz_price: 'Amz Price', rating: 'Rating', total_views: 'Total Views' };
         const pricingChartRangeLabel = (days) => 'L' + days;
+
+        $(document).on('click', '.summary-chart-badge', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            const metric = $(e.currentTarget).attr('data-metric') || $(e.currentTarget).data('metric');
+            if (!metric) return;
+            currentPricingChartMetric = metric;
+            currentPricingChartSku = '';
+            currentPricingChartParent = '';
+            currentPricingChartAggregate = true;
+            currentPricingChartDays = 30;
+            $('#pricingMasterChartRangeSelect').val('30');
+            const label = pricingChartMetricLabels[metric] || metric;
+            $('#pricingMasterChartModalTitle').text('Master Analytics - All (Summary) - ' + label + ' (Rolling ' + pricingChartRangeLabel(30) + ')');
+            $('#pricingMasterChartContainer').hide();
+            $('#pricingMasterChartNoData').hide();
+            $('#pricingMasterChartLoading').show();
+            const modal = new bootstrap.Modal(document.getElementById('pricingMasterChartModal'));
+            modal.show();
+            loadPricingMasterChart();
+        });
 
         $(document).on('click', '.pricing-master-chart-link', function(e) {
             e.preventDefault();
@@ -3372,6 +3466,7 @@ title: "Dil %",
             const sku = String($(e.currentTarget).attr('data-sku') || $(e.currentTarget).data('sku') || '').trim();
             const parent = String($(e.currentTarget).attr('data-parent') || $(e.currentTarget).data('parent') || '').trim();
             if (!metric) return;
+            currentPricingChartAggregate = false;
             const isParentChart = parent !== '' || (sku.indexOf('PARENT ') === 0);
             const displayName = isParentChart ? (parent || sku.replace(/^PARENT\s+/i, '')) : sku;
             if (!isParentChart && !sku) { showToast('SKU not found for chart', 'error'); return; }
@@ -3408,8 +3503,13 @@ title: "Dil %",
             $('#pricingMasterChartContainer').hide();
             $('#pricingMasterChartNoData').hide();
             const payload = { metric: currentPricingChartMetric, days: currentPricingChartDays };
-            if (currentPricingChartParent) payload.parent = currentPricingChartParent;
-            else payload.sku = currentPricingChartSku;
+            if (currentPricingChartAggregate) {
+                payload.aggregate = 1;
+            } else if (currentPricingChartParent) {
+                payload.parent = currentPricingChartParent;
+            } else {
+                payload.sku = currentPricingChartSku;
+            }
             $.ajax({
                 url: '/cvr-master-chart-data',
                 method: 'GET',

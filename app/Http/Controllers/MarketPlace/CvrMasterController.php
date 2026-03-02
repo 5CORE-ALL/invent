@@ -69,6 +69,7 @@ use App\Models\BestbuyUSAListingStatus;
 use App\Models\TiendamiaListingStatus;
 use App\Models\JungleScoutProductData;
 use App\Models\PricingMasterDailySnapshotSku;
+use App\Models\PricingMasterDailySnapshot;
 use Carbon\Carbon;
 use App\Services\AmazonSpApiService;
 use App\Services\DobaApiService;
@@ -1038,6 +1039,23 @@ class CvrMasterController extends Controller
                 }
                 if ($saved > 0) {
                     Log::info('Master Analytics SKU snapshot saved', ['date' => $today, 'count' => $saved]);
+                    // Also save daily totals for aggregate chart (Total INV, OV L30, etc.)
+                    $totalInv = $childRows->sum(fn($r) => (int) ($r->inventory ?? 0));
+                    $totalOvL30 = $childRows->sum(fn($r) => (int) ($r->overall_l30 ?? 0));
+                    $avgPrice = $childRows->filter(fn($r) => isset($r->avg_price) && $r->avg_price > 0)->isNotEmpty()
+                        ? round($childRows->filter(fn($r) => isset($r->avg_price) && $r->avg_price > 0)->avg('avg_price'), 2) : null;
+                    $totalViews = $childRows->sum(fn($r) => (int) ($r->total_views ?? 0));
+                    $avgCvr = $totalViews > 0 && $totalOvL30 > 0
+                        ? round(($totalOvL30 / $totalViews) * 100, 2) : null;
+                    PricingMasterDailySnapshot::updateOrCreate(
+                        ['snapshot_date' => $today],
+                        [
+                            'total_inv' => $totalInv,
+                            'total_ov_l30' => $totalOvL30,
+                            'avg_price' => $avgPrice,
+                            'avg_cvr' => $avgCvr,
+                        ]
+                    );
                 }
             } catch (\Exception $e) {
                 Log::warning('Master Analytics SKU daily snapshot save failed: ' . $e->getMessage());
@@ -2357,14 +2375,48 @@ class CvrMasterController extends Controller
         $days = (int) $request->input('days', 30);
         $skuRaw = $request->input('sku', '');
         $parentRaw = preg_replace('/\s+/', ' ', trim($request->input('parent', '')));
+        $aggregate = filter_var($request->input('aggregate', false), FILTER_VALIDATE_BOOLEAN);
         $allowed = ['inv', 'ov_l30', 'price', 'cvr', 'dil', 'amz_price', 'rating', 'total_views'];
         if (!in_array($metric, $allowed)) {
             return response()->json(['success' => false, 'message' => 'Invalid metric'], 400);
         }
 
         $isParent = $parentRaw !== '';
+        $isAggregate = $aggregate && $parentRaw === '' && trim($skuRaw) === '';
 
-        if ($isParent) {
+        // For aggregate chart, use daily totals table when metric has a direct column (correct totals like 180k)
+        $aggregateUsesDailyTable = $isAggregate && in_array($metric, ['inv', 'ov_l30', 'price', 'cvr', 'dil'], true);
+
+        if ($aggregateUsesDailyTable) {
+            $query = PricingMasterDailySnapshot::orderBy('snapshot_date', 'asc');
+            if ($days > 0) {
+                $start = now('America/Los_Angeles')->subDays($days)->toDateString();
+                $query->where('snapshot_date', '>=', $start);
+            }
+            $rows = $query->get();
+            $data = $rows->map(function ($row) use ($metric) {
+                $value = match ($metric) {
+                    'inv' => (float) ($row->total_inv ?? 0),
+                    'ov_l30' => (float) ($row->total_ov_l30 ?? 0),
+                    'price' => $row->avg_price !== null ? (float) $row->avg_price : 0,
+                    'cvr' => $row->avg_cvr !== null ? (float) $row->avg_cvr : 0,
+                    'dil' => ($row->total_inv ?? 0) > 0
+                        ? round(((float) ($row->total_ov_l30 ?? 0) / (float) $row->total_inv) * 100, 2)
+                        : 0,
+                    default => (float) ($row->total_inv ?? 0),
+                };
+                return [
+                    'date' => Carbon::parse($row->snapshot_date)->format('M j'),
+                    'value' => $value,
+                ];
+            })->values()->all();
+            return response()->json(['success' => true, 'data' => $data]);
+        }
+
+        if ($isAggregate) {
+            // Summary-level: aggregate all SKUs by snapshot_date (for total_views, rating, amz_price)
+            $query = PricingMasterDailySnapshotSku::orderBy('snapshot_date', 'asc');
+        } elseif ($isParent) {
             // Parent-level: get all SKUs for this parent from ProductMaster
             $skus = ProductMaster::where('parent', $parentRaw)->pluck('sku')->toArray();
             if (empty($skus)) {
@@ -2386,11 +2438,11 @@ class CvrMasterController extends Controller
         }
         $rows = $query->get();
 
-        if ($isParent && $rows->isEmpty()) {
+        if (($isParent || $isAggregate) && $rows->isEmpty()) {
             return response()->json(['success' => true, 'data' => []]);
         }
 
-        if ($isParent) {
+        if ($isParent || $isAggregate) {
             // Aggregate by snapshot_date
             $byDate = $rows->groupBy(function ($row) {
                 return $row->snapshot_date->format('Y-m-d');
