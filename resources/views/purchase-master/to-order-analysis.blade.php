@@ -893,7 +893,7 @@
                     btn.disabled = true;
                     btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Updating...';
 
-                    fetch('{{ route('to.order.analysis.bulk.update.supplier') }}', {
+                    fetch('{{ url('/to-order-analysis/bulk-update-supplier') }}', {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
