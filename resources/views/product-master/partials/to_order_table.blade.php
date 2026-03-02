@@ -45,7 +45,19 @@
                         style="background:#f8fafd;color:#000;width:80px;">
                 @endif
             </td>
-
+            <td class="text-center" style="min-width: 70px;">
+                @php
+                    $mslVal = isset($row->msl) ? (int) $row->msl : null;
+                @endphp
+                @if ($mslVal !== null && $mslVal > 0)
+                    <span class="d-inline-flex align-items-center gap-1">
+                        <span>{{ $mslVal }}</span>
+                        <i class="ri-grid-line text-primary small" style="font-size: 14px; opacity: 0.8;" title="MSL (Minimum Stock Level)"></i>
+                    </span>
+                @else
+                    <span class="text-muted">—</span>
+                @endif
+            </td>
             @php
                 $bgColor = '';
                 $daysDiff = null;
@@ -86,6 +98,31 @@
                         </option>
                     @endforeach
                 </select>
+            </td>
+            <td class="text-center" style="min-width: 80px;">
+                @php
+                    $rating = isset($row->rating) ? (float) $row->rating : null;
+                    $reviews = isset($row->reviews) ? (int) $row->reviews : null;
+                    $ratingColor = '';
+                    if ($rating !== null && $rating > 0) {
+                        if ($rating < 3) $ratingColor = '#a00211';
+                        elseif ($rating >= 3 && $rating <= 3.5) $ratingColor = '#ffc107';
+                        elseif ($rating >= 3.51 && $rating <= 3.99) $ratingColor = '#3591dc';
+                        elseif ($rating >= 4 && $rating <= 4.5) $ratingColor = '#28a745';
+                        else $ratingColor = '#e83e8c';
+                    }
+                    $reviewColor = ($reviews !== null && $reviews < 4) ? '#a00211' : '#6c757d';
+                @endphp
+                @if ($rating !== null && $rating > 0)
+                    <div class="d-flex flex-column align-items-center gap-0" style="font-size: 0.9rem;">
+                        <span style="color: {{ $ratingColor }}; font-weight: 600;"><i class="fas fa-star"></i> {{ number_format($rating, 1) }}</span>
+                        @if ($reviews !== null)
+                            <span style="font-size: 11px; color: {{ $reviewColor }}; font-weight: 600;">{{ number_format($reviews) }} reviews</span>
+                        @endif
+                    </div>
+                @else
+                    <span class="text-muted">-</span>
+                @endif
             </td>
             <td>
                 @if ($review)

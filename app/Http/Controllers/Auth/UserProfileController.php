@@ -37,6 +37,9 @@ class UserProfileController extends Controller
             ],
             'phone' => ['nullable', 'string', 'max:20'],
             'avatar' => ['nullable', 'image', 'mimes:jpeg,jpg,png,gif,webp', 'max:2048'],
+            'avatar_position_x' => ['nullable', 'integer', 'min:0', 'max:100'],
+            'avatar_position_y' => ['nullable', 'integer', 'min:0', 'max:100'],
+            'avatar_zoom' => ['nullable', 'integer', 'min:50', 'max:200'],
         ]);
 
         $data = [
@@ -46,12 +49,21 @@ class UserProfileController extends Controller
         ];
 
         if ($request->hasFile('avatar')) {
-            // Delete old avatar if exists
             if ($user->avatar) {
                 Storage::disk('public')->delete($user->avatar);
             }
             $path = $request->file('avatar')->store('avatars', 'public');
             $data['avatar'] = $path;
+        }
+
+        if ($request->has('avatar_position_x')) {
+            $data['avatar_position_x'] = (int) $request->avatar_position_x;
+        }
+        if ($request->has('avatar_position_y')) {
+            $data['avatar_position_y'] = (int) $request->avatar_position_y;
+        }
+        if ($request->has('avatar_zoom')) {
+            $data['avatar_zoom'] = (int) $request->avatar_zoom;
         }
 
         $user->update($data);

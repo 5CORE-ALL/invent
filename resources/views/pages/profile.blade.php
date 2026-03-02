@@ -6,12 +6,18 @@
             <div class="profile-bg-picture" style="background-image:url('/images/bg-profile.jpg')">
                 <span class="picture-bg-overlay"></span>
             </div>
+            @php
+                $avatarUrl = $user->avatar ? asset('storage/' . $user->avatar) : asset('images/users/avatar-2.jpg');
+                $avatarPosX = (int) ($user->avatar_position_x ?? 50);
+                $avatarPosY = (int) ($user->avatar_position_y ?? 50);
+                $avatarZoom = (int) ($user->avatar_zoom ?? 100);
+            @endphp
             <div class="profile-user-box">
                 <div class="row">
                     <div class="col-sm-6">
                         <div class="profile-user-img position-relative d-inline-block">
-                            <img id="profile-avatar-preview" src="{{ $user->avatar ? asset('storage/' . $user->avatar) : '/images/users/avatar-2.jpg' }}" alt=""
-                                class="avatar-lg rounded-circle">
+                            <div id="profile-avatar-preview" class="avatar-lg rounded-circle avatar-display"
+                                style="background-image:url('{{ $avatarUrl }}'); background-position: {{ $avatarPosX }}% {{ $avatarPosY }}%; background-size: {{ $avatarZoom }}% {{ $avatarZoom }}%; background-repeat: no-repeat;"></div>
                         </div>
                         <div>
                             <h4 class="mt-4 fs-17 ellipsis">{{ $user->name }}</h4>
@@ -48,9 +54,10 @@
                                         <div class="row row-cols-sm-2 row-cols-1">
                                             <div class="mb-3 col-12">
                                                 <label class="form-label">Profile Image</label>
-                                                <div class="d-flex align-items-center gap-3 flex-wrap">
+                                                <div class="d-flex align-items-start gap-3 flex-wrap">
                                                     <div class="position-relative">
-                                                        <img id="avatar-preview" src="{{ $user->avatar ? asset('storage/' . $user->avatar) : '/images/users/avatar-2.jpg' }}" alt="Avatar" class="rounded-circle border" style="width: 80px; height: 80px; object-fit: cover;">
+                                                        <div id="avatar-preview" class="rounded-circle border avatar-display avatar-display-sm"
+                                                            style="width: 80px; height: 80px; background-image:url('{{ $avatarUrl }}'); background-position: {{ $avatarPosX }}% {{ $avatarPosY }}%; background-size: {{ $avatarZoom }}% {{ $avatarZoom }}%; background-repeat: no-repeat;"></div>
                                                     </div>
                                                     <div class="flex-grow-1">
                                                         <input type="file" name="avatar" id="avatar" accept="image/jpeg,image/jpg,image/png,image/gif,image/webp"
@@ -59,6 +66,26 @@
                                                         @error('avatar')
                                                             <div class="invalid-feedback d-block">{{ $message }}</div>
                                                         @enderror
+                                                    </div>
+                                                </div>
+                                                <div class="mt-3 profile-avatar-adjust-section">
+                                                    <label class="form-label small text-muted mb-2">Adjust position & focus</label>
+                                                    <input type="hidden" name="avatar_position_x" id="avatar_position_x" value="{{ $avatarPosX }}">
+                                                    <input type="hidden" name="avatar_position_y" id="avatar_position_y" value="{{ $avatarPosY }}">
+                                                    <input type="hidden" name="avatar_zoom" id="avatar_zoom" value="{{ $avatarZoom }}">
+                                                    <div class="row g-2">
+                                                        <div class="col-12 col-md-4">
+                                                            <label class="form-label small mb-0">Horizontal <span id="avatar-pos-x-val">{{ $avatarPosX }}</span>%</label>
+                                                            <input type="range" class="form-range avatar-adjust-slider" id="avatar_pos_x_slider" min="0" max="100" value="{{ $avatarPosX }}" data-target="position_x">
+                                                        </div>
+                                                        <div class="col-12 col-md-4">
+                                                            <label class="form-label small mb-0">Vertical <span id="avatar-pos-y-val">{{ $avatarPosY }}</span>%</label>
+                                                            <input type="range" class="form-range avatar-adjust-slider" id="avatar_pos_y_slider" min="0" max="100" value="{{ $avatarPosY }}" data-target="position_y">
+                                                        </div>
+                                                        <div class="col-12 col-md-4">
+                                                            <label class="form-label small mb-0">Zoom <span id="avatar-zoom-val">{{ $avatarZoom }}</span>%</label>
+                                                            <input type="range" class="form-range avatar-adjust-slider" id="avatar_zoom_slider" min="50" max="200" value="{{ $avatarZoom }}" data-target="zoom">
+                                                        </div>
                                                     </div>
                                                 </div>
                                             </div>
@@ -194,18 +221,72 @@
 
 @section('script')
     <script>
-        // Avatar image preview on file select
-        document.getElementById('avatar')?.addEventListener('change', function(e) {
-            const file = e.target.files?.[0];
-            if (!file || !file.type.startsWith('image/')) return;
-            const reader = new FileReader();
-            reader.onload = function() {
-                const url = reader.result;
-                document.getElementById('avatar-preview')?.setAttribute('src', url);
-                document.getElementById('profile-avatar-preview')?.setAttribute('src', url);
-            };
-            reader.readAsDataURL(file);
-        });
+        // Profile image: live position/zoom and preview
+        (function() {
+            const headerAvatar = document.getElementById('profile-avatar-preview');
+            const settingsPreview = document.getElementById('avatar-preview');
+            const avatarInput = document.getElementById('avatar');
+            let currentAvatarUrl = headerAvatar ? (headerAvatar.style.backgroundImage || '').replace(/url\(['"]?([^'"]+)['"]?\)/, '$1') : '';
+
+            function applyAvatarStyle(el, url, posX, posY, zoom) {
+                if (!el) return;
+                const u = url || currentAvatarUrl;
+                if (u) el.style.backgroundImage = "url('" + (u.indexOf("'") >= 0 ? u.replace(/'/g, "\\'") : u) + "')";
+                el.style.backgroundPosition = (posX != null ? posX : 50) + '% ' + (posY != null ? posY : 50) + '%';
+                const z = (zoom != null ? zoom : 100) + '%';
+                el.style.backgroundSize = z + ' ' + z;
+            }
+
+            function updateAvatarFromInputs() {
+                const posX = parseInt(document.getElementById('avatar_position_x')?.value || 50, 10);
+                const posY = parseInt(document.getElementById('avatar_position_y')?.value || 50, 10);
+                const zoom = parseInt(document.getElementById('avatar_zoom')?.value || 100, 10);
+                applyAvatarStyle(headerAvatar, null, posX, posY, zoom);
+                applyAvatarStyle(settingsPreview, null, posX, posY, zoom);
+                const xEl = document.getElementById('avatar-pos-x-val');
+                const yEl = document.getElementById('avatar-pos-y-val');
+                const zEl = document.getElementById('avatar-zoom-val');
+                if (xEl) xEl.textContent = posX;
+                if (yEl) yEl.textContent = posY;
+                if (zEl) zEl.textContent = zoom;
+            }
+
+            document.querySelectorAll('.avatar-adjust-slider').forEach(function(slider) {
+                slider.addEventListener('input', function() {
+                    const target = this.dataset.target;
+                    const val = parseInt(this.value, 10);
+                    if (target === 'position_x') {
+                        document.getElementById('avatar_position_x').value = val;
+                        document.getElementById('avatar-pos-x-val').textContent = val;
+                    } else if (target === 'position_y') {
+                        document.getElementById('avatar_position_y').value = val;
+                        document.getElementById('avatar-pos-y-val').textContent = val;
+                    } else if (target === 'zoom') {
+                        document.getElementById('avatar_zoom').value = val;
+                        document.getElementById('avatar-zoom-val').textContent = val;
+                    }
+                    const posX = parseInt(document.getElementById('avatar_position_x')?.value || 50, 10);
+                    const posY = parseInt(document.getElementById('avatar_position_y')?.value || 50, 10);
+                    const zoom = parseInt(document.getElementById('avatar_zoom')?.value || 100, 10);
+                    applyAvatarStyle(headerAvatar, null, posX, posY, zoom);
+                    applyAvatarStyle(settingsPreview, null, posX, posY, zoom);
+                });
+            });
+
+            avatarInput?.addEventListener('change', function(e) {
+                const file = e.target.files?.[0];
+                if (!file || !file.type.startsWith('image/')) return;
+                const url = URL.createObjectURL(file);
+                currentAvatarUrl = url;
+                const posX = parseInt(document.getElementById('avatar_position_x')?.value || 50, 10);
+                const posY = parseInt(document.getElementById('avatar_position_y')?.value || 50, 10);
+                const zoom = parseInt(document.getElementById('avatar_zoom')?.value || 100, 10);
+                applyAvatarStyle(headerAvatar, url, posX, posY, zoom);
+                applyAvatarStyle(settingsPreview, url, posX, posY, zoom);
+            });
+
+            updateAvatarFromInputs();
+        })();
 
         // Toggle password visibility
         document.querySelectorAll('.toggle-password').forEach(button => {
