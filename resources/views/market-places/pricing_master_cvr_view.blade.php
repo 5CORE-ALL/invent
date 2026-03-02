@@ -116,9 +116,12 @@
         #ovl30DetailsModal .modal-body {
             background-color: #fff !important;
             color: #0f172a !important;
-            max-height: min(75vh, 600px);
+            overflow: visible;
+        }
+        #ovl30DetailsModal .ovl30-table-wrap {
+            max-height: min(70vh, 520px);
             overflow-y: auto;
-            overflow-x: hidden;
+            overflow-x: auto;
         }
         #ovl30DetailsModal .table tbody {
             background-color: #fff !important;
@@ -127,7 +130,7 @@
         #ovl30DetailsModal .table td {
             color: #334155 !important;
         }
-        /* Sticky table header in OV L30 Details modal */
+        /* Sticky table header + totals row in OV L30 Details modal */
         #ovl30DetailsModal .table thead .modal-vertical-header th {
             position: sticky;
             top: 0;
@@ -137,13 +140,29 @@
         }
         #ovl30DetailsModal .table thead .modal-totals-row th {
             position: sticky;
-            top: 80px; /* match modal-vertical-header height */
+            top: 80px;
             z-index: 10;
             background-color: #f1f5f9 !important;
             box-shadow: 0 1px 0 0 #e2e8f0;
         }
         #ovl30DetailsModal .table thead .modal-vertical-header th:nth-child(1) {
             min-height: 80px;
+        }
+        /* Sortable column headers – cursor and sort icon */
+        #ovl30DetailsModal .table thead .modal-vertical-header th.ovl30-sortable {
+            cursor: pointer;
+            user-select: none;
+        }
+        #ovl30DetailsModal .table thead .modal-vertical-header th.ovl30-sortable:hover {
+            background-color: #cbd5e1 !important;
+        }
+        #ovl30DetailsModal .ovl30-sort-icon {
+            font-size: 10px;
+            margin-left: 2px;
+            opacity: 0.7;
+        }
+        #ovl30DetailsModal .ovl30-sort-icon.active {
+            opacity: 1;
         }
 
         /* ========== DROPDOWN STYLING ========== */
@@ -474,29 +493,39 @@
                             <option value="gpft_asc">GPFT% (Low → High)</option>
                             <option value="ad_asc">AD% (Low → High)</option>
                             <option value="ad_desc">AD% (High → Low)</option>
+                            <option value="tacos_asc">TACOS CH (Low → High)</option>
+                            <option value="tacos_desc">TACOS CH (High → Low)</option>
+                            <option value="npft_desc">NPFT% (High → Low)</option>
+                            <option value="npft_asc">NPFT% (Low → High)</option>
                             <option value="sprice_desc">SPRICE (High → Low)</option>
                             <option value="sprice_asc">SPRICE (Low → High)</option>
+                            <option value="sgpft_desc">SGPFT% (High → Low)</option>
+                            <option value="sgpft_asc">SGPFT% (Low → High)</option>
+                            <option value="spft_desc">SPFT% (High → Low)</option>
+                            <option value="spft_asc">SPFT% (Low → High)</option>
+                            <option value="sroi_desc">SROI% (High → Low)</option>
+                            <option value="sroi_asc">SROI% (Low → High)</option>
                         </select>
                     </div>
-                    <div class="table-responsive">
-                        <table class="table table-bordered table-hover mb-0">
+                    <div class="table-responsive ovl30-table-wrap">
+                        <table class="table table-bordered table-hover mb-0" id="ovl30DetailsTable">
                             <thead style="background-color: #e2e8f0; color: #0f172a;">
                                 <tr class="modal-vertical-header">
-                                    <th>M</th>
-                                    <th>L30</th>
-                                    <th>Price</th>
-                                    <th>Views</th>
-                                    <th>CVR%</th>
-                                    <th>GPFT%</th>
-                                    <th>AD%</th>
-                                    <th>TACOS CH</th>
-                                    <th>NPFT%</th>
+                                    <th class="ovl30-sortable" data-sort="marketplace" data-dir="asc" title="Sort by Marketplace"><span>M</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
+                                    <th class="ovl30-sortable" data-sort="l30" data-dir="desc" title="Sort by L30"><span>L30</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
+                                    <th class="ovl30-sortable" data-sort="price" data-dir="desc" title="Sort by Price"><span>Price</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
+                                    <th class="ovl30-sortable" data-sort="views" data-dir="desc" title="Sort by Views"><span>Views</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
+                                    <th class="ovl30-sortable" data-sort="cvr" data-dir="desc" title="Sort by CVR%"><span>CVR%</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
+                                    <th class="ovl30-sortable" data-sort="gpft" data-dir="desc" title="Sort by GPFT%"><span>GPFT%</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
+                                    <th class="ovl30-sortable" data-sort="ad" data-dir="asc" title="Sort by AD%"><span>AD%</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
+                                    <th class="ovl30-sortable" data-sort="tacos" data-dir="asc" title="Sort by TACOS CH"><span>TACOS CH</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
+                                    <th class="ovl30-sortable" data-sort="npft" data-dir="desc" title="Sort by NPFT%"><span>NPFT%</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
                                     <th>LMP</th>
                                     <th>Links</th>
-                                    <th>SPRICE</th>
-                                    <th>SGPFT%</th>
-                                    <th>SPFT%</th>
-                                    <th>SROI%</th>
+                                    <th class="ovl30-sortable" data-sort="sprice" data-dir="desc" title="Sort by SPRICE"><span>SPRICE</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
+                                    <th class="ovl30-sortable" data-sort="sgpft" data-dir="desc" title="Sort by SGPFT%"><span>SGPFT%</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
+                                    <th class="ovl30-sortable" data-sort="spft" data-dir="desc" title="Sort by SPFT%"><span>SPFT%</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
+                                    <th class="ovl30-sortable" data-sort="sroi" data-dir="desc" title="Sort by SROI%"><span>SROI%</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
                                     <th>Push</th>
                                     <th>Pushed By</th>
                                 </tr>
@@ -897,6 +926,31 @@
         $(document).on('change', '#ovl30ModalSortBy', function() {
             if (ovl30ModalData.length) {
                 renderMarketplaceData();
+                updateOvl30SortIcons();
+            }
+        });
+
+        // OVL30 Details modal – column header click to sort
+        $(document).on('click', '#ovl30DetailsModal .modal-vertical-header th.ovl30-sortable', function() {
+            const sortField = $(this).data('sort');
+            const currentVal = ($('#ovl30ModalSortBy').val() || 'l30_desc').toString();
+            const [currentField, currentDir] = currentVal.split('_');
+            let newDir = currentDir;
+            if (currentField === sortField) {
+                newDir = currentDir === 'asc' ? 'desc' : 'asc';
+            } else {
+                newDir = (sortField === 'marketplace') ? 'asc' : 'desc';
+            }
+            const newVal = sortField + '_' + newDir;
+            const $sel = $('#ovl30ModalSortBy');
+            if ($sel.find('option[value="' + newVal + '"]').length) {
+                $sel.val(newVal);
+            } else {
+                $sel.val(sortField + '_desc');
+            }
+            if (ovl30ModalData.length) {
+                renderMarketplaceData();
+                updateOvl30SortIcons();
             }
         });
 
@@ -1029,11 +1083,55 @@
                     cmp = parseFloat(a.gpft || 0) - parseFloat(b.gpft || 0);
                 } else if (field === 'ad') {
                     cmp = parseFloat(a.ad || 0) - parseFloat(b.ad || 0);
+                } else if (field === 'tacos') {
+                    cmp = parseFloat(a.tacos_ch || 0) - parseFloat(b.tacos_ch || 0);
+                } else if (field === 'npft') {
+                    cmp = parseFloat(a.npft || 0) - parseFloat(b.npft || 0);
                 } else if (field === 'sprice') {
                     cmp = parseFloat(a.sprice || 0) - parseFloat(b.sprice || 0);
+                } else if (field === 'sgpft') {
+                    const lpA = parseFloat(a.lp || 0), shipA = parseFloat(a.ship || 0), marginA = parseFloat(a.margin || 0.80);
+                    const lpB = parseFloat(b.lp || 0), shipB = parseFloat(b.ship || 0), marginB = parseFloat(b.margin || 0.80);
+                    const sA = parseFloat(a.sprice || 0), sB = parseFloat(b.sprice || 0);
+                    let sgA = 0, sgB = 0;
+                    if (sA > 0) sgA = ((sA * marginA - shipA - lpA) / sA) * 100;
+                    if (sB > 0) sgB = ((sB * marginB - shipB - lpB) / sB) * 100;
+                    cmp = sgA - sgB;
+                } else if (field === 'spft') {
+                    const l30A = parseInt(a.l30 || 0), l30B = parseInt(b.l30 || 0);
+                    const adA = parseFloat(a.ad || 0), adB = parseFloat(b.ad || 0);
+                    const lpA = parseFloat(a.lp || 0), shipA = parseFloat(a.ship || 0), marginA = parseFloat(a.margin || 0.80);
+                    const lpB = parseFloat(b.lp || 0), shipB = parseFloat(b.ship || 0), marginB = parseFloat(b.margin || 0.80);
+                    const sA = parseFloat(a.sprice || 0), sB = parseFloat(b.sprice || 0);
+                    let spA = 0, spB = 0;
+                    if (sA > 0) { const sgA = ((sA * marginA - shipA - lpA) / sA) * 100; spA = l30A === 0 ? sgA : sgA - adA; }
+                    if (sB > 0) { const sgB = ((sB * marginB - shipB - lpB) / sB) * 100; spB = l30B === 0 ? sgB : sgB - adB; }
+                    cmp = spA - spB;
+                } else if (field === 'sroi') {
+                    const lpA = parseFloat(a.lp || 0), shipA = parseFloat(a.ship || 0), marginA = parseFloat(a.margin || 0.80);
+                    const lpB = parseFloat(b.lp || 0), shipB = parseFloat(b.ship || 0), marginB = parseFloat(b.margin || 0.80);
+                    const sA = parseFloat(a.sprice || 0), sB = parseFloat(b.sprice || 0);
+                    let rA = 0, rB = 0;
+                    if (lpA > 0 && sA > 0) rA = ((sA * marginA - lpA - shipA) / lpA) * 100;
+                    if (lpB > 0 && sB > 0) rB = ((sB * marginB - lpB - shipB) / lpB) * 100;
+                    cmp = rA - rB;
                 }
                 return cmp * asc;
             };
+        }
+
+        function updateOvl30SortIcons() {
+            const val = ($('#ovl30ModalSortBy').val() || 'l30_desc').toString();
+            const [field, dir] = val.split('_');
+            $('#ovl30DetailsModal .modal-vertical-header th.ovl30-sortable').each(function() {
+                const $th = $(this);
+                const sortField = $th.data('sort');
+                const $icon = $th.find('.ovl30-sort-icon');
+                $icon.removeClass('fa-sort-up fa-sort-down active').addClass('fa-sort');
+                if (sortField === field) {
+                    $icon.removeClass('fa-sort').addClass(dir === 'asc' ? 'fa-sort-up' : 'fa-sort-down').addClass('active');
+                }
+            });
         }
 
         function renderMarketplaceData(data) {
@@ -1378,6 +1476,7 @@
             $('#modal-avg-sgpft').html(`<span style="${styleForCellColor(sgpftColorTotal)}">${avgSGPFT.toFixed(1)}%</span>`);
             $('#modal-avg-spft').html(`<span style="${styleForCellColor(spftColorTotal)}">${avgSPFT.toFixed(1)}%</span>`);
             $('#modal-avg-sroi').html(`<span style="${styleForCellColor(sroiColorTotal)}">${avgSROI.toFixed(1)}%</span>`);
+            updateOvl30SortIcons();
         }
 
         // ==================== TABULATOR INITIALIZATION ====================
