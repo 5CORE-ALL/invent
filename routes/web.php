@@ -66,6 +66,7 @@ use App\Http\Controllers\MarketPlace\OverallAmazonPriceController;
 use App\Http\Controllers\MarketPlace\ReverbLowVisibilityController;
 use App\Http\Controllers\MarketPlace\Shopifyb2cController;
 use App\Http\Controllers\Channels\ChannelMasterController;
+use App\Http\Controllers\ListingMaster\AmzListingController;
 use App\Http\Controllers\Channels\ChannelwiseController;
 use App\Http\Controllers\Channels\ReturnController;
 use App\Http\Controllers\Channels\ExpensesController;
@@ -227,7 +228,6 @@ use App\Http\Controllers\MarketPlace\AliexpressController;
 use App\Http\Controllers\MarketPlace\Ebay2LowVisibilityController;
 use App\Http\Controllers\MarketPlace\Ebay3LowVisibilityController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingAmazonController;
-use App\Http\Controllers\ListingMaster\AmzListingController;
 use App\Http\Controllers\MarketPlace\SheinController;
 use App\Http\Controllers\MarketPlace\TiktokShopController;
 use App\Http\Controllers\PurchaseMaster\LedgerMasterController;
@@ -426,8 +426,18 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/channel-archive', [ChannelMasterController::class, 'archiveChannel'])->name('channel.archive');
     Route::get('/all-marketplace-master', [ChannelMasterController::class, 'allMarketplaceMaster'])->name('all.marketplace.master');
 
+    // Listing Master > Amz Data (Amazon Listings raw from SP-API)
+    Route::get('/listing-master/amz-data', [AmzListingController::class, 'index'])->name('listing.master.amz.data');
+    Route::get('/listing-master/amz-data/data', [AmzListingController::class, 'data'])->name('listing.master.amz.data.data');
+    Route::get('/listing-master/amz-data/images', [AmzListingController::class, 'images'])->name('listing.master.amz.data.images');
+    Route::get('/listing-master/amz-data/media', [AmzListingController::class, 'media'])->name('listing.master.amz.data.media');
+    Route::post('/listing-master/amz-data/import', [AmzListingController::class, 'import'])->name('listing.master.amz.data.import');
+    Route::get('/listing-master/amz-data/import-debug', [AmzListingController::class, 'importDebug'])->name('listing.master.amz.data.import.debug');
+    Route::post('/listing-master/amz-data/enrich-single', [AmzListingController::class, 'enrichSingle'])->name('listing.master.amz.data.enrich-single');
+
+
     // Marketplace Sync: dynamic routes per marketplace (reverb, amazon, ebay, walmart)
-    Route::prefix('marketplace/{marketplace}')->where(['marketplace' => 'reverb|amazon|ebay|walmart'])->group(function () {
+    Route::prefix('marketplace/{marketplace}')->where(['marketplace' => 'reverb|amazon|ebay|walmart|topdawg'])->group(function () {
         Route::get('/products', [\App\Http\Controllers\MarketplaceController::class, 'products'])->name('marketplace.products');
         Route::get('/orders', [\App\Http\Controllers\MarketplaceController::class, 'orders'])->name('marketplace.orders');
         Route::get('/settings', [\App\Http\Controllers\MarketplaceController::class, 'settings'])->name('marketplace.settings');
@@ -595,6 +605,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/outgoing-view', [OutgoingController::class, 'index'])->name('outgoing.view');
     Route::post('/outgoing-data-store', [OutgoingController::class, 'store'])->name('outgoing.store');
     Route::get('/outgoing-data-list', [OutgoingController::class, 'list']);
+    Route::post('/outgoing-archive', [OutgoingController::class, 'archive']);
 
 
 
@@ -622,16 +633,14 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/stock-balance-delete-relationship', [StockBalanceController::class, 'deleteRelationship']);
     Route::get('/stock-balance-get-skus-autocomplete', [StockBalanceController::class, 'getSkusForAutocomplete']);
     Route::get('/stock-balance-get-recent-history', [StockBalanceController::class, 'getRecentHistory']);
+    Route::get('/combo-trf', [StockBalanceController::class, 'comboTrfView'])->name('combo.trf');
+    Route::post('/combo-trf-store', [StockBalanceController::class, 'storeComboTrf'])->name('combo.trf.store');
+    Route::get('/combo-trf-inventory-data', [StockBalanceController::class, 'getComboTrfInventoryData']);
+    Route::post('/combo-trf-update-action', [StockBalanceController::class, 'updateComboTrfAction']);
 
     //Multi-SKU Stock Balance
     Route::get('/stock-balance-multi-sku', [StockBalanceController::class, 'multiSkuView'])->name('stock.balance.multi.sku');
     Route::post('/stock-balance-multi-sku-data', [StockBalanceController::class, 'getMultiSkuInventoryData']);
-
-    // Combo TRF
-    Route::get('/combo-trf', [StockBalanceController::class, 'comboTrfView'])->name('combo.trf');
-    Route::get('/combo-trf-inventory-data', [StockBalanceController::class, 'getComboTrfInventoryData']);
-    Route::post('/combo-trf-update-action', [StockBalanceController::class, 'updateComboTrfAction']);
-    Route::post('/combo-trf-store', [StockBalanceController::class, 'storeComboTrf'])->name('combo.trf.store');
 
     //channel Movement Analysis
     Route::get('/channel-movement-analysis', [ChannelMovementAnalysisController::class, 'index'])->name('channel.movement.analysis');
@@ -679,6 +688,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/purchase-orders/convert', 'convert')->name('purchase-orders.convert');
         Route::get('/purchase-order/{id}/generate-pdf', 'generatePdf')->name('generate-pdf');
         Route::post('/purchase-orders/delete', 'deletePurchaseOrders');
+        Route::post('/purchase-orders/{id}/archive', 'archivePurchaseOrder');
+        Route::post('/purchase-orders/{id}/restore', 'restorePurchaseOrder');
         Route::get('/purchase-orders/{id}', 'showPurchaseOrders');
         Route::post('/purchase-orders/{id}', 'updatePurchaseOrder');
     });
@@ -890,6 +901,14 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/reverb-pricing-column-visibility', [\App\Http\Controllers\MarketPlace\ReverbController::class, 'getColumnVisibility'])->name('reverb.pricing.column.get');
     Route::post('/reverb-pricing-column-visibility', [\App\Http\Controllers\MarketPlace\ReverbController::class, 'setColumnVisibility'])->name('reverb.pricing.column.set');
     Route::get('/reverb/fallback-stats', [\App\Http\Controllers\MarketPlace\ReverbSyncController::class, 'fallbackStats'])->name('reverb.fallback.stats');
+    Route::get('/admin/shopify-store/{store}', function ($store) {
+        $allowed = ['prolightsounds', 'main', '5core', 'business'];
+        if (in_array($store, $allowed)) {
+            session(['shopify_active_store' => $store]);
+            return "Switched to {$store} store. Current store: " . session('shopify_active_store');
+        }
+        return 'Invalid store. Allowed: ' . implode(', ', $allowed);
+    })->middleware('auth')->name('admin.shopify-store.switch');
 
     // CVR Master Routes (Tabulator)
     Route::get('/cvr-master', [CvrMasterController::class, 'index'])->name('cvr.master');
@@ -901,6 +920,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/cvr-master-remark-history/{sku}', [CvrMasterController::class, 'getRemarkHistory'])->name('cvr.master.remark.history');
     Route::get('/cvr-master-remark-latest/{sku}', [CvrMasterController::class, 'getLatestRemark'])->name('cvr.master.remark.latest');
     Route::post('/cvr-master-remark-toggle/{id}', [CvrMasterController::class, 'toggleRemarkSolved'])->name('cvr.master.remark.toggle');
+    Route::get('/cvr-master-amazon-sprice-table', [CvrMasterController::class, 'getAmazonSpriceTableData'])->name('cvr.master.amazon.sprice.table');
+    Route::get('/cvr-master-chart-data', [CvrMasterController::class, 'getPricingMasterChartData'])->name('cvr.master.chart.data');
     Route::post('/cvr-master-save-suggested-data', [CvrMasterController::class, 'saveSuggestedData'])->name('cvr.master.save.suggested');
     Route::post('/cvr-master-push-price', [CvrMasterController::class, 'pushPriceToAmazon'])->name('cvr.master.push.price');
     Route::post('/cvr-master-bulk-change-price', [CvrMasterController::class, 'bulkChangePrice'])->name('cvr.master.bulk.change.price');
@@ -1071,6 +1092,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/amazon-campaign-data-by-sku', action: [OverallAmazonController::class, 'getCampaignDataBySku'])->name('amazon.campaign.data.by.sku');
     Route::post('/amazon/refresh-links', [OverallAmazonController::class, 'refreshAmazonLinks'])->name('amazon.refresh.links');
     Route::post('/save-amazon-nr', [OverallAmazonController::class, 'saveNrToDatabase']);
+    Route::post('/save-amazon-variation', [OverallAmazonController::class, 'saveVariationToDatabase']);
     Route::post('/save-amazon-sprice', [OverallAmazonController::class, 'saveSpriceToDatabase']);
     Route::post('/amazon-clear-sprice', [OverallAmazonController::class, 'clearAmazonSprice']);
     Route::post('/apply-amazon-price', [OverallAmazonController::class, 'applyAmazonPrice']);
@@ -1223,16 +1245,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/listing-mirror/sync-price', [\App\Http\Controllers\ListingMirrorController::class, 'syncPrice'])->name('listing-mirror.sync-price');
     Route::post('/listing-mirror/bulk-sync', [\App\Http\Controllers\ListingMirrorController::class, 'bulkSync'])->name('listing-mirror.bulk-sync');
     Route::get('/listing-mirror/sync-history', [\App\Http\Controllers\ListingMirrorController::class, 'getSyncHistory'])->name('listing-mirror.sync-history');
-
-    // Listing Master - Amz Data
-    Route::get('/listing-master/amz-data', [AmzListingController::class, 'index'])->name('listing.master.amz.data');
-    Route::get('/listing-master/amz-data/data', [AmzListingController::class, 'data']);
-    Route::get('/listing-master/amz-data/images', [AmzListingController::class, 'images']);
-    Route::get('/listing-master/amz-data/media', [AmzListingController::class, 'media']);
-    Route::post('/listing-master/amz-data/import', [AmzListingController::class, 'import']);
-    Route::post('/listing-master/amz-data/enrich-single', [AmzListingController::class, 'enrichSingle']);
-    Route::get('/listing-master/amz-data/import-debug', [AmzListingController::class, 'importDebug']);
-
     Route::get('/listing-audit-ebay', [ListingAuditEbayController::class, 'listingAuditEbay'])->name('listing.audit.ebay');
     Route::get('/listing-ebay', [ListingEbayController::class, 'listingEbay'])->name('listing.ebay');
     Route::post('/listing_ebay/import', [ListingEbayController::class, 'import'])->name('listing_ebay.import');
@@ -1497,7 +1509,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/approval.required', action: [ForecastAnalysisController::class, 'approvalRequired'])->name('approval.required');
     Route::get('/transit', action: [ForecastAnalysisController::class, 'transit'])->name('transit');
     Route::get('/forecast-analysis/get-sku-quantity', action: [ForecastAnalysisController::class, 'getSkuQuantity'])->name('forecast.analysis.get.sku.quantity');
-    Route::post('/forecast-analysis/link-supplier-parent', action: [ForecastAnalysisController::class, 'linkSupplierToParent'])->name('forecast.link-supplier-parent');
 
     //ebay lqs cvr
     Route::get('/ebaycvrLQS.master', action: [EbayCvrLqsController::class, 'cvrLQSMaster'])->name('ebaycvrLQS.master');
@@ -1513,8 +1524,11 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
     //Supplier routes
     Route::get('/supplier.list', [SupplierController::class, 'supplierList'])->name('supplier.list');
+    Route::get('/supplier.list.json', [SupplierController::class, 'getSuppliersJson'])->name('supplier.list.json');
+    Route::get('/supplier/categories.json', [SupplierController::class, 'getCategoriesJson'])->name('supplier.categories.json');
     Route::post('/supplier.create', [SupplierController::class, 'postSupplier'])->name('supplier.create');
     Route::delete('/supplier/delete/{id}', [SupplierController::class, 'deleteSupplier'])->name('supplier.delete');
+    Route::post('/forecast-analysis/link-supplier-parent', [\App\Http\Controllers\ProductMaster\ForecastAnalysisController::class, 'linkSupplierToParent'])->name('forecast.link-supplier-parent');
     Route::post('/supplier/import', [SupplierController::class, 'bulkImport'])->name('supplier.import');
     Route::post('/supplier-rating', [SupplierController::class, 'storeRating'])->name('supplier.rating.save');
 
@@ -1599,7 +1613,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/to-order-analysis-new', 'toOrderAnalysisNew')->name('to.order.analysis.new');
         Route::get('/to-order-analysis/data', 'getToOrderAnalysis')->name('to.order.analysis.data');
         Route::post('/update-link', 'updateLink')->name('update.rfq.link');
-        Route::post('/to-order-analysis/bulk-update-supplier', 'bulkUpdateSupplier')->name('to.order.analysis.bulk.update.supplier');
         Route::post('/mfrg-progresses/insert', 'storeMFRG')->name('mfrg.progresses.insert');
         Route::post('/save-to-order-review', 'storeToOrderReview')->name('save.to_order_review');
         Route::post('/to-order-analysis/delete', 'deleteToOrderAnalysis')->name('delete.to_order_analysis');
@@ -1730,6 +1743,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
     //amazon db save routes
     Route::post('/amazon/save-nr', [OverallAmazonController::class, 'saveNrToDatabase']);
+    Route::post('/amazon/save-variation', [OverallAmazonController::class, 'saveVariationToDatabase']);
     Route::post('/amazon/update-listed-live', [OverallAmazonController::class, 'updateListedLive']);
 
     Route::post('/amazon/save-sprice', [OverallAmazonController::class, 'saveSpriceToDatabase'])->name('amazon.save-sprice');
@@ -2498,9 +2512,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
         Route::get('/amazon/pink-dil/pt/ads', 'amazonPinkDilPtAds')->name('amazon.pink.dil.pt.ads');
         Route::get('/amazon/pink-dil/pt/ads/data', 'getAmazonPinkDilPtAdsData');
-
-        Route::get('/amazon/pink-dil/hl/ads', 'amazonPinkDilHlAds')->name('amazon.pink.dil.hl.ads');
-        Route::get('/amazon/pink-dil/hl/ads/data', 'getAmazonPinkDilHlAdsData');
     });
 
 
@@ -2647,8 +2658,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::controller(AmazonACOSController::class)->group(function () {
         Route::get('/amazon-acos-kw-control', 'amazonAcosKwControl')->name('amazon.acos.kw.control');
         Route::get('/amazon-acos-kw-control-data', 'amazonAcosKwControlData')->name('amazon.acos.kw.control.data');
-        Route::get('/amazon-acos-hl-control', 'amazonAcosHlControl')->name('amazon.acos.hl.control');
-        Route::get('/amazon-acos-hl-control-data', 'amazonAcosHlControlData')->name('amazon.acos.hl.control.data');
         Route::get('/amazon-acos-pt-control', 'amazonAcosPtControl')->name('amazon.acos.pt.control');
         Route::get('/amazon-acos-pt-control-data', 'amazonAcosPtControlData')->name('amazon.acos.pt.control.data');
 
@@ -3005,6 +3014,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/history', [\App\Http\Controllers\RePricer\AmazonSearchController::class, 'getSearchHistory']);
         Route::get('/results', [\App\Http\Controllers\RePricer\AmazonSearchController::class, 'getResults']);
         Route::get('/filter-options', [\App\Http\Controllers\RePricer\AmazonSearchController::class, 'getFilterOptions']);
+        Route::get('/raw-response', [\App\Http\Controllers\RePricer\AmazonSearchController::class, 'getRawResponse']);
         Route::get('/skus', [\App\Http\Controllers\RePricer\AmazonSearchController::class, 'getSkus']);
         Route::post('/store-competitors', [\App\Http\Controllers\RePricer\AmazonSearchController::class, 'storeCompetitors']);
     });
