@@ -197,6 +197,7 @@
                             <label class="form-label fw-semibold d-block">🏢 Supplier</label>
                             <select id="supplier-filter" class="form-select">
                                 <option value="">All Suppliers</option>
+                                <option value="__blank__">Blank / No supplier</option>
                                 @foreach($allSuppliers ?? [] as $s)
                                 <option value="{{ $s }}">{{ $s }}</option>
                                 @endforeach
@@ -610,9 +611,10 @@
                                 let selected = (supplier === value) ? "selected" : "";
                                 return `<option value="${(supplier || "").replace(/"/g, "&quot;")}" ${selected}>${(supplier || "").replace(/</g, "&lt;")}</option>`;
                             }).join("");
+                            let selectSelected = (!value || value.trim() === "") ? " selected" : "";
                             return `
                                 <select class="form-select form-select-sm editable-select" data-sku="${sku}" data-column="Supplier" style="width: 140px; max-width: 100%;">
-                                    <option value="">-- Select --</option>
+                                    <option value=""${selectSelected}>-- Select --</option>
                                     ${options}
                                 </select>`;
                         }
@@ -1212,7 +1214,13 @@
 
                     if (stage) keep = keep && (row.stage || '').toLowerCase() === stage;
                     if (pending) keep = keep && getRowColor(row) === pending;
-                    if (supplierFilter) keep = keep && (row.Supplier || '').trim().toLowerCase() === supplierFilter.toLowerCase();
+                    if (supplierFilter) {
+                        if (supplierFilter === '__blank__') {
+                            keep = keep && (row.Supplier || '').trim() === '';
+                        } else {
+                            keep = keep && (row.Supplier || '').trim().toLowerCase() === supplierFilter.toLowerCase();
+                        }
+                    }
                     if (searchText) keep = keep && Object.values(row).some(val => val && val.toString().toLowerCase().includes(searchText));
 
                     return keep;

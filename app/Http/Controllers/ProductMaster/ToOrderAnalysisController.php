@@ -175,7 +175,8 @@ class ToOrderAnalysisController extends Controller
                     'Approved QTY'    => $approvedQty,
                     'Date of Appr'    => $toOrder->date_apprvl ?? '',
                     'Clink'           => ($forecast ? ($forecast->clink ?? '') : ''),
-                    'Supplier'        => $toOrder->supplier_name ?? $supplierName ?? '',
+                    // Use stored supplier; only fallback to parent lookup when never set (null). Empty = user chose "Select" so keep blank.
+                    'Supplier'        => $toOrder->supplier_name !== null ? (string) $toOrder->supplier_name : ($supplierName ?? ''),
                     'msl'             => $mslValue,
                     's_msl'           => $sMsl,
                     'lp_msl'          => $lpMsl,
@@ -385,7 +386,8 @@ class ToOrderAnalysisController extends Controller
                     'approved_qty'    => $approvedQty,
                     'Date of Appr'    => $toOrder->date_apprvl ?? '',
                     'Clink'           => ($forecast ? ($forecast->clink ?? '') : ''),
-                    'Supplier'        => $toOrder->supplier_name ?? $supplierName ?? '',
+                    // Use stored supplier; only fallback to parent lookup when never set (null). Empty = user chose "Select" so keep blank.
+                    'Supplier'        => $toOrder->supplier_name !== null ? (string) $toOrder->supplier_name : ($supplierName ?? ''),
                     'msl'             => $mslValue,
                     's_msl'           => $sMsl,
                     'lp_msl'          => $lpMsl,
@@ -502,6 +504,11 @@ class ToOrderAnalysisController extends Controller
             return response()->json(['success' => false, 'message' => 'Invalid column']);
         }
 
+        // When user chooses "-- Select --" for Supplier, ensure we store empty string (not null) so refresh shows blank
+        if ($column === 'Supplier') {
+            $value = trim((string) $value);
+        }
+
         $updateColumn = match ($column) {
             'Date of Appr'    => 'date_apprvl',
             'RFQ Form Link'   => 'rfq_form_link',
@@ -516,10 +523,17 @@ class ToOrderAnalysisController extends Controller
         };
 
         try {
-            // Update ALL rows with this SKU (handles duplicate SKU rows so refresh shows correct value)
-            $updated = ToOrderAnalysis::whereRaw('TRIM(UPPER(sku)) = ?', [$sku])->update([$updateColumn => $value]);
+            // For Supplier, use DB::table so empty string is stored exactly (not converted to null by Eloquent)
+            if ($column === 'Supplier') {
+                $updated = DB::table('to_order_analysis')
+                    ->whereRaw('TRIM(UPPER(sku)) = ?', [$sku])
+                    ->update(['supplier_name' => $value, 'updated_at' => now()]);
+            } else {
+                // Update ALL rows with this SKU (handles duplicate SKU rows so refresh shows correct value)
+                $updated = ToOrderAnalysis::whereRaw('TRIM(UPPER(sku)) = ?', [$sku])->update([$updateColumn => $value]);
+            }
 
-            if ($updated === 0) {
+            if ($updated === 0 && $column !== 'Supplier') {
                 // No row exists for this SKU, create one (avoid creating if any duplicate already exists)
                 ToOrderAnalysis::create([
                     'sku' => $sku,
