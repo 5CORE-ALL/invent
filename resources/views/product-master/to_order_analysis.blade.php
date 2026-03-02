@@ -120,6 +120,16 @@
             .image-hover-wrapper:hover .image-hover-preview {
                 display: block;
             }
+
+            #mslDetailsModal.show {
+                z-index: 1055;
+            }
+            .cursor-pointer {
+                cursor: pointer;
+            }
+            .open-msl-modal-cell.cursor-pointer:hover {
+                background-color: rgba(59, 192, 195, 0.12);
+            }
         </style>
     @endsection
     @section('content')
@@ -252,8 +262,10 @@
                                         <th>Parent</th>
                                         <th>SKU</th>
                                         <th title="Approved Quantity">Appr. QTY</th>
+                                        <th title="Minimum Stock Level">MSL</th>
                                         <th title="Date of Approval">DOA</th>
                                         <th>Supplier</th>
+                                        <th title="Rating and reviews from Jungle Scout">Reviews</th>
                                         <th>Review</th>
                                         <th>RFQ Form <i class="mdi mdi-link-variant"></i> </th>
                                         <th>Rfq Report <i class="mdi mdi-link-variant"></i> </th>
@@ -271,6 +283,40 @@
                         <div class="d-flex justify-content-end my-3 mx-3">
                             <div class="pagination-wrapper">
                                 {{ $data->onEachSide(1)->links('pagination::bootstrap-5') }}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- MSL Details Modal (same as forecast page) -->
+        <div class="modal fade" id="mslDetailsModal" tabindex="-1" role="dialog" aria-labelledby="mslModalLabel" aria-hidden="true">
+            <div class="modal-dialog modal-xl" role="document">
+                <div class="modal-content border-0 shadow-lg">
+                    <div class="modal-header bg-primary text-white">
+                        <h5 class="modal-title" id="mslModalLabel">MSL Details</h5>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="d-flex flex-nowrap overflow-auto flex-wrap gap-3">
+                            <div class="card border-left-primary shadow-sm mb-0" style="min-width: 200px;">
+                                <div class="card-body">
+                                    <h6 class="card-title text-muted">MSL</h6>
+                                    <p class="card-text font-weight-bold text-dark" id="toorder-modalsmsl">—</p>
+                                </div>
+                            </div>
+                            <div class="card border-left-success shadow-sm mb-0" style="min-width: 200px;">
+                                <div class="card-body">
+                                    <h6 class="card-title text-muted">S-MSL</h6>
+                                    <p class="card-text font-weight-bold text-dark" id="toorder-modals_msl">—</p>
+                                </div>
+                            </div>
+                            <div class="card border-left-info shadow-sm mb-0" style="min-width: 200px;">
+                                <div class="card-body">
+                                    <h6 class="card-title text-muted">LP * msl</h6>
+                                    <p class="card-text font-weight-bold text-dark" id="toorder-modallp_msl">—</p>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -431,6 +477,9 @@
                             <td class="fw-semibold">${item.Parent ?? '-'}</td>
                             <td><span class="fw-semibold text-dark">${item.SKU ?? '-'}</span></td>
                             <td><input type="number" class="form-control form-control-sm order-qty" data-sku="${item.SKU}" data-column="approved_qty" value="${approvedQty}" style="width:100px;"></td>
+                            <td class="text-center open-msl-modal-cell ${(item.msl != null && item.msl > 0) ? 'cursor-pointer' : ''}" style="min-width:70px;" ${(item.msl != null && item.msl > 0) ? `data-msl="${item.msl}" data-s-msl="${item.s_msl != null ? item.s_msl : ''}" data-lp-msl="${item.lp_msl != null ? item.lp_msl : ''}" title="Click for MSL details"` : ''}>
+                                ${(item.msl != null && item.msl > 0) ? `<span class="d-inline-flex align-items-center gap-1"><span>${item.msl}</span><i class="ri-information-line text-primary small ms-1" style="font-size:14px;opacity:0.9;" title="MSL details"></i></span>` : '<span class="text-muted">—</span>'}
+                            </td>
                             <td class="date-cell" data-dateOfAppr="${daysDiff}">
                                 <div style="display: flex; flex-direction: column; align-items: flex-start;">
                                     <input type="date" class="form-control form-control-sm stage-select"
@@ -444,6 +493,16 @@
                                 <select class="form-select stage-select" data-sku="${item.SKU}" data-column="Supplier">
                                     ${supplierOptionsHtml.replace(`value="${item.Supplier}"`, `value="${item.Supplier}" selected`)}
                                 </select>
+                            </td>
+                            <td class="text-center" style="min-width:80px;">
+                                ${(function(){
+                                    const rating = item.rating != null && item.rating > 0 ? parseFloat(item.rating) : null;
+                                    const reviews = item.reviews != null ? parseInt(item.reviews) : null;
+                                    if (!rating) return '<span class="text-muted">-</span>';
+                                    let ratingColor = rating < 3 ? '#a00211' : (rating <= 3.5 ? '#ffc107' : (rating <= 3.99 ? '#3591dc' : (rating <= 4.5 ? '#28a745' : '#e83e8c')));
+                                    const reviewColor = (reviews != null && reviews < 4) ? '#a00211' : '#6c757d';
+                                    return '<div class="d-flex flex-column align-items-center gap-0" style="font-size:0.9rem;"><span style="color:'+ratingColor+';font-weight:600;"><i class="fas fa-star"></i> '+rating.toFixed(1)+'</span>' + (reviews != null ? '<span style="font-size:11px;color:'+reviewColor+';font-weight:600;">'+parseInt(reviews).toLocaleString()+' reviews</span>' : '') + '</div>';
+                                })()}
                             </td>
                             <td>
                                 <button class="btn btn-sm ${item.review ? 'btn-outline-success' : 'btn-outline-dark'} open-review-modal"
@@ -690,6 +749,42 @@
                 });
 
                 // --- Review Modal ---
+                $(document).on('click', '.open-msl-modal-cell[data-msl]', function(e) {
+                    e.preventDefault();
+                    const el = $(this);
+                    const msl = el.attr('data-msl');
+                    const sMsl = el.attr('data-s-msl');
+                    const lpMsl = el.attr('data-lp-msl');
+                    $('#toorder-modalsmsl').text(msl ? msl : '—');
+                    $('#toorder-modals_msl').text(sMsl !== undefined && sMsl !== '' ? sMsl : '—');
+                    $('#toorder-modallp_msl').text(lpMsl !== undefined && lpMsl !== '' ? lpMsl : '—');
+                    $('#mslDetailsModal')
+                        .addClass('show')
+                        .css('display', 'block')
+                        .attr('aria-modal', 'true')
+                        .removeAttr('aria-hidden');
+                    $('body').addClass('modal-open');
+                    if ($('.modal-backdrop').length === 0) {
+                        $('body').append('<div class="modal-backdrop fade show" style="z-index: 1050;"></div>');
+                    }
+                });
+                $(document).on('click', '#mslDetailsModal .btn-close, #mslDetailsModal [data-bs-dismiss="modal"]', function() {
+                    $('#mslDetailsModal')
+                        .removeClass('show')
+                        .css('display', 'none')
+                        .removeAttr('aria-modal')
+                        .attr('aria-hidden', 'true');
+                    $('body').removeClass('modal-open');
+                    $('.modal-backdrop').remove();
+                });
+                $(document).on('click', '.modal-backdrop', function() {
+                    if ($('#mslDetailsModal').hasClass('show')) {
+                        $('#mslDetailsModal').removeClass('show').css('display', 'none').removeAttr('aria-modal').attr('aria-hidden', 'true');
+                        $('body').removeClass('modal-open');
+                        $(this).remove();
+                    }
+                });
+
                 $(document).on('click', '.open-review-modal', function() {
                     const btn = $(this);
                     $('#review_parent').val(btn.data('parent'));
