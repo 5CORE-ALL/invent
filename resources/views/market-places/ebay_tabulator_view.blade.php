@@ -945,6 +945,8 @@
 
         // Store AJAX-loaded spend totals (from reports - matches KW/PMP ads pages)
         let ebaySpendTotals = { kw_spend: 0, pmt_spend: 0, total_spend: 0 };
+        // Reference so loadEbayKwPmtSpendTotals (called before table/updateSummary exist) can call it after fetch
+        let updateSummaryRef = null;
 
         // KW Ads range filter state
         let kwRangeFilters = {
@@ -1231,35 +1233,29 @@
                 });
         }
 
-        // Load eBay KW and PMT spend totals from reports (matches KW/PMP ads pages exactly)
-        function loadEbayKwPmtSpendTotals() {
-            fetch('/ebay-kw-pmt-spend-totals')
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        // Store spend totals for TACOS/NPFT/NROI calculation
-                        ebaySpendTotals.kw_spend = parseFloat(data.kw_spend) || 0;
-                        ebaySpendTotals.pmt_spend = parseFloat(data.pmt_spend) || 0;
-                        ebaySpendTotals.total_spend = parseFloat(data.total_spend) || 0;
-                        // Update spend badges with grand totals from reports
-                        $('#kw-spend-badge').text('KW Spend: $' + Math.round(ebaySpendTotals.kw_spend).toLocaleString());
-                        $('#pmt-spend-badge').text('PMT Spend: $' + Math.round(ebaySpendTotals.pmt_spend).toLocaleString());
-                        $('#total-spend-badge').text('Total Spend: $' + Math.round(ebaySpendTotals.total_spend).toLocaleString());
-                        console.log('Loaded spend totals:', data);
-                        // Re-run summary to update TACOS/NPFT/NROI with correct spend
-                        if (table) updateSummary();
-                    }
-                })
-                .catch(error => {
-                    console.error('Error loading eBay KW/PMT spend totals:', error);
-                });
-        }
-
         $(document).ready(function() {
             // Initialize SKU-specific chart
             initSkuMetricsChart();
-            
-            // Load eBay KW and PMT spend totals (grand totals from reports - matches KW/PMP ads pages)
+
+            // Load eBay KW and PMT spend totals from reports (defined inside ready so it can call updateSummaryRef)
+            function loadEbayKwPmtSpendTotals() {
+                fetch('/ebay-kw-pmt-spend-totals')
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            ebaySpendTotals.kw_spend = parseFloat(data.kw_spend) || 0;
+                            ebaySpendTotals.pmt_spend = parseFloat(data.pmt_spend) || 0;
+                            ebaySpendTotals.total_spend = parseFloat(data.total_spend) || 0;
+                            $('#kw-spend-badge').text('KW Spend: $' + Math.round(ebaySpendTotals.kw_spend).toLocaleString());
+                            $('#pmt-spend-badge').text('PMT Spend: $' + Math.round(ebaySpendTotals.pmt_spend).toLocaleString());
+                            $('#total-spend-badge').text('Total Spend: $' + Math.round(ebaySpendTotals.total_spend).toLocaleString());
+                            if (table && updateSummaryRef) updateSummaryRef();
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error loading eBay KW/PMT spend totals:', error);
+                    });
+            }
             loadEbayKwPmtSpendTotals();
 
             // Discount type dropdown change handler
@@ -4950,7 +4946,7 @@
                 updateRangeFilterBadge();
                 
                 updateCalcValues();
-                updateSummary();
+                if (typeof updateSummary === 'function') updateSummary();
                 // Update select all checkbox after filter is applied (matching Amazon approach)
                 setTimeout(function() {
                     updateSelectAllCheckbox();
@@ -5721,6 +5717,7 @@
 
             // Update summary badges - use ALL data (not filtered) to match KW/PMP ads pages
             function updateSummary() {
+                if (!table) return;
                 // Use getData("all") to get ALL data without filters
                 const allData = table.getData("all");
                 const filteredData = table.getData("active");
@@ -5870,6 +5867,7 @@
                 $('#less-amz-badge').text('< Amz: ' + lessAmzCount.toLocaleString());
                 $('#more-amz-badge').text('> Amz: ' + moreAmzCount.toLocaleString());
             }
+            updateSummaryRef = updateSummary;
 
             // Build Column Visibility Dropdown
             function buildColumnDropdown() {
@@ -5963,7 +5961,7 @@
 
             table.on('dataLoaded', function() {
                 updateCalcValues();
-                updateSummary();
+                if (typeof updateSummary === 'function') updateSummary();
                 // Update KW Ads stats if that section is active
                 if ($('#section-filter').val() === 'kw_ads') {
                     updateKwAdsStats();

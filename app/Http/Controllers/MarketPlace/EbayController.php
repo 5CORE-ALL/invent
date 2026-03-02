@@ -71,14 +71,24 @@ class EbayController extends Controller
         try {
             $response = $this->getViewEbayData($request);
             $data = json_decode($response->getContent(), true);
+            $rows = $data['data'] ?? [];
 
-            // Auto-save daily summary in background (non-blocking)
-            $this->saveDailySummaryIfNeeded($data['data'] ?? []);
+            // Auto-save daily summary in background (non-blocking); never break response on save failure
+            try {
+                $this->saveDailySummaryIfNeeded($rows);
+            } catch (\Throwable $e) {
+                Log::error('Error saving daily eBay summary: ' . $e->getMessage());
+            }
 
-            return response()->json($data['data'] ?? []);
-        } catch (\Exception $e) {
-            Log::error('Error fetching eBay data for Tabulator: ' . $e->getMessage());
-            return response()->json(['error' => 'Failed to fetch data'], 500);
+            return response()->json($rows);
+        } catch (\Throwable $e) {
+            Log::error('Error fetching eBay data for Tabulator: ' . $e->getMessage(), [
+                'exception' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+            ]);
+            $message = config('app.debug') ? $e->getMessage() : 'Failed to fetch data';
+            return response()->json(['error' => $message], 500);
         }
     }
 
@@ -220,6 +230,14 @@ class EbayController extends Controller
 
             $nonParentSkus = $skus;
 
+        if (empty($skus)) {
+            return response()->json([
+                'message' => 'eBay Data Fetched Successfully',
+                'data' => [],
+                'status' => 200,
+            ]);
+        }
+
         // 3. Related Models
         $shopifyData = ShopifySku::whereIn("sku", $skus)
             ->get()
@@ -245,20 +263,25 @@ class EbayController extends Controller
             ->pluck('price', 'sku');
 
         // Prioritize COST_PER_SALE rows for bid_percentage (matching PMP Ads controller)
-        $campaignListings = DB::connection('apicentral')
-            ->table('ebay_campaign_ads_listings as t')
-            ->join(DB::raw('(SELECT listing_id, 
-                                    MAX(CASE WHEN funding_strategy = "COST_PER_SALE" THEN id END) AS max_cps_id,
-                                    MAX(id) AS max_id
-                             FROM ebay_campaign_ads_listings 
-                             GROUP BY listing_id) x'), 
-                function($join) {
-                    $join->on('t.id', '=', DB::raw('COALESCE(x.max_cps_id, x.max_id)'));
-                })
-            ->select('t.listing_id', 't.bid_percentage', 't.suggested_bid')
-            ->get()
-            ->keyBy('listing_id')
-            ->toArray();
+        $campaignListings = [];
+        try {
+            $campaignListings = DB::connection('apicentral')
+                ->table('ebay_campaign_ads_listings as t')
+                ->join(DB::raw('(SELECT listing_id, 
+                                        MAX(CASE WHEN funding_strategy = "COST_PER_SALE" THEN id END) AS max_cps_id,
+                                        MAX(id) AS max_id
+                                 FROM ebay_campaign_ads_listings 
+                                 GROUP BY listing_id) x'), 
+                    function($join) {
+                        $join->on('t.id', '=', DB::raw('COALESCE(x.max_cps_id, x.max_id)'));
+                    })
+                ->select('t.listing_id', 't.bid_percentage', 't.suggested_bid')
+                ->get()
+                ->keyBy('listing_id')
+                ->toArray();
+        } catch (\Throwable $e) {
+            Log::warning('eBay getViewEbayData: apicentral campaign listings unavailable: ' . $e->getMessage());
+        }
 
         // Latest NR/REQ + links from Listing eBay page (source of truth)
         $nrValues = EbayDataView::whereIn("sku", $skus)->pluck("value", "sku");
@@ -2280,6 +2303,7 @@ class EbayController extends Controller
             $totalFbaInv = 0;
             $totalEbayL30 = 0;
             $totalWeightedPrice = 0;
+            $totalViews = 0;
             
             // Grand totals (from ALL data)
             $grandTotalKwSpend = 0;
@@ -2303,6 +2327,7 @@ class EbayController extends Controller
                 $totalLpAmt += floatval($row['LP_productmaster'] ?? 0) * $ebayL30;
                 $totalFbaInv += $inv;
                 $totalEbayL30 += $ebayL30;
+                $totalViews += floatval($row['views'] ?? 0);
                 
                 // Count sold and 0-sold (EXACT JavaScript logic)
                 if ($ebayL30 == 0) {  // Use == for proper float comparison
@@ -2380,6 +2405,7 @@ class EbayController extends Controller
                 // Inventory
                 'total_fba_inv' => round($totalFbaInv, 2),
                 'total_ebay_l30' => round($totalEbayL30, 2),
+                'total_views' => (int) $totalViews,
                 
                 // Calculated Percentages
                 'tcos_percent' => round($tcosPercent, 2),

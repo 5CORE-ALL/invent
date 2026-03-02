@@ -49,7 +49,7 @@ class AmazonListingRaw extends Model
         'included_components',
     ];
 
-  protected $casts = [
+    protected $casts = [
     'report_imported_at' => 'datetime',
     'raw_data' => 'array',
     'assembly_required' => 'boolean',

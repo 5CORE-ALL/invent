@@ -886,16 +886,10 @@ class UpdateMarketplaceDailyMetrics extends Command
             $basePrice = (float) ($row->base_price_total ?? 0);
             
             $totalQuantity += $quantity;
-            
-            // Revenue = basePrice * quantity (without FB price adjustment)
             $totalRevenue += $basePrice * $quantity;
-            
-            // Calculate FB Price
+
             $total = $basePrice * $quantity;
             $fbPrice = $total < 27 ? $basePrice + 2.99 : $basePrice;
-            
-            // L30 Sales = fbPrice * quantity
-            $totalL30Sales += $fbPrice * $quantity;
 
             if ($quantity > 0 && $basePrice > 0) {
                 $totalWeightedPrice += $basePrice * $quantity;
@@ -909,8 +903,6 @@ class UpdateMarketplaceDailyMetrics extends Command
             if ($pm) {
                 $values = is_array($pm->Values) ? $pm->Values :
                         (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
-                
-                // Get LP (matching controller logic)
                 foreach ($values as $k => $v) {
                     if (strtolower($k) === "lp") {
                         $lp = floatval($v);
@@ -920,8 +912,6 @@ class UpdateMarketplaceDailyMetrics extends Command
                 if ($lp === 0 && isset($pm->lp)) {
                     $lp = floatval($pm->lp);
                 }
-                
-                // Get Temu Ship
                 if (isset($values['temu_ship'])) {
                     $temuShip = floatval($values['temu_ship']);
                 } elseif (isset($pm->temu_ship)) {
@@ -929,16 +919,20 @@ class UpdateMarketplaceDailyMetrics extends Command
                 }
             }
 
-            $cogs = $lp * $quantity;
-            $totalCogs += $cogs;
-
-            // Calculate PFT: (FB Prc * 0.91 - LP - Temu Ship) * Quantity (matching blade view)
-            $pft = ($fbPrice * 0.91 - $lp - $temuShip) * $quantity;
-            $totalPft += $pft;
+            // Only include rows with sales in PFT / L30 Sales / COGS (match temu_tabulator_view & temu_decrease)
+            $hasSales = $quantity > 0 && $basePrice > 0;
+            if ($hasSales) {
+                // PFT % = (price * 0.96 - lp - temuship) / price; dollar = pft * price * quantity (price = FB Prc)
+                $pftDecimal = $fbPrice > 0 ? ($fbPrice * 0.96 - $lp - $temuShip) / $fbPrice : 0;
+                $totalPft += $pftDecimal * $fbPrice * $quantity;
+                $totalL30Sales += $fbPrice * $quantity;
+                $totalCogs += $lp * $quantity;
+            }
         }
 
         $avgPrice = $totalQuantityForPrice > 0 ? $totalWeightedPrice / $totalQuantityForPrice : 0;
-        $pftPercentage = $totalRevenue > 0 ? ($totalPft / $totalRevenue) * 100 : 0;
+        // PFT % = (Total PFT / L30 Sales) * 100 — same as temu tabulator (price * 0.96 - lp - temuship) / price
+        $pftPercentage = $totalL30Sales > 0 ? ($totalPft / $totalL30Sales) * 100 : 0;
         $roiPercentage = $totalCogs > 0 ? ($totalPft / $totalCogs) * 100 : 0;
 
         // Calculate Temu Ad Spend (from temu_ad_data table)

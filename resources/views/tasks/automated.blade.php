@@ -138,6 +138,26 @@
                 font-size: 24px;
             }
         }
+
+        /* Task playback (Assignor / Assignee step-through - next to filters) */
+        .task-playback-group .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .task-playback-group .btn:not(:disabled):hover {
+            background-color: #0d6efd !important;
+            color: white !important;
+        }
+        .task-playback-group .btn:focus {
+            outline: none;
+            box-shadow: 0 0 0 2px rgba(13, 110, 253, 0.25);
+        }
+        .task-playback-group .btn.btn-primary {
+            background-color: #0d6efd !important;
+            color: white !important;
+            border-color: #0d6efd;
+        }
         
         /* Clean Table Styling */
         #tasks-table {
@@ -622,6 +642,23 @@
                                         <option value="{{ $user->name }}">{{ $user->name }}</option>
                                     @endforeach
                                 </select>
+                                <div class="d-flex align-items-center gap-1 mt-1 flex-wrap">
+                                    <div class="btn-group task-playback-group task-playback-assignor" role="group" aria-label="Assignor playback">
+                                        <button type="button" id="task-play-backward-assignor" class="btn btn-light btn-sm rounded-circle p-0" style="width:26px;height:26px;" title="Previous assignor" disabled>
+                                            <i class="mdi mdi-skip-previous" style="font-size:12px;"></i>
+                                        </button>
+                                        <button type="button" id="task-play-pause-assignor" class="btn btn-light btn-sm rounded-circle p-0" style="width:26px;height:26px; display:none;" title="Show all">
+                                            <i class="mdi mdi-pause" style="font-size:12px;"></i>
+                                        </button>
+                                        <button type="button" id="task-play-auto-assignor" class="btn btn-light btn-sm rounded-circle p-0" style="width:26px;height:26px;" title="Step through assignors">
+                                            <i class="mdi mdi-play" style="font-size:12px;"></i>
+                                        </button>
+                                        <button type="button" id="task-play-forward-assignor" class="btn btn-light btn-sm rounded-circle p-0" style="width:26px;height:26px;" title="Next assignor" disabled>
+                                            <i class="mdi mdi-skip-next" style="font-size:12px;"></i>
+                                        </button>
+                                    </div>
+                                    <span id="task-playback-label-assignor" class="text-muted small" style="font-size:11px; display:none;"></span>
+                                </div>
                             </div>
                             <div class="col-md-2 mb-2">
                                 <label class="form-label fw-bold">Assignee</label>
@@ -632,6 +669,23 @@
                                         <option value="{{ $user->name }}">{{ $user->name }}</option>
                                     @endforeach
                                 </select>
+                                <div class="d-flex align-items-center gap-1 mt-1 flex-wrap">
+                                    <div class="btn-group task-playback-group task-playback-assignee" role="group" aria-label="Assignee playback">
+                                        <button type="button" id="task-play-backward-assignee" class="btn btn-light btn-sm rounded-circle p-0" style="width:26px;height:26px;" title="Previous assignee" disabled>
+                                            <i class="mdi mdi-skip-previous" style="font-size:12px;"></i>
+                                        </button>
+                                        <button type="button" id="task-play-pause-assignee" class="btn btn-light btn-sm rounded-circle p-0" style="width:26px;height:26px; display:none;" title="Show all">
+                                            <i class="mdi mdi-pause" style="font-size:12px;"></i>
+                                        </button>
+                                        <button type="button" id="task-play-auto-assignee" class="btn btn-light btn-sm rounded-circle p-0" style="width:26px;height:26px;" title="Step through assignees">
+                                            <i class="mdi mdi-play" style="font-size:12px;"></i>
+                                        </button>
+                                        <button type="button" id="task-play-forward-assignee" class="btn btn-light btn-sm rounded-circle p-0" style="width:26px;height:26px;" title="Next assignee" disabled>
+                                            <i class="mdi mdi-skip-next" style="font-size:12px;"></i>
+                                        </button>
+                                    </div>
+                                    <span id="task-playback-label-assignee" class="text-muted small" style="font-size:11px; display:none;"></span>
+                                </div>
                             </div>
                             <div class="col-md-2 mb-2">
                                 <label class="form-label fw-bold">Freq</label>
@@ -1480,6 +1534,150 @@
             $('#filter-assignor').on('change', applyFilters);
             $('#filter-assignee').on('change', applyFilters);
             $('#filter-freq').on('change', applyFilters);
+
+            // Assignor playback (step through assignors - next to Assignor filter)
+            var taskPlaybackListAssignor = [];
+            var currentTaskPlaybackIndexAssignor = -1;
+            var isTaskPlaybackActiveAssignor = false;
+
+            function getTaskPlaybackListAssignor() {
+                var list = [];
+                $('#filter-assignor').find('option').each(function(i) {
+                    if (i === 0) return;
+                    list.push({ value: $(this).val(), text: $(this).text().trim() });
+                });
+                return list;
+            }
+
+            function taskStartNavigationAssignor() {
+                taskPlaybackListAssignor = getTaskPlaybackListAssignor();
+                if (taskPlaybackListAssignor.length === 0) return;
+                isTaskPlaybackActiveAssignor = true;
+                currentTaskPlaybackIndexAssignor = 0;
+                $('#filter-assignor').val(taskPlaybackListAssignor[0].value);
+                applyFilters();
+                $('#task-play-auto-assignor').hide();
+                $('#task-play-pause-assignor').show();
+                updateTaskPlaybackButtonStatesAssignor();
+            }
+
+            function taskStopNavigationAssignor() {
+                isTaskPlaybackActiveAssignor = false;
+                currentTaskPlaybackIndexAssignor = -1;
+                $('#filter-assignor').val('');
+                applyFilters();
+                $('#task-play-pause-assignor').hide();
+                $('#task-play-auto-assignor').show();
+                $('#task-play-backward-assignor, #task-play-forward-assignor').prop('disabled', true).removeClass('btn-primary').addClass('btn-light');
+                $('#task-playback-label-assignor').hide().text('');
+            }
+
+            function taskNextAssignor() {
+                if (!isTaskPlaybackActiveAssignor || currentTaskPlaybackIndexAssignor >= taskPlaybackListAssignor.length - 1) return;
+                currentTaskPlaybackIndexAssignor++;
+                $('#filter-assignor').val(taskPlaybackListAssignor[currentTaskPlaybackIndexAssignor].value);
+                applyFilters();
+                updateTaskPlaybackButtonStatesAssignor();
+            }
+
+            function taskPreviousAssignor() {
+                if (!isTaskPlaybackActiveAssignor || currentTaskPlaybackIndexAssignor <= 0) return;
+                currentTaskPlaybackIndexAssignor--;
+                $('#filter-assignor').val(taskPlaybackListAssignor[currentTaskPlaybackIndexAssignor].value);
+                applyFilters();
+                updateTaskPlaybackButtonStatesAssignor();
+            }
+
+            function updateTaskPlaybackButtonStatesAssignor() {
+                var atStart = currentTaskPlaybackIndexAssignor <= 0;
+                var atEnd = currentTaskPlaybackIndexAssignor >= taskPlaybackListAssignor.length - 1;
+                $('#task-play-backward-assignor').prop('disabled', !isTaskPlaybackActiveAssignor || atStart);
+                $('#task-play-forward-assignor').prop('disabled', !isTaskPlaybackActiveAssignor || atEnd);
+                if (isTaskPlaybackActiveAssignor && taskPlaybackListAssignor.length > 0 && currentTaskPlaybackIndexAssignor >= 0) {
+                    var item = taskPlaybackListAssignor[currentTaskPlaybackIndexAssignor];
+                    $('#task-playback-label-assignor').text(item.text + ' (' + (currentTaskPlaybackIndexAssignor + 1) + '/' + taskPlaybackListAssignor.length + ')').show();
+                    $('#task-play-backward-assignor, #task-play-forward-assignor').removeClass('btn-light').addClass('btn-primary');
+                } else {
+                    $('#task-playback-label-assignor').hide();
+                }
+            }
+
+            $('#task-play-auto-assignor').on('click', taskStartNavigationAssignor);
+            $('#task-play-pause-assignor').on('click', taskStopNavigationAssignor);
+            $('#task-play-forward-assignor').on('click', taskNextAssignor);
+            $('#task-play-backward-assignor').on('click', taskPreviousAssignor);
+
+            // Assignee playback (step through assignees - next to Assignee filter)
+            var taskPlaybackListAssignee = [];
+            var currentTaskPlaybackIndexAssignee = -1;
+            var isTaskPlaybackActiveAssignee = false;
+
+            function getTaskPlaybackListAssignee() {
+                var list = [];
+                $('#filter-assignee').find('option').each(function(i) {
+                    if (i === 0) return;
+                    list.push({ value: $(this).val(), text: $(this).text().trim() });
+                });
+                return list;
+            }
+
+            function taskStartNavigationAssignee() {
+                taskPlaybackListAssignee = getTaskPlaybackListAssignee();
+                if (taskPlaybackListAssignee.length === 0) return;
+                isTaskPlaybackActiveAssignee = true;
+                currentTaskPlaybackIndexAssignee = 0;
+                $('#filter-assignee').val(taskPlaybackListAssignee[0].value);
+                applyFilters();
+                $('#task-play-auto-assignee').hide();
+                $('#task-play-pause-assignee').show();
+                updateTaskPlaybackButtonStatesAssignee();
+            }
+
+            function taskStopNavigationAssignee() {
+                isTaskPlaybackActiveAssignee = false;
+                currentTaskPlaybackIndexAssignee = -1;
+                $('#filter-assignee').val('');
+                applyFilters();
+                $('#task-play-pause-assignee').hide();
+                $('#task-play-auto-assignee').show();
+                $('#task-play-backward-assignee, #task-play-forward-assignee').prop('disabled', true).removeClass('btn-primary').addClass('btn-light');
+                $('#task-playback-label-assignee').hide().text('');
+            }
+
+            function taskNextAssignee() {
+                if (!isTaskPlaybackActiveAssignee || currentTaskPlaybackIndexAssignee >= taskPlaybackListAssignee.length - 1) return;
+                currentTaskPlaybackIndexAssignee++;
+                $('#filter-assignee').val(taskPlaybackListAssignee[currentTaskPlaybackIndexAssignee].value);
+                applyFilters();
+                updateTaskPlaybackButtonStatesAssignee();
+            }
+
+            function taskPreviousAssignee() {
+                if (!isTaskPlaybackActiveAssignee || currentTaskPlaybackIndexAssignee <= 0) return;
+                currentTaskPlaybackIndexAssignee--;
+                $('#filter-assignee').val(taskPlaybackListAssignee[currentTaskPlaybackIndexAssignee].value);
+                applyFilters();
+                updateTaskPlaybackButtonStatesAssignee();
+            }
+
+            function updateTaskPlaybackButtonStatesAssignee() {
+                var atStart = currentTaskPlaybackIndexAssignee <= 0;
+                var atEnd = currentTaskPlaybackIndexAssignee >= taskPlaybackListAssignee.length - 1;
+                $('#task-play-backward-assignee').prop('disabled', !isTaskPlaybackActiveAssignee || atStart);
+                $('#task-play-forward-assignee').prop('disabled', !isTaskPlaybackActiveAssignee || atEnd);
+                if (isTaskPlaybackActiveAssignee && taskPlaybackListAssignee.length > 0 && currentTaskPlaybackIndexAssignee >= 0) {
+                    var item = taskPlaybackListAssignee[currentTaskPlaybackIndexAssignee];
+                    $('#task-playback-label-assignee').text(item.text + ' (' + (currentTaskPlaybackIndexAssignee + 1) + '/' + taskPlaybackListAssignee.length + ')').show();
+                    $('#task-play-backward-assignee, #task-play-forward-assignee').removeClass('btn-light').addClass('btn-primary');
+                } else {
+                    $('#task-playback-label-assignee').hide();
+                }
+            }
+
+            $('#task-play-auto-assignee').on('click', taskStartNavigationAssignee);
+            $('#task-play-pause-assignee').on('click', taskStopNavigationAssignee);
+            $('#task-play-forward-assignee').on('click', taskNextAssignee);
+            $('#task-play-backward-assignee').on('click', taskPreviousAssignee);
 
             // Handle Row Selection
             table.on("rowSelectionChanged", function(data, rows) {

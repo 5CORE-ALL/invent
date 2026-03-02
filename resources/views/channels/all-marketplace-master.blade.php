@@ -146,11 +146,11 @@
                     <!-- Section Filter Dropdown -->
                     <div class="btn-group">
                         <button type="button" class="btn btn-sm btn-primary dropdown-toggle" data-bs-toggle="dropdown">
-                            <i class="fas fa-layer-group"></i> <span id="current-section">All Sections</span>
+                            <i class="fas fa-layer-group"></i> <span id="current-section">Main Section</span>
                         </button>
                         <ul class="dropdown-menu" id="section-dropdown">
                             <li><a class="dropdown-item section-option" href="#" data-section="all">
-                                <i class="fas fa-th"></i> All Sections
+                                <i class="fas fa-th"></i> Main Section
                             </a></li>
                             <li><hr class="dropdown-divider"></li>
                             <li><a class="dropdown-item section-option" href="#" data-section="ads">
@@ -183,6 +183,16 @@
                             <li><a class="dropdown-item section-option" href="#" data-section="missing">
                                 <i class="fas fa-exclamation-triangle"></i> Missing
                             </a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item section-option" href="#" data-section="B2C">
+                                <i class="fas fa-shopping-cart"></i> B2C
+                            </a></li>
+                            <li><a class="dropdown-item section-option" href="#" data-section="B2B">
+                                <i class="fas fa-building"></i> B2B
+                            </a></li>
+                            <li><a class="dropdown-item section-option" href="#" data-section="Dropship">
+                                <i class="fas fa-box"></i> Dropshipping
+                            </a></li>
                         </ul>
                     </div>
                     
@@ -190,8 +200,8 @@
                     <input type="text" id="channel-search" class="form-control form-control-sm"
                         placeholder="Search Channel..." style="width: 150px; display: inline-block;">
 
-                    <!-- Type Filter -->
-                    <select id="type-filter" class="form-select form-select-sm" style="width: auto; display: inline-block;">
+                    <!-- Type Filter (hidden from UI) -->
+                    <select id="type-filter" class="form-select form-select-sm" style="width: auto; display: none;">
                         <option value="all">All Types</option>
                         <option value="B2C">🛒 B2C</option>
                         <option value="B2B">🏢 B2B</option>
@@ -247,13 +257,19 @@
                             Qty items: <span id="total-qty">0</span>
                         </span>
                         <span class="badge bg-warning fs-6 p-2 badge-chart-link" data-metric="gprofit" style="color: black; font-weight: bold; cursor:pointer;" title="View trend">
-                            GPFT: <span id="avg-gprofit">0%</span>
+                            GPFT%: <span id="avg-gprofit">0%</span>
                         </span>
                         <span class="badge bg-danger fs-6 p-2 badge-chart-link" data-metric="groi" style="color: white; font-weight: bold; cursor:pointer;" title="View trend">
                             G ROI: <span id="avg-groi">0%</span>
                         </span>
                         <span class="badge bg-secondary fs-6 p-2 badge-chart-link" data-metric="ad_spend" style="color: white; font-weight: bold; cursor:pointer;" title="View trend">
                             Ads Spend: <span id="total-ad-spend">$0</span>
+                        </span>
+                        <span class="badge bg-info fs-6 p-2 badge-chart-link" data-metric="total_views" style="color: black; font-weight: bold; cursor:pointer;" title="View Total Views trend">
+                            Total Views: <span id="total-views-badge">0</span>
+                        </span>
+                        <span class="badge bg-primary fs-6 p-2 badge-chart-link" data-metric="cvr" style="color: white; font-weight: bold; cursor:pointer;" title="CVR % = Orders / Total Views">
+                            CVR %: <span id="cvr-pct-badge">0%</span>
                         </span>
                         <span class="badge bg-success fs-6 p-2 badge-chart-link" data-metric="pft" style="color: white; font-weight: bold; cursor:pointer;" title="View trend">
                             NPFT: <span id="total-pft">$0</span>
@@ -279,8 +295,17 @@
                         <span class="badge bg-info fs-6 p-2" style="color: black; font-weight: bold;" title="Sum of (Inventory × Amazon Price)">
                             INV Val: $<span id="inventory-value-amazon">0</span>
                         </span>
-                        <span class="badge bg-secondary fs-6 p-2" style="color: white; font-weight: bold;" title="Inventory Value ÷ Sales (months of stock at current sales)">
+                        <span class="badge bg-warning fs-6 p-2 badge-chart-link" data-metric="inv_at_lp" style="color: black; font-weight: bold; cursor:pointer;" title="View trend - Sum of (Shopify inventory × LP)">
+                            Inv@LP: $<span id="inv-at-lp">0</span>
+                        </span>
+                        <span class="badge bg-secondary fs-6 p-2 badge-chart-link" data-metric="tat" style="color: white; font-weight: bold; cursor:pointer;" title="View trend - Inventory Value ÷ Sales (months of stock at current sales)">
                             TAT: <span id="tat-badge">0</span>
+                        </span>
+                        <span class="badge bg-info fs-6 p-2" style="color: black; font-weight: bold;" title="Sum of ratings (weighted avg), average of reviews">
+                            Ratings &amp; Reviews: <span id="ratings-reviews-badge">0 ★ | 0</span>
+                        </span>
+                        <span class="badge bg-dark fs-6 p-2" style="color: white; font-weight: bold;" title="Seller: sum of ratings (weighted avg), average of reviews">
+                            Seller Rating &amp; Reviews: <span id="seller-ratings-reviews-badge">0 ★ | 0</span>
                         </span>
                     </div>
                 </div>
@@ -617,6 +642,16 @@
                             </div>
                         </div>
                     </div>
+                    <div id="salesOrdersItemsBarContainer" style="height: 20vh; margin-top: 8px; align-items: stretch; display: none;">
+                        <div style="flex: 1; min-width: 0; position: relative;">
+                            <canvas id="salesOrdersItemsBarChart"></canvas>
+                        </div>
+                        <div id="salesOrdersItemsBarRefPanel" style="width: 100px; display: flex; flex-direction: column; justify-content: center; gap: 6px; padding: 6px 8px; border-left: 1px solid #e9ecef; background: #f8f9fa; border-radius: 0 4px 4px 0;">
+                            <div style="text-align: center; font-size: 8px; font-weight: 700; color: #1e88e5;">Sales</div>
+                            <div style="text-align: center; font-size: 8px; font-weight: 700; color: #ff9800;">Orders</div>
+                            <div style="text-align: center; font-size: 8px; font-weight: 700; color: #00bcd4;">Qty</div>
+                        </div>
+                    </div>
                     <div id="adChartLoading" class="text-center py-3" style="display: none;">
                         <div class="spinner-border spinner-border-sm text-primary" role="status">
                             <span class="visually-hidden">Loading...</span>
@@ -871,6 +906,12 @@
                             const val = parseFloat(response.inventory_value_amazon) || 0;
                             invValEl.textContent = Math.round(val).toLocaleString('en-US');
                         }
+                        // Update Inv@LP badge (Shopify inv × LP)
+                        const invAtLpEl = document.getElementById('inv-at-lp');
+                        if (invAtLpEl && response.inv_at_lp != null) {
+                            const val = parseFloat(response.inv_at_lp) || 0;
+                            invAtLpEl.textContent = Math.round(val).toLocaleString('en-US');
+                        }
                         // Update TAT badge (INV Val / Sales)
                         const tatEl = document.getElementById('tat-badge');
                         if (tatEl && response.inventory_value_amazon != null && response.data && response.data.length) {
@@ -902,50 +943,13 @@
                         formatter: function(cell) {
                             const channel = cell.getValue();
                             const rowData = cell.getRow().getData();
-                            const type = rowData.type || 'B2C';
                             const missingLink = rowData['missing_link'] || '';
-
-                            // Determine type badge class
-                            let typeBadgeClass = 'type-b2c';
-                            if (type === 'B2B') typeBadgeClass = 'type-b2b';
-                            else if (type === 'Dropship') typeBadgeClass = 'type-dropship';
-
-                            const historyIcon =
-                                `<i class="fas fa-chart-line history-table-icon" style="cursor:pointer;color:#4361ee;font-size:14px;margin-left:5px;" title="View Historical Table" data-channel="${channel}"></i>`;
-                            const graphIcon =
-                                `<i class="fas fa-chart-area history-graph-icon" style="cursor:pointer;color:#28a745;font-size:14px;margin-left:5px;" title="View Historical Graph" data-channel="${channel}"></i>`;
 
                             const channelDisplay = missingLink
                                 ? `<a href="${missingLink}" target="_blank" class="missing-l-link channel-name-link" style="color:inherit;font-weight:inherit;text-decoration:none;" title="View missing items">${channel}</a>`
                                 : `<span>${channel}</span>`;
 
-                            return `<div>
-                                <div>
-                                    ${channelDisplay}
-                                    ${historyIcon}
-                                    ${graphIcon}
-                                </div>
-                                <span class="type-badge ${typeBadgeClass}">${type}</span>
-                            </div>`;
-                        },
-                        cellClick: function(e, cell) {
-                            if (e.target.closest && e.target.closest('a.channel-name-link')) return;
-                            // Handle icon clicks directly
-                            if (e.target.classList.contains('history-table-icon')) {
-                                e.stopPropagation();
-                                const channelName = $(e.target).data('channel');
-                                console.log('Table icon clicked for:', channelName);
-                                showChannelHistory(channelName);
-                                return;
-                            }
-
-                            if (e.target.classList.contains('history-graph-icon')) {
-                                e.stopPropagation();
-                                const channelName = $(e.target).data('channel');
-                                console.log('Graph icon clicked for:', channelName);
-                                showChannelHistoryGraph(channelName);
-                                return;
-                            }
+                            return `<div>${channelDisplay}</div>`;
                         }
                     },
                     {
@@ -1128,6 +1132,80 @@
                         }
                     },
                     {
+                        title: "Total Views",
+                        field: "Total Views",
+                        hozAlign: "center",
+                        sorter: "number",
+                        width: 100,
+                        visible: true,
+                        formatter: function(cell) {
+                            const value = parseNumber(cell.getValue());
+                            const rowData = cell.getRow().getData();
+                            const channel = (rowData['Channel '] || '').trim();
+                            if (value == null || value === 0) return '-';
+                            const dotColor = getMetricDotColor(channel, 'total_views');
+                            const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="total_views" style="cursor:pointer;color:${dotColor};font-size:8px;" title="View Chart"></i>`;
+                            return `<span>${value.toLocaleString('en-US')}</span>${chartIcon}`;
+                        },
+                        cellClick: function(e, cell) {
+                            if (e.target.classList.contains('metric-chart-icon')) {
+                                e.stopPropagation();
+                                const span = cell.getElement().querySelector('span');
+                                const cv = span ? parseFloat(span.textContent.replace(/[,$%\s]/g, '')) : null;
+                                showMetricChart($(e.target).data('channel'), $(e.target).data('metric'), cv);
+                            }
+                        },
+                        bottomCalc: "sum",
+                        bottomCalcFormatter: function(cell) {
+                            const value = cell.getValue();
+                            return `<strong>${parseNumber(value).toLocaleString('en-US')}</strong>`;
+                        }
+                    },
+                    {
+                        title: "CVR",
+                        field: "CVR",
+                        hozAlign: "center",
+                        sorter: function(a, b, aRow, bRow) {
+                            const ordersA = parseNumber(aRow.getData()['L30 Orders'] || 0);
+                            const viewsA = parseNumber(aRow.getData()['Total Views'] || 0);
+                            const ordersB = parseNumber(bRow.getData()['L30 Orders'] || 0);
+                            const viewsB = parseNumber(bRow.getData()['Total Views'] || 0);
+                            const cvrA = viewsA > 0 ? (ordersA / viewsA) * 100 : 0;
+                            const cvrB = viewsB > 0 ? (ordersB / viewsB) * 100 : 0;
+                            return cvrA - cvrB;
+                        },
+                        width: 70,
+                        visible: true,
+                        formatter: function(cell) {
+                            const row = cell.getRow().getData();
+                            const channel = (row['Channel '] || '').trim();
+                            const orders = parseNumber(row['L30 Orders'] || 0);
+                            const views = parseNumber(row['Total Views'] || 0);
+                            if (views === 0) return '-';
+                            const pct = (orders / views) * 100;
+                            const dotColor = getMetricDotColor(channel, 'cvr');
+                            const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="cvr" style="cursor:pointer;color:${dotColor};font-size:8px;" title="View CVR trend"></i>`;
+                            return `<span style="font-weight:600;color:${dotColor};">${pct.toFixed(1)}%</span>${chartIcon}`;
+                        },
+                        cellClick: function(e, cell) {
+                            if (e.target.classList.contains('metric-chart-icon')) {
+                                e.stopPropagation();
+                                var span = cell.getElement().querySelector('span');
+                                var cv = span ? parseFloat(span.textContent.replace(/[$,%,\s]/g, '')) : null;
+                                showMetricChart($(e.target).data('channel'), $(e.target).data('metric'), cv);
+                            }
+                        },
+                        bottomCalc: function(values, data) {
+                            let totalOrders = 0, totalViews = 0;
+                            data.forEach(function(row) {
+                                totalOrders += parseNumber(row['L30 Orders'] || 0);
+                                totalViews += parseNumber(row['Total Views'] || 0);
+                            });
+                            if (totalViews === 0) return '-';
+                            return '<strong>' + ((totalOrders / totalViews) * 100).toFixed(1) + '%</strong>';
+                        }
+                    },
+                    {
                         title: "Orders",
                         field: "L30 Orders",
                         hozAlign: "center",
@@ -1178,7 +1256,7 @@
                         }
                     },
                     {
-                        title: "GPFT",
+                        title: "GPFT%",
                         field: "Gprofit%",
                         hozAlign: "center",
                         sorter: "number",
@@ -1243,7 +1321,7 @@
                         }
                     },
                     {
-                        title: "TAcos %",
+                        title: "Ads %",
                         field: "Ads%",
                         hozAlign: "center",
                         sorter: "number",
@@ -1314,7 +1392,7 @@
                         }
                     },
                     {
-                        title: "Nroi%",
+                        title: "NROI %",
                         field: "N ROI",
                         hozAlign: "center",
                         sorter: "number",
@@ -2427,6 +2505,92 @@
                         }
                     },
                     {
+                        title: "Shipping Health",
+                        field: "Shipping Health",
+                        hozAlign: "center",
+                        sorter: "number",
+                        width: 110,
+                        visible: false,
+                        formatter: function(cell) {
+                            const v = cell.getValue();
+                            if (v == null || v === '' || v === '-') return '-';
+                            return typeof v === 'number' ? (v + '%') : v;
+                        }
+                    },
+                    {
+                        title: "CC Health",
+                        field: "CC Health",
+                        hozAlign: "center",
+                        sorter: "number",
+                        width: 90,
+                        visible: false,
+                        formatter: function(cell) {
+                            const v = cell.getValue();
+                            if (v == null || v === '' || v === '-') return '-';
+                            return typeof v === 'number' ? (v + '%') : v;
+                        }
+                    },
+                    {
+                        title: "Returns %",
+                        field: "Returns %",
+                        hozAlign: "center",
+                        sorter: "number",
+                        width: 90,
+                        visible: false,
+                        formatter: function(cell) {
+                            const v = parseNumber(cell.getValue());
+                            if (v == null || isNaN(v) || v === 0) return '-';
+                            return v.toFixed(1) + '%';
+                        }
+                    },
+                    {
+                        title: "A2Z Claims",
+                        field: "A2Z Claims",
+                        hozAlign: "center",
+                        sorter: "number",
+                        width: 95,
+                        visible: false,
+                        formatter: function(cell) {
+                            const v = parseNumber(cell.getValue());
+                            if (v == null || isNaN(v)) return '-';
+                            return v.toLocaleString('en-US');
+                        }
+                    },
+                    {
+                        title: "Ratings & Reviews",
+                        field: "Ratings & Reviews",
+                        hozAlign: "center",
+                        sorter: "number",
+                        width: 130,
+                        visible: false,
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+                            const avg = parseNumber(rowData['Avg Rating'] || 0);
+                            const total = parseNumber(rowData['Total Reviews'] || 0);
+                            if ((avg == null || isNaN(avg)) && (total == null || isNaN(total) || total === 0)) return '-';
+                            const r = (!isNaN(avg) && avg > 0) ? avg.toFixed(1) + ' ★' : '';
+                            const rev = (!isNaN(total) && total > 0) ? total.toLocaleString('en-US') : '';
+                            return [r, rev].filter(Boolean).join(' | ') || '-';
+                        }
+                    },
+                    {
+                        title: "Seller Rating & Reviews",
+                        field: "Seller Rating & Reviews",
+                        hozAlign: "center",
+                        sorter: "number",
+                        width: 150,
+                        visible: false,
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+                            const avg = parseNumber(rowData['Seller Avg Rating'] || 0);
+                            const total = parseNumber(rowData['Seller Total Reviews'] || 0);
+                            if ((avg == null || isNaN(avg)) && (total == null || isNaN(total) || total === 0)) return '-';
+                            const r = (!isNaN(avg) && avg > 0) ? avg.toFixed(1) + ' ★' : '';
+                            const rev = (!isNaN(total) && total > 0) ? total.toLocaleString('en-US') : '';
+                            return [r, rev].filter(Boolean).join(' | ') || '-';
+                        }
+                    },
+                    {
                         title: "Action",
                         field: "_action",
                         hozAlign: "center",
@@ -2578,7 +2742,7 @@
             });
 
             // Initial load only: set column dot color from last-two values (same red/green/gray logic as chart).
-            var metricDotMetricKeys = ['missing_l','nmap','l30_sales','ad_spend','l30_orders','qty','gprofit','groi','ads_pct','npft','nroi','clicks','ad_sales','ad_sold','acos','ads_cvr'];
+            var metricDotMetricKeys = ['missing_l','nmap','l30_sales','ad_spend','l30_orders','qty','gprofit','groi','ads_pct','npft','nroi','clicks','ad_sales','ad_sold','acos','ads_cvr','cvr','total_views','inv_at_lp'];
             function loadMetricDotTrends(tableData) {
                 if (typeof lastDotColorByKey === 'undefined') return;
                 var data = tableData && Array.isArray(tableData) ? tableData : (typeof table !== 'undefined' && table.getData ? table.getData() : []);
@@ -2651,6 +2815,7 @@
                 let totalPft = 0;
                 let totalCogs = 0;
                 let totalAdSpend = 0;
+                let totalViews = 0;
                 let totalMap = 0;
                 let totalMiss = 0;
                 let totalNMap = 0;
@@ -2677,12 +2842,14 @@
 
                     // Use Total Ad Spend directly (already computed correctly per channel)
                     const adSpend = parseNumber(row['Total Ad Spend'] || 0);
+                    const views = parseNumber(row['Total Views'] || 0);
 
                     totalL30Sales += l30Sales;
                     totalL30Orders += l30Orders;
                     totalQty += qty;
                     totalClicks += clicks;
                     totalAdSpend += adSpend;
+                    totalViews += views;
                     totalCogs += cogs;
                     totalMap += mapCount;
                     totalMiss += missCount;
@@ -2724,12 +2891,33 @@
                 $('#avg-gprofit').text(avgGprofit.toFixed(1) + '%');
                 $('#avg-groi').text(Math.round(avgGroi) + '%');
                 $('#total-ad-spend').text('$' + Math.round(totalAdSpend).toLocaleString('en-US'));
+                $('#total-views-badge').text(Math.round(totalViews).toLocaleString('en-US'));
+                // CVR % = Orders / Total Views (overall)
+                const cvrPct = totalViews > 0 ? (totalL30Orders / totalViews) * 100 : null;
+                $('#cvr-pct-badge').text(cvrPct !== null ? cvrPct.toFixed(1) + '%' : '-');
                 $('#total-pft').text('$' + Math.round(totalPft).toLocaleString('en-US'));
                 $('#avg-npft').text(avgNpft.toFixed(1) + '%');
                 $('#avg-nroi').text(avgNroi.toFixed(1) + '%');
                 $('#total-map').text(Math.round(totalMap).toLocaleString('en-US'));
                 $('#total-nmap').text(Math.round(totalNMap).toLocaleString('en-US'));
                 $('#total-miss').text(Math.round(totalMiss).toLocaleString('en-US'));
+
+                // Ratings & Reviews badge: weighted avg rating (sum(rating*reviews)/sum(reviews)), total reviews (sum)
+                let ratingSum = 0, reviewsSum = 0, sellerRatingSum = 0, sellerReviewsSum = 0;
+                data.forEach(row => {
+                    const r = parseNumber(row['Avg Rating'] || 0);
+                    const rev = parseNumber(row['Total Reviews'] || 0);
+                    const sr = parseNumber(row['Seller Avg Rating'] || 0);
+                    const srev = parseNumber(row['Seller Total Reviews'] || 0);
+                    if (!isNaN(r) && !isNaN(rev) && rev > 0) { ratingSum += r * rev; reviewsSum += rev; }
+                    if (!isNaN(sr) && !isNaN(srev) && srev > 0) { sellerRatingSum += sr * srev; sellerReviewsSum += srev; }
+                });
+                const weightedAvgRating = reviewsSum > 0 ? (ratingSum / reviewsSum).toFixed(1) : '0';
+                const totalReviews = Math.round(reviewsSum).toLocaleString('en-US');
+                const sellerWeightedAvg = sellerReviewsSum > 0 ? (sellerRatingSum / sellerReviewsSum).toFixed(1) : '0';
+                const sellerTotalRev = Math.round(sellerReviewsSum).toLocaleString('en-US');
+                $('#ratings-reviews-badge').text(weightedAvgRating + ' ★ | ' + totalReviews);
+                $('#seller-ratings-reviews-badge').text(sellerWeightedAvg + ' ★ | ' + sellerTotalRev);
             }
 
             // Channel Search
@@ -2806,16 +2994,16 @@
             
             const sectionColumns = {
                 'all': 'ALL', // Show all columns
-                'ads': ['Total Ad Spend', 'KW Spent', 'PT Spent', 'HL Spent', 'PMT Spent', 'Shopping Spent', 'SERP Spent', 'clicks', 'KW Clicks', 'PT Clicks', 'HL Clicks', 'PMT Clicks', 'Shopping Clicks', 'SERP Clicks', 'Ad Sales', 'KW Sales', 'PT Sales', 'HL Sales', 'PMT Sales', 'Shopping Sales', 'SERP Sales', 'ad_sold', 'KW Sold', 'PT Sold', 'HL Sold', 'PMT Sold', 'Shopping Sold', 'SERP Sold', 'ACOS', 'KW ACOS', 'PT ACOS', 'HL ACOS', 'PMT ACOS', 'Shopping ACOS', 'SERP ACOS', 'Ads CVR', 'KW CVR', 'PT CVR', 'HL CVR', 'PMT CVR', 'Shopping CVR', 'SERP CVR', 'TAcos %', 'Missing Ads'],
+                'ads': ['L30 Sales', 'Total Ad Spend', 'Total Views', 'CVR', 'KW Spent', 'PT Spent', 'HL Spent', 'PMT Spent', 'KW ACOS', 'PT ACOS', 'HL ACOS', 'PMT ACOS', 'Shopping Spent', 'SERP Spent', 'clicks', 'KW Clicks', 'PT Clicks', 'HL Clicks', 'PMT Clicks', 'Shopping Clicks', 'SERP Clicks', 'Ad Sales', 'KW Sales', 'PT Sales', 'HL Sales', 'PMT Sales', 'Shopping Sales', 'SERP Sales', 'ad_sold', 'KW Sold', 'PT Sold', 'HL Sold', 'PMT Sold', 'Shopping Sold', 'SERP Sold', 'ACOS', 'Shopping ACOS', 'SERP ACOS', 'Ads CVR', 'KW CVR', 'PT CVR', 'HL CVR', 'PMT CVR', 'Shopping CVR', 'SERP CVR', 'TAcos %', 'Missing Ads'],
                 'inv': ['Avl', 'Res', 'Inb', 'Unf', 'Wrk', 'Total Inv', 'Allocated'],
                 'margins': ['G PFT%', 'G ROI%', 'N PFT%', 'N ROI%', 'COGS', 'Total Ad Spend', 'TAcos %'],
                 'movement': ['L30 Sales', 'L30 Orders', 'Qty items', 'Velocity'],
                 'returns': ['Return Rate', 'Return Units', 'Return Value'],
-                'ah': ['AH Score', 'Policy Violations', 'Customer Complaints'],
+                'ah': ['AH Score', 'Policy Violations', 'Customer Complaints', 'Shipping Health', 'CC Health', 'Returns %', 'A2Z Claims', 'Ratings & Reviews', 'Seller Rating & Reviews'],
                 'expenses': ['Total Ad Spend', 'Shipping Cost', 'FBA Fees', 'Storage Fees'],
-                'traffic': ['clicks', 'Sessions', 'Page Views', 'Conversion Rate'],
-                'reviews': ['Total Reviews', 'Avg Rating', '5-Star', '4-Star', '1-Star'],
-                'missing': ['Miss', 'NMap', 'Missing Ads']
+                'traffic': ['clicks', 'Sessions', 'Page Views', 'Conversion Rate', 'Total Views', 'CVR'],
+                'reviews': ['Total Reviews', 'Avg Rating', '5-Star', '4-Star', '1-Star', 'Ratings & Reviews', 'Seller Rating & Reviews'],
+                'missing': ['Miss', 'NMap', 'Missing Ads', 'Total Views']
             };
             
             $('.section-option').on('click', function(e) {
@@ -2826,7 +3014,16 @@
                 console.log('Section selected:', section);
                 $('#current-section').text(sectionName);
                 
+                // Type filter: B2C, B2B, Dropship — filter rows by channel type
+                if (section === 'B2C' || section === 'B2B' || section === 'Dropship') {
+                    table.setFilter('type', '=', section);
+                    $('#type-filter').val(section);
+                    return;
+                }
+                
                 if (section === 'all') {
+                    table.clearFilter(true);
+                    $('#type-filter').val('all');
                     // Show all columns
                     table.getColumns().forEach(col => {
                         if (col.getField() !== 'Channel ') { // Keep channel column always visible
@@ -2835,7 +3032,7 @@
                     });
                     console.log('✓ All columns visible');
                 } else {
-                    // Hide all columns first
+                    // Column section: show/hide column groups
                     table.getColumns().forEach(col => {
                         const field = col.getField();
                         if (field !== 'Channel ') { // Keep channel column
@@ -2843,7 +3040,6 @@
                         }
                     });
                     
-                    // Show only selected section columns
                     const columnsToShow = sectionColumns[section] || [];
                     columnsToShow.forEach(field => {
                         const column = table.getColumn(field);
@@ -2870,22 +3066,6 @@
                     dotTrendsLoadedOnce = true;
                     loadMetricDotTrends(table.getData());
                 }
-            });
-
-            // History table icon click handler
-            $(document).on('click', '.history-table-icon', function(e) {
-                e.preventDefault();
-                e.stopPropagation();
-                const channelName = $(this).data('channel');
-                showChannelHistory(channelName);
-            });
-
-            // History graph icon click handler
-            $(document).on('click', '.history-graph-icon', function(e) {
-                e.preventDefault();
-                e.stopPropagation();
-                const channelName = $(this).data('channel');
-                showChannelHistoryGraph(channelName);
             });
 
             // Show clicks breakdown modal - Fetch data from adv_masters_datas table
@@ -3219,6 +3399,7 @@
 
             // Ad Breakdown Chart variables
             let adBreakdownChartInstance = null;
+            let salesOrdersItemsBarChartInstance = null;
             let currentChartChannel = '';
             let currentChartAdType = '';
             let currentChartMetric = 'spend';
@@ -3359,8 +3540,22 @@
                         if (response.success && response.data && response.data.length > 0) {
                             $('#adBreakdownChartContainer').show();
                             renderAdBreakdownChart(response.data);
+                            if (currentChartMode === 'metric') {
+                                loadSalesOrdersItemsBarChart();
+                            } else {
+                                $('#salesOrdersItemsBarContainer').hide();
+                                if (salesOrdersItemsBarChartInstance) {
+                                    salesOrdersItemsBarChartInstance.destroy();
+                                    salesOrdersItemsBarChartInstance = null;
+                                }
+                            }
                         } else {
                             $('#adChartNoData').show();
+                            $('#salesOrdersItemsBarContainer').hide();
+                            if (salesOrdersItemsBarChartInstance) {
+                                salesOrdersItemsBarChartInstance.destroy();
+                                salesOrdersItemsBarChartInstance = null;
+                            }
                         }
                     },
                     error: function(xhr, status) {
@@ -3369,6 +3564,11 @@
                         console.error('Error fetching chart data:', xhr);
                         $('#adChartLoading').hide();
                         $('#adChartNoData').show();
+                        $('#salesOrdersItemsBarContainer').hide();
+                        if (salesOrdersItemsBarChartInstance) {
+                            salesOrdersItemsBarChartInstance.destroy();
+                            salesOrdersItemsBarChartInstance = null;
+                        }
                     }
                 });
             }
@@ -3392,6 +3592,10 @@
                 'ad_sold': 'AD Sold',
                 'acos': 'ACOS',
                 'ads_cvr': 'AD CVR',
+                'cvr': 'CVR',
+                'total_views': 'Total Views',
+                'inv_at_lp': 'Inv@LP',
+                'tat': 'TAT',
             };
 
             // Show metric chart (for non-ad-breakdown columns)
@@ -3440,6 +3644,118 @@
                 showMetricChart('All', metricKey, badgeValue);
             });
 
+            // Load daily bar chart for the clicked metric only (metric mode) — same channel & days as line chart
+            function loadSalesOrdersItemsBarChart() {
+                const channel = currentChartChannel;
+                const days = currentChartDays;
+                const metricKey = currentMetricKey || 'l30_sales';
+                $.get('/channel-metric-chart-data', { channel: channel, days: days, metric: metricKey }).done(function(resp) {
+                    const data = (resp && resp.data) ? resp.data : [];
+                    if (data.length === 0) {
+                        $('#salesOrdersItemsBarContainer').css('display', 'none').hide();
+                        if (salesOrdersItemsBarChartInstance) {
+                            salesOrdersItemsBarChartInstance.destroy();
+                            salesOrdersItemsBarChartInstance = null;
+                        }
+                        return;
+                    }
+                    const year = new Date().getFullYear();
+                    const sorted = [...data].sort(function(a, b) {
+                        const dA = new Date((a.date || a.label) + ' ' + year);
+                        const dB = new Date((b.date || b.label) + ' ' + year);
+                        if (isNaN(dA.getTime()) || isNaN(dB.getTime())) return String(a.date || a.label).localeCompare(String(b.date || b.label));
+                        return dA - dB;
+                    });
+                    const labels = sorted.map(d => d.date || d.label);
+                    const values = sorted.map(d => parseFloat(d.value) || 0);
+                    $('#salesOrdersItemsBarContainer').css('display', 'flex').show();
+                    renderSingleMetricBarChart({ labels, values, metricKey });
+                }).fail(function() {
+                    $('#salesOrdersItemsBarContainer').css('display', 'none').hide();
+                    if (salesOrdersItemsBarChartInstance) {
+                        salesOrdersItemsBarChartInstance.destroy();
+                        salesOrdersItemsBarChartInstance = null;
+                    }
+                });
+            }
+
+            function barChartFmtVal(metricKey, v) {
+                if (metricKey === 'l30_sales' || metricKey === 'ad_spend' || metricKey === 'ad_sales' || metricKey === 'pft' || metricKey === 'inv_at_lp') {
+                    return '$' + Math.round(v).toLocaleString('en-US');
+                }
+                if (metricKey === 'acos' || metricKey === 'cvr' || metricKey === 'ads_cvr' || metricKey === 'gprofit' || metricKey === 'groi' || metricKey === 'ads_pct' || metricKey === 'npft' || metricKey === 'nroi') {
+                    return v.toFixed(1) + '%';
+                }
+                if (metricKey === 'tat') return v.toFixed(2);
+                return Math.round(v).toLocaleString('en-US');
+            }
+
+            function renderSingleMetricBarChart(barData) {
+                const ctx = document.getElementById('salesOrdersItemsBarChart');
+                if (!ctx) return;
+                const g = ctx.getContext('2d');
+                if (salesOrdersItemsBarChartInstance) {
+                    salesOrdersItemsBarChartInstance.destroy();
+                    salesOrdersItemsBarChartInstance = null;
+                }
+                const labels = barData.labels || [];
+                const values = barData.values || [];
+                const metricKey = barData.metricKey || 'l30_sales';
+                const seriesLabel = metricLabels[metricKey] || metricKey;
+                const isCurrency = ['l30_sales', 'ad_spend', 'ad_sales', 'pft', 'inv_at_lp'].includes(metricKey);
+                const isPercent = ['acos', 'cvr', 'ads_cvr', 'gprofit', 'groi', 'ads_pct', 'npft', 'nroi'].includes(metricKey);
+                const yTitle = isCurrency ? seriesLabel + ' ($)' : isPercent ? seriesLabel + ' (%)' : seriesLabel;
+                salesOrdersItemsBarChartInstance = new Chart(g, {
+                    type: 'bar',
+                    data: {
+                        labels: labels,
+                        datasets: [
+                            { label: seriesLabel, data: values, backgroundColor: 'rgba(30,136,229,0.8)', borderColor: '#1e88e5', borderWidth: 1 }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        layout: { padding: { top: 8, left: 4, right: 4, bottom: 20 } },
+                        plugins: {
+                            legend: { display: true, position: 'top', labels: { font: { size: 9 }, boxWidth: 12 } },
+                            tooltip: {
+                                callbacks: {
+                                    label: function(ctx) {
+                                        const v = ctx.raw;
+                                        return seriesLabel + ': ' + barChartFmtVal(metricKey, v);
+                                    }
+                                }
+                            }
+                        },
+                        scales: {
+                            x: {
+                                ticks: {
+                                    maxRotation: 45,
+                                    minRotation: 45,
+                                    font: { size: labels.length > 25 ? 7 : 8 },
+                                    autoSkip: false,
+                                    maxTicksLimit: Math.max(labels.length, 31)
+                                }
+                            },
+                            y: {
+                                type: 'linear',
+                                position: 'left',
+                                title: { display: true, text: yTitle, font: { size: 9 } },
+                                ticks: {
+                                    font: { size: 9 },
+                                    callback: function(v) {
+                                        if (isCurrency) return '$' + (v >= 1000 ? (v/1000)+'k' : v);
+                                        if (isPercent) return v + '%';
+                                        return Math.round(v).toLocaleString('en-US');
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+
             // Render chart
             function renderAdBreakdownChart(data) {
                 const ctx = document.getElementById('adBreakdownChart').getContext('2d');
@@ -3469,12 +3785,13 @@
                 // --- Format helper (no decimals for spend/sales) ---
                 const fmtVal = (v) => {
                     const m = currentChartMetric;
-                    if (m === 'spend' || m === 'sales' || m === 'l30_sales' || m === 'ad_spend' || m === 'ad_sales' || m === 'pft') {
+                    if (m === 'spend' || m === 'sales' || m === 'l30_sales' || m === 'ad_spend' || m === 'ad_sales' || m === 'pft' || m === 'inv_at_lp') {
                         return '$' + Math.round(v).toLocaleString('en-US');
                     }
                     if (m === 'acos' || m === 'cvr' || m === 'ads_cvr' || m === 'gprofit' || m === 'groi' || m === 'ads_pct' || m === 'npft' || m === 'nroi') {
                         return v.toFixed(1) + '%';
                     }
+                    if (m === 'tat') return v.toFixed(2);
                     return Math.round(v).toLocaleString('en-US');
                 };
 
@@ -3540,7 +3857,7 @@
                         const ctx = chart.ctx;
 
                         ctx.save();
-                        ctx.font = 'bold 7px Inter, system-ui, sans-serif';
+                        ctx.font = 'bold 11px Inter, system-ui, sans-serif';
                         ctx.textAlign = 'center';
                         ctx.textBaseline = 'bottom';
 
@@ -3550,7 +3867,7 @@
                             const y = point.y;
 
                             // Alternate label position to reduce overlap
-                            const offsetY = (i % 2 === 0) ? -7 : -14;
+                            const offsetY = (i % 2 === 0) ? -10 : -20;
 
                             ctx.fillStyle = labelColors[i];
                             ctx.fillText(fmtVal(val), x, y + offsetY);
@@ -3583,7 +3900,7 @@
                         responsive: true,
                         maintainAspectRatio: false,
                         layout: {
-                            padding: { top: 18, left: 2, right: 2, bottom: 2 }
+                            padding: { top: 26, left: 2, right: 2, bottom: 2 }
                         },
                         plugins: {
                             legend: { display: false },
@@ -3730,413 +4047,6 @@
                     $select.val('total');
                 }, 2000); // Reset after 2 seconds
             });
-
-            // Show channel history modal
-            function showChannelHistory(channelName) {
-                console.log('Opening history table for:', channelName);
-
-                if (typeof bootstrap === 'undefined') {
-                    console.error('Bootstrap is not loaded!');
-                    alert('Bootstrap is not loaded. Please refresh the page.');
-                    return;
-                }
-
-                $('#modalChannelName').text(channelName);
-                $('#historyTableBody').html('<tr><td colspan="5" class="text-center">Loading...</td></tr>');
-
-                const modalElement = document.getElementById('channelHistoryModal');
-                if (!modalElement) {
-                    console.error('channelHistoryModal element not found!');
-                    return;
-                }
-
-                const modal = new bootstrap.Modal(modalElement);
-                modal.show();
-
-                const channelKey = channelName.toLowerCase().replace(/\s+/g, '');
-
-                $.ajax({
-                    url: '/channel-master-history/' + channelKey,
-                    method: 'GET',
-                    success: function(response) {
-                        if (response.status === 200 && response.data) {
-                            renderHistoryTable(response.data);
-                        } else {
-                            $('#historyTableBody').html(
-                                '<tr><td colspan="5" class="text-center">No historical data found</td></tr>'
-                                );
-                        }
-                    },
-                    error: function() {
-                        $('#historyTableBody').html(
-                            '<tr><td colspan="5" class="text-center text-danger">Error loading data</td></tr>'
-                            );
-                    }
-                });
-            }
-
-            // Render history table
-            function renderHistoryTable(data) {
-                const formatDate = (dateStr) => {
-                    if (!dateStr) return '';
-                    const datePart = dateStr.split('T')[0];
-                    return datePart;
-                };
-
-                let html = '';
-                data.forEach(row => {
-                    const summaryData = row.summary_data || {};
-                    const npft = parseNumber(summaryData.gprofit_percent || 0) - parseNumber(summaryData
-                        .tcos_percent || 0);
-                    const clicks = parseNumber(summaryData.clicks || 0);
-                    const totalQty = parseNumber(summaryData.total_quantity || 0);
-
-                    html += `
-                        <tr>
-                            <td>${formatDate(row.snapshot_date)}</td>
-                            <td class="text-end">$${parseNumber(summaryData.l30_sales).toLocaleString()}</td>
-                            <td class="text-end">${parseNumber(summaryData.l30_orders).toLocaleString()}</td>
-                            <td class="text-end">${totalQty > 0 ? totalQty.toLocaleString() : '-'}</td>
-                            <td class="text-end">${clicks > 0 ? clicks.toLocaleString() : '-'}</td>
-                            <td class="text-end">${parseNumber(summaryData.gprofit_percent).toFixed(1)}%</td>
-                            <td class="text-end">${npft.toFixed(1)}%</td>
-                        </tr>
-                    `;
-                });
-
-                if (html === '') {
-                    html = '<tr><td colspan="7" class="text-center">No data available</td></tr>';
-                }
-
-                $('#historyTableBody').html(html);
-            }
-
-            // Show channel history graph modal
-            function showChannelHistoryGraph(channelName) {
-                console.log('Opening history graph for:', channelName);
-
-                if (typeof bootstrap === 'undefined') {
-                    console.error('Bootstrap is not loaded!');
-                    alert('Bootstrap is not loaded. Please refresh the page.');
-                    return;
-                }
-
-                $('#modalGraphChannelName').text(channelName);
-                $('#loadingGraphMessage').show();
-                $('#historyGraphContainer').hide();
-
-                const modalElement = document.getElementById('channelHistoryGraphModal');
-                if (!modalElement) {
-                    console.error('Modal element not found!');
-                    return;
-                }
-
-                const modal = new bootstrap.Modal(modalElement);
-                modal.show();
-
-                const channelKey = channelName.toLowerCase().replace(/\s+/g, '');
-
-                $.ajax({
-                    url: '/channel-master-history/' + channelKey,
-                    method: 'GET',
-                    success: function(response) {
-                        if (response.status === 200 && response.data && response.data.length > 0) {
-                            renderHistoryGraph(response.data, channelName);
-                        } else {
-                            $('#loadingGraphMessage').html(
-                                '<p class="text-center text-muted">No historical data found</p>');
-                        }
-                    },
-                    error: function() {
-                        $('#loadingGraphMessage').html(
-                            '<p class="text-center text-danger">Error loading data</p>');
-                    }
-                });
-            }
-
-            // Render history graph using Google Charts
-            function renderHistoryGraph(data, channelName) {
-                const toNum = (v, def = 0) => {
-                    const n = parseFloat(String(v).replace(/,/g, ''));
-                    return Number.isFinite(n) ? n : def;
-                };
-
-                const formatDate = (dateStr) => {
-                    if (!dateStr) return '';
-                    return dateStr.split('T')[0];
-                };
-
-                // Prepare data for Google Charts
-                const chartData = [
-                    ['Date', 'Sales', 'Orders', 'Qty items', 'Clicks', 'GPFT', 'NPFT%']
-                ];
-
-                const reversedData = [...data].reverse();
-
-                reversedData.forEach(row => {
-                    const summaryData = row.summary_data || {};
-                    const npft = toNum(summaryData.gprofit_percent || 0) - toNum(summaryData.tcos_percent ||
-                        0);
-                    const clicks = toNum(summaryData.clicks || 0);
-                    const totalQty = toNum(summaryData.total_quantity || 0);
-
-                    chartData.push([
-                        formatDate(row.snapshot_date),
-                        toNum(summaryData.l30_sales),
-                        toNum(summaryData.l30_orders),
-                        totalQty,
-                        clicks,
-                        toNum(summaryData.gprofit_percent),
-                        npft
-                    ]);
-                });
-
-                // Calculate min/max for dynamic axis scaling
-                let minSales = Infinity,
-                    maxSales = -Infinity;
-                let minOrders = Infinity,
-                    maxOrders = -Infinity;
-                let minQty = Infinity,
-                    maxQty = -Infinity;
-                let minClicks = Infinity,
-                    maxClicks = -Infinity;
-                let minGprofit = Infinity,
-                    maxGprofit = -Infinity;
-                let minNPFT = Infinity,
-                    maxNPFT = -Infinity;
-
-                for (let i = 1; i < chartData.length; i++) {
-                    const row = chartData[i];
-                    const sales = row[1];
-                    const orders = row[2];
-                    const qty = row[3];
-                    const clicks = row[4];
-                    const gprofit = row[5];
-                    const npft = row[6];
-
-                    if (sales < minSales) minSales = sales;
-                    if (sales > maxSales) maxSales = sales;
-                    if (orders < minOrders) minOrders = orders;
-                    if (orders > maxOrders) maxOrders = orders;
-                    if (qty < minQty) minQty = qty;
-                    if (qty > maxQty) maxQty = qty;
-                    if (clicks < minClicks) minClicks = clicks;
-                    if (clicks > maxClicks) maxClicks = clicks;
-                    if (gprofit < minGprofit) minGprofit = gprofit;
-                    if (gprofit > maxGprofit) maxGprofit = gprofit;
-                    if (npft < minNPFT) minNPFT = npft;
-                    if (npft > maxNPFT) maxNPFT = npft;
-                }
-
-                // Calculate combined min/max for axes with 15% buffer
-                const leftMin = Math.min(minSales, minOrders, minQty, minClicks);
-                const leftMax = Math.max(maxSales, maxOrders, maxQty, maxClicks);
-                const leftRange = leftMax - leftMin;
-                const leftAxisMin = Math.max(0, leftMin - (leftRange * 0.15));
-                const leftAxisMax = leftMax + (leftRange * 0.15);
-
-                const rightMin = Math.min(minGprofit, minNPFT);
-                const rightMax = Math.max(maxGprofit, maxNPFT);
-                const rightRange = rightMax - rightMin;
-                const rightAxisMin = Math.max(0, rightMin - (rightRange * 0.15));
-                const rightAxisMax = rightMax + (rightRange * 0.15);
-
-                google.charts.load('current', {
-                    packages: ['corechart', 'line']
-                });
-                google.charts.setOnLoadCallback(() => {
-                    const dataTable = google.visualization.arrayToDataTable(chartData);
-
-                    const options = {
-                        title: `${channelName} - Historical Trends (Last ${data.length} Days)`,
-                        titleTextStyle: {
-                            fontSize: 18,
-                            bold: true,
-                            color: '#333333'
-                        },
-                        curveType: 'none',
-                        legend: {
-                            position: 'bottom',
-                            textStyle: {
-                                fontSize: 12
-                            },
-                            alignment: 'center'
-                        },
-                        interpolateNulls: false,
-                        hAxis: {
-                            title: 'Date',
-                            titleTextStyle: {
-                                fontSize: 13,
-                                bold: true,
-                                color: '#333'
-                            },
-                            slantedText: true,
-                            slantedTextAngle: 45,
-                            textStyle: {
-                                fontSize: 11,
-                                color: '#333',
-                                bold: true
-                            },
-                            gridlines: {
-                                color: '#e0e0e0',
-                                count: -1
-                            },
-                            minorGridlines: {
-                                color: '#f5f5f5',
-                                count: 2
-                            },
-                            baselineColor: '#999',
-                            showTextEvery: 1
-                        },
-                        series: {
-                            0: {
-                                color: '#1e88e5',
-                                lineWidth: 3,
-                                pointSize: 6,
-                                pointShape: 'circle',
-                                targetAxisIndex: 0,
-                                visibleInLegend: true
-                            },
-                            1: {
-                                color: '#ff9800',
-                                lineWidth: 3,
-                                pointSize: 6,
-                                pointShape: 'circle',
-                                targetAxisIndex: 0,
-                                visibleInLegend: true
-                            },
-                            2: {
-                                color: '#00bcd4',
-                                lineWidth: 3,
-                                pointSize: 6,
-                                pointShape: 'circle',
-                                targetAxisIndex: 0,
-                                visibleInLegend: true
-                            },
-                            3: {
-                                color: '#9c27b0',
-                                lineWidth: 3,
-                                pointSize: 6,
-                                pointShape: 'circle',
-                                targetAxisIndex: 0,
-                                visibleInLegend: true
-                            },
-                            4: {
-                                color: '#e53935',
-                                lineWidth: 3,
-                                pointSize: 6,
-                                pointShape: 'circle',
-                                targetAxisIndex: 1,
-                                visibleInLegend: true
-                            },
-                            5: {
-                                color: '#43a047',
-                                lineWidth: 3,
-                                pointSize: 6,
-                                pointShape: 'circle',
-                                targetAxisIndex: 1,
-                                visibleInLegend: true
-                            }
-                        },
-                        vAxes: {
-                            0: {
-                                title: 'Sales, Orders, Qty & Clicks',
-                                titleTextStyle: {
-                                    color: '#1e88e5',
-                                    fontSize: 14,
-                                    bold: true
-                                },
-                                textStyle: {
-                                    color: '#000000',
-                                    fontSize: 14,
-                                    bold: true
-                                },
-                                gridlines: {
-                                    color: '#d0d0d0',
-                                    count: 6
-                                },
-                                format: 'short',
-                                viewWindow: {
-                                    min: leftAxisMin,
-                                    max: leftAxisMax
-                                }
-                            },
-                            1: {
-                                title: 'Profit % (Gprofit% & NPFT%)',
-                                titleTextStyle: {
-                                    color: '#e53935',
-                                    fontSize: 14,
-                                    bold: true
-                                },
-                                textStyle: {
-                                    color: '#000000',
-                                    fontSize: 14,
-                                    bold: true
-                                },
-                                gridlines: {
-                                    color: '#d0d0d0',
-                                    count: 6
-                                },
-                                format: 'short',
-                                viewWindow: {
-                                    min: rightAxisMin,
-                                    max: rightAxisMax
-                                }
-                            }
-                        },
-                        chartArea: {
-                            left: 120,
-                            top: 80,
-                            right: 150,
-                            bottom: 120,
-                            backgroundColor: '#ffffff'
-                        },
-                        backgroundColor: {
-                            fill: '#ffffff',
-                            strokeWidth: 1,
-                            stroke: '#cccccc'
-                        },
-                        tooltip: {
-                            isHtml: false,
-                            textStyle: {
-                                fontSize: 11
-                            },
-                            showColorCode: true
-                        },
-                        animation: {
-                            startup: true,
-                            duration: 800,
-                            easing: 'out'
-                        },
-                        pointsVisible: true
-                    };
-
-                    $('#loadingGraphMessage').hide();
-                    $('#historyGraphContainer').show();
-
-                    if (data.length < 30) {
-                        $('#dataPointsInfo').text(
-                            `Showing ${data.length} days of available data. Data accumulates daily.`);
-                        $('#dataInfoMessage').show();
-                    } else {
-                        $('#dataInfoMessage').hide();
-                    }
-
-                    const chart = new google.visualization.LineChart(document.getElementById(
-                        'historyGraphContainer'));
-                    chart.draw(dataTable, options);
-
-                    // Redraw on window resize
-                    window.addEventListener('resize', function() {
-                        chart.draw(dataTable, options);
-                    });
-
-                    // Redraw after modal is fully shown
-                    setTimeout(function() {
-                        chart.draw(dataTable, options);
-                    }, 300);
-                });
-            }
 
             // Save channel form handler
             $(document).on('click', '#saveChannelBtn', function() {

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\ProductMaster;
 
 use App\Http\Controllers\ApiController;
 use App\Http\Controllers\Controller;
+use App\Models\JungleScoutProductData;
 use App\Models\MfrgProgress;
 use App\Models\ShopifySku;
 use App\Models\Supplier;
@@ -107,6 +108,12 @@ class ToOrderAnalysisController extends Controller
             // ✅ Shopify image support
             $shopifySkus = ShopifySku::all()->keyBy(fn($item) => strtoupper(trim($item->sku)));
 
+            $skusForReviews = $toOrderRecords->keys()->map(fn($s) => strtoupper(trim($s)))->unique()->filter()->values()->all();
+            $ratingReviewsMap = $this->getRatingReviewsBySku($skusForReviews);
+
+            // MSL: same as forecast page – from movement_analysis (Total/Total month)*4, fallback to forecast_analysis.s_msl
+            $movementMap = DB::table('movement_analysis')->get()->keyBy(fn($item) => strtoupper(trim($item->sku ?? '')));
+
             $processedData = [];
 
             foreach ($toOrderRecords as $sku => $toOrder) {
@@ -141,11 +148,13 @@ class ToOrderAnalysisController extends Controller
                 $cbm = 0;
                 $imagePath = null;
 
+                $lp = 0;
                 if (!empty($product?->Values)) {
                     $valuesArray = json_decode($product->Values, true);
                     if (is_array($valuesArray)) {
                         $cbm = (float)($valuesArray['cbm'] ?? 0);
                         $imagePath = $valuesArray['image_path'] ?? null;
+                        $lp = (float)($valuesArray['lp'] ?? 0);
                     }
                 }
 
@@ -155,13 +164,24 @@ class ToOrderAnalysisController extends Controller
 
                 $approvedQty = (int)($toOrder->approved_qty ?? 0);
 
+                $mslValue = $this->computeMslForSku($sheetSku, $movementMap, $forecast);
+                $sMsl = $forecast ? (int)($forecast->s_msl ?? 0) : 0;
+                $lpMsl = ($mslValue > 0 && $lp > 0) ? round($mslValue * $lp / 4, 2) : null;
+
+                $rr = $ratingReviewsMap[$sheetSku] ?? ['rating' => null, 'reviews' => null];
                 $processedData[] = (object)[
                     'Parent'          => $parent,
                     'SKU'             => $sheetSku,
                     'Approved QTY'    => $approvedQty,
                     'Date of Appr'    => $toOrder->date_apprvl ?? '',
                     'Clink'           => ($forecast ? ($forecast->clink ?? '') : ''),
-                    'Supplier'        => $toOrder->supplier_name ?? $supplierName ?? '',
+                    // Use stored supplier; only fallback to parent lookup when never set (null). Empty = user chose "Select" so keep blank.
+                    'Supplier'        => $toOrder->supplier_name !== null ? (string) $toOrder->supplier_name : ($supplierName ?? ''),
+                    'msl'             => $mslValue,
+                    's_msl'           => $sMsl,
+                    'lp_msl'          => $lpMsl,
+                    'rating'          => $rr['rating'],
+                    'reviews'         => $rr['reviews'],
                     'RFQ Form Link'   => $toOrder->rfq_form_link ?? '',
                     'sheet_link'      => $toOrder->sheet_link ?? '',
                     'Rfq Report Link' => $toOrder->rfq_report_link ?? '',
@@ -280,6 +300,12 @@ class ToOrderAnalysisController extends Controller
             $shopifySkus = ShopifySku::all()->keyBy(fn($item) => strtoupper(trim($item->sku)));
             $allReviews = \App\Models\ToOrderReview::all()->keyBy(fn($r) => strtoupper(trim($r->sku)) . '|' . strtoupper(trim($r->parent)));
 
+            $skusForReviews = $toOrderRecords->keys()->map(fn($s) => strtoupper(trim($s)))->unique()->filter()->values()->all();
+            $ratingReviewsMap = $this->getRatingReviewsBySku($skusForReviews);
+
+            // MSL: same as forecast page – from movement_analysis (Total/Total month)*4, fallback to forecast_analysis.s_msl
+            $movementMap = DB::table('movement_analysis')->get()->keyBy(fn($item) => strtoupper(trim($item->sku ?? '')));
+
             $processedData = [];
 
             foreach ($toOrderRecords as $sku => $toOrder) {
@@ -319,11 +345,13 @@ class ToOrderAnalysisController extends Controller
                 $cbm = 0;
                 $imagePath = null;
 
+                $lp = 0;
                 if (!empty($product?->Values)) {
                     $valuesArray = json_decode($product->Values, true);
                     if (is_array($valuesArray)) {
                         $cbm = (float)($valuesArray['cbm'] ?? 0);
                         $imagePath = $valuesArray['image_path'] ?? null;
+                        $lp = (float)($valuesArray['lp'] ?? 0);
                     }
                 }
 
@@ -334,15 +362,37 @@ class ToOrderAnalysisController extends Controller
 
                 $reviewKey = strtoupper(trim($sheetSku)) . '|' . strtoupper(trim($parent));
                 $review = $allReviews->get($reviewKey);
+                $rr = $ratingReviewsMap[$sheetSku] ?? ['rating' => null, 'reviews' => null];
+                $mslValue = $this->computeMslForSku($sheetSku, $movementMap, $forecast);
+                $sMsl = $forecast ? (int)($forecast->s_msl ?? 0) : 0;
+                $lpMsl = ($mslValue > 0 && $lp > 0) ? round($mslValue * $lp / 4, 2) : null;
 
-                $processedData[] = [
+                // Monthly data for MONTH VIEW modal (Jan–Dec, same as forecast)
+                $monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                $monthData = array_fill_keys($monthNames, 0);
+                if ($movementMap->has($sheetSku)) {
+                    $months = json_decode($movementMap->get($sheetSku)->months ?? '{}', true);
+                    if (is_array($months)) {
+                        foreach ($monthNames as $month) {
+                            $monthData[$month] = isset($months[$month]) && is_numeric($months[$month]) ? (int)$months[$month] : 0;
+                        }
+                    }
+                }
+
+                $processedData[] = array_merge([
                     'id'              => $toOrder->id,
                     'Parent'          => $parent,
                     'SKU'             => $sheetSku,
                     'approved_qty'    => $approvedQty,
                     'Date of Appr'    => $toOrder->date_apprvl ?? '',
                     'Clink'           => ($forecast ? ($forecast->clink ?? '') : ''),
-                    'Supplier'        => $toOrder->supplier_name ?? $supplierName ?? '',
+                    // Use stored supplier; only fallback to parent lookup when never set (null). Empty = user chose "Select" so keep blank.
+                    'Supplier'        => $toOrder->supplier_name !== null ? (string) $toOrder->supplier_name : ($supplierName ?? ''),
+                    'msl'             => $mslValue,
+                    's_msl'           => $sMsl,
+                    'lp_msl'          => $lpMsl,
+                    'rating'          => $rr['rating'],
+                    'reviews'         => $rr['reviews'],
                     'RFQ Form Link'   => $toOrder->rfq_form_link ?? '',
                     'sheet_link'      => $toOrder->sheet_link ?? '',
                     'Rfq Report Link' => $toOrder->rfq_report_link ?? '',
@@ -361,7 +411,7 @@ class ToOrderAnalysisController extends Controller
                     'negative_review' => $review->negative_review ?? null,
                     'improvement'     => $review->improvement ?? null,
                     'date_updated'    => $review->date_updated ?? null,
-                ];
+                ], $monthData);
             }
 
             return response()->json([
@@ -374,6 +424,70 @@ class ToOrderAnalysisController extends Controller
                 'error'   => $e->getMessage()
             ], 500);
         }
+    }
+
+    /**
+     * Get rating and reviews from Jungle Scout by SKU (same source as Amazon tabulator).
+     *
+     * @param array<int, string> $skus Uppercase SKUs
+     * @return array<string, array{rating: float|null, reviews: int|null}>
+     */
+    private function getRatingReviewsBySku(array $skus): array
+    {
+        if (empty($skus)) {
+            return [];
+        }
+        $jungleScout = JungleScoutProductData::whereNotNull('sku')
+            ->whereRaw('UPPER(TRIM(sku)) IN (' . implode(',', array_fill(0, count($skus), '?')) . ')', $skus)
+            ->get();
+        $bySku = $jungleScout->groupBy(fn($item) => strtoupper(trim($item->sku)));
+        $result = [];
+        foreach ($skus as $sku) {
+            $group = $bySku->get($sku);
+            $rating = null;
+            $reviews = null;
+            if ($group) {
+                foreach ($group as $item) {
+                    $data = is_array($item->data) ? $item->data : (array) json_decode($item->data, true);
+                    if (isset($data['rating']) && (float) $data['rating'] > 0) {
+                        $rating = (float) $data['rating'];
+                        $reviews = isset($data['reviews']) ? (int) $data['reviews'] : null;
+                        break;
+                    }
+                }
+            }
+            $result[$sku] = ['rating' => $rating, 'reviews' => $reviews];
+        }
+        return $result;
+    }
+
+    /**
+     * Compute MSL for a SKU the same way as forecast page: from movement_analysis (Total/Total month)*4,
+     * fallback to forecast_analysis.s_msl when no movement data.
+     */
+    private function computeMslForSku(string $sheetSku, $movementMap, $forecast): int
+    {
+        if ($movementMap->has($sheetSku)) {
+            $movement = $movementMap->get($sheetSku);
+            $months = json_decode($movement->months ?? '{}', true);
+            $months = is_array($months) ? $months : [];
+            $monthNames = ['Dec', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov'];
+            $totalMonthCount = 0;
+            $totalSum = 0;
+            foreach ($monthNames as $month) {
+                $value = isset($months[$month]) && is_numeric($months[$month]) ? (int) $months[$month] : 0;
+                if ($value !== 0) {
+                    $totalMonthCount++;
+                }
+                $totalSum += $value;
+            }
+            if ($totalMonthCount > 0) {
+                $msl = ($totalSum / $totalMonthCount) * 4;
+                return (int) round($msl);
+            }
+        }
+        $sMsl = $forecast ? (int) ($forecast->s_msl ?? 0) : 0;
+        return $sMsl;
     }
 
     public function updateLink(Request $request)
@@ -390,6 +504,11 @@ class ToOrderAnalysisController extends Controller
             return response()->json(['success' => false, 'message' => 'Invalid column']);
         }
 
+        // When user chooses "-- Select --" for Supplier, ensure we store empty string (not null) so refresh shows blank
+        if ($column === 'Supplier') {
+            $value = trim((string) $value);
+        }
+
         $updateColumn = match ($column) {
             'Date of Appr'    => 'date_apprvl',
             'RFQ Form Link'   => 'rfq_form_link',
@@ -404,15 +523,30 @@ class ToOrderAnalysisController extends Controller
         };
 
         try {
-            // Update ALL rows with this SKU (handles duplicate SKU rows so refresh shows correct value)
-            $updated = ToOrderAnalysis::whereRaw('TRIM(UPPER(sku)) = ?', [$sku])->update([$updateColumn => $value]);
+            // For Supplier, use DB::table so empty string is stored exactly (not converted to null by Eloquent)
+            if ($column === 'Supplier') {
+                $updated = DB::table('to_order_analysis')
+                    ->whereRaw('TRIM(UPPER(sku)) = ?', [$sku])
+                    ->update(['supplier_name' => $value, 'updated_at' => now()]);
+            } else {
+                // Update ALL rows with this SKU (handles duplicate SKU rows so refresh shows correct value)
+                $updated = ToOrderAnalysis::whereRaw('TRIM(UPPER(sku)) = ?', [$sku])->update([$updateColumn => $value]);
+            }
 
-            if ($updated === 0) {
+            if ($updated === 0 && $column !== 'Supplier') {
                 // No row exists for this SKU, create one (avoid creating if any duplicate already exists)
                 ToOrderAnalysis::create([
                     'sku' => $sku,
                     $updateColumn => $value
                 ]);
+            }
+
+            // When MOQ (approved_qty) is updated on to-order page, sync to forecast_analysis so forecast page shows same value
+            if ($column === 'approved_qty') {
+                $valueNum = is_numeric($value) ? (int) $value : null;
+                DB::table('forecast_analysis')
+                    ->whereRaw('TRIM(UPPER(sku)) = ?', [$sku])
+                    ->update(['approved_qty' => $valueNum, 'updated_at' => now()]);
             }
 
             return response()->json(['success' => true]);
@@ -422,6 +556,44 @@ class ToOrderAnalysisController extends Controller
         }
     }
 
+    /**
+     * Bulk update supplier for selected SKUs (by checkbox).
+     */
+    public function bulkUpdateSupplier(Request $request)
+    {
+        $skus = $request->input('skus', []);
+        $supplierName = trim((string) $request->input('supplier_name', ''));
+
+        if (empty($skus) || !is_array($skus)) {
+            return response()->json(['success' => false, 'message' => 'No rows selected'], 400);
+        }
+
+        if ($supplierName === '') {
+            return response()->json(['success' => false, 'message' => 'Please select a supplier'], 400);
+        }
+
+        $skus = array_map(fn($s) => trim(strtoupper((string) $s)), $skus);
+        $skus = array_filter($skus);
+
+        if (empty($skus)) {
+            return response()->json(['success' => false, 'message' => 'No valid SKUs'], 400);
+        }
+
+        try {
+            $placeholders = implode(',', array_fill(0, count($skus), '?'));
+            $updated = ToOrderAnalysis::whereRaw('TRIM(UPPER(sku)) IN (' . $placeholders . ')', $skus)
+                ->update(['supplier_name' => $supplierName]);
+
+            return response()->json([
+                'success' => true,
+                'message' => $updated . ' record(s) updated successfully',
+                'updated' => $updated,
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('ToOrderAnalysis bulkUpdateSupplier failed', ['skus' => $skus, 'error' => $e->getMessage()]);
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+    }
 
     public function storeMFRG(Request $request)
     {

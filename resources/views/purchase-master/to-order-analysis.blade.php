@@ -197,6 +197,7 @@
                             <label class="form-label fw-semibold d-block">🏢 Supplier</label>
                             <select id="supplier-filter" class="form-select">
                                 <option value="">All Suppliers</option>
+                                <option value="__blank__">Blank / No supplier</option>
                                 @foreach($allSuppliers ?? [] as $s)
                                 <option value="{{ $s }}">{{ $s }}</option>
                                 @endforeach
@@ -205,6 +206,21 @@
                         <div class="filter-item">
                             <label for="search-input" class="form-label fw-semibold d-block">🔍 Search</label>
                             <input type="text" id="search-input" class="form-control" placeholder="Search..." style="width: 160px;">
+                        </div>
+                        <div class="filter-item" id="bulk-supplier-bar">
+                            <label class="form-label fw-semibold d-block">🏢 Bulk supplier</label>
+                            <div class="d-flex align-items-center gap-2 flex-wrap">
+                                <select id="bulk-supplier-select" class="form-select form-select-sm" style="width: 180px;">
+                                    <option value="">-- Select supplier --</option>
+                                    @foreach($allSuppliers ?? [] as $s)
+                                        <option value="{{ $s }}">{{ $s }}</option>
+                                    @endforeach
+                                </select>
+                                <button type="button" id="bulk-update-supplier-btn" class="btn btn-sm btn-primary">
+                                    <i class="fas fa-edit me-1"></i> Update selected
+                                </button>
+                                <span class="text-muted small" id="bulk-selected-count"></span>
+                            </div>
                         </div>
 
                         <div class="ms-auto d-flex align-items-end">
@@ -310,6 +326,25 @@
         </div>
     </div>
 
+    {{-- MONTH VIEW modal (Jan–Dec, same as forecast analysis) --}}
+    <div class="modal fade" id="monthModal" tabindex="-1" aria-labelledby="monthModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-xl">
+            <div class="modal-content border-0 shadow-sm">
+                <div class="modal-header bg-info text-white d-flex justify-content-between align-items-center">
+                    <h5 class="modal-title mb-0">MONTH VIEW <span id="month-view-sku" class="ms-1"></span></h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"
+                        aria-label="Close"></button>
+                </div>
+                <div class="modal-body" id="monthModalBody">
+                    <div class="d-flex justify-content-between gap-2 flex-nowrap w-100 px-3" id="monthCardWrapper"
+                        style="overflow-x: auto;">
+                        <!-- Month cards inserted here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
 @endsection
 @section('script')
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
@@ -338,6 +373,50 @@
             let hideTimeout;
             let uniqueSuppliers = [];
             let allSuppliers = @json($allSuppliers ?? []);
+
+            function openMonthModal(monthData, sku) {
+                const wrapper = document.getElementById("monthCardWrapper");
+                if (!wrapper) return;
+                wrapper.innerHTML = "";
+
+                const monthOrder = [
+                    "JAN", "FEB", "MAR", "APR", "MAY", "JUN",
+                    "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"
+                ];
+                const currentDate = new Date();
+                const currentYear = currentDate.getFullYear();
+                const currentMonth = currentDate.getMonth();
+                const monthIndexMap = {
+                    "JAN": 0, "FEB": 1, "MAR": 2, "APR": 3,
+                    "MAY": 4, "JUN": 5, "JUL": 6, "AUG": 7,
+                    "SEP": 8, "OCT": 9, "NOV": 10, "DEC": 11
+                };
+                const getYearForMonth = (monthIndex) => {
+                    if (monthIndex > currentMonth) return currentYear - 1;
+                    return currentYear;
+                };
+
+                monthOrder.forEach(month => {
+                    const value = monthData[month] ?? 0;
+                    const monthIndex = monthIndexMap[month];
+                    const year = getYearForMonth(monthIndex);
+                    const card = document.createElement("div");
+                    card.className = "month-card";
+                    const title = document.createElement("div");
+                    title.className = "month-title";
+                    title.innerText = `${month} ${year}`;
+                    const count = document.createElement("div");
+                    count.className = "month-value";
+                    count.innerText = value;
+                    card.appendChild(title);
+                    card.appendChild(count);
+                    wrapper.appendChild(card);
+                });
+
+                document.getElementById("month-view-sku").innerText = `( ${sku} )`;
+                const modal = new bootstrap.Modal(document.getElementById("monthModal"));
+                modal.show();
+            }
 
             const table = new Tabulator("#toOrderAnalysis-table", {
                 ajaxURL: "/to-order-analysis/data",
@@ -437,8 +516,53 @@
                         }
                     },
                     {
+                        title: "MSL",
+                        field: "msl",
+                        hozAlign: "center",
+                        headerSort: true,
+                        width: 90,
+                        formatter: function(cell) {
+                            const msl = cell.getValue();
+                            const val = msl != null && msl !== '' ? parseInt(msl, 10) : 0;
+                            if (val <= 0) {
+                                return '<span class="text-muted">—</span>';
+                            }
+                            return `
+                                <div style="text-align:center; font-weight:bold;">
+                                    ${val}
+                                    <button class="btn btn-sm btn-link text-info open-month-modal" style="padding: 0 4px;" title="View Monthly">
+                                        <i class="bi bi-calendar3"></i>
+                                    </button>
+                                </div>
+                            `;
+                        },
+                        cellClick: function(e, cell) {
+                            if (e.target.closest(".open-month-modal")) {
+                                const row = cell.getRow().getData();
+                                const sku = row["SKU"] || '';
+                                const monthData = {
+                                    "JAN": row["Jan"] ?? 0,
+                                    "FEB": row["Feb"] ?? 0,
+                                    "MAR": row["Mar"] ?? 0,
+                                    "APR": row["Apr"] ?? 0,
+                                    "MAY": row["May"] ?? 0,
+                                    "JUN": row["Jun"] ?? 0,
+                                    "JUL": row["Jul"] ?? 0,
+                                    "AUG": row["Aug"] ?? 0,
+                                    "SEP": row["Sep"] ?? 0,
+                                    "OCT": row["Oct"] ?? 0,
+                                    "NOV": row["Nov"] ?? 0,
+                                    "DEC": row["Dec"] ?? 0
+                                };
+                                openMonthModal(monthData, sku);
+                            }
+                        }
+                    },
+                    {
                         title: "DOA",
                         field: "Date of Appr",
+                        width: 150,
+                        minWidth: 145,
                         formatter: function (cell) {
                             const value = cell.getValue() || "";
                             const rowData = cell.getRow().getData();
@@ -461,7 +585,7 @@
 
                             const html = `
                                 <div style="display: flex; flex-direction: column; align-items: flex-start;">
-                                    <input type="date" class="form-control form-control-sm doa-input" value="${value}" style="width:82px; ${bgColor}">
+                                    <input type="date" class="form-control form-control-sm doa-input" value="${value}" style="width:100%; min-width:140px; max-width:145px; ${bgColor}">
                                 </div>
                             `;
 
@@ -489,12 +613,41 @@
                                 let selected = (supplier === value) ? "selected" : "";
                                 return `<option value="${(supplier || "").replace(/"/g, "&quot;")}" ${selected}>${(supplier || "").replace(/</g, "&lt;")}</option>`;
                             }).join("");
+                            let selectSelected = (!value || value.trim() === "") ? " selected" : "";
                             return `
                                 <select class="form-select form-select-sm editable-select" data-sku="${sku}" data-column="Supplier" style="width: 140px; max-width: 100%;">
-                                    <option value="">-- Select --</option>
+                                    <option value=""${selectSelected}>-- Select --</option>
                                     ${options}
                                 </select>`;
                         }
+                    },
+                    {
+                        title: "Reviews",
+                        field: "rating",
+                        hozAlign: "center",
+                        headerSort: false,
+                        tooltip: "Rating and reviews from Jungle Scout",
+                        formatter: function(cell) {
+                            const rating = cell.getValue();
+                            const rowData = cell.getRow().getData();
+                            const reviews = rowData.reviews || 0;
+                            if (!rating || rating === 0) {
+                                return '<span style="color: #6c757d;">-</span>';
+                            }
+                            let ratingColor = '';
+                            const ratingVal = parseFloat(rating);
+                            if (ratingVal < 3) ratingColor = '#a00211';
+                            else if (ratingVal >= 3 && ratingVal <= 3.5) ratingColor = '#ffc107';
+                            else if (ratingVal >= 3.51 && ratingVal <= 3.99) ratingColor = '#3591dc';
+                            else if (ratingVal >= 4 && ratingVal <= 4.5) ratingColor = '#28a745';
+                            else ratingColor = '#e83e8c';
+                            const reviewColor = reviews < 4 ? '#a00211' : '#6c757d';
+                            return `<div style="display: flex; flex-direction: column; align-items: center; gap: 2px;">
+                                <span style="color: ${ratingColor}; font-weight: 600;"><i class="fa fa-star"></i> ${parseFloat(rating).toFixed(1)}</span>
+                                <span style="font-size: 11px; color: ${reviewColor}; font-weight: 600;">${parseInt(reviews).toLocaleString()} reviews</span>
+                            </div>`;
+                        },
+                        width: 80
                     },
                     {
                         title: "Review",
@@ -546,7 +699,7 @@
 
                             const html = `
                                 <div style="display: flex; flex-direction: column; align-items: flex-start;">
-                                    <input type="date" class="form-control form-control-sm adv_date_input" value="${value}" style="width:82px;">
+                                    <input type="date" class="form-control form-control-sm adv_date_input" value="${value}" style="width:100%; min-width:140px; max-width:145px;">
                                 </div>
                             `;
 
@@ -666,9 +819,12 @@
                 } else {
                     $('#delete-selected-btn').addClass('d-none');
                 }
+                const countEl = document.getElementById('bulk-selected-count');
+                if (countEl) countEl.textContent = data.length ? data.length + ' selected' : '';
             });
 
             deleteWithSelect();
+            bulkUpdateSupplierWithSelect();
 
             function deleteWithSelect() {
                 const deleteBtn = document.getElementById('delete-selected-btn');
@@ -708,6 +864,66 @@
                             }
                         })
                         .catch(() => alert('Error deleting rows'));
+                });
+            }
+
+            function bulkUpdateSupplierWithSelect() {
+                const btn = document.getElementById('bulk-update-supplier-btn');
+                if (!btn) return;
+
+                btn.addEventListener('click', function() {
+                    const selectedRows = table.getSelectedRows();
+                    if (selectedRows.length === 0) {
+                        alert('Please select at least one row.');
+                        return;
+                    }
+
+                    const skus = selectedRows
+                        .map(row => (row.getData().SKU || '').trim().toUpperCase())
+                        .filter(sku => sku && !String(sku).startsWith('PARENT'));
+
+                    if (skus.length === 0) {
+                        alert('No valid SKU rows selected (parent rows are skipped).');
+                        return;
+                    }
+
+                    const supplierName = (document.getElementById('bulk-supplier-select') || {}).value;
+                    if (!supplierName || !supplierName.trim()) {
+                        alert('Please select a supplier.');
+                        return;
+                    }
+
+                    const origHtml = btn.innerHTML;
+                    btn.disabled = true;
+                    btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Updating...';
+
+                    fetch('{{ url('/to-order-analysis/bulk-update-supplier') }}', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
+                        },
+                        body: JSON.stringify({ skus, supplier_name: supplierName.trim() })
+                    })
+                    .then(res => res.json())
+                    .then(res => {
+                        if (res.success) {
+                            table.getSelectedRows().forEach(row => table.deselectRow(row));
+                            const countEl = document.getElementById('bulk-selected-count');
+                            if (countEl) countEl.textContent = '';
+                            table.replaceData();
+                            alert(res.message || 'Bulk supplier update successful.');
+                        } else {
+                            throw new Error(res.message || 'Update failed');
+                        }
+                    })
+                    .catch(err => {
+                        alert('Error: ' + (err.message || 'Something went wrong'));
+                    })
+                    .finally(() => {
+                        btn.disabled = false;
+                        btn.innerHTML = origHtml;
+                    });
                 });
             }
 
@@ -1000,7 +1216,13 @@
 
                     if (stage) keep = keep && (row.stage || '').toLowerCase() === stage;
                     if (pending) keep = keep && getRowColor(row) === pending;
-                    if (supplierFilter) keep = keep && (row.Supplier || '').trim().toLowerCase() === supplierFilter.toLowerCase();
+                    if (supplierFilter) {
+                        if (supplierFilter === '__blank__') {
+                            keep = keep && (row.Supplier || '').trim() === '';
+                        } else {
+                            keep = keep && (row.Supplier || '').trim().toLowerCase() === supplierFilter.toLowerCase();
+                        }
+                    }
                     if (searchText) keep = keep && Object.values(row).some(val => val && val.toString().toLowerCase().includes(searchText));
 
                     return keep;

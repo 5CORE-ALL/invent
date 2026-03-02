@@ -1364,13 +1364,34 @@ class TaskController extends Controller
             'schedule_type' => 'required|in:daily,weekly,monthly',
             'schedule_days' => 'nullable|string',
             'schedule_time' => 'nullable',
+            'assignor_id' => 'nullable|exists:users,id',
+            'assignee_id' => 'nullable|exists:users,id',
         ]);
         
         // Set default priority to Normal if not provided
         $validated['priority'] = $validated['priority'] ?? 'Normal';
 
-        // Update automate_tasks table
-        \DB::table('automate_tasks')->where('id', $id)->update([
+        $user = Auth::user();
+        $existing = \DB::table('automate_tasks')->where('id', $id)->first();
+        if (!$existing) {
+            return redirect()->route('tasks.automated')->with('error', 'Automated task not found.');
+        }
+
+        // Resolve assignor email from assignor_id (form always sends it: dropdown for admin, hidden for non-admin)
+        $assignorEmail = $existing->assignor ?? $user->email;
+        if ($request->filled('assignor_id')) {
+            $assignorUser = User::find($validated['assignor_id']);
+            $assignorEmail = $assignorUser ? $assignorUser->email : $assignorEmail;
+        }
+
+        // Resolve assignee email from assignee_id
+        $assigneeEmail = null;
+        if ($request->filled('assignee_id')) {
+            $assigneeUser = User::find($validated['assignee_id']);
+            $assigneeEmail = $assigneeUser ? $assigneeUser->email : null;
+        }
+
+        $automateUpdate = [
             'title' => $validated['title'],
             'group' => $validated['group'],
             'priority' => $validated['priority'],
@@ -1378,18 +1399,25 @@ class TaskController extends Controller
             'schedule_type' => $validated['schedule_type'],
             'schedule_days' => $validated['schedule_days'] ?? '',
             'schedule_time' => $validated['schedule_time'],
+            'assignor' => $assignorEmail,
+            'assign_to' => $assigneeEmail,
             'updated_at' => now(),
-        ]);
+        ];
 
-        // Update any existing executed instances in tasks table
-        \DB::table('tasks')->where('automate_task_id', $id)->update([
+        \DB::table('automate_tasks')->where('id', $id)->update($automateUpdate);
+
+        // Update any existing executed instances in tasks table (including assignor/assignee)
+        $tasksUpdate = [
             'title' => $validated['title'],
             'group' => $validated['group'],
             'priority' => $validated['priority'],
             'eta_time' => $validated['etc_minutes'] ?? 10,
             'schedule_type' => $validated['schedule_type'],
+            'assignor' => $assignorEmail,
+            'assign_to' => $assigneeEmail,
             'updated_at' => now(),
-        ]);
+        ];
+        \DB::table('tasks')->where('automate_task_id', $id)->update($tasksUpdate);
 
         return redirect()->route('tasks.automated')->with('success', 'Automated task updated! New schedule will take effect immediately.');
     }
