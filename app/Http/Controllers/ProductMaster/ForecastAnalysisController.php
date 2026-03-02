@@ -244,6 +244,9 @@ class ForecastAnalysisController extends Controller
                 $forecast = $forecastMap->get($sheetSku);
                 $item->{'s-msl'} = $forecast->s_msl ?? 0;
                 $item->{'Approved QTY'} = $forecast->approved_qty ?? 0;
+                // MOQ on forecast = same as two-orders (approved_qty) so changes on to-order page show here
+                $approved = $forecast->approved_qty ?? null;
+                $item->{'MOQ'} = ($approved !== null && $approved !== '') ? $approved : ($item->{'MOQ'} ?? '');
                 
                 // Get and normalize nr value - preserve the value even if it's empty
                 $nrValue = $forecast->nr ?? null;
@@ -279,6 +282,9 @@ class ForecastAnalysisController extends Controller
                 if ($forecastRecord) {
                     $item->{'s-msl'} = $forecastRecord->s_msl ?? 0;
                     $item->{'Approved QTY'} = $forecastRecord->approved_qty ?? 0;
+                    // MOQ = same as two-orders (approved_qty)
+                    $approved = $forecastRecord->approved_qty ?? null;
+                    $item->{'MOQ'} = ($approved !== null && $approved !== '') ? $approved : ($item->{'MOQ'} ?? '');
                     
                     // Get and normalize nr value
                     $nrValue = $forecastRecord->nr ?? null;
@@ -539,23 +545,29 @@ class ForecastAnalysisController extends Controller
         $column = trim($request->input('column'));
         $value = trim($request->input('value')); // Trim the value to remove whitespace
 
-        // Handle MOQ updates separately - save to ProductMaster
+        // Handle MOQ updates: save to forecast_analysis.approved_qty and to_order_analysis so forecast and to-order show same value
         if (strtoupper($column) === 'MOQ') {
-            $product = ProductMaster::whereRaw('TRIM(LOWER(sku)) = ?', [strtolower($sku)])->first();
-            
-            if (!$product) {
-                return response()->json(['success' => false, 'message' => 'Product not found']);
-            }
+            $skuUpper = strtoupper(trim($sku));
+            $valueNum = is_numeric($value) ? (int) $value : null;
 
-            // Get current Values or initialize empty array
-            $values = is_array($product->Values) ? $product->Values : (json_decode($product->Values, true) ?? []);
-            
-            // Update MOQ value
-            $values['moq'] = $value;
-            
-            // Save back to ProductMaster
-            $product->Values = $values;
-            $product->save();
+            // Update forecast_analysis.approved_qty (by SKU)
+            $faUpdated = DB::table('forecast_analysis')
+                ->whereRaw('TRIM(UPPER(sku)) = ?', [$skuUpper])
+                ->update(['approved_qty' => $valueNum, 'updated_at' => now()]);
+
+            // Sync to to_order_analysis so to-order page shows same MOQ
+            DB::table('to_order_analysis')
+                ->whereRaw('TRIM(UPPER(sku)) = ?', [$skuUpper])
+                ->update(['approved_qty' => $valueNum]);
+
+            // Optionally keep product_master.Values['moq'] in sync
+            $product = ProductMaster::whereRaw('TRIM(LOWER(sku)) = ?', [strtolower($sku)])->first();
+            if ($product) {
+                $values = is_array($product->Values) ? $product->Values : (json_decode($product->Values, true) ?? []);
+                $values['moq'] = $value;
+                $product->Values = $values;
+                $product->save();
+            }
 
             return response()->json(['success' => true, 'message' => 'MOQ updated successfully']);
         }

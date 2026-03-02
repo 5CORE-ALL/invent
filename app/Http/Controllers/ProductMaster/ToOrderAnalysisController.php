@@ -527,6 +527,14 @@ class ToOrderAnalysisController extends Controller
                 ]);
             }
 
+            // When MOQ (approved_qty) is updated on to-order page, sync to forecast_analysis so forecast page shows same value
+            if ($column === 'approved_qty') {
+                $valueNum = is_numeric($value) ? (int) $value : null;
+                DB::table('forecast_analysis')
+                    ->whereRaw('TRIM(UPPER(sku)) = ?', [$sku])
+                    ->update(['approved_qty' => $valueNum, 'updated_at' => now()]);
+            }
+
             return response()->json(['success' => true]);
         } catch (\Throwable $e) {
             Log::error('ToOrderAnalysis updateLink failed', ['sku' => $sku, 'column' => $column, 'error' => $e->getMessage()]);
