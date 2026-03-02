@@ -2627,32 +2627,30 @@ class AmazonSpBudgetController extends Controller
                     return ($cleanName === $expected1 || $cleanName === $expected2);
                 });
             } else {
-                // For KW campaigns, also check L30 to determine if campaign exists
-                $matchedCampaignL30 = $amazonSpCampaignReportsL30->first(function ($item) use ($sku) {
-                    // Normalize campaign name: replace non-breaking spaces and multiple spaces
+                // For KW campaigns: match exact SKU or SKU + KW suffix (e.g. "PARENT GSS 2N1 KW", "PARENT MS DBL 2Pk KW")
+                $kwExpected = function ($base) {
+                    $b = strtoupper(trim(rtrim($base, '.')));
+                    return [$b, $b . ' KW', $b . ' KW.', $b . 'KW', $b . 'KW.'];
+                };
+                $matchedCampaignL30 = $amazonSpCampaignReportsL30->first(function ($item) use ($sku, $kwExpected) {
                     $campaignName = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $item->campaignName);
                     $campaignName = preg_replace('/\s+/', ' ', $campaignName);
-                    $campaignName = strtoupper(trim(rtrim($campaignName, '.')));
-                    $cleanSku = strtoupper(trim(rtrim($sku, '.')));
-                    return $campaignName === $cleanSku;
+                    $clean = strtoupper(trim(rtrim($campaignName, '.')));
+                    return in_array($clean, $kwExpected($sku), true);
                 });
 
-                $matchedCampaignL7 = $amazonSpCampaignReportsL7->first(function ($item) use ($sku) {
-                    // Normalize campaign name: replace non-breaking spaces and multiple spaces
+                $matchedCampaignL7 = $amazonSpCampaignReportsL7->first(function ($item) use ($sku, $kwExpected) {
                     $campaignName = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $item->campaignName);
                     $campaignName = preg_replace('/\s+/', ' ', $campaignName);
-                    $campaignName = strtoupper(trim(rtrim($campaignName, '.')));
-                    $cleanSku = strtoupper(trim(rtrim($sku, '.')));
-                    return $campaignName === $cleanSku;
+                    $clean = strtoupper(trim(rtrim($campaignName, '.')));
+                    return in_array($clean, $kwExpected($sku), true);
                 });
 
-                $matchedCampaignL1 = $amazonSpCampaignReportsL1->first(function ($item) use ($sku) {
-                    // Normalize campaign name: replace non-breaking spaces and multiple spaces
+                $matchedCampaignL1 = $amazonSpCampaignReportsL1->first(function ($item) use ($sku, $kwExpected) {
                     $campaignName = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $item->campaignName);
                     $campaignName = preg_replace('/\s+/', ' ', $campaignName);
-                    $campaignName = strtoupper(trim(rtrim($campaignName, '.')));
-                    $cleanSku = strtoupper(trim(rtrim($sku, '.')));
-                    return $campaignName === $cleanSku;
+                    $clean = strtoupper(trim(rtrim($campaignName, '.')));
+                    return in_array($clean, $kwExpected($sku), true);
                 });
             }
 
@@ -2668,11 +2666,13 @@ class AmazonSpBudgetController extends Controller
                             return $clean === $parentNorm . ' PT' || $clean === $parentNorm . ' PT.' || $clean === $parentNorm . 'PT' || $clean === $parentNorm . 'PT.';
                         });
                     } else {
-                        $matchedCampaignL30 = $amazonSpCampaignReportsL30->first(function ($item) use ($parentNorm) {
+                        // KW parent fallback: accept "PARENT GSS 2N1", "PARENT GSS 2N1 KW", "PARENT GSS 2N1 KW.", etc.
+                        $kwParentExpected = [$parentNorm, $parentNorm . ' KW', $parentNorm . ' KW.', $parentNorm . 'KW', $parentNorm . 'KW.'];
+                        $matchedCampaignL30 = $amazonSpCampaignReportsL30->first(function ($item) use ($kwParentExpected) {
                             $cn = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $item->campaignName ?? '');
                             $cn = preg_replace('/\s+/', ' ', $cn);
                             $clean = strtoupper(trim(rtrim($cn, '.')));
-                            return $clean === $parentNorm;
+                            return in_array($clean, $kwParentExpected, true);
                         });
                     }
                 }
@@ -2685,11 +2685,12 @@ class AmazonSpBudgetController extends Controller
                             return $clean === $parentNorm . ' PT' || $clean === $parentNorm . ' PT.' || $clean === $parentNorm . 'PT' || $clean === $parentNorm . 'PT.';
                         });
                     } else {
-                        $matchedCampaignL7 = $amazonSpCampaignReportsL7->first(function ($item) use ($parentNorm) {
+                        $kwParentExpected = [$parentNorm, $parentNorm . ' KW', $parentNorm . ' KW.', $parentNorm . 'KW', $parentNorm . 'KW.'];
+                        $matchedCampaignL7 = $amazonSpCampaignReportsL7->first(function ($item) use ($kwParentExpected) {
                             $cn = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $item->campaignName ?? '');
                             $cn = preg_replace('/\s+/', ' ', $cn);
                             $clean = strtoupper(trim(rtrim($cn, '.')));
-                            return $clean === $parentNorm;
+                            return in_array($clean, $kwParentExpected, true);
                         });
                     }
                 }
@@ -2702,11 +2703,12 @@ class AmazonSpBudgetController extends Controller
                             return $clean === $parentNorm . ' PT' || $clean === $parentNorm . ' PT.' || $clean === $parentNorm . 'PT' || $clean === $parentNorm . 'PT.';
                         });
                     } else {
-                        $matchedCampaignL1 = $amazonSpCampaignReportsL1->first(function ($item) use ($parentNorm) {
+                        $kwParentExpected = [$parentNorm, $parentNorm . ' KW', $parentNorm . ' KW.', $parentNorm . 'KW', $parentNorm . 'KW.'];
+                        $matchedCampaignL1 = $amazonSpCampaignReportsL1->first(function ($item) use ($kwParentExpected) {
                             $cn = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $item->campaignName ?? '');
                             $cn = preg_replace('/\s+/', ' ', $cn);
                             $clean = strtoupper(trim(rtrim($cn, '.')));
-                            return $clean === $parentNorm;
+                            return in_array($clean, $kwParentExpected, true);
                         });
                     }
                 }
@@ -2754,8 +2756,12 @@ class AmazonSpBudgetController extends Controller
             }
 
             // For HL campaigns, don't skip parent SKUs with NRA = 'NRA' - include all parent SKUs
-            // For KW/PT campaigns, skip SKUs with NRA = 'NRA'
-            if ($campaignType !== 'HL' && $nra === 'NRA') {
+            // For KW/PT: Parent SKUs with ENABLED campaign ALWAYS show (don't apply NRA filter - child NRA/inv should not exclude parent)
+            // For KW/PT: Only skip child SKUs when THIS SPECIFIC SKU has NRA = 'NRA' (NRA is already SKU-specific via $nrValues[$pm->sku])
+            $campaignStatus = ($matchedCampaignL30 ? $matchedCampaignL30->campaignStatus : null) ?? (($matchedCampaignL7 ? $matchedCampaignL7->campaignStatus : null) ?? (($matchedCampaignL1 ? $matchedCampaignL1->campaignStatus : null) ?? ''));
+            $isParentWithEnabledCampaign = (stripos($sku, 'PARENT') !== false) && $hasCampaign && (strtoupper($campaignStatus ?? '') === 'ENABLED');
+
+            if ($campaignType !== 'HL' && $nra === 'NRA' && !$isParentWithEnabledCampaign) {
                 continue;
             }
 
@@ -2807,18 +2813,20 @@ class AmazonSpBudgetController extends Controller
                 $totalRevenue = $price * $unitsL30;
                 
                 if ($totalRevenue > 0) {
-                    // Get KW campaign spend (exact SKU match, excluding PT)
+                    // Get KW campaign spend (SKU or SKU+KW suffix, excluding PT)
                     $kwSpend = 0;
-                    $kwCampaign = $allSpCampaignReportsL30->first(function ($item) use ($sku) {
+                    $kwExpectedAd = function ($base) {
+                        $b = strtoupper(trim(rtrim($base, '.')));
+                        return [$b, $b . ' KW', $b . ' KW.', $b . 'KW', $b . 'KW.'];
+                    };
+                    $kwCampaign = $allSpCampaignReportsL30->first(function ($item) use ($sku, $kwExpectedAd) {
                         $campaignName = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $item->campaignName);
                         $campaignName = preg_replace('/\s+/', ' ', $campaignName);
-                        $campaignName = strtoupper(trim(rtrim($campaignName, '.')));
-                        $cleanSku = strtoupper(trim(rtrim($sku, '.')));
-                        // Exclude PT campaigns
-                        if (stripos($campaignName, ' PT') !== false || stripos($campaignName, 'PT.') !== false) {
+                        $clean = strtoupper(trim(rtrim($campaignName, '.')));
+                        if (stripos($clean, ' PT') !== false || stripos($clean, 'PT.') !== false) {
                             return false;
                         }
-                        return $campaignName === $cleanSku;
+                        return in_array($clean, $kwExpectedAd($sku), true);
                     });
                     if ($kwCampaign) {
                         $kwSpend = $kwCampaign->spend ?? 0;
@@ -2840,14 +2848,15 @@ class AmazonSpBudgetController extends Controller
                     if ((!$kwCampaign || !$ptCampaign) && stripos($sku, 'PARENT') === false && $parent !== '' && $parent !== null) {
                         $parentNormAd = strtoupper(trim(preg_replace('/\s+/', ' ', str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $parent ?? ''))));
                         if (!$kwCampaign && $parentNormAd !== '') {
-                            $kwCampaign = $allSpCampaignReportsL30->first(function ($item) use ($parentNormAd) {
+                            $kwParentExpectedAd = [$parentNormAd, $parentNormAd . ' KW', $parentNormAd . ' KW.', $parentNormAd . 'KW', $parentNormAd . 'KW.'];
+                            $kwCampaign = $allSpCampaignReportsL30->first(function ($item) use ($kwParentExpectedAd) {
                                 $campaignName = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $item->campaignName);
                                 $campaignName = preg_replace('/\s+/', ' ', $campaignName);
-                                $campaignName = strtoupper(trim(rtrim($campaignName, '.')));
-                                if (stripos($campaignName, ' PT') !== false || stripos($campaignName, 'PT.') !== false) {
+                                $clean = strtoupper(trim(rtrim($campaignName, '.')));
+                                if (stripos($clean, ' PT') !== false || stripos($clean, 'PT.') !== false) {
                                     return false;
                                 }
-                                return $campaignName === $parentNormAd;
+                                return in_array($clean, $kwParentExpectedAd, true);
                             });
                             if ($kwCampaign) {
                                 $kwSpend = $kwCampaign->spend ?? 0;
@@ -3140,22 +3149,22 @@ class AmazonSpBudgetController extends Controller
                     return ($cleanName === $expected1 || $cleanName === $expected2);
                 });
             } else {
-                $matchedCampaignL30 = $amazonSpCampaignReportsL30->first(function ($item) use ($sku) {
-                    // Normalize campaign name: replace non-breaking spaces and multiple spaces
+                $kwExpected2 = function ($base) {
+                    $b = strtoupper(trim(rtrim($base, '.')));
+                    return [$b, $b . ' KW', $b . ' KW.', $b . 'KW', $b . 'KW.'];
+                };
+                $matchedCampaignL30 = $amazonSpCampaignReportsL30->first(function ($item) use ($sku, $kwExpected2) {
                     $campaignName = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $item->campaignName);
                     $campaignName = preg_replace('/\s+/', ' ', $campaignName);
-                    $campaignName = strtoupper(trim(rtrim($campaignName, '.')));
-                    $cleanSku = strtoupper(trim(rtrim($sku, '.')));
-                    return $campaignName === $cleanSku;
+                    $clean = strtoupper(trim(rtrim($campaignName, '.')));
+                    return in_array($clean, $kwExpected2($sku), true);
                 });
 
-                $matchedCampaignL15 = $amazonSpCampaignReportsL15->first(function ($item) use ($sku) {
-                    // Normalize campaign name: replace non-breaking spaces and multiple spaces
+                $matchedCampaignL15 = $amazonSpCampaignReportsL15->first(function ($item) use ($sku, $kwExpected2) {
                     $campaignName = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $item->campaignName);
                     $campaignName = preg_replace('/\s+/', ' ', $campaignName);
-                    $campaignName = strtoupper(trim(rtrim($campaignName, '.')));
-                    $cleanSku = strtoupper(trim(rtrim($sku, '.')));
-                    return $campaignName === $cleanSku;
+                    $clean = strtoupper(trim(rtrim($campaignName, '.')));
+                    return in_array($clean, $kwExpected2($sku), true);
                 });
             }
 
@@ -3171,11 +3180,12 @@ class AmazonSpBudgetController extends Controller
                             return $clean === $parentNorm . ' PT' || $clean === $parentNorm . ' PT.' || $clean === $parentNorm . 'PT' || $clean === $parentNorm . 'PT.';
                         });
                     } else {
-                        $matchedCampaignL30 = $amazonSpCampaignReportsL30->first(function ($item) use ($parentNorm) {
+                        $kwParentExpected2 = [$parentNorm, $parentNorm . ' KW', $parentNorm . ' KW.', $parentNorm . 'KW', $parentNorm . 'KW.'];
+                        $matchedCampaignL30 = $amazonSpCampaignReportsL30->first(function ($item) use ($kwParentExpected2) {
                             $cn = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $item->campaignName ?? '');
                             $cn = preg_replace('/\s+/', ' ', $cn);
                             $clean = strtoupper(trim(rtrim($cn, '.')));
-                            return $clean === $parentNorm;
+                            return in_array($clean, $kwParentExpected2, true);
                         });
                     }
                 }
@@ -3188,11 +3198,12 @@ class AmazonSpBudgetController extends Controller
                             return $clean === $parentNorm . ' PT' || $clean === $parentNorm . ' PT.' || $clean === $parentNorm . 'PT' || $clean === $parentNorm . 'PT.';
                         });
                     } else {
-                        $matchedCampaignL15 = $amazonSpCampaignReportsL15->first(function ($item) use ($parentNorm) {
+                        $kwParentExpected2 = [$parentNorm, $parentNorm . ' KW', $parentNorm . ' KW.', $parentNorm . 'KW', $parentNorm . 'KW.'];
+                        $matchedCampaignL15 = $amazonSpCampaignReportsL15->first(function ($item) use ($kwParentExpected2) {
                             $cn = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $item->campaignName ?? '');
                             $cn = preg_replace('/\s+/', ' ', $cn);
                             $clean = strtoupper(trim(rtrim($cn, '.')));
-                            return $clean === $parentNorm;
+                            return in_array($clean, $kwParentExpected2, true);
                         });
                     }
                 }
@@ -3366,32 +3377,34 @@ class AmazonSpBudgetController extends Controller
                 if (!isset($parentUtilizationFromAllChildren[$p])) {
                     $parentUtilizationFromAllChildren[$p] = ['l7_spend' => 0, 'l1_spend' => 0, 'budget' => 0];
                 }
-                $matchL7 = $amazonSpCampaignReportsL7->first(function ($item) use ($skuUpper, $campaignType) {
+                $kwMatchForChild = function ($item, $skuUpper, $parentNorm) use ($campaignType) {
                     $cn = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $item->campaignName ?? '');
                     $cn = preg_replace('/\s+/', ' ', $cn);
-                    $clean = strtoupper(trim($cn));
+                    $clean = strtoupper(trim(rtrim($cn, '.')));
                     if ($campaignType === 'PT') {
                         return $clean === $skuUpper . ' PT' || $clean === $skuUpper . ' PT.' || $clean === $skuUpper . 'PT' || $clean === $skuUpper . 'PT.';
                     }
-                    return $clean === $skuUpper;
+                    $kwExpected = [$skuUpper, $skuUpper . ' KW', $skuUpper . ' KW.', $skuUpper . 'KW', $skuUpper . 'KW.'];
+                    if (in_array($clean, $kwExpected, true)) {
+                        return true;
+                    }
+                    if ($parentNorm !== '') {
+                        $kwParentExpected = [$parentNorm, $parentNorm . ' KW', $parentNorm . ' KW.', $parentNorm . 'KW', $parentNorm . 'KW.'];
+                        return in_array($clean, $kwParentExpected, true);
+                    }
+                    return false;
+                };
+                $matchL7 = $amazonSpCampaignReportsL7->first(function ($item) use ($skuUpper, $campaignType, $p, $kwMatchForChild) {
+                    $parentNorm = strtoupper(trim(preg_replace('/\s+/', ' ', str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $p ?? ''))));
+                    return $kwMatchForChild($item, $skuUpper, $parentNorm);
                 });
-                $matchL1 = $amazonSpCampaignReportsL1->first(function ($item) use ($skuUpper, $campaignType) {
-                    $cn = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $item->campaignName ?? '');
-                    $cn = preg_replace('/\s+/', ' ', $cn);
-                    $clean = strtoupper(trim($cn));
-                    if ($campaignType === 'PT') {
-                        return $clean === $skuUpper . ' PT' || $clean === $skuUpper . ' PT.' || $clean === $skuUpper . 'PT' || $clean === $skuUpper . 'PT.';
-                    }
-                    return $clean === $skuUpper;
+                $matchL1 = $amazonSpCampaignReportsL1->first(function ($item) use ($skuUpper, $campaignType, $p, $kwMatchForChild) {
+                    $parentNorm = strtoupper(trim(preg_replace('/\s+/', ' ', str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $p ?? ''))));
+                    return $kwMatchForChild($item, $skuUpper, $parentNorm);
                 });
-                $matchL30 = $amazonSpCampaignReportsL30->first(function ($item) use ($skuUpper, $campaignType) {
-                    $cn = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $item->campaignName ?? '');
-                    $cn = preg_replace('/\s+/', ' ', $cn);
-                    $clean = strtoupper(trim($cn));
-                    if ($campaignType === 'PT') {
-                        return $clean === $skuUpper . ' PT' || $clean === $skuUpper . ' PT.' || $clean === $skuUpper . 'PT' || $clean === $skuUpper . 'PT.';
-                    }
-                    return $clean === $skuUpper;
+                $matchL30 = $amazonSpCampaignReportsL30->first(function ($item) use ($skuUpper, $campaignType, $p, $kwMatchForChild) {
+                    $parentNorm = strtoupper(trim(preg_replace('/\s+/', ' ', str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $p ?? ''))));
+                    return $kwMatchForChild($item, $skuUpper, $parentNorm);
                 });
                 $bgt = $matchL7 ? (float)($matchL7->campaignBudgetAmount ?? 0) : ($matchL1 ? (float)($matchL1->campaignBudgetAmount ?? 0) : ($matchL30 ? (float)($matchL30->campaignBudgetAmount ?? 0) : 0));
                 $parentUtilizationFromAllChildren[$p]['l7_spend'] += $matchL7 ? (float)($matchL7->spend ?? $matchL7->cost ?? 0) : 0;
@@ -3863,18 +3876,20 @@ class AmazonSpBudgetController extends Controller
             $totalRevenue = $price * $unitsL30;
             
             if ($totalRevenue > 0) {
-                // Get KW campaign spend (exact SKU match, excluding PT)
+                // Get KW campaign spend (SKU or SKU+KW suffix, excluding PT)
                 $kwSpend = 0;
-                $kwCampaign = $allSpCampaignReportsL30->first(function ($item) use ($sku) {
+                $kwExpectedAd = function ($base) {
+                    $b = strtoupper(trim(rtrim($base, '.')));
+                    return [$b, $b . ' KW', $b . ' KW.', $b . 'KW', $b . 'KW.'];
+                };
+                $kwCampaign = $allSpCampaignReportsL30->first(function ($item) use ($sku, $kwExpectedAd) {
                     $campaignName = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $item->campaignName);
                     $campaignName = preg_replace('/\s+/', ' ', $campaignName);
-                    $campaignName = strtoupper(trim(rtrim($campaignName, '.')));
-                    $cleanSku = strtoupper(trim(rtrim($sku, '.')));
-                    // Exclude PT campaigns
-                    if (stripos($campaignName, ' PT') !== false || stripos($campaignName, 'PT.') !== false) {
+                    $clean = strtoupper(trim(rtrim($campaignName, '.')));
+                    if (stripos($clean, ' PT') !== false || stripos($clean, 'PT.') !== false) {
                         return false;
                     }
-                    return $campaignName === $cleanSku;
+                    return in_array($clean, $kwExpectedAd($sku), true);
                 });
                 if ($kwCampaign) {
                     $kwSpend = $kwCampaign->spend ?? 0;
@@ -4289,18 +4304,20 @@ class AmazonSpBudgetController extends Controller
                 $totalRevenue = $price * $unitsL30;
                 
                 if ($totalRevenue > 0) {
-                    // Get KW campaign spend (exact SKU match, excluding PT)
+                    // Get KW campaign spend (SKU or SKU+KW suffix, excluding PT)
                     $kwSpend = 0;
-                    $kwCampaign = $allSpCampaignReportsL30->first(function ($item) use ($sku) {
+                    $kwExpectedAd = function ($base) {
+                        $b = strtoupper(trim(rtrim($base, '.')));
+                        return [$b, $b . ' KW', $b . ' KW.', $b . 'KW', $b . 'KW.'];
+                    };
+                    $kwCampaign = $allSpCampaignReportsL30->first(function ($item) use ($sku, $kwExpectedAd) {
                         $campaignName = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $item->campaignName);
                         $campaignName = preg_replace('/\s+/', ' ', $campaignName);
-                        $campaignName = strtoupper(trim(rtrim($campaignName, '.')));
-                        $cleanSku = strtoupper(trim(rtrim($sku, '.')));
-                        // Exclude PT campaigns
-                        if (stripos($campaignName, ' PT') !== false || stripos($campaignName, 'PT.') !== false) {
+                        $clean = strtoupper(trim(rtrim($campaignName, '.')));
+                        if (stripos($clean, ' PT') !== false || stripos($clean, 'PT.') !== false) {
                             return false;
                         }
-                        return $campaignName === $cleanSku;
+                        return in_array($clean, $kwExpectedAd($sku), true);
                     });
                     if ($kwCampaign) {
                         $kwSpend = $kwCampaign->spend ?? 0;
@@ -4322,14 +4339,15 @@ class AmazonSpBudgetController extends Controller
                     if ((!$kwCampaign || !$ptCampaign) && stripos($sku, 'PARENT') === false && $parent !== '' && $parent !== null) {
                         $parentNormAd = strtoupper(trim(preg_replace('/\s+/', ' ', str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $parent ?? ''))));
                         if (!$kwCampaign && $parentNormAd !== '') {
-                            $kwCampaign = $allSpCampaignReportsL30->first(function ($item) use ($parentNormAd) {
+                            $kwParentExpectedAd = [$parentNormAd, $parentNormAd . ' KW', $parentNormAd . ' KW.', $parentNormAd . 'KW', $parentNormAd . 'KW.'];
+                            $kwCampaign = $allSpCampaignReportsL30->first(function ($item) use ($kwParentExpectedAd) {
                                 $campaignName = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $item->campaignName);
                                 $campaignName = preg_replace('/\s+/', ' ', $campaignName);
-                                $campaignName = strtoupper(trim(rtrim($campaignName, '.')));
-                                if (stripos($campaignName, ' PT') !== false || stripos($campaignName, 'PT.') !== false) {
+                                $clean = strtoupper(trim(rtrim($campaignName, '.')));
+                                if (stripos($clean, ' PT') !== false || stripos($clean, 'PT.') !== false) {
                                     return false;
                                 }
-                                return $campaignName === $parentNormAd;
+                                return in_array($clean, $kwParentExpectedAd, true);
                             });
                             if ($kwCampaign) {
                                 $kwSpend = $kwCampaign->spend ?? 0;
@@ -4881,20 +4899,24 @@ class AmazonSpBudgetController extends Controller
                     continue;
                 }
 
-                // Check if this campaign name exactly matches any SKU
+                // Check if this campaign name matches any SKU (exact match or with " KW"/" KW." suffix for parent campaigns)
                 $matchedSku = null;
+                $kwExpectedForMatch = function ($base) {
+                    $b = strtoupper(trim(rtrim($base, '.')));
+                    return [$b, $b . ' KW', $b . ' KW.', $b . 'KW', $b . 'KW.'];
+                };
                 foreach ($skus as $sku) {
                     $cleanSku = strtoupper(trim(rtrim($sku, '.')));
                     $cleanCampaignName = strtoupper(trim(rtrim($campaignName, '.')));
-                    if ($cleanCampaignName === $cleanSku) {
+                    if (in_array($cleanCampaignName, $kwExpectedForMatch($sku), true)) {
                         $matchedSku = $sku;
                         break;
                     }
                 }
 
-                // If no SKU match found, add as unmatched campaign (but only if it has pink_dil_paused_at to show all paused campaigns)
+                // If no SKU match found, add as unmatched campaign
+                // Add ENABLED campaigns (show all 180), OR paused campaigns with pink_dil_paused_at
                 if (!$matchedSku) {
-                    // First check if this campaign has pink_dil_paused_at
                     $matchedCampaignL30 = $amazonSpCampaignReportsL30->first(function ($item) use ($campaignId) {
                         return ($item->campaign_id ?? '') === $campaignId;
                     });
@@ -4910,8 +4932,11 @@ class AmazonSpBudgetController extends Controller
                                        ($checkCampaignL7 && $checkCampaignL7->pink_dil_paused_at) ||
                                        ($checkCampaignL1 && $checkCampaignL1->pink_dil_paused_at);
                     
-                    // Only add unmatched campaigns that are paused
-                    if (!$hasPinkDilPaused) {
+                    $campaignStatus = ($matchedCampaignL30 ? $matchedCampaignL30->campaignStatus : null) ?? ($checkCampaignL7 ? $checkCampaignL7->campaignStatus : null) ?? ($checkCampaignL1 ? $checkCampaignL1->campaignStatus : null) ?? 'PAUSED';
+                    $isEnabled = strtoupper($campaignStatus ?? '') === 'ENABLED';
+
+                    // Add ENABLED campaigns (all 180) OR paused campaigns with pink_dil_paused_at
+                    if (!$isEnabled && !$hasPinkDilPaused) {
                         continue;
                     }
                     
@@ -4923,25 +4948,32 @@ class AmazonSpBudgetController extends Controller
                         return ($item->campaign_id ?? '') === $campaignId;
                     });
 
+                    // Extract SKU from campaign name: "PARENT GSS 2N1 KW" / "PARENT MS DBL 2PK KW" -> "PARENT GSS 2N1" / "PARENT MS DBL 2PK"
+                    $extractedSku = preg_replace('/\s+KW\.?$/i', '', $campaignName);
+                    $extractedSku = trim($extractedSku);
+                    if (stripos($extractedSku, 'PARENT') === false && !empty($extractedSku)) {
+                        $extractedSku = 'PARENT ' . $extractedSku;
+                    }
+
                     $row = [];
-                    $row['parent'] = '';
-                    $row['sku'] = '';
+                    $row['parent'] = $extractedSku ?: '';
+                    $row['sku'] = $extractedSku ?: '';
                     $row['campaign_id'] = $campaignId;
                     $row['campaignName'] = $campaign->campaignName ?? '';
-                    $row['campaignBudgetAmount'] = $matchedCampaignL7->campaignBudgetAmount ?? ($matchedCampaignL1->campaignBudgetAmount ?? 0);
-                    $row['campaignStatus'] = $matchedCampaignL7->campaignStatus ?? ($matchedCampaignL1->campaignStatus ?? '');
+                    $row['campaignBudgetAmount'] = ($matchedCampaignL7 ? $matchedCampaignL7->campaignBudgetAmount : null) ?? ($matchedCampaignL1 ? $matchedCampaignL1->campaignBudgetAmount : null) ?? ($matchedCampaignL30 ? $matchedCampaignL30->campaignBudgetAmount : null) ?? 0;
+                    $row['campaignStatus'] = ($matchedCampaignL7 ? $matchedCampaignL7->campaignStatus : null) ?? ($matchedCampaignL1 ? $matchedCampaignL1->campaignStatus : null) ?? ($matchedCampaignL30 ? $matchedCampaignL30->campaignStatus : null) ?? '';
                     $row['pink_dil_paused_at'] = $matchedCampaignL30 ? $matchedCampaignL30->pink_dil_paused_at : (($matchedCampaignL7 ? $matchedCampaignL7->pink_dil_paused_at : null) ?? (($matchedCampaignL1 ? $matchedCampaignL1->pink_dil_paused_at : null) ?? null));
                     $row['INV'] = 0;
                     $row['FBA_INV'] = 0;
                     $row['L30'] = 0;
                     $row['A_L30'] = 0;
-                    $row['l7_spend'] = $matchedCampaignL7->spend ?? 0;
-                    $row['l7_cpc'] = $matchedCampaignL7->costPerClick ?? 0;
-                    $row['l7_clicks'] = (int)($matchedCampaignL7->clicks ?? 0);
-                    $row['l7_sales'] = (float)($matchedCampaignL7->sales7d ?? 0);
-                    $row['l7_purchases'] = (int)($matchedCampaignL7->unitsSoldClicks7d ?? 0);
-                    $row['l1_spend'] = $matchedCampaignL1->spend ?? 0;
-                    $row['l1_cpc'] = $matchedCampaignL1->costPerClick ?? 0;
+                    $row['l7_spend'] = ($matchedCampaignL7 ? $matchedCampaignL7->spend : null) ?? 0;
+                    $row['l7_cpc'] = ($matchedCampaignL7 ? $matchedCampaignL7->costPerClick : null) ?? 0;
+                    $row['l7_clicks'] = (int)(($matchedCampaignL7 ? $matchedCampaignL7->clicks : null) ?? 0);
+                    $row['l7_sales'] = (float)(($matchedCampaignL7 ? $matchedCampaignL7->sales7d : null) ?? 0);
+                    $row['l7_purchases'] = (int)(($matchedCampaignL7 ? $matchedCampaignL7->unitsSoldClicks7d : null) ?? 0);
+                    $row['l1_spend'] = ($matchedCampaignL1 ? $matchedCampaignL1->spend : null) ?? 0;
+                    $row['l1_cpc'] = ($matchedCampaignL1 ? $matchedCampaignL1->costPerClick : null) ?? 0;
                     $row['avg_cpc'] = $avgCpcData->get($campaignId, 0);
                     $row['acos'] = 0;
                     $row['acos_L30'] = 0;
