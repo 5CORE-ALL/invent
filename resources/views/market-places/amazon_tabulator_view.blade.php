@@ -4435,10 +4435,10 @@
                             var row = cell.getRow().getData();
                             if (parseFloat(row.INV) <= 0) return '-';
                             var currentSection = $('#section-filter').val();
-                            // KW Ads: strict - show SBID only when L30 confirms campaign (has_own_kw_campaign), campaign_id exists, and status === ENABLED
+                            // KW Ads: show SBID when KW campaign exists (campaign_id/name + kw_campaign_status) and is ENABLED
                             var hasCampaign = false;
                             if (currentSection === 'kw-ads') {
-                                hasCampaign = !!(row.has_own_kw_campaign && row.campaign_id && (row.campaignName || row.campaign_id));
+                                hasCampaign = !!((row.campaign_id || row.campaignName) && (row.kw_campaign_status || '').toUpperCase() !== '');
                             } else {
                                 hasCampaign = row.hasCampaign !== undefined ? row.hasCampaign : (row.campaign_id && row.campaignName);
                             }
@@ -5109,28 +5109,29 @@
                         l7_spend = parseFloat(row.hl_spend_L7) || 0;
                         l1_spend = parseFloat(row.hl_spend_L1) || 0;
                         budget = parseFloat(row.hl_campaignBudgetAmount) || 0;
-                    } else if (currentSection === 'pt-ads') {
-                        hasCampaign = !!(row.has_own_pt_campaign && (row.pt_campaign_id || row.pt_campaignName));
-                        if (!hasCampaign) return;
-                        campStatus = (row.pt_campaign_status || '').toUpperCase();
-                        if (campStatus !== 'ENABLED') return;
-                        l7_spend = parseFloat(row.pt_spend_L7) || 0;
-                        l1_spend = parseFloat(row.pt_spend_L1) || 0;
-                        budget = parseFloat(row.pt_campaignBudgetAmount) || 0;
-                    } else {
-                        if (currentSection === 'kw-ads') {
-                            hasCampaign = !!(row.has_own_kw_campaign && (row.campaign_id || row.campaignName));
-                            campStatus = (row.kw_campaign_status || '').toUpperCase();
+                        } else if (currentSection === 'pt-ads') {
+                            hasCampaign = !!(row.has_own_pt_campaign && (row.pt_campaign_id || row.pt_campaignName));
+                            if (!hasCampaign) return;
+                            campStatus = (row.pt_campaign_status || '').toUpperCase();
+                            if (campStatus !== 'ENABLED') return;
+                            l7_spend = parseFloat(row.pt_spend_L7) || 0;
+                            l1_spend = parseFloat(row.pt_spend_L1) || 0;
+                            budget = parseFloat(row.pt_campaignBudgetAmount) || 0;
                         } else {
-                            hasCampaign = row.campaignName || row.campaign_id || (row.kw_campaign_status && row.kw_campaign_status !== '') || parseFloat(row.l7_spend) > 0 || parseFloat(row.l1_spend) > 0;
-                            campStatus = (row.kw_campaign_status || row.campaignStatus || '').toUpperCase();
+                            if (currentSection === 'kw-ads') {
+                                // KW Ads: any row with KW campaign (campaign_id/name + kw_campaign_status) is eligible
+                                hasCampaign = !!((row.campaign_id || row.campaignName) && (row.kw_campaign_status || '').toUpperCase() !== '');
+                                campStatus = (row.kw_campaign_status || '').toUpperCase();
+                            } else {
+                                hasCampaign = row.campaignName || row.campaign_id || (row.kw_campaign_status && row.kw_campaign_status !== '') || parseFloat(row.l7_spend) > 0 || parseFloat(row.l1_spend) > 0;
+                                campStatus = (row.kw_campaign_status || row.campaignStatus || '').toUpperCase();
+                            }
+                            if (!hasCampaign) return;
+                            if (campStatus !== 'ENABLED') return;
+                            l7_spend = parseFloat(row.l7_spend) || 0;
+                            l1_spend = parseFloat(row.l1_spend) || 0;
+                            budget = (row.utilization_budget != null && row.utilization_budget !== '') ? parseFloat(row.utilization_budget) : (parseFloat(row.campaignBudgetAmount) || 0);
                         }
-                        if (!hasCampaign) return;
-                        if (campStatus !== 'ENABLED') return;
-                        l7_spend = parseFloat(row.l7_spend) || 0;
-                        l1_spend = parseFloat(row.l1_spend) || 0;
-                        budget = (row.utilization_budget != null && row.utilization_budget !== '') ? parseFloat(row.utilization_budget) : (parseFloat(row.campaignBudgetAmount) || 0);
-                    }
                     
                     if (!(budget > 0) || isNaN(budget)) return;
                     
@@ -5451,9 +5452,9 @@
                             hasCampaignInSection = !!(data.has_own_pt_campaign && (data.pt_campaign_id || data.pt_campaignName));
                             isEnabled = (data.pt_campaign_status || '').toUpperCase() === 'ENABLED' && hasCampaignInSection;
                         } else {
-                            // KW Ads: strict - campaign must exist in L30 (has_own_kw_campaign) and campaign_id/name present
+                            // KW Ads: treat any row with KW campaign (campaign_id/name + kw_campaign_status) as having a campaign in this section
                             if (currentSection === 'kw-ads') {
-                                hasCampaignInSection = !!(data.has_own_kw_campaign && (data.campaign_id || data.campaignName));
+                                hasCampaignInSection = !!((data.campaign_id || data.campaignName) && (data.kw_campaign_status || '').toUpperCase() !== '');
                                 isEnabled = (data.kw_campaign_status || '').toUpperCase() === 'ENABLED' && hasCampaignInSection;
                             } else {
                                 var campaignName = (data.campaignName || '').trim();
@@ -6594,15 +6595,15 @@
                     }
                 });
                 
-                if (currentSection === 'kw-ads') {
-                    console.log('Campaign Debug:', {
-                        section: currentSection,
-                        campaignStatusFilter: campaignStatusFilter,
-                        useAllData: useAllDataForCampaignCount,
-                        totalRows: dataForCampaignCount.length,
-                        uniqueCampaigns: uniqueCampaigns.size
-                    });
-                }
+                    if (currentSection === 'kw-ads') {
+                        console.log('Campaign Debug:', {
+                            section: currentSection,
+                            campaignStatusFilter: campaignStatusFilter,
+                            useAllData: useAllDataForCampaignCount,
+                            totalRows: dataForCampaignCount.length,
+                            uniqueCampaigns: uniqueCampaigns.size
+                        });
+                    }
 
                 // Variation count (NRL / red dot rows - all rows including parents)
                 data.forEach(row => {

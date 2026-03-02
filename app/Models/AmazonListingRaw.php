@@ -57,5 +57,4 @@ class AmazonListingRaw extends Model
     'item_dimensions' => 'array',      // ✅ ADD THIS
     'included_components' => 'array',  // ✅ ADD THIS
 ];
-
 }

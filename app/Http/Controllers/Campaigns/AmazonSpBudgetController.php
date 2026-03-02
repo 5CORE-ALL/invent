@@ -3330,7 +3330,15 @@ class AmazonSpBudgetController extends Controller
             $totalOrdersAll += $orders;
         }
 
-        $totalACOSAll = $totalSalesAll > 0 ? ($totalSpendAll / $totalSalesAll) * 100 : 0;
+        // Total ACOS from ALL campaigns: when Spend L30 and Sales L30 both 0, ACOS must be 0;
+        // when Spend L30 > 0 and Sales L30 = 0, ACOS must be 100.
+        if ($totalSpendAll == 0 && $totalSalesAll == 0) {
+            $totalACOSAll = 0;
+        } else {
+            $totalACOSAll = $totalSalesAll > 0
+                ? ($totalSpendAll / $totalSalesAll) * 100
+                : ($totalSpendAll > 0 ? 100 : 0);
+        }
 
         // For KW/PT: Aggregate child spend/budget/CPC per parent so PARENT rows get SBID rules applied (ub7, ub1, CPC)
         $childL7SpendByParent = [];
