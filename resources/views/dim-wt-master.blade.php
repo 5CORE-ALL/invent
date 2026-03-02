@@ -27,36 +27,30 @@
             background: #8fb9fe !important;
             color: white;
             z-index: 10;
-            padding: 6px 4px;
             font-weight: 600;
             border-bottom: none;
             box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
             font-size: 9px;
             letter-spacing: 0.2px;
-            text-transform: uppercase;
+            text-transform: lowercase;
             transition: all 0.2s ease;
-            vertical-align: bottom;
-            height: 115px;
-            min-width: 34px;
-            width: 34px;
-            max-width: 34px;
+            height: auto;
+            min-height: 72px;
+            min-width: 52px;
+            width: auto;
             text-align: center;
+            padding: 8px 6px;
         }
-        /* Vertical header label - black bold text, rotated to save horizontal space */
+        /* Header label - horizontal (no rotation), allows <br> for two lines */
         .table-responsive thead th .th-vertical-label {
-            display: inline-block;
-            transform: rotate(-90deg);
-            transform-origin: center center;
-            white-space: nowrap;
+            display: block;
             font-size: 10px;
             font-weight: 700;
             color: #000;
-            margin-bottom: 40px;
-            margin-top: 4px;
-            max-width: 105px;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            text-align: left;
+            margin-bottom: 2px;
+            text-align: center;
+            line-height: 1.25;
+            text-transform: lowercase;
         }
         /* Horizontal header label - no rotation (Parent, SKU) */
         .table-responsive thead th .th-horizontal-label {
@@ -67,34 +61,30 @@
             color: #000;
             text-align: center;
             margin-bottom: 2px;
+            text-transform: lowercase;
         }
         .table-responsive thead th.th-parent-sku-col {
-            min-width: 120px;
-            width: 140px;
-            max-width: none;
-            height: 65px;
-            vertical-align: bottom;
+            min-width: 64px;
+            width: auto;
+            min-height: 72px;
         }
         .table-responsive tbody td.td-parent-col,
         .table-responsive tbody td.td-sku-col {
             white-space: nowrap;
-            min-width: 120px;
-            width: 140px;
-            max-width: 280px;
+            min-width: 0;
+            width: auto;
             overflow: hidden;
             text-overflow: ellipsis;
         }
         .table-responsive thead th.th-has-filter {
-            min-width: 46px;
-            width: 46px;
-            max-width: 46px;
+            min-width: 52px;
+            width: auto;
         }
         .table-responsive thead th.th-checkbox-col {
             height: auto;
             min-width: 24px;
             width: 24px;
             max-width: 24px;
-            vertical-align: middle;
         }
 
         .table-responsive thead th:hover {
@@ -106,11 +96,18 @@
             border: none;
             border-radius: 4px;
             color: #333;
-            padding: 3px 5px;
+            padding: 2px 3px;
             margin-top: 4px;
-            font-size: 10px;
-            width: 100%;
+            font-size: 9px;
+            width: 3em;
+            min-width: 3em;
+            max-width: 3em;
             transition: all 0.2s;
+        }
+        .table-responsive thead input.header-search-120 {
+            width: 20ch;
+            min-width: 20ch;
+            max-width: 20ch;
         }
 
         .table-responsive thead select {
@@ -118,10 +115,12 @@
             border: none;
             border-radius: 4px;
             color: #333;
-            padding: 2px 4px;
+            padding: 2px 3px;
             margin-top: 4px;
             font-size: 9px;
-            width: 100%;
+            width: 3em;
+            min-width: 3em;
+            max-width: 3em;
             transition: all 0.2s;
         }
 
@@ -166,12 +165,10 @@
             width: 10px;
             height: 10px;
             border-radius: 50%;
-            vertical-align: middle;
         }
 
         .table-responsive tbody td {
             padding: 6px 8px;
-            vertical-align: middle;
             border-bottom: 1px solid #edf2f9;
             font-size: 11px;
             color: #495057;
@@ -179,7 +176,6 @@
             white-space: nowrap;
             text-overflow: ellipsis;
             overflow: hidden;
-            max-width: 120px;
         }
 
         .table-responsive tbody tr:nth-child(even) {
@@ -205,78 +201,7 @@
             width: 100%;
             border-collapse: separate;
             border-spacing: 0;
-            table-layout: fixed;
-        }
-
-        /* Column width constraints */
-        .table-responsive th:nth-child(1),
-        .table-responsive td:nth-child(1) {
-            width: 40px;
-            min-width: 40px;
-            max-width: 40px;
-        }
-
-        .table-responsive th:nth-child(2),
-        .table-responsive td:nth-child(2) {
-            width: 50px;
-            min-width: 50px;
-            max-width: 50px;
-        }
-
-        .table-responsive th:nth-child(3),
-        .table-responsive td:nth-child(3) {
-            width: 100px;
-            min-width: 100px;
-            max-width: 100px;
-        }
-
-        .table-responsive th:nth-child(4),
-        .table-responsive td:nth-child(4) {
-            width: 120px;
-            min-width: 120px;
-            max-width: 120px;
-        }
-
-        .table-responsive th:nth-child(5),
-        .table-responsive td:nth-child(5) {
-            width: 70px;
-            min-width: 70px;
-            max-width: 70px;
-        }
-
-        .table-responsive th:nth-child(6),
-        .table-responsive td:nth-child(6) {
-            width: 60px;
-            min-width: 60px;
-            max-width: 60px;
-        }
-
-        .table-responsive th:nth-child(n+7):nth-child(-n+11),
-        .table-responsive td:nth-child(n+7):nth-child(-n+11) {
-            width: 75px;
-            min-width: 75px;
-            max-width: 75px;
-        }
-
-        .table-responsive th:nth-child(n+12):nth-child(-n+19),
-        .table-responsive td:nth-child(n+12):nth-child(-n+19) {
-            width: 80px;
-            min-width: 80px;
-            max-width: 80px;
-        }
-
-        .table-responsive th:nth-last-child(2),
-        .table-responsive td:nth-last-child(2) {
-            width: 56px;
-            min-width: 56px;
-            max-width: 56px;
-        }
-
-        .table-responsive th:last-child,
-        .table-responsive td:last-child {
-            width: 80px;
-            min-width: 80px;
-            max-width: 80px;
+            table-layout: auto;
         }
 
         /* Verified column – red/green dot dropdown */
@@ -340,10 +265,10 @@
         .status-badges-full .status-badge-item.bg-upcoming { background-color: #fef08a; }
         .status-badges-full .status-badge-item.bg-2bdc { background-color: #bfdbfe; }
 
-        /* Ensure table fits container */
+        /* Ensure table fits container - auto layout so columns fit content */
         #dim-wt-master-datatable {
             width: 100% !important;
-            table-layout: fixed;
+            table-layout: auto;
         }
 
         /* Prevent horizontal overflow */
@@ -516,6 +441,13 @@
                                         <i class="fas fa-step-forward"></i>
                                     </button>
                                 </div>
+                                <div class="d-flex align-items-center gap-2">
+                                    <label class="form-label mb-0">Section:</label>
+                                    <select id="dimWtSectionFilter" class="form-select form-select-sm" style="width: auto; min-width: 140px;">
+                                        <option value="item_data">Item Data</option>
+                                        <option value="carton_data">Carton Data</option>
+                                    </select>
+                                </div>
                             </div>
                         </div>
                         <div class="col-md-6">
@@ -552,12 +484,12 @@
                                     <th><span class="th-vertical-label">Img</span></th>
                                     <th class="th-has-filter th-parent-sku-col">
                                         <div class="th-horizontal-label" style="font-size: 9px;">Parent</div>
-                                        <input type="text" id="parentSearch" class="form-control-sm"
+                                        <input type="text" id="parentSearch" class="form-control-sm header-search-120"
                                             placeholder="Search" style="font-size: 9px; padding: 2px 4px;">
                                     </th>
                                     <th class="th-has-filter th-parent-sku-col">
                                         <div class="th-horizontal-label" style="font-size: 9px;">SKU</div>
-                                        <input type="text" id="skuSearch" class="form-control-sm"
+                                        <input type="text" id="skuSearch" class="form-control-sm header-search-120"
                                             placeholder="Search" style="font-size: 9px; padding: 2px 4px;">
                                     </th>
                                     <th class="th-has-filter">
@@ -574,50 +506,50 @@
                                     </th>
                                     <th><span class="th-vertical-label">INV</span></th>
                                     <th class="th-has-filter">
-                                        <div class="th-vertical-label" style="font-size: 9px;">Weight ACT (Kg)</div>
+                                        <div class="th-vertical-label" style="font-size: 9px;">Weight ACT<br>(Kg)</div>
                                         <select id="filterWtActKg" class="form-control form-control-sm mt-1" style="font-size: 9px; padding: 2px 4px;">
                                             <option value="all">All</option>
                                             <option value="missing">Missing</option>
                                         </select>
                                     </th>
                                     <th class="th-has-filter">
-                                        <div class="th-vertical-label" style="font-size: 9px;">WT ACT (LB)</div>
+                                        <div class="th-vertical-label" style="font-size: 9px;">WT ACT<br>(LB)</div>
                                         <select id="filterWtAct" class="form-control form-control-sm mt-1" style="font-size: 9px; padding: 2px 4px;">
                                             <option value="all">All</option>
                                             <option value="missing">Missing</option>
                                         </select>
                                     </th>
                                     <th class="th-has-filter">
-                                        <div class="th-vertical-label" style="font-size: 9px;">WT DECL (LB)</div>
+                                        <div class="th-vertical-label" style="font-size: 9px;">WT DECL<br>(LB)</div>
                                         <select id="filterWtDecl" class="form-control form-control-sm mt-1" style="font-size: 9px; padding: 2px 4px;">
                                             <option value="all">All</option>
                                             <option value="missing">Missing</option>
                                         </select>
                                     </th>
                                     <th class="th-has-filter">
-                                        <div class="th-vertical-label" style="font-size: 9px;">Length (inch)</div>
+                                        <div class="th-vertical-label" style="font-size: 9px;">Length<br>(inch)</div>
                                         <select id="filterL" class="form-control form-control-sm mt-1" style="font-size: 9px; padding: 2px 4px;">
                                             <option value="all">All</option>
                                             <option value="missing">Missing</option>
                                         </select>
                                     </th>
                                     <th class="th-has-filter">
-                                        <div class="th-vertical-label" style="font-size: 9px;">Width (inch)</div>
+                                        <div class="th-vertical-label" style="font-size: 9px;">Width<br>(inch)</div>
                                         <select id="filterW" class="form-control form-control-sm mt-1" style="font-size: 9px; padding: 2px 4px;">
                                             <option value="all">All</option>
                                             <option value="missing">Missing</option>
                                         </select>
                                     </th>
                                     <th class="th-has-filter">
-                                        <div class="th-vertical-label" style="font-size: 9px;">Height (Inch)</div>
+                                        <div class="th-vertical-label" style="font-size: 9px;">Height<br>(Inch)</div>
                                         <select id="filterH" class="form-control form-control-sm mt-1" style="font-size: 9px; padding: 2px 4px;">
                                             <option value="all">All</option>
                                             <option value="missing">Missing</option>
                                         </select>
                                     </th>
-                                    <th><span class="th-vertical-label">Length (CM)</span></th>
-                                    <th><span class="th-vertical-label">Width (CM)</span></th>
-                                    <th><span class="th-vertical-label">Height (CM)</span></th>
+                                    <th><span class="th-vertical-label">Length<br>(CM)</span></th>
+                                    <th><span class="th-vertical-label">Width<br>(CM)</span></th>
+                                    <th><span class="th-vertical-label">Height<br>(CM)</span></th>
                                     <th class="th-has-filter">
                                         <div class="th-vertical-label" style="font-size: 9px;">CBM</div>
                                         <select id="filterCbm" class="form-control form-control-sm mt-1" style="font-size: 9px; padding: 2px 4px;">
@@ -625,14 +557,14 @@
                                             <option value="missing">Missing</option>
                                         </select>
                                     </th>
-                                    <th><span class="th-vertical-label">CTN L (CM)</span></th>
-                                    <th><span class="th-vertical-label">CTN W (CM)</span></th>
-                                    <th><span class="th-vertical-label">CTN H (CM)</span></th>
-                                    <th><span class="th-vertical-label">Carton CBM</span></th>
-                                    <th><span class="th-vertical-label">CTN QTY</span></th>
-                                    <th><span class="th-vertical-label">Carton CBM each</span></th>
-                                    <th><span class="th-vertical-label">CBM E</span></th>
-                                    <th><span class="th-vertical-label">CTN Weight (KG)</span></th>
+                                    <th><span class="th-vertical-label">CTN L<br>(CM)</span></th>
+                                    <th><span class="th-vertical-label">CTN W<br>(CM)</span></th>
+                                    <th><span class="th-vertical-label">CTN H<br>(CM)</span></th>
+                                    <th><span class="th-vertical-label">Carton<br>CBM</span></th>
+                                    <th><span class="th-vertical-label">CTN<br>QTY</span></th>
+                                    <th><span class="th-vertical-label">Carton CBM<br>each</span></th>
+                                    <th><span class="th-vertical-label">CBM<br>E</span></th>
+                                    <th><span class="th-vertical-label">CTN Weight<br>(KG)</span></th>
                                     <th class="text-center"><span class="th-vertical-label">Verified</span></th>
                                     <th><span class="th-vertical-label">Action</span></th>
                                 </tr>
@@ -888,6 +820,28 @@
                 return num.toFixed(decimals);
             }
 
+            /** Format SKU for display: add spaces between letter/digit segments (e.g. WF81202PCS4OHM -> WF 8120 2PCS 4 OHM) */
+            function formatSkuDisplay(sku) {
+                if (sku == null || String(sku).trim() === '') return '';
+                let s = String(sku).replace(/[-_]/g, ' ');
+                s = s.replace(/([A-Za-z])([0-9])/g, '$1 $2').replace(/([0-9])([A-Za-z])/g, '$1 $2');
+                return s.replace(/\s+/g, ' ').trim();
+            }
+            /** Max characters to show for SKU/Parent in table cell; rest shown in tooltip */
+            const SKU_DISPLAY_MAX_CHARS = 25;
+            function formatSkuDisplayLimited(sku) {
+                const full = formatSkuDisplay(sku);
+                if (!full) return '';
+                if (full.length <= SKU_DISPLAY_MAX_CHARS) return full;
+                return full.substring(0, SKU_DISPLAY_MAX_CHARS) + '…';
+            }
+            function limitDisplayText(text, maxChars) {
+                if (text == null || String(text).trim() === '') return '';
+                const s = String(text).trim();
+                if (s.length <= maxChars) return s;
+                return s.substring(0, maxChars) + '…';
+            }
+
             function getStatusDot(status) {
                 const raw = String(status || '').trim();
                 const s = raw.toLowerCase();
@@ -969,18 +923,20 @@
                         : '-';
                     row.appendChild(imageCell);
 
-                    // Parent column
+                    // Parent column – limited characters; full value in tooltip (same as SKU)
                     const parentCell = document.createElement('td');
                     parentCell.className = 'td-parent-col';
                     parentCell.title = escapeHtml(item.Parent) || '';
-                    parentCell.textContent = escapeHtml(item.Parent) || '-';
+                    const parentDisplay = limitDisplayText(item.Parent, SKU_DISPLAY_MAX_CHARS);
+                    parentCell.textContent = parentDisplay ? escapeHtml(parentDisplay) : '-';
                     row.appendChild(parentCell);
 
-                    // SKU column
+                    // SKU column – display with spaces, limited characters; full name in tooltip
                     const skuCell = document.createElement('td');
                     skuCell.className = 'td-sku-col';
                     skuCell.title = escapeHtml(item.SKU) || '';
-                    skuCell.textContent = escapeHtml(item.SKU) || '-';
+                    const skuDisplay = formatSkuDisplayLimited(item.SKU);
+                    skuCell.textContent = skuDisplay ? escapeHtml(skuDisplay) : '-';
                     row.appendChild(skuCell);
 
                     // Status column – colored dot (same as product master)
@@ -1158,6 +1114,35 @@
 
                     tbody.appendChild(row);
                 });
+                applyDimWtSectionFilter();
+            }
+
+            // Section filter: Item Data (hide CTN/Carton columns) or Carton Data (hide Weight ACT..CBM columns)
+            function applyDimWtSectionFilter() {
+                const table = document.getElementById('dim-wt-master-datatable');
+                const sectionEl = document.getElementById('dimWtSectionFilter');
+                if (!table || !sectionEl) return;
+                const theadRow = table.querySelector('thead tr');
+                const tbody = document.getElementById('table-body');
+                if (!theadRow || !tbody) return;
+                const ths = theadRow.querySelectorAll('th');
+                const section = sectionEl.value;
+
+                for (let i = 0; i < ths.length; i++) {
+                    const th = ths[i];
+                    const headerText = (th.textContent || '').toLowerCase();
+                    let visible = true;
+                    if (section === 'item_data') {
+                        visible = !headerText.includes('ctn') && !headerText.includes('carton');
+                    } else if (section === 'carton_data') {
+                        visible = i < 6 || i > 15;
+                    }
+                    th.style.display = visible ? '' : 'none';
+                    tbody.querySelectorAll('tr').forEach(tr => {
+                        const cell = tr.cells[i];
+                        if (cell) cell.style.display = visible ? '' : 'none';
+                    });
+                }
             }
 
             // Update counts
@@ -1421,6 +1406,8 @@
                     const el = document.getElementById(id);
                     if (el) el.addEventListener('change', applyFilters);
                 });
+                const sectionFilterEl = document.getElementById('dimWtSectionFilter');
+                if (sectionFilterEl) sectionFilterEl.addEventListener('change', applyDimWtSectionFilter);
             }
 
             // Toast notification function
