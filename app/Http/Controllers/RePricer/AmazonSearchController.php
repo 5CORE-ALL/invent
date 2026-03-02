@@ -222,6 +222,21 @@ class AmazonSearchController extends Controller
                 'data' => $results
             ]);
 
+        } catch (\Illuminate\Database\QueryException $e) {
+            Log::error('Amazon Search DB Exception', [
+                'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            $hint = (str_contains($e->getMessage(), 'Base table or view not found'))
+                ? ' Run: php artisan migrate'
+                : '';
+            return response()->json([
+                'success' => false,
+                'message' => 'Database error (missing table or view).' . $hint,
+                'error' => $e->getMessage(),
+                'line' => $e->getLine(),
+                'file' => basename($e->getFile())
+            ], 500);
         } catch (\Exception $e) {
             Log::error('SerpApi Exception', [
                 'message' => $e->getMessage(),
