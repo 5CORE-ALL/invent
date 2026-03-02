@@ -113,13 +113,37 @@
             color: #0f172a !important;
             border-color: #e2e8f0 !important;
         }
-        #ovl30DetailsModal .modal-body,
+        #ovl30DetailsModal .modal-body {
+            background-color: #fff !important;
+            color: #0f172a !important;
+            max-height: min(75vh, 600px);
+            overflow-y: auto;
+            overflow-x: hidden;
+        }
         #ovl30DetailsModal .table tbody {
             background-color: #fff !important;
             color: #0f172a !important;
         }
         #ovl30DetailsModal .table td {
             color: #334155 !important;
+        }
+        /* Sticky table header in OV L30 Details modal */
+        #ovl30DetailsModal .table thead .modal-vertical-header th {
+            position: sticky;
+            top: 0;
+            z-index: 11;
+            background-color: #e2e8f0 !important;
+            box-shadow: 0 1px 0 0 #cbd5e1;
+        }
+        #ovl30DetailsModal .table thead .modal-totals-row th {
+            position: sticky;
+            top: 80px; /* match modal-vertical-header height */
+            z-index: 10;
+            background-color: #f1f5f9 !important;
+            box-shadow: 0 1px 0 0 #e2e8f0;
+        }
+        #ovl30DetailsModal .table thead .modal-vertical-header th:nth-child(1) {
+            min-height: 80px;
         }
 
         /* ========== DROPDOWN STYLING ========== */
@@ -433,6 +457,27 @@
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body" style="background-color: #fff;">
+                    <div class="d-flex align-items-center gap-2 mb-3 flex-wrap">
+                        <label class="text-nowrap mb-0" style="color: #0f172a; font-weight: 600;">Sort by:</label>
+                        <select id="ovl30ModalSortBy" class="form-select form-select-sm" style="width: auto; min-width: 180px;">
+                            <option value="l30_desc">L30 (High → Low)</option>
+                            <option value="l30_asc">L30 (Low → High)</option>
+                            <option value="marketplace_asc">Marketplace (A → Z)</option>
+                            <option value="marketplace_desc">Marketplace (Z → A)</option>
+                            <option value="price_desc">Price (High → Low)</option>
+                            <option value="price_asc">Price (Low → High)</option>
+                            <option value="views_desc">Views (High → Low)</option>
+                            <option value="views_asc">Views (Low → High)</option>
+                            <option value="cvr_desc">CVR% (High → Low)</option>
+                            <option value="cvr_asc">CVR% (Low → High)</option>
+                            <option value="gpft_desc">GPFT% (High → Low)</option>
+                            <option value="gpft_asc">GPFT% (Low → High)</option>
+                            <option value="ad_asc">AD% (Low → High)</option>
+                            <option value="ad_desc">AD% (High → Low)</option>
+                            <option value="sprice_desc">SPRICE (High → Low)</option>
+                            <option value="sprice_asc">SPRICE (Low → High)</option>
+                        </select>
+                    </div>
                     <div class="table-responsive">
                         <table class="table table-bordered table-hover mb-0">
                             <thead style="background-color: #e2e8f0; color: #0f172a;">
@@ -848,6 +893,13 @@
         
         // ==================== MODAL FUNCTIONS ====================
         
+        // OVL30 Details modal sort dropdown – re-render table with current sort
+        $(document).on('change', '#ovl30ModalSortBy', function() {
+            if (ovl30ModalData.length) {
+                renderMarketplaceData();
+            }
+        });
+
         // OV L30 Info Icon Click Handler (SKU-wise)
         $(document).on('click', '.ovl30-info-icon', function(e) {
             e.stopPropagation();
@@ -951,18 +1003,51 @@
             `);
         }
 
+        let ovl30ModalData = [];
+
+        function getOvl30SortCompare() {
+            const val = ($('#ovl30ModalSortBy').val() || 'l30_desc').toString();
+            const [field, dir] = val.split('_');
+            const asc = dir === 'asc' ? 1 : -1;
+            return function(a, b) {
+                let cmp = 0;
+                if (field === 'l30') {
+                    cmp = parseInt(a.l30 || 0) - parseInt(b.l30 || 0);
+                } else if (field === 'marketplace') {
+                    cmp = (a.marketplace || '').toLowerCase().localeCompare((b.marketplace || '').toLowerCase());
+                } else if (field === 'price') {
+                    cmp = parseFloat(a.price || 0) - parseFloat(b.price || 0);
+                } else if (field === 'views') {
+                    cmp = parseInt(a.views || 0) - parseInt(b.views || 0);
+                } else if (field === 'cvr') {
+                    const va = parseInt(a.views || 0), vb = parseInt(b.views || 0);
+                    const la = parseInt(a.l30 || 0), lb = parseInt(b.l30 || 0);
+                    const cvrA = va > 0 ? (la / va) * 100 : 0;
+                    const cvrB = vb > 0 ? (lb / vb) * 100 : 0;
+                    cmp = cvrA - cvrB;
+                } else if (field === 'gpft') {
+                    cmp = parseFloat(a.gpft || 0) - parseFloat(b.gpft || 0);
+                } else if (field === 'ad') {
+                    cmp = parseFloat(a.ad || 0) - parseFloat(b.ad || 0);
+                } else if (field === 'sprice') {
+                    cmp = parseFloat(a.sprice || 0) - parseFloat(b.sprice || 0);
+                }
+                return cmp * asc;
+            };
+        }
+
         function renderMarketplaceData(data) {
-            if (!data || data.length === 0) {
+            if (data && data.length > 0) {
+                ovl30ModalData = data.slice();
+            }
+            const toRender = ovl30ModalData.length ? ovl30ModalData : (data || []);
+            if (!toRender.length) {
                 showModalEmpty($('#modalSkuName').text());
                 return;
             }
-            
-            // Sort data by L30 in descending order (highest to lowest)
-            data.sort((a, b) => {
-                const l30A = parseInt(a.l30 || 0);
-                const l30B = parseInt(b.l30 || 0);
-                return l30B - l30A;
-            });
+            const sorted = toRender.slice();
+            sorted.sort(getOvl30SortCompare());
+            data = sorted;
 
             let html = '';
             let totalPrice = 0;
