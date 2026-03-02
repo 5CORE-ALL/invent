@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Dim & Wt Master', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
+@extends('layouts.vertical', ['title' => 'Dimensions & Weight Master', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
 
 @section('css')
     @vite(['node_modules/admin-resources/rwd-table/rwd-table.min.css'])
@@ -24,24 +24,81 @@
         .table-responsive thead th {
             position: sticky;
             top: 0;
-            background: linear-gradient(135deg, #2c6ed5 0%, #1a56b7 100%) !important;
+            background: #8fb9fe !important;
             color: white;
             z-index: 10;
-            padding: 8px 6px;
+            padding: 6px 4px;
             font-weight: 600;
             border-bottom: none;
             box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
-            font-size: 10px;
+            font-size: 9px;
             letter-spacing: 0.2px;
             text-transform: uppercase;
             transition: all 0.2s ease;
+            vertical-align: bottom;
+            height: 115px;
+            min-width: 34px;
+            width: 34px;
+            max-width: 34px;
+            text-align: center;
+        }
+        /* Vertical header label - black bold text, rotated to save horizontal space */
+        .table-responsive thead th .th-vertical-label {
+            display: inline-block;
+            transform: rotate(-90deg);
+            transform-origin: center center;
             white-space: nowrap;
-            text-overflow: ellipsis;
+            font-size: 10px;
+            font-weight: 700;
+            color: #000;
+            margin-bottom: 40px;
+            margin-top: 4px;
+            max-width: 105px;
             overflow: hidden;
+            text-overflow: ellipsis;
+            text-align: left;
+        }
+        /* Horizontal header label - no rotation (Parent, SKU) */
+        .table-responsive thead th .th-horizontal-label {
+            display: block;
+            white-space: nowrap;
+            font-size: 10px;
+            font-weight: 700;
+            color: #000;
+            text-align: center;
+            margin-bottom: 2px;
+        }
+        .table-responsive thead th.th-parent-sku-col {
+            min-width: 120px;
+            width: 140px;
+            max-width: none;
+            height: 65px;
+            vertical-align: bottom;
+        }
+        .table-responsive tbody td.td-parent-col,
+        .table-responsive tbody td.td-sku-col {
+            white-space: nowrap;
+            min-width: 120px;
+            width: 140px;
+            max-width: 280px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .table-responsive thead th.th-has-filter {
+            min-width: 46px;
+            width: 46px;
+            max-width: 46px;
+        }
+        .table-responsive thead th.th-checkbox-col {
+            height: auto;
+            min-width: 24px;
+            width: 24px;
+            max-width: 24px;
+            vertical-align: middle;
         }
 
         .table-responsive thead th:hover {
-            background: linear-gradient(135deg, #1a56b7 0%, #0a3d8f 100%) !important;
+            background: #7aa8fd !important;
         }
 
         .table-responsive thead input {
@@ -77,6 +134,39 @@
         .table-responsive thead input::placeholder {
             color: #8e9ab4;
             font-style: italic;
+        }
+
+        .table-responsive thead select.missing-data-filter {
+            background-color: rgba(255, 255, 255, 0.9);
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            color: #333;
+            transition: all 0.2s;
+        }
+        .table-responsive thead select.missing-data-filter:focus {
+            background-color: white;
+            border-color: #1a56b7;
+            box-shadow: 0 0 0 2px rgba(26, 86, 183, 0.3);
+            outline: none;
+        }
+        .table-responsive thead select.missing-data-filter option[value="missing"]:checked {
+            background-color: #fecaca;
+            color: #dc2626;
+            font-weight: bold;
+        }
+        .table-responsive thead select.missing-data-filter[value="missing"] {
+            background-color: #fecaca;
+            color: #dc2626;
+            font-weight: bold;
+            border-color: #ef4444;
+        }
+
+        .status-dot {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            vertical-align: middle;
         }
 
         .table-responsive tbody td {
@@ -175,12 +265,80 @@
             max-width: 80px;
         }
 
+        .table-responsive th:nth-last-child(2),
+        .table-responsive td:nth-last-child(2) {
+            width: 56px;
+            min-width: 56px;
+            max-width: 56px;
+        }
+
         .table-responsive th:last-child,
         .table-responsive td:last-child {
             width: 80px;
             min-width: 80px;
             max-width: 80px;
         }
+
+        /* Verified column – red/green dot dropdown */
+        .verified-data-dropdown {
+            width: 28px;
+            height: 28px;
+            min-width: 28px;
+            padding: 0;
+            border-radius: 50%;
+            border: 2px solid rgba(0,0,0,0.15);
+            font-size: 14px;
+            line-height: 1;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            text-align: center;
+            outline: none;
+            appearance: none;
+            -webkit-appearance: none;
+            background-repeat: no-repeat;
+            background-position: center;
+        }
+        .verified-data-dropdown.not-verified {
+            background-color: #fff;
+            border-color: #dc3545;
+            color: #dc3545;
+        }
+        .verified-data-dropdown.not-verified:hover {
+            background-color: rgba(220, 53, 69, 0.1);
+            box-shadow: 0 0 0 2px rgba(220, 53, 69, 0.3);
+        }
+        .verified-data-dropdown.verified {
+            background-color: #fff;
+            border-color: #28a745;
+            color: #28a745;
+        }
+        .verified-data-dropdown.verified:hover {
+            background-color: rgba(40, 167, 69, 0.1);
+            box-shadow: 0 0 0 2px rgba(40, 167, 69, 0.3);
+        }
+        .verified-data-dropdown option[value="0"] { color: #dc3545; }
+        .verified-data-dropdown option[value="1"] { color: #28a745; }
+
+        .status-badges-full {
+            width: 100%;
+            flex-wrap: wrap;
+        }
+        .status-badges-full .status-badge-item {
+            flex: 1;
+            min-width: 80px;
+            padding: 8px 12px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 700;
+            color: #000;
+            text-align: center;
+            white-space: nowrap;
+        }
+        .status-badges-full .status-badge-item.bg-active { background-color: #bbf7d0; }
+        .status-badges-full .status-badge-item.bg-inactive { background-color: #fecaca; }
+        .status-badges-full .status-badge-item.bg-dc { background-color: #fecaca; }
+        .status-badges-full .status-badge-item.bg-upcoming { background-color: #fef08a; }
+        .status-badges-full .status-badge-item.bg-2bdc { background-color: #bfdbfe; }
 
         /* Ensure table fits container */
         #dim-wt-master-datatable {
@@ -271,13 +429,49 @@
             cursor: not-allowed;
         }
 
-        #addDimWtBtn {
-            white-space: nowrap;
-        }
-
         .d-flex.gap-2 > button {
             flex-shrink: 0;
         }
+
+        .time-navigation-group {
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            border-radius: 50px;
+            overflow: hidden;
+            padding: 2px;
+            background: #f8f9fa;
+            display: inline-flex;
+            align-items: center;
+        }
+        .time-navigation-group button {
+            padding: 0;
+            border-radius: 50% !important;
+            width: 36px;
+            height: 36px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 2px;
+            transition: all 0.2s ease;
+            border: 1px solid #dee2e6;
+            background: white;
+            cursor: pointer;
+        }
+        .time-navigation-group button:hover:not(:disabled) {
+            background-color: #f1f3f5 !important;
+            transform: scale(1.05);
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+        .time-navigation-group button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .time-navigation-group button i { font-size: 1rem; }
+        #play-auto { color: #28a745; }
+        #play-auto:hover:not(:disabled) { background-color: #28a745 !important; color: white !important; }
+        #play-pause { color: #ffc107; display: none; }
+        #play-pause:hover:not(:disabled) { background-color: #ffc107 !important; color: white !important; }
+        #play-backward, #play-forward { color: #007bff; }
+        #play-backward:hover:not(:disabled), #play-forward:hover:not(:disabled) { background-color: #007bff !important; color: white !important; }
 
         @media (max-width: 768px) {
             .d-flex.justify-content-end {
@@ -296,7 +490,7 @@
     <meta name="csrf-token" content="{{ csrf_token() }}">
 
     @include('layouts.shared.page-title', [
-        'page_title' => 'Dim & Wt Master',
+        'page_title' => 'Dimensions & Weight Master',
         'sub_title' => 'Dimensions & Weight Master Analysis',
     ])
 
@@ -306,20 +500,31 @@
                 <div class="card-body">
                     <div class="row mb-3">
                         <div class="col-md-6">
-                            <div class="input-group">
-                                <span class="input-group-text"><i class="fas fa-search"></i></span>
-                                <input type="text" id="customSearch" class="form-control"
-                                    placeholder="Search dimensions & weight...">
-                                <button class="btn btn-outline-secondary" type="button" id="clearSearch">Clear</button>
+                            <div class="d-flex align-items-center gap-3 flex-wrap">
+                                <div class="btn-group time-navigation-group" role="group" aria-label="Parent navigation">
+                                    <button type="button" id="play-backward" class="btn btn-light rounded-circle" title="Previous parent">
+                                        <i class="fas fa-step-backward"></i>
+                                    </button>
+                                    <button type="button" id="play-pause" class="btn btn-light rounded-circle" title="Show all"
+                                        style="display: none;">
+                                        <i class="fas fa-pause"></i>
+                                    </button>
+                                    <button type="button" id="play-auto" class="btn btn-light rounded-circle" title="Start parent navigation">
+                                        <i class="fas fa-play"></i>
+                                    </button>
+                                    <button type="button" id="play-forward" class="btn btn-light rounded-circle" title="Next parent">
+                                        <i class="fas fa-step-forward"></i>
+                                    </button>
+                                </div>
                             </div>
                         </div>
                         <div class="col-md-6">
                             <div class="d-flex justify-content-end flex-wrap gap-2">
-                                <button type="button" class="btn btn-primary" id="addDimWtBtn">
-                                    <i class="fas fa-plus me-1"></i> Add Dim & Wt Data
-                                </button>
                                 <button type="button" class="btn btn-primary" id="pushDataBtn" disabled>
                                     <i class="fas fa-cloud-upload-alt me-1"></i> Push Data
+                                </button>
+                                <button type="button" class="btn btn-warning" id="bulkEditBtn" disabled title="Edit selected SKUs in bulk">
+                                    <i class="fas fa-edit me-1"></i> Bulk Edit
                                 </button>
                                 <button type="button" class="btn btn-info" data-bs-toggle="modal" data-bs-target="#importExcelModal">
                                     <i class="fas fa-file-upload me-1"></i> Import
@@ -331,77 +536,105 @@
                         </div>
                     </div>
 
+                    <div class="row mb-2">
+                        <div class="col-12">
+                            <div id="statusBadgesBar" class="status-badges-full d-flex align-items-center justify-content-between gap-2"></div>
+                        </div>
+                    </div>
+
                     <div class="table-responsive">
                         <table id="dim-wt-master-datatable" class="table dt-responsive nowrap w-100">
                             <thead>
                                 <tr>
-                                    <th class="text-center">
+                                    <th class="text-center th-checkbox-col">
                                         <input type="checkbox" id="selectAll" title="Select All" style="width: 16px; height: 16px;">
                                     </th>
-                                    <th>Img</th>
-                                    <th>
-                                        <div style="font-size: 9px;">Parent <span id="parentCount" style="font-size: 8px;">(0)</span></div>
+                                    <th><span class="th-vertical-label">Img</span></th>
+                                    <th class="th-has-filter th-parent-sku-col">
+                                        <div class="th-horizontal-label" style="font-size: 9px;">Parent</div>
                                         <input type="text" id="parentSearch" class="form-control-sm"
                                             placeholder="Search" style="font-size: 9px; padding: 2px 4px;">
                                     </th>
-                                    <th>
-                                        <div style="font-size: 9px;">SKU <span id="skuCount" style="font-size: 8px;">(0)</span></div>
+                                    <th class="th-has-filter th-parent-sku-col">
+                                        <div class="th-horizontal-label" style="font-size: 9px;">SKU</div>
                                         <input type="text" id="skuSearch" class="form-control-sm"
                                             placeholder="Search" style="font-size: 9px; padding: 2px 4px;">
                                     </th>
-                                    <th>Status</th>
-                                    <th>INV</th>
-                                    <th>
-                                        <div style="font-size: 9px;">WT ACT <span id="wtActMissingCount" class="text-white" style="font-weight: bold; font-size: 8px;">(0)</span></div>
+                                    <th class="th-has-filter">
+                                        <div class="th-vertical-label" style="font-size: 9px;">STATUS</div>
+                                        <select id="filterSTATUS" class="form-control form-control-sm mt-1 missing-data-filter" style="font-size: 9px; padding: 2px 4px;" data-column="STATUS">
+                                            <option value="all">All</option>
+                                            <option value="missing">Missing</option>
+                                            <option value="active">🟢 Active</option>
+                                            <option value="inactive">🔴 Inactive</option>
+                                            <option value="DC">🔴 DC</option>
+                                            <option value="upcoming">🟡 Upcoming</option>
+                                            <option value="2BDC">🔵 2BDC</option>
+                                        </select>
+                                    </th>
+                                    <th><span class="th-vertical-label">INV</span></th>
+                                    <th class="th-has-filter">
+                                        <div class="th-vertical-label" style="font-size: 9px;">Weight ACT (Kg)</div>
+                                        <select id="filterWtActKg" class="form-control form-control-sm mt-1" style="font-size: 9px; padding: 2px 4px;">
+                                            <option value="all">All</option>
+                                            <option value="missing">Missing</option>
+                                        </select>
+                                    </th>
+                                    <th class="th-has-filter">
+                                        <div class="th-vertical-label" style="font-size: 9px;">WT ACT (LB)</div>
                                         <select id="filterWtAct" class="form-control form-control-sm mt-1" style="font-size: 9px; padding: 2px 4px;">
                                             <option value="all">All</option>
                                             <option value="missing">Missing</option>
                                         </select>
                                     </th>
-                                    <th>
-                                        <div style="font-size: 9px;">WT DECL <span id="wtDeclMissingCount" class="text-white" style="font-weight: bold; font-size: 8px;">(0)</span></div>
+                                    <th class="th-has-filter">
+                                        <div class="th-vertical-label" style="font-size: 9px;">WT DECL (LB)</div>
                                         <select id="filterWtDecl" class="form-control form-control-sm mt-1" style="font-size: 9px; padding: 2px 4px;">
                                             <option value="all">All</option>
                                             <option value="missing">Missing</option>
                                         </select>
                                     </th>
-                                    <th>
-                                        <div style="font-size: 9px;">L <span id="lMissingCount" class="text-white" style="font-weight: bold; font-size: 8px;">(0)</span></div>
+                                    <th class="th-has-filter">
+                                        <div class="th-vertical-label" style="font-size: 9px;">Length (inch)</div>
                                         <select id="filterL" class="form-control form-control-sm mt-1" style="font-size: 9px; padding: 2px 4px;">
                                             <option value="all">All</option>
                                             <option value="missing">Missing</option>
                                         </select>
                                     </th>
-                                    <th>
-                                        <div style="font-size: 9px;">W <span id="wMissingCount" class="text-white" style="font-weight: bold; font-size: 8px;">(0)</span></div>
+                                    <th class="th-has-filter">
+                                        <div class="th-vertical-label" style="font-size: 9px;">Width (inch)</div>
                                         <select id="filterW" class="form-control form-control-sm mt-1" style="font-size: 9px; padding: 2px 4px;">
                                             <option value="all">All</option>
                                             <option value="missing">Missing</option>
                                         </select>
                                     </th>
-                                    <th>
-                                        <div style="font-size: 9px;">H <span id="hMissingCount" class="text-white" style="font-weight: bold; font-size: 8px;">(0)</span></div>
+                                    <th class="th-has-filter">
+                                        <div class="th-vertical-label" style="font-size: 9px;">Height (Inch)</div>
                                         <select id="filterH" class="form-control form-control-sm mt-1" style="font-size: 9px; padding: 2px 4px;">
                                             <option value="all">All</option>
                                             <option value="missing">Missing</option>
                                         </select>
                                     </th>
-                                    <th>
-                                        <div style="font-size: 9px;">CBM <span id="cbmMissingCount" class="text-white" style="font-weight: bold; font-size: 8px;">(0)</span></div>
+                                    <th><span class="th-vertical-label">Length (CM)</span></th>
+                                    <th><span class="th-vertical-label">Width (CM)</span></th>
+                                    <th><span class="th-vertical-label">Height (CM)</span></th>
+                                    <th class="th-has-filter">
+                                        <div class="th-vertical-label" style="font-size: 9px;">CBM</div>
                                         <select id="filterCbm" class="form-control form-control-sm mt-1" style="font-size: 9px; padding: 2px 4px;">
                                             <option value="all">All</option>
                                             <option value="missing">Missing</option>
                                         </select>
                                     </th>
-                                    <th style="font-size: 9px;">CTN L</th>
-                                    <th style="font-size: 9px;">CTN W</th>
-                                    <th style="font-size: 9px;">CTN H</th>
-                                    <th style="font-size: 9px;">CTN CBM</th>
-                                    <th style="font-size: 9px;">CTN QTY</th>
-                                    <th style="font-size: 9px;">CBM/Each</th>
-                                    <th style="font-size: 9px;">CBM E</th>
-                                    <th style="font-size: 9px;">CTN GWT</th>
-                                    <th>Action</th>
+                                    <th><span class="th-vertical-label">CTN L (CM)</span></th>
+                                    <th><span class="th-vertical-label">CTN W (CM)</span></th>
+                                    <th><span class="th-vertical-label">CTN H (CM)</span></th>
+                                    <th><span class="th-vertical-label">Carton CBM</span></th>
+                                    <th><span class="th-vertical-label">CTN QTY</span></th>
+                                    <th><span class="th-vertical-label">Carton CBM each</span></th>
+                                    <th><span class="th-vertical-label">CBM E</span></th>
+                                    <th><span class="th-vertical-label">CTN Weight (KG)</span></th>
+                                    <th class="text-center"><span class="th-vertical-label">Verified</span></th>
+                                    <th><span class="th-vertical-label">Action</span></th>
                                 </tr>
                             </thead>
                             <tbody id="table-body"></tbody>
@@ -414,123 +647,19 @@
                         <div class="wave"></div>
                         <div class="wave"></div>
                         <div class="wave"></div>
-                        <div class="loading-text">Loading Dim & Wt Master Data...</div>
+                        <div class="loading-text">Loading Dimensions & Weight Master Data...</div>
                     </div>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- Add Dim & Wt Master Modal -->
-    <div class="modal fade" id="addDimWtModal" tabindex="-1" aria-labelledby="addDimWtModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-lg">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title" id="addDimWtModalLabel">Add Dim & Wt Data</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <form id="addDimWtForm">
-                        <div class="row mb-3">
-                            <div class="col-md-12">
-                                <label for="addSku" class="form-label">SKU <span class="text-danger">*</span></label>
-                                <select class="form-control" id="addSku" name="sku" required>
-                                    <option value="">Select SKU</option>
-                                </select>
-                            </div>
-                        </div>
-                        
-                        <div class="row mb-3">
-                            <div class="col-md-6">
-                                <label for="addWtAct" class="form-label">WT ACT</label>
-                                <input type="number" step="0.01" class="form-control" id="addWtAct" name="wt_act" placeholder="Enter WT ACT">
-                            </div>
-                            <div class="col-md-6">
-                                <label for="addWtDecl" class="form-label">WT DECL</label>
-                                <input type="number" step="0.01" class="form-control" id="addWtDecl" name="wt_decl" placeholder="Enter WT DECL">
-                            </div>
-                        </div>
-                        
-                        <div class="row mb-3">
-                            <div class="col-md-4">
-                                <label for="addL" class="form-label">L</label>
-                                <input type="number" step="0.01" class="form-control" id="addL" name="l" placeholder="Enter L">
-                            </div>
-                            <div class="col-md-4">
-                                <label for="addW" class="form-label">W</label>
-                                <input type="number" step="0.01" class="form-control" id="addW" name="w" placeholder="Enter W">
-                            </div>
-                            <div class="col-md-4">
-                                <label for="addH" class="form-label">H</label>
-                                <input type="number" step="0.01" class="form-control" id="addH" name="h" placeholder="Enter H">
-                            </div>
-                        </div>
-                        
-                        <div class="row mb-3">
-                            <div class="col-md-4">
-                                <label for="addCbm" class="form-label">CBM</label>
-                                <input type="number" step="0.000001" class="form-control" id="addCbm" name="cbm" placeholder="Enter CBM">
-                            </div>
-                        </div>
-                        
-                        <div class="row mb-3">
-                            <div class="col-md-4">
-                                <label for="addCtnL" class="form-label">CTN (L)</label>
-                                <input type="number" step="0.01" class="form-control" id="addCtnL" name="ctn_l" placeholder="Enter CTN (L)">
-                            </div>
-                            <div class="col-md-4">
-                                <label for="addCtnW" class="form-label">CTN (W)</label>
-                                <input type="number" step="0.01" class="form-control" id="addCtnW" name="ctn_w" placeholder="Enter CTN (W)">
-                            </div>
-                            <div class="col-md-4">
-                                <label for="addCtnH" class="form-label">CTN (H)</label>
-                                <input type="number" step="0.01" class="form-control" id="addCtnH" name="ctn_h" placeholder="Enter CTN (H)">
-                            </div>
-                        </div>
-                        
-                        <div class="row mb-3">
-                            <div class="col-md-4">
-                                <label for="addCtnCbm" class="form-label">CTN (CBM) <small class="text-muted">(Auto-calculated)</small></label>
-                                <input type="number" step="0.000001" class="form-control" id="addCtnCbm" name="ctn_cbm" placeholder="Auto-calculated" readonly>
-                            </div>
-                            <div class="col-md-4">
-                                <label for="addCtnQty" class="form-label">CTN (QTY)</label>
-                                <input type="number" step="0.01" class="form-control" id="addCtnQty" name="ctn_qty" placeholder="Enter CTN (QTY)">
-                            </div>
-                            <div class="col-md-4">
-                                <label for="addCtnCbmEach" class="form-label">CTN (CBM/Each) <small class="text-muted">(Auto-calculated)</small></label>
-                                <input type="number" step="0.000001" class="form-control" id="addCtnCbmEach" name="ctn_cbm_each" placeholder="Auto-calculated" readonly>
-                            </div>
-                        </div>
-                        
-                        <div class="row mb-3">
-                            <div class="col-md-6">
-                                <label for="addCbmE" class="form-label">CBM (E)</label>
-                                <input type="number" step="0.01" class="form-control" id="addCbmE" name="cbm_e" placeholder="Enter CBM (E)">
-                            </div>
-                            <div class="col-md-6">
-                                <label for="addCtnGwt" class="form-label">CTN GWT</label>
-                                <input type="number" step="0.01" class="form-control" id="addCtnGwt" name="ctn_gwt" placeholder="Enter CTN GWT">
-                            </div>
-                        </div>
-                    </form>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                    <button type="button" class="btn btn-primary" id="saveAddDimWtBtn">
-                        <i class="fas fa-save me-2"></i> Save
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Edit Dim & Wt Master Modal -->
+    <!-- Edit Dimensions & Weight Master Modal -->
     <div class="modal fade" id="editDimWtModal" tabindex="-1" aria-labelledby="editDimWtModalLabel" aria-hidden="true">
         <div class="modal-dialog modal-lg">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title" id="editDimWtModalLabel">Edit Dim & Wt Master</h5>
+                    <h5 class="modal-title" id="editDimWtModalLabel">Edit Dimensions & Weight Master</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
@@ -539,77 +668,83 @@
                         <input type="hidden" id="editSku" name="sku">
                         <input type="hidden" id="editParent" name="parent">
                         
+                        <div class="row mb-1">
+                            <div class="col-12">
+                                <small class="text-secondary fw-semibold">Item Dimension</small>
+                            </div>
+                        </div>
+                        <div class="row mb-3">
+                            <div class="col-md-4">
+                                <label for="editWtActKg" class="form-label">Weight ACT (Kg)</label>
+                                <input type="number" step="0.01" class="form-control" id="editWtActKg" name="wt_act_kg" placeholder="Enter Weight ACT (Kg)">
+                            </div>
+                            <div class="col-md-4">
+                                <label for="editWtAct" class="form-label">WT ACT (LB)</label>
+                                <input type="number" step="0.01" class="form-control" id="editWtAct" name="wt_act" placeholder="Enter WT ACT (LB)">
+                            </div>
+                            <div class="col-md-4">
+                                <label for="editWtDecl" class="form-label">WT DECL (LB)</label>
+                                <input type="number" step="0.01" class="form-control" id="editWtDecl" name="wt_decl" placeholder="Enter WT DECL (LB)">
+                            </div>
+                        </div>
+                        
+                        <div class="row mb-3">
+                            <div class="col-md-4">
+                                <label for="editL" class="form-label">Length (inch)</label>
+                                <input type="number" step="0.01" class="form-control" id="editL" name="l" placeholder="Enter Length (inch)">
+                            </div>
+                            <div class="col-md-4">
+                                <label for="editW" class="form-label">Width (inch)</label>
+                                <input type="number" step="0.01" class="form-control" id="editW" name="w" placeholder="Enter Width (inch)">
+                            </div>
+                            <div class="col-md-4">
+                                <label for="editH" class="form-label">Height (Inch)</label>
+                                <input type="number" step="0.01" class="form-control" id="editH" name="h" placeholder="Enter Height (Inch)">
+                            </div>
+                        </div>
+                        <div class="row mb-3">
+                            <div class="col-md-4">
+                                <label for="editLCm" class="form-label">Length (CM)</label>
+                                <input type="number" step="0.01" class="form-control" id="editLCm" name="l_cm" placeholder="Enter Length (CM)">
+                            </div>
+                            <div class="col-md-4">
+                                <label for="editWCm" class="form-label">Width (CM)</label>
+                                <input type="number" step="0.01" class="form-control" id="editWCm" name="w_cm" placeholder="Enter Width (CM)">
+                            </div>
+                            <div class="col-md-4">
+                                <label for="editHCm" class="form-label">Height (CM)</label>
+                                <input type="number" step="0.01" class="form-control" id="editHCm" name="h_cm" placeholder="Enter Height (CM)">
+                            </div>
+                        </div>
+                        
+                        <div class="row mb-1">
+                            <div class="col-12">
+                                <small class="text-secondary fw-semibold">CARTON Dimension section</small>
+                            </div>
+                        </div>
+                        <div class="row mb-3">
+                            <div class="col-md-4">
+                                <label for="editCtnL" class="form-label">CTN L (CM)</label>
+                                <input type="number" step="0.01" class="form-control" id="editCtnL" name="ctn_l" placeholder="Enter CTN L (CM)">
+                            </div>
+                            <div class="col-md-4">
+                                <label for="editCtnW" class="form-label">CTN W (CM)</label>
+                                <input type="number" step="0.01" class="form-control" id="editCtnW" name="ctn_w" placeholder="Enter CTN W (CM)">
+                            </div>
+                            <div class="col-md-4">
+                                <label for="editCtnH" class="form-label">CTN H (CM)</label>
+                                <input type="number" step="0.01" class="form-control" id="editCtnH" name="ctn_h" placeholder="Enter CTN H (CM)">
+                            </div>
+                        </div>
+                        
                         <div class="row mb-3">
                             <div class="col-md-6">
-                                <label for="editWtAct" class="form-label">WT ACT</label>
-                                <input type="number" step="0.01" class="form-control" id="editWtAct" name="wt_act" placeholder="Enter WT ACT">
-                            </div>
-                            <div class="col-md-6">
-                                <label for="editWtDecl" class="form-label">WT DECL</label>
-                                <input type="number" step="0.01" class="form-control" id="editWtDecl" name="wt_decl" placeholder="Enter WT DECL">
-                            </div>
-                        </div>
-                        
-                        <div class="row mb-3">
-                            <div class="col-md-4">
-                                <label for="editL" class="form-label">L</label>
-                                <input type="number" step="0.01" class="form-control" id="editL" name="l" placeholder="Enter L">
-                            </div>
-                            <div class="col-md-4">
-                                <label for="editW" class="form-label">W</label>
-                                <input type="number" step="0.01" class="form-control" id="editW" name="w" placeholder="Enter W">
-                            </div>
-                            <div class="col-md-4">
-                                <label for="editH" class="form-label">H</label>
-                                <input type="number" step="0.01" class="form-control" id="editH" name="h" placeholder="Enter H">
-                            </div>
-                        </div>
-                        
-                        <div class="row mb-3">
-                            <div class="col-md-4">
-                                <label for="editCbm" class="form-label">CBM</label>
-                                <input type="number" step="0.000001" class="form-control" id="editCbm" name="cbm" placeholder="Enter CBM">
-                            </div>
-                        </div>
-                        
-                        <div class="row mb-3">
-                            <div class="col-md-4">
-                                <label for="editCtnL" class="form-label">CTN (L)</label>
-                                <input type="number" step="0.01" class="form-control" id="editCtnL" name="ctn_l" placeholder="Enter CTN (L)">
-                            </div>
-                            <div class="col-md-4">
-                                <label for="editCtnW" class="form-label">CTN (W)</label>
-                                <input type="number" step="0.01" class="form-control" id="editCtnW" name="ctn_w" placeholder="Enter CTN (W)">
-                            </div>
-                            <div class="col-md-4">
-                                <label for="editCtnH" class="form-label">CTN (H)</label>
-                                <input type="number" step="0.01" class="form-control" id="editCtnH" name="ctn_h" placeholder="Enter CTN (H)">
-                            </div>
-                        </div>
-                        
-                        <div class="row mb-3">
-                            <div class="col-md-4">
-                                <label for="editCtnCbm" class="form-label">CTN (CBM) <small class="text-muted">(Auto-calculated)</small></label>
-                                <input type="number" step="0.000001" class="form-control" id="editCtnCbm" name="ctn_cbm" placeholder="Auto-calculated" readonly>
-                            </div>
-                            <div class="col-md-4">
                                 <label for="editCtnQty" class="form-label">CTN (QTY)</label>
                                 <input type="number" step="0.01" class="form-control" id="editCtnQty" name="ctn_qty" placeholder="Enter CTN (QTY)">
                             </div>
-                            <div class="col-md-4">
-                                <label for="editCtnCbmEach" class="form-label">CTN (CBM/Each) <small class="text-muted">(Auto-calculated)</small></label>
-                                <input type="number" step="0.000001" class="form-control" id="editCtnCbmEach" name="ctn_cbm_each" placeholder="Auto-calculated" readonly>
-                            </div>
-                        </div>
-                        
-                        <div class="row mb-3">
                             <div class="col-md-6">
-                                <label for="editCbmE" class="form-label">CBM (E)</label>
-                                <input type="number" step="0.01" class="form-control" id="editCbmE" name="cbm_e" placeholder="Enter CBM (E)">
-                            </div>
-                            <div class="col-md-6">
-                                <label for="editCtnGwt" class="form-label">CTN GWT</label>
-                                <input type="number" step="0.01" class="form-control" id="editCtnGwt" name="ctn_gwt" placeholder="Enter CTN GWT">
+                                <label for="editCtnWeightKg" class="form-label">CTN Weight (KG)</label>
+                                <input type="number" step="0.01" class="form-control" id="editCtnWeightKg" name="ctn_weight_kg" placeholder="Enter CTN Weight (KG)">
                             </div>
                         </div>
                     </form>
@@ -630,7 +765,7 @@
             <div class="modal-content">
                 <div class="modal-header" style="background: linear-gradient(135deg, #2c6ed5 0%, #1a56b7 100%); color: white;">
                     <h5 class="modal-title" id="importExcelModalLabel">
-                        <i class="fas fa-upload me-2"></i>Import Dim & Wt Data
+                        <i class="fas fa-upload me-2"></i>Import Dimensions & Weight Data
                     </h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
@@ -640,7 +775,7 @@
                         <strong>Instructions:</strong>
                         <ol class="mb-0 mt-2">
                             <li>Download the sample file below</li>
-                            <li>Fill in the dim & wt data (WT ACT, WT DECL, L, W, H, CBM, CTN L, CTN W, CTN H, CTN QTY, CBM E, CTN GWT)</li>
+                            <li>Fill in the dim & wt data (Weight ACT (Kg), WT ACT (LB), WT DECL (LB), Length (inch), Width (inch), Height (Inch), Length (CM), Width (CM), Height (CM), CTN L (CM), CTN W (CM), CTN H (CM), CTN QTY, CTN Weight (KG))</li>
                             <li>Upload the completed file</li>
                         </ol>
                     </div>
@@ -707,6 +842,10 @@
             // Store the loaded data globally
             let tableData = [];
             let filteredData = [];
+            let productUniqueParents = [];
+            let bulkEditList = null; // When set, save will update all these products with form values
+            let isProductNavigationActive = false;
+            let currentProductParentIndex = -1;
 
             // Get CSRF token from meta tag
             const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
@@ -749,7 +888,21 @@
                 return num.toFixed(decimals);
             }
 
-            // Load Dim & Wt data from server
+            function getStatusDot(status) {
+                const raw = String(status || '').trim();
+                const s = raw.toLowerCase();
+                const upper = raw.toUpperCase();
+                let color = '#9ca3af';
+                if (s === 'active') color = '#22c55e';
+                else if (s === 'inactive') color = '#dc2626';
+                else if (upper === 'DC') color = '#dc2626';
+                else if (s === 'upcoming') color = '#eab308';
+                else if (upper === '2BDC') color = '#2563eb';
+                const title = raw || '-';
+                return `<span class="status-dot" style="background-color:${color}" title="${escapeHtml(title)}"></span>`;
+            }
+
+            // Load Dimensions & Weight data from server
             function loadData() {
                 const cacheParam = '?ts=' + new Date().getTime();
                 makeRequest('/dim-wt-master-data-view' + cacheParam, 'GET')
@@ -765,14 +918,15 @@
                             filteredData = [...tableData];
                             renderTable(filteredData);
                             updateCounts();
-                            setupSearch();
+                            updateStatusBadgesBar();
+                            refreshProductPlaybackState();
                         } else {
                             console.error('Invalid data format received from server');
                         }
                         document.getElementById('rainbow-loader').style.display = 'none';
                     })
                     .catch(error => {
-                        console.error('Failed to load Dim & Wt data: ' + error.message);
+                        console.error('Failed to load Dimensions & Weight data: ' + error.message);
                         document.getElementById('rainbow-loader').style.display = 'none';
                     });
             }
@@ -783,12 +937,14 @@
                 tbody.innerHTML = '';
 
                 if (data.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="21" class="text-center">No data found</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="26" class="text-center">No data found</td></tr>';
                     return;
                 }
 
                 data.forEach(item => {
                     const row = document.createElement('tr');
+                    const isParentRow = item.SKU && String(item.SKU).toUpperCase().includes('PARENT');
+                    const cellVal = (val, decimals) => isParentRow ? '--' : formatNumber(val || 0, decimals);
 
                     // Checkbox column
                     const checkboxCell = document.createElement('td');
@@ -815,24 +971,29 @@
 
                     // Parent column
                     const parentCell = document.createElement('td');
+                    parentCell.className = 'td-parent-col';
                     parentCell.title = escapeHtml(item.Parent) || '';
                     parentCell.textContent = escapeHtml(item.Parent) || '-';
                     row.appendChild(parentCell);
 
                     // SKU column
                     const skuCell = document.createElement('td');
+                    skuCell.className = 'td-sku-col';
                     skuCell.title = escapeHtml(item.SKU) || '';
                     skuCell.textContent = escapeHtml(item.SKU) || '-';
                     row.appendChild(skuCell);
 
-                    // Status column
+                    // Status column – colored dot (same as product master)
                     const statusCell = document.createElement('td');
-                    statusCell.textContent = escapeHtml(item.status) || '-';
+                    statusCell.className = 'text-center';
+                    statusCell.innerHTML = getStatusDot(item.status);
                     row.appendChild(statusCell);
 
                     // INV column
                     const invCell = document.createElement('td');
-                    if (item.shopify_inv === 0 || item.shopify_inv === "0") {
+                    if (isParentRow) {
+                        invCell.textContent = '--';
+                    } else if (item.shopify_inv === 0 || item.shopify_inv === "0") {
                         invCell.textContent = "0";
                     } else if (item.shopify_inv === null || item.shopify_inv === undefined || item.shopify_inv === "") {
                         invCell.textContent = "-";
@@ -841,89 +1002,133 @@
                     }
                     row.appendChild(invCell);
 
+                    // Weight ACT (Kg) column
+                    const wtActKgCell = document.createElement('td');
+                    wtActKgCell.className = 'text-center';
+                    wtActKgCell.textContent = cellVal(item.wt_act_kg, 1);
+                    row.appendChild(wtActKgCell);
+
                     // WT ACT column
                     const wtActCell = document.createElement('td');
                     wtActCell.className = 'text-center';
-                    wtActCell.textContent = formatNumber(item.wt_act || 0, 2);
+                    wtActCell.textContent = cellVal(item.wt_act, 1);
                     row.appendChild(wtActCell);
 
                     // WT DECL column
                     const wtDeclCell = document.createElement('td');
                     wtDeclCell.className = 'text-center';
-                    wtDeclCell.textContent = formatNumber(item.wt_decl || 0, 2);
+                    wtDeclCell.textContent = cellVal(item.wt_decl, 1);
                     row.appendChild(wtDeclCell);
 
                     // L column
                     const lCell = document.createElement('td');
                     lCell.className = 'text-center';
-                    lCell.textContent = formatNumber(item.l || 0, 2);
+                    lCell.textContent = cellVal(item.l, 1);
                     row.appendChild(lCell);
 
                     // W column
                     const wCell = document.createElement('td');
                     wCell.className = 'text-center';
-                    wCell.textContent = formatNumber(item.w || 0, 2);
+                    wCell.textContent = cellVal(item.w, 1);
                     row.appendChild(wCell);
 
                     // H column
                     const hCell = document.createElement('td');
                     hCell.className = 'text-center';
-                    hCell.textContent = formatNumber(item.h || 0, 2);
+                    hCell.textContent = cellVal(item.h, 1);
                     row.appendChild(hCell);
+
+                    // Length (CM) column
+                    const lCmCell = document.createElement('td');
+                    lCmCell.className = 'text-center';
+                    lCmCell.textContent = cellVal(item.l_cm, 1);
+                    row.appendChild(lCmCell);
+
+                    // Width (CM) column
+                    const wCmCell = document.createElement('td');
+                    wCmCell.className = 'text-center';
+                    wCmCell.textContent = cellVal(item.w_cm, 1);
+                    row.appendChild(wCmCell);
+
+                    // Height (CM) column
+                    const hCmCell = document.createElement('td');
+                    hCmCell.className = 'text-center';
+                    hCmCell.textContent = cellVal(item.h_cm, 1);
+                    row.appendChild(hCmCell);
 
                     // CBM column
                     const cbmCell = document.createElement('td');
                     cbmCell.className = 'text-center';
-                    cbmCell.textContent = formatNumber(item.cbm || 0, 6);
+                    cbmCell.textContent = cellVal(item.cbm, 1);
                     row.appendChild(cbmCell);
 
-                    // CTN (L) column
+                    // CTN L (CM) column
                     const ctnLCell = document.createElement('td');
                     ctnLCell.className = 'text-center';
-                    ctnLCell.textContent = formatNumber(item.ctn_l || 0, 2);
+                    ctnLCell.textContent = cellVal(item.ctn_l, 0);
                     row.appendChild(ctnLCell);
 
-                    // CTN (W) column
+                    // CTN W (CM) column
                     const ctnWCell = document.createElement('td');
                     ctnWCell.className = 'text-center';
-                    ctnWCell.textContent = formatNumber(item.ctn_w || 0, 2);
+                    ctnWCell.textContent = cellVal(item.ctn_w, 0);
                     row.appendChild(ctnWCell);
 
-                    // CTN (H) column
+                    // CTN H (CM) column
                     const ctnHCell = document.createElement('td');
                     ctnHCell.className = 'text-center';
-                    ctnHCell.textContent = formatNumber(item.ctn_h || 0, 2);
+                    ctnHCell.textContent = cellVal(item.ctn_h, 0);
                     row.appendChild(ctnHCell);
 
-                    // CTN (CBM) column
+                    // CTN CBM column (calculated: CTN L * CTN W * CTN H / 1000000)
+                    const ctnCbmCalculated = (parseFloat(item.ctn_l) || 0) * (parseFloat(item.ctn_w) || 0) * (parseFloat(item.ctn_h) || 0) / 1000000;
                     const ctnCbmCell = document.createElement('td');
                     ctnCbmCell.className = 'text-center';
-                    ctnCbmCell.textContent = formatNumber(item.ctn_cbm || 0, 6);
+                    ctnCbmCell.textContent = cellVal(ctnCbmCalculated, 1);
                     row.appendChild(ctnCbmCell);
 
                     // CTN (QTY) column
                     const ctnQtyCell = document.createElement('td');
                     ctnQtyCell.className = 'text-center';
-                    ctnQtyCell.textContent = formatNumber(item.ctn_qty || 0, 2);
+                    ctnQtyCell.textContent = cellVal(item.ctn_qty, 0);
                     row.appendChild(ctnQtyCell);
 
-                    // CTN (CBM/Each) column
+                    // CTN CBM each column (calculated: CTN CBM / CTN Qty)
+                    const ctnQtyVal = parseFloat(item.ctn_qty) || 0;
+                    const ctnCbmEachCalculated = ctnQtyVal > 0 ? ctnCbmCalculated / ctnQtyVal : 0;
                     const ctnCbmEachCell = document.createElement('td');
                     ctnCbmEachCell.className = 'text-center';
-                    ctnCbmEachCell.textContent = formatNumber(item.ctn_cbm_each || 0, 6);
+                    ctnCbmEachCell.textContent = cellVal(ctnCbmEachCalculated, 1);
                     row.appendChild(ctnCbmEachCell);
 
                     // CBM (E) column
                     const cbmECell = document.createElement('td');
                     cbmECell.className = 'text-center';
-                    cbmECell.textContent = formatNumber(item.cbm_e || 0, 2);
+                    cbmECell.textContent = cellVal(item.cbm_e, 0);
                     row.appendChild(cbmECell);
 
-                    // CTN GWT column
-                    const ctnGwtCell = document.createElement('td');
-                    ctnGwtCell.className = 'text-center';
-                    ctnGwtCell.textContent = formatNumber(item.ctn_gwt || 0, 2);
-                    row.appendChild(ctnGwtCell);
+                    // CTN Weight (KG) column
+                    const ctnWeightKgCell = document.createElement('td');
+                    ctnWeightKgCell.className = 'text-center';
+                    ctnWeightKgCell.textContent = cellVal(item.ctn_weight_kg, 0);
+                    row.appendChild(ctnWeightKgCell);
+
+                    // Verified column – red/green dot toggle
+                    const isVerified = item.verified_data === 1 || item.verified_data === true ||
+                        (item.Values && (item.Values.verified_data === 1 || item.Values.verified_data === true));
+                    const verifiedClass = isVerified ? 'verified' : 'not-verified';
+                    const verifiedValue = isVerified ? '1' : '0';
+                    const verifiedCell = document.createElement('td');
+                    verifiedCell.className = 'text-center';
+                    verifiedCell.innerHTML = `
+                        <select class="verified-data-dropdown ${verifiedClass}"
+                            data-sku="${escapeHtml(item.SKU)}" data-id="${escapeHtml(item.id)}"
+                            title="${isVerified ? 'Verified' : 'Not verified'}">
+                            <option value="0" ${!isVerified ? 'selected' : ''}>🔴</option>
+                            <option value="1" ${isVerified ? 'selected' : ''}>🟢</option>
+                        </select>
+                    `;
+                    row.appendChild(verifiedCell);
 
                     // Action column
                     const actionCell = document.createElement('td');
@@ -946,6 +1151,7 @@
                         const sku = this.getAttribute('data-sku');
                         const product = tableData.find(d => d.SKU === sku);
                         if (product) {
+                            bulkEditList = null;
                             editDimWt(product);
                         }
                     });
@@ -958,6 +1164,7 @@
             function updateCounts() {
                 const parentSet = new Set();
                 let skuCount = 0;
+                let wtActKgMissingCount = 0;
                 let wtActMissingCount = 0;
                 let wtDeclMissingCount = 0;
                 let lMissingCount = 0;
@@ -977,6 +1184,7 @@
                     }
                     
                     // Count missing data for each column (only for child SKUs)
+                    if (isMissing(item.wt_act_kg)) wtActKgMissingCount++;
                     if (isMissing(item.wt_act)) wtActMissingCount++;
                     if (isMissing(item.wt_decl)) wtDeclMissingCount++;
                     if (isMissing(item.l)) lMissingCount++;
@@ -985,14 +1193,124 @@
                     if (isMissing(item.cbm)) cbmMissingCount++;
                 });
                 
-                document.getElementById('parentCount').textContent = `(${parentSet.size})`;
-                document.getElementById('skuCount').textContent = `(${skuCount})`;
-                document.getElementById('wtActMissingCount').textContent = `(${wtActMissingCount})`;
-                document.getElementById('wtDeclMissingCount').textContent = `(${wtDeclMissingCount})`;
-                document.getElementById('lMissingCount').textContent = `(${lMissingCount})`;
-                document.getElementById('wMissingCount').textContent = `(${wMissingCount})`;
-                document.getElementById('hMissingCount').textContent = `(${hMissingCount})`;
-                document.getElementById('cbmMissingCount').textContent = `(${cbmMissingCount})`;
+                const setHeaderCount = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = `(${val})`; };
+                setHeaderCount('parentCount', parentSet.size);
+                setHeaderCount('skuCount', skuCount);
+                setHeaderCount('wtActKgMissingCount', wtActKgMissingCount);
+                setHeaderCount('wtActMissingCount', wtActMissingCount);
+                setHeaderCount('wtDeclMissingCount', wtDeclMissingCount);
+                setHeaderCount('lMissingCount', lMissingCount);
+                setHeaderCount('wMissingCount', wMissingCount);
+                setHeaderCount('hMissingCount', hMissingCount);
+                setHeaderCount('cbmMissingCount', cbmMissingCount);
+            }
+
+            function updateStatusBadgesBar() {
+                const bar = document.getElementById('statusBadgesBar');
+                if (!bar) return;
+                const statusCounts = { active: 0, inactive: 0, DC: 0, upcoming: 0, '2BDC': 0 };
+                (tableData || []).forEach(item => {
+                    const sku = String(item.SKU || item.sku || '').toUpperCase();
+                    if (sku.includes('PARENT')) return;
+                    let raw = item.status;
+                    if ((raw == null || raw === '') && item.Values) {
+                        const V = typeof item.Values === 'string' ? (function(){ try { return JSON.parse(item.Values); } catch(e) { return {}; } })() : item.Values;
+                        raw = V && V.status;
+                    }
+                    const s = String(raw || '').trim();
+                    const lower = s.toLowerCase();
+                    if (lower === 'active') statusCounts.active++;
+                    else if (lower === 'inactive') statusCounts.inactive++;
+                    else if (s.toUpperCase() === 'DC') statusCounts.DC++;
+                    else if (lower === 'upcoming') statusCounts.upcoming++;
+                    else if (s.toUpperCase() === '2BDC') statusCounts['2BDC']++;
+                });
+                bar.innerHTML = `
+                    <span class="status-badge-item bg-active">Active ${statusCounts.active}</span>
+                    <span class="status-badge-item bg-inactive">Inactive ${statusCounts.inactive}</span>
+                    <span class="status-badge-item bg-dc">DC ${statusCounts.DC}</span>
+                    <span class="status-badge-item bg-upcoming">Upcoming ${statusCounts.upcoming}</span>
+                    <span class="status-badge-item bg-2bdc">2BDC ${statusCounts['2BDC']}</span>
+                `;
+            }
+
+            function refreshProductPlaybackState() {
+                productUniqueParents = [...new Set((tableData || []).map(item => item.Parent).filter(Boolean))];
+                updateProductButtonStates();
+            }
+
+            function setupProductPlaybackListeners() {
+                const playBackward = document.getElementById('play-backward');
+                const playForward = document.getElementById('play-forward');
+                const playPause = document.getElementById('play-pause');
+                const playAuto = document.getElementById('play-auto');
+                if (playBackward) playBackward.addEventListener('click', productPreviousParent);
+                if (playForward) playForward.addEventListener('click', productNextParent);
+                if (playPause) playPause.addEventListener('click', productStopNavigation);
+                if (playAuto) playAuto.addEventListener('click', productStartNavigation);
+            }
+
+            function productStartNavigation() {
+                if (productUniqueParents.length === 0) return;
+                isProductNavigationActive = true;
+                currentProductParentIndex = 0;
+                showCurrentProductParent();
+                const playPause = document.getElementById('play-pause');
+                const playAuto = document.getElementById('play-auto');
+                if (playAuto) { playAuto.style.display = 'none'; }
+                if (playPause) { playPause.style.display = 'inline-flex'; playPause.classList.remove('btn-light'); }
+                updateProductButtonStates();
+            }
+
+            function productStopNavigation() {
+                isProductNavigationActive = false;
+                currentProductParentIndex = -1;
+                const playPause = document.getElementById('play-pause');
+                const playAuto = document.getElementById('play-auto');
+                if (playPause) { playPause.style.display = 'none'; }
+                if (playAuto) { playAuto.style.display = 'inline-flex'; playAuto.classList.remove('btn-success', 'btn-warning', 'btn-danger'); playAuto.classList.add('btn-light'); }
+                filteredData = [...tableData];
+                renderTable(filteredData);
+                updateProductButtonStates();
+            }
+
+            function productNextParent() {
+                if (!isProductNavigationActive) return;
+                if (currentProductParentIndex >= productUniqueParents.length - 1) return;
+                currentProductParentIndex++;
+                showCurrentProductParent();
+            }
+
+            function productPreviousParent() {
+                if (!isProductNavigationActive) return;
+                if (currentProductParentIndex <= 0) return;
+                currentProductParentIndex--;
+                showCurrentProductParent();
+            }
+
+            function showCurrentProductParent() {
+                if (!isProductNavigationActive || currentProductParentIndex === -1) return;
+                const currentParent = productUniqueParents[currentProductParentIndex];
+                filteredData = tableData.filter(item => item.Parent === currentParent);
+                renderTable(filteredData);
+                updateProductButtonStates();
+            }
+
+            function updateProductButtonStates() {
+                const playBackward = document.getElementById('play-backward');
+                const playForward = document.getElementById('play-forward');
+                const playAuto = document.getElementById('play-auto');
+                if (playBackward) {
+                    playBackward.disabled = !isProductNavigationActive || currentProductParentIndex <= 0;
+                    playBackward.classList.toggle('btn-primary', isProductNavigationActive);
+                    playBackward.classList.toggle('btn-light', !isProductNavigationActive);
+                }
+                if (playForward) {
+                    playForward.disabled = !isProductNavigationActive || currentProductParentIndex >= productUniqueParents.length - 1;
+                    playForward.classList.toggle('btn-primary', isProductNavigationActive);
+                    playForward.classList.toggle('btn-light', !isProductNavigationActive);
+                }
+                if (playAuto) playAuto.title = isProductNavigationActive ? 'Show all' : 'Start parent navigation';
             }
 
             // Check if value is missing (null, undefined, empty, or 0)
@@ -1002,47 +1320,46 @@
 
             // Apply all filters
             function applyFilters() {
-                // Check if any missing data filter is active
+                const filterSTATUS = document.getElementById('filterSTATUS');
+                const filterStatusValue = filterSTATUS ? filterSTATUS.value : 'all';
+                const filterWtActKg = document.getElementById('filterWtActKg').value;
                 const filterWtAct = document.getElementById('filterWtAct').value;
                 const filterWtDecl = document.getElementById('filterWtDecl').value;
                 const filterL = document.getElementById('filterL').value;
                 const filterW = document.getElementById('filterW').value;
                 const filterH = document.getElementById('filterH').value;
                 const filterCbm = document.getElementById('filterCbm').value;
-                const hasMissingDataFilter = filterWtAct === 'missing' || filterWtDecl === 'missing' || 
-                                            filterL === 'missing' || filterW === 'missing' || 
+                const hasMissingDataFilter = filterStatusValue === 'missing' || filterWtActKg === 'missing' || filterWtAct === 'missing' || filterWtDecl === 'missing' ||
+                                            filterL === 'missing' || filterW === 'missing' ||
                                             filterH === 'missing' || filterCbm === 'missing';
+
+                const parentSearchVal = (document.getElementById('parentSearch')?.value || '').toLowerCase();
+                const skuSearchVal = (document.getElementById('skuSearch')?.value || '').toLowerCase();
 
                 filteredData = tableData.filter(item => {
                     // Exclude parent SKUs when any missing data filter is active
                     if (hasMissingDataFilter) {
                         const isParentSku = item.SKU && String(item.SKU).toUpperCase().includes('PARENT');
-                        if (isParentSku) {
-                            return false;
+                        if (isParentSku) return false;
+                    }
+
+                    if (parentSearchVal && !(item.Parent || '').toLowerCase().includes(parentSearchVal)) return false;
+                    if (skuSearchVal && !(item.SKU || '').toLowerCase().includes(skuSearchVal)) return false;
+
+                    // STATUS filter (same as product master: by value or missing)
+                    if (filterStatusValue && filterStatusValue !== 'all') {
+                        const statusVal = (item.status != null ? item.status : (item.Values && item.Values.status));
+                        const raw = String(statusVal ?? '').trim();
+                        if (filterStatusValue === 'missing') {
+                            if (raw !== '') return false;
+                        } else {
+                            if (raw.toLowerCase() !== String(filterStatusValue).toLowerCase()) return false;
                         }
                     }
 
-                    // Parent search filter
-                    const parentSearch = document.getElementById('parentSearch').value.toLowerCase();
-                    if (parentSearch && !(item.Parent || '').toLowerCase().includes(parentSearch)) {
+                    // Weight ACT (Kg) filter
+                    if (filterWtActKg === 'missing' && !isMissing(item.wt_act_kg)) {
                         return false;
-                    }
-
-                    // SKU search filter
-                    const skuSearch = document.getElementById('skuSearch').value.toLowerCase();
-                    if (skuSearch && !(item.SKU || '').toLowerCase().includes(skuSearch)) {
-                        return false;
-                    }
-
-                    // Custom search filter
-                    const customSearch = document.getElementById('customSearch').value.toLowerCase();
-                    if (customSearch) {
-                        const parent = (item.Parent || '').toLowerCase();
-                        const sku = (item.SKU || '').toLowerCase();
-                        const status = (item.status || '').toLowerCase();
-                        if (!parent.includes(customSearch) && !sku.includes(customSearch) && !status.includes(customSearch)) {
-                            return false;
-                        }
                     }
 
                     // WT ACT filter
@@ -1080,64 +1397,29 @@
                 renderTable(filteredData);
             }
 
-            // Setup search functionality
+            // Debounce helper for search inputs
+            function debounce(fn, ms) {
+                let t;
+                return function() {
+                    clearTimeout(t);
+                    t = setTimeout(() => fn.apply(this, arguments), ms);
+                };
+            }
+
+            // Setup search and filter listeners (called once at init)
             function setupSearch() {
-                // Parent search
                 const parentSearch = document.getElementById('parentSearch');
-                parentSearch.addEventListener('input', function() {
-                    applyFilters();
-                });
-
-                // SKU search
                 const skuSearch = document.getElementById('skuSearch');
-                skuSearch.addEventListener('input', function() {
-                    applyFilters();
-                });
+                const applyFiltersDebounced = debounce(applyFilters, 180);
+                if (parentSearch) parentSearch.addEventListener('input', applyFiltersDebounced);
+                if (skuSearch) skuSearch.addEventListener('input', applyFiltersDebounced);
 
-                // Custom search
-                const customSearch = document.getElementById('customSearch');
-                customSearch.addEventListener('input', function() {
-                    applyFilters();
-                });
-
-                // Clear search
-                document.getElementById('clearSearch').addEventListener('click', function() {
-                    customSearch.value = '';
-                    parentSearch.value = '';
-                    skuSearch.value = '';
-                    // Reset all column filters
-                    document.getElementById('filterWtAct').value = 'all';
-                    document.getElementById('filterWtDecl').value = 'all';
-                    document.getElementById('filterL').value = 'all';
-                    document.getElementById('filterW').value = 'all';
-                    document.getElementById('filterH').value = 'all';
-                    document.getElementById('filterCbm').value = 'all';
-                    applyFilters();
-                });
-
-                // Column filters
-                document.getElementById('filterWtAct').addEventListener('change', function() {
-                    applyFilters();
-                });
-
-                document.getElementById('filterWtDecl').addEventListener('change', function() {
-                    applyFilters();
-                });
-
-                document.getElementById('filterL').addEventListener('change', function() {
-                    applyFilters();
-                });
-
-                document.getElementById('filterW').addEventListener('change', function() {
-                    applyFilters();
-                });
-
-                document.getElementById('filterH').addEventListener('change', function() {
-                    applyFilters();
-                });
-
-                document.getElementById('filterCbm').addEventListener('change', function() {
-                    applyFilters();
+                const filterSTATUSEl = document.getElementById('filterSTATUS');
+                if (filterSTATUSEl) filterSTATUSEl.addEventListener('change', applyFilters);
+                const filterIds = ['filterWtActKg', 'filterWtAct', 'filterWtDecl', 'filterL', 'filterW', 'filterH', 'filterCbm'];
+                filterIds.forEach(id => {
+                    const el = document.getElementById(id);
+                    if (el) el.addEventListener('change', applyFilters);
                 });
             }
 
@@ -1175,7 +1457,7 @@
             function setupExcelExport() {
                 document.getElementById('downloadExcel').addEventListener('click', function() {
                     // Columns to export (excluding Image, Action, and Parent)
-                    const columns = ["SKU", "Status", "INV", "WT ACT", "WT DECL", "L", "W", "H", "CBM", "CTN (L)", "CTN (W)", "CTN (H)", "CTN (CBM)", "CTN (QTY)", "CTN (CBM/Each)", "CBM (E)", "CTN GWT"];
+                    const columns = ["SKU", "Status", "INV", "Weight ACT (Kg)", "WT ACT (LB)", "WT DECL (LB)", "Length (inch)", "Width (inch)", "Height (Inch)", "Length (CM)", "Width (CM)", "Height (CM)", "CBM", "CTN L (CM)", "CTN W (CM)", "CTN H (CM)", "CTN (CBM)", "CTN (QTY)", "CTN (CBM/Each)", "CBM (E)", "CTN Weight (KG)"];
 
                     // Column definitions with their data keys
                     const columnDefs = {
@@ -1188,31 +1470,43 @@
                         "INV": {
                             key: "shopify_inv"
                         },
-                        "WT ACT": {
+                        "Weight ACT (Kg)": {
+                            key: "wt_act_kg"
+                        },
+                        "WT ACT (LB)": {
                             key: "wt_act"
                         },
-                        "WT DECL": {
+                        "WT DECL (LB)": {
                             key: "wt_decl"
                         },
-                        "L": {
+                        "Length (inch)": {
                             key: "l"
                         },
-                        "W": {
+                        "Width (inch)": {
                             key: "w"
                         },
-                        "H": {
+                        "Height (Inch)": {
                             key: "h"
+                        },
+                        "Length (CM)": {
+                            key: "l_cm"
+                        },
+                        "Width (CM)": {
+                            key: "w_cm"
+                        },
+                        "Height (CM)": {
+                            key: "h_cm"
                         },
                         "CBM": {
                             key: "cbm"
                         },
-                        "CTN (L)": {
+                        "CTN L (CM)": {
                             key: "ctn_l"
                         },
-                        "CTN (W)": {
+                        "CTN W (CM)": {
                             key: "ctn_w"
                         },
-                        "CTN (H)": {
+                        "CTN H (CM)": {
                             key: "ctn_h"
                         },
                         "CTN (CBM)": {
@@ -1227,8 +1521,8 @@
                         "CBM (E)": {
                             key: "cbm_e"
                         },
-                        "CTN GWT": {
-                            key: "ctn_gwt"
+                        "CTN Weight (KG)": {
+                            key: "ctn_weight_kg"
                         }
                     };
 
@@ -1263,6 +1557,16 @@
                                         const key = colDef.key;
                                         let value = item[key] !== undefined && item[key] !== null ? item[key] : '';
 
+                                        // CTN CBM: calculated as CTN L * CTN W * CTN H / 1000000
+                                        if (key === 'ctn_cbm') {
+                                            value = (parseFloat(item.ctn_l) || 0) * (parseFloat(item.ctn_w) || 0) * (parseFloat(item.ctn_h) || 0) / 1000000;
+                                        }
+                                        // CTN CBM each: calculated as CTN CBM / CTN Qty
+                                        if (key === 'ctn_cbm_each') {
+                                            const cbm = (parseFloat(item.ctn_l) || 0) * (parseFloat(item.ctn_w) || 0) * (parseFloat(item.ctn_h) || 0) / 1000000;
+                                            const qty = parseFloat(item.ctn_qty) || 0;
+                                            value = qty > 0 ? cbm / qty : 0;
+                                        }
                                         // Format INV column
                                         if (key === "shopify_inv") {
                                             if (value === 0 || value === "0") {
@@ -1274,7 +1578,7 @@
                                             }
                                         }
                                         // Format numeric columns (WT ACT, WT DECL, L, W, H, CBM, CTN fields, etc.)
-                                        else if (["wt_act", "wt_decl", "l", "w", "h", "cbm", "ctn_l", "ctn_w", "ctn_h", "ctn_cbm", "ctn_qty", "ctn_cbm_each", "cbm_e", "ctn_gwt"].includes(key)) {
+                                        else if (["wt_act_kg", "wt_act", "wt_decl", "l", "w", "h", "l_cm", "w_cm", "h_cm", "cbm", "ctn_l", "ctn_w", "ctn_h", "ctn_cbm", "ctn_qty", "ctn_cbm_each", "cbm_e", "ctn_weight_kg"].includes(key)) {
                                             value = parseFloat(value) || 0;
                                         }
 
@@ -1297,7 +1601,7 @@
                                     return { wch: 20 }; // Wider for text columns
                                 } else if (["Status"].includes(col)) {
                                     return { wch: 12 };
-                                } else if (["WT ACT", "WT DECL", "CBM", "CTN (CBM)", "CTN (CBM/Each)", "CBM (E)"].includes(col)) {
+                                } else if (["Weight ACT (Kg)", "WT ACT (LB)", "WT DECL (LB)", "Length (inch)", "Width (inch)", "Height (Inch)", "Length (CM)", "Width (CM)", "Height (CM)", "CBM", "CTN (CBM)", "CTN (CBM/Each)", "CBM (E)"].includes(col)) {
                                     return { wch: 15 }; // Width for weight and CBM columns
                                 } else {
                                     return { wch: 12 }; // Default width for numeric columns
@@ -1334,7 +1638,7 @@
                             }
 
                             // Add the worksheet to the workbook
-                            XLSX.utils.book_append_sheet(wb, ws, "Dim & Wt Master");
+                            XLSX.utils.book_append_sheet(wb, ws, "Dimensions & Weight Master");
 
                             // Generate Excel file and trigger download
                             XLSX.writeFile(wb, "dim_wt_master_export.xlsx");
@@ -1389,10 +1693,10 @@
                 downloadSampleBtn.addEventListener('click', function() {
                     // Create sample data with all columns
                     const sampleData = [
-                        ['SKU', 'WT ACT', 'WT DECL', 'L', 'W', 'H', 'CBM', 'CTN (L)', 'CTN (W)', 'CTN (H)', 'CTN (CBM)', 'CTN (QTY)', 'CTN (CBM/Each)', 'CBM (E)', 'CTN GWT'],
-                        ['SKU001', '1.5', '1.2', '10.5', '8.3', '5.2', '0.000455', '30', '25', '20', '0.015', '12', '0.00125', '0.0005', '15.5'],
-                        ['SKU002', '2.0', '1.8', '12.0', '9.0', '6.0', '0.000648', '35', '28', '22', '0.0216', '15', '0.00144', '0.0006', '18.0'],
-                        ['SKU003', '1.2', '1.0', '9.5', '7.5', '4.5', '0.000321', '28', '24', '18', '0.0121', '10', '0.00121', '0.0004', '12.5']
+                        ['SKU', 'Weight ACT (Kg)', 'WT ACT (LB)', 'WT DECL (LB)', 'Length (inch)', 'Width (inch)', 'Height (Inch)', 'Length (CM)', 'Width (CM)', 'Height (CM)', 'CBM', 'CTN L (CM)', 'CTN W (CM)', 'CTN H (CM)', 'CTN (CBM)', 'CTN (QTY)', 'CTN (CBM/Each)', 'CBM (E)', 'CTN Weight (KG)'],
+                        ['SKU001', '6.2', '1.5', '1.2', '10.5', '8.3', '5.2', '26.67', '21.08', '13.21', '0.000455', '30', '25', '20', '0.015', '12', '0.00125', '0.0005', '2.5'],
+                        ['SKU002', '9.1', '2.0', '1.8', '12.0', '9.0', '6.0', '30.48', '22.86', '15.24', '0.000648', '35', '28', '22', '0.0216', '15', '0.00144', '0.0006', '3.0'],
+                        ['SKU003', '5.4', '1.2', '1.0', '9.5', '7.5', '4.5', '24.13', '19.05', '11.43', '0.000321', '28', '24', '18', '0.0121', '10', '0.00121', '0.0004', '1.8']
                     ];
 
                     // Create workbook
@@ -1402,20 +1706,24 @@
                     // Set column widths
                     ws['!cols'] = [
                         { wch: 15 }, // SKU
-                        { wch: 12 }, // WT ACT
-                        { wch: 12 }, // WT DECL
-                        { wch: 10 }, // L
-                        { wch: 10 }, // W
-                        { wch: 10 }, // H
+                        { wch: 16 }, // Weight ACT (Kg)
+                        { wch: 14 }, // WT ACT (LB)
+                        { wch: 14 }, // WT DECL (LB)
+                        { wch: 14 }, // Length (inch)
+                        { wch: 12 }, // Width (inch)
+                        { wch: 14 }, // Height (Inch)
+                        { wch: 12 }, // Length (CM)
+                        { wch: 12 }, // Width (CM)
+                        { wch: 12 }, // Height (CM)
                         { wch: 15 }, // CBM
-                        { wch: 12 }, // CTN (L)
-                        { wch: 12 }, // CTN (W)
-                        { wch: 12 }, // CTN (H)
+                        { wch: 14 }, // CTN L (CM)
+                        { wch: 14 }, // CTN W (CM)
+                        { wch: 14 }, // CTN H (CM)
                         { wch: 15 }, // CTN (CBM)
                         { wch: 12 }, // CTN (QTY)
                         { wch: 18 }, // CTN (CBM/Each)
                         { wch: 12 }, // CBM (E)
-                        { wch: 12 }  // CTN GWT
+                        { wch: 16 }  // CTN Weight (KG)
                     ];
 
                     // Style header row
@@ -1430,7 +1738,7 @@
                         };
                     }
 
-                    XLSX.utils.book_append_sheet(wb, ws, "Dim & Wt Data");
+                    XLSX.utils.book_append_sheet(wb, ws, "Dimensions & Weight Data");
                     XLSX.writeFile(wb, "dim_wt_master_sample.xlsx");
                     
                     showToast('success', 'Sample file downloaded successfully!');
@@ -1547,10 +1855,17 @@
                 });
             }
 
-            // Update Push Button State
+            // Update Push Button State and Bulk Edit button
             function updatePushButtonState() {
                 const checkedBoxes = document.querySelectorAll('.row-checkbox:checked');
                 const pushBtn = document.getElementById('pushDataBtn');
+                const bulkEditBtn = document.getElementById('bulkEditBtn');
+                // Count non-parent selected (parent SKUs excluded from bulk edit)
+                let nonParentCount = 0;
+                checkedBoxes.forEach(cb => {
+                    const sku = (cb.getAttribute('data-sku') || '').toUpperCase();
+                    if (sku && !sku.includes('PARENT')) nonParentCount++;
+                });
                 if (checkedBoxes.length > 0) {
                     pushBtn.disabled = false;
                     pushBtn.innerHTML = `<i class="fas fa-cloud-upload-alt me-1"></i> Push Data (${checkedBoxes.length})`;
@@ -1558,6 +1873,41 @@
                     pushBtn.disabled = true;
                     pushBtn.innerHTML = '<i class="fas fa-cloud-upload-alt me-1"></i> Push Data';
                 }
+                if (nonParentCount > 0) {
+                    if (bulkEditBtn) {
+                        bulkEditBtn.disabled = false;
+                        bulkEditBtn.innerHTML = nonParentCount > 1
+                            ? `<i class="fas fa-edit me-1"></i> Bulk Edit (${nonParentCount})`
+                            : '<i class="fas fa-edit me-1"></i> Bulk Edit';
+                    }
+                } else {
+                    if (bulkEditBtn) {
+                        bulkEditBtn.disabled = true;
+                        bulkEditBtn.innerHTML = '<i class="fas fa-edit me-1"></i> Bulk Edit';
+                    }
+                }
+            }
+
+            // Bulk Edit: open edit modal with first selected item; save updates all selected
+            function setupBulkEdit() {
+                const bulkEditBtn = document.getElementById('bulkEditBtn');
+                if (!bulkEditBtn) return;
+                bulkEditBtn.addEventListener('click', function() {
+                    const checkedBoxes = document.querySelectorAll('.row-checkbox:checked');
+                    const selected = [];
+                    checkedBoxes.forEach(checkbox => {
+                        const sku = checkbox.getAttribute('data-sku');
+                        if (!sku || String(sku).toUpperCase().includes('PARENT')) return;
+                        const item = tableData.find(d => d.SKU === sku);
+                        if (item) selected.push(item);
+                    });
+                    if (selected.length === 0) {
+                        showToast('warning', 'Please select at least one non-parent SKU to bulk edit');
+                        return;
+                    }
+                    bulkEditList = selected;
+                    editDimWt(selected[0]);
+                });
             }
 
             // Push Data functionality
@@ -1582,11 +1932,15 @@
                                 selectedSkus.push({
                                     sku: sku,
                                     id: item.id,
+                                    wt_act_kg: item.wt_act_kg || null,
                                     wt_act: item.wt_act || null,
                                     wt_decl: item.wt_decl || null,
                                     l: item.l || null,
                                     w: item.w || null,
                                     h: item.h || null,
+                                    l_cm: item.l_cm || null,
+                                    w_cm: item.w_cm || null,
+                                    h_cm: item.h_cm || null,
                                     cbm: item.cbm || null
                                 });
                             }
@@ -1603,8 +1957,8 @@
                     const confirmMessage = `Are you sure you want to push dimensions & weight data for ${selectedSkus.length} SKU(s) to ALL marketplaces?\n\n` +
                         `Selected SKUs: ${skuList.substring(0, 100)}${skuList.length > 100 ? '...' : ''}\n\n` +
                         `Data to be updated:\n` +
-                        `- Weight (WT ACT, WT DECL)\n` +
-                        `- Dimensions (L, W, H)\n` +
+                        `- Weight (Weight ACT (Kg), WT ACT (LB), WT DECL (LB))\n` +
+                        `- Dimensions (Length/Width/Height in inch and CM)\n` +
                         `- CBM\n\n` +
                         `This will update the data in: Amazon, eBay, Shopify, Walmart, Doba, Temu, and all other connected marketplaces.`;
                     
@@ -1721,7 +2075,7 @@
                 });
             }
 
-            // Calculate CTN (CBM) = CTN (L) × CTN (W) × CTN (H) / 1000000
+            // Calculate CTN (CBM) = CTN L (CM) × CTN W (CM) × CTN H (CM) / 1000000
             function calculateCtnCbm(ctnL, ctnW, ctnH) {
                 if (!ctnL || !ctnW || !ctnH) return 0;
                 const l = parseFloat(ctnL) || 0;
@@ -1738,302 +2092,31 @@
                 return qty > 0 ? cbm / qty : 0;
             }
 
-            // Setup calculated fields for add form
-            function setupAddFormCalculations() {
-                const ctnL = document.getElementById('addCtnL');
-                const ctnW = document.getElementById('addCtnW');
-                const ctnH = document.getElementById('addCtnH');
-                const ctnCbm = document.getElementById('addCtnCbm');
-                const ctnQty = document.getElementById('addCtnQty');
-                const ctnCbmEach = document.getElementById('addCtnCbmEach');
-
-                function updateCalculations() {
-                    const cbm = calculateCtnCbm(ctnL.value, ctnW.value, ctnH.value);
-                    ctnCbm.value = cbm.toFixed(6);
-                    
-                    const cbmEach = calculateCtnCbmEach(cbm, ctnQty.value);
-                    ctnCbmEach.value = cbmEach.toFixed(6);
-                }
-
-                ctnL.addEventListener('input', updateCalculations);
-                ctnW.addEventListener('input', updateCalculations);
-                ctnH.addEventListener('input', updateCalculations);
-                ctnQty.addEventListener('input', updateCalculations);
-            }
-
-            // Setup calculated fields for edit form
-            function setupEditFormCalculations() {
-                const ctnL = document.getElementById('editCtnL');
-                const ctnW = document.getElementById('editCtnW');
-                const ctnH = document.getElementById('editCtnH');
-                const ctnCbm = document.getElementById('editCtnCbm');
-                const ctnQty = document.getElementById('editCtnQty');
-                const ctnCbmEach = document.getElementById('editCtnCbmEach');
-
-                function updateCalculations() {
-                    const cbm = calculateCtnCbm(ctnL.value, ctnW.value, ctnH.value);
-                    ctnCbm.value = cbm.toFixed(6);
-                    
-                    const cbmEach = calculateCtnCbmEach(cbm, ctnQty.value);
-                    ctnCbmEach.value = cbmEach.toFixed(6);
-                }
-
-                ctnL.addEventListener('input', updateCalculations);
-                ctnW.addEventListener('input', updateCalculations);
-                ctnH.addEventListener('input', updateCalculations);
-                ctnQty.addEventListener('input', updateCalculations);
-            }
-
-            // Setup add button handler
-            function setupAddButton() {
-                const addBtn = document.getElementById('addDimWtBtn');
-                if (addBtn) {
-                    // Remove any existing event listeners by cloning
-                    const newBtn = addBtn.cloneNode(true);
-                    addBtn.parentNode.replaceChild(newBtn, addBtn);
-                    
-                    newBtn.addEventListener('click', function(e) {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        openAddDimWtModal();
-                    });
-                } else {
-                    console.error('Add Dim & Wt button not found');
-                }
-            }
-
-            // Open Add Dim & Wt Modal
-            async function openAddDimWtModal() {
-                const modalElement = document.getElementById('addDimWtModal');
-                const modal = new bootstrap.Modal(modalElement);
-                
-                // Reset form
-                document.getElementById('addDimWtForm').reset();
-                document.getElementById('addCtnCbm').value = '';
-                document.getElementById('addCtnCbmEach').value = '';
-                
-                // Destroy Select2 if already initialized
-                const skuSelect = document.getElementById('addSku');
-                if (skuSelect && typeof $ !== 'undefined' && typeof $.fn.select2 !== 'undefined') {
-                    if ($(skuSelect).hasClass('select2-hidden-accessible')) {
-                        $(skuSelect).select2('destroy');
-                    }
-                }
-                
-                // Load SKUs into dropdown
-                await loadSkusIntoDropdown();
-                
-                // Setup save button handler
-                const saveBtn = document.getElementById('saveAddDimWtBtn');
-                const newSaveBtn = saveBtn.cloneNode(true);
-                saveBtn.parentNode.replaceChild(newSaveBtn, saveBtn);
-                
-                newSaveBtn.addEventListener('click', async function() {
-                    await saveAddDimWt();
-                });
-                
-                // Clean up Select2 when modal is hidden
-                modalElement.addEventListener('hidden.bs.modal', function() {
-                    if (skuSelect && typeof $ !== 'undefined' && typeof $.fn.select2 !== 'undefined') {
-                        if ($(skuSelect).hasClass('select2-hidden-accessible')) {
-                            $(skuSelect).select2('destroy');
-                        }
-                    }
-                }, { once: true });
-                
-                modal.show();
-            }
-
-            // Load SKUs into dropdown
-            async function loadSkusIntoDropdown() {
-                try {
-                    const response = await fetch('/dim-wt-master/skus', {
-                        method: 'GET',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'X-CSRF-TOKEN': csrfToken
-                        }
-                    });
-                    
-                    const data = await response.json();
-                    
-                    if (data.success && data.data) {
-                        const skuSelect = document.getElementById('addSku');
-                        
-                        if (!skuSelect) {
-                            console.error('SKU select element not found');
-                            return;
-                        }
-                        
-                        // Check if jQuery and Select2 are available
-                        if (typeof $ === 'undefined' || typeof $.fn.select2 === 'undefined') {
-                            console.warn('jQuery or Select2 not available, using native select');
-                            // Fallback to native select
-                            skuSelect.innerHTML = '<option value="">Select SKU</option>';
-                            data.data.forEach(item => {
-                                const option = document.createElement('option');
-                                option.value = item.sku;
-                                option.textContent = item.sku;
-                                skuSelect.appendChild(option);
-                            });
-                            return;
-                        }
-                        
-                        // Destroy Select2 if already initialized
-                        if ($(skuSelect).hasClass('select2-hidden-accessible')) {
-                            $(skuSelect).select2('destroy');
-                        }
-                        
-                        // Clear existing options except the first one
-                        skuSelect.innerHTML = '<option value="">Select SKU</option>';
-                        
-                        // Add SKU options
-                        data.data.forEach(item => {
-                            const option = document.createElement('option');
-                            option.value = item.sku;
-                            option.textContent = item.sku;
-                            skuSelect.appendChild(option);
-                        });
-                        
-                        // Initialize Select2 with searchable dropdown
-                        $(skuSelect).select2({
-                            theme: 'bootstrap-5',
-                            placeholder: 'Select SKU',
-                            allowClear: true,
-                            width: '100%',
-                            dropdownParent: $('#addDimWtModal')
-                        });
-                    }
-                } catch (error) {
-                    console.error('Error loading SKUs:', error);
-                    showToast('warning', 'Failed to load SKUs. Please refresh the page.');
-                }
-            }
-
-            // Save Add Dim & Wt Master
-            async function saveAddDimWt() {
-                const saveBtn = document.getElementById('saveAddDimWtBtn');
-                const originalText = saveBtn.innerHTML;
-                
-                // Validate required fields
-                const skuSelect = document.getElementById('addSku');
-                let sku = '';
-                if (typeof $ !== 'undefined' && typeof $.fn.select2 !== 'undefined' && $(skuSelect).hasClass('select2-hidden-accessible')) {
-                    sku = $(skuSelect).val() ? $(skuSelect).val().trim() : '';
-                } else {
-                    sku = skuSelect ? skuSelect.value.trim() : '';
-                }
-                
-                if (!sku) {
-                    showToast('warning', 'Please select SKU');
-                    if (typeof $ !== 'undefined' && typeof $.fn.select2 !== 'undefined' && $(skuSelect).hasClass('select2-hidden-accessible')) {
-                        $(skuSelect).select2('open');
-                    } else {
-                        skuSelect.focus();
-                    }
-                    return;
-                }
-                
-                try {
-                    saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i> Saving...';
-                    saveBtn.disabled = true;
-                    
-                    // Calculate CTN CBM and CTN CBM/Each
-                    const ctnL = parseFloat(document.getElementById('addCtnL').value) || 0;
-                    const ctnW = parseFloat(document.getElementById('addCtnW').value) || 0;
-                    const ctnH = parseFloat(document.getElementById('addCtnH').value) || 0;
-                    const ctnQty = parseFloat(document.getElementById('addCtnQty').value) || 0;
-                    const ctnCbm = calculateCtnCbm(ctnL, ctnW, ctnH);
-                    const ctnCbmEach = calculateCtnCbmEach(ctnCbm, ctnQty);
-                    
-                    const formData = {
-                        sku: sku,
-                        wt_act: document.getElementById('addWtAct').value.trim() || null,
-                        wt_decl: document.getElementById('addWtDecl').value.trim() || null,
-                        l: document.getElementById('addL').value.trim() || null,
-                        w: document.getElementById('addW').value.trim() || null,
-                        h: document.getElementById('addH').value.trim() || null,
-                        cbm: document.getElementById('addCbm').value.trim() || null,
-                        ctn_l: document.getElementById('addCtnL').value.trim() || null,
-                        ctn_w: document.getElementById('addCtnW').value.trim() || null,
-                        ctn_h: document.getElementById('addCtnH').value.trim() || null,
-                        ctn_cbm: ctnCbm > 0 ? ctnCbm : null,
-                        ctn_qty: document.getElementById('addCtnQty').value.trim() || null,
-                        ctn_cbm_each: ctnCbmEach > 0 ? ctnCbmEach : null,
-                        cbm_e: document.getElementById('addCbmE').value.trim() || null,
-                        ctn_gwt: document.getElementById('addCtnGwt').value.trim() || null
-                    };
-                    
-                    const response = await fetch('/dim-wt-master/store', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'X-CSRF-TOKEN': csrfToken
-                        },
-                        body: JSON.stringify(formData)
-                    });
-                    
-                    const data = await response.json();
-                    
-                    if (!response.ok) {
-                        throw new Error(data.message || 'Failed to save data');
-                    }
-                    
-                    showToast('success', 'Dim & Wt Data added successfully!');
-                    
-                    // Close modal
-                    const modal = bootstrap.Modal.getInstance(document.getElementById('addDimWtModal'));
-                    modal.hide();
-                    
-                    // Reload data
-                    loadData();
-                } catch (error) {
-                    console.error('Error saving:', error);
-                    showToast('danger', error.message || 'Failed to save data');
-                } finally {
-                    saveBtn.innerHTML = originalText;
-                    saveBtn.disabled = false;
-                }
-            }
-
-            // Edit Dim & Wt Master
+            // Edit Dimensions & Weight Master
             function editDimWt(product) {
                 const modal = new bootstrap.Modal(document.getElementById('editDimWtModal'));
+                document.getElementById('editDimWtModalLabel').textContent = (bulkEditList && bulkEditList.length > 0)
+                    ? ('Bulk Edit (' + bulkEditList.length + ' items)')
+                    : 'Edit Dimensions & Weight Master';
                 
                 // Populate form fields
                 document.getElementById('editProductId').value = product.id || '';
                 document.getElementById('editSku').value = product.SKU || '';
                 document.getElementById('editParent').value = product.Parent || '';
+                document.getElementById('editWtActKg').value = product.wt_act_kg || '';
                 document.getElementById('editWtAct').value = product.wt_act || '';
                 document.getElementById('editWtDecl').value = product.wt_decl || '';
                 document.getElementById('editL').value = product.l || '';
                 document.getElementById('editW').value = product.w || '';
                 document.getElementById('editH').value = product.h || '';
-                document.getElementById('editCbm').value = product.cbm || '';
+                document.getElementById('editLCm').value = product.l_cm || '';
+                document.getElementById('editWCm').value = product.w_cm || '';
+                document.getElementById('editHCm').value = product.h_cm || '';
                 document.getElementById('editCtnL').value = product.ctn_l || '';
                 document.getElementById('editCtnW').value = product.ctn_w || '';
                 document.getElementById('editCtnH').value = product.ctn_h || '';
-                document.getElementById('editCtnCbm').value = product.ctn_cbm || '';
                 document.getElementById('editCtnQty').value = product.ctn_qty || '';
-                document.getElementById('editCtnCbmEach').value = product.ctn_cbm_each || '';
-                document.getElementById('editCbmE').value = product.cbm_e || '';
-                document.getElementById('editCtnGwt').value = product.ctn_gwt || '';
-                
-                // Update calculated fields
-                const ctnL = parseFloat(product.ctn_l) || 0;
-                const ctnW = parseFloat(product.ctn_w) || 0;
-                const ctnH = parseFloat(product.ctn_h) || 0;
-                const ctnQty = parseFloat(product.ctn_qty) || 0;
-                const ctnCbm = calculateCtnCbm(ctnL, ctnW, ctnH);
-                const ctnCbmEach = calculateCtnCbmEach(ctnCbm, ctnQty);
-                
-                // Update calculated fields if they're not already set or if values changed
-                if (!product.ctn_cbm || Math.abs(parseFloat(product.ctn_cbm) - ctnCbm) > 0.000001) {
-                    document.getElementById('editCtnCbm').value = ctnCbm > 0 ? ctnCbm.toFixed(6) : '';
-                }
-                if (!product.ctn_cbm_each || Math.abs(parseFloat(product.ctn_cbm_each) - ctnCbmEach) > 0.000001) {
-                    document.getElementById('editCtnCbmEach').value = ctnCbmEach > 0 ? ctnCbmEach.toFixed(6) : '';
-                }
+                document.getElementById('editCtnWeightKg').value = product.ctn_weight_kg || '';
                 
                 // Setup save button handler
                 const saveBtn = document.getElementById('saveDimWtBtn');
@@ -2047,7 +2130,7 @@
                 modal.show();
             }
 
-            // Save Dim & Wt Master
+            // Save Dimensions & Weight Master (single or bulk)
             async function saveDimWt() {
                 const saveBtn = document.getElementById('saveDimWtBtn');
                 const originalText = saveBtn.innerHTML;
@@ -2064,24 +2147,70 @@
                     const ctnCbm = calculateCtnCbm(ctnL, ctnW, ctnH);
                     const ctnCbmEach = calculateCtnCbmEach(ctnCbm, ctnQty);
                     
-                    const formData = {
-                        product_id: document.getElementById('editProductId').value,
-                        sku: document.getElementById('editSku').value,
-                        parent: document.getElementById('editParent').value,
+                    const baseFormData = {
+                        wt_act_kg: document.getElementById('editWtActKg').value.trim() || null,
                         wt_act: document.getElementById('editWtAct').value.trim() || null,
                         wt_decl: document.getElementById('editWtDecl').value.trim() || null,
                         l: document.getElementById('editL').value.trim() || null,
                         w: document.getElementById('editW').value.trim() || null,
                         h: document.getElementById('editH').value.trim() || null,
-                        cbm: document.getElementById('editCbm').value.trim() || null,
+                        l_cm: document.getElementById('editLCm').value.trim() || null,
+                        w_cm: document.getElementById('editWCm').value.trim() || null,
+                        h_cm: document.getElementById('editHCm').value.trim() || null,
                         ctn_l: document.getElementById('editCtnL').value.trim() || null,
                         ctn_w: document.getElementById('editCtnW').value.trim() || null,
                         ctn_h: document.getElementById('editCtnH').value.trim() || null,
                         ctn_cbm: ctnCbm > 0 ? ctnCbm : null,
                         ctn_qty: document.getElementById('editCtnQty').value.trim() || null,
                         ctn_cbm_each: ctnCbmEach > 0 ? ctnCbmEach : null,
-                        cbm_e: document.getElementById('editCbmE').value.trim() || null,
-                        ctn_gwt: document.getElementById('editCtnGwt').value.trim() || null
+                        ctn_weight_kg: document.getElementById('editCtnWeightKg').value.trim() || null,
+                        ctn_weight_lb: (parseFloat(document.getElementById('editCtnWeightKg').value) || 0) * 2.21
+                    };
+                    
+                    if (bulkEditList && bulkEditList.length > 0) {
+                        let successCount = 0;
+                        let failCount = 0;
+                        for (const product of bulkEditList) {
+                            const formData = {
+                                ...baseFormData,
+                                product_id: product.id,
+                                sku: product.SKU,
+                                parent: product.Parent || ''
+                            };
+                            try {
+                                const response = await fetch('/dim-wt-master/update', {
+                                    method: 'POST',
+                                    headers: {
+                                        'Content-Type': 'application/json',
+                                        'X-CSRF-TOKEN': csrfToken
+                                    },
+                                    body: JSON.stringify(formData)
+                                });
+                                const data = await response.json();
+                                if (response.ok) successCount++; else failCount++;
+                            } catch (e) {
+                                failCount++;
+                            }
+                        }
+                        bulkEditList = null;
+                        document.getElementById('editDimWtModalLabel').textContent = 'Edit Dimensions & Weight Master';
+                        if (failCount === 0) {
+                            showToast('success', successCount + ' item(s) updated successfully!');
+                        } else {
+                            showToast('warning', successCount + ' updated, ' + failCount + ' failed.');
+                        }
+                        const modal = bootstrap.Modal.getInstance(document.getElementById('editDimWtModal'));
+                        modal.hide();
+                        loadData();
+                        updatePushButtonState();
+                        return;
+                    }
+                    
+                    const formData = {
+                        ...baseFormData,
+                        product_id: document.getElementById('editProductId').value,
+                        sku: document.getElementById('editSku').value,
+                        parent: document.getElementById('editParent').value
                     };
                     
                     const response = await fetch('/dim-wt-master/update', {
@@ -2099,13 +2228,11 @@
                         throw new Error(data.message || 'Failed to save data');
                     }
                     
-                    showToast('success', 'Dim & Wt Master updated successfully!');
+                    showToast('success', 'Dimensions & Weight Master updated successfully!');
                     
-                    // Close modal
                     const modal = bootstrap.Modal.getInstance(document.getElementById('editDimWtModal'));
                     modal.hide();
                     
-                    // Reload data
                     loadData();
                 } catch (error) {
                     console.error('Error saving:', error);
@@ -2116,15 +2243,59 @@
                 }
             }
 
-            // Initialize
+            // Verified column – red/green dot toggle (event delegation)
+            function setupVerifiedDropdowns() {
+                document.addEventListener('change', function(e) {
+                    if (!e.target || !e.target.classList.contains('verified-data-dropdown')) return;
+                    const dropdown = e.target;
+                    const sku = dropdown.getAttribute('data-sku');
+                    const isVerified = dropdown.value === '1';
+                    dropdown.classList.toggle('verified', isVerified);
+                    dropdown.classList.toggle('not-verified', !isVerified);
+                    dropdown.title = isVerified ? 'Verified' : 'Not verified';
+                    const verifiedValue = isVerified ? 1 : 0;
+                    makeRequest('/product_master/update-verified', 'POST', { sku: sku, verified_data: verifiedValue })
+                        .then(r => r.json())
+                        .then(data => {
+                            if (data.success) {
+                                const product = tableData.find(d => d.SKU === sku);
+                                if (product) {
+                                    product.verified_data = verifiedValue;
+                                    if (product.Values) product.Values.verified_data = verifiedValue;
+                                    else if (!product.Values) product.Values = { verified_data: verifiedValue };
+                                }
+                            } else {
+                                showToast('danger', data.message || 'Failed to update verified status');
+                                dropdown.value = verifiedValue === 1 ? '0' : '1';
+                                dropdown.classList.toggle('verified', verifiedValue === 0);
+                                dropdown.classList.toggle('not-verified', verifiedValue === 1);
+                            }
+                        })
+                        .catch(() => {
+                            showToast('danger', 'Failed to update verified status');
+                            dropdown.value = verifiedValue === 1 ? '0' : '1';
+                            dropdown.classList.toggle('verified', verifiedValue !== 1);
+                            dropdown.classList.toggle('not-verified', verifiedValue === 1);
+                            dropdown.title = verifiedValue === 1 ? 'Not verified' : 'Verified';
+                        });
+                });
+            }
+            setupVerifiedDropdowns();
+
+            // Initialize (search and playback listeners once to avoid duplicates on reload)
+            setupSearch();
+            setupProductPlaybackListeners();
             loadData();
             setupExcelExport();
             setupImport();
             setupSelectAll();
+            setupBulkEdit();
             setupPushData();
-            setupAddButton();
-            setupAddFormCalculations();
-            setupEditFormCalculations();
+            // Reset bulk edit state when edit modal is closed (e.g. without saving)
+            document.getElementById('editDimWtModal').addEventListener('hidden.bs.modal', function() {
+                bulkEditList = null;
+                document.getElementById('editDimWtModalLabel').textContent = 'Edit Dimensions & Weight Master';
+            });
         });
     </script>
 @endsection

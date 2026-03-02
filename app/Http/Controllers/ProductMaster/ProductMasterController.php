@@ -768,23 +768,22 @@ class ProductMasterController extends Controller
                 'TEMU SHIP',
                 'MOQ',
                 'EBAY2 SHIP',
-                'INITIAL QUANTITY',
                 'Label QTY',
                 'WT ACT',
                 'WT DECL',
-                'L',
-                'W',
-                'H',
+                'Length',
+                'Width',
+                'Height',
                 'CBM',
                 'Image',
                 'DC',
                 'Pcs/Box',
-                'L1',
                 'B',
                 'H1',
                 'Weight',
                 'MSRP',
                 'MAP',
+                'Url',
             ];
 
             // Create example row
@@ -801,23 +800,22 @@ class ProductMasterController extends Controller
                 '5.00',                // TEMU SHIP
                 '100',                 // MOQ
                 '6.50',                // EBAY2 SHIP
-                '500',                 // INITIAL QUANTITY
                 '1',                   // Label QTY
                 '2.50',                // WT ACT
                 '2.00',                // WT DECL
-                '10.00',               // L
-                '8.00',                // W
-                '6.00',                // H
+                '10.00',               // Length
+                '8.00',                // Width
+                '6.00',                // Height
                 '0.0118',              // CBM
                 '',                    // Image (URL or path)
                 '',                    // DC
                 '',                    // Pcs/Box
-                '',                    // L1
                 '',                    // B
                 '',                    // H1
                 '',                    // Weight
                 '',                    // MSRP
                 '',                    // MAP
+                '',                    // Url
             ];
 
             $data = [$headers, $exampleRow];
@@ -833,10 +831,10 @@ class ProductMasterController extends Controller
                 'fill' => ['fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID, 'startColor' => ['rgb' => '2C6ED5']],
                 'alignment' => ['horizontal' => \PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER],
             ];
-            $sheet->getStyle('A1:AC1')->applyFromArray($headerStyle);
+            $sheet->getStyle('A1:AB1')->applyFromArray($headerStyle);
 
             // Auto-size columns
-            foreach (range('A', 'AC') as $col) {
+            foreach (range('A', 'AB') as $col) {
                 $sheet->getColumnDimension($col)->setAutoSize(true);
             }
 
@@ -907,7 +905,6 @@ class ProductMasterController extends Controller
                 'temu_ship' => 'temu_ship',
                 'moq' => 'moq',
                 'ebay2_ship' => 'ebay2_ship',
-                'initial_quantity' => 'initial_quantity',
                 'label_qty' => 'label_qty',
                 'wt_act' => 'wt_act',
                 'wt_decl' => 'wt_decl',
@@ -924,7 +921,6 @@ class ProductMasterController extends Controller
                 'dc' => 'dc',
                 'pcs_box' => 'pcs_per_box',
                 'pcs_per_box' => 'pcs_per_box',
-                'l1' => 'l1',
                 'b' => 'b',
                 'h1' => 'h1',
                 'weight' => 'weight',
@@ -1242,7 +1238,6 @@ class ProductMasterController extends Controller
                 'unit' => 'unit',
                 'status' => 'status',
                 'upc' => 'upc',
-                'initial_quantity' => 'initial_quantity',
                 'shopify_inv' => 'shopify_inv',
                 'shopify_quantity' => 'shopify_quantity',
             ];
@@ -1480,14 +1475,17 @@ class ProductMasterController extends Controller
             'Label QTY' => 'label_qty',
             'WT ACT' => 'wt_act',
             'WT DECL' => 'wt_decl',
+            'Length' => 'l',
+            'Width' => 'w',
+            'Height' => 'h',
             'L' => 'l',
             'W' => 'w',
             'H' => 'h',
             'CBM' => 'cbm',
             'DC' => 'dc',
+            'Url' => 'l2_url',
             '5C' => 'l2_url',
             'Pcs/Box' => 'pcs_per_box',
-            'L1' => 'l1',
             'B' => 'b',
             'H1' => 'h1',
             'Weight' => 'weight',
@@ -1495,7 +1493,6 @@ class ProductMasterController extends Controller
             'MAP' => 'map',
             'STATUS' => 'status',
             'UPC' => 'upc',
-            'Initial Quantity' => 'initial_quantity',
         ];
 
         foreach ($sheetData as $row) {
@@ -1558,13 +1555,22 @@ class ProductMasterController extends Controller
 
                 // Decode the existing Values JSON into an associative array
                 $values = is_array($product->Values) ? $product->Values : json_decode($product->Values, true);
+                $values = is_array($values) ? $values : [];
 
                 foreach ($data['operations'] as $operation) {
                     $field = $operation['field'];
                     $value = $operation['value'];
 
+                    // Parent is a direct column on the model, not stored in Values
+                    if ($field === 'parent') {
+                        if ($operation['operation'] === 'set') {
+                            $product->parent = $value;
+                        }
+                        continue;
+                    }
+
                     if (! isset($values[$field])) {
-                        $values[$field] = 0; // Initialize if not present, this assumes numerical value for arithmetic operations
+                        $values[$field] = 0; // Initialize if not present for arithmetic operations
                     }
 
                     switch ($operation['operation']) {
@@ -1588,7 +1594,6 @@ class ProductMasterController extends Controller
                     }
                 }
 
-                // Encode the updated values back to JSON and save
                 $product->Values = $values;
                 $product->save();
             }
