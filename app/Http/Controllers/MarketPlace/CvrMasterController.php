@@ -656,9 +656,10 @@ class CvrMasterController extends Controller
                 // Amazon PFT% = GPFT% - AD%
                 $amazonPFT = $amazonGPFT - $amazonAD;
 
-                // Rating/reviews from Jungle Scout (SKU then ASIN fallback)
+                // Rating/reviews and LQS from Jungle Scout (SKU then ASIN fallback)
                 $rating = null;
                 $reviews = null;
+                $listingQualityScore = null;
                 $jsData = $jungleScoutBySku->get($sku);
                 if (!$jsData && $amazonSheet && !empty($amazonSheet->asin)) {
                     $asinKey = strtoupper(trim($amazonSheet->asin));
@@ -669,7 +670,20 @@ class CvrMasterController extends Controller
                         if (isset($jsEntry['rating']) && $jsEntry['rating'] > 0) {
                             $rating = (float) $jsEntry['rating'];
                             $reviews = isset($jsEntry['reviews']) ? (int) $jsEntry['reviews'] : null;
+                            $listingQualityScore = isset($jsEntry['listing_quality_score']) && $jsEntry['listing_quality_score'] !== ''
+                                ? (is_numeric($jsEntry['listing_quality_score']) ? (float) $jsEntry['listing_quality_score'] : $jsEntry['listing_quality_score'])
+                                : null;
                             break;
+                        }
+                    }
+                    // If we have JS data but no rating, still try to get LQS from first entry
+                    if ($listingQualityScore === null) {
+                        foreach ($jsData['all_data'] as $jsEntry) {
+                            if (isset($jsEntry['listing_quality_score']) && $jsEntry['listing_quality_score'] !== '') {
+                                $listingQualityScore = is_numeric($jsEntry['listing_quality_score'])
+                                    ? (float) $jsEntry['listing_quality_score'] : $jsEntry['listing_quality_score'];
+                                break;
+                            }
                         }
                     }
                 }
@@ -893,6 +907,7 @@ class CvrMasterController extends Controller
                     "ebay_lmp_count" => $ebayLmpCount,
                     "rating" => $rating,
                     "reviews" => $reviews,
+                    "listing_quality_score" => $listingQualityScore,
                     "latest_remark" => $remarkText,
                     "remark_solved" => $remarkSolved,
                 ];
@@ -962,6 +977,8 @@ class CvrMasterController extends Controller
                     'rating' => $rows->filter(fn ($r) => isset($r->rating) && $r->rating > 0)->isNotEmpty()
                         ? round($rows->filter(fn ($r) => isset($r->rating) && $r->rating > 0)->avg('rating'), 1) : null,
                     'reviews' => $rows->sum('reviews'),
+                    'listing_quality_score' => $rows->filter(fn ($r) => isset($r->listing_quality_score) && $r->listing_quality_score !== null)->isNotEmpty()
+                        ? round($rows->filter(fn ($r) => isset($r->listing_quality_score) && $r->listing_quality_score !== null)->avg('listing_quality_score'), 1) : null,
                     'is_parent_summary' => true,
                 ];
 

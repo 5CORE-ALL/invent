@@ -86,7 +86,7 @@
         }
 
         .status-circle.yellow {
-            background-color: #ffc107;
+            background-color: #ff9c00;
         }
 
         .status-circle.blue {
@@ -606,6 +606,62 @@
                                     <span class="status-circle green"></span> Green (25-50%)</a></li>
                             <li><a class="dropdown-item column-filter" href="#" data-column="dil_percent" data-color="pink">
                                     <span class="status-circle pink"></span> Pink (50%+)</a></li>
+                        </ul>
+                    </div>
+
+                    <!-- CVR Filter -->
+                    <div class="dropdown manual-dropdown-container">
+                        <button class="btn btn-light dropdown-toggle" type="button" id="cvrFilterDropdown">
+                            <span class="status-circle default"></span> CVR
+                        </button>
+                        <ul class="dropdown-menu" aria-labelledby="cvrFilterDropdown">
+                            <li><a class="dropdown-item column-filter active" href="#" data-column="avg_cvr" data-range="all">
+                                    <span class="status-circle default"></span> All CVR</a></li>
+                            <li><a class="dropdown-item column-filter" href="#" data-column="avg_cvr" data-range="0">
+                                    <span class="status-circle red"></span> 0 to 0.00%</a></li>
+                            <li><a class="dropdown-item column-filter" href="#" data-column="avg_cvr" data-range="0.01-1">
+                                    <span class="status-circle red"></span> 0.01 - 1%</a></li>
+                            <li><a class="dropdown-item column-filter" href="#" data-column="avg_cvr" data-range="1-2">
+                                    <span class="status-circle yellow"></span> 1-2%</a></li>
+                            <li><a class="dropdown-item column-filter" href="#" data-column="avg_cvr" data-range="2-3">
+                                    <span class="status-circle yellow"></span> 2-3%</a></li>
+                            <li><a class="dropdown-item column-filter" href="#" data-column="avg_cvr" data-range="3-4">
+                                    <span class="status-circle green"></span> 3-4%</a></li>
+                            <li><a class="dropdown-item column-filter" href="#" data-column="avg_cvr" data-range="0-4">
+                                    <span class="status-circle default"></span> 0-4%</a></li>
+                            <li><a class="dropdown-item column-filter" href="#" data-column="avg_cvr" data-range="4-7">
+                                    <span class="status-circle green"></span> 4-7%</a></li>
+                            <li><a class="dropdown-item column-filter" href="#" data-column="avg_cvr" data-range="7-10">
+                                    <span class="status-circle green"></span> 7-10%</a></li>
+                            <li><a class="dropdown-item column-filter" href="#" data-column="avg_cvr" data-range="10+">
+                                    <span class="status-circle pink"></span> 10%+</a></li>
+                        </ul>
+                    </div>
+
+                    <!-- GPFT% Filter -->
+                    <div class="dropdown manual-dropdown-container">
+                        <button class="btn btn-light dropdown-toggle" type="button" id="gpftFilterDropdown">
+                            <span class="status-circle default"></span> GPFT%
+                        </button>
+                        <ul class="dropdown-menu" aria-labelledby="gpftFilterDropdown">
+                            <li><a class="dropdown-item column-filter active" href="#" data-column="avg_gpft" data-range="all">
+                                    <span class="status-circle default"></span> All GPFT</a></li>
+                            <li><a class="dropdown-item column-filter" href="#" data-column="avg_gpft" data-range="negative">
+                                    <span class="status-circle red"></span> Negative</a></li>
+                            <li><a class="dropdown-item column-filter" href="#" data-column="avg_gpft" data-range="0-10">
+                                    <span class="status-circle yellow"></span> 0-10%</a></li>
+                            <li><a class="dropdown-item column-filter" href="#" data-column="avg_gpft" data-range="10-20">
+                                    <span class="status-circle blue"></span> 10-20%</a></li>
+                            <li><a class="dropdown-item column-filter" href="#" data-column="avg_gpft" data-range="20-30">
+                                    <span class="status-circle green"></span> 20-30%</a></li>
+                            <li><a class="dropdown-item column-filter" href="#" data-column="avg_gpft" data-range="30-40">
+                                    <span class="status-circle green"></span> 30-40%</a></li>
+                            <li><a class="dropdown-item column-filter" href="#" data-column="avg_gpft" data-range="40-50">
+                                    <span class="status-circle green"></span> 40-50%</a></li>
+                            <li><a class="dropdown-item column-filter" href="#" data-column="avg_gpft" data-range="50-60">
+                                    <span class="status-circle pink"></span> 50-60%</a></li>
+                            <li><a class="dropdown-item column-filter" href="#" data-column="avg_gpft" data-range="60+">
+                                    <span class="status-circle pink"></span> 60%+</a></li>
                         </ul>
                     </div>
 
@@ -1384,9 +1440,9 @@ title: "Dil %",
                         const parentEscCvr = (rowData.parent || '').replace(/"/g, '&quot;');
                         const skuEscCvr = (rowData.sku || '').replace(/"/g, '&quot;');
                         if (rowData.is_parent_summary === true) {
-                            html += ' <i class="fas fa-circle pricing-master-chart-link ms-1" data-metric="cvr" data-parent="' + parentEscCvr + '" data-sku="' + skuEscCvr + '" style="cursor:pointer;background-color:#ffc107;color:#0f172a;font-size:8px;vertical-align:middle;border-radius:50%;" title="View CVR graph (Parent, Rolling L30)"></i>';
+                            html += ' <i class="fas fa-circle pricing-master-chart-link ms-1" data-metric="cvr" data-parent="' + parentEscCvr + '" data-sku="' + skuEscCvr + '" style="cursor:pointer;color:#ff9c00;font-size:8px;vertical-align:middle;" title="View CVR graph (Parent, Rolling L30)"></i>';
                         } else {
-                            html += ' <i class="fas fa-circle pricing-master-chart-link ms-1" data-metric="cvr" data-sku="' + skuEscCvr + '" style="cursor:pointer;background-color:#ffc107;color:#0f172a;font-size:8px;vertical-align:middle;border-radius:50%;" title="View CVR graph (Rolling L30)"></i>';
+                            html += ' <i class="fas fa-circle pricing-master-chart-link ms-1" data-metric="cvr" data-sku="' + skuEscCvr + '" style="cursor:pointer;color:#ff9c00;font-size:8px;vertical-align:middle;" title="View CVR graph (Rolling L30)"></i>';
                         }
                         return html;
                     },
@@ -1629,6 +1685,21 @@ title: "Dil %",
                     minWidth: 70
                 },
                 {
+                    title: "LQS",
+                    field: "listing_quality_score",
+                    hozAlign: "center",
+                    sorter: "number",
+                    tooltip: "5core Listing Quality Score from Jungle Scout",
+                    formatter: function(cell) {
+                        const value = cell.getValue();
+                        if (value == null || value === '') return '<span style="color: #6c757d;">-</span>';
+                        const num = typeof value === 'number' ? value : parseFloat(value);
+                        if (isNaN(num)) return '<span style="color: #6c757d;">-</span>';
+                        return '<span style="font-weight: 600;">' + num + '</span>';
+                    },
+                    minWidth: 50
+                },
+                {
                     title: "Total Views",
                     field: "total_views",
                     hozAlign: "center",
@@ -1665,7 +1736,7 @@ title: "Dil %",
                         const price = value != null && value !== '' ? parseFloat(value) : null;
                         if (price == null || price <= 0) {
                             const url = '/repricer/amazon-search' + (skuEnc ? '?sku=' + skuEnc : '');
-                            return '<a href="' + url + '" target="_blank" rel="noopener" class="lmp-no-data-link" title="No LMP – open Amazon repricer search"><i class="fas fa-circle" style="background-color: #ffc107; color: #0f172a; font-size: 10px; border-radius: 50%;"></i></a>';
+                            return '<a href="' + url + '" target="_blank" rel="noopener" class="lmp-no-data-link" title="No LMP – open Amazon repricer search"><i class="fas fa-circle" style="color: #ff9c00; font-size: 10px;"></i></a>';
                         }
                         const avgPrice = parseFloat(rowData.avg_price || 0);
                         const color = (avgPrice > 0 && price < avgPrice) ? '#dc3545' : '#28a745';
@@ -1690,7 +1761,7 @@ title: "Dil %",
                         const price = value != null && value !== '' ? parseFloat(value) : null;
                         if (price == null || price <= 0) {
                             const url = '/repricer/ebay-search' + (skuEnc ? '?sku=' + skuEnc : '');
-                            return '<a href="' + url + '" target="_blank" rel="noopener" class="lmp-no-data-link" title="No LMP – open eBay repricer search"><i class="fas fa-circle" style="background-color: #ffc107; color: #0f172a; font-size: 10px; border-radius: 50%;"></i></a>';
+                            return '<a href="' + url + '" target="_blank" rel="noopener" class="lmp-no-data-link" title="No LMP – open eBay repricer search"><i class="fas fa-circle" style="color: #ff9c00; font-size: 10px;"></i></a>';
                         }
                         const avgPrice = parseFloat(rowData.avg_price || 0);
                         const color = (avgPrice > 0 && price < avgPrice) ? '#dc3545' : '#28a745';
@@ -1924,14 +1995,15 @@ title: "Dil %",
             if (pct >= 100 && pct <= 150) return '#28a745';
             return '#e83e8c';
         }
-        // Yellow: use yellow bg + dark text instead of yellow text
+        // Dark mustard text (no yellow background)
+        const darkMustard = '#ff9c00'; // orange/mustard accent
         function styleForCellColor(c) {
             if (!c) return 'font-weight:600;';
-            if (c === '#ffc107') return 'background-color:#ffc107;color:#0f172a;font-weight:600;padding:0 3px;border-radius:2px;';
+            if (c === '#ffc107') return 'color:' + darkMustard + ';font-weight:600;';
             return 'color:' + c + ';font-weight:600;';
         }
         function applyCellColor($el, c) {
-            if (c === '#ffc107') { $el.css({ backgroundColor: '#ffc107', color: '#0f172a' }); }
+            if (c === '#ffc107') { $el.css({ backgroundColor: '', color: darkMustard }); }
             else { $el.css({ backgroundColor: '', color: c || '#6c757d' }); }
         }
 
@@ -2065,7 +2137,7 @@ title: "Dil %",
             const spft = l30 == 0 ? sgpft : (sgpft - ad);
             const sroi = lp > 0 ? ((sprice * margin - lp - ship) / lp) * 100 : 0;
             
-            input.css('border-color', '#ffc107');
+            input.css('border-color', '#ff9c00');
             
             $.ajax({
                 url: '/cvr-master-save-suggested-data',
@@ -2315,12 +2387,12 @@ title: "Dil %",
             const maxRows = onlyAmazon ? amzList.length : (onlyEbay ? ebayList.length : Math.max(amzList.length, ebayList.length));
             let html = '';
             if (onlyAmazon && amzLowest != null && amzLowest > 0) {
-                html += '<div class="mb-3"><span class="badge bg-warning text-dark">Amz lowest: $' + amzLowest.toFixed(2) + '</span></div>';
+                html += '<div class="mb-3"><span class="badge" style="background-color: transparent; color: #ff9c00; font-weight: 600;">Amz lowest: $' + amzLowest.toFixed(2) + '</span></div>';
             } else if (onlyEbay && ebayLowest != null && ebayLowest > 0) {
                 html += '<div class="mb-3"><span class="badge bg-info text-dark">eBay lowest: $' + ebayLowest.toFixed(2) + '</span></div>';
             } else if (!onlyAmazon && !onlyEbay && ((amzLowest != null && amzLowest > 0) || (ebayLowest != null && ebayLowest > 0))) {
                 const parts = [];
-                if (amzLowest != null && amzLowest > 0) parts.push('<span class="badge bg-warning text-dark me-1">Amz lowest: $' + amzLowest.toFixed(2) + '</span>');
+                if (amzLowest != null && amzLowest > 0) parts.push('<span class="badge me-1" style="background-color: transparent; color: #ff9c00; font-weight: 600;">Amz lowest: $' + amzLowest.toFixed(2) + '</span>');
                 if (ebayLowest != null && ebayLowest > 0) parts.push('<span class="badge bg-info text-dark">eBay lowest: $' + ebayLowest.toFixed(2) + '</span>');
                 html += '<div class="mb-3">' + parts.join(' ') + '</div>';
             }
@@ -2776,6 +2848,39 @@ title: "Dil %",
                     return true;
                 });
             }
+            // Apply CVR filter to parent view (ranges: 0, 0.01-1, 1-2, 2-3, 3-4, 0-4, 4-7, 7-10, 10+)
+            const cvrRange = $('.column-filter[data-column="avg_cvr"].active')?.data('range') || 'all';
+            if (cvrRange !== 'all') {
+                displayData = displayData.filter(row => {
+                    const cvr = parseFloat(row.avg_cvr) || 0;
+                    if (cvrRange === '0') return cvr >= 0 && cvr < 0.01;
+                    if (cvrRange === '0.01-1') return cvr >= 0.01 && cvr < 1;
+                    if (cvrRange === '1-2') return cvr >= 1 && cvr < 2;
+                    if (cvrRange === '2-3') return cvr >= 2 && cvr < 3;
+                    if (cvrRange === '3-4') return cvr >= 3 && cvr < 4;
+                    if (cvrRange === '0-4') return cvr >= 0 && cvr < 4;
+                    if (cvrRange === '4-7') return cvr >= 4 && cvr < 7;
+                    if (cvrRange === '7-10') return cvr >= 7 && cvr < 10;
+                    if (cvrRange === '10+') return cvr >= 10;
+                    return true;
+                });
+            }
+            // Apply GPFT% filter to parent view (ranges: negative, 0-10, 10-20, 20-30, 30-40, 40-50, 50-60, 60+)
+            const gpftRange = $('.column-filter[data-column="avg_gpft"].active')?.data('range') || 'all';
+            if (gpftRange !== 'all') {
+                displayData = displayData.filter(row => {
+                    const gpft = parseFloat(row.avg_gpft) || 0;
+                    if (gpftRange === 'negative') return gpft < 0;
+                    if (gpftRange === '0-10') return gpft >= 0 && gpft < 10;
+                    if (gpftRange === '10-20') return gpft >= 10 && gpft < 20;
+                    if (gpftRange === '20-30') return gpft >= 20 && gpft < 30;
+                    if (gpftRange === '30-40') return gpft >= 30 && gpft < 40;
+                    if (gpftRange === '40-50') return gpft >= 40 && gpft < 50;
+                    if (gpftRange === '50-60') return gpft >= 50 && gpft < 60;
+                    if (gpftRange === '60+') return gpft >= 60;
+                    return true;
+                });
+            }
             
             console.log('Final display data length:', displayData.length);
             console.log('Expected:', parentRows.length, '+ children if expanded');
@@ -2907,12 +3012,14 @@ title: "Dil %",
             const $item = $(this);
             const container = $item.closest('.manual-dropdown-container');
             const button = container.find('.btn');
+            const column = $item.data('column');
             
             container.find('.column-filter').removeClass('active');
             $item.addClass('active');
             
             const statusCircle = $item.find('.status-circle').clone();
-            button.html('').append(statusCircle).append(' DIL%');
+            const label = column === 'dil_percent' ? ' DIL%' : (column === 'avg_cvr' ? ' CVR' : (column === 'avg_gpft' ? ' GPFT%' : ''));
+            button.html('').append(statusCircle).append(label);
             container.removeClass('show');
             
             applyFilters();
@@ -2969,6 +3076,39 @@ title: "Dil %",
                     });
                 }
 
+                const cvrRange = $('.column-filter[data-column="avg_cvr"].active')?.data('range') || 'all';
+                if (cvrRange !== 'all') {
+                    table.addFilter(function(data) {
+                        const cvr = parseFloat(data['avg_cvr']) || 0;
+                        if (cvrRange === '0') return cvr >= 0 && cvr < 0.01;
+                        if (cvrRange === '0.01-1') return cvr >= 0.01 && cvr < 1;
+                        if (cvrRange === '1-2') return cvr >= 1 && cvr < 2;
+                        if (cvrRange === '2-3') return cvr >= 2 && cvr < 3;
+                        if (cvrRange === '3-4') return cvr >= 3 && cvr < 4;
+                        if (cvrRange === '0-4') return cvr >= 0 && cvr < 4;
+                        if (cvrRange === '4-7') return cvr >= 4 && cvr < 7;
+                        if (cvrRange === '7-10') return cvr >= 7 && cvr < 10;
+                        if (cvrRange === '10+') return cvr >= 10;
+                        return true;
+                    });
+                }
+
+                const gpftRange = $('.column-filter[data-column="avg_gpft"].active')?.data('range') || 'all';
+                if (gpftRange !== 'all') {
+                    table.addFilter(function(data) {
+                        const gpft = parseFloat(data['avg_gpft']) || 0;
+                        if (gpftRange === 'negative') return gpft < 0;
+                        if (gpftRange === '0-10') return gpft >= 0 && gpft < 10;
+                        if (gpftRange === '10-20') return gpft >= 10 && gpft < 20;
+                        if (gpftRange === '20-30') return gpft >= 20 && gpft < 30;
+                        if (gpftRange === '30-40') return gpft >= 30 && gpft < 40;
+                        if (gpftRange === '40-50') return gpft >= 40 && gpft < 50;
+                        if (gpftRange === '50-60') return gpft >= 50 && gpft < 60;
+                        if (gpftRange === '60+') return gpft >= 60;
+                        return true;
+                    });
+                }
+
                 // Apply SKU and Parent search filters
                 const skuVal = $('#sku-search').val();
                 if (skuVal) table.addFilter("sku", "like", skuVal);
@@ -2995,10 +3135,21 @@ title: "Dil %",
             $('#sku-parent-filter').val('both');
             $('#sku-search').val('');
             $('#parent-search').val('');
+            // Reset DIL
             const $allDil = $('.column-filter[data-column="dil_percent"][data-color="all"]');
             $('.column-filter[data-column="dil_percent"]').removeClass('active');
             $allDil.addClass('active');
             $('#dilFilterDropdown').html('').append($allDil.find('.status-circle').clone()).append(' DIL%');
+            // Reset CVR
+            const $allCvr = $('.column-filter[data-column="avg_cvr"][data-range="all"]');
+            $('.column-filter[data-column="avg_cvr"]').removeClass('active');
+            $allCvr.addClass('active');
+            $('#cvrFilterDropdown').html('').append($allCvr.find('.status-circle').clone()).append(' CVR');
+            // Reset GPFT%
+            const $allGpft = $('.column-filter[data-column="avg_gpft"][data-range="all"]');
+            $('.column-filter[data-column="avg_gpft"]').removeClass('active');
+            $allGpft.addClass('active');
+            $('#gpftFilterDropdown').html('').append($allGpft.find('.status-circle').clone()).append(' GPFT%');
             applyFilters();
         });
 
