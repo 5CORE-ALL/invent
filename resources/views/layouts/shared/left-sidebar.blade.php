@@ -372,7 +372,7 @@
                             <a href="{{ route('id.master') }}">ID Master</a>
                         </li>
                         <li>
-                            <a href="{{ route('dim.wt.master') }}">Dim & Wt Master</a>
+                            <a href="{{ route('dim.wt.master') }}">Dimensions & Weight Master</a>
                         </li>
                         <li>
                             <a href="{{ route('general.specific.master') }}">General Specific Masters</a>

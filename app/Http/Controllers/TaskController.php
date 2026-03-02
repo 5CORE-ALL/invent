@@ -75,45 +75,59 @@ class TaskController extends Controller
 
         $tasks = $tasksQuery->orderBy('start_date', 'asc')->get();
 
-        // Map emails to names for display
-        $tasks->each(function($task) {
-            // Find users by email and get their names
+        // Map emails to names and avatar URLs for display
+        $defaultAvatar = asset('images/users/avatar-2.jpg');
+        $tasks->each(function($task) use ($defaultAvatar) {
+            // Find users by email and get their names + avatars
             if ($task->assignor) {
                 $assignorUser = User::where('email', $task->assignor)->first();
                 $task->assignor_name = $assignorUser ? $assignorUser->name : $task->assignor;
                 $task->assignor_id = $assignorUser ? $assignorUser->id : null;
+                $task->assignor_avatar = $assignorUser && $assignorUser->avatar
+                    ? asset('storage/' . $assignorUser->avatar)
+                    : $defaultAvatar;
             } else {
                 $task->assignor_name = '-';
                 $task->assignor_id = null;
+                $task->assignor_avatar = null;
             }
-            
+
             if ($task->assign_to) {
                 // Handle multiple assignees (comma-separated emails)
                 $assigneeEmails = array_map('trim', explode(',', $task->assign_to));
                 $assigneeNames = [];
                 $assigneeIds = [];
-                
+                $assigneeAvatars = [];
+
                 foreach ($assigneeEmails as $email) {
                     $assigneeUser = User::where('email', $email)->first();
                     if ($assigneeUser) {
                         $assigneeNames[] = $assigneeUser->name;
                         $assigneeIds[] = $assigneeUser->id;
+                        $assigneeAvatars[] = $assigneeUser->avatar
+                            ? asset('storage/' . $assigneeUser->avatar)
+                            : $defaultAvatar;
                     } else {
                         $assigneeNames[] = $email;
+                        $assigneeAvatars[] = $defaultAvatar;
                     }
                 }
-                
+
                 $task->assignee_name = implode(', ', $assigneeNames);
                 $task->assignee_id = !empty($assigneeIds) ? $assigneeIds[0] : null; // First ID for compatibility
-                $task->assignee_ids = $assigneeIds; // All IDs
+                $task->assignee_ids = $assigneeIds;
                 $task->assignee_count = count($assigneeNames);
+                $task->assignee_avatar = !empty($assigneeAvatars) ? $assigneeAvatars[0] : null;
+                $task->assignee_avatars = $assigneeAvatars;
             } else {
                 $task->assignee_name = '-';
                 $task->assignee_id = null;
                 $task->assignee_ids = [];
                 $task->assignee_count = 0;
+                $task->assignee_avatar = null;
+                $task->assignee_avatars = [];
             }
-            
+
             // For permission checks
             $task->assignor_email = $task->assignor;
             $task->assignee_email = $task->assign_to;
@@ -1035,20 +1049,29 @@ class TaskController extends Controller
 
         $tasks = $query->orderBy('id', 'desc')->get();
 
-        // Map emails to names
-        $tasks->each(function($task) {
+        // Map emails to names and avatar URLs
+        $defaultAvatar = asset('images/users/avatar-2.jpg');
+        $tasks->each(function($task) use ($defaultAvatar) {
             if ($task->assignor) {
                 $assignorUser = User::where('email', $task->assignor)->first();
                 $task->assignor_name = $assignorUser ? $assignorUser->name : $task->assignor;
+                $task->assignor_avatar = $assignorUser && $assignorUser->avatar
+                    ? asset('storage/' . $assignorUser->avatar)
+                    : $defaultAvatar;
             } else {
                 $task->assignor_name = '-';
+                $task->assignor_avatar = null;
             }
-            
+
             if ($task->assign_to) {
                 $assigneeUser = User::where('email', $task->assign_to)->first();
                 $task->assignee_name = $assigneeUser ? $assigneeUser->name : $task->assign_to;
+                $task->assignee_avatar = $assigneeUser && $assigneeUser->avatar
+                    ? asset('storage/' . $assigneeUser->avatar)
+                    : $defaultAvatar;
             } else {
                 $task->assignee_name = '-';
+                $task->assignee_avatar = null;
             }
         });
 
@@ -1341,13 +1364,34 @@ class TaskController extends Controller
             'schedule_type' => 'required|in:daily,weekly,monthly',
             'schedule_days' => 'nullable|string',
             'schedule_time' => 'nullable',
+            'assignor_id' => 'nullable|exists:users,id',
+            'assignee_id' => 'nullable|exists:users,id',
         ]);
         
         // Set default priority to Normal if not provided
         $validated['priority'] = $validated['priority'] ?? 'Normal';
 
-        // Update automate_tasks table
-        \DB::table('automate_tasks')->where('id', $id)->update([
+        $user = Auth::user();
+        $existing = \DB::table('automate_tasks')->where('id', $id)->first();
+        if (!$existing) {
+            return redirect()->route('tasks.automated')->with('error', 'Automated task not found.');
+        }
+
+        // Resolve assignor email from assignor_id (form always sends it: dropdown for admin, hidden for non-admin)
+        $assignorEmail = $existing->assignor ?? $user->email;
+        if ($request->filled('assignor_id')) {
+            $assignorUser = User::find($validated['assignor_id']);
+            $assignorEmail = $assignorUser ? $assignorUser->email : $assignorEmail;
+        }
+
+        // Resolve assignee email from assignee_id
+        $assigneeEmail = null;
+        if ($request->filled('assignee_id')) {
+            $assigneeUser = User::find($validated['assignee_id']);
+            $assigneeEmail = $assigneeUser ? $assigneeUser->email : null;
+        }
+
+        $automateUpdate = [
             'title' => $validated['title'],
             'group' => $validated['group'],
             'priority' => $validated['priority'],
@@ -1355,18 +1399,25 @@ class TaskController extends Controller
             'schedule_type' => $validated['schedule_type'],
             'schedule_days' => $validated['schedule_days'] ?? '',
             'schedule_time' => $validated['schedule_time'],
+            'assignor' => $assignorEmail,
+            'assign_to' => $assigneeEmail,
             'updated_at' => now(),
-        ]);
+        ];
 
-        // Update any existing executed instances in tasks table
-        \DB::table('tasks')->where('automate_task_id', $id)->update([
+        \DB::table('automate_tasks')->where('id', $id)->update($automateUpdate);
+
+        // Update any existing executed instances in tasks table (including assignor/assignee)
+        $tasksUpdate = [
             'title' => $validated['title'],
             'group' => $validated['group'],
             'priority' => $validated['priority'],
             'eta_time' => $validated['etc_minutes'] ?? 10,
             'schedule_type' => $validated['schedule_type'],
+            'assignor' => $assignorEmail,
+            'assign_to' => $assigneeEmail,
             'updated_at' => now(),
-        ]);
+        ];
+        \DB::table('tasks')->where('automate_task_id', $id)->update($tasksUpdate);
 
         return redirect()->route('tasks.automated')->with('success', 'Automated task updated! New schedule will take effect immediately.');
     }
@@ -1540,7 +1591,28 @@ class TaskController extends Controller
 
         $deletedTasks = $query->orderBy('deleted_at', 'desc')->get();
 
+        // Add avatar URLs for assignor and assignee
+        $defaultAvatar = asset('images/users/avatar-2.jpg');
+        $deletedTasks->each(function($task) use ($defaultAvatar) {
+            if ($task->assignor) {
+                $assignorUser = User::where('email', $task->assignor)->first();
+                $task->assignor_avatar = $assignorUser && $assignorUser->avatar
+                    ? asset('storage/' . $assignorUser->avatar)
+                    : $defaultAvatar;
+            } else {
+                $task->assignor_avatar = null;
+            }
+            if ($task->assign_to) {
+                $assigneeUser = User::where('email', $task->assign_to)->first();
+                $task->assignee_avatar = $assigneeUser && $assigneeUser->avatar
+                    ? asset('storage/' . $assigneeUser->avatar)
+                    : $defaultAvatar;
+            } else {
+                $task->assignee_avatar = null;
+            }
+        });
+
         return response()->json($deletedTasks);
     }
-    
+
 }

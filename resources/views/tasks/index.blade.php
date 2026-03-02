@@ -2035,34 +2035,45 @@
                         }
                     });
                     
-                    // ASSIGNOR (first name only)
+                    // ASSIGNOR (avatar + first name)
                     cols.push({
-                        title: "ASSIGNOR", 
-                        field: "assignor_name", 
-                        width: 100,
+                        title: "ASSIGNOR",
+                        field: "assignor_name",
+                        width: 120,
                         hozAlign: "center",
                         formatter: function(cell) {
+                            var row = cell.getRow().getData();
                             var value = cell.getValue();
                             if (value && value !== '-') {
                                 var firstName = value.trim().split(' ')[0];
-                                return '<strong>' + firstName + '</strong>';
+                                var imgSrc = (row.assignor_avatar || "{{ asset('images/users/avatar-2.jpg') }}").replace(/&/g, '&amp;');
+                                var nameEsc = String(firstName).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                                return '<div class="d-flex align-items-center justify-content-center gap-2 flex-nowrap">' +
+                                    '<img src="' + imgSrc + '" alt="" class="rounded-circle" style="width:28px;height:28px;object-fit:cover;flex-shrink:0;">' +
+                                    '<strong style="font-size: 11px;">' + nameEsc + '</strong>' +
+                                    '</div>';
                             }
                             return '<span style="color: #adb5bd;">-</span>';
                         }
                     });
-                    
-                    // ASSIGNEE (limited to 12 characters)
+
+                    // ASSIGNEE (avatar + name, limited to 12 chars)
                     cols.push({
-                        title: "ASSIGNEE", 
-                        field: "assignee_name", 
-                        width: 130,
+                        title: "ASSIGNEE",
+                        field: "assignee_name",
+                        width: 140,
                         hozAlign: "center",
                         formatter: function(cell) {
+                            var row = cell.getRow().getData();
                             var value = cell.getValue();
                             if (value && value !== '-') {
-                                // Truncate to 12 characters
                                 var displayValue = value.length > 12 ? value.substring(0, 12) + '...' : value;
-                                return '<strong style="font-size: 11px; line-height: 1.4;">' + displayValue + '</strong>';
+                                var imgSrc = (row.assignee_avatar || "{{ asset('images/users/avatar-2.jpg') }}").replace(/&/g, '&amp;');
+                                var nameEsc = String(displayValue).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                                return '<div class="d-flex align-items-center justify-content-center gap-2 flex-nowrap">' +
+                                    '<img src="' + imgSrc + '" alt="" class="rounded-circle" style="width:28px;height:28px;object-fit:cover;flex-shrink:0;">' +
+                                    '<strong style="font-size: 11px; line-height: 1.4;">' + nameEsc + '</strong>' +
+                                    '</div>';
                             }
                             return '<span style="color: #adb5bd;">-</span>';
                         },
@@ -2096,24 +2107,19 @@
                                 var dayStr = String(day).padStart(2, '0');
                                 var monthStr = String(month).padStart(2, '0');
                                 
-                                // Calculate days from TID for color
                                 var tidDate = new Date(year, month - 1, day);
                                 tidDate.setHours(0, 0, 0, 0);
                                 var now = new Date();
                                 now.setHours(0, 0, 0, 0);
-                                var daysSinceTID = Math.floor((now - tidDate) / (1000 * 60 * 60 * 24));
-                                
                                 var textColor = '#0d6efd'; // Default blue
-                                
-                                // Color logic based on task age
+                                // Red only when task is overdue (TID + 10 days past and not Done/Archived)
                                 if (rowData.status !== 'Done' && rowData.status !== 'Archived') {
-                                    if (daysSinceTID >= 2) {
-                                        textColor = '#dc3545'; // Red
-                                    } else if (daysSinceTID === 1) {
-                                        textColor = '#fd7e14'; // Orange
+                                    var overdueDate = new Date(tidDate);
+                                    overdueDate.setDate(overdueDate.getDate() + 10);
+                                    if (now > overdueDate) {
+                                        textColor = '#dc3545'; // Red when overdue
                                     }
                                 }
-                                
                                 return '<span style="color: ' + textColor + '; font-weight: 600; font-size: 11px;" title="' + dayStr + '/' + monthStr + '/' + year + '">' + dayStr + '/' + monthStr + '</span>';
                             }
                             return '<span style="color: #adb5bd;">-</span>';
@@ -2165,32 +2171,8 @@
                             var assignorId = rowData.assignor_id;
                             var assigneeId = rowData.assignee_id;
                             
-                            // CALCULATE OVERDUE BASED ON completion_day
-                            let isOverdue = false;
-                            let displayText = value;
-                            
-                            if (value !== 'Archived' && rowData.start_date && rowData.due_date) {
-                                const startDate = new Date(rowData.start_date);
-                                const dueDate = new Date(rowData.due_date);
-                                const expectedDays = Math.ceil((dueDate - startDate) / (1000 * 60 * 60 * 24));
-                                
-                                if (rowData.completion_date && rowData.completion_date !== '0000-00-00' && rowData.completion_day) {
-                                    // Task completed - check if took longer
-                                    const actualDays = parseInt(rowData.completion_day);
-                                    isOverdue = actualDays > expectedDays;
-                                    if (isOverdue) {
-                                        displayText = `🔴 ${value} (${actualDays}/${expectedDays}d)`;
-                                    }
-                                } else {
-                                    // Not completed - check if past due
-                                    const now = new Date();
-                                    if (now > dueDate) {
-                                        isOverdue = true;
-                                        const daysLate = Math.ceil((now - dueDate) / (1000 * 60 * 60 * 24));
-                                        displayText = `OVERDUE ${daysLate}d`;
-                                    }
-                                }
-                            }
+                            // Status badge always uses status color (not red for overdue)
+                            var displayText = value;
                             
                             // Check if user can update status
                             var canUpdateStatus = isAdmin || assignorId === currentUserId || assigneeId === currentUserId;
@@ -2207,11 +2189,7 @@
                                 'Hold': {bg: '#495057', text: '#fff'},
                                 'Rework': {bg: '#f5576c', text: '#fff'}
                             };
-                            
-                            // OVERRIDE WITH RED IF OVERDUE!
-                            var currentStatus = isOverdue 
-                                ? {bg: '#dc3545', text: '#fff'} 
-                                : (statuses[value] || {bg: '#6c757d', text: '#fff'});
+                            var currentStatus = statuses[value] || {bg: '#6c757d', text: '#fff'};
                             
                             if (!canUpdateStatus) {
                                 return '<span style="background: ' + currentStatus.bg + '; color: ' + currentStatus.text + '; padding: 6px 12px; border-radius: 20px; font-size: 11px; font-weight: 700; display: inline-block;">' + displayText + '</span>';

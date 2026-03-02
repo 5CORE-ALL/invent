@@ -1123,7 +1123,8 @@
                 if (!isBackgroundRetry) {
                     showToast(`Price $${price.toFixed(2)} pushed successfully for SKU: ${sku}`, 'success');
                 }
-                
+                // Remove from background retry list so we don't keep retrying this SKU
+                removeFailedSkuFromRetry(sku);
                 return true;
             } catch (xhr) {
                 const errorMsg = xhr.responseJSON?.errors?.[0]?.message || xhr.responseJSON?.error || xhr.responseJSON?.message || 'Failed to apply price';

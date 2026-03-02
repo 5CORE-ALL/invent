@@ -77,6 +77,17 @@
         .stat-card-pink {
             border-left-color: #e83e8c;
         }
+
+        /* Missed status row - light yellow background */
+        .deleted-row-missed,
+        .deleted-row-missed .tabulator-cell {
+            background-color: #fffde7 !important;
+        }
+        .deleted-row-missed:hover,
+        .deleted-row-missed:hover .tabulator-cell {
+            background-color: #fff9c4 !important;
+        }
+
         .stat-card-pink .stat-icon {
             background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
         }
@@ -287,6 +298,16 @@
                 placeholder: "No Deleted Tasks Found",
                 height: "600px",
                 layoutColumnsOnNewData: true,
+                rowFormatter: function(row) {
+                    var data = row.getData();
+                    if (data.status && String(data.status).trim().toLowerCase() === 'missed') {
+                        var el = row.getElement();
+                        if (el) {
+                            el.classList.add('deleted-row-missed');
+                            el.style.setProperty('background-color', '#fffde7', 'important');
+                        }
+                    }
+                },
                 columns: [
                     {
                         title: "ID", 
@@ -317,27 +338,41 @@
                         }
                     },
                     {
-                        title: "ASSIGNOR", 
-                        field: "assignor_name", 
+                        title: "ASSIGNOR",
+                        field: "assignor_name",
                         width: 120,
+                        hozAlign: "center",
                         formatter: function(cell) {
+                            var row = cell.getRow().getData();
                             var value = cell.getValue();
                             if (value && value !== '-') {
                                 var firstName = value.trim().split(' ')[0];
-                                return '<strong>' + firstName + '</strong>';
+                                var imgSrc = (row.assignor_avatar || "{{ asset('images/users/avatar-2.jpg') }}").replace(/&/g, '&amp;');
+                                var nameEsc = String(firstName).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                                return '<div class="d-flex align-items-center justify-content-center gap-2 flex-nowrap">' +
+                                    '<img src="' + imgSrc + '" alt="" class="rounded-circle" style="width:28px;height:28px;object-fit:cover;flex-shrink:0;">' +
+                                    '<strong style="font-size: 11px;">' + nameEsc + '</strong>' +
+                                    '</div>';
                             }
                             return '<span style="color: #adb5bd;">-</span>';
                         }
                     },
                     {
-                        title: "ASSIGNEE", 
-                        field: "assignee_name", 
+                        title: "ASSIGNEE",
+                        field: "assignee_name",
                         width: 120,
+                        hozAlign: "center",
                         formatter: function(cell) {
+                            var row = cell.getRow().getData();
                             var value = cell.getValue();
                             if (value && value !== '-') {
                                 var firstName = value.trim().split(' ')[0];
-                                return '<strong>' + firstName + '</strong>';
+                                var imgSrc = (row.assignee_avatar || "{{ asset('images/users/avatar-2.jpg') }}").replace(/&/g, '&amp;');
+                                var nameEsc = String(firstName).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                                return '<div class="d-flex align-items-center justify-content-center gap-2 flex-nowrap">' +
+                                    '<img src="' + imgSrc + '" alt="" class="rounded-circle" style="width:28px;height:28px;object-fit:cover;flex-shrink:0;">' +
+                                    '<strong style="font-size: 11px;">' + nameEsc + '</strong>' +
+                                    '</div>';
                             }
                             return '<span style="color: #adb5bd;">-</span>';
                         }
@@ -416,6 +451,23 @@
                     },
                 ],
             });
+
+            // Apply light yellow background to Missed rows (after data load / redraw)
+            function styleMissedRows() {
+                table.getRows().forEach(function(row) {
+                    var data = row.getData();
+                    if (data.status && String(data.status).trim().toLowerCase() === 'missed') {
+                        var el = row.getElement();
+                        if (el) {
+                            el.classList.add('deleted-row-missed');
+                            el.style.setProperty('background-color', '#fffde7', 'important');
+                        }
+                    }
+                });
+            }
+            table.on('dataLoaded', function() { setTimeout(styleMissedRows, 0); });
+            table.on('dataProcessed', function() { setTimeout(styleMissedRows, 0); });
+            table.on('renderComplete', styleMissedRows);
 
             // Filter functionality
             function applyFilters() {

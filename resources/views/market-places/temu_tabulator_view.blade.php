@@ -460,10 +460,10 @@
                         
                         const lp = parseFloat(data.lp) || 0;
                         const temuShip = parseFloat(data.temu_ship) || 0;
-                        
-                        // PFT = (FB Prc * 0.91 - LP - Temu Ship) * Quantity
-                        const pft = (calculatedFbPrice * 0.91 - lp - temuShip) * quantity;
-                        return pft.toFixed(2);
+                        // PFT % = (price * 0.96 - lp - temuship) / price; dollar total = pft * price * quantity (price = FB Prc)
+                        const pftDecimal = calculatedFbPrice > 0 ? (calculatedFbPrice * 0.96 - lp - temuShip) / calculatedFbPrice : 0;
+                        const pftDollars = pftDecimal * calculatedFbPrice * quantity;
+                        return pftDollars.toFixed(2);
                     }
                 },
                 {
@@ -575,48 +575,37 @@
                 totalOrders++;
                 const quantity = parseInt(row.quantity_purchased) || 0;
                 const basePrice = parseFloat(row.base_price_total) || 0;
+                const lp = parseFloat(row.lp) || 0;
+                const temuShip = parseFloat(row.temu_ship) || 0;
                 
                 totalQuantity += quantity;
                 totalRevenue += basePrice * quantity;
                 
-                // Calculate weighted price (like eBay does: price * quantity / sum quantity)
                 if (quantity > 0 && basePrice > 0) {
                     totalWeightedPrice += basePrice * quantity;
                     totalQuantityForPrice += quantity;
                 }
                 
-                // Calculate FB Price
-                const total = basePrice * quantity;
-                let calculatedFbPrice;
-                if (total < 27) {
-                    calculatedFbPrice = basePrice + 2.99;
-                } else {
-                    calculatedFbPrice = basePrice;
+                // Only include rows with sales in PFT / L30 Sales / COGS (same as Temu decrease & Amazon)
+                const hasSales = quantity > 0 && basePrice > 0;
+                if (hasSales) {
+                    const total = basePrice * quantity;
+                    const calculatedFbPrice = total < 27 ? basePrice + 2.99 : basePrice;  // FB Prc = price for PFT formula
+                    // PFT % = (price * 0.96 - lp - temuship) / price; dollar = pft * price * quantity
+                    const pftDecimal = calculatedFbPrice > 0 ? (calculatedFbPrice * 0.96 - lp - temuShip) / calculatedFbPrice : 0;
+                    totalPft += pftDecimal * calculatedFbPrice * quantity;
+                    totalL30Sales += quantity * calculatedFbPrice;
+                    totalCogs += lp * quantity;
                 }
-                
-                // Calculate PFT Total: (FB Prc * 0.91 - LP - Temu Ship) * Quantity
-                const lp = parseFloat(row.lp) || 0;
-                const temuShip = parseFloat(row.temu_ship) || 0;
-                const pft = (calculatedFbPrice * 0.91 - lp - temuShip) * quantity;
-                totalPft += pft;
-                
-                // Calculate L30 Sales: Quantity * FB Prc
-                const l30Sales = quantity * calculatedFbPrice;
-                totalL30Sales += l30Sales;
-                
-                // Calculate COGS: Quantity * LP
-                const cogs = quantity * lp;
-                totalCogs += cogs;
             });
 
             // Calculate average price (weighted by quantity, like eBay)
             const avgPrice = totalQuantityForPrice > 0 ? totalWeightedPrice / totalQuantityForPrice : 0;
 
-            // Calculate PFT Percentage: (PFT Total / Total Revenue) * 100
-            const pftPercentage = totalRevenue > 0 ? (totalPft / totalRevenue) * 100 : 0;
-            
-            // Calculate ROI Percentage: (PFT Total / Total COGS) * 100
-            // COGS = LP * Quantity
+            // PFT % = (price * 0.96 - lp - temuship) / price — aggregate: (Total PFT / L30 Sales) * 100 (price = FB Prc)
+            const pftPercentage = totalL30Sales > 0 ? (totalPft / totalL30Sales) * 100 : 0;
+
+            // ROI %: (PFT Total / Total COGS) * 100
             const roiPercentage = totalCogs > 0 ? (totalPft / totalCogs) * 100 : 0;
 
             $('#total-orders-badge').text('Total Orders: ' + totalOrders.toLocaleString());

@@ -1174,8 +1174,8 @@ class TemuController extends Controller
                 // Calculate FB Price (if total < 27, add 2.99)
                 $fbPrice = $total < 27 ? ($basePrice + 2.99) : $basePrice;
                 
-                // Calculate PFT = (FB Prc * 0.91 - LP - Temu Ship) * Quantity
-                $pft = ($fbPrice * 0.91 - $lp - $temuShip) * $quantity;
+                // Calculate PFT = (FB Prc * 0.96 - LP - Temu Ship) * Quantity (margin 96)
+                $pft = ($fbPrice * 0.96 - $lp - $temuShip) * $quantity;
 
                 $row = [
                     'Parent' => $parent,
@@ -1468,7 +1468,7 @@ class TemuController extends Controller
         try {
             // Get Temu marketplace percentage from marketplace_percentages table
             $marketplaceData = MarketplacePercentage::where('marketplace', 'Temu')->first();
-            $percentage = $marketplaceData && $marketplaceData->percentage ? ($marketplaceData->percentage / 100) : 0.91;
+            $percentage = $marketplaceData && $marketplaceData->percentage ? ($marketplaceData->percentage / 100) : 0.96;
             
             // 1. Start from ProductMaster (like eBay does)
             $productMasters = ProductMaster::orderBy("parent", "asc")
@@ -1767,7 +1767,7 @@ class TemuController extends Controller
                     $temuPrice = 0;
                 }
                 
-                // Apply percentage like eBay does
+                // GPRFT% = ((FB Prc * 0.96 - LP - Temu Ship) / FB Prc) * 100 (temuPrice = FB Prc)
                 $profit = $temuPrice * $percentage - $lp - $temuShip;
                 $profitPercent = $temuPrice > 0 ? (($temuPrice * $percentage - $lp - $temuShip) / $temuPrice) * 100 : 0;
                 $roiPercent = $lp > 0 ? (($temuPrice * $percentage - $lp - $temuShip) / $lp) * 100 : 0;
@@ -1989,9 +1989,9 @@ class TemuController extends Controller
                 $temuShip = floatval($values['temu_ship'] ?? 0);
             }
 
-            // Get Temu marketplace percentage
+            // Get Temu marketplace percentage (default margin 96)
             $marketplaceData = MarketplacePercentage::where('marketplace', 'Temu')->first();
-            $percentage = $marketplaceData && $marketplaceData->percentage ? ($marketplaceData->percentage / 100) : 0.91;
+            $percentage = $marketplaceData && $marketplaceData->percentage ? ($marketplaceData->percentage / 100) : 0.96;
 
             // Calculate Suggested Temu Price (SPRICE + 2.99 if <= 26.99)
             $stemuPrice = $sprice <= 26.99 ? $sprice + 2.99 : $sprice;

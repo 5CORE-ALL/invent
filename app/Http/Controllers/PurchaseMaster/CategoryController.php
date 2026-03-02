@@ -462,10 +462,14 @@ class CategoryController extends Controller
             $validated = $request->validate([
                 'sku' => 'required|string',
                 'wt_act' => 'nullable|numeric',
+                'wt_act_kg' => 'nullable|numeric',
                 'wt_decl' => 'nullable|numeric',
                 'l' => 'nullable|numeric',
                 'w' => 'nullable|numeric',
                 'h' => 'nullable|numeric',
+                'l_cm' => 'nullable|numeric',
+                'w_cm' => 'nullable|numeric',
+                'h_cm' => 'nullable|numeric',
                 'cbm' => 'nullable|numeric',
                 'ctn_l' => 'nullable|numeric',
                 'ctn_w' => 'nullable|numeric',
@@ -475,6 +479,8 @@ class CategoryController extends Controller
                 'ctn_cbm_each' => 'nullable|numeric',
                 'cbm_e' => 'nullable|numeric',
                 'ctn_gwt' => 'nullable|numeric',
+                'ctn_weight_kg' => 'nullable|numeric',
+                'ctn_weight_lb' => 'nullable|numeric',
             ]);
 
             // Get the product by SKU to retrieve parent
@@ -493,6 +499,9 @@ class CategoryController extends Controller
             if (isset($validated['wt_act']) && $validated['wt_act'] !== null) {
                 $values['wt_act'] = $validated['wt_act'];
             }
+            if (isset($validated['wt_act_kg']) && $validated['wt_act_kg'] !== null) {
+                $values['wt_act_kg'] = $validated['wt_act_kg'];
+            }
             if (isset($validated['wt_decl']) && $validated['wt_decl'] !== null) {
                 $values['wt_decl'] = $validated['wt_decl'];
             }
@@ -504,6 +513,15 @@ class CategoryController extends Controller
             }
             if (isset($validated['h']) && $validated['h'] !== null) {
                 $values['h'] = $validated['h'];
+            }
+            if (isset($validated['l_cm']) && $validated['l_cm'] !== null) {
+                $values['l_cm'] = $validated['l_cm'];
+            }
+            if (isset($validated['w_cm']) && $validated['w_cm'] !== null) {
+                $values['w_cm'] = $validated['w_cm'];
+            }
+            if (isset($validated['h_cm']) && $validated['h_cm'] !== null) {
+                $values['h_cm'] = $validated['h_cm'];
             }
             if (isset($validated['cbm']) && $validated['cbm'] !== null) {
                 $values['cbm'] = $validated['cbm'];
@@ -531,6 +549,12 @@ class CategoryController extends Controller
             }
             if (isset($validated['ctn_gwt']) && $validated['ctn_gwt'] !== null) {
                 $values['ctn_gwt'] = $validated['ctn_gwt'];
+            }
+            if (isset($validated['ctn_weight_kg']) && $validated['ctn_weight_kg'] !== null) {
+                $values['ctn_weight_kg'] = $validated['ctn_weight_kg'];
+            }
+            if (isset($validated['ctn_weight_lb']) && $validated['ctn_weight_lb'] !== null) {
+                $values['ctn_weight_lb'] = $validated['ctn_weight_lb'];
             }
 
             // Update existing product or create new one
@@ -588,6 +612,9 @@ class CategoryController extends Controller
                 'l' => 'nullable|numeric',
                 'w' => 'nullable|numeric',
                 'h' => 'nullable|numeric',
+                'l_cm' => 'nullable|numeric',
+                'w_cm' => 'nullable|numeric',
+                'h_cm' => 'nullable|numeric',
                 'cbm' => 'nullable|numeric',
                 'ctn_l' => 'nullable|numeric',
                 'ctn_w' => 'nullable|numeric',
@@ -597,6 +624,8 @@ class CategoryController extends Controller
                 'ctn_cbm_each' => 'nullable|numeric',
                 'cbm_e' => 'nullable|numeric',
                 'ctn_gwt' => 'nullable|numeric',
+                'ctn_weight_kg' => 'nullable|numeric',
+                'ctn_weight_lb' => 'nullable|numeric',
             ]);
 
             // Find the product
@@ -621,6 +650,9 @@ class CategoryController extends Controller
             if (isset($validated['wt_act'])) {
                 $values['wt_act'] = $validated['wt_act'];
             }
+            if (isset($validated['wt_act_kg'])) {
+                $values['wt_act_kg'] = $validated['wt_act_kg'];
+            }
             if (isset($validated['wt_decl'])) {
                 $values['wt_decl'] = $validated['wt_decl'];
             }
@@ -632,6 +664,15 @@ class CategoryController extends Controller
             }
             if (isset($validated['h'])) {
                 $values['h'] = $validated['h'];
+            }
+            if (isset($validated['l_cm'])) {
+                $values['l_cm'] = $validated['l_cm'];
+            }
+            if (isset($validated['w_cm'])) {
+                $values['w_cm'] = $validated['w_cm'];
+            }
+            if (isset($validated['h_cm'])) {
+                $values['h_cm'] = $validated['h_cm'];
             }
             if (isset($validated['cbm'])) {
                 $values['cbm'] = $validated['cbm'];
@@ -659,6 +700,12 @@ class CategoryController extends Controller
             }
             if (isset($validated['ctn_gwt'])) {
                 $values['ctn_gwt'] = $validated['ctn_gwt'];
+            }
+            if (isset($validated['ctn_weight_kg'])) {
+                $values['ctn_weight_kg'] = $validated['ctn_weight_kg'];
+            }
+            if (isset($validated['ctn_weight_lb'])) {
+                $values['ctn_weight_lb'] = $validated['ctn_weight_lb'];
             }
 
             // Save the updated Values
@@ -4775,10 +4822,15 @@ class CategoryController extends Controller
             $columnMap = [
                 'sku' => 'sku',
                 'wt_act' => 'wt_act',
+                'wt_act_kg' => 'wt_act_kg',
+                'Weight ACT (Kg)' => 'wt_act_kg',
                 'wt_decl' => 'wt_decl',
                 'l' => 'l',
                 'w' => 'w',
                 'h' => 'h',
+                'l_cm' => 'l_cm',
+                'w_cm' => 'w_cm',
+                'h_cm' => 'h_cm',
                 'cbm' => 'cbm',
                 'ctn_l' => 'ctn_l',
                 'ctn_w' => 'ctn_w',
@@ -4787,7 +4839,8 @@ class CategoryController extends Controller
                 'ctn_qty' => 'ctn_qty',
                 'ctn_cbm_each' => 'ctn_cbm_each',
                 'cbm_e' => 'cbm_e',
-                'ctn_gwt' => 'ctn_gwt'
+                'ctn_gwt' => 'ctn_gwt',
+                'ctn_weight_kg' => 'ctn_weight_kg'
             ];
 
             // Find column indices
@@ -4844,7 +4897,7 @@ class CategoryController extends Controller
                         $value = trim($row[$colIndex]);
                         if ($value !== '') {
                             // Convert to float for numeric fields
-                            if (in_array($field, ['wt_act', 'wt_decl', 'l', 'w', 'h', 'cbm', 'ctn_l', 'ctn_w', 'ctn_h', 'ctn_cbm', 'ctn_qty', 'ctn_cbm_each', 'cbm_e', 'ctn_gwt'])) {
+                            if (in_array($field, ['wt_act', 'wt_act_kg', 'wt_decl', 'l', 'w', 'h', 'l_cm', 'w_cm', 'h_cm', 'cbm', 'ctn_l', 'ctn_w', 'ctn_h', 'ctn_cbm', 'ctn_qty', 'ctn_cbm_each', 'cbm_e', 'ctn_gwt', 'ctn_weight_kg'])) {
                                 $value = is_numeric($value) ? (float)$value : null;
                             }
                             if ($value !== null) {
