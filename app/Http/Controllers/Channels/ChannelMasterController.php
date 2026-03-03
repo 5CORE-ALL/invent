@@ -7443,7 +7443,8 @@ class ChannelMasterController extends Controller
                         }
 
                         // Only use ratio approach if at least 50% of rows have valid data
-                        $hasEnoughData = $validCount >= (count($history) * 0.5);
+                        // BGT, SBGT, SBID are not in ChannelMasterSummary; use fallback
+                        $hasEnoughData = $validCount >= (count($history) * 0.5) && !in_array($metric, ['bgt', 'sbgt', 'sbid']);
 
                         if ($hasEnoughData) {
                             $chartData = [];
@@ -7586,8 +7587,14 @@ class ChannelMasterController extends Controller
                         $query->whereRaw("campaignName NOT REGEXP '(PT\\.?$|FBA$)'");
                     }
                     
-                    $valueCol = match($metric) { 'clicks' => $clicksCol, 'sales' => $salesCol, 'sold', 'cvr' => $soldCol, default => $spendCol };
-                    $rows = $query->selectRaw("report_date_range as date, SUM({$valueCol}) as val")->groupBy('report_date_range')->get();
+                    $valueCol = match($metric) {
+                        'clicks' => $clicksCol, 'sales' => $salesCol, 'sold', 'cvr' => $soldCol,
+                        'bgt' => 'COALESCE(campaignBudgetAmount, 0)',
+                        'sbid' => 'CAST(NULLIF(TRIM(COALESCE(sbid, \'\')), \'\') AS DECIMAL(10,2))',
+                        default => $spendCol
+                    };
+                    $aggFunc = $metric === 'sbid' ? 'AVG' : 'SUM';
+                    $rows = $query->selectRaw("report_date_range as date, {$aggFunc}({$valueCol}) as val")->groupBy('report_date_range')->get();
                     
                 } elseif ($adType === 'pt') {
                     $query = DB::table('amazon_sp_campaign_reports')
@@ -7603,7 +7610,11 @@ class ChannelMasterController extends Controller
                               ->whereRaw("campaignName NOT LIKE '%FBA PT%'")->whereRaw("campaignName NOT LIKE '%FBA PT.%'");
                     }
                     
-                    $valueCol = match($metric) { 'clicks' => $clicksCol, 'sales' => $salesCol, 'sold', 'cvr' => $soldCol, default => $spendCol };
+                    $valueCol = match($metric) {
+                        'clicks' => $clicksCol, 'sales' => $salesCol, 'sold', 'cvr' => $soldCol,
+                        'bgt' => 'COALESCE(campaignBudgetAmount, 0)',
+                        default => $spendCol
+                    };
                     $rows = $query->selectRaw("report_date_range as date, SUM({$valueCol}) as val")->groupBy('report_date_range')->get();
                     
                 } elseif ($adType === 'hl' && !$isFba) {
@@ -7693,18 +7704,18 @@ class ChannelMasterController extends Controller
                 $dailyData[$dateKey] = (float) $row->val;
             }
 
-            // For ACOS and CVR, we need additional data
+            // For ACOS, CVR, and SBGT, we need additional data
             $dailyData2 = [];
-            if (in_array($metric, ['acos', 'cvr'])) {
-                // ACOS needs spend and sales, CVR needs sold and clicks
+            if (in_array($metric, ['acos', 'cvr', 'sbgt'])) {
+                // ACOS and SBGT need spend and sales, CVR needs sold and clicks
                 // We already have one metric, fetch the other
-                $metric2 = $metric === 'acos' ? 'sales' : 'clicks';
+                $metric2 = in_array($metric, ['acos', 'sbgt']) ? 'sales' : 'clicks';
                 $rows2 = collect();
                 
                 // Re-fetch with the second metric
                 if ($channel === 'amazon' || $channel === 'amazonfba') {
                     $isFba = $channel === 'amazonfba';
-                    $valueCol2 = $metric === 'acos' ? $salesCol : $clicksCol;
+                    $valueCol2 = in_array($metric, ['acos', 'sbgt']) ? $salesCol : $clicksCol;
                     
                     if ($adType === 'kw') {
                         $query2 = DB::table('amazon_sp_campaign_reports')
@@ -7732,7 +7743,7 @@ class ChannelMasterController extends Controller
                         }
                         $rows2 = $query2->selectRaw("report_date_range as date, SUM({$valueCol2}) as val")->groupBy('report_date_range')->get();
                     } elseif ($adType === 'hl' && !$isFba) {
-                        $valueCol2 = $metric === 'acos' ? 'sales' : 'clicks';
+                        $valueCol2 = in_array($metric, ['acos', 'sbgt']) ? 'sales' : 'clicks';
                         $rows2 = DB::table('amazon_sb_campaign_reports')
                             ->whereNotNull('report_date_range')
                             ->whereBetween('report_date_range', [$dataStartDate->format('Y-m-d'), $chartEndDate->format('Y-m-d')])
@@ -7748,8 +7759,8 @@ class ChannelMasterController extends Controller
                     $excludeRanges = ['L90', 'L60', 'L30', 'L15', 'L7', 'L1'];
                     
                     if ($adType === 'kw' && $kwTable) {
-                        $valueCol2 = $metric === 'acos' 
-                            ? 'REPLACE(REPLACE(cpc_sale_amount_payout_currency, "USD ", ""), ",", "")' 
+                        $valueCol2 = in_array($metric, ['acos', 'sbgt'])
+                            ? 'REPLACE(REPLACE(cpc_sale_amount_payout_currency, "USD ", ""), ",", "")'
                             : 'cpc_clicks';
                         $rows2 = DB::table($kwTable)
                             ->whereBetween('report_range', [$dataStartDate->format('Y-m-d'), $chartEndDate->format('Y-m-d')])
@@ -7758,8 +7769,8 @@ class ChannelMasterController extends Controller
                             ->groupBy('report_range')
                             ->get();
                     } elseif ($adType === 'pmt' && $pmtTable) {
-                        $valueCol2 = $metric === 'acos' 
-                            ? 'REPLACE(REPLACE(sale_amount, "USD ", ""), ",", "")' 
+                        $valueCol2 = in_array($metric, ['acos', 'sbgt'])
+                            ? 'REPLACE(REPLACE(sale_amount, "USD ", ""), ",", "")'
                             : 'clicks';
                         $rows2 = DB::table($pmtTable)
                             ->whereBetween('report_range', [$dataStartDate->format('Y-m-d'), $chartEndDate->format('Y-m-d')])
@@ -7771,7 +7782,7 @@ class ChannelMasterController extends Controller
                 } elseif ($channel === 'shopifyb2c' && in_array($adType, ['shopping', 'serp'])) {
                     $channelType = $adType === 'shopping' ? 'SHOPPING' : 'SEARCH';
                     $statusFilter = $adType === 'shopping' ? ['ENABLED'] : ['ENABLED', 'PAUSED'];
-                    $valueCol2 = $metric === 'acos' ? 'ga4_ad_sales' : 'metrics_clicks';
+                    $valueCol2 = in_array($metric, ['acos', 'sbgt']) ? 'ga4_ad_sales' : 'metrics_clicks';
                     
                     $rows2 = DB::table('google_ads_campaigns')
                         ->whereDate('date', '>=', $dataStartDate->format('Y-m-d'))
@@ -7827,6 +7838,32 @@ class ChannelMasterController extends Controller
                     // CVR = (Sold / Clicks) * 100
                     // dailyData has sold, dailyData2 has clicks
                     $value = $rolling30Sum2 > 0 ? round(($rolling30Sum / $rolling30Sum2) * 100, 1) : 0;
+                } elseif ($metric === 'sbid') {
+                    // SBID: rolling 30-day average of daily avg sbids
+                    $sbidCount = 0;
+                    $sbidSum = 0;
+                    for ($i = 0; $i < 30; $i++) {
+                        $lookupDate = $currentDate->copy()->subDays($i)->format('Y-m-d');
+                        if (isset($dailyData[$lookupDate]) && (float) $dailyData[$lookupDate] > 0) {
+                            $sbidSum += (float) $dailyData[$lookupDate];
+                            $sbidCount++;
+                        }
+                    }
+                    $value = $sbidCount > 0 ? round($sbidSum / $sbidCount, 2) : 0;
+                } elseif ($metric === 'sbgt') {
+                    // SBGT = score 1-30 from ACOS (spend/sales*100), matching AutoUpdateAmazonBgtKw.php
+                    // dailyData has spend, dailyData2 has sales
+                    $acos = $rolling30Sum2 > 0 ? ($rolling30Sum / $rolling30Sum2) * 100 : 0;
+                    $value = match (true) {
+                        $acos > 35 => 1,
+                        $acos >= 30 => 3,
+                        $acos >= 25 => 5,
+                        $acos >= 20 => 10,
+                        $acos >= 15 => 15,
+                        $acos >= 10 => 20,
+                        $acos >= 5 => 25,
+                        default => 30,
+                    };
                 } else {
                     $value = round($rolling30Sum, 2);
                 }

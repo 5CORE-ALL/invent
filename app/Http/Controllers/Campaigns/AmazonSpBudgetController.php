@@ -4880,10 +4880,9 @@ class AmazonSpBudgetController extends Controller
             }
         }
         
-        // For KW campaigns, add unmatched campaigns (similar to ACOS control)
+        // For KW campaigns, add campaigns missing from result (e.g. filtered out by NRA in main loop)
         if ($campaignType === 'KW') {
-            $matchedCampaignIds = array_unique(array_column($result, 'campaign_id'));
-            // Include L30 campaigns as well to catch all paused campaigns
+            $existingCampaignIds = array_unique(array_filter(array_column($result, 'campaign_id')));
             $allUniqueCampaigns = $amazonSpCampaignReportsL30->unique('campaign_id')
                 ->merge($amazonSpCampaignReportsL7->unique('campaign_id'))
                 ->merge($amazonSpCampaignReportsL1->unique('campaign_id'))
@@ -4891,72 +4890,51 @@ class AmazonSpBudgetController extends Controller
             
             foreach ($allUniqueCampaigns as $campaign) {
                 $campaignId = $campaign->campaign_id ?? '';
-                
-                // Skip if already matched with a SKU or already added
-                if (empty($campaignId) || in_array($campaignId, $matchedCampaignIds)) {
+                if (empty($campaignId)) {
                     continue;
                 }
 
-                $campaignName = strtoupper(trim($campaign->campaignName ?? ''));
+                $matchedCampaignL30 = $amazonSpCampaignReportsL30->first(function ($item) use ($campaignId) {
+                    return ($item->campaign_id ?? '') === $campaignId;
+                });
+                $matchedCampaignL7 = $amazonSpCampaignReportsL7->first(function ($item) use ($campaignId) {
+                    return ($item->campaign_id ?? '') === $campaignId;
+                });
+                $matchedCampaignL1 = $amazonSpCampaignReportsL1->first(function ($item) use ($campaignId) {
+                    return ($item->campaign_id ?? '') === $campaignId;
+                });
+                $matchedCampaignL15 = $amazonSpCampaignReportsL15->first(function ($item) use ($campaignId) {
+                    return ($item->campaign_id ?? '') === $campaignId;
+                });
+
+                $campaignStatus = ($matchedCampaignL30 ? $matchedCampaignL30->campaignStatus : null) ?? ($matchedCampaignL7 ? $matchedCampaignL7->campaignStatus : null) ?? ($matchedCampaignL1 ? $matchedCampaignL1->campaignStatus : null) ?? 'PAUSED';
+                $isEnabled = strtoupper($campaignStatus ?? '') === 'ENABLED';
+                $hasPinkDilPaused = ($matchedCampaignL30 && $matchedCampaignL30->pink_dil_paused_at) ||
+                                   ($matchedCampaignL7 && $matchedCampaignL7->pink_dil_paused_at) ||
+                                   ($matchedCampaignL1 && $matchedCampaignL1->pink_dil_paused_at);
+
+                // ENABLED: always add if not already in result (may have been filtered out by NRA in main loop)
+                // Non-ENABLED: only add if has pink_dil_paused_at AND not already in result
+                if ($isEnabled) {
+                    if (in_array($campaignId, $existingCampaignIds)) {
+                        continue; // Already in result, avoid duplicate
+                    }
+                } else {
+                    if (!$hasPinkDilPaused || in_array($campaignId, $existingCampaignIds)) {
+                        continue;
+                    }
+                }
+
+                $campaignName = $campaign->campaignName ?? '';
                 if (empty($campaignName)) {
                     continue;
                 }
 
-                // Check if this campaign name matches any SKU (exact match or with " KW"/" KW." suffix for parent campaigns)
-                $matchedSku = null;
-                $kwExpectedForMatch = function ($base) {
-                    $b = strtoupper(trim(rtrim($base, '.')));
-                    return [$b, $b . ' KW', $b . ' KW.', $b . 'KW', $b . 'KW.'];
-                };
-                foreach ($skus as $sku) {
-                    $cleanSku = strtoupper(trim(rtrim($sku, '.')));
-                    $cleanCampaignName = strtoupper(trim(rtrim($campaignName, '.')));
-                    if (in_array($cleanCampaignName, $kwExpectedForMatch($sku), true)) {
-                        $matchedSku = $sku;
-                        break;
-                    }
+                // Extract SKU from campaign name: "PARENT GSS 2N1 KW" / "PARENT MS DBL 2PK KW" -> "PARENT GSS 2N1" / "PARENT MS DBL 2PK"
+                $extractedSku = trim(preg_replace('/\s+KW\.?$/i', '', strtoupper(trim($campaignName))));
+                if (stripos($extractedSku, 'PARENT') === false && !empty($extractedSku)) {
+                    $extractedSku = 'PARENT ' . $extractedSku;
                 }
-
-                // If no SKU match found, add as unmatched campaign
-                // Add ENABLED campaigns (show all 180), OR paused campaigns with pink_dil_paused_at
-                if (!$matchedSku) {
-                    $matchedCampaignL30 = $amazonSpCampaignReportsL30->first(function ($item) use ($campaignId) {
-                        return ($item->campaign_id ?? '') === $campaignId;
-                    });
-
-                    $checkCampaignL7 = $amazonSpCampaignReportsL7->first(function ($item) use ($campaignId) {
-                        return ($item->campaign_id ?? '') === $campaignId;
-                    });
-                    $checkCampaignL1 = $amazonSpCampaignReportsL1->first(function ($item) use ($campaignId) {
-                        return ($item->campaign_id ?? '') === $campaignId;
-                    });
-                    
-                    $hasPinkDilPaused = ($matchedCampaignL30 && $matchedCampaignL30->pink_dil_paused_at) ||
-                                       ($checkCampaignL7 && $checkCampaignL7->pink_dil_paused_at) ||
-                                       ($checkCampaignL1 && $checkCampaignL1->pink_dil_paused_at);
-                    
-                    $campaignStatus = ($matchedCampaignL30 ? $matchedCampaignL30->campaignStatus : null) ?? ($checkCampaignL7 ? $checkCampaignL7->campaignStatus : null) ?? ($checkCampaignL1 ? $checkCampaignL1->campaignStatus : null) ?? 'PAUSED';
-                    $isEnabled = strtoupper($campaignStatus ?? '') === 'ENABLED';
-
-                    // Add ENABLED campaigns (all 180) OR paused campaigns with pink_dil_paused_at
-                    if (!$isEnabled && !$hasPinkDilPaused) {
-                        continue;
-                    }
-                    
-                    // Now get the matched campaigns for data
-                    $matchedCampaignL7 = $checkCampaignL7;
-                    $matchedCampaignL1 = $checkCampaignL1;
-
-                    $matchedCampaignL15 = $amazonSpCampaignReportsL15->first(function ($item) use ($campaignId) {
-                        return ($item->campaign_id ?? '') === $campaignId;
-                    });
-
-                    // Extract SKU from campaign name: "PARENT GSS 2N1 KW" / "PARENT MS DBL 2PK KW" -> "PARENT GSS 2N1" / "PARENT MS DBL 2PK"
-                    $extractedSku = preg_replace('/\s+KW\.?$/i', '', $campaignName);
-                    $extractedSku = trim($extractedSku);
-                    if (stripos($extractedSku, 'PARENT') === false && !empty($extractedSku)) {
-                        $extractedSku = 'PARENT ' . $extractedSku;
-                    }
 
                     $row = [];
                     $row['parent'] = $extractedSku ?: '';
@@ -4964,7 +4942,7 @@ class AmazonSpBudgetController extends Controller
                     $row['campaign_id'] = $campaignId;
                     $row['campaignName'] = $campaign->campaignName ?? '';
                     $row['campaignBudgetAmount'] = ($matchedCampaignL7 ? $matchedCampaignL7->campaignBudgetAmount : null) ?? ($matchedCampaignL1 ? $matchedCampaignL1->campaignBudgetAmount : null) ?? ($matchedCampaignL30 ? $matchedCampaignL30->campaignBudgetAmount : null) ?? 0;
-                    $row['campaignStatus'] = ($matchedCampaignL7 ? $matchedCampaignL7->campaignStatus : null) ?? ($matchedCampaignL1 ? $matchedCampaignL1->campaignStatus : null) ?? ($matchedCampaignL30 ? $matchedCampaignL30->campaignStatus : null) ?? '';
+                    $row['campaignStatus'] = $campaignStatus;
                     $row['pink_dil_paused_at'] = $matchedCampaignL30 ? $matchedCampaignL30->pink_dil_paused_at : (($matchedCampaignL7 ? $matchedCampaignL7->pink_dil_paused_at : null) ?? (($matchedCampaignL1 ? $matchedCampaignL1->pink_dil_paused_at : null) ?? null));
                     $row['INV'] = 0;
                     $row['FBA_INV'] = 0;
@@ -5106,9 +5084,7 @@ class AmazonSpBudgetController extends Controller
                     $row['issue_found'] = $issueFound;
                     $row['action_taken'] = $actionTaken;
 
-                    $result[] = (object) $row;
-                    $matchedCampaignIds[] = $campaignId;
-                }
+                $result[] = (object) $row;
             }
         }
 
