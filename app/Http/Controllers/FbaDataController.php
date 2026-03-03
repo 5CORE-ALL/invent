@@ -558,6 +558,7 @@ class FbaDataController extends Controller
 
    public function fbaDataJson(Request $request)
    {
+      try {
       $data = $this->getFbaData();
 
       $fbaData = $data['fbaData'];
@@ -1038,6 +1039,13 @@ class FbaDataController extends Controller
          ];
       })->values();
 
+      // Optional: return single FBA row for a SKU (e.g. for pricing master detail modals)
+      $requestSku = $request->get('sku');
+      if ($requestSku !== null && $requestSku !== '') {
+         $one = $tableData->firstWhere('SKU', strtoupper(trim($requestSku)));
+         return response()->json(['fba' => $one]);
+      }
+
       // Group by Parent and process
       $grouped = collect($tableData)->groupBy('Parent');
 
@@ -1167,48 +1175,21 @@ class FbaDataController extends Controller
       }
 
       return response()->json($finalData);
-   }
-
-   public function getFbaMonthlySales($sku)
-   {
-      $baseSku = strtoupper(trim($sku));
-
-      $sales = FbaMonthlySale::whereRaw("seller_sku LIKE '%FBA%' OR seller_sku LIKE '%fba%'")
-         ->get()
-         ->filter(function ($item) use ($baseSku) {
-            $sku = $item->seller_sku;
-            $base = preg_replace('/\s*FBA\s*/i', '', $sku);
-            return strtoupper(trim($base)) === $baseSku;
-         })
-         ->first();
-
-      if (!$sales) {
-         return response()->json(['error' => 'No data found'], 404);
+      } catch (\Throwable $e) {
+         Log::error('fbaDataJson error', [
+            'message' => $e->getMessage(),
+            'file' => $e->getFile(),
+            'line' => $e->getLine(),
+            'trace' => $e->getTraceAsString(),
+         ]);
+         return response()->json([
+            'error' => 'Data load failed',
+            'message' => config('app.debug') ? $e->getMessage() : 'Internal server error',
+         ], 500);
       }
-
-      $monthlyData = [
-         'Jan' => $sales->jan ?? 0,
-         'Feb' => $sales->feb ?? 0,
-         'Mar' => $sales->mar ?? 0,
-         'Apr' => $sales->apr ?? 0,
-         'May' => $sales->may ?? 0,
-         'Jun' => $sales->jun ?? 0,
-         'Jul' => $sales->jul ?? 0,
-         'Aug' => $sales->aug ?? 0,
-         'Sep' => $sales->sep ?? 0,
-         'Oct' => $sales->oct ?? 0,
-         'Nov' => $sales->nov ?? 0,
-         'Dec' => $sales->dec ?? 0,
-      ];
-
-      return response()->json([
-         'sku' => $sku,
-         'monthly_sales' => $monthlyData,
-         'total_units' => $sales->total_units ?? 0,
-         'avg_price' => $sales->avg_price ?? 0,
-      ]);
    }
 
+   
    public function updateFbaSkuManualData(Request $request)
    {
       $sku = strtoupper(trim($request->input('sku')));

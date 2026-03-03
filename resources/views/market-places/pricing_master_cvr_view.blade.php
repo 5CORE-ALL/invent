@@ -1016,7 +1016,7 @@
             const modal = new bootstrap.Modal(document.getElementById('ovl30DetailsModal'));
             modal.show();
             
-            // Fetch Amazon data from backend
+            // Fetch marketplace breakdown and FBA data
             $.ajax({
                 url: `/cvr-master-breakdown/${sku}`,
                 method: 'GET',
@@ -2131,7 +2131,7 @@ title: "Dil %",
             new bootstrap.Modal(document.getElementById('spriceDetailsModal')).show();
         });
 
-        // Sprice modal: top-center position and draggable by header
+        // Sprice modal: top-center position, draggable by header, and load FBA data
         $('#spriceDetailsModal').on('shown.bs.modal', function() {
             const modal = document.getElementById('spriceDetailsModal');
             const dialog = modal.querySelector('.modal-dialog');

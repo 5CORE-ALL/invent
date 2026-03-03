@@ -37,12 +37,17 @@ class RoutingController extends Controller
      */
     public function root(Request $request, $first)
     {
-
         $mode = $request->query('mode');
         $demo = $request->query('demo');
-     
+
         if ($first == "assets")
             return redirect('home');
+
+        // Don't treat static file requests as view names (e.g. icon-192.png, manifest.json)
+        $staticExtensions = ['png', 'jpg', 'jpeg', 'gif', 'ico', 'svg', 'webp', 'json', 'xml', 'txt', 'woff', 'woff2', 'ttf', 'css', 'js'];
+        if (preg_match('/\.(' . implode('|', $staticExtensions) . ')$/i', $first)) {
+            abort(404);
+        }
 
         return view($first, ['mode' => $mode, 'demo' => $demo]);
     }
