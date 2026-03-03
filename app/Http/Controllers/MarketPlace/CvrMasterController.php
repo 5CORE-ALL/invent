@@ -1118,14 +1118,18 @@ class CvrMasterController extends Controller
     /**
      * Get marketplace breakdown data for specific SKU
      * Used for the OV L30 modal breakdown
-     * Shows Amazon, eBay, and eBay 2 data
+     * SKU via query param to support slashes (e.g. 1/4M-3/8M Camera Screw 5Pcs)
      *
-     * @param string $sku
+     * @param Request $request
      * @return \Illuminate\Http\JsonResponse
      */
-    public function getBreakdownData($sku)
+    public function getBreakdownData(Request $request)
     {
         try {
+            $sku = $request->get('sku', '');
+            if ($sku === '') {
+                return response()->json(['error' => 'SKU required'], 400);
+            }
             $breakdownData = [];
 
             Log::info('Fetching breakdown data for SKU: ' . $sku);

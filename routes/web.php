@@ -913,7 +913,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     // CVR Master Routes (Tabulator)
     Route::get('/cvr-master', [CvrMasterController::class, 'index'])->name('cvr.master');
     Route::get('/cvr-master-data-json', [CvrMasterController::class, 'getCvrDataJson'])->name('cvr.master.data.json');
-    Route::get('/cvr-master-breakdown/{sku}', [CvrMasterController::class, 'getBreakdownData'])->name('cvr.master.breakdown');
+    Route::get('/cvr-master-breakdown', [CvrMasterController::class, 'getBreakdownData'])->name('cvr.master.breakdown');
     Route::get('/cvr-master-column-visibility', [CvrMasterController::class, 'getColumnVisibility'])->name('cvr.master.column.get');
     Route::post('/cvr-master-column-visibility', [CvrMasterController::class, 'saveColumnVisibility'])->name('cvr.master.column.set');
     Route::post('/cvr-master-remark', [CvrMasterController::class, 'saveRemark'])->name('cvr.master.remark.save');

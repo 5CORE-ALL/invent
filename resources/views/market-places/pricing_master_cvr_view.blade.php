@@ -892,7 +892,7 @@
      * 
      * BACKEND ENDPOINTS:
      * 1. GET /cvr-master-data-json - Main table data
-     * 2. GET /cvr-master-breakdown/{sku} - Modal breakdown data
+     * 2. GET /cvr-master-breakdown?sku=... - Modal breakdown data
      * 3. GET/POST /cvr-master-column-visibility - Column visibility
      * ========================================
      */
@@ -1020,7 +1020,7 @@
             
             // Fetch marketplace breakdown and FBA data
             $.ajax({
-                url: `/cvr-master-breakdown/${sku}`,
+                url: '/cvr-master-breakdown?sku=' + encodeURIComponent(sku),
                 method: 'GET',
                 headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
                 success: function(data) { renderMarketplaceData(data); },
