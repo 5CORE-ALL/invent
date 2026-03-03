@@ -1321,7 +1321,7 @@
                 }
                 
                 // Determine if upload button should be shown (Amazon, Doba, Walmart, Shopify B2C, Shopify B2B)
-                const canPushPrice = ['amazon', 'doba', 'walmart', 'sb2c', 'sb2b', 'reverb'].includes((item.marketplace || '').toLowerCase()) && isListed;
+                const canPushPrice = ['amazon', 'doba', 'walmart', 'sb2c', 'sb2b', 'reverb', 'fba'].includes((item.marketplace || '').toLowerCase()) && isListed;
                 
                 html += `
                     <tr class="${rowClass}" data-marketplace="${item.marketplace}" data-sku="${item.sku}" 

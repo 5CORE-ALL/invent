@@ -2655,8 +2655,35 @@ class CvrMasterController extends Controller
                 $dataView = Shopifyb2cDataView::firstOrNew(['sku' => $skuToUse]);
             } elseif ($marketplace === 'shopifyb2b' || $marketplace === 'sb2b') {
                 $dataView = ShopifyB2BDataView::firstOrNew(['sku' => $skuToUse]);
+            } elseif ($marketplace === 'fba') {
+                $dataView = null; // FBA uses FbaManualData, handled below
             } else {
                 return response()->json(['error' => 'Marketplace not supported'], 400);
+            }
+
+            if ($marketplace === 'fba') {
+                // FBA SPRICE is stored in fba_manual_data (same as FBA page). Resolve base SKU -> FBA seller SKU.
+                $baseSku = strtoupper(trim($fullSku));
+                $fbaTableRows = FbaTable::whereRaw("seller_sku LIKE '%FBA%' OR seller_sku LIKE '%fba%'")
+                    ->get()
+                    ->keyBy(fn($item) => strtoupper(trim(preg_replace('/\s*FBA\s*/i', '', (string)($item->seller_sku ?? '')))));
+                $fbaRow = $fbaTableRows->get($baseSku);
+                if (!$fbaRow || empty($fbaRow->seller_sku)) {
+                    return response()->json(['error' => 'No FBA listing found for this SKU'], 400);
+                }
+                $fbaSellerSku = strtoupper(trim($fbaRow->seller_sku));
+                $manual = FbaManualData::where('sku', $fbaSellerSku)->first();
+                if (!$manual) {
+                    $manual = new FbaManualData();
+                    $manual->sku = $fbaSellerSku;
+                    $manual->data = [];
+                }
+                $data = is_array($manual->data) ? $manual->data : [];
+                $data['s_price'] = $sprice;
+                $data['SPRICE_STATUS'] = 'applied'; // saved but not pushed
+                $manual->data = $data;
+                $manual->save();
+                return response()->json(['success' => true]);
             }
 
             // Get existing value (Reverb uses 'values', others use 'value')
@@ -2694,6 +2721,31 @@ class CvrMasterController extends Controller
                 $dataView->value = $value;
             }
             $dataView->save();
+
+            // When saving Amazon suggested price, also sync to FBA if this SKU has FBA (so FBA page shows same sprice)
+            if ($marketplace === 'amazon' && $sprice > 0) {
+                $baseSku = strtoupper(trim($fullSku));
+                $fbaTableRows = FbaTable::whereRaw("seller_sku LIKE '%FBA%' OR seller_sku LIKE '%fba%'")
+                    ->get()
+                    ->keyBy(fn($item) => strtoupper(trim(preg_replace('/\s*FBA\s*/i', '', (string)($item->seller_sku ?? '')))));
+                $fbaRow = $fbaTableRows->get($baseSku);
+                if ($fbaRow && !empty($fbaRow->seller_sku)) {
+                    $fbaSellerSku = strtoupper(trim($fbaRow->seller_sku));
+                    $fbaManual = FbaManualData::where('sku', $fbaSellerSku)->first();
+                    if (!$fbaManual) {
+                        $fbaManual = new FbaManualData();
+                        $fbaManual->sku = $fbaSellerSku;
+                        $fbaManual->data = [];
+                    }
+                    $fbaData = is_array($fbaManual->data) ? $fbaManual->data : [];
+                    $fbaData['s_price'] = $sprice;
+                    if (!isset($fbaData['SPRICE_STATUS']) || $fbaData['SPRICE_STATUS'] === '') {
+                        $fbaData['SPRICE_STATUS'] = 'applied';
+                    }
+                    $fbaManual->data = $fbaData;
+                    $fbaManual->save();
+                }
+            }
 
             return response()->json(['success' => true]);
         } catch (\Exception $e) {
@@ -2762,10 +2814,12 @@ class CvrMasterController extends Controller
                 return $this->pushToShopifyB2B($sku, $price);
             } elseif ($marketplace === 'reverb') {
                 return $this->pushToReverb($sku, $price);
+            } elseif ($marketplace === 'fba') {
+                return $this->pushToFba($sku, $price);
             } else {
                 return response()->json([
                     'success' => false,
-                    'message' => "Price push is only supported for Amazon, Doba, Walmart, Shopify B2C, Shopify B2B, and Reverb. Received: $marketplace"
+                    'message' => "Price push is only supported for Amazon, Doba, Walmart, Shopify B2C, Shopify B2B, Reverb, and FBA. Received: $marketplace"
                 ], 400);
             }
 
@@ -3248,6 +3302,98 @@ class CvrMasterController extends Controller
                 'message' => 'Reverb error: ' . $e->getMessage(),
                 'errors' => [['message' => $e->getMessage()]]
             ], 500);
+        }
+    }
+
+    /**
+     * Push price to FBA (Amazon Fulfillment). Resolves base SKU to FBA seller SKU and calls SP API.
+     */
+    private function pushToFba($sku, $price)
+    {
+        $fbaSellerSku = null;
+        try {
+            $baseSku = strtoupper(trim($sku));
+            $fbaTableRows = FbaTable::whereRaw("seller_sku LIKE '%FBA%' OR seller_sku LIKE '%fba%'")
+                ->get()
+                ->keyBy(fn($item) => strtoupper(trim(preg_replace('/\s*FBA\s*/i', '', (string)($item->seller_sku ?? '')))));
+            $fbaRow = $fbaTableRows->get($baseSku);
+
+            if (!$fbaRow || empty($fbaRow->seller_sku)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => "No FBA listing found for SKU: $sku"
+                ], 400);
+            }
+
+            $fbaSellerSku = trim((string)$fbaRow->seller_sku);
+            $service = new \App\Services\AmazonSpApiService();
+            $result = $service->updateAmazonPriceUS($fbaSellerSku, $price);
+
+            if (isset($result['errors']) && !empty($result['errors'])) {
+                $this->saveFbaSpriceStatus($fbaSellerSku, 'error');
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Failed to push price to FBA.',
+                    'errors' => $result['errors']
+                ], 400);
+            }
+
+            $this->saveFbaSpriceStatus($fbaSellerSku, 'pushed', $price);
+            $this->savePricePushStatus($sku, 'amazon', 'pushed', $price);
+
+            Log::info('CVR Master - FBA price push successful', [
+                'sku' => $sku,
+                'fba_seller_sku' => $fbaSellerSku,
+                'price' => $price
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => "Price $" . number_format($price, 2) . " pushed to FBA for SKU: $sku",
+                'result' => $result
+            ]);
+        } catch (\Exception $e) {
+            Log::error('CVR Master - FBA push exception', [
+                'sku' => $sku,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            if ($fbaSellerSku !== null) {
+                $this->saveFbaSpriceStatus($fbaSellerSku, 'error');
+            }
+            return response()->json([
+                'success' => false,
+                'message' => 'FBA error: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Save FBA suggested price and push status to FbaManualData (keyed by FBA seller SKU).
+     */
+    private function saveFbaSpriceStatus($fbaSellerSku, $status, $pushedPrice = null)
+    {
+        try {
+            $manual = FbaManualData::where('sku', strtoupper(trim($fbaSellerSku)))->first();
+            if (!$manual) {
+                $manual = new FbaManualData();
+                $manual->sku = strtoupper(trim($fbaSellerSku));
+                $manual->data = [];
+            }
+            $data = $manual->data ?? [];
+            $data['SPRICE_STATUS'] = $status;
+            $data['SPRICE_STATUS_UPDATED_AT'] = now()->toDateTimeString();
+            if ($pushedPrice !== null) {
+                $data['s_price'] = $pushedPrice;
+            }
+            $manual->data = $data;
+            $manual->save();
+        } catch (\Exception $e) {
+            Log::error('CVR Master - Failed to save FBA SPRICE status', [
+                'sku' => $fbaSellerSku,
+                'status' => $status,
+                'error' => $e->getMessage()
+            ]);
         }
     }
 
