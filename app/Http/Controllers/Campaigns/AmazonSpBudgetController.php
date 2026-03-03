@@ -2755,14 +2755,17 @@ class AmazonSpBudgetController extends Controller
                 }
             }
 
-            // For HL campaigns, don't skip parent SKUs with NRA = 'NRA' - include all parent SKUs
-            // For KW/PT: Parent SKUs with ENABLED campaign ALWAYS show (don't apply NRA filter - child NRA/inv should not exclude parent)
-            // For KW/PT: Only skip child SKUs when THIS SPECIFIC SKU has NRA = 'NRA' (NRA is already SKU-specific via $nrValues[$pm->sku])
-            $campaignStatus = ($matchedCampaignL30 ? $matchedCampaignL30->campaignStatus : null) ?? (($matchedCampaignL7 ? $matchedCampaignL7->campaignStatus : null) ?? (($matchedCampaignL1 ? $matchedCampaignL1->campaignStatus : null) ?? ''));
-            $isParentWithEnabledCampaign = (stripos($sku, 'PARENT') !== false) && $hasCampaign && (strtoupper($campaignStatus ?? '') === 'ENABLED');
-
-            if ($campaignType !== 'HL' && $nra === 'NRA' && !$isParentWithEnabledCampaign) {
-                continue;
+            // Parent SKUs with campaigns should ALWAYS show (NRA filter does not apply - child NRA should not exclude parent)
+            // Child SKUs: apply NRA filter - only skip when THIS SPECIFIC SKU has NRA = 'NRA'
+            if (stripos($sku, 'PARENT') !== false) {
+                if (!$hasCampaign) {
+                    continue; // Skip parent if no campaign exists
+                }
+                // Parent with campaign - continue processing, NO NRA filter
+            } else {
+                if ($campaignType !== 'HL' && $nra === 'NRA') {
+                    continue; // Skip this specific child SKU with NRA
+                }
             }
 
             // Use SKU as key if no campaign, otherwise use campaignId
