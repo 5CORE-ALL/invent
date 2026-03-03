@@ -2269,6 +2269,22 @@ class CvrMasterController extends Controller
                 $fbaAD = 0;
                 $fbaNPFT = $fbaL30 == 0 ? $fbaGPFT : ($fbaGPFT - $fbaAD);
 
+                // Use FBA's own SPRICE from FbaManualData (same as FBA page) so row shows saved/pushed value
+                $fbaSprice = 0;
+                if ($fbaManual && is_array($fbaManual->data ?? null)) {
+                    $fbaSprice = floatval($fbaManual->data['s_price'] ?? 0);
+                }
+                if ($fbaSprice > 0) {
+                    $fbaSgpft = (($fbaSprice * $fbaMargin - $fbaShip - $lp) / $fbaSprice) * 100;
+                    $fbaSpft = $fbaL30 == 0 ? $fbaSgpft : ($fbaSgpft - $fbaAD);
+                    $fbaSroi = $lp > 0 ? (($fbaSprice * $fbaMargin - $lp - $fbaShip) / $lp) * 100 : 0;
+                } else {
+                    $fbaSgpft = $amazonSuggested['sgpft'] ?? 0;
+                    $fbaSpft = $amazonSuggested['spft'] ?? 0;
+                    $fbaSroi = $amazonSuggested['sroi'] ?? 0;
+                    $fbaSprice = $amazonSuggested['sprice'] ?? 0;
+                }
+
                 $breakdownData[] = [
                     'marketplace' => 'FBA',
                     'sku' => $fullSku,
@@ -2280,10 +2296,10 @@ class CvrMasterController extends Controller
                     'tacos_ch' => 0,
                     'npft' => round($fbaNPFT, 2),
                     'is_listed' => true,
-                    'sprice' => $amazonSuggested['sprice'],
-                    'sgpft' => $amazonSuggested['sgpft'],
-                    'sroi' => $amazonSuggested['sroi'],
-                    'spft' => $amazonSuggested['spft'],
+                    'sprice' => round($fbaSprice, 2),
+                    'sgpft' => round($fbaSgpft, 2),
+                    'sroi' => round($fbaSroi, 2),
+                    'spft' => round($fbaSpft, 2),
                     'lp' => $lp,
                     'ship' => $fbaShip,
                     'margin' => $fbaMargin,
