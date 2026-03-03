@@ -3011,6 +3011,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::prefix('repricer/amazon-search')->group(function () {
         Route::get('/', [\App\Http\Controllers\RePricer\AmazonSearchController::class, 'index']);
         Route::post('/search', [\App\Http\Controllers\RePricer\AmazonSearchController::class, 'search']);
+        Route::post('/backfill-sku-competitors-by-asin', [\App\Http\Controllers\RePricer\AmazonSearchController::class, 'backfillSkuCompetitorsByAsin']);
         Route::get('/history', [\App\Http\Controllers\RePricer\AmazonSearchController::class, 'getSearchHistory']);
         Route::get('/results', [\App\Http\Controllers\RePricer\AmazonSearchController::class, 'getResults']);
         Route::get('/filter-options', [\App\Http\Controllers\RePricer\AmazonSearchController::class, 'getFilterOptions']);

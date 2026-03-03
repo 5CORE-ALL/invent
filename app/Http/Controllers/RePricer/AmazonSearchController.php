@@ -415,6 +415,46 @@ class AmazonSearchController extends Controller
     }
 
     /**
+     * Extract old/list price from SerpApi Amazon Product API response (product_results + purchase_options).
+     * Tries extracted_old_price, old_price, and derive from discount % when available.
+     *
+     * @param array $data Full API response
+     * @param array $pr product_results
+     * @return float|null
+     */
+    private function extractOldPriceFromProductResponse(array $data, array $pr): ?float
+    {
+        if (isset($pr['extracted_old_price']) && (is_numeric($pr['extracted_old_price']) || (is_string($pr['extracted_old_price']) && preg_match('/^[\d.]+$/', $pr['extracted_old_price'])))) {
+            return (float) $pr['extracted_old_price'];
+        }
+        if (!empty($pr['old_price']) && is_string($pr['old_price'])) {
+            if (preg_match('/[\d,.]+/', $pr['old_price'], $m)) {
+                return (float) str_replace(',', '', $m[0]);
+            }
+        }
+        $buyNew = $data['purchase_options']['buy_new'] ?? null;
+        if (is_array($buyNew)) {
+            if (isset($buyNew['extracted_old_price']) && is_numeric($buyNew['extracted_old_price'])) {
+                return (float) $buyNew['extracted_old_price'];
+            }
+            if (!empty($buyNew['old_price']) && is_string($buyNew['old_price']) && preg_match('/[\d,.]+/', $buyNew['old_price'], $m)) {
+                return (float) str_replace(',', '', $m[0]);
+            }
+        }
+        $currentPrice = isset($pr['extracted_price']) ? (float) $pr['extracted_price'] : null;
+        if ($currentPrice === null && !empty($pr['price']) && is_string($pr['price']) && preg_match('/[\d,.]+/', $pr['price'], $m)) {
+            $currentPrice = (float) str_replace(',', '', $m[0]);
+        }
+        if ($currentPrice !== null && $currentPrice > 0 && !empty($pr['discount']) && is_string($pr['discount']) && preg_match('/-\s*(\d+)\s*%/', $pr['discount'], $m)) {
+            $pct = (int) $m[1];
+            if ($pct > 0 && $pct < 100) {
+                return round($currentPrice / (1 - $pct / 100), 2);
+            }
+        }
+        return null;
+    }
+
+    /**
      * Extract seller name from product title (e.g. "Product by Seller", "Product - Seller", "Product (Seller)")
      *
      * @param string|null $title
@@ -444,6 +484,129 @@ class AmazonSearchController extends Controller
             }
         }
         return null;
+    }
+
+    /**
+     * Backfill rating, reviews, old price, delivery for existing amazon_sku_competitors rows (by ASIN).
+     * Uses SerpApi Amazon Product API (engine=amazon_product) so we don't need to re-add SKUs.
+     *
+     * @param Request $request limit (optional), asin (optional single ASIN)
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function backfillSkuCompetitorsByAsin(Request $request)
+    {
+        $limit = (int) $request->input('limit', 50);
+        $limit = min(max(1, $limit), 200);
+        $singleAsin = $request->input('asin');
+
+        $serpApiKey = '1ce23be0f3d775e0d631854b4856791aefa6e003415b28e33eb99b5a9c6a83c9';
+        if (!$serpApiKey) {
+            return response()->json(['success' => false, 'message' => 'SerpApi key not configured'], 500);
+        }
+
+        $baseQuery = AmazonSkuCompetitor::where(function ($q) {
+            $q->whereNull('rating')->orWhereNull('reviews');
+        });
+        if ($singleAsin) {
+            $baseQuery->where('asin', trim($singleAsin));
+        }
+        $asins = $baseQuery->select('asin')->distinct()->orderBy('asin')->limit($limit)->pluck('asin');
+
+        if ($asins->isEmpty()) {
+            return response()->json([
+                'success' => true,
+                'message' => 'No SKU competitor rows with missing rating/reviews found.',
+                'updated' => 0,
+                'asins_processed' => 0,
+                'asins_no_data' => [],
+                'total_asins_needing_backfill' => 0,
+            ]);
+        }
+
+        $totalNeeding = AmazonSkuCompetitor::where(function ($q) {
+            $q->whereNull('rating')->orWhereNull('reviews');
+        })->select('asin')->distinct()->count();
+
+        $updated = 0;
+        $asinsProcessed = 0;
+        $asinsNoData = [];
+        $errors = [];
+
+        foreach ($asins as $asin) {
+            try {
+                $response = Http::timeout(25)->get('https://serpapi.com/search', [
+                    'engine' => 'amazon_product',
+                    'amazon_domain' => 'amazon.com',
+                    'asin' => $asin,
+                    'api_key' => $serpApiKey,
+                ]);
+                if (!$response->successful()) {
+                    $errors[] = "ASIN {$asin}: HTTP " . $response->status();
+                    $asinsNoData[] = $asin;
+                    continue;
+                }
+                $data = $response->json();
+                $pr = $data['product_results'] ?? null;
+                if (!$pr) {
+                    $errors[] = "ASIN {$asin}: no product_results";
+                    $asinsNoData[] = $asin;
+                    continue;
+                }
+                $rating = isset($pr['rating']) ? (is_numeric($pr['rating']) ? (float) $pr['rating'] : null) : null;
+                $reviews = isset($pr['reviews']) ? (is_numeric($pr['reviews']) ? (int) $pr['reviews'] : null) : null;
+                $price = isset($pr['extracted_price']) ? (float) $pr['extracted_price'] : null;
+                if ($price === null && isset($pr['price']) && is_string($pr['price'])) {
+                    preg_match('/[\d,.]+/', $pr['price'], $m);
+                    if (!empty($m)) {
+                        $price = (float) str_replace(',', '', $m[0]);
+                    }
+                }
+                $extractedOldPrice = $this->extractOldPriceFromProductResponse($data, $pr);
+                $delivery = isset($pr['delivery']) && is_array($pr['delivery'])
+                    ? array_values(array_filter(array_map('strval', $pr['delivery'])))
+                    : null;
+                $title = $pr['title'] ?? null;
+                $thumbnail = $pr['thumbnail'] ?? (isset($pr['thumbnails'][0]) ? $pr['thumbnails'][0] : null);
+
+                $payload = array_filter([
+                    'rating' => $rating,
+                    'reviews' => $reviews,
+                    'extracted_old_price' => $extractedOldPrice,
+                    'delivery' => $delivery,
+                    'seller_name' => $this->extractSellerFromTitle($title),
+                    'product_title' => $title,
+                    'image' => $thumbnail,
+                    'price' => $price,
+                ], function ($v) {
+                    return $v !== null && $v !== '';
+                });
+
+                if (empty($payload)) {
+                    $errors[] = "ASIN {$asin}: no usable data in response";
+                    $asinsNoData[] = $asin;
+                    continue;
+                }
+
+                $count = AmazonSkuCompetitor::where('asin', $asin)->update($payload);
+                $updated += $count;
+                $asinsProcessed++;
+            } catch (\Throwable $e) {
+                Log::warning('Backfill SKU competitor by ASIN failed', ['asin' => $asin, 'message' => $e->getMessage()]);
+                $errors[] = "ASIN {$asin}: " . $e->getMessage();
+                $asinsNoData[] = $asin;
+            }
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => "Backfilled {$asinsProcessed} ASIN(s), updated {$updated} row(s). " .
+                count($asinsNoData) . " ASIN(s) had no data or failed. Run again with same limit to process more (total needing backfill was {$totalNeeding}).",
+            'updated' => $updated,
+            'asins_processed' => $asinsProcessed,
+            'asins_no_data' => array_values($asinsNoData),
+            'total_asins_needing_backfill' => $totalNeeding,
+            'errors' => array_slice($errors, 0, 20),
+        ]);
     }
 
     /**
