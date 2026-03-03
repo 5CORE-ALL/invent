@@ -1210,8 +1210,8 @@ class CvrMasterController extends Controller
             $amazonPercentage = $amazonMarketplace ? ($amazonMarketplace->percentage / 100) : 0.80;
             
             // Calculate Amazon GPFT% (line 1887-1890: (price × 0.80 - ship - lp) / price × 100)
-            $amazonPrice = $amazonData->price ?? 0;
-            $amazonL30 = $amazonData->units_ordered_l30 ?? 0; // CORRECT field name!
+            $amazonPrice = $amazonData ? ($amazonData->price ?? 0) : 0;
+            $amazonL30 = $amazonData ? ($amazonData->units_ordered_l30 ?? 0) : 0; // CORRECT field name!
             $amazonGPFT = $amazonPrice > 0 ? (($amazonPrice * 0.80 - $ship - $lp) / $amazonPrice) * 100 : 0;
             
             Log::info('Amazon GPFT calc - Price: ' . $amazonPrice . ', L30: ' . $amazonL30 . ', LP: ' . $lp . ', Ship: ' . $ship . ', GPFT%: ' . $amazonGPFT);
@@ -1286,7 +1286,7 @@ class CvrMasterController extends Controller
                 'marketplace' => 'Amazon',
                 'sku' => $amazonData ? $fullSku : 'Not Listed',
                 'price' => $amazonPrice,
-                'views' => $amazonData->sessions_l30 ?? 0,
+                'views' => $amazonData ? ($amazonData->sessions_l30 ?? 0) : 0,
                 'l30' => $amazonL30,
                 'gpft' => $amazonGPFT,
                 'ad' => $amazonAD,
@@ -2223,75 +2223,93 @@ class CvrMasterController extends Controller
             ];
 
             // FBA row – same structure as other marketplaces (only when SKU has FBA data)
-            $baseSku = strtoupper(trim($fullSku));
-            $fbaTableRows = FbaTable::whereRaw("seller_sku LIKE '%FBA%' OR seller_sku LIKE '%fba%'")
-                ->get()
-                ->keyBy(fn($item) => strtoupper(trim(preg_replace('/\s*FBA\s*/i', '', $item->seller_sku))));
-            $fbaRow = $fbaTableRows->get($baseSku);
-            if ($fbaRow) {
-                $fbaPriceData = FbaPrice::whereRaw("seller_sku LIKE '%FBA%' OR seller_sku LIKE '%fba%'")
+            try {
+                $baseSku = strtoupper(trim($fullSku));
+                $fbaTableRows = FbaTable::whereRaw("seller_sku LIKE '%FBA%' OR seller_sku LIKE '%fba%'")
                     ->get()
-                    ->keyBy(fn($item) => strtoupper(trim(preg_replace('/\s*FBA\s*/i', '', $item->seller_sku))));
-                $fbaMonthlyData = FbaMonthlySale::whereRaw("seller_sku LIKE '%FBA%' OR seller_sku LIKE '%fba%'")
-                    ->get()
-                    ->keyBy(fn($item) => strtoupper(trim(preg_replace('/\s*FBA\s*/i', '', $item->seller_sku))));
-                $fbaReportsData = FbaReportsMaster::whereRaw("seller_sku LIKE '%FBA%' OR seller_sku LIKE '%fba%'")
-                    ->get()
-                    ->keyBy(fn($item) => strtoupper(trim(preg_replace('/\s*FBA\s*/i', '', $item->seller_sku))));
-                $fbaManualData = FbaManualData::all()->keyBy(fn($item) => strtoupper(trim($item->sku)));
+                    ->keyBy(fn($item) => strtoupper(trim(preg_replace('/\s*FBA\s*/i', '', (string)($item->seller_sku ?? '')))));
+                $fbaRow = $fbaTableRows->get($baseSku);
+                if ($fbaRow) {
+                    $fbaPriceData = FbaPrice::whereRaw("seller_sku LIKE '%FBA%' OR seller_sku LIKE '%fba%'")
+                        ->get()
+                        ->keyBy(fn($item) => strtoupper(trim(preg_replace('/\s*FBA\s*/i', '', (string)($item->seller_sku ?? '')))));
+                    $fbaMonthlyData = FbaMonthlySale::whereRaw("seller_sku LIKE '%FBA%' OR seller_sku LIKE '%fba%'")
+                        ->get()
+                        ->keyBy(fn($item) => strtoupper(trim(preg_replace('/\s*FBA\s*/i', '', (string)($item->seller_sku ?? '')))));
+                    $fbaReportsData = FbaReportsMaster::whereRaw("seller_sku LIKE '%FBA%' OR seller_sku LIKE '%fba%'")
+                        ->get()
+                        ->keyBy(fn($item) => strtoupper(trim(preg_replace('/\s*FBA\s*/i', '', (string)($item->seller_sku ?? '')))));
+                    $fbaManualData = FbaManualData::all()->keyBy(fn($item) => strtoupper(trim((string)($item->sku ?? ''))));
 
-                $fbaPriceInfo = $fbaPriceData->get($baseSku);
-                $fbaMonthly = $fbaMonthlyData->get($baseSku);
-                $fbaReports = $fbaReportsData->get($baseSku);
-                $fbaManual = $fbaManualData->get(strtoupper(trim($fbaRow->seller_sku))) ?? $fbaManualData->get($baseSku);
+                    $fbaPriceInfo = $fbaPriceData->get($baseSku);
+                    $fbaMonthly = $fbaMonthlyData->get($baseSku);
+                    $fbaReports = $fbaReportsData->get($baseSku);
+                    $fbaSellerSku = trim((string)($fbaRow->seller_sku ?? ''));
+                    $fbaManual = $fbaManualData->get(strtoupper($fbaSellerSku)) ?? $fbaManualData->get($baseSku);
 
-                $fbaPrice = $fbaPriceInfo ? floatval($fbaPriceInfo->price ?? 0) : 0;
-                $fbaL30 = $fbaMonthly ? ($fbaMonthly->l30_units ?? 0) : 0;
-                $fbaViews = $fbaReports ? ($fbaReports->current_month_views ?? 0) : 0;
+                    $fbaPrice = $fbaPriceInfo ? floatval($fbaPriceInfo->price ?? 0) : 0;
+                    $fbaL30 = $fbaMonthly ? ($fbaMonthly->l30_units ?? 0) : 0;
+                    $fbaViews = $fbaReports ? ($fbaReports->current_month_views ?? 0) : 0;
 
-                $sendCost = 0;
-                if ($fbaManual) {
-                    $shippingAmount = floatval($fbaManual->data['shipping_amount'] ?? 0);
-                    $qtyInBox = floatval($fbaManual->data['quantity_in_each_box'] ?? 0);
-                    if ($qtyInBox > 0) {
-                        $sendCost = round($shippingAmount / $qtyInBox, 2);
+                    $sendCost = 0;
+                    if ($fbaManual) {
+                        $manualData = $fbaManual->data;
+                        if (is_string($manualData)) {
+                            $manualData = json_decode($manualData, true) ?? [];
+                        }
+                        if (is_array($manualData)) {
+                            $shippingAmount = floatval($manualData['shipping_amount'] ?? 0);
+                            $qtyInBox = floatval($manualData['quantity_in_each_box'] ?? 0);
+                            if ($qtyInBox > 0) {
+                                $sendCost = round($shippingAmount / $qtyInBox, 2);
+                            }
+                        }
                     }
+                    $fbaFeeManual = 0;
+                    if ($fbaManual && is_array($fbaManual->data ?? null)) {
+                        $fbaFeeManual = floatval($fbaManual->data['fba_fee_manual'] ?? 0);
+                    } elseif ($fbaManual && is_string($fbaManual->data ?? '')) {
+                        $dec = json_decode($fbaManual->data, true);
+                        $fbaFeeManual = is_array($dec) ? floatval($dec['fba_fee_manual'] ?? 0) : 0;
+                    }
+                    $fbaShip = app(FbaManualDataService::class)->calculateFbaShipCalculation(
+                        $fbaRow->seller_sku ?? '',
+                        $fbaFeeManual,
+                        $sendCost
+                    );
+
+                    $amazonMarketplace = MarketplacePercentage::where('marketplace', 'Amazon')->first();
+                    $fbaMargin = $amazonMarketplace ? ($amazonMarketplace->percentage / 100) : 0.80;
+                    $fbaGPFT = $fbaPrice > 0 ? (($fbaPrice * $fbaMargin - $fbaShip - $lp) / $fbaPrice) * 100 : 0;
+                    $fbaAD = 0;
+                    $fbaNPFT = $fbaL30 == 0 ? $fbaGPFT : ($fbaGPFT - $fbaAD);
+
+                    $breakdownData[] = [
+                        'marketplace' => 'FBA',
+                        'sku' => $fullSku,
+                        'price' => round($fbaPrice, 2),
+                        'views' => $fbaViews,
+                        'l30' => $fbaL30,
+                        'gpft' => round($fbaGPFT, 2),
+                        'ad' => $fbaAD,
+                        'tacos_ch' => 0,
+                        'npft' => round($fbaNPFT, 2),
+                        'is_listed' => true,
+                        'sprice' => $amazonSuggested['sprice'] ?? 0,
+                        'sgpft' => $amazonSuggested['sgpft'] ?? 0,
+                        'sroi' => $amazonSuggested['sroi'] ?? 0,
+                        'spft' => $amazonSuggested['spft'] ?? 0,
+                        'lp' => $lp,
+                        'ship' => $fbaShip,
+                        'margin' => $fbaMargin,
+                        'pushed_by' => $amazonPushedBy ?? null,
+                        'pushed_at' => $amazonPushedAt ?? null,
+                        'buyer_link' => $amazonBuyerLink ?? null,
+                        'seller_link' => $amazonSellerLink ?? null,
+                    ];
                 }
-                $fbaShip = app(FbaManualDataService::class)->calculateFbaShipCalculation(
-                    $fbaRow->seller_sku,
-                    $fbaManual ? ($fbaManual->data['fba_fee_manual'] ?? 0) : 0,
-                    $sendCost
-                );
-
-                $amazonMarketplace = MarketplacePercentage::where('marketplace', 'Amazon')->first();
-                $fbaMargin = $amazonMarketplace ? ($amazonMarketplace->percentage / 100) : 0.80;
-                $fbaGPFT = $fbaPrice > 0 ? (($fbaPrice * $fbaMargin - $fbaShip - $lp) / $fbaPrice) * 100 : 0;
-                $fbaAD = 0;
-                $fbaNPFT = $fbaL30 == 0 ? $fbaGPFT : ($fbaGPFT - $fbaAD);
-
-                $breakdownData[] = [
-                    'marketplace' => 'FBA',
-                    'sku' => $fullSku,
-                    'price' => round($fbaPrice, 2),
-                    'views' => $fbaViews,
-                    'l30' => $fbaL30,
-                    'gpft' => round($fbaGPFT, 2),
-                    'ad' => $fbaAD,
-                    'tacos_ch' => 0,
-                    'npft' => round($fbaNPFT, 2),
-                    'is_listed' => true,
-                    'sprice' => $amazonSuggested['sprice'],
-                    'sgpft' => $amazonSuggested['sgpft'],
-                    'sroi' => $amazonSuggested['sroi'],
-                    'spft' => $amazonSuggested['spft'],
-                    'lp' => $lp,
-                    'ship' => $fbaShip,
-                    'margin' => $fbaMargin,
-                    'pushed_by' => $amazonPushedBy,
-                    'pushed_at' => $amazonPushedAt,
-                    'buyer_link' => $amazonBuyerLink,
-                    'seller_link' => $amazonSellerLink,
-                ];
+            } catch (\Throwable $e) {
+                Log::warning('FBA row skipped in breakdown for SKU ' . $fullSku . ': ' . $e->getMessage());
             }
 
             Log::info('Total marketplaces: ' . count($breakdownData));
