@@ -2288,6 +2288,27 @@ class CvrMasterController extends Controller
                     $fbaAD = 0;
                     $fbaNPFT = $fbaL30 == 0 ? $fbaGPFT : ($fbaGPFT - $fbaAD);
 
+                    // FBA row: use SPRICE from FbaManualData (same as FBA page) so row shows saved/pushed value
+                    $fbaSprice = 0;
+                    if ($fbaManual) {
+                        $dm = $fbaManual->data;
+                        if (is_string($dm)) {
+                            $dm = json_decode($dm, true) ?? [];
+                        }
+                        $dm = is_array($dm) ? $dm : [];
+                        $fbaSprice = floatval($dm['s_price'] ?? $dm['S_Price'] ?? 0);
+                    }
+                    if ($fbaSprice > 0) {
+                        $fbaSgpft = (($fbaSprice * $fbaMargin - $fbaShip - $lp) / $fbaSprice) * 100;
+                        $fbaSpft = $fbaL30 == 0 ? $fbaSgpft : ($fbaSgpft - $fbaAD);
+                        $fbaSroi = $lp > 0 ? (($fbaSprice * $fbaMargin - $lp - $fbaShip) / $lp) * 100 : 0;
+                    } else {
+                        $fbaSprice = $amazonSuggested['sprice'] ?? 0;
+                        $fbaSgpft = $amazonSuggested['sgpft'] ?? 0;
+                        $fbaSpft = $amazonSuggested['spft'] ?? 0;
+                        $fbaSroi = $amazonSuggested['sroi'] ?? 0;
+                    }
+
                     $breakdownData[] = [
                         'marketplace' => 'FBA',
                         'sku' => $fullSku,
@@ -2299,10 +2320,10 @@ class CvrMasterController extends Controller
                         'tacos_ch' => 0,
                         'npft' => round($fbaNPFT, 2),
                         'is_listed' => true,
-                        'sprice' => $amazonSuggested['sprice'] ?? 0,
-                        'sgpft' => $amazonSuggested['sgpft'] ?? 0,
-                        'sroi' => $amazonSuggested['sroi'] ?? 0,
-                        'spft' => $amazonSuggested['spft'] ?? 0,
+                        'sprice' => round($fbaSprice, 2),
+                        'sgpft' => round($fbaSgpft, 2),
+                        'sroi' => round($fbaSroi, 2),
+                        'spft' => round($fbaSpft, 2),
                         'lp' => $lp,
                         'ship' => $fbaShip,
                         'margin' => $fbaMargin,
