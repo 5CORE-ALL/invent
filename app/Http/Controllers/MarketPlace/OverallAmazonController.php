@@ -2278,14 +2278,25 @@ class OverallAmazonController extends Controller
             $cleanSkuL30Norm = $normalizeKwForMatch($cleanSkuL30);
             $cleanParentL30Norm = $normalizeKwForMatch($cleanParentL30);
 
-            $matchedCampaignsKwL30 = $amazonSpCampaignReportsL30->filter(function ($item) use ($cleanSkuL30Norm, $cleanParentL30Norm, $normalizeKwForMatch) {
-                $campaignName = $normalizeKwForMatch($item->campaignName ?? '');
-                // Match exact SKU or campaigns starting with SKU (like 'A-54' and 'A-54 2PCS')
-                // Also check parent SKU for child SKUs
-                return $campaignName === $cleanSkuL30Norm
-                    || str_starts_with($campaignName, $cleanSkuL30Norm . ' ')
-                    || $campaignName === $cleanParentL30Norm
-                    || str_starts_with($campaignName, $cleanParentL30Norm . ' ');
+            // KW campaigns: must end with " KW" or " KW." and the part before must EXACTLY match SKU
+            // e.g. SKU "PC 1002" matches "PC 1002 KW" or "PC 1002 KW." but NOT "PC 1002 FBA KW"
+            $kwCampaignMatchesSku = function ($campaignName, $skuNorm) use ($normalizeKwForMatch) {
+                $cn = $normalizeKwForMatch($campaignName);
+                if ($cn === $skuNorm) {
+                    return true;
+                }
+                if (str_ends_with($cn, ' KW')) {
+                    return rtrim(substr($cn, 0, -3)) === $skuNorm;
+                }
+                if (str_ends_with($cn, ' KW.')) {
+                    return rtrim(substr($cn, 0, -4)) === $skuNorm;
+                }
+                return false;
+            };
+            $matchedCampaignsKwL30 = $amazonSpCampaignReportsL30->filter(function ($item) use ($cleanSkuL30Norm, $cleanParentL30Norm, $kwCampaignMatchesSku) {
+                $campaignName = $item->campaignName ?? '';
+                return $kwCampaignMatchesSku($campaignName, $cleanSkuL30Norm)
+                    || $kwCampaignMatchesSku($campaignName, $cleanParentL30Norm);
             });
 
             // For PARENT rows, only match exact "PARENT SKU PT" campaigns, not child variations
@@ -2390,18 +2401,14 @@ class OverallAmazonController extends Controller
             // Normalized SKU for matching (collapse spaces so "CD  110  2PCS" matches "CD 110 2PCS")
             $cleanSkuNorm = $normalizeCampaignNameForMatch($cleanSku);
             
-            // Match L7 campaign - exact SKU match (supports " KW" suffix like PT supports " PT")
-            $matchedCampaignL7 = $amazonSpCampaignReportsL7->first(function ($item) use ($cleanSkuNorm, $normalizeCampaignNameForMatch) {
-                $campaignName = $normalizeCampaignNameForMatch($item->campaignName);
-                // Match exact SKU or SKU with " KW" suffix
-                return $campaignName === $cleanSkuNorm || $campaignName === $cleanSkuNorm . ' KW';
+            // Match L7 campaign - exact SKU match (supports " KW" and " KW." suffix)
+            $matchedCampaignL7 = $amazonSpCampaignReportsL7->first(function ($item) use ($cleanSkuNorm, $kwCampaignMatchesSku) {
+                return $kwCampaignMatchesSku($item->campaignName ?? '', $cleanSkuNorm);
             });
             
-            // Match L1 campaign - exact SKU match (supports " KW" suffix like PT supports " PT")
-            $matchedCampaignL1 = $amazonSpCampaignReportsL1->first(function ($item) use ($cleanSkuNorm, $normalizeCampaignNameForMatch) {
-                $campaignName = $normalizeCampaignNameForMatch($item->campaignName);
-                // Match exact SKU or SKU with " KW" suffix
-                return $campaignName === $cleanSkuNorm || $campaignName === $cleanSkuNorm . ' KW';
+            // Match L1 campaign - exact SKU match (supports " KW" and " KW." suffix)
+            $matchedCampaignL1 = $amazonSpCampaignReportsL1->first(function ($item) use ($cleanSkuNorm, $kwCampaignMatchesSku) {
+                return $kwCampaignMatchesSku($item->campaignName ?? '', $cleanSkuNorm);
             });
             
             // Match L90 campaign - exact SKU match
@@ -2410,10 +2417,9 @@ class OverallAmazonController extends Controller
                 return $campaignName === $cleanSkuNorm;
             });
             
-            // Also get L30 campaign for ACOS calculation (supports " KW" suffix)
-            $matchedCampaignL30ForAcos = $amazonSpCampaignReportsL30->first(function ($item) use ($cleanSkuNorm, $normalizeCampaignNameForMatch) {
-                $campaignName = $normalizeCampaignNameForMatch($item->campaignName);
-                return $campaignName === $cleanSkuNorm || $campaignName === $cleanSkuNorm . ' KW';
+            // Also get L30 campaign for ACOS calculation (supports " KW" and " KW." suffix)
+            $matchedCampaignL30ForAcos = $amazonSpCampaignReportsL30->first(function ($item) use ($cleanSkuNorm, $kwCampaignMatchesSku) {
+                return $kwCampaignMatchesSku($item->campaignName ?? '', $cleanSkuNorm);
             });
             // Prefer KW-suffix campaign for display/toggle so status matches "SKU KW" (what user pauses)
             $matchedCampaignL30KwSuffix = $amazonSpCampaignReportsL30->first(function ($item) use ($cleanSkuNorm, $normalizeCampaignNameForMatch) {
@@ -2421,16 +2427,20 @@ class OverallAmazonController extends Controller
                 return $campaignName === $cleanSkuNorm . ' KW' || $campaignName === $cleanSkuNorm . ' KW.';
             });
             $campaignForDisplay = $matchedCampaignL30KwSuffix ?? $matchedCampaignL30ForAcos;
-            
-            // KW page fields: only use L30 (campaignForDisplay) for campaign_id, campaignName, campaignStatus.
-            // Do NOT use L7/L1 fallback so that when no campaign exists in L30 (e.g. deleted), we do not show
-            // SBID, green Missing Ad, or Active. Strict: campaign must exist in L30 and status from API (L30).
-            if ($matchedCampaignsKwL30->isNotEmpty() && $campaignForDisplay) {
-                $row['campaignBudgetAmount'] = $campaignForDisplay->campaignBudgetAmount ?? ($matchedCampaignL7?->campaignBudgetAmount ?? ($matchedCampaignL1?->campaignBudgetAmount ?? 0));
+            // Fallback: only campaigns where part before " KW"/" KW." exactly matches this SKU (not parent/sibling)
+            $campaignsForThisSkuOnly = $matchedCampaignsKwL30->filter(function ($c) use ($cleanSkuNorm, $kwCampaignMatchesSku) {
+                return $kwCampaignMatchesSku($c->campaignName ?? '', $cleanSkuNorm);
+            });
+            $campaignForRow = $campaignForDisplay ?? $campaignsForThisSkuOnly->first();
+
+            // KW page fields: use L30 campaign for campaign_id, campaignName, campaignStatus.
+            // When matchedCampaignsKwL30 is not empty, always populate campaign_id/campaignName so KW Ads section shows all 198 rows.
+            if ($matchedCampaignsKwL30->isNotEmpty() && $campaignForRow) {
+                $row['campaignBudgetAmount'] = $campaignForRow->campaignBudgetAmount ?? ($matchedCampaignL7?->campaignBudgetAmount ?? ($matchedCampaignL1?->campaignBudgetAmount ?? 0));
                 $row['utilization_budget'] = $row['campaignBudgetAmount'];
-                $row['campaign_id'] = $campaignForDisplay->campaign_id ?? ($matchedCampaignL7?->campaign_id ?? ($matchedCampaignL1?->campaign_id ?? null));
-                $row['campaignName'] = $campaignForDisplay->campaignName ?? ($matchedCampaignL7?->campaignName ?? ($matchedCampaignL1?->campaignName ?? null));
-                $row['campaignStatus'] = $campaignForDisplay->campaignStatus ?? ($matchedCampaignL7?->campaignStatus ?? ($matchedCampaignL1?->campaignStatus ?? null));
+                $row['campaign_id'] = $campaignForRow->campaign_id ?? ($matchedCampaignL7?->campaign_id ?? ($matchedCampaignL1?->campaign_id ?? null));
+                $row['campaignName'] = $campaignForRow->campaignName ?? ($matchedCampaignL7?->campaignName ?? ($matchedCampaignL1?->campaignName ?? null));
+                $row['campaignStatus'] = $campaignForRow->campaignStatus ?? ($matchedCampaignL7?->campaignStatus ?? ($matchedCampaignL1?->campaignStatus ?? null));
             } else {
                 $row['campaignBudgetAmount'] = $matchedCampaignL7?->campaignBudgetAmount ?? ($matchedCampaignL1?->campaignBudgetAmount ?? 0);
                 $row['utilization_budget'] = $row['campaignBudgetAmount'];
@@ -2459,10 +2469,10 @@ class OverallAmazonController extends Controller
             $row['pmt_sales_L30'] = $matchedCampaignsPtL30->sum('sales30d');
             
             // L30 click/sales data - use same campaign as display (KW-suffix when present)
-            $row['l30_clicks'] = $campaignForDisplay ? ($campaignForDisplay->clicks ?? 0) : 0;
-            $row['l30_spend'] = $campaignForDisplay ? ($campaignForDisplay->spend ?? 0) : 0;
-            $row['l30_sales'] = $campaignForDisplay ? ($campaignForDisplay->sales30d ?? 0) : 0;
-            $row['l30_purchases'] = $campaignForDisplay ? ($campaignForDisplay->unitsSoldClicks30d ?? 0) : 0;
+            $row['l30_clicks'] = $campaignForRow ? ($campaignForRow->clicks ?? 0) : 0;
+            $row['l30_spend'] = $campaignForRow ? ($campaignForRow->spend ?? 0) : 0;
+            $row['l30_sales'] = $campaignForRow ? ($campaignForRow->sales30d ?? 0) : 0;
+            $row['l30_purchases'] = $campaignForRow ? ($campaignForRow->unitsSoldClicks30d ?? 0) : 0;
             
             // --- PT Campaign Data ---
             // Match PT L7 campaign
@@ -3506,6 +3516,7 @@ class OverallAmazonController extends Controller
                 'pt_campaign_status' => null,
                 'has_campaigns' => true,
                 'hasCampaign' => true,
+                'has_own_kw_campaign' => true,
                 'campaignBudgetAmount' => $rec->campaignBudgetAmount ?? 0,
                 'utilization_budget' => $rec->campaignBudgetAmount ?? 0,
                 'campaign_id' => $rec->campaign_id ?? null,
