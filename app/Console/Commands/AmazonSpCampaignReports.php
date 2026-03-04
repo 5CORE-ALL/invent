@@ -5,16 +5,10 @@ namespace App\Console\Commands;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
 use App\Models\AmazonSpCampaignReport;
 
 class AmazonSpCampaignReports extends Command
 {
-    /** API timeout (seconds) for large report responses */
-    private const API_TIMEOUT = 120;
-
-    /** Max retries for API calls with exponential backoff */
-    private const API_MAX_RETRIES = 3;
     protected $signature = 'app:amazon-sp-campaign-reports';
     protected $description = 'Fetch and store Sponsored Products campaign reports';
 
@@ -95,55 +89,33 @@ class AmazonSpCampaignReports extends Command
         ];
     }
 
-    /** Exponential backoff in ms: 2s, 4s, 8s (capped at 30s) */
-    private function retryDelay(int $attempt): int
-    {
-        return min((int) (1000 * pow(2, $attempt)), 30000);
-    }
-
     private function fetchReport($profileId, $adType, $reportTypeId, $startDate, $endDate, $rangeKey, $isDailyChart = false)
     {
         $accessToken = $this->getAccessToken();
         $reportName = "{$adType}_{$rangeKey}_Campaign";
 
         $timeUnit = ($startDate === $endDate) ? 'DAILY' : 'SUMMARY';
-        $payload = [
-            'name' => $reportName,
-            'startDate' => $startDate,
-            'endDate' => $endDate,
-            'configuration' => [
-                'adProduct' => $adType,
-                'groupBy' => ['campaign'],
-                'reportTypeId' => $reportTypeId,
-                'columns' => $this->getAllowedMetrics($timeUnit),
-                'format' => 'GZIP_JSON',
-                'timeUnit' => $timeUnit,
-            ]
-        ];
-
-        Log::info('[AmazonSpCampaignReports] Create report request', [
-            'reportName' => $reportName,
-            'startDate' => $startDate,
-            'endDate' => $endDate,
-            'rangeKey' => $rangeKey,
-        ]);
-
-        $response = Http::timeout(self::API_TIMEOUT)
-            ->retry(self::API_MAX_RETRIES, fn ($attempt) => $this->retryDelay($attempt), null, false)
+        
+        $response = Http::timeout(30)
             ->withToken($accessToken)
             ->withHeaders([
                 'Amazon-Advertising-API-Scope' => $profileId,
                 'Amazon-Advertising-API-ClientId' => config('services.amazon_ads.client_id'),
                 'Content-Type' => 'application/vnd.createasyncreportrequest.v3+json',
             ])
-            ->post('https://advertising-api.amazon.com/reporting/reports', $payload);
-
-        Log::info('[AmazonSpCampaignReports] Create report response', [
-            'reportName' => $reportName,
-            'status' => $response->status(),
-            'reportId' => $response->json('reportId'),
-            'body_preview' => substr($response->body(), 0, 500),
-        ]);
+            ->post('https://advertising-api.amazon.com/reporting/reports', [
+                'name' => $reportName,
+                'startDate' => $startDate,
+                'endDate' => $endDate,
+                'configuration' => [
+                    'adProduct' => $adType,
+                    'groupBy' => ['campaign'],
+                    'reportTypeId' => $reportTypeId,
+                    'columns' => $this->getAllowedMetrics($timeUnit),
+                    'format' => 'GZIP_JSON',
+                    'timeUnit' => $timeUnit,
+                ]
+            ]);
 
         // 💥 Handle 425 Duplicate
         if ($response->status() == 425) {
@@ -194,10 +166,8 @@ class AmazonSpCampaignReports extends Command
 
             $token = $this->getAccessToken(); // 🔁 refresh token each poll
 
-            Log::info('[AmazonSpCampaignReports] Status poll request', ['reportId' => $reportId]);
-
-            $statusResponse = Http::timeout(self::API_TIMEOUT)
-                ->retry(self::API_MAX_RETRIES, fn ($attempt) => $this->retryDelay($attempt), null, false)
+            $statusResponse = Http::timeout(30)
+                ->retry(3, 2000)
                 ->withHeaders([
                     'Authorization' => 'Bearer ' . $token,
                     'Amazon-Advertising-API-ClientId' => config('services.amazon_ads.client_id'),
@@ -205,13 +175,6 @@ class AmazonSpCampaignReports extends Command
                     'Content-Type' => 'application/vnd.getasyncreportresponse.v3+json',
                 ])
                 ->get("https://advertising-api.amazon.com/reporting/reports/{$reportId}");
-
-            Log::info('[AmazonSpCampaignReports] Status poll response', [
-                'reportId' => $reportId,
-                'status_http' => $statusResponse->status(),
-                'report_status' => $statusResponse->json('status'),
-                'has_location' => !empty($statusResponse->json('location')) || !empty($statusResponse->json('url')),
-            ]);
 
             if ($statusResponse->status() === 401) {
                 $this->warn("[Report: {$reportId}] 401 Unauthorized — refreshing token...");
@@ -251,31 +214,10 @@ class AmazonSpCampaignReports extends Command
         try {
             $this->info("[$reportName] Downloading and parsing report...");
 
-            Log::info('[AmazonSpCampaignReports] Download report request', [
-                'reportName' => $reportName,
-                'url_length' => strlen($downloadUrl),
-            ]);
-
-            $response = Http::timeout(self::API_TIMEOUT)
-                ->retry(self::API_MAX_RETRIES, fn ($attempt) => $this->retryDelay($attempt), null, false)
-                ->withoutVerifying()
-                ->get($downloadUrl);
-
-            $bodySize = strlen($response->body());
-
-            Log::info('[AmazonSpCampaignReports] Download report response', [
-                'reportName' => $reportName,
-                'status' => $response->status(),
-                'body_size_bytes' => $bodySize,
-            ]);
+            $response = Http::timeout(30)->retry(3, 2000)->withoutVerifying()->get($downloadUrl);
 
             if (!$response->ok()) {
-                $this->error("[$reportName] Failed to download report file (HTTP " . $response->status() . ").");
-                Log::error('[AmazonSpCampaignReports] Download failed', [
-                    'reportName' => $reportName,
-                    'status' => $response->status(),
-                    'body_preview' => substr($response->body(), 0, 1000),
-                ]);
+                $this->error("[$reportName] Failed to download report file.");
                 return;
             }
 

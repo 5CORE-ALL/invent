@@ -462,7 +462,140 @@ class AmazonSpApiService
             ]]
         ];
     }
-    
+
+    /**
+     * Update product title (item_name) on Amazon via Listings Items API PATCH.
+     * Returns ['success' => true] or ['errors' => [['code' => ..., 'message' => ...]]].
+     */
+    public function updateAmazonTitle($sku, $title, $maxRetries = 2)
+    {
+        $sku = trim($sku);
+        $title = trim($title);
+        if (empty($sku)) {
+            Log::error('Amazon Title Update: Empty SKU provided');
+            return ['errors' => [['code' => 'InvalidInput', 'message' => 'SKU is required.']]];
+        }
+        if (strlen($title) === 0) {
+            Log::error('Amazon Title Update: Empty title provided', ['sku' => $sku]);
+            return ['errors' => [['code' => 'InvalidInput', 'message' => 'Title cannot be empty.']]];
+        }
+
+        $sellerId = config('services.amazon_sp.seller_id');
+        if (empty($sellerId)) {
+            Log::error('Amazon Title Update: Seller ID not configured');
+            return ['errors' => [['code' => 'ConfigurationError', 'message' => 'Amazon Seller ID is not configured.']]];
+        }
+
+        $amazonSku = null;
+        $productType = null;
+        $lastError = null;
+
+        for ($attempt = 1; $attempt <= $maxRetries; $attempt++) {
+            try {
+                $forceRefresh = $attempt > 1;
+                $accessToken = $this->getAccessToken($forceRefresh);
+                if (empty($accessToken)) {
+                    $lastError = ['errors' => [['code' => 'AuthenticationError', 'message' => 'Failed to get Amazon access token.']]];
+                    if ($attempt < $maxRetries) {
+                        sleep(1);
+                        continue;
+                    }
+                    return $lastError;
+                }
+
+                if ($amazonSku === null) {
+                    $amazonSku = $this->findAmazonSkuFormat($sku, $accessToken);
+                    if (empty($amazonSku)) {
+                        Log::error('Amazon Title Update: SKU not found in Amazon', ['sku' => $sku]);
+                        return ['errors' => [['code' => 'InvalidInput', 'message' => 'SKU not found in Amazon.']]];
+                    }
+                }
+
+                if ($productType === null) {
+                    $productType = $this->getAmazonProductType($sku, $amazonSku, $accessToken);
+                    if (empty($productType)) {
+                        Log::error('Amazon Title Update: Product type not found', ['sku' => $sku]);
+                        return ['errors' => [['code' => 'InvalidInput', 'message' => 'Product type not found for SKU.']]];
+                    }
+                }
+
+                $encodedSku = rawurlencode($amazonSku);
+                $endpoint = "https://sellingpartnerapi-na.amazon.com/listings/2021-08-01/items/{$sellerId}/{$encodedSku}?marketplaceIds=ATVPDKIKX0DER";
+
+                $body = [
+                    'productType' => $productType,
+                    'patches' => [
+                        [
+                            'op' => 'replace',
+                            'path' => '/attributes/item_name',
+                            'value' => [
+                                [
+                                    'value' => $title,
+                                    'language_tag' => 'en_US',
+                                ],
+                            ],
+                        ],
+                    ],
+                ];
+
+                Log::info('Amazon Title Update Request', [
+                    'original_sku' => $sku,
+                    'amazon_sku' => $amazonSku,
+                    'productType' => $productType,
+                    'title_length' => strlen($title),
+                ]);
+
+                $response = Http::withHeaders([
+                    'x-amz-access-token' => $accessToken,
+                    'Content-Type' => 'application/json',
+                    'Accept' => 'application/json',
+                ])->timeout(30)->patch($endpoint, $body);
+
+                $responseData = $response->json();
+
+                if ($response->failed()) {
+                    Log::error('Amazon Title Update Failed', [
+                        'sku' => $sku,
+                        'status' => $response->status(),
+                        'response' => $responseData,
+                    ]);
+                    $lastError = $responseData ?: [
+                        'errors' => [['code' => 'RequestFailed', 'message' => 'HTTP ' . $response->status()]],
+                    ];
+                    if (in_array($response->status(), [401, 403, 500, 502, 503]) && $attempt < $maxRetries) {
+                        sleep(1);
+                        continue;
+                    }
+                    return $lastError;
+                }
+
+                if (isset($responseData['errors']) && ! empty($responseData['errors'])) {
+                    Log::error('Amazon Title Update: API returned errors', ['sku' => $sku, 'errors' => $responseData['errors']]);
+                    return $responseData;
+                }
+
+                Log::info('Amazon Title Update: SUCCESS', ['sku' => $sku, 'amazon_sku' => $amazonSku]);
+                return ['success' => true];
+            } catch (\Exception $e) {
+                Log::error('Amazon Title Update Exception', [
+                    'sku' => $sku,
+                    'attempt' => $attempt,
+                    'error' => $e->getMessage(),
+                ]);
+                $lastError = [
+                    'errors' => [['code' => 'Exception', 'message' => $e->getMessage()]],
+                ];
+                if ($attempt < $maxRetries) {
+                    sleep(1);
+                    continue;
+                }
+                return $lastError;
+            }
+        }
+
+        return $lastError ?: ['errors' => [['code' => 'UpdateFailed', 'message' => 'Failed to update title.']]];
+    }
+
     /**
      * Verify that the price was actually updated on Amazon
      * Returns: true if verified, false if price doesn't match, null if unable to verify

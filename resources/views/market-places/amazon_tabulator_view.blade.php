@@ -3109,7 +3109,7 @@
                         minWidth: 72,
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
-                            var keywordId = row.keyword_id != null ? row.keyword_id : (row.campaign_id || row.id || row.sku || row['(Child) sku'] || '');
+                            var keywordId = row.keyword_id != null ? row.keyword_id : (row.id != null ? row.id : (row.sku || ''));
                             var spend30 = parseFloat(row.l30_spend || 0);
                             var sales30 = parseFloat(row.l30_sales || 0);
                             var acosRaw = row.acos;
@@ -3144,7 +3144,7 @@
                             }
                             var infoIcon = '<i class="fas fa-info-circle ms-1 info-icon-toggle" style="cursor: pointer; color: #0d6efd;" title="' + tooltipText + '"></i>';
                             return '<div class="kw-cell-wrapper">' +
-                                '<span class="trend-dot" data-metric="kw_acos" data-keyword-id="' + keywordId + '" data-sku="' + (row.sku || row['(Child) sku'] || '') + '" title="View 30 Day Trend"></span>' +
+                                '<span class="trend-dot" data-metric="kw_acos" data-keyword-id="' + keywordId + '" data-sku="' + (row.sku || '') + '" title="View 30 Day Trend"></span>' +
                                 '<div class="text-center">' + acosDisplay + infoIcon + '</div></div>';
                         },
                         sorter: "number"
@@ -3156,13 +3156,8 @@
                         hozAlign: "center",
                         visible: false,
                         formatter: function(cell) {
-                            var row = cell.getRow().getData();
-                            var hasCampaign = row.hasCampaign !== undefined ? row.hasCampaign : (row.campaign_id && row.campaignName);
-                            if (!hasCampaign) return '-';
-                            var campaignId = row.campaign_id || row.keyword_id || row.id || row.sku || row['(Child) sku'] || '';
-                            var dotHtml = campaignId ? '<span class="trend-dot" data-metric="kw_bgt" data-keyword-id="' + campaignId + '" data-sku="' + (row.sku || row['(Child) sku'] || '') + '" title="View 30 Day Trend"></span>' : '';
                             var value = parseFloat(cell.getValue() || 0);
-                            return '<div class="kw-cell-wrapper">' + dotHtml + '<span class="kw-value">' + Math.round(value) + '</span></div>';
+                            return Math.round(value);
                         }
                     },
                     {
@@ -3189,9 +3184,7 @@
                             if (!hasCampaign) return '-';
                             var value = cell.getValue();
                             if (value === undefined || value === null) return '-';
-                            var campaignId = row.campaign_id || row.keyword_id || row.id || row.sku || row['(Child) sku'] || '';
-                            var dotHtml = campaignId ? '<span class="trend-dot" data-metric="kw_sbgt" data-keyword-id="' + campaignId + '" data-sku="' + (row.sku || row['(Child) sku'] || '') + '" title="View 30 Day Trend"></span>' : '';
-                            return '<div class="kw-cell-wrapper">' + dotHtml + '<span class="kw-value">' + value + '</span></div>';
+                            return value;
                         }
                     },
                     {
@@ -3246,11 +3239,11 @@
                         minWidth: 72,
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
-                            var keywordId = row.keyword_id != null ? row.keyword_id : (row.campaign_id || row.id || row.sku || row['(Child) sku'] || '');
+                            var keywordId = row.keyword_id != null ? row.keyword_id : (row.id != null ? row.id : (row.sku || ''));
                             var value = cell.getValue() != null && cell.getValue() !== '' ? parseFloat(cell.getValue()) : 0;
                             var displayVal = value === 0 ? '0.0%' : value.toFixed(1) + '%';
                             return '<div class="kw-cell-wrapper">' +
-                                '<span class="trend-dot" data-metric="kw_ad_cbr" data-keyword-id="' + keywordId + '" data-sku="' + (row.sku || row['(Child) sku'] || '') + '" title="View 30 Day Trend"></span>' +
+                                '<span class="trend-dot" data-metric="kw_ad_cbr" data-keyword-id="' + keywordId + '" data-sku="' + (row.sku || '') + '" title="View 30 Day Trend"></span>' +
                                 '<span class="kw-value">' + displayVal + '</span></div>';
                         },
                         sorter: "number",
@@ -3266,7 +3259,7 @@
                         minWidth: 72,
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
-                            var keywordId = row.keyword_id != null ? row.keyword_id : (row.campaign_id || row.id || row.sku || row['(Child) sku'] || '');
+                            var keywordId = row.keyword_id != null ? row.keyword_id : (row.id != null ? row.id : (row.sku || ''));
                             var spend30 = parseFloat(row.pt_spend_L30 || 0);
                             var sales30 = parseFloat(row.pt_sales_L30 || 0);
                             var acos = sales30 > 0 ? (spend30 / sales30) * 100 : 0;
@@ -3290,7 +3283,7 @@
                             else { td.classList.add('red-bg'); acosDisplay = acos.toFixed(0) + "%"; }
                             var infoIcon = '<i class="fas fa-info-circle ms-1 pt-info-icon-toggle" style="cursor: pointer; color: #0d6efd;" title="' + tooltipText + '"></i>';
                             return '<div class="kw-cell-wrapper">' +
-                                '<span class="trend-dot" data-metric="pt_acos" data-keyword-id="' + keywordId + '" data-sku="' + (row.sku || row['(Child) sku'] || '') + '" title="View 30 Day Trend"></span>' +
+                                '<span class="trend-dot" data-metric="pt_acos" data-keyword-id="' + keywordId + '" data-sku="' + (row.sku || '') + '" title="View 30 Day Trend"></span>' +
                                 '<div class="text-center">' + acosDisplay + infoIcon + '</div></div>';
                         },
                         sorter: function(a, b, aRow, bRow, column, dir, sorterParams) {
@@ -3393,13 +3386,13 @@
                         minWidth: 72,
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
-                            var keywordId = row.keyword_id != null ? row.keyword_id : (row.campaign_id || row.id || row.sku || row['(Child) sku'] || '');
+                            var keywordId = row.keyword_id != null ? row.keyword_id : (row.id != null ? row.id : (row.sku || ''));
                             var hasCampaign = row.pt_campaignName || row.pt_spend_L30 > 0;
                             if (!hasCampaign) return '-';
                             var cvr = parseFloat(row.pt_ad_cvr || 0);
                             var displayVal = cvr === 0 ? '0.0%' : cvr.toFixed(1) + '%';
                             return '<div class="kw-cell-wrapper">' +
-                                '<span class="trend-dot" data-metric="pt_cvr" data-keyword-id="' + keywordId + '" data-sku="' + (row.sku || row['(Child) sku'] || '') + '" title="View 30 Day Trend"></span>' +
+                                '<span class="trend-dot" data-metric="pt_cvr" data-keyword-id="' + keywordId + '" data-sku="' + (row.sku || '') + '" title="View 30 Day Trend"></span>' +
                                 '<span class="kw-value">' + displayVal + '</span></div>';
                         },
                         sorter: function(a, b, aRow, bRow, column, dir, sorterParams) {
@@ -3643,7 +3636,7 @@
                         minWidth: 72,
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
-                            var keywordId = row.keyword_id != null ? row.keyword_id : (row.campaign_id || row.id || row.sku || row['(Child) sku'] || '');
+                            var keywordId = row.keyword_id != null ? row.keyword_id : (row.id != null ? row.id : (row.sku || ''));
                             var spend30 = parseFloat(row.hl_spend_L30 || 0);
                             var sales30 = parseFloat(row.hl_sales_L30 || 0);
                             var acos = (spend30 > 0 && sales30 > 0) ? (spend30 / sales30) * 100 : (spend30 > 0 ? 100 : 0);
@@ -3655,7 +3648,7 @@
                             else if (acos >= 7 && acos <= 14) { td.classList.add('green-bg'); acosDisplay = acos.toFixed(0) + "%"; }
                             else { td.classList.add('red-bg'); acosDisplay = acos.toFixed(0) + "%"; }
                             return '<div class="kw-cell-wrapper">' +
-                                '<span class="trend-dot" data-metric="hl_acos" data-keyword-id="' + keywordId + '" data-sku="' + (row.sku || row['(Child) sku'] || '') + '" title="View 30 Day Trend"></span>' +
+                                '<span class="trend-dot" data-metric="hl_acos" data-keyword-id="' + keywordId + '" data-sku="' + (row.sku || '') + '" title="View 30 Day Trend"></span>' +
                                 '<div class="text-center">' + acosDisplay + '</div></div>';
                         },
                         sorter: function(a, b, aRow, bRow, column, dir, sorterParams) {
@@ -3758,13 +3751,13 @@
                         minWidth: 72,
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
-                            var keywordId = row.keyword_id != null ? row.keyword_id : (row.campaign_id || row.id || row.sku || row['(Child) sku'] || '');
+                            var keywordId = row.keyword_id != null ? row.keyword_id : (row.id != null ? row.id : (row.sku || ''));
                             var hasCampaign = row.hl_campaignName || row.hl_spend_L30 > 0;
                             if (!hasCampaign) return '-';
                             var cvr = parseFloat(row.hl_ad_cvr || 0);
                             var displayVal = cvr === 0 ? '0.0%' : cvr.toFixed(1) + '%';
                             return '<div class="kw-cell-wrapper">' +
-                                '<span class="trend-dot" data-metric="hl_cvr" data-keyword-id="' + keywordId + '" data-sku="' + (row.sku || row['(Child) sku'] || '') + '" title="View 30 Day Trend"></span>' +
+                                '<span class="trend-dot" data-metric="hl_cvr" data-keyword-id="' + keywordId + '" data-sku="' + (row.sku || '') + '" title="View 30 Day Trend"></span>' +
                                 '<span class="kw-value">' + displayVal + '</span></div>';
                         },
                         sorter: function(a, b, aRow, bRow, column, dir, sorterParams) {
@@ -4370,8 +4363,6 @@
                             var row = cell.getRow().getData();
                             var hasCampaign = row.hasCampaign !== undefined ? row.hasCampaign : (row.campaign_id && row.campaignName);
                             if (!hasCampaign) return '-';
-                            var keywordId = row.keyword_id != null ? row.keyword_id : (row.campaign_id || row.id || row.sku || row['(Child) sku'] || '');
-                            var dotHtml = keywordId ? '<span class="trend-dot" data-metric="kw_acos" data-keyword-id="' + keywordId + '" data-sku="' + (row.sku || row['(Child) sku'] || '') + '" title="View KW ACOS 30 Day Trend"></span>' : '';
                             var l7_spend = parseFloat(row.l7_spend) || 0;
                             var budget = (row.utilization_budget != null && row.utilization_budget !== '') ? parseFloat(row.utilization_budget) : (parseFloat(row.campaignBudgetAmount) || 0);
                             var ub7 = budget > 0 ? (l7_spend / (budget * 7)) * 100 : 0;
@@ -4384,7 +4375,7 @@
                             } else if (ub7 < 66) {
                                 td.classList.add('red-bg');
                             }
-                            return '<div class="kw-cell-wrapper">' + dotHtml + '<span class="kw-value">' + ub7.toFixed(0) + "%" + '</span></div>';
+                            return ub7.toFixed(0) + "%";
                         }
                     },
                     {
@@ -4397,8 +4388,6 @@
                             var row = cell.getRow().getData();
                             var hasCampaign = row.hasCampaign !== undefined ? row.hasCampaign : (row.campaign_id && row.campaignName);
                             if (!hasCampaign) return '-';
-                            var keywordId = row.keyword_id != null ? row.keyword_id : (row.campaign_id || row.id || row.sku || row['(Child) sku'] || '');
-                            var dotHtml = keywordId ? '<span class="trend-dot" data-metric="kw_acos" data-keyword-id="' + keywordId + '" data-sku="' + (row.sku || row['(Child) sku'] || '') + '" title="View KW ACOS 30 Day Trend"></span>' : '';
                             var l1_spend = parseFloat(row.l1_spend) || 0;
                             var budget = (row.utilization_budget != null && row.utilization_budget !== '') ? parseFloat(row.utilization_budget) : (parseFloat(row.campaignBudgetAmount) || 0);
                             var ub1 = budget > 0 ? (l1_spend / budget) * 100 : 0;
@@ -4411,7 +4400,7 @@
                             } else if (ub1 < 66) {
                                 td.classList.add('red-bg');
                             }
-                            return '<div class="kw-cell-wrapper">' + dotHtml + '<span class="kw-value">' + ub1.toFixed(0) + "%" + '</span></div>';
+                            return ub1.toFixed(0) + "%";
                         }
                     },
                     {
@@ -4438,10 +4427,8 @@
                             var row = cell.getRow().getData();
                             var hasCampaign = row.hasCampaign !== undefined ? row.hasCampaign : (row.campaign_id && row.campaignName);
                             if (!hasCampaign) return '-';
-                            var keywordId = row.keyword_id != null ? row.keyword_id : (row.campaign_id || row.id || row.sku || row['(Child) sku'] || '');
-                            var dotHtml = keywordId ? '<span class="trend-dot" data-metric="kw_ad_cbr" data-keyword-id="' + keywordId + '" data-sku="' + (row.sku || row['(Child) sku'] || '') + '" title="View KW AD CVR 30 Day Trend"></span>' : '';
                             var l7_cpc = parseFloat(row.l7_cpc) || 0;
-                            return '<div class="kw-cell-wrapper">' + dotHtml + '<span class="kw-value">' + l7_cpc.toFixed(2) + '</span></div>';
+                            return l7_cpc.toFixed(2);
                         }
                     },
                     {
@@ -4454,10 +4441,8 @@
                             var row = cell.getRow().getData();
                             var hasCampaign = row.hasCampaign !== undefined ? row.hasCampaign : (row.campaign_id && row.campaignName);
                             if (!hasCampaign) return '-';
-                            var keywordId = row.keyword_id != null ? row.keyword_id : (row.campaign_id || row.id || row.sku || row['(Child) sku'] || '');
-                            var dotHtml = keywordId ? '<span class="trend-dot" data-metric="kw_ad_cbr" data-keyword-id="' + keywordId + '" data-sku="' + (row.sku || row['(Child) sku'] || '') + '" title="View KW AD CVR 30 Day Trend"></span>' : '';
                             var l1_cpc = parseFloat(row.l1_cpc) || 0;
-                            return '<div class="kw-cell-wrapper">' + dotHtml + '<span class="kw-value">' + l1_cpc.toFixed(2) + '</span></div>';
+                            return l1_cpc.toFixed(2);
                         }
                     },
                     {
@@ -4532,12 +4517,10 @@
                                 return '<span style="color: #999;">-</span>';
                             }
                             
-                            var keywordId = row.keyword_id != null ? row.keyword_id : (row.campaign_id || row.id || row.sku || row['(Child) sku'] || '');
-                            var dotHtml = keywordId ? '<span class="trend-dot" data-metric="kw_sbid" data-keyword-id="' + keywordId + '" data-sku="' + (row.sku || row['(Child) sku'] || '') + '" title="View KW SBID 30 Day Trend"></span>' : '';
                             // Prefer sbid from DB when available (job-updated bid)
                             var sbidFromDb = parseFloat(row.sbid) || 0;
                             if (sbidFromDb > 0) {
-                                return '<div class="kw-cell-wrapper">' + dotHtml + '<span class="kw-value">' + sbidFromDb.toFixed(2) + '</span></div>';
+                                return sbidFromDb.toFixed(2);
                             }
                             // Fallback: calculate SBID dynamically like KW page
                             var l1Cpc = parseFloat(row.l1_cpc) || 0;
@@ -4590,7 +4573,7 @@
                             }
                             
                             if (sbid === 0) return '-';
-                            return '<div class="kw-cell-wrapper">' + dotHtml + '<span class="kw-value">' + sbid.toFixed(2) + '</span></div>';
+                            return sbid.toFixed(2);
                         }
                     },
                     {
@@ -4931,14 +4914,10 @@
                 });
             });
 
-            // SKU Search functionality - use applyFilters to maintain all other filters (section, Active, etc.)
-            // Previously used setFilter() which REPLACED all filters, causing search to reset section/Active filters
-            var skuSearchTimeout = null;
+            // SKU Search functionality
             $('#sku-search').on('keyup', function() {
-                if (skuSearchTimeout) clearTimeout(skuSearchTimeout);
-                skuSearchTimeout = setTimeout(function() {
-                    applyFilters();
-                }, 300);
+                const value = $(this).val();
+                table.setFilter("(Child) sku", "like", value);
             });
 
             table.on('cellEdited', function(cell) {
@@ -5633,14 +5612,7 @@
                 }
 
                 // Campaign Status filter (Active Filter) - section-aware, same logic as badge count and Active toggle column
-                // When in ads sections, treat empty/placeholder ("Active Filter") as "Active" (ENABLED) so filter works by default
-                var effectiveCampaignStatusFilter = campaignStatusFilter;
-                if ((sectionFilter === 'kw-ads' || sectionFilter === 'pt-ads' || sectionFilter === 'hl-ads') &&
-                    (!effectiveCampaignStatusFilter || effectiveCampaignStatusFilter === '')) {
-                    effectiveCampaignStatusFilter = 'ENABLED';
-                    $('#campaign-status-filter').val('ENABLED'); // Sync dropdown so it shows "Active"
-                }
-                if (effectiveCampaignStatusFilter && effectiveCampaignStatusFilter !== 'ALL') {
+                if (campaignStatusFilter && campaignStatusFilter !== '' && campaignStatusFilter !== 'ALL') {
                     table.addFilter(function(data) {
                         if (data.is_parent_summary) return isProductNavigationActive;
                         var currentSection = $('#section-filter').val();
@@ -5666,11 +5638,11 @@
                             }
                         }
                         
-                        if (effectiveCampaignStatusFilter === 'ENABLED') {
+                        if (campaignStatusFilter === 'ENABLED') {
                             return isEnabled;
-                        } else if (effectiveCampaignStatusFilter === 'PAUSED') {
+                        } else if (campaignStatusFilter === 'PAUSED') {
                             return hasCampaignInSection && !isEnabled; // Has campaign in this section but not enabled
-                        } else if (effectiveCampaignStatusFilter === 'MISSING') {
+                        } else if (campaignStatusFilter === 'MISSING') {
                             return !hasCampaignInSection; // No campaign in this section (matches Missing A badge count)
                         }
                         
@@ -6466,23 +6438,13 @@
                 if (metric === 'kw_ad_cbr') {
                     adType = 'kw';
                     apiMetric = 'cvr';
-                } else if (metric === 'kw_bgt') {
-                    adType = 'kw';
-                    apiMetric = 'bgt';
-                } else if (metric === 'kw_sbgt') {
-                    adType = 'kw';
-                    apiMetric = 'sbgt';
-                } else if (metric === 'kw_sbid') {
-                    adType = 'kw';
-                    apiMetric = 'sbid';
                 } else {
                     var parts = metric.split('_');
                     adType = parts[0];
                     apiMetric = parts[1];
                 }
                 if (typeof console !== 'undefined' && console.log) console.log('Metric:', metric, 'AdType:', adType, 'apiMetric:', apiMetric);
-                var labelMap = { acos: 'ACOS', cvr: 'CVR', bgt: 'BGT', sbgt: 'SBGT', sbid: 'SBID' };
-                var label = (adType.toUpperCase() + ' ' + (labelMap[apiMetric] || apiMetric));
+                var label = (adType.toUpperCase() + ' ' + (apiMetric === 'acos' ? 'ACOS' : 'CVR'));
                 $('#trendGraphModalTitle').text('Amazon - ' + label + ' (Rolling 30 Day)');
                 $('#trendGraphNoData').hide();
                 $('#trendGraphContainer').hide();
@@ -6526,13 +6488,7 @@
                 });
             }
 
-            function trendFmtVal(v, apiMetric) {
-                if (apiMetric === 'bgt' || apiMetric === 'sbgt') {
-                    return String(Math.round(v));
-                }
-                if (apiMetric === 'sbid') {
-                    return '$' + parseFloat(v).toFixed(2);
-                }
+            function trendFmtVal(v) {
                 return v.toFixed(1) + '%';
             }
 
@@ -6554,22 +6510,14 @@
                 var yMin = Math.max(0, dataMin - range * 0.1);
                 var yMax = dataMax + range * 0.1;
 
-                document.getElementById('trendChartHighest').textContent = trendFmtVal(dataMax, apiMetric);
-                document.getElementById('trendChartMedian').textContent = trendFmtVal(median, apiMetric);
-                document.getElementById('trendChartLowest').textContent = trendFmtVal(dataMin, apiMetric);
+                document.getElementById('trendChartHighest').textContent = trendFmtVal(dataMax);
+                document.getElementById('trendChartMedian').textContent = trendFmtVal(median);
+                document.getElementById('trendChartLowest').textContent = trendFmtVal(dataMin);
 
                 var dotColors = [];
                 for (var i = 0; i < values.length; i++) {
                     if (i === 0) dotColors.push('#6c757d');
-                    else if (apiMetric === 'acos' || apiMetric === 'bgt') {
-                        if (values[i] > values[i - 1]) dotColors.push('#dc3545');
-                        else if (values[i] < values[i - 1]) dotColors.push('#28a745');
-                        else dotColors.push('#6c757d');
-                    } else if (apiMetric === 'sbgt') {
-                        if (values[i] > values[i - 1]) dotColors.push('#28a745');
-                        else if (values[i] < values[i - 1]) dotColors.push('#dc3545');
-                        else dotColors.push('#6c757d');
-                    } else if (apiMetric === 'sbid') {
+                    else if (apiMetric === 'acos') {
                         if (values[i] > values[i - 1]) dotColors.push('#dc3545');
                         else if (values[i] < values[i - 1]) dotColors.push('#28a745');
                         else dotColors.push('#6c757d');
@@ -6609,19 +6557,18 @@
                         meta.data.forEach(function(point, i) {
                             var offsetY = (i % 2 === 0) ? -7 : -14;
                             cctx.fillStyle = labelColors[i];
-                            cctx.fillText(trendFmtVal(dataset.data[i], apiMetric), point.x, point.y + offsetY);
+                            cctx.fillText(trendFmtVal(dataset.data[i]), point.x, point.y + offsetY);
                         });
                         cctx.restore();
                     }
                 };
 
-                var labelMap = { acos: 'ACOS', cvr: 'CVR', bgt: 'BGT', sbgt: 'SBGT', sbid: 'SBID' };
                 trendGraphChartInstance = new Chart(ctx.getContext('2d'), {
                     type: 'line',
                     data: {
                         labels: labels,
                         datasets: [{
-                            label: labelMap[apiMetric] || apiMetric,
+                            label: apiMetric === 'acos' ? 'ACOS' : 'CVR',
                             data: values,
                             borderColor: '#adb5bd',
                             borderWidth: 1.5,
@@ -6649,14 +6596,14 @@
                                 callbacks: {
                                     label: function(context) {
                                         var idx = context.dataIndex;
-                                        var parts = ['Value: ' + trendFmtVal(context.raw, apiMetric)];
+                                        var parts = ['Value: ' + trendFmtVal(context.raw)];
                                         if (idx > 0) {
                                             var diff = context.raw - values[idx - 1];
-                                            parts.push('vs Yesterday: ' + (diff < 0 ? '▼' : diff > 0 ? '▲' : '▬') + ' ' + trendFmtVal(Math.abs(diff), apiMetric));
+                                            parts.push('vs Yesterday: ' + (diff < 0 ? '▼' : diff > 0 ? '▲' : '▬') + ' ' + trendFmtVal(Math.abs(diff)));
                                         }
                                         if (idx >= 7) {
                                             var diff7 = context.raw - values[idx - 7];
-                                            parts.push('vs 7d Ago: ' + (diff7 < 0 ? '▼' : diff7 > 0 ? '▲' : '▬') + ' ' + trendFmtVal(Math.abs(diff7), apiMetric));
+                                            parts.push('vs 7d Ago: ' + (diff7 < 0 ? '▼' : diff7 > 0 ? '▲' : '▬') + ' ' + trendFmtVal(Math.abs(diff7)));
                                         }
                                         return parts;
                                     }
@@ -6667,13 +6614,7 @@
                             y: {
                                 min: yMin,
                                 max: yMax,
-                                ticks: { 
-                                    callback: function(v) { 
-                                        if (apiMetric === 'sbid') return '$' + parseFloat(v).toFixed(2);
-                                        return (apiMetric === 'bgt' || apiMetric === 'sbgt') ? String(Math.round(v)) : v.toFixed(1) + '%'; 
-                                    }, 
-                                    font: { size: 9 } 
-                                },
+                                ticks: { callback: function(v) { return v.toFixed(1) + '%'; }, font: { size: 9 } },
                                 grid: { color: 'rgba(0,0,0,0.08)' }
                             },
                             x: {

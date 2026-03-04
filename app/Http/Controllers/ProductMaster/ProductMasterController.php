@@ -4,8 +4,10 @@ namespace App\Http\Controllers\ProductMaster;
 
 use App\Http\Controllers\ApiController;
 use App\Http\Controllers\Controller;
+use App\Models\AmazonListingRaw;
 use App\Models\Permission;
 use App\Models\ProductMaster;
+use App\Services\AmazonSpApiService;
 use App\Models\ShopifySku;
 use App\Models\User;
 use Illuminate\Http\Request;
@@ -205,6 +207,122 @@ class ProductMasterController extends Controller
 
         return response()->json([
             'message' => 'Data loaded from database',
+            'data' => $result,
+            'status' => 200,
+        ]);
+    }
+
+    /**
+     * Title Master table data: all Amazon listings (seller_sku + resolved title) with Product Master joined by SKU.
+     * Returns one row per Amazon listing so all 833+ Amazon titles are visible; PM fields (Parent, title150, etc.) when SKU exists in PM.
+     */
+    public function getTitleMasterData(Request $request)
+    {
+        $listings = AmazonListingRaw::orderBy('seller_sku')->get();
+        $pmBySku = ProductMaster::orderBy('parent')->orderBy('sku')->get()->keyBy(function ($p) {
+            return str_replace("\u{00a0}", ' ', $p->sku);
+        });
+        $shopifySkus = ShopifySku::all()->keyBy(function ($item) {
+            return str_replace("\u{00a0}", ' ', $item->sku);
+        });
+
+        $result = [];
+        foreach ($listings as $listing) {
+            $sku = $listing->seller_sku;
+            if (empty($sku)) {
+                continue;
+            }
+            $amazonTitle = null;
+            $rawData = $listing->raw_data ? (is_string($listing->raw_data) ? json_decode($listing->raw_data, true) : $listing->raw_data) : null;
+            if ($rawData && is_array($rawData)) {
+                $possibleKeys = ['item-name', 'item_name', 'product-title', 'title', 'Item Name', 'itemName'];
+                foreach ($possibleKeys as $key) {
+                    if (! empty($rawData[$key]) && is_string($rawData[$key])) {
+                        $amazonTitle = trim($rawData[$key]);
+                        break;
+                    }
+                }
+            }
+            if (empty($amazonTitle) && ! empty($listing->item_name)) {
+                $amazonTitle = trim($listing->item_name);
+            }
+
+            $normalizedSku = str_replace("\u{00a0}", ' ', $sku);
+            $product = $pmBySku->get($normalizedSku);
+
+            if ($product) {
+                $row = [
+                    'id' => $product->id,
+                    'Parent' => $product->parent,
+                    'SKU' => $product->sku,
+                    'amazon_title' => $amazonTitle,
+                    'title150' => $product->title150,
+                    'title100' => $product->title100,
+                    'title80' => $product->title80,
+                    'title60' => $product->title60,
+                    'bullet1' => $product->bullet1,
+                    'bullet2' => $product->bullet2,
+                    'bullet3' => $product->bullet3,
+                    'bullet4' => $product->bullet4,
+                    'bullet5' => $product->bullet5,
+                    'product_description' => $product->product_description,
+                    'feature1' => $product->feature1,
+                    'feature2' => $product->feature2,
+                    'feature3' => $product->feature3,
+                    'feature4' => $product->feature4,
+                    'main_image' => $product->main_image,
+                    'main_image_brand' => $product->main_image_brand,
+                    'image1' => $product->image1,
+                    'image2' => $product->image2,
+                    'image3' => $product->image3,
+                    'image4' => $product->image4,
+                    'image5' => $product->image5,
+                    'image6' => $product->image6,
+                    'image7' => $product->image7,
+                    'image8' => $product->image8,
+                    'image9' => $product->image9,
+                    'image10' => $product->image10,
+                    'image11' => $product->image11,
+                    'image12' => $product->image12,
+                ];
+                if (is_array($product->Values)) {
+                    $row = array_merge($row, $product->Values);
+                } elseif (is_string($product->Values)) {
+                    $values = json_decode($product->Values, true);
+                    if (is_array($values)) {
+                        $row = array_merge($row, $values);
+                    }
+                }
+                $shopifyData = $shopifySkus->get($normalizedSku);
+                $shopifyImage = $shopifyData->image_src ?? null;
+                $localImage = isset($row['image_path']) && $row['image_path'] ? $row['image_path'] : null;
+                if ($localImage && (strpos($localImage, 'storage/') !== false || strpos($localImage, '/storage/') !== false)) {
+                    $row['image_path'] = '/'.ltrim($localImage, '/');
+                } elseif ($shopifyImage) {
+                    $row['image_path'] = $shopifyImage;
+                } elseif ($localImage) {
+                    $row['image_path'] = '/'.ltrim($localImage, '/');
+                } else {
+                    $row['image_path'] = $row['image_path'] ?? $product->main_image ?? null;
+                }
+            } else {
+                $row = [
+                    'id' => null,
+                    'Parent' => null,
+                    'SKU' => $sku,
+                    'amazon_title' => $amazonTitle,
+                    'title150' => null,
+                    'title100' => null,
+                    'title80' => null,
+                    'title60' => null,
+                    'image_path' => null,
+                ];
+            }
+            $result[] = $row;
+        }
+
+        return response()->json([
+            'message' => 'Title Master data (Amazon listings + PM join)',
             'data' => $result,
             'status' => 200,
         ]);
@@ -1716,6 +1834,432 @@ class ProductMasterController extends Controller
                 'message' => 'Failed to save title data: '.$e->getMessage(),
             ], 500);
         }
+    }
+
+    /**
+     * Generate improved titles (150, 100, 80, 60 chars) using Claude/Anthropic API for the Edit modal "Improve with AI".
+     */
+    public function generateTitlesWithAI(Request $request)
+    {
+        $request->validate([
+            'sku' => 'nullable|string',
+            'current_title' => 'required|string',
+            'existing_titles' => 'nullable|array',
+            'parent_category' => 'nullable|string',
+        ]);
+
+        $apiKey = config('services.anthropic.key');
+        if (! $apiKey) {
+            Log::warning('AI generate titles: ANTHROPIC_API_KEY not configured');
+            return response()->json([
+                'success' => false,
+                'message' => 'ANTHROPIC_API_KEY is not configured.',
+            ], 503);
+        }
+
+        $currentTitle = trim($request->input('current_title', ''));
+        $sku = $request->input('sku', '');
+        $parentCategory = $request->input('parent_category', '');
+        $existing = $request->input('existing_titles', []);
+
+        $model = 'claude-sonnet-4-20250514';
+        Log::info('AI generate titles: start', ['sku' => $sku, 'model' => $model, 'title_len' => strlen($currentTitle)]);
+
+        $prompt = <<<PROMPT
+You are a professional e-commerce copywriter. Create 4 optimized product titles for Amazon, Shopify, eBay, and other platforms.
+
+Original product title: "{$currentTitle}"
+SKU: {$sku}
+Product category: {$parentCategory}
+
+Requirements:
+
+Title 150 (Amazon): Max 150 chars - SEO optimized, include key features, brand name
+Title 100 (Shopify): Max 100 chars - Catchy, concise, focus on main selling points
+Title 80 (eBay/Walmart): Max 80 chars - Short, keyword-rich, attention-grabbing
+Title 60 (Other platforms): Max 60 chars - Ultra concise, core product name + key feature
+
+Return ONLY a JSON object with this exact structure (no markdown, no code block wrapper):
+{"title150":"generated title here","title100":"generated title here","title80":"generated title here","title60":"generated title here"}
+
+Make titles compelling, accurate to the product, and within character limits. Output valid JSON only.
+PROMPT;
+
+        try {
+            $response = Http::timeout(90)
+                ->withHeaders([
+                    'x-api-key' => $apiKey,
+                    'anthropic-version' => '2023-06-01',
+                    'content-type' => 'application/json',
+                ])
+                ->post('https://api.anthropic.com/v1/messages', [
+                    'model' => $model,
+                    'max_tokens' => 1024,
+                    'messages' => [
+                        [
+                            'role' => 'user',
+                            'content' => $prompt,
+                        ],
+                    ],
+                ]);
+
+            $status = $response->status();
+            $bodyRaw = $response->body();
+
+            if (! $response->successful()) {
+                $bodyJson = $response->json();
+                $requestId = $bodyJson['request_id'] ?? null;
+                $errorMsg = isset($bodyJson['error']['message']) ? $bodyJson['error']['message'] : $bodyRaw;
+                Log::warning('AI generate titles: Anthropic API error', [
+                    'status' => $status,
+                    'request_id' => $requestId,
+                    'error' => $bodyJson['error'] ?? $bodyRaw,
+                ]);
+                return response()->json([
+                    'success' => false,
+                    'message' => 'AI service error: '.$errorMsg,
+                ], 502);
+            }
+
+            $body = $response->json();
+            $text = trim($body['content'][0]['text'] ?? '');
+            $text = preg_replace('/^```\w*\s*|\s*```$/m', '', $text);
+            $data = json_decode($text, true);
+
+            if (! is_array($data) || ! isset($data['title150'], $data['title100'], $data['title80'], $data['title60'])) {
+                Log::warning('AI generate titles: invalid response format', ['text_preview' => mb_substr($text, 0, 500)]);
+
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Invalid AI response format. Please try again.',
+                ], 422);
+            }
+
+            $data['title150'] = mb_substr(trim($data['title150'] ?? ''), 0, 150);
+            $data['title100'] = mb_substr(trim($data['title100'] ?? ''), 0, 100);
+            $data['title80'] = mb_substr(trim($data['title80'] ?? ''), 0, 80);
+            $data['title60'] = mb_substr(trim($data['title60'] ?? ''), 0, 60);
+
+            Log::info('AI generate titles: success', ['sku' => $sku, 'lengths' => [
+                'title150' => strlen($data['title150']),
+                'title100' => strlen($data['title100']),
+                'title80' => strlen($data['title80']),
+                'title60' => strlen($data['title60']),
+            ]]);
+
+            return response()->json([
+                'success' => true,
+                'data' => $data,
+            ]);
+        } catch (\Exception $e) {
+            Log::error('AI generate titles: exception', ['message' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Error: '.$e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Generate a single Title 150 (120-150 chars) using Claude for the "Improve with AI" preview popup.
+     */
+    public function generateTitle150WithAI(Request $request)
+    {
+        $request->validate([
+            'sku' => 'nullable|string',
+            'current_title' => 'required|string',
+            'parent_category' => 'nullable|string',
+            'min_length' => 'nullable|integer|min:80|max:150',
+            'max_length' => 'nullable|integer|min:80|max:150',
+        ]);
+
+        $apiKey = config('services.anthropic.key');
+        if (! $apiKey) {
+            Log::warning('AI generate title 150: ANTHROPIC_API_KEY not configured');
+            return response()->json([
+                'success' => false,
+                'message' => 'ANTHROPIC_API_KEY is not configured.',
+            ], 503);
+        }
+
+        $currentTitle = trim($request->input('current_title', ''));
+        $sku = $request->input('sku', '');
+        $parentCategory = $request->input('parent_category', '');
+        $minLen = (int) $request->input('min_length', 140);
+        $maxLen = (int) $request->input('max_length', 150);
+        $minLen = max(80, min(150, $minLen));
+        $maxLen = max($minLen, min(150, $maxLen));
+
+        $model = 'claude-sonnet-4-20250514';
+        Log::info('AI generate title 150 (3 options): start', ['sku' => $sku, 'model' => $model]);
+
+        $prompt = <<<PROMPT
+Generate 3 DIFFERENT Amazon product titles for the same product. Each title must be {$minLen}-{$maxLen} characters.
+
+Original title: "{$currentTitle}"
+SKU: {$sku}
+Product category: {$parentCategory}
+
+Requirements for ALL 3 titles:
+- Length: {$minLen}-{$maxLen} characters each.
+- Include brand "5 Core".
+- Focus on different selling angles:
+  * Title 1: Technical/Specs focused
+  * Title 2: Benefit/Usage focused
+  * Title 3: Quality/Professional focused
+- SEO optimized. No promotional text (e.g. no "Free Shipping", "Best Price").
+
+Return ONLY a JSON array of exactly 3 title strings. No markdown, no code block wrapper, no explanations.
+Example format: ["First title here...","Second title here...","Third title here..."]
+PROMPT;
+
+        try {
+            $response = Http::timeout(90)
+                ->withHeaders([
+                    'x-api-key' => $apiKey,
+                    'anthropic-version' => '2023-06-01',
+                    'content-type' => 'application/json',
+                ])
+                ->post('https://api.anthropic.com/v1/messages', [
+                    'model' => $model,
+                    'max_tokens' => 1024,
+                    'messages' => [
+                        [
+                            'role' => 'user',
+                            'content' => $prompt,
+                        ],
+                    ],
+                ]);
+
+            if (! $response->successful()) {
+                $bodyJson = $response->json();
+                $errorMsg = isset($bodyJson['error']['message']) ? $bodyJson['error']['message'] : $response->body();
+                Log::warning('AI generate title 150 (3 options): API error', [
+                    'status' => $response->status(),
+                    'error' => $bodyJson['error'] ?? $response->body(),
+                ]);
+                return response()->json([
+                    'success' => false,
+                    'message' => 'AI service error: '.$errorMsg,
+                ], 502);
+            }
+
+            $body = $response->json();
+            $text = trim($body['content'][0]['text'] ?? '');
+            $text = preg_replace('/^```\w*\s*|\s*```$/m', '', $text);
+            $arr = json_decode($text, true);
+            if (! is_array($arr) || count($arr) < 3) {
+                Log::warning('AI generate title 150: invalid response', ['preview' => mb_substr($text, 0, 300)]);
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Invalid AI response: expected 3 titles.',
+                ], 422);
+            }
+
+            $titles = [];
+            for ($i = 0; $i < 3; $i++) {
+                $t = trim(is_string($arr[$i]) ? $arr[$i] : (string) ($arr[$i] ?? ''));
+                if (mb_strlen($t) > $maxLen) {
+                    $t = mb_substr($t, 0, $maxLen);
+                }
+                $titles[] = $t;
+            }
+
+            Log::info('AI generate title 150: success', ['sku' => $sku, 'count' => 3, 'lengths' => array_map('mb_strlen', $titles)]);
+
+            return response()->json([
+                'success' => true,
+                'titles' => $titles,
+            ]);
+        } catch (\Exception $e) {
+            Log::error('AI generate title 150: exception', ['message' => $e->getMessage()]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Error: '.$e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Push Title 150 to Amazon for a single SKU via SP-API Listings Items API.
+     */
+    public function pushTitleToAmazon(Request $request)
+    {
+        $request->validate([
+            'sku' => 'required|string|max:255',
+            'title' => 'required|string|max:2000',
+            'asin' => 'nullable|string|max:20',
+        ]);
+
+        $sku = trim($request->input('sku'));
+        $title = trim($request->input('title'));
+        $asin = $request->input('asin');
+
+        Log::info('Push to Amazon - Started', [
+            'sku' => $sku,
+            'title_length' => strlen($title),
+            'title_preview' => mb_substr($title, 0, 50),
+            'user_id' => auth()->id(),
+            'timestamp' => now()->toDateTimeString(),
+        ]);
+
+        $listing = AmazonListingRaw::where('seller_sku', $sku)->first();
+        if ($asin === null && $listing) {
+            $asin = $listing->asin1 ?? null;
+        }
+        if (! $listing) {
+            Log::warning('Push to Amazon - SKU not found in listings', ['sku' => $sku]);
+        }
+
+        $startTime = microtime(true);
+
+        Log::debug('Push to Amazon - Request', [
+            'sku' => $sku,
+            'asin' => $asin,
+            'full_title' => $title,
+        ]);
+
+        try {
+            $service = new AmazonSpApiService;
+            $result = $service->updateAmazonTitle($sku, $title);
+
+            $responseTime = (int) round((microtime(true) - $startTime) * 1000);
+
+            if (isset($result['success']) && $result['success'] === true) {
+                Log::info('Push to Amazon - Success', [
+                    'sku' => $sku,
+                    'asin' => $asin,
+                    'response_time_ms' => $responseTime,
+                    'request_id' => $result['request_id'] ?? null,
+                ]);
+
+                return response()->json([
+                    'success' => true,
+                    'message' => "Title pushed to Amazon for SKU: {$sku}",
+                ]);
+            }
+
+            $errors = $result['errors'] ?? [];
+            $firstError = $errors[0] ?? [];
+            $errorCode = $firstError['code'] ?? 'Unknown';
+            $errorMessage = $firstError['message'] ?? json_encode($result);
+
+            Log::error('Push to Amazon - Failed', [
+                'sku' => $sku,
+                'asin' => $asin,
+                'error_code' => $errorCode,
+                'error_message' => $errorMessage,
+                'full_response' => $result,
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => $errorMessage,
+            ], 422);
+        } catch (\Exception $e) {
+            $httpStatus = 500;
+            Log::error('Push to Amazon - Exception', [
+                'sku' => $sku,
+                'asin' => $asin,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Error: '.$e->getMessage(),
+            ], $httpStatus);
+        }
+    }
+
+    /**
+     * Push multiple titles to Amazon in bulk. Accepts skus + titles, processes in batches.
+     */
+    public function pushBulkToAmazon(Request $request)
+    {
+        $request->validate([
+            'skus' => 'required|array',
+            'skus.*' => 'string|max:255',
+            'titles' => 'required|array',
+        ]);
+
+        $skus = array_values(array_unique(array_map('trim', $request->input('skus', []))));
+        $titlesRaw = $request->input('titles', []);
+        $titles = [];
+        foreach ($skus as $sku) {
+            $titles[$sku] = isset($titlesRaw[$sku]) ? trim((string) $titlesRaw[$sku]) : '';
+        }
+
+        $skusWithTitles = array_filter($skus, fn ($s) => ! empty($titles[$s]));
+        $total = count($skusWithTitles);
+
+        if ($total === 0) {
+            return response()->json([
+                'success' => false,
+                'message' => 'No SKUs with titles to push.',
+            ], 422);
+        }
+
+        Log::info('Push Bulk to Amazon - Started', [
+            'total_skus' => $total,
+            'user_id' => auth()->id(),
+        ]);
+
+        $service = new AmazonSpApiService;
+        $successCount = 0;
+        $failedCount = 0;
+        $failedSkus = [];
+        $batchSize = 10;
+
+        for ($i = 0; $i < count($skusWithTitles); $i += $batchSize) {
+            $batch = array_slice($skusWithTitles, $i, $batchSize);
+            $batchNum = (int) floor($i / $batchSize) + 1;
+
+            foreach ($batch as $sku) {
+                $title = $titles[$sku] ?? '';
+                if (empty($title)) {
+                    continue;
+                }
+                try {
+                    $result = $service->updateAmazonTitle($sku, $title);
+                    if (isset($result['success']) && $result['success'] === true) {
+                        $successCount++;
+                    } else {
+                        $failedCount++;
+                        $failedSkus[] = $sku;
+                        Log::warning('Push Bulk - SKU failed', ['sku' => $sku, 'result' => $result]);
+                    }
+                } catch (\Exception $e) {
+                    $failedCount++;
+                    $failedSkus[] = $sku;
+                    Log::error('Push Bulk - Exception', ['sku' => $sku, 'error' => $e->getMessage()]);
+                }
+                usleep(200000);
+            }
+
+            Log::info('Push Bulk - Batch completed', [
+                'batch' => $batchNum,
+                'success' => $successCount,
+                'failed' => $failedCount,
+            ]);
+        }
+
+        Log::info('Push Bulk to Amazon - Completed', [
+            'total_success' => $successCount,
+            'total_failed' => $failedCount,
+            'failed_skus' => array_slice($failedSkus, 0, 20),
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'total' => $total,
+            'success_count' => $successCount,
+            'failed_count' => $failedCount,
+            'failed_skus' => array_slice($failedSkus, 0, 50),
+            'message' => "{$successCount} successful, {$failedCount} failed",
+        ]);
     }
 
     public function saveVideosData(Request $request)
