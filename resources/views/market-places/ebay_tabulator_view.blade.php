@@ -825,6 +825,19 @@
                                 <option value="sku">SKU</option>
                             </select>
                         </div>
+                        <div class="d-flex align-items-center gap-1">
+                            <label for="parent-sku-dropdown" class="form-label mb-0 text-nowrap small" style="font-size: 13px;">Parent / SKU:</label>
+                            <select id="parent-sku-dropdown" class="form-select form-select-sm" style="width: 220px; font-size: 13px;">
+                                <option value="">All (show all)</option>
+                            </select>
+                        </div>
+                        <div style="flex: 1; min-width: 200px; position: relative;">
+                            <i class="fa fa-search" style="position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: #aaa; font-size: 13px;"></i>
+                            <input type="text" id="sku-search" class="form-control form-control-sm" style="padding-left: 32px; border: 1px solid #e5e7eb; border-radius: 6px; font-size: 13px;" placeholder="Search by campaign name or SKU...">
+                        </div>
+                        <span id="custom-pagination-counter" style="font-size: 13px; color: #555; white-space: nowrap;"></span>
+                    </div>
+                    <div class="d-flex align-items-center mb-2" style="padding: 0 12px;">
                         <div class="btn-group time-navigation-group" role="group" aria-label="Parent navigation">
                             <button type="button" id="play-backward" class="btn btn-light rounded-circle" title="Previous parent">
                                 <i class="fas fa-step-backward"></i>
@@ -839,17 +852,6 @@
                                 <i class="fas fa-step-forward"></i>
                             </button>
                         </div>
-                        <div class="d-flex align-items-center gap-1">
-                            <label for="parent-sku-dropdown" class="form-label mb-0 text-nowrap small" style="font-size: 13px;">Parent / SKU:</label>
-                            <select id="parent-sku-dropdown" class="form-select form-select-sm" style="width: 220px; font-size: 13px;">
-                                <option value="">All (show all)</option>
-                            </select>
-                        </div>
-                        <div style="flex: 1; min-width: 200px; position: relative;">
-                            <i class="fa fa-search" style="position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: #aaa; font-size: 13px;"></i>
-                            <input type="text" id="sku-search" class="form-control form-control-sm" style="padding-left: 32px; border: 1px solid #e5e7eb; border-radius: 6px; font-size: 13px;" placeholder="Search by campaign name or SKU...">
-                        </div>
-                        <span id="custom-pagination-counter" style="font-size: 13px; color: #555; white-space: nowrap;"></span>
                     </div>
                     <!-- Table body (scrollable section) -->
                     <div id="ebay-table" style="flex: 1;"></div>

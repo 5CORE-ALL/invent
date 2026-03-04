@@ -2110,7 +2110,8 @@ class OverallAmazonController extends Controller
                 continue;
             }
 
-            $parent = $pm->parent;
+            // Normalize parent: trim, collapse multiple spaces, so "10  FR" and "10 FR" group together and get one parent summary row
+            $parent = preg_replace('/\s+/', ' ', trim((string) ($pm->parent ?? '')));
             $amazonSheet = $amazonDatasheetsBySku[$skuClean] ?? ($amazonDatasheetsBySku[$sku] ?? null);
             $shopify = $shopifyData[$pm->sku] ?? null;
 
@@ -2140,6 +2141,7 @@ class OverallAmazonController extends Controller
             $row['rating'] = $rating;
             $row['reviews'] = $reviews;
             $row['Parent'] = $parent;
+            $row['parent'] = $parent; // lowercase for any consumers expecting it
             $row['(Child) sku'] = $pm->sku;
 
             if ($amazonSheet) {

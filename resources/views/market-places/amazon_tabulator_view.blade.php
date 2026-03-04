@@ -32,6 +32,52 @@
             vertical-align: middle !important;
         }
 
+        /* Play / Pause parent navigation (same as product-master / eBay) */
+        .time-navigation-group {
+            margin-left: 0;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            border-radius: 50px;
+            overflow: hidden;
+            padding: 2px;
+            background: #f8f9fa;
+            display: inline-flex;
+            align-items: center;
+        }
+        .time-navigation-group button {
+            padding: 0;
+            border-radius: 50% !important;
+            width: 40px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 3px;
+            transition: all 0.2s ease;
+            border: 1px solid #dee2e6;
+            background: white;
+            cursor: pointer;
+        }
+        .time-navigation-group button:hover {
+            background-color: #f1f3f5 !important;
+            transform: scale(1.05);
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+        .time-navigation-group button:active { transform: scale(0.95); }
+        .time-navigation-group button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none !important;
+            box-shadow: none !important;
+        }
+        .time-navigation-group button i { font-size: 1.1rem; transition: transform 0.2s ease; }
+        #play-auto { color: #28a745; }
+        #play-auto:hover { background-color: #28a745 !important; color: white !important; }
+        #play-pause { color: #ffc107; display: none; }
+        #play-pause:hover { background-color: #ffc107 !important; color: white !important; }
+        #play-backward, #play-forward { color: #007bff; }
+        #play-backward:hover, #play-forward:hover { background-color: #007bff !important; color: white !important; }
+        .time-navigation-group button:focus { outline: none; box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.25); }
+
         /* Vertical column headers */
         .tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-title {
             writing-mode: vertical-rl;
@@ -578,6 +624,22 @@
                 <div class="d-flex align-items-center justify-content-end mb-1">
                     <span id="table-row-counter" style="font-size:15px;color:#334155;font-weight:600;"></span>
                 </div>
+                <div class="d-flex align-items-center mb-2">
+                    <div class="btn-group time-navigation-group" role="group" aria-label="Parent navigation">
+                        <button type="button" id="play-backward" class="btn btn-light rounded-circle" title="Previous parent">
+                            <i class="fas fa-step-backward"></i>
+                        </button>
+                        <button type="button" id="play-pause" class="btn btn-light rounded-circle" title="Show all products" style="display: none;">
+                            <i class="fas fa-pause"></i>
+                        </button>
+                        <button type="button" id="play-auto" class="btn btn-light rounded-circle" title="Start parent navigation">
+                            <i class="fas fa-play"></i>
+                        </button>
+                        <button type="button" id="play-forward" class="btn btn-light rounded-circle" title="Next parent">
+                            <i class="fas fa-step-forward"></i>
+                        </button>
+                    </div>
+                </div>
                 <div id="amazon-table-wrapper" style="height: calc(100vh - 200px); display: flex; flex-direction: column;">
                     <!-- Table body (scrollable section) -->
                     <div id="amazon-table" style="flex: 1;"></div>
@@ -863,6 +925,11 @@
         let mapFilterActive = 'all'; // Track map filter state: 'all', 'mapped', 'missing'
         let missingAmazonFilterActive = false; // Track Missing L (missing from Amazon) filter
         let seoModeActive = false; // Track SEO mode state
+
+        // Play / Pause parent navigation (same as product-master / eBay)
+        let productUniqueParents = [];
+        let isProductNavigationActive = false;
+        let currentProductParentIndex = -1;
 
         // === Amazon Metric Trend Chart ===
         let amzChartInstance = null;
@@ -2341,8 +2408,10 @@
                         visible: true,
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
+                            if (row.is_parent_summary === true) return '—';
                             var val = row['Parent'] != null ? row['Parent'] : (row['parent'] != null ? row['parent'] : '');
-                            return val ? String(val) : '';
+                            var s = (val != null && val !== '') ? String(val).trim() : '';
+                            return s || '—';
                         }
                     },
 
@@ -5173,6 +5242,93 @@
                 });
             }
 
+            // Build parent list from table (for Play/Next/Previous - same as eBay)
+            function buildProductUniqueParentsFromTable() {
+                if (typeof table === 'undefined' || !table) return [];
+                var allRows = table.getData('all') || [];
+                var seen = {};
+                var list = [];
+                allRows.forEach(function(r) {
+                    var p = (r.Parent || r.parent || '').toString().trim();
+                    if (p && !r.is_parent_summary && !String(p).toUpperCase().startsWith('PARENT') && !seen[p]) {
+                        seen[p] = true;
+                        list.push(p);
+                    }
+                });
+                list.sort(function(a, b) { return String(a).localeCompare(String(b)); });
+                return list;
+            }
+
+            // Play / Pause parent navigation - init and handlers
+            function initProductPlaybackControls() {
+                if (typeof table === 'undefined' || !table) return;
+                if (!productUniqueParents || productUniqueParents.length === 0) {
+                    productUniqueParents = buildProductUniqueParentsFromTable();
+                }
+                $(document).off('click.amzplay', '#play-forward').on('click.amzplay', '#play-forward', productNextParent);
+                $(document).off('click.amzplay', '#play-backward').on('click.amzplay', '#play-backward', productPreviousParent);
+                $(document).off('click.amzplay', '#play-pause').on('click.amzplay', '#play-pause', productStopNavigation);
+                $(document).off('click.amzplay', '#play-auto').on('click.amzplay', '#play-auto', productStartNavigation);
+                updateProductButtonStates();
+            }
+            function productStartNavigation(e) {
+                if (e) e.preventDefault();
+                if (!productUniqueParents || productUniqueParents.length === 0) {
+                    productUniqueParents = buildProductUniqueParentsFromTable();
+                }
+                if (!productUniqueParents || productUniqueParents.length === 0) {
+                    showToast('info', 'No parent groups in data');
+                    return;
+                }
+                isProductNavigationActive = true;
+                currentProductParentIndex = 0;
+                applyFilters();
+                table.setPage(1);
+                $('#play-auto').hide();
+                $('#play-pause').show().removeClass('btn-light');
+                updateProductButtonStates();
+            }
+            function productStopNavigation(e) {
+                if (e) e.preventDefault();
+                isProductNavigationActive = false;
+                currentProductParentIndex = -1;
+                $('#play-pause').hide();
+                $('#play-auto').show().removeClass('btn-success btn-warning btn-danger').addClass('btn-light');
+                applyFilters();
+                updateProductButtonStates();
+            }
+            function productNextParent(e) {
+                if (e) e.preventDefault();
+                if (!isProductNavigationActive) return;
+                if (currentProductParentIndex >= productUniqueParents.length - 1) return;
+                currentProductParentIndex++;
+                applyFilters();
+                table.setPage(1);
+                updateProductButtonStates();
+            }
+            function productPreviousParent(e) {
+                if (e) e.preventDefault();
+                if (!isProductNavigationActive) return;
+                if (currentProductParentIndex <= 0) return;
+                currentProductParentIndex--;
+                applyFilters();
+                table.setPage(1);
+                updateProductButtonStates();
+            }
+            function updateProductButtonStates() {
+                $('#play-backward').prop('disabled', !isProductNavigationActive || currentProductParentIndex <= 0);
+                $('#play-forward').prop('disabled', !isProductNavigationActive || currentProductParentIndex >= productUniqueParents.length - 1);
+                $('#play-auto').attr('title', isProductNavigationActive ? 'Show all products' : 'Start parent navigation');
+                $('#play-pause').attr('title', 'Stop navigation and show all');
+                $('#play-forward').attr('title', 'Next parent');
+                $('#play-backward').attr('title', 'Previous parent');
+                if (isProductNavigationActive) {
+                    $('#play-forward, #play-backward').removeClass('btn-light').addClass('btn-primary');
+                } else {
+                    $('#play-forward, #play-backward').removeClass('btn-primary').addClass('btn-light');
+                }
+            }
+
             function applyFilters() {
                 const inventoryFilter = $('#inventory-filter').val();
                 const nrlFilter = $('#nrl-filter').val();
@@ -5313,25 +5469,34 @@
                     });
                 }
 
-                // Filter Rows: parents, skus, or all
-                // For HL Ads section: ALWAYS show only parent rows (HL utilized page only has parents)
+                // Filter Rows: parents, skus, or all (skip when Play is active - show current parent group only)
                 var sectionFilter = $('#section-filter').val();
-                if (sectionFilter === 'hl-ads') {
-                    table.addFilter(function(data) {
-                        return data.is_parent_summary === true;
-                    });
-                } else if (parentFilter === 'parents') {
-                    // Show only parent rows
-                    table.addFilter(function(data) {
-                        return data.is_parent_summary === true;
-                    });
-                } else if (parentFilter === 'skus') {
-                    // Show all rows except parent rows
-                    table.addFilter(function(data) {
-                        return data.is_parent_summary !== true;
-                    });
+                if (!isProductNavigationActive) {
+                    if (sectionFilter === 'hl-ads') {
+                        table.addFilter(function(data) {
+                            return data.is_parent_summary === true;
+                        });
+                    } else if (parentFilter === 'parents') {
+                        table.addFilter(function(data) {
+                            return data.is_parent_summary === true;
+                        });
+                    } else if (parentFilter === 'skus') {
+                        table.addFilter(function(data) {
+                            return data.is_parent_summary !== true;
+                        });
+                    }
                 }
-                // If 'all', don't add any filter - show all rows
+
+                // Play / Pause: show only current parent group (child SKUs + parent summary row)
+                if (isProductNavigationActive && productUniqueParents.length > 0 && currentProductParentIndex >= 0) {
+                    var currentKey = productUniqueParents[currentProductParentIndex];
+                    if (currentKey) {
+                        table.addFilter(function(data) {
+                            var p = (data.Parent || data.parent || '').toString().trim();
+                            return p === currentKey || p === ('PARENT ' + currentKey);
+                        });
+                    }
+                }
 
                 // SKU Search filter (inside applyFilters so it stacks with Active/campaign status and other filters)
                 var searchVal = ($('#sku-search').val() || '').trim().toLowerCase();
@@ -7017,12 +7182,24 @@ $('#nmap-count').text(missingCount.toLocaleString());
             });
 
             table.on('dataLoaded', function() {
+                var allRows = table.getData('all') || [];
+                var seenParent = {};
+                var parents = [];
+                allRows.forEach(function(r) {
+                    var p = (r.Parent || r.parent || '').toString().trim();
+                    if (p && !r.is_parent_summary && !String(p).toUpperCase().startsWith('PARENT') && !seenParent[p]) {
+                        seenParent[p] = true;
+                        parents.push(p);
+                    }
+                });
+                parents.sort(function(a, b) { return String(a).localeCompare(String(b)); });
+                productUniqueParents = parents.slice(0);
+                initProductPlaybackControls();
                 updateCalcValues();
                 updateSummary();
                 updateSeoCount();
                 setTimeout(function() {
                     $('[data-bs-toggle="tooltip"]').tooltip();
-                    // Refresh checkboxes to reflect selectedSkus set
                     $('.sku-select-checkbox').each(function() {
                         const sku = $(this).data('sku');
                         $(this).prop('checked', selectedSkus.has(sku));
@@ -7574,20 +7751,26 @@ $('#nmap-count').text(missingCount.toLocaleString());
                 }
             });
 
-            // Toast notification
-            function showToast(type, message) {
-                const toast = $(`
-                    <div class="toast align-items-center text-white bg-${type === 'success' ? 'success' : 'danger'} border-0" role="alert">
-                        <div class="d-flex">
-                            <div class="toast-body">${message}</div>
-                            <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
-                        </div>
-                    </div>
-                `);
-                $('.toast-container').append(toast);
-                const bsToast = new bootstrap.Toast(toast[0]);
-                bsToast.show();
-                setTimeout(() => toast.remove(), 3000);
+            // Single toast: accepts showToast(message, type) or showToast(type, message)
+            function showToast(a, b) {
+                var type, message;
+                if (['success','error','info','warning','danger'].indexOf(String(a)) !== -1 && typeof b === 'string') {
+                    type = a;
+                    message = b;
+                } else {
+                    message = a;
+                    type = b || 'info';
+                }
+                var container = document.querySelector('.toast-container');
+                if (!container) return;
+                var bg = (type === 'error' || type === 'danger') ? 'danger' : (type === 'success' ? 'success' : (type === 'warning' ? 'warning' : 'info'));
+                var toast = document.createElement('div');
+                toast.className = 'toast align-items-center text-white bg-' + bg + ' border-0';
+                toast.setAttribute('role', 'alert');
+                toast.innerHTML = '<div class="d-flex"><div class="toast-body">' + (message || '') + '</div><button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button></div>';
+                container.appendChild(toast);
+                new bootstrap.Toast(toast).show();
+                toast.addEventListener('hidden.bs.toast', function() { toast.remove(); });
             }
 
             // Load Competitors Modal Function
