@@ -2753,22 +2753,28 @@
                     var key = getDateKey(t.start_date);
                     if (key) { byDateOverdue[key] = (byDateOverdue[key] || 0) + 1; }
                 });
-                var byDateEtc = {}, byDateAtc = {};
+                var byDateEtc = {}, byDateAtc = {}, byDateDone = {};
                 userTasks.forEach(function(t) {
                     var key = getDateKey(t.start_date);
                     if (!key) return;
                     byDateEtc[key] = (byDateEtc[key] || 0) + (parseInt(t.eta_time) || 0);
                     byDateAtc[key] = (byDateAtc[key] || 0) + (parseInt(t.etc_done) || 0);
                 });
+                userTasks.filter(function(t) { return t.status === 'Done'; }).forEach(function(t) {
+                    var key = getDateKey(t.completion_date || t.updated_at || t.start_date);
+                    if (key) { byDateDone[key] = (byDateDone[key] || 0) + 1; }
+                });
                 var allDates = {};
                 Object.keys(byDateOverdue).forEach(function(k) { allDates[k] = true; });
                 Object.keys(byDateEtc).forEach(function(k) { allDates[k] = true; });
                 Object.keys(byDateAtc).forEach(function(k) { allDates[k] = true; });
+                Object.keys(byDateDone).forEach(function(k) { allDates[k] = true; });
                 var sortedDates = Object.keys(allDates).sort();
                 var labels = sortedDates.map(formatDateLabel);
                 var overdueData = sortedDates.map(function(d) { return byDateOverdue[d] || 0; });
                 var etcData = sortedDates.map(function(d) { return Math.round((byDateEtc[d] || 0) / 60 * 10) / 10; });
                 var atcData = sortedDates.map(function(d) { return Math.round((byDateAtc[d] || 0) / 60 * 10) / 10; });
+                var doneData = sortedDates.map(function(d) { return byDateDone[d] || 0; });
                 $('#user-overdue-graph-empty').toggle(sortedDates.length === 0);
                 $('#user-overdue-graph-wrap').toggle(sortedDates.length > 0);
                 if (sortedDates.length === 0) {
@@ -2783,6 +2789,7 @@
                     userOverdueLineChart.data.datasets[0].data = overdueData;
                     userOverdueLineChart.data.datasets[1].data = etcData;
                     userOverdueLineChart.data.datasets[2].data = atcData;
+                    userOverdueLineChart.data.datasets[3].data = doneData;
                     userOverdueLineChart.update('none');
                     return;
                 }
@@ -2817,6 +2824,15 @@
                                 fill: true,
                                 tension: 0.2,
                                 yAxisID: 'y1'
+                            },
+                            {
+                                label: 'Today done (count)',
+                                data: doneData,
+                                borderColor: 'rgb(13, 110, 253)',
+                                backgroundColor: 'rgba(13, 110, 253, 0.1)',
+                                fill: true,
+                                tension: 0.2,
+                                yAxisID: 'y'
                             }
                         ]
                     },
