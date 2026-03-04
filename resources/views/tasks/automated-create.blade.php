@@ -92,9 +92,9 @@
                                     @endif
                                 </div>
                                 <div class="col-md-6 mb-2">
-                                    <label for="assignee_id" class="form-label fw-bold" style="font-size: 13px;">Assignee</label>
+                                    <label for="assignee_id" class="form-label fw-bold" style="font-size: 13px;">Assignee <span class="text-danger">*</span></label>
                                     <select class="form-select form-select-sm select2 @error('assignee_id') is-invalid @enderror" 
-                                            id="assignee_id" name="assignee_id">
+                                            id="assignee_id" name="assignee_id" required>
                                         <option value="">Please Select</option>
                                         @foreach($users as $user)
                                             <option value="{{ $user->id }}" {{ old('assignee_id') == $user->id ? 'selected' : '' }}>

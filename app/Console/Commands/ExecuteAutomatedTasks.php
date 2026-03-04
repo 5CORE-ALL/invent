@@ -76,18 +76,38 @@ class ExecuteAutomatedTasks extends Command
                     $this->info("⊘ Skipped (already created today): {$task->title}");
                     continue;
                 }
+
+                // Ensure task is always assigned: if no assignee, assign to assignor so user receives the task
+                $assignTo = trim((string)($task->assign_to ?? ''));
+                if ($assignTo === '') {
+                    $assignTo = trim((string)($task->assignor ?? ''));
+                    if ($assignTo !== '') {
+                        Log::info('Automated task had no assignee; assigned to assignor', [
+                            'automate_task_id' => $task->id,
+                            'title' => $task->title,
+                            'assign_to' => $assignTo,
+                        ]);
+                    }
+                }
                 
                 // For automated tasks: due_date = start_date + 5 days (standard completion window)
                 $dueDate = $now->copy()->addDays(5);
                 $completionDate = $dueDate->copy();
+
+                // Ensure id is set if table id is not AUTO_INCREMENT (avoids "Field 'id' doesn't have a default value")
+                $nextId = (int) DB::table('tasks')->max('id') + 1;
+                if ($nextId <= 0) {
+                    $nextId = 1;
+                }
                 
                 $taskData = [
+                    'id' => $nextId,
                     'title' => $task->title . ' [Auto: ' . $now->format('d-M-y') . ']',
                     'group' => $task->group,
                     'priority' => $task->priority,
                     'description' => $task->description,
                     'assignor' => $task->assignor,
-                    'assign_to' => $task->assign_to,
+                    'assign_to' => $assignTo ?: null,
                     'eta_time' => $task->eta_time,
                     'start_date' => $now,
                     'due_date' => $dueDate,
@@ -123,16 +143,17 @@ class ExecuteAutomatedTasks extends Command
                     'updated_at' => $now,
                 ];
 
-                $taskId = DB::table('tasks')->insertGetId($taskData);
+                DB::table('tasks')->insert($taskData);
+                $taskId = $nextId;
                 $taskInstance = Task::find($taskId);
 
-                if ($taskInstance && $task->assign_to) {
+                if ($taskInstance && $assignTo) {
                     try {
                         $taskWhatsApp->notifyNewTaskAssigned($taskInstance);
                     } catch (\Throwable $e) {
                         Log::warning('Task WhatsApp notify new assigned (automated) failed: ' . $e->getMessage(), [
                             'task_id' => $taskId,
-                            'assign_to' => $task->assign_to,
+                            'assign_to' => $assignTo,
                         ]);
                     }
                 }

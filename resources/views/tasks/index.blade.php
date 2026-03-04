@@ -1989,6 +1989,10 @@
                 layoutColumnsOnNewData: true,
                 horizontalScroll: true,
                 autoResize: true,
+                initialSort: [
+                    {column: "start_date", dir: "asc"},
+                    {column: "is_automate_task", dir: "desc"}
+                ],
                 columns: (function() {
                     var cols = [];
                     
@@ -2024,6 +2028,16 @@
                         cellClick: function(e, cell) {
                             cell.getRow().toggleSelect();
                         }
+                    });
+                    
+                    // Hidden column for sorting: automated tasks first within same day
+                    cols.push({
+                        title: "",
+                        field: "is_automate_task",
+                        width: 1,
+                        minWidth: 1,
+                        visible: false,
+                        sorter: "number"
                     });
                     
                     // Column Order: GROUP, TASK, ASSIGNOR, ASSIGNEE, TID, ETC, ATC, STATUS, PRIORITY, IMAGE, LINKS, ACTION
@@ -2460,8 +2474,9 @@
                         console.log('✓ Filter applied: No Assignor');
                         return; // Skip other filters
                     } else {
-                        filters.push({field:"assignor_name", type:"=", value:assignorValue});
-                        console.log('Filter - Assignor:', assignorValue);
+                        // Use "like" so tasks show when this person is assignor (exact or in list)
+                        filters.push({field:"assignor_name", type:"like", value:assignorValue});
+                        console.log('Filter - Assignor (like):', assignorValue);
                     }
                 }
                 
@@ -2500,8 +2515,9 @@
                         setTimeout(updateStatistics, 100);
                         return; // Skip other filters
                     } else {
-                        filters.push({field:"assignee_name", type:"=", value:assigneeValue});
-                        console.log('Filter - Assignee:', assigneeValue);
+                        // Use "like" so tasks show when this person is assignee (single or in list: "Shobha N" or "Srimanta, Shobha N")
+                        filters.push({field: "assignee_name", type: "like", value: assigneeValue});
+                        console.log('Filter - Assignee (like):', assigneeValue);
                     }
                 }
                 

@@ -2,6 +2,8 @@
 
 namespace App\Console\Commands;
 
+use App\Models\Task;
+use App\Services\TaskWhatsAppNotificationService;
 use Carbon\Carbon;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
@@ -27,7 +29,7 @@ class GenerateDailyAutomatedTasks extends Command
     /**
      * Execute the console command.
      */
-    public function handle()
+    public function handle(TaskWhatsAppNotificationService $taskWhatsApp)
     {
         $this->info('Starting automated task generation...');
         
@@ -46,7 +48,7 @@ class GenerateDailyAutomatedTasks extends Command
                 ->where('is_pause', 0)
                 ->whereNotIn('status', ['Done', 'Archived'])
                 ->orderBy('id')
-                ->chunk(100, function ($automatedTasks) use ($now, $today, &$generated, &$skipped) {
+                ->chunk(100, function ($automatedTasks) use ($now, $today, $taskWhatsApp, &$generated, &$skipped) {
                     foreach ($automatedTasks as $autoTask) {
                         try {
                             // Check for duplicate - prevent creating same task twice today
@@ -61,23 +63,43 @@ class GenerateDailyAutomatedTasks extends Command
                                 continue;
                             }
 
-                            // Parse schedule_time (e.g., "20:30:00")
+                            // Parse schedule_time (e.g. "20:30:00" or "12:01")
                             $scheduleTime = $autoTask->schedule_time ?? '00:00:00';
-                            $timeParts = explode(':', $scheduleTime);
+                            $timeParts = array_map('intval', explode(':', $scheduleTime));
+                            $h = $timeParts[0] ?? 0;
+                            $m = $timeParts[1] ?? 0;
+                            $s = $timeParts[2] ?? 0;
                             
                             // Create start_date and due_date = today + schedule_time (using Asia/Kolkata timezone)
-                            $startDate = Carbon::today('Asia/Kolkata')
-                                ->setTime((int)$timeParts[0], (int)$timeParts[1], (int)$timeParts[2]);
-                            
-                            // Due date is same as start date for automated tasks
-                            $dueDate = $startDate->copy();
+                            $startDate = Carbon::today('Asia/Kolkata')->setTime($h, $m, $s);
+                            $dueDate = $startDate->copy()->addDays(5);
                             
                             $this->info("Creating task: start_date={$startDate->format('Y-m-d H:i:s')}, title_date={$now->format('d-M-y')}");
 
+                            // Ensure task is always assigned: if no assignee, assign to assignor so user receives the task
+                            $assignTo = trim((string)($autoTask->assign_to ?? ''));
+                            if ($assignTo === '') {
+                                $assignTo = trim((string)($autoTask->assignor ?? ''));
+                                if ($assignTo !== '') {
+                                    Log::info('Automated task had no assignee; assigned to assignor', [
+                                        'automate_task_id' => $autoTask->id,
+                                        'title' => $autoTask->title,
+                                        'assign_to' => $assignTo,
+                                    ]);
+                                }
+                            }
+
+                            // Ensure id is set if table id is not AUTO_INCREMENT (avoids "Field 'id' doesn't have a default value")
+                            $nextId = (int) DB::table('tasks')->max('id') + 1;
+                            if ($nextId <= 0) {
+                                $nextId = 1;
+                            }
+
                             // Prepare task data
                             $taskData = [
+                                'id' => $nextId,
                                 'task_id' => null,
-                                'title' => $autoTask->title,
+                                'title' => $autoTask->title . ' [Auto: ' . $now->format('d-M-y') . ']',
                                 'group' => $autoTask->group,
                                 'priority' => $autoTask->priority,
                                 'description' => $autoTask->description,
@@ -91,7 +113,7 @@ class GenerateDailyAutomatedTasks extends Command
                                 'start_date' => $startDate,
                                 'due_date' => $dueDate,
                                 'split_tasks' => $autoTask->split_tasks ?? 0,
-                                'assign_to' => $autoTask->assign_to,
+                                'assign_to' => $assignTo ?: null,
                                 'assignor' => $autoTask->assignor,
                                 'link1' => $autoTask->link1,
                                 'link2' => $autoTask->link2 ?? null,
@@ -120,9 +142,22 @@ class GenerateDailyAutomatedTasks extends Command
 
                             // Insert the task
                             DB::table('tasks')->insert($taskData);
-                            
+                            $taskId = $nextId;
+                            $taskInstance = Task::find($taskId);
+
+                            if ($taskInstance && $assignTo) {
+                                try {
+                                    $taskWhatsApp->notifyNewTaskAssigned($taskInstance);
+                                } catch (\Throwable $e) {
+                                    Log::warning('Task WhatsApp notify new assigned (daily automated) failed: ' . $e->getMessage(), [
+                                        'task_id' => $taskId,
+                                        'assign_to' => $assignTo,
+                                    ]);
+                                }
+                            }
+
                             $generated++;
-                            $this->info("✓ Generated: {$autoTask->title}");
+                            $this->info("✓ Generated: {$autoTask->title}" . ($assignTo ? " → assigned to {$assignTo}" : " (no assignee)"));
 
                         } catch (Exception $e) {
                             $this->error("Error processing task ID {$autoTask->id}: {$e->getMessage()}");

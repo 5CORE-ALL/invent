@@ -73,7 +73,12 @@ class TaskController extends Controller
             });
         }
 
-        $tasks = $tasksQuery->orderBy('start_date', 'asc')->get();
+        // Order: by date (asc). Within same day, automated tasks on top (us din ka automated task top par), then start_date
+        $tasks = $tasksQuery
+            ->orderByRaw('(start_date IS NULL) ASC, DATE(start_date) ASC')
+            ->orderBy('is_automate_task', 'desc')
+            ->orderBy('start_date', 'asc')
+            ->get();
 
         // Map emails to names and avatar URLs for display
         $defaultAvatar = asset('images/users/avatar-2.jpg');
@@ -1219,7 +1224,7 @@ class TaskController extends Controller
             'group' => 'nullable|string',
             'priority' => 'nullable|in:Low,Normal,High,Urgent',
             'assignor_id' => 'nullable|exists:users,id',
-            'assignee_id' => 'nullable|exists:users,id',
+            'assignee_id' => 'required|exists:users,id', // Required so auto-generated tasks are always assigned to someone
             'etc_minutes' => 'nullable|integer',
             'tid' => 'nullable|date',
             'schedule_type' => 'required|in:daily,weekly,monthly',
