@@ -1275,6 +1275,33 @@
                             </div>
                         </div>
 
+                        <!-- User-wise overdue: date-wise line graph -->
+                        <div class="row mb-3">
+                            <div class="col-12">
+                                <div class="card border-danger border-opacity-25">
+                                    <div class="card-header py-2 bg-light d-flex flex-wrap align-items-center gap-2">
+                                        <i class="mdi mdi-chart-line text-danger me-1"></i>
+                                        <span class="fw-semibold">User-wise overdue (date-wise)</span>
+                                        <div class="d-flex flex-wrap align-items-center gap-2 ms-auto">
+                                            <label class="form-label mb-0 small fw-bold">Select user:</label>
+                                            <select id="user-overdue-graph-select" class="form-select form-select-sm" style="width: auto; min-width: 180px;">
+                                                <option value="">-- Select user --</option>
+                                                @foreach($users ?? [] as $u)
+                                                    <option value="{{ $u->name }}">{{ $u->name }}</option>
+                                                @endforeach
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div class="card-body py-2" id="user-overdue-graph-card-body">
+                                        <div id="user-overdue-graph-empty" class="text-muted small text-center py-1 mb-0">Select a user to see date-wise overdue graph.</div>
+                                        <div id="user-overdue-graph-wrap" style="display: none; height: 280px;">
+                                            <canvas id="user-overdue-line-chart"></canvas>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
                         <div class="table-wrapper">
                             <div id="tasks-table"></div>
                         </div>
@@ -1629,7 +1656,7 @@
 
 @section('script')
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
-    
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <script>
         $(document).ready(function() {
             var selectedTasks = [];
@@ -2656,6 +2683,103 @@
                     $('#bulk-actions-btn').removeClass('btn-success').addClass('btn-info');
                 }
             });
+
+            // User-wise overdue: date-wise line graph (TID + 10 days = overdue, same as stats)
+            var userOverdueLineChart = null;
+            function isTaskOverdueForGraph(t) {
+                if (!t.start_date || ['Done', 'Archived'].includes(t.status)) return false;
+                var parts = (t.start_date + '').split(/[- :/]/);
+                if (parts.length < 3) return false;
+                var y = parseInt(parts[0], 10), m = parseInt(parts[1], 10), d = parseInt(parts[2], 10);
+                if (parts[0].length === 4 && y > 2000) { /* YYYY-MM-DD */ } else { d = parseInt(parts[0],10); m = parseInt(parts[1],10); y = parseInt(parts[2],10); }
+                var tidDate = new Date(y, m - 1, d);
+                tidDate.setHours(0, 0, 0, 0);
+                var overdueDate = new Date(tidDate);
+                overdueDate.setDate(overdueDate.getDate() + 10);
+                var now = new Date();
+                now.setHours(0, 0, 0, 0);
+                return now > overdueDate;
+            }
+            function getDateKey(startDate) {
+                if (!startDate) return null;
+                var parts = (startDate + '').split(/[- :/]/);
+                if (parts.length < 3) return null;
+                var y = parts[0], m = parts[1], d = parts[2];
+                if (parts[0].length !== 4) { d = parts[0]; m = parts[1]; y = parts[2]; }
+                m = m.length === 1 ? '0' + m : m;
+                d = d.length === 1 ? '0' + d : d;
+                return y + '-' + m + '-' + d;
+            }
+            function formatDateLabel(dateStr) {
+                var parts = dateStr.split('-');
+                if (parts.length !== 3) return dateStr;
+                var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+                return (parseInt(parts[2],10)) + '-' + (months[parseInt(parts[1],10)-1] || parts[1]);
+            }
+            function renderUserOverdueGraph() {
+                var userName = ($('#user-overdue-graph-select').val() || '').trim();
+                if (!userName) {
+                    $('#user-overdue-graph-empty').html('Select a user to see date-wise overdue graph.').show();
+                    $('#user-overdue-graph-wrap').hide();
+                    if (userOverdueLineChart) { userOverdueLineChart.destroy(); userOverdueLineChart = null; }
+                    return;
+                }
+                var allData = table.getData();
+                var userTasks = allData.filter(function(t) {
+                    var an = (t.assignee_name || '').trim();
+                    if (!an) return false;
+                    var assignees = an.split(',').map(function(s) { return s.trim(); });
+                    return assignees.indexOf(userName) >= 0;
+                });
+                var overdueTasks = userTasks.filter(isTaskOverdueForGraph);
+                var byDate = {};
+                overdueTasks.forEach(function(t) {
+                    var key = getDateKey(t.start_date);
+                    if (key) { byDate[key] = (byDate[key] || 0) + 1; }
+                });
+                var sortedDates = Object.keys(byDate).sort();
+                var labels = sortedDates.map(formatDateLabel);
+                var data = sortedDates.map(function(d) { return byDate[d]; });
+                $('#user-overdue-graph-empty').toggle(sortedDates.length === 0);
+                $('#user-overdue-graph-wrap').toggle(sortedDates.length > 0);
+                if (sortedDates.length === 0) {
+                    $('#user-overdue-graph-empty').html('No overdue tasks for <strong>' + userName + '</strong>. Select another user.');
+                    if (userOverdueLineChart) { userOverdueLineChart.destroy(); userOverdueLineChart = null; }
+                    return;
+                }
+                var ctx = document.getElementById('user-overdue-line-chart');
+                if (!ctx) return;
+                if (userOverdueLineChart) {
+                    userOverdueLineChart.data.labels = labels;
+                    userOverdueLineChart.data.datasets[0].data = data;
+                    userOverdueLineChart.data.datasets[0].label = userName + ' - Overdue by date';
+                    userOverdueLineChart.update('none');
+                    return;
+                }
+                userOverdueLineChart = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: userName + ' - Overdue by date',
+                            data: data,
+                            borderColor: 'rgb(220, 53, 69)',
+                            backgroundColor: 'rgba(220, 53, 69, 0.1)',
+                            fill: true,
+                            tension: 0.2
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: { legend: { display: true } },
+                        scales: {
+                            y: { beginAtZero: true, ticks: { stepSize: 1 } }
+                        }
+                    }
+                });
+            }
+            $('#user-overdue-graph-select').on('change', renderUserOverdueGraph);
 
             // Show CSV Upload Modal
             $('#upload-csv-btn').on('click', function() {
