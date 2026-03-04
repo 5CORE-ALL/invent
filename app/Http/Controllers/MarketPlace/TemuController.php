@@ -20,6 +20,7 @@ use App\Models\TemuAdData;
 use App\Models\TemuRPricing;
 use App\Models\TemuListingStatus;
 use App\Models\TemuCampaignReport;
+use App\Models\EbayMetric;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
@@ -1661,12 +1662,15 @@ class TemuController extends Controller
             
             // Fetch Amazon pricing data
             $amazonData = AmazonDatasheet::whereIn('sku', $skus)->get()->keyBy('sku');
+
+            // Fetch eBay price data (same source as EbayController / ebay tabulator)
+            $ebayData = EbayMetric::whereIn('sku', $skus)->select('sku', 'ebay_price')->get()->keyBy('sku');
             
             // Fetch Temu Listing Status data (nr_req and listed)
             $statusData = TemuListingStatus::whereIn('sku', $skus)->get()->keyBy('sku');
 
             // 4. Process data - iterate through ALL product masters
-            $processedData = $productMasters->map(function($productMaster) use ($pricingData, $shopifyData, $temuSalesData, $viewData, $adData, $temuDataViewData, $amazonData, $rPricingData, $percentage, $temuPricingSkusNormalized, $normalizeSku, $statusData, $campaignReportL30, $campaignReportL60) {
+            $processedData = $productMasters->map(function($productMaster) use ($pricingData, $shopifyData, $temuSalesData, $viewData, $adData, $temuDataViewData, $amazonData, $ebayData, $rPricingData, $percentage, $temuPricingSkusNormalized, $normalizeSku, $statusData, $campaignReportL30, $campaignReportL60) {
                 $sku = $productMaster->sku;
                 
                 // Get related data (may be null if not in Temu)
@@ -1814,6 +1818,10 @@ class TemuController extends Controller
                 // Get Amazon price from AmazonDatasheet
                 $amazon = $amazonData->get($sku);
                 $amazonPrice = $amazon ? floatval($amazon->price ?? 0) : 0;
+
+                // Get eBay price from EbayMetric (same as EbayController / ebay tabulator Prc column)
+                $ebayMetric = $ebayData->get($sku);
+                $ebayPrice = $ebayMetric ? floatval($ebayMetric->ebay_price ?? 0) : 0;
                 
                 // Get recommended_base_price from R Pricing by goods_id
                 $rPricingItem = $goodsId ? $rPricingData->get($goodsId) : null;
@@ -1861,6 +1869,7 @@ class TemuController extends Controller
                     'temu_ship' => $temuShip,
                     'temu_price' => round($temuPrice, 2),
                     'a_price' => $amazonPrice,
+                    'e_price' => $ebayPrice,
                     'profit' => round($profit, 2),
                     'profit_percent' => round($profitPercent, 2),
                     'roi_percent' => round($roiPercent, 2),

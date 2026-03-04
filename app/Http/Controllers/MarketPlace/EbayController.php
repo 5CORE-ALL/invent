@@ -850,35 +850,25 @@ class EbayController extends Controller
                     }
                 }
                 
-                // Use saved SPRICE if it exists, otherwise use calculated
-                if ($savedSprice !== null && abs($savedSprice - $calculatedSprice) > 0.01) {
+                // Use saved SPRICE only if it exists in DB; otherwise show nothing (no default/calculated value)
+                if ($savedSprice !== null && $savedSprice > 0) {
                     $row['SPRICE'] = $savedSprice;
                     $row['has_custom_sprice'] = true;
-                    // Use saved status if exists (pushed/applied/error), otherwise 'saved'
                     $row['SPRICE_STATUS'] = $savedStatus ?: 'saved';
+                    $sprice = $savedSprice;
                 } else {
-                    $row['SPRICE'] = $calculatedSprice;
+                    // No saved SPRICE (cleared or never set) — do not show default calculated value
+                    $row['SPRICE'] = null;
                     $row['has_custom_sprice'] = false;
-                    // Use saved status if exists, otherwise null
                     $row['SPRICE_STATUS'] = $savedStatus;
+                    $sprice = 0;
                 }
                 
-                // Calculate SGPFT based on actual SPRICE being used
-                $sprice = $row['SPRICE'];
-                $sgpft = round(
-                    $sprice > 0 ? (($sprice * $percentage - $ship - $lp) / $sprice) * 100 : 0,
-                    2
-                );
-                $row['SGPFT'] = $sgpft;
-                
-                // Calculate SPFT = SGPFT - AD%
-                $row['SPFT'] = $sgpft;
-                
-                // Calculate SROI: ((SPRICE * percentage - lp - ship) / lp) * 100
-                $row['SROI'] = round(
-                    $lp > 0 ? (($sprice * $percentage - $lp - $ship) / $lp) * 100 : 0,
-                    2
-                );
+                // Calculate SGPFT/SPFT/SROI only when we have a SPRICE to show
+                $sgpft = $sprice > 0 ? round((($sprice * $percentage - $ship - $lp) / $sprice) * 100, 2) : 0;
+                $row['SGPFT'] = $sprice > 0 ? $sgpft : null;
+                $row['SPFT'] = $sprice > 0 ? $sgpft : null;
+                $row['SROI'] = $sprice > 0 ? round($lp > 0 ? (($sprice * $percentage - $lp - $ship) / $lp) * 100 : 0, 2) : null;
             } else {
                 // If price is 0, set all to null/0
                 $row['SPRICE'] = null;
@@ -895,9 +885,124 @@ class EbayController extends Controller
             $result[] = (object) $row;
         }
 
+        // Inject parent summary rows so "View: Parent" filter shows them (one row per unique Parent)
+        $byParent = [];
+        foreach ($result as $r) {
+            $p = isset($r->Parent) ? trim((string) $r->Parent) : '';
+            if ($p !== '') {
+                if (!isset($byParent[$p])) {
+                    $byParent[$p] = [];
+                }
+                $byParent[$p][] = $r;
+            }
+        }
+        $parentNames = array_keys($byParent);
+        sort($parentNames);
+        $final = [];
+        foreach ($parentNames as $p) {
+            $children = $byParent[$p];
+            $first = $children[0];
+            $parentRow = new \stdClass;
+            $parentRow->Parent = 'PARENT ' . $p;
+            $parentRow->{'(Child) sku'} = 'PARENT ' . $p;
+            $parentRow->is_parent_summary = true;
+            $parentRow->fba = $first->fba ?? null;
+            $parentRow->INV = array_sum(array_map(function ($c) { return (int) ($c->INV ?? 0); }, $children));
+            $parentRow->L30 = array_sum(array_map(function ($c) { return (int) ($c->L30 ?? 0); }, $children));
+            $parentRow->rating = null;
+            $parentRow->nr_req = 'REQ';
+            $parentRow->{'B Link'} = '';
+            $parentRow->{'S Link'} = '';
+            $parentRow->{'eBay L30'} = array_sum(array_map(function ($c) { return (float) ($c->{'eBay L30'} ?? 0); }, $children));
+            $parentRow->{'eBay L60'} = array_sum(array_map(function ($c) { return (float) ($c->{'eBay L60'} ?? 0); }, $children));
+            $parentRow->{'eBay L7'} = array_sum(array_map(function ($c) { return (float) ($c->{'eBay L7'} ?? 0); }, $children));
+            $parentRow->{'eBay Price'} = 0;
+            $parentRow->{'eBay Stock'} = 0;
+            $parentRow->price_lmpa = null;
+            $parentRow->eBay_item_id = null;
+            $parentRow->views = array_sum(array_map(function ($c) { return (int) ($c->views ?? 0); }, $children));
+            $parentRow->{'A Price'} = 0;
+            $parentRow->bid_percentage = null;
+            $parentRow->suggested_bid = null;
+            $parentRow->lmp_price = null;
+            $parentRow->lmp_link = null;
+            $parentRow->lmp_item_id = null;
+            $parentRow->lmp_title = null;
+            $parentRow->lmp_entries = [];
+            $parentRow->lmp_entries_total = 0;
+            $parentRow->{'E Dil%'} = 0;
+            $parentRow->AD_Spend_L30 = array_sum(array_map(function ($c) { return (float) ($c->AD_Spend_L30 ?? 0); }, $children));
+            $parentRow->kw_spend_L30 = array_sum(array_map(function ($c) { return (float) ($c->kw_spend_L30 ?? 0); }, $children));
+            $parentRow->pmt_spend_L30 = array_sum(array_map(function ($c) { return (float) ($c->pmt_spend_L30 ?? 0); }, $children));
+            $parentRow->AD_Sales_L30 = array_sum(array_map(function ($c) { return (float) ($c->AD_Sales_L30 ?? 0); }, $children));
+            $parentRow->AD_Units_L30 = array_sum(array_map(function ($c) { return (int) ($c->AD_Units_L30 ?? 0); }, $children));
+            $parentRow->pmt_clicks_l30 = 0;
+            $parentRow->pmt_clicks_l7 = 0;
+            $parentRow->pmt_impressions_l30 = 0;
+            $parentRow->pmt_sold_l30 = 0;
+            $parentRow->pmt_sales_l30 = 0;
+            $parentRow->pmt_spend_l7 = 0;
+            $parentRow->l7_views = array_sum(array_map(function ($c) { return (int) ($c->l7_views ?? 0); }, $children));
+            $parentRow->kw_campaignBudgetAmount = 0;
+            $parentRow->kw_campaignStatus = '';
+            $parentRow->kw_campaign_id = '';
+            $parentRow->kw_clicks = 0;
+            $parentRow->kw_ad_sold = 0;
+            $parentRow->kw_acos = 0;
+            $parentRow->kw_cvr = 0;
+            $parentRow->kw_l7_spend = 0;
+            $parentRow->kw_l7_cpc = 0;
+            $parentRow->kw_l1_spend = 0;
+            $parentRow->kw_l1_cpc = 0;
+            $parentRow->kw_last_sbid = '';
+            $parentRow->kw_sbid_m = '';
+            $parentRow->kw_apprSbid = '';
+            $parentRow->{'AD%'} = 0;
+            $parentRow->{'Total_pft'} = array_sum(array_map(function ($c) { return (float) ($c->{'Total_pft'} ?? 0); }, $children));
+            $parentRow->Profit = $parentRow->{'Total_pft'};
+            $parentRow->{'T_Sale_l30'} = array_sum(array_map(function ($c) { return (float) ($c->{'T_Sale_l30'} ?? 0); }, $children));
+            $parentRow->{'Sales L30'} = $parentRow->{'T_Sale_l30'};
+            $parentRow->TacosL30 = 0;
+            $parentRow->{'PFT %'} = 0;
+            $parentRow->{'ROI%'} = 0;
+            $parentRow->{'GPFT%'} = 0;
+            $parentRow->percentage = $percentage;
+            $parentRow->ad_updates = $adUpdates;
+            $parentRow->LP_productmaster = 0;
+            $parentRow->Ship_productmaster = 0;
+            $childCount = count($children);
+            $parentRow->SCVR = $childCount > 0
+                ? round(array_sum(array_map(function ($c) { return (float) ($c->SCVR ?? 0); }, $children)) / $childCount, 2)
+                : 0;
+            $parentRow->NR = '';
+            $parentRow->NRL = 'REQ';
+            $parentRow->Listed = null;
+            $parentRow->Live = null;
+            $parentRow->APlus = null;
+            $parentRow->spend_l30 = null;
+            $parentRow->SPRICE = null;
+            $parentRow->SPFT = null;
+            $parentRow->SROI = null;
+            $parentRow->SGPFT = null;
+            $parentRow->has_custom_sprice = false;
+            $parentRow->SPRICE_STATUS = null;
+            $parentRow->image_path = $first->image_path ?? null;
+            foreach ($children as $c) {
+                $final[] = $c;
+            }
+            $final[] = $parentRow;
+        }
+        // Rows with no parent (empty Parent) stay at the end
+        foreach ($result as $r) {
+            $p = isset($r->Parent) ? trim((string) $r->Parent) : '';
+            if ($p === '') {
+                $final[] = $r;
+            }
+        }
+
         return response()->json([
             "message" => "eBay Data Fetched Successfully",
-            "data" => $result,
+            "data" => $final,
             "status" => 200,
         ]);
     }
@@ -1059,12 +1164,38 @@ class EbayController extends Controller
     public function saveSpriceToDatabase(Request $request)
     {
         Log::info('Saving eBay pricing data', $request->all());
-        $sku = strtoupper($request->input('sku'));
+        $sku = strtoupper(trim($request->input('sku') ?? ''));
         $sprice = $request->input('sprice');
 
-        if (!$sku || !$sprice) {
-            Log::error('SKU or sprice missing', ['sku' => $sku, 'sprice' => $sprice]);
-            return response()->json(['error' => 'SKU and sprice are required.'], 400);
+        if (!$sku) {
+            Log::error('SKU missing', ['sku' => $sku]);
+            return response()->json(['error' => 'SKU is required.'], 400);
+        }
+
+        $spriceFloat = $sprice !== null && $sprice !== '' ? floatval($sprice) : null;
+        $isClear = ($spriceFloat === null || $spriceFloat <= 0);
+
+        if ($isClear) {
+            // Clear suggested price: remove SPRICE/SPFT/SROI/SGPFT from stored value so refresh shows calculated price
+            $ebayDataView = EbayDataView::whereRaw('LOWER(TRIM(sku)) = ?', [strtolower(trim($sku))])->first();
+            if (!$ebayDataView) {
+                $ebayDataView = new EbayDataView();
+                $ebayDataView->sku = $sku;
+            }
+            $existing = is_array($ebayDataView->value)
+                ? $ebayDataView->value
+                : (json_decode($ebayDataView->value, true) ?: []);
+            $merged = $existing;
+            unset($merged['SPRICE'], $merged['SPFT'], $merged['SROI'], $merged['SGPFT'], $merged['SPRICE_STATUS'], $merged['SPRICE_STATUS_UPDATED_AT']);
+            $ebayDataView->value = $merged;
+            $ebayDataView->save();
+            Log::info('SPRICE cleared for SKU', ['sku' => $sku]);
+            return response()->json([
+                'message' => 'SPRICE cleared.',
+                'spft_percent' => null,
+                'sroi_percent' => null,
+                'sgpft_percent' => null
+            ]);
         }
 
         // Get current marketplace percentage
@@ -1095,39 +1226,44 @@ class EbayController extends Controller
         $ship = isset($values["ship"]) ? floatval($values["ship"]) : (isset($pm->ship) ? floatval($pm->ship) : 0);
         Log::info('LP and Ship', ['lp' => $lp, 'ship' => $ship]);
 
-        // Calculate profit
-        $spriceFloat = floatval($sprice);
+        // Calculate profit (spriceFloat already set above for non-clear case)
         $profit = ($spriceFloat * $percentage - $lp - $ship);
 
         // Calculate SGPFT first - use marketplace percentage instead of hardcoded 0.86
         $sgpft = $spriceFloat > 0 ? round((($spriceFloat * $percentage - $ship - $lp) / $spriceFloat) * 100, 2) : 0;
         
-        // Get AD% from the product
+        // Get AD% from the product (optional: tables may not exist on apicentral)
         $adPercent = 0;
-        $ebayMetric = EbayMetric::where('sku', $sku)
-            ->first();
-        
-        if ($ebayMetric) {
-            $campaignListings = DB::connection('apicentral')
-                ->table('ebay_campaign_ads_listings')
-                ->where('listing_id', $ebayMetric->item_id)
-                ->first();
-            
-            $ebayCampaignReportsL30 = EbayPriorityReport::where('report_range', 'L30')
-                ->where('campaign_name', 'LIKE', '%' . $sku . '%')
-                ->first();
-            
-            $ebayGeneralReportsL30 = EbayGeneralReport::where('report_range', 'L30')
-                ->where('listing_id', $ebayMetric->item_id)
-                ->first();
-            
-            $kw_spend_l30 = (float) str_replace('USD ', '', $ebayCampaignReportsL30->cpc_ad_fees_payout_currency ?? 0);
-            $kw_sales_l30 = (float) str_replace('USD ', '', $ebayCampaignReportsL30->cpc_sale_amount_payout_currency ?? 0);
-            $pmt_spend_l30 = (float) str_replace('USD ', '', $ebayGeneralReportsL30->ad_fees ?? 0);
-            $pmt_sales_l30 = (float) str_replace('USD ', '', $ebayGeneralReportsL30->sale_amount ?? 0);
-            
-            $adDenominator = $kw_sales_l30 + $pmt_sales_l30;
-            $adPercent = $adDenominator > 0 ? (($kw_spend_l30 + $pmt_spend_l30) / $adDenominator) * 100 : 0;
+        try {
+            $ebayMetric = EbayMetric::where('sku', $sku)->first();
+            if ($ebayMetric) {
+                $campaignListings = DB::connection('apicentral')
+                    ->table('ebay_campaign_ads_listings')
+                    ->where('listing_id', $ebayMetric->item_id)
+                    ->first();
+
+                $ebayCampaignReportsL30 = EbayPriorityReport::where('report_range', 'L30')
+                    ->where('campaign_name', 'LIKE', '%' . $sku . '%')
+                    ->first();
+
+                $ebayGeneralReportsL30 = EbayGeneralReport::where('report_range', 'L30')
+                    ->where('listing_id', $ebayMetric->item_id)
+                    ->first();
+
+                $kw_spend_l30 = (float) str_replace('USD ', '', $ebayCampaignReportsL30 ? ($ebayCampaignReportsL30->cpc_ad_fees_payout_currency ?? 0) : 0);
+                $kw_sales_l30 = (float) str_replace('USD ', '', $ebayCampaignReportsL30 ? ($ebayCampaignReportsL30->cpc_sale_amount_payout_currency ?? 0) : 0);
+                $pmt_spend_l30 = (float) str_replace('USD ', '', $ebayGeneralReportsL30 ? ($ebayGeneralReportsL30->ad_fees ?? 0) : 0);
+                $pmt_sales_l30 = (float) str_replace('USD ', '', $ebayGeneralReportsL30 ? ($ebayGeneralReportsL30->sale_amount ?? 0) : 0);
+
+                $adDenominator = $kw_sales_l30 + $pmt_sales_l30;
+                $adPercent = $adDenominator > 0 ? (($kw_spend_l30 + $pmt_spend_l30) / $adDenominator) * 100 : 0;
+            }
+        } catch (\Throwable $e) {
+            Log::warning('eBay save SPRICE: ad% lookup skipped (table or data missing)', [
+                'sku' => $sku,
+                'error' => $e->getMessage()
+            ]);
+            $adPercent = 0;
         }
         
         // SPFT = SGPFT - AD%
@@ -1140,14 +1276,19 @@ class EbayController extends Controller
         );
         Log::info('Calculated values', ['sprice' => $spriceFloat, 'sgpft' => $sgpft, 'ad_percent' => $adPercent, 'spft' => $spft, 'sroi' => $sroi]);
 
-        $ebayDataView = EbayDataView::firstOrNew(['sku' => $sku]);
+        // Find by case-insensitive SKU so we update the same row that has Listed, Live, NRL, etc.
+        $ebayDataView = EbayDataView::whereRaw('LOWER(TRIM(sku)) = ?', [strtolower(trim($sku))])->first();
+        if (!$ebayDataView) {
+            $ebayDataView = new EbayDataView();
+            $ebayDataView->sku = $sku;
+        }
 
         // Decode value column safely
         $existing = is_array($ebayDataView->value)
             ? $ebayDataView->value
             : (json_decode($ebayDataView->value, true) ?: []);
 
-        // Merge new sprice data
+        // Merge new sprice data (keeps existing Listed, Live, NRL, buyer_link, etc.)
         $merged = array_merge($existing, [
             'SPRICE' => $spriceFloat,
             'SPFT' => $spft,
@@ -1165,6 +1306,73 @@ class EbayController extends Controller
             'sroi_percent' => $sroi,
             'sgpft_percent' => $sgpft
         ]);
+    }
+
+    /**
+     * Clear SPRICE for selected SKUs (batch, same pattern as Amazon amazon-clear-sprice).
+     */
+    public function clearEbaySprice(Request $request)
+    {
+        try {
+            $updates = $request->input('updates', []);
+            if (is_object($updates)) {
+                $updates = (array) $updates;
+            }
+            if (! is_array($updates)) {
+                return response()->json(['error' => 'Invalid updates format'], 400);
+            }
+
+            if (empty($updates)) {
+                return response()->json(['error' => 'No SKUs provided'], 400);
+            }
+
+            $clearedCount = 0;
+
+            foreach ($updates as $update) {
+                $update = (array) $update;
+                $sku = trim($update['sku'] ?? '');
+                if (empty($sku)) {
+                    continue;
+                }
+
+                $ebayDataView = EbayDataView::whereRaw('LOWER(TRIM(sku)) = ?', [strtolower($sku)])->first();
+                if (!$ebayDataView) {
+                    continue;
+                }
+
+                $existing = is_array($ebayDataView->value)
+                    ? $ebayDataView->value
+                    : (json_decode($ebayDataView->value ?? '{}', true) ?? []);
+
+                unset(
+                    $existing['SPRICE'],
+                    $existing['SPFT'],
+                    $existing['SROI'],
+                    $existing['SGPFT'],
+                    $existing['SPRICE_STATUS'],
+                    $existing['SPRICE_STATUS_UPDATED_AT']
+                );
+                $ebayDataView->value = $existing;
+                $ebayDataView->save();
+                $clearedCount++;
+            }
+
+            Log::info('eBay SPRICE cleared', ['count' => $clearedCount]);
+
+            return response()->json([
+                'success' => true,
+                'message' => "SPRICE cleared for {$clearedCount} SKU(s)",
+                'cleared_count' => $clearedCount
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error clearing eBay SPRICE', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            return response()->json([
+                'error' => 'Failed to clear SPRICE: ' . $e->getMessage()
+            ], 500);
+        }
     }
 
     public function updateListedLive(Request $request)

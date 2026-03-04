@@ -2595,6 +2595,20 @@
                     }
                 },
                 {
+                    title: "E Prc",
+                    field: "e_price",
+                    hozAlign: "center",
+                    sorter: "number",
+                    width: 70,
+                    formatter: function(cell) {
+                        const value = parseFloat(cell.getValue());
+                        if (value === null || value === 0 || isNaN(value)) {
+                            return '<span style="color: #6c757d;">-</span>';
+                        }
+                        return `$${value.toFixed(2)}`;
+                    }
+                },
+                {
                     title: "PRFT AMT",
                     field: "profit",
                     hozAlign: "center",
@@ -3923,10 +3937,10 @@
             applyFilters();
             updateSummary();
             if (typeof updateTemuAdsCounts === 'function') updateTemuAdsCounts();
-            
+
             // Auto-store daily average views if not already stored today
             autoStoreDailyAvgViews();
-            
+
             setTimeout(function() {
                 $('.sku-select-checkbox').each(function() {
                     const sku = $(this).data('sku');

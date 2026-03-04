@@ -1,6 +1,7 @@
 @extends('layouts.vertical', ['title' => 'eBay Pricing Decrease', 'sidenav' => 'condensed'])
 
 @section('css')
+    <meta name="csrf-token" content="{{ csrf_token() }}">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
     <link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
@@ -109,6 +110,12 @@
 
         .link-tooltip a:hover {
             text-decoration: underline;
+        }
+
+        /* Parent row light blue background */
+        .tabulator-row.ebay-parent-row,
+        .tabulator-row.ebay-parent-row .tabulator-cell {
+            background-color: #b3e5fc !important;
         }
 
         /* Status circle for DIL filter */
@@ -762,13 +769,27 @@
                 </div>
 
                 <div id="ebay-table-wrapper" style="height: calc(100vh - 200px); display: flex; flex-direction: column;">
-                    <!-- SKU Search + Pagination Counter -->
-                    <div style="display: flex; align-items: center; padding: 8px 12px; background: #fff; border-bottom: 1px solid #e5e7eb;">
-                        <div style="flex: 1; position: relative;">
+                    <!-- Parent / SKU dropdown + SKU Search + Pagination Counter -->
+                    <div style="display: flex; align-items: center; flex-wrap: wrap; gap: 12px; padding: 8px 12px; background: #fff; border-bottom: 1px solid #e5e7eb;">
+                        <div class="d-flex align-items-center gap-1">
+                            <label for="view-type-filter" class="form-label mb-0 text-nowrap small" style="font-size: 13px;">View:</label>
+                            <select id="view-type-filter" class="form-select form-select-sm" style="width: 100px; font-size: 13px;">
+                                <option value="all">All</option>
+                                <option value="parent">Parent</option>
+                                <option value="sku">SKU</option>
+                            </select>
+                        </div>
+                        <div class="d-flex align-items-center gap-1">
+                            <label for="parent-sku-dropdown" class="form-label mb-0 text-nowrap small" style="font-size: 13px;">Parent / SKU:</label>
+                            <select id="parent-sku-dropdown" class="form-select form-select-sm" style="width: 220px; font-size: 13px;">
+                                <option value="">All (show all)</option>
+                            </select>
+                        </div>
+                        <div style="flex: 1; min-width: 200px; position: relative;">
                             <i class="fa fa-search" style="position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: #aaa; font-size: 13px;"></i>
                             <input type="text" id="sku-search" class="form-control form-control-sm" style="padding-left: 32px; border: 1px solid #e5e7eb; border-radius: 6px; font-size: 13px;" placeholder="Search by campaign name or SKU...">
                         </div>
-                        <span id="custom-pagination-counter" style="font-size: 13px; color: #555; white-space: nowrap; margin-left: 16px;"></span>
+                        <span id="custom-pagination-counter" style="font-size: 13px; color: #555; white-space: nowrap;"></span>
                     </div>
                     <!-- Table body (scrollable section) -->
                     <div id="ebay-table" style="flex: 1;"></div>
@@ -1670,20 +1691,23 @@
                     $.ajax({
                         url: '/ebay-one/save-sprice',
                         method: 'POST',
+                        headers: {
+                            'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                        },
                         data: {
                             sku: sku,
-                            sprice: sprice,
-                            _token: '{{ csrf_token() }}'
+                            sprice: sprice
                         },
                         success: function(response) {
-                            // Update calculated fields instantly
+                            // Update calculated fields instantly (clear returns nulls)
                             if (row) {
                                 row.update({
                                     SPRICE: sprice,
-                                    SPFT: response.spft_percent,
-                                    SROI: response.sroi_percent,
-                                    SGPFT: response.sgpft_percent,
-                                    SPRICE_STATUS: 'saved'
+                                    SPFT: response.spft_percent != null ? response.spft_percent : 0,
+                                    SROI: response.sroi_percent != null ? response.sroi_percent : 0,
+                                    SGPFT: response.sgpft_percent != null ? response.sgpft_percent : 0,
+                                    SPRICE_STATUS: sprice > 0 ? 'saved' : null,
+                                    has_custom_sprice: sprice > 0
                                 });
                             }
                             resolve(response);
@@ -2277,34 +2301,61 @@
                 showToast(message, updatedCount > 0 ? 'success' : 'error');
             }
 
-            // Clear SPRICE for selected SKUs
+            // Clear SPRICE for selected SKUs (same method as Amazon: batch POST to clear endpoint, then update table)
             function clearSpriceForSelected() {
                 if (selectedSkus.size === 0) {
                     showToast('Please select SKUs first', 'error');
                     return;
                 }
 
-                let clearedCount = 0;
+                if (!confirm(`Are you sure you want to clear SPRICE for ${selectedSkus.size} selected SKU(s)?`)) {
+                    return;
+                }
 
-                selectedSkus.forEach(sku => {
-                    const rows = table.searchRows("(Child) sku", "=", sku);
-                    
-                    if (rows.length > 0) {
-                        const row = rows[0];
-                        row.update({
-                            SPRICE: 0,
-                            SGPFT: 0,
-                            SPFT: 0,
-                            SROI: 0
-                        });
-                        
-                        row.reformat();
-                        saveSpriceWithRetry(sku, 0, row);
-                        clearedCount++;
-                    }
+                let clearedCount = 0;
+                const updates = [];
+
+                table.getRows().forEach(row => {
+                    const rowData = row.getData();
+                    const sku = rowData['(Child) sku'];
+                    if (!sku || !selectedSkus.has(sku)) return;
+                    if (rowData.Parent && String(rowData.Parent).toUpperCase().startsWith('PARENT')) return;
+
+                    row.update({
+                        SPRICE: 0,
+                        SGPFT: 0,
+                        SPFT: 0,
+                        SROI: 0,
+                        SPRICE_STATUS: null,
+                        has_custom_sprice: false
+                    });
+                    updates.push({ sku: sku, sprice: 0 });
+                    clearedCount++;
                 });
 
-                showToast(`SPRICE cleared for ${clearedCount} SKU(s)`, 'success');
+                if (updates.length > 0) {
+                    $.ajax({
+                        url: '/ebay-clear-sprice',
+                        method: 'POST',
+                        contentType: 'application/json',
+                        dataType: 'json',
+                        headers: {
+                            'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content'),
+                            'Accept': 'application/json'
+                        },
+                        data: JSON.stringify({ updates: updates }),
+                        success: function(response) {
+                            showToast(response.message || `SPRICE cleared for ${clearedCount} SKU(s)`, 'success');
+                        },
+                        error: function(xhr) {
+                            console.error('Failed to clear SPRICE:', xhr.status, xhr.responseJSON || xhr.responseText);
+                            var msg = (xhr.responseJSON && xhr.responseJSON.error) ? xhr.responseJSON.error : 'Failed to clear SPRICE data';
+                            showToast(msg, 'error');
+                        }
+                    });
+                } else {
+                    showToast('warning', 'No SPRICE values to clear for selected SKUs');
+                }
             }
 
             // Event delegation for eye button clicks (add to SKU column formatter)
@@ -2335,8 +2386,14 @@
                     dir: "asc"
                 }],
                 rowFormatter: function(row) {
-                    if (row.getData().Parent && row.getData().Parent.startsWith('PARENT')) {
-                        row.getElement().style.backgroundColor = "rgba(69, 233, 255, 0.1)";
+                    const data = row.getData();
+                    const isParent = data.Parent && String(data.Parent).toUpperCase().startsWith('PARENT');
+                    const el = row.getElement();
+                    if (isParent) {
+                        el.classList.add('ebay-parent-row');
+                        el.style.setProperty('background-color', '#b3e5fc', 'important');
+                    } else {
+                        el.classList.remove('ebay-parent-row');
                     }
                 },
                 columns: [{
@@ -2348,14 +2405,21 @@
                         tooltip: true,
                         frozen: true,
                         width: 150,
-                        visible: false
+                        visible: true,
+                        formatter: function(cell) {
+                            const value = cell.getValue() || '';
+                            if (String(value).toUpperCase().startsWith('PARENT ')) {
+                                return String(value).replace(/^PARENT\s+/i, '').trim();
+                            }
+                            return value;
+                        }
                     },
 
                     {
                         field: "_select",
                         hozAlign: "center",
                         headerSort: false,
-                        visible: false,
+                        visible: true,
                         frozen: true,
                         width: 50,
                         titleFormatter: function(column) {
@@ -2366,8 +2430,12 @@
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             const sku = rowData['(Child) sku'];
-                            const isSelected = selectedSkus.has(sku);
-                            return `<input type="checkbox" class="sku-select-checkbox" data-sku="${sku}" ${isSelected ? 'checked' : ''} style="cursor: pointer;">`;
+                            const isParent = rowData.Parent && String(rowData.Parent).toUpperCase().startsWith('PARENT');
+                            const isSelected = sku ? selectedSkus.has(sku) : false;
+                            if (isParent) {
+                                return '<input type="checkbox" class="sku-select-checkbox" data-sku="' + (sku || '') + '" disabled style="cursor: not-allowed; opacity: 0.6;">';
+                            }
+                            return `<input type="checkbox" class="sku-select-checkbox" data-sku="${sku || ''}" ${isSelected ? 'checked' : ''} style="cursor: pointer;">`;
                         }
                     },
                     {
@@ -2394,21 +2462,24 @@
                         frozen: true,
                         width: 250,
                         formatter: function(cell) {
-                            const sku = cell.getValue();
-                            
-                            let html = `<span>${sku}</span>`;
-                            
-                            // Copy button
-                            html += `<i class="fa fa-copy text-secondary copy-sku-btn" 
+                            const rowData = cell.getRow().getData();
+                            let sku = cell.getValue();
+                            if (!sku && rowData.Parent && String(rowData.Parent).toUpperCase().startsWith('PARENT')) {
+                                sku = rowData.Parent;
+                            }
+                            const isParent = rowData.Parent && String(rowData.Parent).toUpperCase().startsWith('PARENT');
+                            let html = `<span class="${isParent ? 'fw-bold text-primary' : ''}">${sku || ''}</span>`;
+                            if (sku) {
+                                html += `<i class="fa fa-copy text-secondary copy-sku-btn" 
                                        style="cursor: pointer; margin-left: 8px; font-size: 14px;" 
                                        data-sku="${sku}"
                                        title="Copy SKU"></i>`;
-                            
-                            // Metrics chart button
-                            html += `<button class="btn btn-sm ms-1 view-sku-chart" data-sku="${sku}" title="View Metrics Chart" style="border: none; background: none; color: #87CEEB; padding: 2px 6px;">
+                                if (!isParent) {
+                                    html += `<button class="btn btn-sm ms-1 view-sku-chart" data-sku="${sku}" title="View Metrics Chart" style="border: none; background: none; color: #87CEEB; padding: 2px 6px;">
                                         <i class="fa fa-info-circle"></i>
                                      </button>`;
-                            
+                                }
+                            }
                             return html;
                         }
                     },
@@ -2596,6 +2667,9 @@
                         width: 70,
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
+                            if (rowData.Parent && String(rowData.Parent).toUpperCase().startsWith('PARENT')) {
+                                return '';
+                            }
                             const itemId = rowData['eBay_item_id'];
                             if (!itemId || itemId === null || itemId === '') {
                                 return '<span style="color: #dc3545; font-weight: bold; background-color: #ffe6e6; padding: 2px 6px; border-radius: 3px;">M</span>';
@@ -4507,8 +4581,40 @@
                 const rangeMin = parseFloat($('#range-min').val()) || null;
                 const rangeMax = parseFloat($('#range-max').val()) || null;
                 const rangeColumn = $('#range-column-select').val() || '';
+                const parentSkuVal = $('#parent-sku-dropdown').val() || '';
+                const viewTypeFilter = $('#view-type-filter').val() || 'all';
 
                 table.clearFilter(true);
+
+                // View type: All | Parent | SKU (parent = only parent rows; sku = only child SKU rows)
+                if (viewTypeFilter === 'parent') {
+                    table.addFilter(function(data) {
+                        var isParent = data.is_parent_summary === true ||
+                            (data.Parent && String(data.Parent).toUpperCase().startsWith('PARENT'));
+                        return !!isParent;
+                    });
+                } else if (viewTypeFilter === 'sku') {
+                    table.addFilter(function(data) {
+                        var isParent = data.is_parent_summary === true ||
+                            (data.Parent && String(data.Parent).toUpperCase().startsWith('PARENT'));
+                        return !isParent;
+                    });
+                }
+
+                // Parent / SKU dropdown: show child SKUs for selected parent, or single row for selected SKU
+                if (parentSkuVal) {
+                    if (parentSkuVal.startsWith('p:')) {
+                        const parentVal = parentSkuVal.slice(2);
+                        table.addFilter(function(data) {
+                            return (data.Parent || '') === parentVal;
+                        });
+                    } else if (parentSkuVal.startsWith('s:')) {
+                        const skuVal = parentSkuVal.slice(2);
+                        table.addFilter(function(data) {
+                            return (data['(Child) sku'] || '') === skuVal;
+                        });
+                    }
+                }
 
                 if (inventoryFilter === 'zero') {
                     table.addFilter('INV', '=', 0);
@@ -4953,7 +5059,7 @@
                 }, 100);
             }
 
-            $('#inventory-filter, #nrl-filter, #gpft-filter, #cvr-filter, #status-filter, #ads-filter').on('change', function() {
+            $('#view-type-filter, #parent-sku-dropdown, #inventory-filter, #nrl-filter, #gpft-filter, #cvr-filter, #status-filter, #ads-filter').on('change', function() {
                 applyFilters();
             });
 
@@ -5960,6 +6066,36 @@
             });
 
             table.on('dataLoaded', function() {
+                // Populate Parent / SKU dropdown: unique parents and all SKUs (show child SKUs on select)
+                var allRows = table.getData('all') || [];
+                var parents = [];
+                var seenParent = {};
+                allRows.forEach(function(r) {
+                    var p = r.Parent || '';
+                    if (p && String(p).trim() !== '' && !String(p).toUpperCase().startsWith('PARENT') && !seenParent[p]) {
+                        seenParent[p] = true;
+                        parents.push(p);
+                    }
+                });
+                parents.sort(function(a, b) { return String(a).localeCompare(String(b)); });
+                var skus = allRows.map(function(r) { return r['(Child) sku'] || ''; }).filter(function(s) { return s !== ''; });
+                skus.sort(function(a, b) { return String(a).localeCompare(String(b)); });
+                var $dropdown = $('#parent-sku-dropdown');
+                $dropdown.find('option:not(:first)').remove();
+                if (parents.length > 0) {
+                    var $pg = $('<optgroup label="Parents (show child SKUs)">');
+                    parents.forEach(function(p) {
+                        $pg.append($('<option>').attr('value', 'p:' + p).text(p));
+                    });
+                    $dropdown.append($pg);
+                }
+                if (skus.length > 0) {
+                    var $sg = $('<optgroup label="SKUs">');
+                    skus.forEach(function(s) {
+                        $sg.append($('<option>').attr('value', 's:' + s).text(s));
+                    });
+                    $dropdown.append($sg);
+                }
                 updateCalcValues();
                 if (typeof updateSummary === 'function') updateSummary();
                 // Update KW Ads stats if that section is active
@@ -5979,6 +6115,8 @@
                         new bootstrap.Tooltip(tooltipTriggerEl);
                     });
                 }, 100);
+                // Redraw so rowFormatter runs and parent rows get light blue background
+                setTimeout(function() { table.redraw(true); }, 50);
             });
 
             // Also initialize tooltips when table is rendered (matching Amazon approach)

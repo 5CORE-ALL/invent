@@ -284,9 +284,9 @@ class CvrMasterController extends Controller
                 ->get()
                 ->keyBy('sku');
             
-            // Get Temu percentage
+            // Get Temu percentage (Temu marketplace uses 96%)
             $temuMarketplace = MarketplacePercentage::where('marketplace', 'Temu')->first();
-            $temuPercentage = $temuMarketplace ? ($temuMarketplace->percentage / 100) : 0.87;
+            $temuPercentage = $temuMarketplace ? ($temuMarketplace->percentage / 100) : 0.96;
             
             Log::info('CVR Master - Temu Data fetched', [
                 'temu_pricings' => $temuPricings->count(),
@@ -1524,7 +1524,7 @@ class CvrMasterController extends Controller
                 // Try case-insensitive
                 $temuMarketplaceData = MarketplacePercentage::whereRaw('LOWER(marketplace) = ?', ['temu'])->first();
             }
-            $temuPercentage = $temuMarketplaceData && $temuMarketplaceData->percentage ? ($temuMarketplaceData->percentage / 100) : 0.87;
+            $temuPercentage = $temuMarketplaceData && $temuMarketplaceData->percentage ? ($temuMarketplaceData->percentage / 100) : 0.96;
             
             Log::info('Temu Marketplace % - Found: ' . ($temuMarketplaceData ? 'Yes' : 'No') . ', percentage: ' . ($temuMarketplaceData->percentage ?? 'NULL') . ', Final: ' . $temuPercentage);
             
@@ -2092,9 +2092,9 @@ class CvrMasterController extends Controller
                 'seller_link' => $reverbLinks[1],
             ];
 
-            // Add Temu
+            // Add Temu (Temu marketplace uses 96%)
             $temuMarketplace = MarketplacePercentage::where('marketplace', 'Temu')->first();
-            $temuMargin = $temuMarketplace ? ($temuMarketplace->percentage / 100) : 0.95;
+            $temuMargin = $temuMarketplace ? ($temuMarketplace->percentage / 100) : 0.96;
             $temuPricing = TemuPricing::where('sku', $fullSku)->first();
             $temuPrice = 0;
             if ($temuPricing) {
