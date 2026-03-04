@@ -2732,18 +2732,31 @@
                     return assignees.indexOf(userName) >= 0;
                 });
                 var overdueTasks = userTasks.filter(isTaskOverdueForGraph);
-                var byDate = {};
+                var byDateOverdue = {};
                 overdueTasks.forEach(function(t) {
                     var key = getDateKey(t.start_date);
-                    if (key) { byDate[key] = (byDate[key] || 0) + 1; }
+                    if (key) { byDateOverdue[key] = (byDateOverdue[key] || 0) + 1; }
                 });
-                var sortedDates = Object.keys(byDate).sort();
+                var byDateEtc = {}, byDateAtc = {};
+                userTasks.forEach(function(t) {
+                    var key = getDateKey(t.start_date);
+                    if (!key) return;
+                    byDateEtc[key] = (byDateEtc[key] || 0) + (parseInt(t.eta_time) || 0);
+                    byDateAtc[key] = (byDateAtc[key] || 0) + (parseInt(t.etc_done) || 0);
+                });
+                var allDates = {};
+                Object.keys(byDateOverdue).forEach(function(k) { allDates[k] = true; });
+                Object.keys(byDateEtc).forEach(function(k) { allDates[k] = true; });
+                Object.keys(byDateAtc).forEach(function(k) { allDates[k] = true; });
+                var sortedDates = Object.keys(allDates).sort();
                 var labels = sortedDates.map(formatDateLabel);
-                var data = sortedDates.map(function(d) { return byDate[d]; });
+                var overdueData = sortedDates.map(function(d) { return byDateOverdue[d] || 0; });
+                var etcData = sortedDates.map(function(d) { return Math.round((byDateEtc[d] || 0) / 60 * 10) / 10; });
+                var atcData = sortedDates.map(function(d) { return Math.round((byDateAtc[d] || 0) / 60 * 10) / 10; });
                 $('#user-overdue-graph-empty').toggle(sortedDates.length === 0);
                 $('#user-overdue-graph-wrap').toggle(sortedDates.length > 0);
                 if (sortedDates.length === 0) {
-                    $('#user-overdue-graph-empty').html('No overdue tasks for <strong>' + userName + '</strong>. Select another user.');
+                    $('#user-overdue-graph-empty').html('No data for <strong>' + userName + '</strong>. Select another user.');
                     if (userOverdueLineChart) { userOverdueLineChart.destroy(); userOverdueLineChart = null; }
                     return;
                 }
@@ -2751,8 +2764,9 @@
                 if (!ctx) return;
                 if (userOverdueLineChart) {
                     userOverdueLineChart.data.labels = labels;
-                    userOverdueLineChart.data.datasets[0].data = data;
-                    userOverdueLineChart.data.datasets[0].label = userName + ' - Overdue by date';
+                    userOverdueLineChart.data.datasets[0].data = overdueData;
+                    userOverdueLineChart.data.datasets[1].data = etcData;
+                    userOverdueLineChart.data.datasets[2].data = atcData;
                     userOverdueLineChart.update('none');
                     return;
                 }
@@ -2760,21 +2774,56 @@
                     type: 'line',
                     data: {
                         labels: labels,
-                        datasets: [{
-                            label: userName + ' - Overdue by date',
-                            data: data,
-                            borderColor: 'rgb(220, 53, 69)',
-                            backgroundColor: 'rgba(220, 53, 69, 0.1)',
-                            fill: true,
-                            tension: 0.2
-                        }]
+                        datasets: [
+                            {
+                                label: 'Overdue (count)',
+                                data: overdueData,
+                                borderColor: 'rgb(220, 53, 69)',
+                                backgroundColor: 'rgba(220, 53, 69, 0.1)',
+                                fill: true,
+                                tension: 0.2,
+                                yAxisID: 'y'
+                            },
+                            {
+                                label: 'ETC (hours)',
+                                data: etcData,
+                                borderColor: 'rgb(255, 193, 7)',
+                                backgroundColor: 'rgba(255, 193, 7, 0.1)',
+                                fill: true,
+                                tension: 0.2,
+                                yAxisID: 'y1'
+                            },
+                            {
+                                label: 'ATC (hours)',
+                                data: atcData,
+                                borderColor: 'rgb(32, 201, 151)',
+                                backgroundColor: 'rgba(32, 201, 151, 0.1)',
+                                fill: true,
+                                tension: 0.2,
+                                yAxisID: 'y1'
+                            }
+                        ]
                     },
                     options: {
                         responsive: true,
                         maintainAspectRatio: false,
+                        interaction: { mode: 'index', intersect: false },
                         plugins: { legend: { display: true } },
                         scales: {
-                            y: { beginAtZero: true, ticks: { stepSize: 1 } }
+                            y: {
+                                type: 'linear',
+                                position: 'left',
+                                beginAtZero: true,
+                                title: { display: true, text: 'Overdue count' },
+                                ticks: { stepSize: 1 }
+                            },
+                            y1: {
+                                type: 'linear',
+                                position: 'right',
+                                beginAtZero: true,
+                                title: { display: true, text: 'ETC / ATC (hours)' },
+                                grid: { drawOnChartArea: false }
+                            }
                         }
                     }
                 });
