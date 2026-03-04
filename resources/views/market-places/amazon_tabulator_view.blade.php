@@ -5242,6 +5242,11 @@
                 });
             }
 
+            // Normalize parent key (trim + collapse spaces) to match backend and fix Play filter matching
+            function normalizeParentKey(val) {
+                if (val == null || val === '') return '';
+                return String(val).trim().replace(/\s+/g, ' ');
+            }
             // Build parent list from table (for Play/Next/Previous - same as eBay)
             function buildProductUniqueParentsFromTable() {
                 if (typeof table === 'undefined' || !table) return [];
@@ -5249,7 +5254,7 @@
                 var seen = {};
                 var list = [];
                 allRows.forEach(function(r) {
-                    var p = (r.Parent || r.parent || '').toString().trim();
+                    var p = normalizeParentKey(r.Parent || r.parent);
                     if (p && !r.is_parent_summary && !String(p).toUpperCase().startsWith('PARENT') && !seen[p]) {
                         seen[p] = true;
                         list.push(p);
@@ -5357,6 +5362,21 @@
                 const acosRangeMax = parseFloat($('#acos-range-max').val()) || null;
 
                 table.clearFilter(true);
+
+                // When Play is active: apply ONLY playback filter so parent summary row always shows (no other filter can hide it)
+                if (isProductNavigationActive && productUniqueParents.length > 0 && currentProductParentIndex >= 0) {
+                    var currentKey = productUniqueParents[currentProductParentIndex];
+                    if (currentKey) {
+                        table.addFilter(function(data) {
+                            var p = normalizeParentKey(data.Parent || data.parent);
+                            return p === currentKey || p === ('PARENT ' + currentKey);
+                        });
+                    }
+                    updateCalcValues();
+                    updateSummary();
+                    updateSeoCount();
+                    return;
+                }
 
                 // SEO Mode filters
                 if (seoModeActive) {
@@ -5487,21 +5507,13 @@
                     }
                 }
 
-                // Play / Pause: show only current parent group (child SKUs + parent summary row)
-                if (isProductNavigationActive && productUniqueParents.length > 0 && currentProductParentIndex >= 0) {
-                    var currentKey = productUniqueParents[currentProductParentIndex];
-                    if (currentKey) {
-                        table.addFilter(function(data) {
-                            var p = (data.Parent || data.parent || '').toString().trim();
-                            return p === currentKey || p === ('PARENT ' + currentKey);
-                        });
-                    }
-                }
+                // Play / Pause filter is applied at top of applyFilters when isProductNavigationActive (early return)
 
                 // SKU Search filter (inside applyFilters so it stacks with Active/campaign status and other filters)
                 var searchVal = ($('#sku-search').val() || '').trim().toLowerCase();
                 if (searchVal) {
                     table.addFilter(function(data) {
+                        if (data.is_parent_summary) return isProductNavigationActive;
                         var sku = ((data['(Child) sku'] || data.sku || '') + '').toLowerCase();
                         var campName = (sectionFilter === 'hl-ads' ? (data.hl_campaignName || '') : sectionFilter === 'pt-ads' ? (data.pt_campaignName || '') : (data.campaignName || '')).toString().toLowerCase();
                         return sku.indexOf(searchVal) !== -1 || campName.indexOf(searchVal) !== -1;
@@ -5510,8 +5522,7 @@
 
                 if (statusFilter !== 'all') {
                     table.addFilter(function(data) {
-                        // Skip parent rows
-                        if (data.is_parent_summary) return false;
+                        if (data.is_parent_summary) return isProductNavigationActive;
                         
                         const status = data.SPRICE_STATUS || null;
                         
@@ -5532,7 +5543,7 @@
                 // Sold filter (based on A_L30)
                 if (soldFilter !== 'all') {
                     table.addFilter(function(data) {
-                        if (data.is_parent_summary) return false;
+                        if (data.is_parent_summary) return isProductNavigationActive;
                         
                         const aL30 = parseFloat(data.A_L30) || 0;
                         
@@ -5548,7 +5559,7 @@
                 // Unified Range Filter (Views L30/L7, Sold L30/L7)
                 if (rangeColumn && (rangeMin !== null || rangeMax !== null)) {
                     table.addFilter(function(data) {
-                        if (data.is_parent_summary) return false;
+                        if (data.is_parent_summary) return isProductNavigationActive;
                         
                         const value = parseFloat(data[rangeColumn]) || 0;
                         
@@ -5572,7 +5583,7 @@
                 // Price filter (Prc > LMP)
                 if (priceFilterActive) {
                     table.addFilter(function(data) {
-                        if (data.is_parent_summary) return false;
+                        if (data.is_parent_summary) return isProductNavigationActive;
                         
                         const price = parseFloat(data.price) || 0;
                         const lmpPrice = parseFloat(data.lmp_price) || 0;
@@ -5584,7 +5595,7 @@
                 // Map filter (INV vs INV_AMZ) - for inventory sync
                 if (mapFilterActive !== 'all') {
                     table.addFilter(function(data) {
-                        if (data.is_parent_summary) return false;
+                        if (data.is_parent_summary) return isProductNavigationActive;
                         
                         const inv = parseFloat(data.INV) || 0;
                         const nrValue = data.NR || '';
@@ -5609,7 +5620,7 @@
                 // Missing L filter - items not in amazon_datsheets OR with blank/zero price
                 if (missingAmazonFilterActive) {
                     table.addFilter(function(data) {
-                        if (data.is_parent_summary) return false;
+                        if (data.is_parent_summary) return isProductNavigationActive;
                         
                         const inv = parseFloat(data.INV) || 0;
                         const nrValue = data.NR || '';
@@ -5631,6 +5642,7 @@
                 }
                 if (effectiveCampaignStatusFilter && effectiveCampaignStatusFilter !== 'ALL') {
                     table.addFilter(function(data) {
+                        if (data.is_parent_summary) return isProductNavigationActive;
                         var currentSection = $('#section-filter').val();
                         var isEnabled = false;
                         var hasCampaignInSection = false;
@@ -5669,6 +5681,7 @@
                 // NRA filter - when "All" or empty, show all rows; when RA/NRA/LATER, filter to that value
                 if (nraFilter && nraFilter !== '' && nraFilter !== 'all') {
                     table.addFilter(function(data) {
+                        if (data.is_parent_summary) return isProductNavigationActive;
                         var nraValue = (data.NRA || '').toString().trim();
                         if (!nraValue) {
                             var nrlValue = (data.NRL || 'REQ').toString().trim();
@@ -5681,7 +5694,7 @@
                 // Price Slab filter
                 if (priceSlabFilter && priceSlabFilter !== '') {
                     table.addFilter(function(data) {
-                        if (data.is_parent_summary) return false;
+                        if (data.is_parent_summary) return isProductNavigationActive;
                         const price = parseFloat(data.price) || 0;
                         
                         if (priceSlabFilter === 'lt10') return price < 10;
@@ -5697,7 +5710,7 @@
                 // ACOS Slab filter - section-aware
                 if (acosSlabFilter && acosSlabFilter !== '') {
                     table.addFilter(function(data) {
-                        if (data.is_parent_summary) return false;
+                        if (data.is_parent_summary) return isProductNavigationActive;
                         var currentSection = $('#section-filter').val();
                         var acos = 0;
                         var spend = 0;
@@ -5732,7 +5745,7 @@
                 // 7UB Range filter - section-aware
                 if (ub7Min !== null || ub7Max !== null) {
                     table.addFilter(function(data) {
-                        if (data.is_parent_summary) return false;
+                        if (data.is_parent_summary) return isProductNavigationActive;
                         var currentSection = $('#section-filter').val();
                         var l7_spend, budget;
                         if (currentSection === 'hl-ads') {
@@ -5756,7 +5769,7 @@
                 // 1UB Range filter - section-aware
                 if (ub1Min !== null || ub1Max !== null) {
                     table.addFilter(function(data) {
-                        if (data.is_parent_summary) return false;
+                        if (data.is_parent_summary) return isProductNavigationActive;
                         var currentSection = $('#section-filter').val();
                         var l1_spend, budget;
                         if (currentSection === 'hl-ads') {
@@ -5780,7 +5793,7 @@
                 // ACOS Range filter - section-aware
                 if (acosRangeMin !== null || acosRangeMax !== null) {
                     table.addFilter(function(data) {
-                        if (data.is_parent_summary) return false;
+                        if (data.is_parent_summary) return isProductNavigationActive;
                         var currentSection = $('#section-filter').val();
                         var acos = 0;
                         if (currentSection === 'hl-ads') {
@@ -5809,6 +5822,7 @@
                 // When NRA = "All" or empty, show all rows including NRA so KW Ads section shows full 198 count
                 if ((sectionFilter === 'kw-ads' || sectionFilter === 'pt-ads' || sectionFilter === 'hl-ads') && nraFilter === 'RA' && (!utilizationTypeFilter || utilizationTypeFilter === 'all')) {
                     table.addFilter(function(data) {
+                        if (data.is_parent_summary) return isProductNavigationActive;
                         var nraValue = (data.NRA || '').toString().trim();
                         if (!nraValue) {
                             var nrlValue = (data.NRL || 'REQ').toString().trim();
@@ -5822,8 +5836,7 @@
                 // Applied LAST so counts reflect the correct numbers
                 if (utilizationTypeFilter && utilizationTypeFilter !== 'all') {
                     table.addFilter(function(data) {
-                        // Do NOT skip parent summary rows - KW/PT/HL utilized pages include parents
-                        
+                        if (data.is_parent_summary) return isProductNavigationActive;
                         var currentSection = $('#section-filter').val();
                         var hasCampaign, l7_spend, l1_spend, budget, campaignStatus;
                         
@@ -7186,7 +7199,7 @@ $('#nmap-count').text(missingCount.toLocaleString());
                 var seenParent = {};
                 var parents = [];
                 allRows.forEach(function(r) {
-                    var p = (r.Parent || r.parent || '').toString().trim();
+                    var p = normalizeParentKey(r.Parent || r.parent);
                     if (p && !r.is_parent_summary && !String(p).toUpperCase().startsWith('PARENT') && !seenParent[p]) {
                         seenParent[p] = true;
                         parents.push(p);
