@@ -118,6 +118,52 @@
             background-color: #b3e5fc !important;
         }
 
+        /* Play / Pause parent navigation (same as product-master) */
+        .time-navigation-group {
+            margin-left: 0;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            border-radius: 50px;
+            overflow: hidden;
+            padding: 2px;
+            background: #f8f9fa;
+            display: inline-flex;
+            align-items: center;
+        }
+        .time-navigation-group button {
+            padding: 0;
+            border-radius: 50% !important;
+            width: 40px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 3px;
+            transition: all 0.2s ease;
+            border: 1px solid #dee2e6;
+            background: white;
+            cursor: pointer;
+        }
+        .time-navigation-group button:hover {
+            background-color: #f1f3f5 !important;
+            transform: scale(1.05);
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+        .time-navigation-group button:active { transform: scale(0.95); }
+        .time-navigation-group button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none !important;
+            box-shadow: none !important;
+        }
+        .time-navigation-group button i { font-size: 1.1rem; transition: transform 0.2s ease; }
+        #play-auto { color: #28a745; }
+        #play-auto:hover { background-color: #28a745 !important; color: white !important; }
+        #play-pause { color: #ffc107; display: none; }
+        #play-pause:hover { background-color: #ffc107 !important; color: white !important; }
+        #play-backward, #play-forward { color: #007bff; }
+        #play-backward:hover, #play-forward:hover { background-color: #007bff !important; color: white !important; }
+        .time-navigation-group button:focus { outline: none; box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.25); }
+
         /* Status circle for DIL filter */
         .status-circle {
             display: inline-block;
@@ -769,7 +815,7 @@
                 </div>
 
                 <div id="ebay-table-wrapper" style="height: calc(100vh - 200px); display: flex; flex-direction: column;">
-                    <!-- Parent / SKU dropdown + SKU Search + Pagination Counter -->
+                    <!-- Parent / SKU dropdown + Play/Pause (same as product-master) + SKU Search + Pagination -->
                     <div style="display: flex; align-items: center; flex-wrap: wrap; gap: 12px; padding: 8px 12px; background: #fff; border-bottom: 1px solid #e5e7eb;">
                         <div class="d-flex align-items-center gap-1">
                             <label for="view-type-filter" class="form-label mb-0 text-nowrap small" style="font-size: 13px;">View:</label>
@@ -778,6 +824,20 @@
                                 <option value="parent">Parent</option>
                                 <option value="sku">SKU</option>
                             </select>
+                        </div>
+                        <div class="btn-group time-navigation-group" role="group" aria-label="Parent navigation">
+                            <button type="button" id="play-backward" class="btn btn-light rounded-circle" title="Previous parent">
+                                <i class="fas fa-step-backward"></i>
+                            </button>
+                            <button type="button" id="play-pause" class="btn btn-light rounded-circle" title="Show all products" style="display: none;">
+                                <i class="fas fa-pause"></i>
+                            </button>
+                            <button type="button" id="play-auto" class="btn btn-light rounded-circle" title="Start parent navigation">
+                                <i class="fas fa-play"></i>
+                            </button>
+                            <button type="button" id="play-forward" class="btn btn-light rounded-circle" title="Next parent">
+                                <i class="fas fa-step-forward"></i>
+                            </button>
                         </div>
                         <div class="d-flex align-items-center gap-1">
                             <label for="parent-sku-dropdown" class="form-label mb-0 text-nowrap small" style="font-size: 13px;">Parent / SKU:</label>
@@ -964,6 +1024,16 @@
         let increaseModeActive = false; // Track increase mode state
         let selectedSkus = new Set(); // Track selected SKUs across all pages
 
+        // Play / Pause parent navigation (same as product-master)
+        let productUniqueParents = [];
+        let isProductNavigationActive = false;
+        let currentProductParentIndex = -1;
+        function ebayParentKey(p) {
+            var s = (p || '').toString().trim();
+            if (s.toUpperCase().startsWith('PARENT')) return s.replace(/^PARENT\s+/i, '').trim();
+            return s;
+        }
+
         // Store AJAX-loaded spend totals (from reports - matches KW/PMP ads pages)
         let ebaySpendTotals = { kw_spend: 0, pmt_spend: 0, total_spend: 0 };
         // Reference so loadEbayKwPmtSpendTotals (called before table/updateSummary exist) can call it after fetch
@@ -1012,26 +1082,26 @@
         let moreAmzFilterActive = false;
         let priceFilterActive = false; // Track price filter state: true = show only Prc > LMP
         
-        // Toast notification function
-        function showToast(message, type = 'info') {
-            const toastContainer = document.querySelector('.toast-container');
-            if (!toastContainer) return;
-            
-            const toast = document.createElement('div');
-            toast.className = `toast align-items-center text-white bg-${type === 'error' ? 'danger' : type === 'success' ? 'success' : 'info'} border-0`;
+        // Single toast: accepts showToast(message, type) or showToast(type, message)
+        function showToast(a, b) {
+            var type, message;
+            if (['success','error','info','warning'].indexOf(String(a)) !== -1 && typeof b === 'string') {
+                type = a;
+                message = b;
+            } else {
+                message = a;
+                type = b || 'info';
+            }
+            var container = document.querySelector('.toast-container');
+            if (!container) return;
+            var bg = type === 'error' ? 'danger' : (type === 'success' ? 'success' : (type === 'warning' ? 'warning' : 'info'));
+            var toast = document.createElement('div');
+            toast.className = 'toast align-items-center text-white bg-' + bg + ' border-0';
             toast.setAttribute('role', 'alert');
-            toast.setAttribute('aria-live', 'assertive');
-            toast.setAttribute('aria-atomic', 'true');
-            toast.innerHTML = `
-                <div class="d-flex">
-                    <div class="toast-body">${message}</div>
-                    <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
-                </div>
-            `;
-            toastContainer.appendChild(toast);
-            const bsToast = new bootstrap.Toast(toast);
-            bsToast.show();
-            toast.addEventListener('hidden.bs.toast', () => toast.remove());
+            toast.innerHTML = '<div class="d-flex"><div class="toast-body">' + (message || '') + '</div><button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button></div>';
+            container.appendChild(toast);
+            new bootstrap.Toast(toast).show();
+            toast.addEventListener('hidden.bs.toast', function() { toast.remove(); });
         }
 
         // SKU-specific chart
@@ -2358,6 +2428,96 @@
                 }
             }
 
+            // Build parent list from table (same logic as dropdown in dataLoaded) - call when needed so Play always has list
+            function buildProductUniqueParentsFromTable() {
+                if (typeof table === 'undefined' || !table) return [];
+                var allRows = table.getData('all') || [];
+                var seen = {};
+                var list = [];
+                allRows.forEach(function(r) {
+                    var p = (r.Parent || '').toString().trim();
+                    if (p && !String(p).toUpperCase().startsWith('PARENT') && !seen[p]) {
+                        seen[p] = true;
+                        list.push(p);
+                    }
+                });
+                list.sort(function(a, b) { return String(a).localeCompare(String(b)); });
+                return list;
+            }
+
+            // Play / Pause parent navigation (same as product-master) - productUniqueParents set in dataLoaded or on first Play
+            function initProductPlaybackControls() {
+                if (typeof table === 'undefined' || !table) return;
+                if (!productUniqueParents || productUniqueParents.length === 0) {
+                    productUniqueParents = buildProductUniqueParentsFromTable();
+                }
+
+                // Use event delegation so clicks work even if buttons are re-rendered (same as product-master behavior)
+                $(document).off('click.ebayplay', '#play-forward').on('click.ebayplay', '#play-forward', productNextParent);
+                $(document).off('click.ebayplay', '#play-backward').on('click.ebayplay', '#play-backward', productPreviousParent);
+                $(document).off('click.ebayplay', '#play-pause').on('click.ebayplay', '#play-pause', productStopNavigation);
+                $(document).off('click.ebayplay', '#play-auto').on('click.ebayplay', '#play-auto', productStartNavigation);
+
+                updateProductButtonStates();
+            }
+            function productStartNavigation(e) {
+                if (e) e.preventDefault();
+                if (!productUniqueParents || productUniqueParents.length === 0) {
+                    productUniqueParents = buildProductUniqueParentsFromTable();
+                }
+                if (!productUniqueParents || productUniqueParents.length === 0) {
+                    showToast('info', 'No parent groups in data');
+                    return;
+                }
+                isProductNavigationActive = true;
+                currentProductParentIndex = 0;
+                applyFilters();
+                table.setPage(1);
+                $('#play-auto').hide();
+                $('#play-pause').show().removeClass('btn-light');
+                updateProductButtonStates();
+            }
+            function productStopNavigation(e) {
+                if (e) e.preventDefault();
+                isProductNavigationActive = false;
+                currentProductParentIndex = -1;
+                $('#play-pause').hide();
+                $('#play-auto').show().removeClass('btn-success btn-warning btn-danger').addClass('btn-light');
+                applyFilters();
+                updateProductButtonStates();
+            }
+            function productNextParent(e) {
+                if (e) e.preventDefault();
+                if (!isProductNavigationActive) return;
+                if (currentProductParentIndex >= productUniqueParents.length - 1) return;
+                currentProductParentIndex++;
+                applyFilters();
+                table.setPage(1);
+                updateProductButtonStates();
+            }
+            function productPreviousParent(e) {
+                if (e) e.preventDefault();
+                if (!isProductNavigationActive) return;
+                if (currentProductParentIndex <= 0) return;
+                currentProductParentIndex--;
+                applyFilters();
+                table.setPage(1);
+                updateProductButtonStates();
+            }
+            function updateProductButtonStates() {
+                $('#play-backward').prop('disabled', !isProductNavigationActive || currentProductParentIndex <= 0);
+                $('#play-forward').prop('disabled', !isProductNavigationActive || currentProductParentIndex >= productUniqueParents.length - 1);
+                $('#play-auto').attr('title', isProductNavigationActive ? 'Show all products' : 'Start parent navigation');
+                $('#play-pause').attr('title', 'Stop navigation and show all');
+                $('#play-forward').attr('title', 'Next parent');
+                $('#play-backward').attr('title', 'Previous parent');
+                if (isProductNavigationActive) {
+                    $('#play-forward, #play-backward').removeClass('btn-light').addClass('btn-primary');
+                } else {
+                    $('#play-forward, #play-backward').removeClass('btn-primary').addClass('btn-light');
+                }
+            }
+
             // Event delegation for eye button clicks (add to SKU column formatter)
             table = new Tabulator("#ebay-table", {
                 ajaxURL: "/ebay-data-json",
@@ -2381,10 +2541,10 @@
                         }
                     }
                 },
-                initialSort: [{
-                    column: "SCVR",
-                    dir: "asc"
-                }],
+                initialSort: [
+                    { column: "Parent", dir: "asc" },
+                    { column: "_parent_sort", dir: "asc" }
+                ],
                 rowFormatter: function(row) {
                     const data = row.getData();
                     const isParent = data.Parent && String(data.Parent).toUpperCase().startsWith('PARENT');
@@ -2396,7 +2556,9 @@
                         el.classList.remove('ebay-parent-row');
                     }
                 },
-                columns: [{
+                columns: [
+                    { title: "", field: "_parent_sort", visible: false, width: 0 },
+                    {
                         title: "Parent",
                         field: "Parent",
                         headerFilter: "input",
@@ -2705,15 +2867,6 @@
                             return '';
                         }
                     },
-
-                    
-                    // {
-                    //     title: "eBay L60",
-                    //     field: "eBay L60",
-                    //     hozAlign: "center",
-                    //     width: 100,
-                    //     visible: false
-                    // },
                     {
                         title: "S CVR",
                         field: "SCVR",
@@ -3040,97 +3193,7 @@
                             return html;
                         },
                         width: 70
-                    
                     },
-                    // {
-                    //     title: "AD <br> Spend <br> L30",
-                    //     field: "AD_Spend_L30",
-                    //     hozAlign: "center",
-                    //     sorter: "number",
-                    //     formatter: "money",
-                    //     formatterParams: {
-                    //         decimal: ".",
-                    //         thousand: ",",
-                    //         symbol: "$",
-                    //         precision: 2
-                    //     },
-                    //     width: 130
-                    // },
-                    // {
-                    //     title: "AD Sales L30",
-                    //     field: "AD_Sales_L30",
-                    //     hozAlign: "center",
-                    //     sorter: "number",
-                    //     formatter: "money",
-                    //     formatterParams: {
-                    //         decimal: ".",
-                    //         thousand: ",",
-                    //         symbol: "$",
-                    //         precision: 2
-                    //     },
-                    //     width: 130
-                    // },
-                    // {
-                    //     title: "AD Units L30",
-                    //     field: "AD_Units_L30",
-                    //     hozAlign: "center",
-                    //     sorter: "number",
-                    //     width: 120
-                    // },
-                   
-                    // {
-                    //     title: "TACOS <br> L30",
-                    //     field: "TacosL30",
-                    //     hozAlign: "center",
-                    //     sorter: "number",
-                    //     formatter: function(cell) {
-                    //         const value = cell.getValue();
-                    //         if (value === null || value === undefined) return '';
-                    //         const percent = parseFloat(value) * 100;
-                    //         let color = '';
-                            
-                    //         // getTacosColor logic from inc/dec page
-                    //         if (percent <= 7) color = '#e83e8c'; // pink
-                    //         else if (percent > 7 && percent <= 14) color = '#28a745'; // green
-                    //         else if (percent > 14 && percent <= 21) color = '#ffc107'; // yellow
-                    //         else color = '#a00211'; // red
-                            
-                    //         return `<span style="color: ${color}; font-weight: 600;">${parseFloat(value).toFixed(2)}%</span>`;
-                    //     },
-                    //     width: 80
-                    // },
-                    // {
-                    //     title: "Total Sales L30",
-                    //     field: "T_Sale_l30",
-                    //     hozAlign: "center",
-                    //     sorter: "number",
-                    //     formatter: "money",
-                    //     formatterParams: {
-                    //         decimal: ".",
-                    //         thousand: ",",
-                    //         symbol: "$",
-                    //         precision: 2
-                    //     },
-                    //     width: 140
-                    // },
-                    // {
-                    //     title: "Total Profit",
-                    //     field: "Total_pft",
-                    //     hozAlign: "center",
-                    //     sorter: "number",
-                    //     formatter: "money",
-                    //     formatterParams: {
-                    //         decimal: ".",
-                    //         thousand: ",",
-                    //         symbol: "$",
-                    //         precision: 2
-                    //     },
-                    //     width: 130
-                    // },
-                    //     width: 130
-                    // },
-                   
-                   
                     {
                         title: "S PRC",
                         field: "SPRICE",
@@ -4586,33 +4649,37 @@
 
                 table.clearFilter(true);
 
-                // View type: All | Parent | SKU (parent = only parent rows; sku = only child SKU rows)
-                if (viewTypeFilter === 'parent') {
-                    table.addFilter(function(data) {
-                        var isParent = data.is_parent_summary === true ||
-                            (data.Parent && String(data.Parent).toUpperCase().startsWith('PARENT'));
-                        return !!isParent;
-                    });
-                } else if (viewTypeFilter === 'sku') {
-                    table.addFilter(function(data) {
-                        var isParent = data.is_parent_summary === true ||
-                            (data.Parent && String(data.Parent).toUpperCase().startsWith('PARENT'));
-                        return !isParent;
-                    });
-                }
+                // When Play is active: show only current parent group (child SKUs + parent summary row, like product-master photo)
+                // Skip View and Parent/SKU dropdown so we always show both children and parent row for that group
+                if (!isProductNavigationActive) {
+                    // View type: All | Parent | SKU (parent = only parent rows; sku = only child SKU rows)
+                    if (viewTypeFilter === 'parent') {
+                        table.addFilter(function(data) {
+                            var isParent = data.is_parent_summary === true ||
+                                (data.Parent && String(data.Parent).toUpperCase().startsWith('PARENT'));
+                            return !!isParent;
+                        });
+                    } else if (viewTypeFilter === 'sku') {
+                        table.addFilter(function(data) {
+                            var isParent = data.is_parent_summary === true ||
+                                (data.Parent && String(data.Parent).toUpperCase().startsWith('PARENT'));
+                            return !isParent;
+                        });
+                    }
 
-                // Parent / SKU dropdown: show child SKUs for selected parent, or single row for selected SKU
-                if (parentSkuVal) {
-                    if (parentSkuVal.startsWith('p:')) {
-                        const parentVal = parentSkuVal.slice(2);
-                        table.addFilter(function(data) {
-                            return (data.Parent || '') === parentVal;
-                        });
-                    } else if (parentSkuVal.startsWith('s:')) {
-                        const skuVal = parentSkuVal.slice(2);
-                        table.addFilter(function(data) {
-                            return (data['(Child) sku'] || '') === skuVal;
-                        });
+                    // Parent / SKU dropdown: show child SKUs for selected parent, or single row for selected SKU
+                    if (parentSkuVal) {
+                        if (parentSkuVal.startsWith('p:')) {
+                            const parentVal = parentSkuVal.slice(2);
+                            table.addFilter(function(data) {
+                                return (data.Parent || '') === parentVal;
+                            });
+                        } else if (parentSkuVal.startsWith('s:')) {
+                            const skuVal = parentSkuVal.slice(2);
+                            table.addFilter(function(data) {
+                                return (data['(Child) sku'] || '') === skuVal;
+                            });
+                        }
                     }
                 }
 
@@ -5048,9 +5115,20 @@
                     }
                 }
 
+                // Play / Pause: show only current parent group (child SKUs + parent summary row, like product-master photo)
+                if (isProductNavigationActive && productUniqueParents.length > 0 && currentProductParentIndex >= 0) {
+                    var currentKey = productUniqueParents[currentProductParentIndex];
+                    if (currentKey) {
+                        table.addFilter(function(data) {
+                            var p = (data.Parent || '').toString().trim();
+                            return p === currentKey || p === ('PARENT ' + currentKey);
+                        });
+                    }
+                }
+
                 // Update range filter badge
                 updateRangeFilterBadge();
-                
+
                 updateCalcValues();
                 if (typeof updateSummary === 'function') updateSummary();
                 // Update select all checkbox after filter is applied (matching Amazon approach)
@@ -6078,6 +6156,8 @@
                     }
                 });
                 parents.sort(function(a, b) { return String(a).localeCompare(String(b)); });
+                // Use same parent list for Play/Next/Previous (single parent SKUs like product-master)
+                productUniqueParents = parents.slice(0);
                 var skus = allRows.map(function(r) { return r['(Child) sku'] || ''; }).filter(function(s) { return s !== ''; });
                 skus.sort(function(a, b) { return String(a).localeCompare(String(b)); });
                 var $dropdown = $('#parent-sku-dropdown');
@@ -6117,6 +6197,8 @@
                 }, 100);
                 // Redraw so rowFormatter runs and parent rows get light blue background
                 setTimeout(function() { table.redraw(true); }, 50);
+                // Play / Pause parent navigation (same as product-master)
+                initProductPlaybackControls();
             });
 
             // Also initialize tooltips when table is rendered (matching Amazon approach)
@@ -6210,22 +6292,6 @@
             });
 
             // Toast notification
-            function showToast(type, message) {
-                var bgClass = type === 'success' ? 'success' : (type === 'warning' ? 'warning' : (type === 'info' ? 'info' : 'danger'));
-                const toast = $(`
-                    <div class="toast align-items-center text-white bg-${bgClass} border-0" role="alert">
-                        <div class="d-flex">
-                            <div class="toast-body">${message}</div>
-                            <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
-                        </div>
-                    </div>
-                `);
-                $('.toast-container').append(toast);
-                const bsToast = new bootstrap.Toast(toast[0]);
-                bsToast.show();
-                setTimeout(() => toast.remove(), 3000);
-            }
-
             // Export column mapping (field -> display name)
             const exportColumnMapping = {
                 'Parent': 'Parent',

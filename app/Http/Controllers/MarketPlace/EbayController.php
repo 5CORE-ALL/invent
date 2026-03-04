@@ -881,6 +881,7 @@ class EbayController extends Controller
 
             // Image
             $row["image_path"] = $shopify->image_src ?? ($values["image_path"] ?? ($pm->image_path ?? null));
+            $row['_parent_sort'] = 0; // child row: keep before parent summary row when sorting
 
             $result[] = (object) $row;
         }
@@ -987,6 +988,7 @@ class EbayController extends Controller
             $parentRow->has_custom_sprice = false;
             $parentRow->SPRICE_STATUS = null;
             $parentRow->image_path = $first->image_path ?? null;
+            $parentRow->_parent_sort = 1; // parent summary row: always sort after children (bottom of group)
             foreach ($children as $c) {
                 $final[] = $c;
             }
