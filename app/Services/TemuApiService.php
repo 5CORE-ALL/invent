@@ -23,41 +23,43 @@ class TemuApiService
     protected $endpoint;
     protected $allItems = [];
 
-private function generateSignValue($requestBody)
+/**
+     * Generate signed request for Temu Open API.
+     * Uses access_token (underscore), app_key, timestamp, data_type; adds sign.
+     * All credentials are trimmed to avoid "application information query is abnormal".
+     *
+     * @param array $requestBody API-specific params only (e.g. type, outGoodsSn, goodsName)
+     * @return array Full request with access_token, app_key, timestamp, data_type, sign, and requestBody keys
+     */
+    private function generateSignValue($requestBody)
     {
-        // Environment/config variables
-        $appKey = config('services.temu.app_key');
-        $appSecret = config('services.temu.secret_key');
-        $accessToken = config('services.temu.access_token');
+        $appKey = trim((string) (config('services.temu.app_key') ?? ''));
+        $appSecret = trim((string) (config('services.temu.secret_key') ?? ''));
+        $accessToken = trim((string) (config('services.temu.access_token') ?? ''));
+
         $timestamp = time();
-        
-        // Top-level params
         $params = [
             'access_token' => $accessToken,
             'app_key' => $appKey,
-            'timestamp' => $timestamp,
+            'timestamp' => (string) $timestamp,
             'data_type' => 'JSON',
         ];
 
-        // Flatten and sort for signing
         $signParams = array_merge($params, $requestBody);
         ksort($signParams);
-        
+
         $temp = '';
         foreach ($signParams as $key => $value) {
             if (is_array($value) || is_object($value)) {
                 $value = json_encode($value, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
             }
-            $temp .= $key . $value;
+            $temp .= $key . (string) $value;
         }
 
         $signStr = $appSecret . $temp . $appSecret;
         $sign = strtoupper(md5($signStr));
         $params['sign'] = $sign;
 
-        
-        // Log the request
-        // Log::info("Generated Sign: $sign");
         return array_merge($params, $requestBody);
     }
 
@@ -478,11 +480,36 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
         $apiType = config('services.temu.goods_update_type', 'bg.local.goods.update');
         $url = 'https://openapi-b-us.temu.com/openapi/router';
 
+        Log::debug('Temu config check (updateTitle)', [
+            'app_key_exists' => ! empty(config('services.temu.app_key')),
+            'app_key_prefix' => substr(config('services.temu.app_key') ?? '', 0, 10),
+            'secret_key_exists' => ! empty(config('services.temu.secret_key')),
+            'access_token_exists' => ! empty(config('services.temu.access_token')),
+            'access_token_prefix' => substr(config('services.temu.access_token') ?? '', 0, 10),
+        ]);
+
+        // API-specific parameters only; generateSignValue adds access_token, app_key, timestamp, sign
         $requestBody = [
             'type' => $apiType,
             'outGoodsSn' => $sku,
             'goodsName' => $title,
         ];
+
+        Log::debug('Temu - Before generateSignValue', [
+            'requestBody' => $requestBody,
+        ]);
+
+        $signedRequest = $this->generateSignValue($requestBody);
+
+        Log::debug('Temu - After generateSignValue', [
+            'signedRequest_keys' => array_keys($signedRequest),
+            'has_access_token' => isset($signedRequest['access_token']),
+            'has_app_key' => isset($signedRequest['app_key']),
+            'has_timestamp' => isset($signedRequest['timestamp']),
+            'has_sign' => isset($signedRequest['sign']),
+            'access_token_preview' => isset($signedRequest['access_token']) ? substr($signedRequest['access_token'], 0, 10) . '...' : 'MISSING',
+            'type' => $signedRequest['type'] ?? null,
+        ]);
 
         Log::info('Temu API Request - updateTitle', [
             'url' => $url,
@@ -493,7 +520,6 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
             'payload_keys' => array_keys($requestBody),
         ]);
 
-        $signedRequest = $this->generateSignValue($requestBody);
         $request = Http::withHeaders(['Content-Type' => 'application/json']);
         if (config('filesystems.default') === 'local') {
             $request = $request->withoutVerifying();
