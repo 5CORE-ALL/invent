@@ -458,4 +458,89 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
     return $results;
 }
 
+    /**
+     * Update product title on Temu by seller SKU (outGoodsSn).
+     * API type is configurable via config('services.temu.goods_update_type') or TEMU_GOODS_UPDATE_TYPE.
+     * If you get "type not exists" (3000003), set the correct type from Temu Partner API docs.
+     *
+     * @param string $sku Seller SKU (outGoodsSn)
+     * @param string $title New title
+     * @return array{success: bool, message: string}
+     */
+    public function updateTitle(string $sku, string $title): array
+    {
+        $sku = trim($sku);
+        $title = trim($title);
+        if ($sku === '' || $title === '') {
+            return ['success' => false, 'message' => 'SKU and title are required.'];
+        }
+
+        $apiType = config('services.temu.goods_update_type', 'bg.local.goods.update');
+        $url = 'https://openapi-b-us.temu.com/openapi/router';
+
+        $requestBody = [
+            'type' => $apiType,
+            'outGoodsSn' => $sku,
+            'goodsName' => $title,
+        ];
+
+        Log::info('Temu API Request - updateTitle', [
+            'url' => $url,
+            'method' => 'POST',
+            'type' => $apiType,
+            'sku' => $sku,
+            'title_preview' => mb_substr($title, 0, 50),
+            'payload_keys' => array_keys($requestBody),
+        ]);
+
+        $signedRequest = $this->generateSignValue($requestBody);
+        $request = Http::withHeaders(['Content-Type' => 'application/json']);
+        if (config('filesystems.default') === 'local') {
+            $request = $request->withoutVerifying();
+        }
+
+        try {
+            $response = $request->post($url, $signedRequest);
+            $status = $response->status();
+            $data = $response->json();
+            $bodyRaw = $response->body();
+
+            Log::info('Temu API Response - updateTitle', [
+                'sku' => $sku,
+                'status' => $status,
+                'success' => $data['success'] ?? null,
+                'errorCode' => $data['errorCode'] ?? null,
+                'errorMsg' => $data['errorMsg'] ?? null,
+                'response_preview' => mb_substr($bodyRaw, 0, 500),
+            ]);
+
+            if ($response->successful() && ($data['success'] ?? false)) {
+                Log::info('Temu title updated successfully', ['sku' => $sku]);
+                return ['success' => true, 'message' => "Title updated for SKU: {$sku}."];
+            }
+
+            $errorCode = $data['errorCode'] ?? null;
+            $errorMsg = $data['errorMsg'] ?? $data['message'] ?? $bodyRaw;
+
+            if ((int) $errorCode === 3000003) {
+                Log::warning('Temu API "type not exists" (3000003). Set TEMU_GOODS_UPDATE_TYPE in .env to the correct type from Temu Partner API docs (e.g. bg.goods.update, bg.local.goods.update).', [
+                    'sku' => $sku,
+                    'current_type' => $apiType,
+                ]);
+            }
+
+            Log::warning('Temu title update failed', [
+                'sku' => $sku,
+                'response' => $data,
+                'status' => $status,
+            ]);
+            return ['success' => false, 'message' => (string) $errorMsg];
+        } catch (\Throwable $e) {
+            Log::error('Temu updateTitle exception: ' . $e->getMessage(), [
+                'sku' => $sku,
+                'trace' => $e->getTraceAsString(),
+            ]);
+            return ['success' => false, 'message' => 'Exception: ' . $e->getMessage()];
+        }
+    }
 }

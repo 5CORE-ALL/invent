@@ -272,4 +272,91 @@ class ReverbApiService
             ];
         }
     }
+
+    /**
+     * Update listing title on Reverb by SKU.
+     * Uses getListingIdBySku then PUT to /api/listings/{id} with title.
+     *
+     * @param string $sku
+     * @param string $title
+     * @return array{success: bool, message: string, listing_id?: string}
+     */
+    public function updateTitle(string $sku, string $title): array
+    {
+        $token = config('services.reverb.token');
+        if (! $token) {
+            return [
+                'success' => false,
+                'message' => 'Reverb API token not configured (services.reverb.token).',
+            ];
+        }
+
+        $title = trim((string) $title);
+        if ($title === '') {
+            return [
+                'success' => false,
+                'message' => 'Title cannot be empty.',
+            ];
+        }
+
+        $listingId = $this->getListingIdBySku($sku);
+        if ($listingId === null) {
+            return [
+                'success' => false,
+                'message' => "No Reverb listing found for SKU: {$sku}.",
+            ];
+        }
+
+        $updateUrl = 'https://api.reverb.com/api/listings/' . $listingId;
+        $payload = ['title' => $title];
+
+        try {
+            $response = Http::withoutVerifying()
+                ->timeout(30)
+                ->withHeaders([
+                    'Authorization' => 'Bearer ' . $token,
+                    'Accept' => 'application/hal+json',
+                    'Accept-Version' => '3.0',
+                    'Content-Type' => 'application/hal+json',
+                ])
+                ->put($updateUrl, $payload);
+
+            if ($response->successful()) {
+                Log::info('Reverb title updated successfully', [
+                    'sku' => $sku,
+                    'listing_id' => $listingId,
+                ]);
+                return [
+                    'success' => true,
+                    'message' => "Title updated for SKU: {$sku} (listing ID: {$listingId}).",
+                    'listing_id' => $listingId,
+                ];
+            }
+
+            $body = $response->body();
+            $status = $response->status();
+            Log::error('Reverb title update failed', [
+                'sku' => $sku,
+                'listing_id' => $listingId,
+                'status' => $status,
+                'body' => $body,
+            ]);
+            return [
+                'success' => false,
+                'message' => "Reverb API error (HTTP {$status}): " . $body,
+                'listing_id' => $listingId,
+            ];
+        } catch (\Throwable $e) {
+            Log::error('Reverb updateTitle exception: ' . $e->getMessage(), [
+                'sku' => $sku,
+                'listing_id' => $listingId,
+                'trace' => $e->getTraceAsString(),
+            ]);
+            return [
+                'success' => false,
+                'message' => 'Exception: ' . $e->getMessage(),
+                'listing_id' => $listingId,
+            ];
+        }
+    }
 }

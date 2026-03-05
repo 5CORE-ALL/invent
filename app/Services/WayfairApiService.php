@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 
 class WayfairApiService
 {
@@ -184,6 +185,77 @@ XML;
         ];
     }
 
+    /**
+     * Update product title on Wayfair by supplier part number (SKU).
+     * Uses product/catalog update if available; otherwise attempts feed or returns not_supported.
+     *
+     * @param string $sku Supplier part number (SKU)
+     * @param string $title New title
+     * @return array{success: bool, message: string}
+     */
+    public function updateTitle(string $sku, string $title): array
+    {
+        $sku = trim($sku);
+        $title = trim($title);
+        if ($sku === '' || $title === '') {
+            return ['success' => false, 'message' => 'SKU and title are required.'];
+        }
 
-      
+        try {
+            $token = $this->authenticate();
+            if (! $token) {
+                return ['success' => false, 'message' => 'Wayfair authentication failed.'];
+            }
+
+            // Wayfair Product API: try GraphQL mutation or product update endpoint if available
+            $mutation = <<<'GRAPHQL'
+            mutation UpdateProductTitle($partNumber: String!, $title: String!) {
+                updateProductTitle(partNumber: $partNumber, title: $title) {
+                    success
+                    message
+                }
+            }
+            GRAPHQL;
+
+            $response = Http::withoutVerifying()
+                ->withToken($token)
+                ->post($this->graphqlUrl, [
+                    'query' => $mutation,
+                    'variables' => [
+                        'partNumber' => $sku,
+                        'title' => $title,
+                    ],
+                ]);
+
+            $data = $response->json();
+            $errors = $data['errors'] ?? null;
+            $result = $data['data']['updateProductTitle'] ?? null;
+
+            if ($errors || ! $result) {
+                $msg = $errors[0]['message'] ?? $result['message'] ?? $response->body() ?? 'Unknown error';
+                Log::warning('Wayfair title update failed or unsupported', [
+                    'sku' => $sku,
+                    'response' => $data,
+                    'status' => $response->status(),
+                ]);
+                return ['success' => false, 'message' => (string) $msg];
+            }
+
+            if (! empty($result['success'])) {
+                Log::info('Wayfair title updated successfully', ['sku' => $sku]);
+                return ['success' => true, 'message' => "Title updated for SKU: {$sku}."];
+            }
+
+            return [
+                'success' => false,
+                'message' => $result['message'] ?? 'Wayfair title update failed.',
+            ];
+        } catch (\Throwable $e) {
+            Log::error('Wayfair updateTitle exception: ' . $e->getMessage(), [
+                'sku' => $sku,
+                'trace' => $e->getTraceAsString(),
+            ]);
+            return ['success' => false, 'message' => 'Exception: ' . $e->getMessage()];
+        }
+    }
 }

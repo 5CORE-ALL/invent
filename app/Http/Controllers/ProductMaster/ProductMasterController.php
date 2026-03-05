@@ -5,9 +5,13 @@ namespace App\Http\Controllers\ProductMaster;
 use App\Http\Controllers\ApiController;
 use App\Http\Controllers\Controller;
 use App\Models\AmazonListingRaw;
+use App\Models\MarketplacePushLog;
 use App\Models\Permission;
 use App\Models\ProductMaster;
 use App\Services\AmazonSpApiService;
+use App\Services\ReverbApiService;
+use App\Services\TemuApiService;
+use App\Services\WayfairApiService;
 use App\Models\ShopifySku;
 use App\Models\User;
 use Illuminate\Http\Request;
@@ -1992,26 +1996,29 @@ PROMPT;
         $maxLen = max($minLen, min(150, $maxLen));
 
         $model = 'claude-sonnet-4-20250514';
-        Log::info('AI generate title 150 (3 options): start', ['sku' => $sku, 'model' => $model]);
+        Log::info('AI generate title 150 (4 options): start', ['sku' => $sku, 'model' => $model]);
 
         $prompt = <<<PROMPT
-Generate 3 DIFFERENT Amazon product titles for the same product. Each title must be {$minLen}-{$maxLen} characters.
+You are an expert e-commerce copywriter specializing in high-converting product listings. Generate 4 fully optimized product titles suitable for Amazon, Shopify, eBay, and other e-commerce platforms.
 
-Original title: "{$currentTitle}"
+Original product title: "{$currentTitle}"
 SKU: {$sku}
 Product category: {$parentCategory}
 
-Requirements for ALL 3 titles:
-- Length: {$minLen}-{$maxLen} characters each.
-- Include brand "5 Core".
-- Focus on different selling angles:
-  * Title 1: Technical/Specs focused
-  * Title 2: Benefit/Usage focused
-  * Title 3: Quality/Professional focused
-- SEO optimized. No promotional text (e.g. no "Free Shipping", "Best Price").
+Follow these guidelines:
+- Include high-search-volume keywords relevant to the product.
+- Highlight key purchasing decision features such as size, power, material, compatibility, or primary benefit.
+- Structure titles for maximum SEO visibility and discoverability.
+- Ensure titles are clear, natural, and persuasive, not keyword-stuffed.
+- Prioritize the most important keywords toward the beginning of the title.
+- Keep titles scannable and compelling for shoppers while maintaining strong keyword coverage.
+- Avoid unnecessary filler words.
+- Each title should be unique, SEO-optimized, and conversion-focused.
 
-Return ONLY a JSON array of exactly 3 title strings. No markdown, no code block wrapper, no explanations.
-Example format: ["First title here...","Second title here...","Third title here..."]
+For each generated title, show below it a possible success score out of 10 (how likely the title is to convert and rank well: 1=weak, 10=excellent).
+
+Technical requirement: Each title must be {$minLen}-{$maxLen} characters. Return ONLY a JSON array of exactly 4 objects. No markdown, no code block wrapper, no explanations. Each object must have "title" (string) and "score" (integer 1-10).
+Example format: [{"title": "First title here...", "score": 8}, {"title": "Second title here...", "score": 7}, {"title": "Third title here...", "score": 9}, {"title": "Fourth title here...", "score": 8}]
 PROMPT;
 
         try {
@@ -2035,7 +2042,7 @@ PROMPT;
             if (! $response->successful()) {
                 $bodyJson = $response->json();
                 $errorMsg = isset($bodyJson['error']['message']) ? $bodyJson['error']['message'] : $response->body();
-                Log::warning('AI generate title 150 (3 options): API error', [
+                Log::warning('AI generate title 150 (4 options): API error', [
                     'status' => $response->status(),
                     'error' => $bodyJson['error'] ?? $response->body(),
                 ]);
@@ -2049,28 +2056,35 @@ PROMPT;
             $text = trim($body['content'][0]['text'] ?? '');
             $text = preg_replace('/^```\w*\s*|\s*```$/m', '', $text);
             $arr = json_decode($text, true);
-            if (! is_array($arr) || count($arr) < 3) {
+            if (! is_array($arr) || count($arr) < 4) {
                 Log::warning('AI generate title 150: invalid response', ['preview' => mb_substr($text, 0, 300)]);
                 return response()->json([
                     'success' => false,
-                    'message' => 'Invalid AI response: expected 3 titles.',
+                    'message' => 'Invalid AI response: expected 4 titles with scores.',
                 ], 422);
             }
 
-            $titles = [];
-            for ($i = 0; $i < 3; $i++) {
-                $t = trim(is_string($arr[$i]) ? $arr[$i] : (string) ($arr[$i] ?? ''));
+            $items = [];
+            for ($i = 0; $i < 4; $i++) {
+                $row = $arr[$i] ?? null;
+                if (is_array($row) && ! empty($row['title'])) {
+                    $t = trim((string) $row['title']);
+                    $score = isset($row['score']) ? max(1, min(10, (int) $row['score'])) : null;
+                } else {
+                    $t = trim(is_string($row) ? $row : (string) ($row ?? ''));
+                    $score = null;
+                }
                 if (mb_strlen($t) > $maxLen) {
                     $t = mb_substr($t, 0, $maxLen);
                 }
-                $titles[] = $t;
+                $items[] = ['title' => $t, 'score' => $score];
             }
 
-            Log::info('AI generate title 150: success', ['sku' => $sku, 'count' => 3, 'lengths' => array_map('mb_strlen', $titles)]);
+            Log::info('AI generate title 150: success', ['sku' => $sku, 'count' => 4]);
 
             return response()->json([
                 'success' => true,
-                'titles' => $titles,
+                'items' => $items,
             ]);
         } catch (\Exception $e) {
             Log::error('AI generate title 150: exception', ['message' => $e->getMessage()]);
@@ -2259,6 +2273,219 @@ PROMPT;
             'failed_count' => $failedCount,
             'failed_skus' => array_slice($failedSkus, 0, 50),
             'message' => "{$successCount} successful, {$failedCount} failed",
+        ]);
+    }
+
+    /**
+     * Push Title 150 to all 4 marketplaces (Amazon, Temu, Reverb, Wayfair) for a single SKU.
+     * Logs each attempt to marketplace_push_logs and returns per-marketplace results.
+     */
+    public function pushTitleToAllMarketplaces(Request $request)
+    {
+        $request->validate([
+            'sku' => 'required|string|max:255',
+            'title' => 'required|string|max:2000',
+        ]);
+
+        $sku = trim($request->input('sku'));
+        $title = trim($request->input('title'));
+        $userId = auth()->id();
+
+        Log::info('Multi-Marketplace Push - Started', [
+            'sku' => $sku,
+            'title_preview' => mb_substr($title, 0, 50),
+            'marketplaces' => ['amazon', 'temu', 'reverb', 'wayfair'],
+            'user_id' => $userId,
+            'timestamp' => now()->toDateTimeString(),
+        ]);
+
+        $results = [
+            'amazon' => ['status' => 'pending', 'message' => ''],
+            'temu' => ['status' => 'pending', 'message' => ''],
+            'reverb' => ['status' => 'pending', 'message' => ''],
+            'wayfair' => ['status' => 'pending', 'message' => ''],
+        ];
+
+        // Amazon
+        try {
+            $amazonService = new AmazonSpApiService;
+            $res = $amazonService->updateAmazonTitle($sku, $title);
+            $results['amazon'] = isset($res['success']) && $res['success'] === true
+                ? ['status' => 'success', 'message' => $res['message'] ?? 'OK']
+                : ['status' => 'failed', 'message' => $res['message'] ?? json_encode($res)];
+        } catch (\Throwable $e) {
+            $results['amazon'] = ['status' => 'failed', 'message' => $e->getMessage()];
+        }
+        $this->logMarketplacePush($sku, 'amazon', $results['amazon']['status'], $results['amazon']['message'] ?? null, $userId);
+
+        // Temu
+        try {
+            $temuService = new TemuApiService;
+            $res = $temuService->updateTitle($sku, $title);
+            $results['temu'] = $res['success'] ?? false
+                ? ['status' => 'success', 'message' => $res['message'] ?? 'OK']
+                : ['status' => 'failed', 'message' => $res['message'] ?? 'Unknown error'];
+        } catch (\Throwable $e) {
+            $results['temu'] = ['status' => 'failed', 'message' => $e->getMessage()];
+        }
+        $this->logMarketplacePush($sku, 'temu', $results['temu']['status'], $results['temu']['message'] ?? null, $userId);
+
+        // Reverb
+        try {
+            $reverbService = new ReverbApiService;
+            $res = $reverbService->updateTitle($sku, $title);
+            $results['reverb'] = $res['success'] ?? false
+                ? ['status' => 'success', 'message' => $res['message'] ?? 'OK']
+                : ['status' => 'failed', 'message' => $res['message'] ?? 'Unknown error'];
+        } catch (\Throwable $e) {
+            $results['reverb'] = ['status' => 'failed', 'message' => $e->getMessage()];
+        }
+        $this->logMarketplacePush($sku, 'reverb', $results['reverb']['status'], $results['reverb']['message'] ?? null, $userId);
+
+        // Wayfair
+        try {
+            $wayfairService = new WayfairApiService;
+            $res = $wayfairService->updateTitle($sku, $title);
+            $results['wayfair'] = $res['success'] ?? false
+                ? ['status' => 'success', 'message' => $res['message'] ?? 'OK']
+                : ['status' => 'failed', 'message' => $res['message'] ?? 'Unknown error'];
+        } catch (\Throwable $e) {
+            $results['wayfair'] = ['status' => 'failed', 'message' => $e->getMessage()];
+        }
+        $this->logMarketplacePush($sku, 'wayfair', $results['wayfair']['status'], $results['wayfair']['message'] ?? null, $userId);
+
+        Log::info('Multi-Marketplace Push - Summary', ['sku' => $sku, 'results' => $results]);
+
+        return response()->json([
+            'success' => true,
+            'sku' => $sku,
+            'results' => $results,
+            'message' => 'Push completed for all marketplaces.',
+        ]);
+    }
+
+    /**
+     * Bulk push Title 150 to all 4 marketplaces for multiple SKUs.
+     */
+    public function pushBulkToAllMarketplaces(Request $request)
+    {
+        $request->validate([
+            'skus' => 'required|array',
+            'skus.*' => 'string|max:255',
+            'titles' => 'required|array',
+        ]);
+
+        $skus = array_values(array_unique(array_map('trim', $request->input('skus', []))));
+        $titlesRaw = $request->input('titles', []);
+        $titles = [];
+        foreach ($skus as $s) {
+            $titles[$s] = isset($titlesRaw[$s]) ? trim((string) $titlesRaw[$s]) : '';
+        }
+        $items = array_filter(array_map(function ($sku) use ($titles) {
+            $title = $titles[$sku] ?? '';
+            return empty($title) ? null : ['sku' => $sku, 'title' => $title];
+        }, $skus));
+
+        $total = count($items);
+        if ($total === 0) {
+            return response()->json([
+                'success' => false,
+                'message' => 'No SKUs with titles to push.',
+            ], 422);
+        }
+
+        Log::info('Multi-Marketplace Bulk Push - Started', [
+            'total_skus' => $total,
+            'user_id' => auth()->id(),
+        ]);
+
+        $successCount = 0;
+        $failedCount = 0;
+        $perSkuResults = [];
+
+        foreach ($items as $item) {
+            $sku = $item['sku'];
+            $title = $item['title'];
+            $req = new Request(['sku' => $sku, 'title' => $title]);
+            $req->setUserResolver(fn () => auth()->user());
+            try {
+                $res = $this->pushTitleToAllMarketplaces($req);
+                $data = $res->getData(true);
+                $results = $data['results'] ?? [];
+                $allOk = true;
+                foreach (['amazon', 'temu', 'reverb', 'wayfair'] as $mp) {
+                    if (($results[$mp]['status'] ?? '') !== 'success') {
+                        $allOk = false;
+                        break;
+                    }
+                }
+                if ($allOk) {
+                    $successCount++;
+                } else {
+                    $failedCount++;
+                }
+                $perSkuResults[$sku] = $results;
+            } catch (\Throwable $e) {
+                $failedCount++;
+                $perSkuResults[$sku] = ['error' => $e->getMessage()];
+            }
+            usleep(200000);
+        }
+
+        Log::info('Multi-Marketplace Bulk Push - Completed', [
+            'total_success' => $successCount,
+            'total_failed' => $failedCount,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'total' => $total,
+            'success_count' => $successCount,
+            'failed_count' => $failedCount,
+            'per_sku_results' => $perSkuResults,
+            'message' => "{$successCount} successful, {$failedCount} failed",
+        ]);
+    }
+
+    /**
+     * Get last push status per marketplace for a SKU (for UI indicators).
+     */
+    public function getMarketplacePushStatus(Request $request)
+    {
+        $sku = trim((string) $request->input('sku', ''));
+        if ($sku === '') {
+            return response()->json(['success' => false, 'message' => 'SKU required'], 422);
+        }
+
+        $logs = MarketplacePushLog::where('sku', $sku)
+            ->whereIn('marketplace', MarketplacePushLog::MARKETPLACES)
+            ->orderBy('created_at', 'desc')
+            ->get()
+            ->unique('marketplace')
+            ->keyBy('marketplace');
+
+        $status = [];
+        foreach (MarketplacePushLog::MARKETPLACES as $mp) {
+            $log = $logs->get($mp);
+            $status[$mp] = [
+                'status' => $log ? $log->status : null,
+                'message' => $log ? $log->error_message : null,
+                'updated_at' => $log ? $log->updated_at?->toIso8601String() : null,
+            ];
+        }
+
+        return response()->json(['success' => true, 'sku' => $sku, 'status' => $status]);
+    }
+
+    private function logMarketplacePush(string $sku, string $marketplace, string $status, ?string $errorMessage, ?int $userId): void
+    {
+        MarketplacePushLog::create([
+            'sku' => $sku,
+            'marketplace' => $marketplace,
+            'status' => $status,
+            'error_message' => $status === 'failed' ? $errorMessage : null,
+            'response_data' => null,
+            'user_id' => $userId,
         ]);
     }
 

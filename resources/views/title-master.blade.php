@@ -9,16 +9,41 @@
     <link href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css" rel="stylesheet" />
 
     <style>
+        .card.title-master-card {
+            border: 1px solid #e2e8f0;
+            border-radius: 12px;
+            box-shadow: 0 2px 12px rgba(44, 110, 213, 0.06);
+        }
+        .card.title-master-card .card-body {
+            padding: 1.25rem 1.5rem;
+        }
+        .title-master-toolbar {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .title-master-toolbar .btn {
+            padding: 0.3rem 0.6rem;
+            font-size: 0.8rem;
+            border-radius: 6px;
+        }
+        .title-master-toolbar .btn i {
+            font-size: 0.75rem;
+        }
         .table-responsive {
             position: relative;
-            border: 1px solid #e9ecef;
+            border: 1px solid #e2e8f0;
             border-radius: 10px;
             max-height: 600px;
             overflow-y: auto;
-            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
             background-color: white;
         }
 
+        #title-master-table thead th {
+            vertical-align: middle !important;
+        }
         .table-responsive thead th {
             position: sticky;
             top: 0;
@@ -70,12 +95,28 @@
             outline: none;
         }
 
-        .table-responsive tbody td {
-            padding: 12px 18px;
-            vertical-align: middle;
+        #title-master-table tbody tr {
+            align-items: center;
+        }
+        #title-master-table tbody td {
+            padding: 8px 12px;
+            vertical-align: middle !important;
             border-bottom: 1px solid #edf2f9;
-            font-size: 13px;
-            color: #495057;
+            font-size: 12px;
+            line-height: 1.35;
+            color: #475569;
+        }
+        #title-master-table .table-img-cell {
+            width: 48px;
+            text-align: center;
+        }
+        #title-master-table tbody td img {
+            width: 36px;
+            height: 36px;
+            object-fit: cover;
+            border-radius: 4px;
+            vertical-align: middle;
+            display: inline-block;
         }
 
         .table-responsive tbody tr:nth-child(even) {
@@ -138,57 +179,108 @@
             font-size: 12px;
         }
 
+        /* Action column: View + Edit side by side */
+        .action-buttons-cell {
+            white-space: nowrap;
+            vertical-align: middle !important;
+        }
+        .action-buttons-group {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex-wrap: nowrap;
+        }
         .action-btn {
-            padding: 6px 12px;
-            border: none;
-            border-radius: 4px;
-            font-size: 13px;
-            cursor: pointer;
-            transition: all 0.2s;
-            margin: 0 2px;
-        }
-
-        .edit-btn {
-            background: linear-gradient(135deg, #ffc107 0%, #ff9800 100%);
-            color: white;
-        }
-
-        .edit-btn:hover {
-            transform: translateY(-1px);
-            box-shadow: 0 2px 8px rgba(255, 193, 7, 0.3);
-        }
-
-        .view-btn {
-            background: linear-gradient(135deg, #17a2b8 0%, #138496 100%);
-            color: white;
-        }
-
-        .view-btn:hover {
-            transform: translateY(-1px);
-            box-shadow: 0 2px 8px rgba(23, 162, 184, 0.3);
-        }
-        .push-amazon-btn {
-            background-color: #ff9900;
-            color: white;
             padding: 5px 10px;
-            font-size: 12px;
             border: none;
-            border-radius: 4px;
-            margin-left: 4px;
+            border-radius: 6px;
+            font-size: 11px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
             white-space: nowrap;
         }
-        .push-amazon-btn:hover {
-            background-color: #e88b00;
+        .action-btn i {
+            font-size: 11px;
+        }
+        .view-btn {
+            background: #17a2b8;
             color: white;
-            transform: translateY(-1px);
+        }
+        .view-btn:hover {
+            background: #138496;
+            color: white;
+            box-shadow: 0 2px 6px rgba(23, 162, 184, 0.3);
+        }
+        .edit-btn {
+            background: linear-gradient(135deg, #2c6ed5 0%, #1a56b7 100%);
+            color: white;
+        }
+        .edit-btn:hover {
+            background: linear-gradient(135deg, #1a56b7 0%, #0a3d8f 100%);
+            color: white;
+            box-shadow: 0 2px 6px rgba(44, 110, 213, 0.35);
+        }
+        .push-button-cell {
+            vertical-align: middle !important;
+            min-width: 95px;
+        }
+        .push-amazon-btn {
+            width: 100%;
+            background: #ff9900;
+            color: #232f3e;
+            padding: 5px 10px;
+            font-size: 11px;
+            font-weight: 600;
+            border: none;
+            border-radius: 6px;
+            white-space: nowrap;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+        }
+        .push-amazon-btn:hover {
+            background: #e88b00;
+            color: white;
+            box-shadow: 0 2px 6px rgba(255, 153, 0, 0.35);
         }
         .push-amazon-btn:disabled {
             opacity: 0.7;
             cursor: not-allowed;
-            transform: none;
         }
-        #pushAllBtn:hover {
-            background-color: #0052a3 !important;
+        @media (max-width: 768px) {
+            .action-buttons-group { flex-direction: column; gap: 4px; }
+            .push-button-cell { min-width: 85px; }
+        }
+        /* Marketplaces column: dot indicators */
+        .marketplaces-cell { white-space: nowrap; vertical-align: middle !important; }
+        .marketplaces-dots { display: flex; align-items: center; justify-content: center; gap: 6px; }
+        .mp-dot {
+            width: 12px; height: 12px; border-radius: 50%;
+            border: 2px solid currentColor;
+            background: transparent;
+            transition: all 0.2s;
+        }
+        .mp-dot.success { background: currentColor; border-color: currentColor; }
+        .mp-dot.failed { background: #dc3545; border-color: #dc3545; }
+        .mp-dot.pending { background: transparent; }
+        .mp-dot.loading { background: transparent; border-color: transparent; }
+        .mp-dot.amazon { color: #2c6ed5; }
+        .mp-dot.temu { color: #28a745; }
+        .mp-dot.reverb { color: #ffc107; }
+        .mp-dot.wayfair { color: #dc3545; }
+        .mp-dot[title] { cursor: help; }
+        .btn-push-all {
+            background: #ff9900 !important;
+            color: #232f3e !important;
+            font-weight: 600;
+        }
+        .btn-push-all:hover {
+            background: #e88b00 !important;
             color: white !important;
         }
 
@@ -257,13 +349,13 @@
         }
 
         .btn-ai-improve {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
+            background: linear-gradient(135deg, #5a67d8 0%, #6b46c1 100%) !important;
+            color: #ffffff !important;
             border: none;
             padding: 8px 16px;
             border-radius: 6px;
             font-size: 14px;
-            font-weight: 500;
+            font-weight: 600;
             display: inline-flex;
             align-items: center;
             gap: 8px;
@@ -272,13 +364,15 @@
         }
         .btn-ai-improve:hover {
             transform: translateY(-1px);
-            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
-            color: white;
+            box-shadow: 0 4px 12px rgba(90, 103, 216, 0.5);
+            background: linear-gradient(135deg, #4c51bf 0%, #553c9a 100%) !important;
+            color: #ffffff !important;
         }
         .btn-ai-improve:disabled {
-            opacity: 0.7;
+            opacity: 0.8;
             cursor: not-allowed;
             transform: none;
+            color: #ffffff !important;
         }
         .btn-keep-title {
             background-color: #28a745;
@@ -315,6 +409,19 @@
             color: #dc3545;
             border-color: #dc3545;
         }
+        .ai-title-score {
+            font-size: 13px;
+        }
+        .ai-title-score:not(:empty) {
+            display: inline-block;
+            background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+            color: #92400e;
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-weight: 700;
+            border: 1px solid #f59e0b;
+            box-shadow: 0 1px 3px rgba(245, 158, 11, 0.3);
+        }
     </style>
 @endsection
 
@@ -328,30 +435,28 @@
 
     <div class="row">
         <div class="col-12">
-            <div class="card">
+            <div class="card title-master-card">
                 <div class="card-body">
-                    <div class="mb-3 d-flex justify-content-between align-items-center">
-                        <div>
+                    <div class="mb-3 title-master-toolbar">
                             <button id="addTitleBtn" class="btn btn-success">
                                 <i class="fas fa-plus"></i> Add Title
                             </button>
-                            <button id="exportBtn" class="btn btn-primary ms-2">
+                            <button id="exportBtn" class="btn btn-primary">
                                 <i class="fas fa-download"></i> Export
                             </button>
-                            <button id="importBtn" class="btn btn-info ms-2">
+                            <button id="importBtn" class="btn btn-info">
                                 <i class="fas fa-upload"></i> Import
                             </button>
-                            <button id="pushAllBtn" class="btn ms-2" style="background-color: #0066cc; color: white;">
-                                <i class="fas fa-cloud-upload-alt"></i> Push ALL
+                            <button id="pushAllBtn" class="btn btn-push-all">
+                                <i class="fas fa-cloud-upload-alt"></i> Push ALL to All Marketplaces
                             </button>
-                            <button id="pushSelectedBtn" class="btn btn-secondary ms-2" style="display:none;">
-                                <i class="fas fa-cloud-upload-alt"></i> Push Selected (<span id="pushSelectedCount">0</span>)
+                            <button id="pushSelectedBtn" class="btn btn-secondary" style="display:none;">
+                                <i class="fas fa-cloud-upload-alt"></i> Push Selected (<span id="pushSelectedCount">0</span>) to All
                             </button>
-                            <button id="updateAmazonBtn" class="btn btn-warning ms-2" style="display:none;">
+                            <button id="updateAmazonBtn" class="btn btn-warning" style="display:none;">
                                 <i class="fas fa-sync"></i> Update Titles (<span id="selectedCount">0</span> selected)
                             </button>
                             <input type="file" id="importFile" accept=".csv,.xlsx,.xls" style="display: none;">
-                        </div>
                     </div>
 
                     <div class="table-responsive">
@@ -411,7 +516,9 @@
                                             <option value="missing">Missing Data</option>
                                         </select>
                                     </th>
-                                    <th>Action</th>
+                                    <th>ACTION</th>
+                                    <th title="Amazon, Temu, Reverb, Wayfair">Marketplaces</th>
+                                    <th>PUSH TO ALL</th>
                                 </tr>
                             </thead>
                             <tbody id="table-body"></tbody>
@@ -552,7 +659,7 @@
             <div class="modal-content">
                 <div class="modal-header" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">
                     <h5 class="modal-title" id="aiTitleModalLabel">
-                        <i class="fas fa-magic me-2"></i>AI Generated Titles (3 Options)
+                        <i class="fas fa-magic me-2"></i>AI Generated Titles (4 Options)
                     </h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
@@ -560,6 +667,7 @@
                     <div id="aiTitleOption1" class="p-3 bg-light rounded mb-3 border">
                         <div class="fw-bold mb-2">Option 1:</div>
                         <p class="mb-2 ai-title-text" style="font-size: 15px; line-height: 1.5; white-space: pre-wrap; word-wrap: break-word;"></p>
+                        <div class="ai-title-score mb-2 text-muted small fw-bold"></div>
                         <div class="d-flex align-items-center flex-wrap gap-2 mb-2">
                             <span class="ai-char-badge badge">0/150 chars</span>
                             <span class="ai-char-status text-success"></span>
@@ -569,6 +677,7 @@
                     <div id="aiTitleOption2" class="p-3 bg-light rounded mb-3 border">
                         <div class="fw-bold mb-2">Option 2:</div>
                         <p class="mb-2 ai-title-text" style="font-size: 15px; line-height: 1.5; white-space: pre-wrap; word-wrap: break-word;"></p>
+                        <div class="ai-title-score mb-2 text-muted small fw-bold"></div>
                         <div class="d-flex align-items-center flex-wrap gap-2 mb-2">
                             <span class="ai-char-badge badge">0/150 chars</span>
                             <span class="ai-char-status text-success"></span>
@@ -578,16 +687,27 @@
                     <div id="aiTitleOption3" class="p-3 bg-light rounded mb-3 border">
                         <div class="fw-bold mb-2">Option 3:</div>
                         <p class="mb-2 ai-title-text" style="font-size: 15px; line-height: 1.5; white-space: pre-wrap; word-wrap: break-word;"></p>
+                        <div class="ai-title-score mb-2 text-muted small fw-bold"></div>
                         <div class="d-flex align-items-center flex-wrap gap-2 mb-2">
                             <span class="ai-char-badge badge">0/150 chars</span>
                             <span class="ai-char-status text-success"></span>
                         </div>
                         <button type="button" class="btn btn-keep-title ai-keep-btn" data-option="2"><i class="fas fa-check me-1"></i> KEEP THIS TITLE</button>
                     </div>
+                    <div id="aiTitleOption4" class="p-3 bg-light rounded mb-3 border">
+                        <div class="fw-bold mb-2">Option 4:</div>
+                        <p class="mb-2 ai-title-text" style="font-size: 15px; line-height: 1.5; white-space: pre-wrap; word-wrap: break-word;"></p>
+                        <div class="ai-title-score mb-2 text-muted small fw-bold"></div>
+                        <div class="d-flex align-items-center flex-wrap gap-2 mb-2">
+                            <span class="ai-char-badge badge">0/150 chars</span>
+                            <span class="ai-char-status text-success"></span>
+                        </div>
+                        <button type="button" class="btn btn-keep-title ai-keep-btn" data-option="3"><i class="fas fa-check me-1"></i> KEEP THIS TITLE</button>
+                    </div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-regen-titles" id="aiRegenerateBtn">
-                        <i class="fas fa-redo-alt me-1"></i> REGENERATE 3 NEW TITLES
+                        <i class="fas fa-redo-alt me-1"></i> REGENERATE 4 NEW TITLES
                     </button>
                     <button type="button" class="btn btn-cancel-ai" data-bs-dismiss="modal">Cancel</button>
                 </div>
@@ -822,33 +942,33 @@
         </div>
     </div>
 
-    <!-- Push to Amazon Confirmation Modal -->
+    <!-- Push to All Marketplaces Confirmation Modal -->
     <div class="modal fade" id="pushConfirmModal" tabindex="-1">
         <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content">
-                <div class="modal-header" style="background-color: #0066cc; color: white;">
-                    <h5 class="modal-title"><i class="fas fa-cloud-upload-alt me-2"></i>Push to Amazon</h5>
+                <div class="modal-header" style="background-color: #ff9900; color: white;">
+                    <h5 class="modal-title"><i class="fas fa-cloud-upload-alt me-2"></i>Push to All Marketplaces</h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
-                    <p id="pushConfirmMessage">Push 0 titles to Amazon? This may take several minutes.</p>
+                    <p id="pushConfirmMessage">Push 0 titles to Amazon, Temu, Reverb &amp; Wayfair? This may take several minutes.</p>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="button" class="btn btn-primary" id="pushConfirmBtn" style="background-color: #0066cc;">
-                        <i class="fas fa-cloud-upload-alt me-1"></i> Push
+                    <button type="button" class="btn btn-primary" id="pushConfirmBtn" style="background-color: #ff9900;">
+                        <i class="fas fa-cloud-upload-alt me-1"></i> Push to All
                     </button>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- Push to Amazon Progress Modal -->
+    <!-- Push to All Marketplaces Progress Modal -->
     <div class="modal fade" id="pushProgressModal" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
         <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content">
-                <div class="modal-header" style="background-color: #0066cc; color: white;">
-                    <h5 class="modal-title"><i class="fas fa-cloud-upload-alt me-2"></i>Pushing to Amazon</h5>
+                <div class="modal-header" style="background-color: #ff9900; color: white;">
+                    <h5 class="modal-title"><i class="fas fa-cloud-upload-alt me-2"></i>Pushing to All Marketplaces</h5>
                 </div>
                 <div class="modal-body">
                     <div class="progress mb-2" style="height: 25px;">
@@ -908,7 +1028,7 @@
                         alert('No titles to push. Ensure rows have Title 150 data.');
                         return;
                     }
-                    document.getElementById('pushConfirmMessage').textContent = 'Push ' + items.length + ' titles to Amazon? This may take several minutes.';
+                    document.getElementById('pushConfirmMessage').textContent = 'Push ' + items.length + ' titles to Amazon, Temu, Reverb & Wayfair? This may take several minutes.';
                     const confirmModalEl = document.getElementById('pushConfirmModal');
                     const confirmModal = bootstrap.Modal.getOrCreateInstance(confirmModalEl);
                     document.getElementById('pushConfirmBtn').onclick = function() {
@@ -934,7 +1054,7 @@
                         alert('No titles to push. Selected rows need Title 150 data.');
                         return;
                     }
-                    document.getElementById('pushConfirmMessage').textContent = 'Push ' + items.length + ' selected titles to Amazon?';
+                    document.getElementById('pushConfirmMessage').textContent = 'Push ' + items.length + ' selected titles to all marketplaces (Amazon, Temu, Reverb, Wayfair)?';
                     const confirmModalEl = document.getElementById('pushConfirmModal');
                     const confirmModal = bootstrap.Modal.getOrCreateInstance(confirmModalEl);
                     document.getElementById('pushConfirmBtn').onclick = function() {
@@ -1271,8 +1391,12 @@
                     })
                     .then(response => response.json())
                     .then(data => {
-                        if (data.success && data.titles && data.titles.length >= 3) {
-                            showAITitlePopup(data.titles);
+                        if (data.success && data.items && data.items.length >= 4) {
+                            showAITitlePopup(data.items);
+                        } else if (data.success && data.titles && data.titles.length >= 3) {
+                            var items = data.titles.slice(0, 3).map(function(t) { return { title: t, score: null }; });
+                            while (items.length < 4) items.push({ title: '', score: null });
+                            showAITitlePopup(items);
                         } else {
                             alert('Failed to generate titles: ' + (data.message || 'Unknown error'));
                         }
@@ -1313,19 +1437,28 @@
             }
         }
 
-        function showAITitlePopup(titles) {
-            if (!Array.isArray(titles) || titles.length < 3) return;
-            currentAIGeneratedTitles = titles.slice(0, 3);
-            const options = document.querySelectorAll('#aiTitleOption1, #aiTitleOption2, #aiTitleOption3');
+        function showAITitlePopup(items) {
+            if (!Array.isArray(items) || items.length < 3) return;
+            currentAIGeneratedTitles = items.slice(0, 4).map(function(x) {
+                return (x && (typeof x === 'string' ? x : x.title)) || '';
+            });
+            const options = document.querySelectorAll('#aiTitleOption1, #aiTitleOption2, #aiTitleOption3, #aiTitleOption4');
             const minLen = 140;
             const maxLen = 150;
             options.forEach(function(opt, i) {
-                const title = currentAIGeneratedTitles[i] || '';
+                const item = items[i];
+                const title = (item && (typeof item === 'string' ? item : item.title)) || '';
+                const score = item && typeof item === 'object' && item.score != null ? item.score : null;
                 const len = title.length;
                 const textEl = opt.querySelector('.ai-title-text');
+                const scoreEl = opt.querySelector('.ai-title-score');
                 const badgeEl = opt.querySelector('.ai-char-badge');
                 const statusEl = opt.querySelector('.ai-char-status');
                 if (textEl) textEl.textContent = title;
+                if (scoreEl) {
+                    if (score != null) scoreEl.textContent = 'Success score: ' + score + '/10';
+                    else scoreEl.textContent = '';
+                }
                 if (badgeEl) {
                     badgeEl.textContent = len + '/150 chars';
                     badgeEl.className = 'badge ai-char-badge ';
@@ -1373,6 +1506,31 @@
                 });
         }
 
+        function renderMarketplaceDots(sku, statusMap) {
+            const mps = ['amazon', 'temu', 'reverb', 'wayfair'];
+            const labels = { amazon: 'Amazon', temu: 'Temu', reverb: 'Reverb', wayfair: 'Wayfair' };
+            let html = '<div class="marketplaces-dots" data-sku="' + (sku || '') + '">';
+            mps.forEach(function(mp) {
+                const st = (statusMap && statusMap[mp]) ? statusMap[mp] : 'pending';
+                const title = labels[mp] + ': ' + (st === 'success' ? 'Pushed' : st === 'failed' ? 'Failed' : st === 'loading' ? 'In progress...' : 'Not pushed');
+                html += '<span class="mp-dot ' + mp + ' ' + st + '" data-marketplace="' + mp + '" title="' + title + '"></span>';
+            });
+            html += '</div>';
+            return html;
+        }
+
+        function updateMarketplaceDotsInRow(row, results) {
+            const cell = row.querySelector('.marketplaces-cell');
+            if (!cell || !results) return;
+            const btn = row.querySelector('.push-all-marketplaces-btn');
+            const skuVal = (btn && btn.getAttribute('data-sku')) ? btn.getAttribute('data-sku') : '';
+            const statusMap = {};
+            ['amazon', 'temu', 'reverb', 'wayfair'].forEach(function(mp) {
+                statusMap[mp] = (results[mp] && results[mp].status) ? results[mp].status : 'pending';
+            });
+            cell.innerHTML = renderMarketplaceDots(skuVal, statusMap);
+        }
+
         function formatTitleWithIndicator(title) {
             if (!title || (typeof title === 'string' && title.trim() === '')) {
                 return { html: '-', tooltip: '' };
@@ -1398,7 +1556,7 @@
             tbody.innerHTML = '';
 
             if (data.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="9" class="text-center">No products found</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="11" class="text-center">No products found</td></tr>';
                 return;
             }
 
@@ -1408,7 +1566,7 @@
             });
 
             if (filteredData.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="9" class="text-center">No products found</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="11" class="text-center">No products found</td></tr>';
                 return;
             }
 
@@ -1422,8 +1580,9 @@
 
                 // Images
                 const imageCell = document.createElement('td');
+                imageCell.className = 'table-img-cell';
                 imageCell.innerHTML = item.image_path 
-                    ? '<img src="' + item.image_path + '" style="width:40px;height:40px;object-fit:cover;border-radius:4px;">'
+                    ? '<img src="' + item.image_path + '" alt="">'
                     : '-';
                 row.appendChild(imageCell);
 
@@ -1467,12 +1626,26 @@
                 title60Cell.title = item.title60 || '';
                 row.appendChild(title60Cell);
 
-                // Action - View, Edit, Push to Amazon
+                // ACTION column: View + Edit side by side
                 const actionCell = document.createElement('td');
-                actionCell.innerHTML = '<button class="action-btn view-btn" data-sku="' + escapeHtml(item.SKU) + '" style="background: linear-gradient(135deg, #17a2b8 0%, #138496 100%); color: white; margin-right: 4px;"><i class="fas fa-eye"></i> View</button>' +
-                    '<button class="action-btn edit-btn" data-sku="' + escapeHtml(item.SKU) + '"><i class="fas fa-edit"></i> Edit</button>' +
-                    '<button type="button" class="action-btn push-amazon-btn" data-sku="' + escapeHtml(item.SKU) + '" title="Push Title 150 to Amazon"><i class="fas fa-cloud-upload-alt"></i> Push to Amazon</button>';
+                actionCell.className = 'action-buttons-cell';
+                actionCell.innerHTML = '<div class="action-buttons-group">' +
+                    '<button type="button" class="action-btn view-btn" data-sku="' + escapeHtml(item.SKU) + '" title="View title details"><i class="fas fa-eye"></i> View</button>' +
+                    '<button type="button" class="action-btn edit-btn" data-sku="' + escapeHtml(item.SKU) + '" title="Edit title"><i class="fas fa-edit"></i> Edit</button>' +
+                    '</div>';
                 row.appendChild(actionCell);
+
+                // Marketplaces column: dot indicators (Amazon, Temu, Reverb, Wayfair)
+                const marketplacesCell = document.createElement('td');
+                marketplacesCell.className = 'marketplaces-cell';
+                marketplacesCell.innerHTML = renderMarketplaceDots(escapeHtml(item.SKU), null);
+                row.appendChild(marketplacesCell);
+
+                // PUSH TO ALL MARKETPLACES column
+                const pushCell = document.createElement('td');
+                pushCell.className = 'push-button-cell';
+                pushCell.innerHTML = '<button type="button" class="action-btn push-amazon-btn push-all-marketplaces-btn" data-sku="' + escapeHtml(item.SKU) + '" title="Push Title 150 to Amazon, Temu, Reverb, Wayfair"><i class="fas fa-cloud-upload-alt"></i> Push to All</button>';
+                row.appendChild(pushCell);
 
                 tbody.appendChild(row);
             });
@@ -1502,7 +1675,7 @@
         }
 
         function setupPushAmazonButtons() {
-            document.querySelectorAll('.push-amazon-btn').forEach(btn => {
+            document.querySelectorAll('.push-amazon-btn, .push-all-marketplaces-btn').forEach(btn => {
                 btn.addEventListener('click', function() {
                     const sku = this.getAttribute('data-sku');
                     const modalSku = (document.getElementById('editSku') && document.getElementById('editSku').value) || (document.getElementById('selectSku') && document.getElementById('selectSku').value) || '';
@@ -1519,18 +1692,24 @@
                         alert('No title to push. Edit the row and set Title 150 first.');
                         return;
                     }
-                    pushToAmazon(this, sku, title);
+                    pushToAllMarketplaces(this, sku, title);
                 });
             });
         }
 
-        function pushToAmazon(btn, sku, title) {
+        function pushToAllMarketplaces(btn, sku, title) {
             const originalHtml = btn.innerHTML;
             btn.disabled = true;
             btn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status"></span>';
-            console.log('Pushing title:', title.substring(0, 50) + (title.length > 50 ? '...' : ''));
+            const row = btn.closest('tr');
+            if (row) {
+                const cell = row.querySelector('.marketplaces-cell');
+                if (cell) {
+                    cell.innerHTML = renderMarketplaceDots(sku, { amazon: 'loading', temu: 'loading', reverb: 'loading', wayfair: 'loading' });
+                }
+            }
 
-            fetch('/api/amazon/push-title', {
+            fetch('/api/marketplaces/push-title', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -1540,17 +1719,26 @@
             })
             .then(response => response.json())
             .then(data => {
-                if (data.success) {
-                    alert('Title pushed to Amazon for ' + sku);
-                    console.log('Push successful:', data);
+                if (data.success && data.results) {
+                    if (row) updateMarketplaceDotsInRow(row, data.results);
+                    const r = data.results;
+                    const ok = [r.amazon, r.temu, r.reverb, r.wayfair].filter(x => x && x.status === 'success').length;
+                    const fail = [r.amazon, r.temu, r.reverb, r.wayfair].filter(x => x && x.status === 'failed').length;
+                    alert('Push completed for ' + sku + ': ' + ok + ' succeeded, ' + fail + ' failed.');
                 } else {
+                    if (row) {
+                        const cell = row.querySelector('.marketplaces-cell');
+                        if (cell) cell.innerHTML = renderMarketplaceDots(sku, null);
+                    }
                     alert('Failed: ' + (data.message || 'Unknown error'));
-                    console.error('Push failed:', data);
                 }
             })
             .catch(err => {
+                if (row) {
+                    const cell = row.querySelector('.marketplaces-cell');
+                    if (cell) cell.innerHTML = renderMarketplaceDots(sku, null);
+                }
                 alert('Error: ' + err.message);
-                console.error('Push error:', err);
             })
             .finally(() => {
                 btn.disabled = false;
@@ -1559,7 +1747,7 @@
         }
 
         function runPushBulk(items) {
-            const batchSize = 15;
+            const batchSize = 5;
             const total = items.length;
             let successCount = 0;
             let failedCount = 0;
@@ -1567,18 +1755,24 @@
             const progressBar = document.getElementById('pushProgressBar');
             const progressText = document.getElementById('pushProgressText');
             progressModal.show();
+            progressText.textContent = 'Pushing to Amazon, Temu, Reverb, Wayfair...';
 
             function updateProgress(done) {
                 const pct = total ? Math.round((done / total) * 100) : 0;
                 progressBar.style.width = pct + '%';
                 progressBar.textContent = pct + '%';
-                progressText.textContent = 'Pushing ' + done + '/' + total + '...';
+                progressText.textContent = 'Pushing ' + done + '/' + total + ' to all marketplaces...';
+            }
+
+            function updateRowDots(sku, results) {
+                const btn = document.querySelector('.push-all-marketplaces-btn[data-sku="' + sku + '"]');
+                if (btn && btn.closest('tr')) updateMarketplaceDotsInRow(btn.closest('tr'), results);
             }
 
             function doNext(start) {
                 if (start >= total) {
                     progressModal.hide();
-                    alert(successCount + ' successful, ' + failedCount + ' failed');
+                    alert(successCount + ' successful, ' + failedCount + ' failed (across all 4 marketplaces)');
                     document.querySelectorAll('.row-checkbox:checked').forEach(function(cb) { cb.checked = false; });
                     document.getElementById('selectAll').checked = false;
                     updateSelectedCount();
@@ -1588,7 +1782,7 @@
                 const skus = batch.map(function(x) { return x.sku; });
                 const titles = {};
                 batch.forEach(function(x) { titles[x.sku] = x.title; });
-                fetch('/api/amazon/push-bulk', {
+                fetch('/api/marketplaces/push-bulk', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -1600,6 +1794,10 @@
                 .then(function(data) {
                     successCount += data.success_count || 0;
                     failedCount += data.failed_count || 0;
+                    const perSku = data.per_sku_results || {};
+                    Object.keys(perSku).forEach(function(sku) {
+                        if (perSku[sku] && !perSku[sku].error) updateRowDots(sku, perSku[sku]);
+                    });
                     updateProgress(Math.min(start + batchSize, total));
                     doNext(start + batchSize);
                 })
