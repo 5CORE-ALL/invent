@@ -50,6 +50,7 @@ class TemuTestUpdateTitleCommand extends Command
 
         $url = 'https://openapi-b-us.temu.com/openapi/router';
         $price = $service->getProductPrice($sku) ?? 1.00;
+        $images = $service->getProductImages($sku);
 
         $skuEntryOfficial = $skuId !== null ? [
             'skuId' => (int) $skuId,
@@ -62,7 +63,7 @@ class TemuTestUpdateTitleCommand extends Command
             'height' => '1',
             'weightUnit' => 'g',
             'volumeUnit' => 'cm',
-            'images' => [],
+            'images' => $images,
         ] : null;
 
         $skuEntry = $skuId !== null ? [

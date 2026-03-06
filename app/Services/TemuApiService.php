@@ -8,6 +8,7 @@ use Aws\Signature\SignatureV4;
 use Aws\Credentials\Credentials;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use App\Models\ProductMaster;
 use App\Models\ProductStockMapping;
 use App\Models\TemuPricing;
 use App\Models\TemuMetric;
@@ -625,6 +626,61 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
     }
 
     /**
+     * Get product image URLs from ProductMaster for Temu API.
+     * Collects main_image, image1..image12 and converts to absolute URLs.
+     *
+     * @param string $sku Seller SKU (ProductMaster sku or parent)
+     * @return array<int, string> Array of absolute image URLs
+     */
+    public function getProductImages(string $sku): array
+    {
+        $sku = trim($sku);
+        $product = ProductMaster::where('sku', $sku)
+            ->orWhere('parent', $sku)
+            ->first();
+
+        if (! $product) {
+            return [];
+        }
+
+        $imageColumns = ['main_image', 'image1', 'image2', 'image3', 'image4', 'image5', 'image6', 'image7', 'image8', 'image9', 'image10', 'image11', 'image12'];
+        $urls = [];
+        $seen = [];
+
+        foreach ($imageColumns as $col) {
+            $val = trim((string) ($product->{$col} ?? ''));
+            if ($val === '') {
+                continue;
+            }
+            $url = $this->toAbsoluteImageUrl($val);
+            if ($url !== '' && ! isset($seen[$url])) {
+                $urls[] = $url;
+                $seen[$url] = true;
+            }
+        }
+
+        return $urls;
+    }
+
+    /**
+     * Convert image path to absolute URL for Temu API.
+     *
+     * @param string $path Storage path, relative path, or full URL
+     * @return string Absolute URL or empty if invalid
+     */
+    protected function toAbsoluteImageUrl(string $path): string
+    {
+        $path = trim($path);
+        if ($path === '') {
+            return '';
+        }
+        if (str_starts_with($path, 'http://') || str_starts_with($path, 'https://') || str_starts_with($path, '//')) {
+            return $path;
+        }
+        return asset(ltrim($path, '/'));
+    }
+
+    /**
      * Get product dimensions for SKU. Returns defaults when not in database.
      *
      * @param string $sku Seller SKU
@@ -713,6 +769,10 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
             Log::warning('Temu updateTitle: no price found for SKU, using 1.00 as listPrice fallback', ['sku' => $sku]);
         }
         $dimensions = $this->getProductDimensions($sku);
+        $images = $this->getProductImages($sku);
+        if (empty($images)) {
+            Log::warning('Temu updateTitle: no product images found for SKU, using empty array (may cause "Upload image URL link" error)', ['sku' => $sku]);
+        }
 
         $requestBody = [
             'type' => $apiType,
@@ -737,7 +797,7 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
                 'height' => $dimensions['height'],
                 'weightUnit' => $dimensions['weightUnit'],
                 'volumeUnit' => $dimensions['volumeUnit'],
-                'images' => [],
+                'images' => $images,
             ];
             $requestBody[$skuListField] = [$skuEntry];
         }
