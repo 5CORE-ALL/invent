@@ -246,7 +246,14 @@ return [
         'client_id' => env('WAYFAIR_CLIENT_ID'),
         'client_secret' => env('WAYFAIR_CLIENT_SECRET'),
         'audience' => env('WAYFAIR_AUDIENCE'),
-        'supplier_id' => env('WAYFAIR_SUPPLIER_ID'),
+        'supplier_id' => env('WAYFAIR_SUPPLIER_ID', '2603'),
+        // Scope for catalog/title updates. If you get "Access Denied", run: php artisan wayfair:test-scopes
+        'catalog_scope' => env('WAYFAIR_CATALOG_SCOPE', ''),
+        // Product Catalog API (GraphQL) for title updates - use updateMarketSpecificCatalogItems mutation
+        'product_catalog_graphql_url' => env('WAYFAIR_API_URL', 'https://api.wayfair.io/v1/product-catalog-api/graphql'),
+        'brand' => env('WAYFAIR_BRAND', 'WAYFAIR'),
+        'country' => env('WAYFAIR_COUNTRY', 'UNITED_STATES'),
+        'locale' => env('WAYFAIR_LOCALE', 'en-US'),
     ],
 
     /*

@@ -9,6 +9,8 @@ use Aws\Credentials\Credentials;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use App\Models\ProductStockMapping;
+use App\Models\TemuPricing;
+use App\Models\TemuMetric;
 use Carbon\Carbon;
 
 class TemuApiService
@@ -461,9 +463,81 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
 }
 
     /**
-     * Update product title on Temu by seller SKU (outGoodsSn).
+     * Resolve seller SKU to Temu goodsId (required for update API).
+     * Checks TemuPricing and TemuMetric first; if not found, calls list API to find by SKU.
+     *
+     * @param string $sku Seller SKU (outGoodsSn / outSkuSn)
+     * @return string|null goodsId (numeric string) or null if not found
+     */
+    public function getGoodsIdBySku(string $sku): ?string
+    {
+        $sku = trim($sku);
+        if ($sku === '') {
+            return null;
+        }
+
+        $goodsId = TemuPricing::where('sku', $sku)->value('goods_id');
+        if ($goodsId !== null && $goodsId !== '') {
+            return (string) $goodsId;
+        }
+        $goodsId = TemuMetric::where('sku', $sku)->orWhere('sku_id', $sku)->value('goods_id');
+        if ($goodsId !== null && $goodsId !== '') {
+            return (string) $goodsId;
+        }
+
+        // Fallback: call list API and find good where SKU matches outGoodsSn or skuSn/outSkuSn in skuInfoList
+        try {
+            $pageToken = null;
+            do {
+                $requestBody = [
+                    'type' => 'temu.local.goods.list.retrieve',
+                    'goodsSearchType' => 'ALL',
+                    'pageSize' => 100,
+                ];
+                if ($pageToken) {
+                    $requestBody['pageToken'] = $pageToken;
+                }
+                $signedRequest = $this->generateSignValue($requestBody);
+                $request = Http::withHeaders(['Content-Type' => 'application/json']);
+                if (config('filesystems.default') === 'local') {
+                    $request = $request->withoutVerifying();
+                }
+                $response = $request->post('https://openapi-b-us.temu.com/openapi/router', $signedRequest);
+                $data = $response->json();
+                if ($response->failed() || ! ($data['success'] ?? false)) {
+                    break;
+                }
+                $goodsList = $data['result']['goodsList'] ?? [];
+                foreach ($goodsList as $good) {
+                    $outGoodsSn = $good['outGoodsSn'] ?? null;
+                    if ($outGoodsSn !== null && trim((string) $outGoodsSn) === $sku) {
+                        $gid = $good['goodsId'] ?? null;
+                        if ($gid !== null && $gid !== '') {
+                            return (string) $gid;
+                        }
+                    }
+                    foreach ($good['skuInfoList'] ?? [] as $skuInfo) {
+                        $skuSn = $skuInfo['skuSn'] ?? $skuInfo['outSkuSn'] ?? null;
+                        if ($skuSn !== null && trim((string) $skuSn) === $sku) {
+                            $gid = $good['goodsId'] ?? null;
+                            if ($gid !== null && $gid !== '') {
+                                return (string) $gid;
+                            }
+                        }
+                    }
+                }
+                $pageToken = $data['result']['pagination']['nextToken'] ?? null;
+            } while ($pageToken);
+        } catch (\Throwable $e) {
+            Log::warning('Temu getGoodsIdBySku list API fallback failed', ['sku' => $sku, 'error' => $e->getMessage()]);
+        }
+        return null;
+    }
+
+    /**
+     * Update product title on Temu by seller SKU.
+     * Resolves SKU → goodsId (required by API); uses goodsId + goodsName in request.
      * API type is configurable via config('services.temu.goods_update_type') or TEMU_GOODS_UPDATE_TYPE.
-     * If you get "type not exists" (3000003), set the correct type from Temu Partner API docs.
      *
      * @param string $sku Seller SKU (outGoodsSn)
      * @param string $title New title
@@ -477,47 +551,41 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
             return ['success' => false, 'message' => 'SKU and title are required.'];
         }
 
+        $goodsId = $this->getGoodsIdBySku($sku);
+        if ($goodsId === null || $goodsId === '') {
+            Log::warning('Temu updateTitle: could not resolve goodsId for SKU', ['sku' => $sku]);
+            return [
+                'success' => false,
+                'message' => "Temu: SKU not found or goods_id not mapped. Ensure the product exists on Temu and run goods-id sync (e.g. FetchTemuMetrics fetchGoodsId) or add sku/goods_id in temu_pricing.",
+            ];
+        }
+
         $apiType = config('services.temu.goods_update_type', 'bg.local.goods.update');
         $url = 'https://openapi-b-us.temu.com/openapi/router';
 
         Log::debug('Temu config check (updateTitle)', [
             'app_key_exists' => ! empty(config('services.temu.app_key')),
-            'app_key_prefix' => substr(config('services.temu.app_key') ?? '', 0, 10),
             'secret_key_exists' => ! empty(config('services.temu.secret_key')),
             'access_token_exists' => ! empty(config('services.temu.access_token')),
-            'access_token_prefix' => substr(config('services.temu.access_token') ?? '', 0, 10),
         ]);
 
-        // API-specific parameters only; generateSignValue adds access_token, app_key, timestamp, sign
+        // API requires goodsId (int64), not outGoodsSn. Use goodsName for title (per Temu docs).
         $requestBody = [
             'type' => $apiType,
-            'outGoodsSn' => $sku,
+            'goodsId' => (int) $goodsId,
             'goodsName' => $title,
         ];
 
-        Log::debug('Temu - Before generateSignValue', [
-            'requestBody' => $requestBody,
-        ]);
+        Log::debug('Temu - Before generateSignValue', ['requestBody' => $requestBody]);
 
         $signedRequest = $this->generateSignValue($requestBody);
 
-        Log::debug('Temu - After generateSignValue', [
-            'signedRequest_keys' => array_keys($signedRequest),
-            'has_access_token' => isset($signedRequest['access_token']),
-            'has_app_key' => isset($signedRequest['app_key']),
-            'has_timestamp' => isset($signedRequest['timestamp']),
-            'has_sign' => isset($signedRequest['sign']),
-            'access_token_preview' => isset($signedRequest['access_token']) ? substr($signedRequest['access_token'], 0, 10) . '...' : 'MISSING',
-            'type' => $signedRequest['type'] ?? null,
-        ]);
-
-        Log::info('Temu API Request - updateTitle', [
+        Log::info('Temu Full Request - updateTitle', [
             'url' => $url,
-            'method' => 'POST',
-            'type' => $apiType,
+            'headers' => ['Content-Type' => 'application/json'],
+            'body' => array_merge($signedRequest, ['access_token' => isset($signedRequest['access_token']) ? substr($signedRequest['access_token'], 0, 15) . '...' : 'MISSING']),
             'sku' => $sku,
-            'title_preview' => mb_substr($title, 0, 50),
-            'payload_keys' => array_keys($requestBody),
+            'goodsId' => $goodsId,
         ]);
 
         $request = Http::withHeaders(['Content-Type' => 'application/json']);
@@ -528,28 +596,33 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
         try {
             $response = $request->post($url, $signedRequest);
             $status = $response->status();
-            $data = $response->json();
             $bodyRaw = $response->body();
+            $data = $response->json();
 
-            Log::info('Temu API Response - updateTitle', [
-                'sku' => $sku,
+            Log::info('Temu Full Response - updateTitle', [
                 'status' => $status,
-                'success' => $data['success'] ?? null,
-                'errorCode' => $data['errorCode'] ?? null,
-                'errorMsg' => $data['errorMsg'] ?? null,
-                'response_preview' => mb_substr($bodyRaw, 0, 500),
+                'body' => $bodyRaw,
+                'sku' => $sku,
+                'goodsId' => $goodsId,
             ]);
 
             if ($response->successful() && ($data['success'] ?? false)) {
-                Log::info('Temu title updated successfully', ['sku' => $sku]);
+                Log::info('Temu title updated successfully', ['sku' => $sku, 'goodsId' => $goodsId]);
                 return ['success' => true, 'message' => "Title updated for SKU: {$sku}."];
             }
 
             $errorCode = $data['errorCode'] ?? null;
             $errorMsg = $data['errorMsg'] ?? $data['message'] ?? $bodyRaw;
 
+            if ((int) $errorCode === 150011003) {
+                Log::warning('Temu API "Invalid Request Parameters [goodsId]" (150011003). Ensure goodsId is resolved from SKU (TemuPricing/TemuMetric or list API) and is a valid Temu product ID.', [
+                    'sku' => $sku,
+                    'goodsId' => $goodsId,
+                    'requestBody' => $requestBody,
+                ]);
+            }
             if ((int) $errorCode === 3000003) {
-                Log::warning('Temu API "type not exists" (3000003). Set TEMU_GOODS_UPDATE_TYPE in .env to the correct type from Temu Partner API docs (e.g. bg.goods.update, bg.local.goods.update).', [
+                Log::warning('Temu API "type not exists" (3000003). Set TEMU_GOODS_UPDATE_TYPE in .env to the correct type from Temu Partner API docs.', [
                     'sku' => $sku,
                     'current_type' => $apiType,
                 ]);
@@ -557,6 +630,7 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
 
             Log::warning('Temu title update failed', [
                 'sku' => $sku,
+                'goodsId' => $goodsId,
                 'response' => $data,
                 'status' => $status,
             ]);
@@ -564,6 +638,7 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
         } catch (\Throwable $e) {
             Log::error('Temu updateTitle exception: ' . $e->getMessage(), [
                 'sku' => $sku,
+                'goodsId' => $goodsId ?? null,
                 'trace' => $e->getTraceAsString(),
             ]);
             return ['success' => false, 'message' => 'Exception: ' . $e->getMessage()];

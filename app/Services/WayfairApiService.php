@@ -27,21 +27,52 @@ class WayfairApiService
     }
 
     /**
-     * Authenticate with Wayfair and get access token
+     * Authenticate with Wayfair and get access token (no scope).
      */
     protected function authenticate()
     {
-        $response = Http::withoutVerifying()->asForm()->post('https://sso.auth.wayfair.com/oauth/token', [
-            'grant_type'    => 'client_credentials',
-            'client_id'     => config('services.wayfair.client_id'),
+        return $this->getAccessTokenWithScope(null);
+    }
+
+    /**
+     * Get access token, optionally with a specific scope (e.g. for catalog updates).
+     * Use when catalog mutation returns "Access Denied" – set WAYFAIR_CATALOG_SCOPE or run wayfair:test-scopes.
+     *
+     * @param string|null $scope Optional scope, e.g. write:catalog_items. If null, uses config catalog_scope.
+     * @return string JWT access token
+     */
+    public function getAccessTokenWithScope(?string $scope = null): string
+    {
+        $payload = [
+            'grant_type' => 'client_credentials',
+            'client_id' => config('services.wayfair.client_id'),
             'client_secret' => config('services.wayfair.client_secret'),
-        ]);
+        ];
+        $audience = config('services.wayfair.audience');
+        if ($audience !== null && $audience !== '') {
+            $payload['audience'] = $audience;
+        }
+        $scopeToUse = $scope ?? config('services.wayfair.catalog_scope');
+        if ($scopeToUse !== null && $scopeToUse !== '') {
+            $payload['scope'] = $scopeToUse;
+        }
+
+        $response = Http::withoutVerifying()->asForm()->post('https://sso.auth.wayfair.com/oauth/token', $payload);
 
         if ($response->failed()) {
             throw new \Exception('Failed to authenticate with Wayfair API: ' . $response->body());
         }
 
-        return $response->json('access_token');
+        return (string) $response->json('access_token');
+    }
+
+    /**
+     * Get token for Product Catalog API (title updates). Uses catalog_scope when set.
+     */
+    protected function getTokenForCatalog(): string
+    {
+        $scope = config('services.wayfair.catalog_scope');
+        return $this->getAccessTokenWithScope($scope !== '' ? $scope : null);
     }
 
     public function updatePrice(string $sku, float $price)
@@ -186,11 +217,11 @@ XML;
     }
 
     /**
-     * Update product title on Wayfair by supplier part number (SKU).
-     * Uses product/catalog update if available; otherwise attempts feed or returns not_supported.
+     * Update product title (item name) on Wayfair via Product Catalog GraphQL API.
+     * Uses updateMarketSpecificCatalogItems mutation then polls statusOfUpdateRequest until COMPLETED.
      *
      * @param string $sku Supplier part number (SKU)
-     * @param string $title New title
+     * @param string $title New item name / title
      * @return array{success: bool, message: string}
      */
     public function updateTitle(string $sku, string $title): array
@@ -202,54 +233,17 @@ XML;
         }
 
         try {
-            $token = $this->authenticate();
+            $token = $this->getTokenForCatalog();
             if (! $token) {
                 return ['success' => false, 'message' => 'Wayfair authentication failed.'];
             }
 
-            // Wayfair Product API: try GraphQL mutation or product update endpoint if available
-            $mutation = <<<'GRAPHQL'
-            mutation UpdateProductTitle($partNumber: String!, $title: String!) {
-                updateProductTitle(partNumber: $partNumber, title: $title) {
-                    success
-                    message
-                }
-            }
-            GRAPHQL;
-
-            $response = Http::withoutVerifying()
-                ->withToken($token)
-                ->post($this->graphqlUrl, [
-                    'query' => $mutation,
-                    'variables' => [
-                        'partNumber' => $sku,
-                        'title' => $title,
-                    ],
-                ]);
-
-            $data = $response->json();
-            $errors = $data['errors'] ?? null;
-            $result = $data['data']['updateProductTitle'] ?? null;
-
-            if ($errors || ! $result) {
-                $msg = $errors[0]['message'] ?? $result['message'] ?? $response->body() ?? 'Unknown error';
-                Log::warning('Wayfair title update failed or unsupported', [
-                    'sku' => $sku,
-                    'response' => $data,
-                    'status' => $response->status(),
-                ]);
-                return ['success' => false, 'message' => (string) $msg];
+            $requestId = $this->submitTitleUpdate($token, $sku, $title);
+            if ($requestId === null) {
+                return ['success' => false, 'message' => 'Wayfair: failed to submit title update or get requestId.'];
             }
 
-            if (! empty($result['success'])) {
-                Log::info('Wayfair title updated successfully', ['sku' => $sku]);
-                return ['success' => true, 'message' => "Title updated for SKU: {$sku}."];
-            }
-
-            return [
-                'success' => false,
-                'message' => $result['message'] ?? 'Wayfair title update failed.',
-            ];
+            return $this->pollUpdateStatus($token, $requestId, $sku);
         } catch (\Throwable $e) {
             Log::error('Wayfair updateTitle exception: ' . $e->getMessage(), [
                 'sku' => $sku,
@@ -257,5 +251,161 @@ XML;
             ]);
             return ['success' => false, 'message' => 'Exception: ' . $e->getMessage()];
         }
+    }
+
+    /**
+     * Step 1: Submit updateMarketSpecificCatalogItems mutation; returns requestId or null.
+     */
+    private function submitTitleUpdate(string $token, string $sku, string $title): ?string
+    {
+        $url = config('services.wayfair.product_catalog_graphql_url', 'https://api.wayfair.io/v1/product-catalog-api/graphql');
+        $supplierId = (string) config('services.wayfair.supplier_id', '2603');
+        $brand = config('services.wayfair.brand', 'WAYFAIR');
+        $country = config('services.wayfair.country', 'UNITED_STATES');
+        $locale = config('services.wayfair.locale', 'en-US');
+
+        $mutation = <<<'GRAPHQL'
+        mutation UpdateMarketSpecificCatalogItems($input: UpdateMarketSpecificCatalogItemsInput!) {
+          updateCatalogEntitiesMutations {
+            updateMarketSpecificCatalogItems(input: $input) {
+              requestId
+            }
+          }
+        }
+        GRAPHQL;
+
+        $variables = [
+            'input' => [
+                'marketContext' => [
+                    'locale' => $locale,
+                    'country' => $country,
+                    'brand' => $brand,
+                ],
+                'supplierId' => $supplierId,
+                'catalogItemsToUpdate' => [
+                    [
+                        'supplierPartNumber' => $sku,
+                        'itemName' => $title,
+                    ],
+                ],
+                'validateOnly' => false,
+            ],
+        ];
+
+        Log::info('Wayfair - Submitting title update (GraphQL)', ['sku' => $sku, 'url' => $url]);
+
+        $response = Http::withoutVerifying()
+            ->withToken($token)
+            ->withHeaders(['Content-Type' => 'application/json'])
+            ->post($url, [
+                'query' => $mutation,
+                'variables' => $variables,
+            ]);
+
+        $data = $response->json();
+        $errors = $data['errors'] ?? null;
+
+        if ($errors) {
+            Log::warning('Wayfair - GraphQL errors on submit', ['sku' => $sku, 'errors' => $errors]);
+            return null;
+        }
+
+        $requestId = $data['data']['updateCatalogEntitiesMutations']['updateMarketSpecificCatalogItems']['requestId'] ?? null;
+        if ($requestId === null) {
+            Log::warning('Wayfair - No requestId in response', ['sku' => $sku, 'response' => $data]);
+            return null;
+        }
+
+        Log::info('Wayfair - Title update submitted', ['sku' => $sku, 'requestId' => $requestId]);
+        return $requestId;
+    }
+
+    /**
+     * Step 2: Poll statusOfUpdateRequest until COMPLETED or max attempts; return success/failure with message.
+     */
+    private function pollUpdateStatus(string $token, string $requestId, string $sku, int $maxAttempts = 10): array
+    {
+        $url = config('services.wayfair.product_catalog_graphql_url', 'https://api.wayfair.io/v1/product-catalog-api/graphql');
+        $query = <<<'GRAPHQL'
+        query StatusOfUpdateRequest($input: StatusOfUpdateRequestInput!) {
+          statusOfUpdateRequest(input: $input) {
+            requestId
+            status
+            problems {
+              code
+              title
+              detail
+              catalogEntityIdentifier
+              catalogEntityProperty
+            }
+            successfulUpdates {
+              entityIdentifier
+              catalogEntityProperty
+            }
+          }
+        }
+        GRAPHQL;
+
+        for ($i = 0; $i < $maxAttempts; $i++) {
+            $response = Http::withoutVerifying()
+                ->withToken($token)
+                ->withHeaders(['Content-Type' => 'application/json'])
+                ->post($url, [
+                    'query' => $query,
+                    'variables' => [
+                        'input' => ['requestId' => $requestId],
+                    ],
+                ]);
+
+            $data = $response->json();
+            $errors = $data['errors'] ?? null;
+            if ($errors) {
+                Log::warning('Wayfair - GraphQL errors on status poll', ['requestId' => $requestId, 'errors' => $errors]);
+                return ['success' => false, 'message' => 'Wayfair: status check failed. ' . json_encode($errors)];
+            }
+
+            $statusPayload = $data['data']['statusOfUpdateRequest'] ?? null;
+            if ($statusPayload === null) {
+                return ['success' => false, 'message' => 'Wayfair: no status in response.'];
+            }
+
+            $status = $statusPayload['status'] ?? '';
+            $problems = $statusPayload['problems'] ?? [];
+
+            Log::debug('Wayfair - Poll status', ['requestId' => $requestId, 'status' => $status, 'attempt' => $i + 1]);
+
+            if (strtoupper($status) === 'COMPLETED') {
+                if (empty($problems)) {
+                    Log::info('Wayfair title updated successfully', ['sku' => $sku, 'requestId' => $requestId]);
+                    return ['success' => true, 'message' => "Title updated for SKU: {$sku}."];
+                }
+                $msg = $this->formatProblemsMessage($problems);
+                Log::warning('Wayfair - Update completed with problems', ['sku' => $sku, 'problems' => $problems]);
+                return ['success' => false, 'message' => 'Wayfair: ' . $msg];
+            }
+
+            if (strtoupper($status) === 'FAILED') {
+                $msg = $this->formatProblemsMessage($problems);
+                Log::warning('Wayfair - Update failed', ['sku' => $sku, 'problems' => $problems]);
+                return ['success' => false, 'message' => 'Wayfair: ' . $msg];
+            }
+
+            if ($i < $maxAttempts - 1) {
+                sleep(2);
+            }
+        }
+
+        Log::warning('Wayfair - Poll timeout', ['requestId' => $requestId, 'sku' => $sku]);
+        return ['success' => false, 'message' => 'Wayfair: timeout waiting for update to complete.'];
+    }
+
+    private function formatProblemsMessage(array $problems): string
+    {
+        $parts = [];
+        foreach ($problems as $p) {
+            $detail = $p['detail'] ?? $p['title'] ?? $p['code'] ?? json_encode($p);
+            $parts[] = $detail;
+        }
+        return implode('; ', $parts) ?: 'Update had errors.';
     }
 }
