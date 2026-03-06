@@ -258,6 +258,8 @@ return [
         'app_key' => env('TEMU_APP_KEY'),
         'secret_key' => env('TEMU_SECRET_KEY'),
         'access_token' => env('TEMU_ACCESS_TOKEN'),
+        // API type for updating goods title. If you get "type not exists" (3000003), try in .env: TEMU_GOODS_UPDATE_TYPE=bg.local.goods.update or bg.goods.update (check Temu Partner API docs).
+        'goods_update_type' => env('TEMU_GOODS_UPDATE_TYPE', 'bg.local.goods.update'),
     ],
 
     /*

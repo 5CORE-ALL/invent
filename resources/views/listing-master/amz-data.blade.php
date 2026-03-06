@@ -614,9 +614,17 @@
             <h1>Amazon Listings</h1>
             <div class="sub">Raw listing data from SP-API (GET_MERCHANT_LISTINGS_ALL_DATA)</div>
         </div>
-        <button type="button" class="btn btn-import-amazon" id="btn-import-amazon">
-            <i class="ri-download-cloud-line me-1"></i> Import from Amazon
-        </button>
+        <div class="d-flex align-items-center gap-2">
+            <button type="button" class="btn btn-outline-light border border-secondary" id="btn-analyze-data" title="Analyze Amazon data quality (item_name, raw_data)">
+                <i class="ri-bar-chart-line me-1"></i> Analyze Amazon Data
+            </button>
+            <button type="button" class="btn btn-outline-light border border-secondary" id="btn-extract-titles" title="Copy Item Name from Amazon listings into Title Master (product_master.title150)">
+                <i class="ri-file-copy-line me-1"></i> Extract Titles to Title Master
+            </button>
+            <button type="button" class="btn btn-import-amazon" id="btn-import-amazon">
+                <i class="ri-download-cloud-line me-1"></i> Import from Amazon
+            </button>
+        </div>
     </div>
 
     <div class="amz-stats-row">
@@ -703,6 +711,8 @@
             var table;
             var dataUrl = "{{ url('/listing-master/amz-data/data') }}";
             var importUrl = "{{ url('/listing-master/amz-data/import') }}";
+            var extractTitlesUrl = "{{ url('/listing-master/amz-data/extract-titles') }}";
+            var analyzeUrl = "{{ url('/listing-master/amz-data/analyze') }}";
             var imagesUrl = "{{ url('/listing-master/amz-data/images') }}";
             var csrf = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
             var toastEl = document.getElementById('amz-toast');
@@ -1580,6 +1590,70 @@
                     .finally(function() {
                         btn.disabled = false;
                         btn.innerHTML = '<i class="ri-download-cloud-line me-1"></i> Import from Amazon';
+                    });
+            });
+
+            document.getElementById('btn-extract-titles').addEventListener('click', function() {
+                var btn = this;
+                btn.disabled = true;
+                btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Extracting…';
+                fetch(extractTitlesUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': csrf,
+                    },
+                })
+                    .then(function(r) { return r.json(); })
+                    .then(function(data) {
+                        if (data.success) {
+                            var msg = 'Extracted ' + (data.count || 0) + ' titles to Title Master.';
+                            if ((data.skipped || 0) > 0) {
+                                msg += ' ' + data.skipped + ' skipped';
+                                if (data.details) {
+                                    var d = data.details;
+                                    if (d.no_item_name) msg += ' (' + d.no_item_name + ' no item name)';
+                                    if (d.sku_not_found) msg += ' (' + d.sku_not_found + ' not in Product Master)';
+                                } else {
+                                    msg += ' (not in Product Master or missing item name)';
+                                }
+                            }
+                            showToast('success', msg);
+                        } else {
+                            showToast('error', data.message || 'Extraction failed.');
+                        }
+                    })
+                    .catch(function(err) {
+                        showToast('error', 'Extraction failed: ' + (err.message || 'Request failed'));
+                    })
+                    .finally(function() {
+                        btn.disabled = false;
+                        btn.innerHTML = '<i class="ri-file-copy-line me-1"></i> Extract Titles to Title Master';
+                    });
+            });
+
+            document.getElementById('btn-analyze-data').addEventListener('click', function() {
+                var btn = this;
+                btn.disabled = true;
+                btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Analyzing…';
+                fetch(analyzeUrl, { method: 'GET', headers: { 'Accept': 'application/json' } })
+                    .then(function(r) { return r.json(); })
+                    .then(function(data) {
+                        console.log('📊 Analysis:', data);
+                        var msg = 'Total: ' + (data.total || 0) + '\nWith Item Name: ' + (data.with_item_name || 0) + '\nIn raw_data: ' + (data.in_raw_data || 0);
+                        if (data.sample_missing && data.sample_missing.length) {
+                            msg += '\n\nSample missing (first ' + data.sample_missing.length + '): ' + data.sample_missing.map(function(m) { return m.sku; }).join(', ');
+                        }
+                        showToast('info', 'Analysis complete. Check console for details.');
+                        alert('Amazon Data Analysis\n\n' + msg);
+                    })
+                    .catch(function(err) {
+                        showToast('error', 'Analysis failed: ' + (err.message || 'Request failed'));
+                    })
+                    .finally(function() {
+                        btn.disabled = false;
+                        btn.innerHTML = '<i class="ri-bar-chart-line me-1"></i> Analyze Amazon Data';
                     });
             });
 

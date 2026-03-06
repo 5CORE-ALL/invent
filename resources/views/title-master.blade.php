@@ -9,16 +9,41 @@
     <link href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css" rel="stylesheet" />
 
     <style>
+        .card.title-master-card {
+            border: 1px solid #e2e8f0;
+            border-radius: 12px;
+            box-shadow: 0 2px 12px rgba(44, 110, 213, 0.06);
+        }
+        .card.title-master-card .card-body {
+            padding: 1.25rem 1.5rem;
+        }
+        .title-master-toolbar {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .title-master-toolbar .btn {
+            padding: 0.3rem 0.6rem;
+            font-size: 0.8rem;
+            border-radius: 6px;
+        }
+        .title-master-toolbar .btn i {
+            font-size: 0.75rem;
+        }
         .table-responsive {
             position: relative;
-            border: 1px solid #e9ecef;
+            border: 1px solid #e2e8f0;
             border-radius: 10px;
             max-height: 600px;
             overflow-y: auto;
-            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
             background-color: white;
         }
 
+        #title-master-table thead th {
+            vertical-align: middle !important;
+        }
         .table-responsive thead th {
             position: sticky;
             top: 0;
@@ -70,12 +95,28 @@
             outline: none;
         }
 
-        .table-responsive tbody td {
-            padding: 12px 18px;
-            vertical-align: middle;
+        #title-master-table tbody tr {
+            align-items: center;
+        }
+        #title-master-table tbody td {
+            padding: 8px 12px;
+            vertical-align: middle !important;
             border-bottom: 1px solid #edf2f9;
-            font-size: 13px;
-            color: #495057;
+            font-size: 12px;
+            line-height: 1.35;
+            color: #475569;
+        }
+        #title-master-table .table-img-cell {
+            width: 48px;
+            text-align: center;
+        }
+        #title-master-table tbody td img {
+            width: 36px;
+            height: 36px;
+            object-fit: cover;
+            border-radius: 4px;
+            vertical-align: middle;
+            display: inline-block;
         }
 
         .table-responsive tbody tr:nth-child(even) {
@@ -93,34 +134,154 @@
             white-space: nowrap;
         }
 
+        .title-indicator {
+            display: inline-block;
+            margin-right: 4px;
+            font-size: 14px;
+        }
+        .title-indicator.success {
+            color: #28a745;
+            filter: drop-shadow(0 0 2px rgba(40, 167, 69, 0.3));
+        }
+        .title-indicator.danger {
+            color: #dc3545;
+            filter: drop-shadow(0 0 2px rgba(220, 53, 69, 0.3));
+        }
+        .excess-badge {
+            display: inline-block;
+            background-color: #dc3545;
+            color: white;
+            font-size: 11px;
+            font-weight: bold;
+            padding: 2px 6px;
+            border-radius: 12px;
+            margin-right: 6px;
+            letter-spacing: 0.5px;
+        }
+        .title-cell {
+            cursor: help;
+            max-width: 300px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .title-cell:hover {
+            overflow: visible;
+            white-space: normal;
+            word-wrap: break-word;
+            background-color: #f8f9fa;
+            position: relative;
+            z-index: 100;
+        }
+        .info-icon {
+            cursor: help;
+            opacity: 0.85;
+            font-size: 12px;
+        }
+
+        /* Action column: View + Edit side by side */
+        .action-buttons-cell {
+            white-space: nowrap;
+            vertical-align: middle !important;
+        }
+        .action-buttons-group {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex-wrap: nowrap;
+        }
         .action-btn {
-            padding: 6px 12px;
+            padding: 5px 10px;
             border: none;
-            border-radius: 4px;
-            font-size: 13px;
+            border-radius: 6px;
+            font-size: 11px;
+            font-weight: 500;
             cursor: pointer;
-            transition: all 0.2s;
-            margin: 0 2px;
+            transition: all 0.2s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            white-space: nowrap;
         }
-
-        .edit-btn {
-            background: linear-gradient(135deg, #ffc107 0%, #ff9800 100%);
-            color: white;
+        .action-btn i {
+            font-size: 11px;
         }
-
-        .edit-btn:hover {
-            transform: translateY(-1px);
-            box-shadow: 0 2px 8px rgba(255, 193, 7, 0.3);
-        }
-
         .view-btn {
-            background: linear-gradient(135deg, #17a2b8 0%, #138496 100%);
+            background: #17a2b8;
             color: white;
         }
-
         .view-btn:hover {
-            transform: translateY(-1px);
-            box-shadow: 0 2px 8px rgba(23, 162, 184, 0.3);
+            background: #138496;
+            color: white;
+            box-shadow: 0 2px 6px rgba(23, 162, 184, 0.3);
+        }
+        .edit-btn {
+            background: linear-gradient(135deg, #2c6ed5 0%, #1a56b7 100%);
+            color: white;
+        }
+        .edit-btn:hover {
+            background: linear-gradient(135deg, #1a56b7 0%, #0a3d8f 100%);
+            color: white;
+            box-shadow: 0 2px 6px rgba(44, 110, 213, 0.35);
+        }
+        .push-button-cell {
+            vertical-align: middle !important;
+            min-width: 95px;
+        }
+        .push-amazon-btn {
+            width: 100%;
+            background: #ff9900;
+            color: #232f3e;
+            padding: 5px 10px;
+            font-size: 11px;
+            font-weight: 600;
+            border: none;
+            border-radius: 6px;
+            white-space: nowrap;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+        }
+        .push-amazon-btn:hover {
+            background: #e88b00;
+            color: white;
+            box-shadow: 0 2px 6px rgba(255, 153, 0, 0.35);
+        }
+        .push-amazon-btn:disabled {
+            opacity: 0.7;
+            cursor: not-allowed;
+        }
+        @media (max-width: 768px) {
+            .action-buttons-group { flex-direction: column; gap: 4px; }
+            .push-button-cell { min-width: 85px; }
+        }
+        /* Marketplaces column: dot indicators */
+        .marketplaces-cell { white-space: nowrap; vertical-align: middle !important; }
+        .marketplaces-dots { display: flex; align-items: center; justify-content: center; gap: 6px; }
+        .mp-dot {
+            width: 12px; height: 12px; border-radius: 50%;
+            border: 2px solid currentColor;
+            background: transparent;
+            transition: all 0.2s;
+        }
+        .mp-dot.success { background: currentColor; border-color: currentColor; }
+        .mp-dot.failed { background: #dc3545; border-color: #dc3545; }
+        .mp-dot.pending { background: transparent; }
+        .mp-dot.loading { background: transparent; border-color: transparent; }
+        .mp-dot.amazon { color: #2c6ed5; }
+        .mp-dot.temu { color: #28a745; }
+        .mp-dot.reverb { color: #ffc107; }
+        .mp-dot.wayfair { color: #dc3545; }
+        .mp-dot[title] { cursor: help; }
+        .btn-push-all {
+            background: #ff9900 !important;
+            color: #232f3e !important;
+            font-weight: 600;
+        }
+        .btn-push-all:hover {
+            background: #e88b00 !important;
+            color: white !important;
         }
 
         #rainbow-loader {
@@ -186,6 +347,81 @@
             border-radius: 4px;
             margin-left: 10px;
         }
+
+        .btn-ai-improve {
+            background: linear-gradient(135deg, #5a67d8 0%, #6b46c1 100%) !important;
+            color: #ffffff !important;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 600;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 15px;
+            transition: all 0.3s ease;
+        }
+        .btn-ai-improve:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(90, 103, 216, 0.5);
+            background: linear-gradient(135deg, #4c51bf 0%, #553c9a 100%) !important;
+            color: #ffffff !important;
+        }
+        .btn-ai-improve:disabled {
+            opacity: 0.8;
+            cursor: not-allowed;
+            transform: none;
+            color: #ffffff !important;
+        }
+        .btn-keep-title {
+            background-color: #28a745;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            padding: 8px 16px;
+            font-weight: 500;
+        }
+        .btn-keep-title:hover {
+            background-color: #218838;
+            color: white;
+        }
+        .btn-regen-titles {
+            background-color: #6c757d;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            padding: 8px 16px;
+        }
+        .btn-regen-titles:hover {
+            background-color: #5a6268;
+            color: white;
+        }
+        .btn-cancel-ai {
+            background: transparent;
+            border: 1px solid #dc3545;
+            color: #dc3545;
+            border-radius: 6px;
+            padding: 8px 16px;
+        }
+        .btn-cancel-ai:hover {
+            background-color: rgba(220, 53, 69, 0.1);
+            color: #dc3545;
+            border-color: #dc3545;
+        }
+        .ai-title-score {
+            font-size: 13px;
+        }
+        .ai-title-score:not(:empty) {
+            display: inline-block;
+            background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+            color: #92400e;
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-weight: 700;
+            border: 1px solid #f59e0b;
+            box-shadow: 0 1px 3px rgba(245, 158, 11, 0.3);
+        }
     </style>
 @endsection
 
@@ -199,24 +435,28 @@
 
     <div class="row">
         <div class="col-12">
-            <div class="card">
+            <div class="card title-master-card">
                 <div class="card-body">
-                    <div class="mb-3 d-flex justify-content-between align-items-center">
-                        <div>
+                    <div class="mb-3 title-master-toolbar">
                             <button id="addTitleBtn" class="btn btn-success">
                                 <i class="fas fa-plus"></i> Add Title
                             </button>
-                            <button id="exportBtn" class="btn btn-primary ms-2">
+                            <button id="exportBtn" class="btn btn-primary">
                                 <i class="fas fa-download"></i> Export
                             </button>
-                            <button id="importBtn" class="btn btn-info ms-2">
+                            <button id="importBtn" class="btn btn-info">
                                 <i class="fas fa-upload"></i> Import
                             </button>
-                            <button id="updateAmazonBtn" class="btn btn-warning ms-2" style="display:none;">
+                            <button id="pushAllBtn" class="btn btn-push-all">
+                                <i class="fas fa-cloud-upload-alt"></i> Push ALL to All Marketplaces
+                            </button>
+                            <button id="pushSelectedBtn" class="btn btn-secondary" style="display:none;">
+                                <i class="fas fa-cloud-upload-alt"></i> Push Selected (<span id="pushSelectedCount">0</span>) to All
+                            </button>
+                            <button id="updateAmazonBtn" class="btn btn-warning" style="display:none;">
                                 <i class="fas fa-sync"></i> Update Titles (<span id="selectedCount">0</span> selected)
                             </button>
                             <input type="file" id="importFile" accept=".csv,.xlsx,.xls" style="display: none;">
-                        </div>
                     </div>
 
                     <div class="table-responsive">
@@ -244,10 +484,15 @@
                                             placeholder="Search SKU">
                                     </th>
                                     <th>
-                                        <div>Title 150 <span id="title150MissingCount" class="text-danger" style="font-weight: bold;">(0)</span></div>
+                                        <div style="display: flex; align-items: center; gap: 5px; flex-wrap: wrap;">
+                                            <span>Title 150</span>
+                                            <span id="title150MissingCount" class="text-danger" style="font-weight: bold;">(0 missing)</span>
+                                            <span class="info-icon" title="✅ = within 150 chars | ❌ (+X) = exceeds by X chars">ⓘ</span>
+                                        </div>
                                         <select id="filterTitle150" class="form-control form-control-sm mt-1" style="font-size: 11px;">
                                             <option value="all">All Data</option>
                                             <option value="missing">Missing Data</option>
+                                            <option value="exceeds">Exceeds 150 chars</option>
                                         </select>
                                     </th>
                                     <th>
@@ -271,7 +516,9 @@
                                             <option value="missing">Missing Data</option>
                                         </select>
                                     </th>
-                                    <th>Action</th>
+                                    <th>ACTION</th>
+                                    <th title="Amazon, Temu, Reverb, Wayfair">Marketplaces</th>
+                                    <th>PUSH TO ALL</th>
                                 </tr>
                             </thead>
                             <tbody id="table-body"></tbody>
@@ -314,7 +561,13 @@
                             <label for="title150" class="form-label">
                                 Title 150 <span class="char-counter" id="counter150">0/150</span>
                             </label>
-                            <textarea class="form-control" id="title150" name="title150" rows="3" maxlength="150"></textarea>
+                            <textarea class="form-control" id="title150" name="title150" rows="3" maxlength="500" data-max-display="150"></textarea>
+                        </div>
+
+                        <div class="mb-3">
+                            <button type="button" class="btn btn-ai-improve" id="aiImproveBtn" title="Generate Title 150 (120-150 chars) with AI and review in popup">
+                                <i class="fas fa-magic"></i> Improve with AI
+                            </button>
                         </div>
 
                         <div class="mb-3">
@@ -395,6 +648,68 @@
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- AI Generated Title Preview Modal (3 options) -->
+    <div class="modal fade" id="aiTitleModal" tabindex="-1" aria-labelledby="aiTitleModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-lg">
+            <div class="modal-content">
+                <div class="modal-header" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">
+                    <h5 class="modal-title" id="aiTitleModalLabel">
+                        <i class="fas fa-magic me-2"></i>AI Generated Titles (4 Options)
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="aiTitleOption1" class="p-3 bg-light rounded mb-3 border">
+                        <div class="fw-bold mb-2">Option 1:</div>
+                        <p class="mb-2 ai-title-text" style="font-size: 15px; line-height: 1.5; white-space: pre-wrap; word-wrap: break-word;"></p>
+                        <div class="ai-title-score mb-2 text-muted small fw-bold"></div>
+                        <div class="d-flex align-items-center flex-wrap gap-2 mb-2">
+                            <span class="ai-char-badge badge">0/150 chars</span>
+                            <span class="ai-char-status text-success"></span>
+                        </div>
+                        <button type="button" class="btn btn-keep-title ai-keep-btn" data-option="0"><i class="fas fa-check me-1"></i> KEEP THIS TITLE</button>
+                    </div>
+                    <div id="aiTitleOption2" class="p-3 bg-light rounded mb-3 border">
+                        <div class="fw-bold mb-2">Option 2:</div>
+                        <p class="mb-2 ai-title-text" style="font-size: 15px; line-height: 1.5; white-space: pre-wrap; word-wrap: break-word;"></p>
+                        <div class="ai-title-score mb-2 text-muted small fw-bold"></div>
+                        <div class="d-flex align-items-center flex-wrap gap-2 mb-2">
+                            <span class="ai-char-badge badge">0/150 chars</span>
+                            <span class="ai-char-status text-success"></span>
+                        </div>
+                        <button type="button" class="btn btn-keep-title ai-keep-btn" data-option="1"><i class="fas fa-check me-1"></i> KEEP THIS TITLE</button>
+                    </div>
+                    <div id="aiTitleOption3" class="p-3 bg-light rounded mb-3 border">
+                        <div class="fw-bold mb-2">Option 3:</div>
+                        <p class="mb-2 ai-title-text" style="font-size: 15px; line-height: 1.5; white-space: pre-wrap; word-wrap: break-word;"></p>
+                        <div class="ai-title-score mb-2 text-muted small fw-bold"></div>
+                        <div class="d-flex align-items-center flex-wrap gap-2 mb-2">
+                            <span class="ai-char-badge badge">0/150 chars</span>
+                            <span class="ai-char-status text-success"></span>
+                        </div>
+                        <button type="button" class="btn btn-keep-title ai-keep-btn" data-option="2"><i class="fas fa-check me-1"></i> KEEP THIS TITLE</button>
+                    </div>
+                    <div id="aiTitleOption4" class="p-3 bg-light rounded mb-3 border">
+                        <div class="fw-bold mb-2">Option 4:</div>
+                        <p class="mb-2 ai-title-text" style="font-size: 15px; line-height: 1.5; white-space: pre-wrap; word-wrap: break-word;"></p>
+                        <div class="ai-title-score mb-2 text-muted small fw-bold"></div>
+                        <div class="d-flex align-items-center flex-wrap gap-2 mb-2">
+                            <span class="ai-char-badge badge">0/150 chars</span>
+                            <span class="ai-char-status text-success"></span>
+                        </div>
+                        <button type="button" class="btn btn-keep-title ai-keep-btn" data-option="3"><i class="fas fa-check me-1"></i> KEEP THIS TITLE</button>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-regen-titles" id="aiRegenerateBtn">
+                        <i class="fas fa-redo-alt me-1"></i> REGENERATE 4 NEW TITLES
+                    </button>
+                    <button type="button" class="btn btn-cancel-ai" data-bs-dismiss="modal">Cancel</button>
                 </div>
             </div>
         </div>
@@ -626,6 +941,44 @@
             </div>
         </div>
     </div>
+
+    <!-- Push to All Marketplaces Confirmation Modal -->
+    <div class="modal fade" id="pushConfirmModal" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header" style="background-color: #ff9900; color: white;">
+                    <h5 class="modal-title"><i class="fas fa-cloud-upload-alt me-2"></i>Push to All Marketplaces</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p id="pushConfirmMessage">Push 0 titles to Amazon, Temu, Reverb &amp; Wayfair? This may take several minutes.</p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="pushConfirmBtn" style="background-color: #ff9900;">
+                        <i class="fas fa-cloud-upload-alt me-1"></i> Push to All
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Push to All Marketplaces Progress Modal -->
+    <div class="modal fade" id="pushProgressModal" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header" style="background-color: #ff9900; color: white;">
+                    <h5 class="modal-title"><i class="fas fa-cloud-upload-alt me-2"></i>Pushing to All Marketplaces</h5>
+                </div>
+                <div class="modal-body">
+                    <div class="progress mb-2" style="height: 25px;">
+                        <div id="pushProgressBar" class="progress-bar" role="progressbar" style="width: 0%;">0%</div>
+                    </div>
+                    <p id="pushProgressText" class="mb-0">Pushing 0/0...</p>
+                </div>
+            </div>
+        </div>
+    </div>
 @endsection
 
 @section('script')
@@ -637,15 +990,19 @@
         let tableData = [];
         let titleModal;
         let platformModal;
-        let selectedSkusForUpdate = [];
+        let aiTitleModalInstance;
+        let currentAIGeneratedTitles = [];
 
         document.addEventListener('DOMContentLoaded', function() {
             titleModal = new bootstrap.Modal(document.getElementById('titleModal'));
             platformModal = new bootstrap.Modal(document.getElementById('platformModal'));
+            const aiTitleModalEl = document.getElementById('aiTitleModal');
+            if (aiTitleModalEl) aiTitleModalInstance = new bootstrap.Modal(aiTitleModalEl);
             loadTitleData();
             setupSearchHandlers();
             setupModalHandlers();
             setupButtonHandlers();
+            setupCheckboxHandlers();
             setupPlatformModalHandlers();
             setupPlatformCheckboxes();
         });
@@ -655,6 +1012,58 @@
             document.getElementById('addTitleBtn').addEventListener('click', function() {
                 openModal('add');
             });
+
+            // Push ALL Button
+            const pushAllBtn = document.getElementById('pushAllBtn');
+            if (pushAllBtn) {
+                pushAllBtn.addEventListener('click', function() {
+                    const items = (tableData || []).filter(function(item) {
+                        if (item.SKU && item.SKU.toUpperCase().includes('PARENT')) return false;
+                        const t = (item.amazon_title || item.title150 || '').toString().trim();
+                        return t.length > 0;
+                    }).map(function(item) {
+                        return { sku: item.SKU, title: (item.amazon_title || item.title150 || '').toString().trim() };
+                    });
+                    if (items.length === 0) {
+                        alert('No titles to push. Ensure rows have Title 150 data.');
+                        return;
+                    }
+                    document.getElementById('pushConfirmMessage').textContent = 'Push ' + items.length + ' titles to Amazon, Temu, Reverb & Wayfair? This may take several minutes.';
+                    const confirmModalEl = document.getElementById('pushConfirmModal');
+                    const confirmModal = bootstrap.Modal.getOrCreateInstance(confirmModalEl);
+                    document.getElementById('pushConfirmBtn').onclick = function() {
+                        confirmModal.hide();
+                        runPushBulk(items);
+                    };
+                    confirmModal.show();
+                });
+            }
+
+            // Push Selected Button
+            const pushSelectedBtn = document.getElementById('pushSelectedBtn');
+            if (pushSelectedBtn) {
+                pushSelectedBtn.addEventListener('click', function() {
+                    const checkedBoxes = document.querySelectorAll('.row-checkbox:checked');
+                    const skus = Array.from(checkedBoxes).map(function(cb) { return cb.getAttribute('data-sku'); });
+                    const items = skus.map(function(sku) {
+                        const item = tableData.find(function(d) { return d.SKU === sku; });
+                        const t = item ? (item.amazon_title || item.title150 || '').toString().trim() : '';
+                        return { sku: sku, title: t };
+                    }).filter(function(x) { return x.title.length > 0; });
+                    if (items.length === 0) {
+                        alert('No titles to push. Selected rows need Title 150 data.');
+                        return;
+                    }
+                    document.getElementById('pushConfirmMessage').textContent = 'Push ' + items.length + ' selected titles to all marketplaces (Amazon, Temu, Reverb, Wayfair)?';
+                    const confirmModalEl = document.getElementById('pushConfirmModal');
+                    const confirmModal = bootstrap.Modal.getOrCreateInstance(confirmModalEl);
+                    document.getElementById('pushConfirmBtn').onclick = function() {
+                        confirmModal.hide();
+                        runPushBulk(items);
+                    };
+                    confirmModal.show();
+                });
+            }
 
             // Export Button
             document.getElementById('exportBtn').addEventListener('click', function() {
@@ -871,16 +1280,16 @@
         }
 
         function setupCheckboxHandlers() {
-            // Select All checkbox
-            document.getElementById('selectAll').addEventListener('change', function() {
-                const checkboxes = document.querySelectorAll('.row-checkbox');
-                checkboxes.forEach(cb => cb.checked = this.checked);
+            const table = document.getElementById('title-master-table');
+            if (!table) return;
+            table.addEventListener('change', function(e) {
+                if (e.target.id === 'selectAll') {
+                    document.querySelectorAll('.row-checkbox').forEach(cb => cb.checked = e.target.checked);
+                }
+                if (e.target.classList.contains('row-checkbox')) {
+                    // Individual checkbox changed
+                }
                 updateSelectedCount();
-            });
-
-            // Individual checkboxes
-            document.querySelectorAll('.row-checkbox').forEach(cb => {
-                cb.addEventListener('change', updateSelectedCount);
             });
         }
 
@@ -888,13 +1297,39 @@
             const checkedBoxes = document.querySelectorAll('.row-checkbox:checked');
             const count = checkedBoxes.length;
             const countElement = document.getElementById('selectedCount');
-            if (countElement) {
-                countElement.textContent = count;
-            }
+            if (countElement) countElement.textContent = count;
+            const pushSelectedCountEl = document.getElementById('pushSelectedCount');
+            if (pushSelectedCountEl) pushSelectedCountEl.textContent = count;
             const updateBtn = document.getElementById('updateAmazonBtn');
-            if (updateBtn) {
-                updateBtn.style.display = count > 0 ? 'inline-block' : 'none';
-            }
+            if (updateBtn) updateBtn.style.display = count > 0 ? 'inline-block' : 'none';
+            const pushSelectedBtn = document.getElementById('pushSelectedBtn');
+            if (pushSelectedBtn) pushSelectedBtn.style.display = count > 0 ? 'inline-block' : 'none';
+        }
+
+        function updateModalCounter(fieldId) {
+            const input = document.getElementById(fieldId);
+            const maxLen = parseInt(fieldId.replace('title', ''), 10);
+            const counter = document.getElementById('counter' + maxLen);
+            if (!input || !counter) return;
+            const len = input.value.length;
+            counter.textContent = len + '/' + maxLen;
+            if (len > maxLen) counter.classList.add('error'); else counter.classList.remove('error');
+        }
+
+        function showFieldLoading(fieldId) {
+            const field = document.getElementById(fieldId);
+            if (!field) return;
+            field.placeholder = 'Generating...';
+            field.disabled = true;
+            field.classList.add('bg-light');
+        }
+
+        function removeFieldLoading(fieldId) {
+            const field = document.getElementById(fieldId);
+            if (!field) return;
+            field.placeholder = '';
+            field.disabled = false;
+            field.classList.remove('bg-light');
         }
 
         function setupModalHandlers() {
@@ -920,12 +1355,130 @@
             document.getElementById('saveTitleBtn').addEventListener('click', function() {
                 saveTitleFromModal();
             });
+
+            // Improve with AI button (generates only Title 150, shows in popup)
+            const aiImproveBtn = document.getElementById('aiImproveBtn');
+            if (aiImproveBtn) {
+                aiImproveBtn.addEventListener('click', function() {
+                    const btn = this;
+                    const originalHtml = btn.innerHTML;
+                    const currentTitle150 = document.getElementById('title150').value.trim();
+                    const sku = (document.getElementById('editSku') && document.getElementById('editSku').value) || (document.getElementById('selectSku') && document.getElementById('selectSku').value) || '';
+                    const item = tableData && sku ? tableData.find(d => d.SKU === sku) : null;
+                    const parentCategory = (item && item.Parent) ? item.Parent : '';
+
+                    if (!currentTitle150) {
+                        alert('Please enter or load a Title 150 (e.g. open Edit with a row that has an Amazon title) before using Improve with AI.');
+                        return;
+                    }
+
+                    btn.disabled = true;
+                    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status"></span>Generating...';
+
+                    fetch('/title-master/ai/generate-title-150', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': csrfToken
+                        },
+                        body: JSON.stringify({
+                            sku: sku,
+                            current_title: currentTitle150,
+                            parent_category: parentCategory,
+                            min_length: 140,
+                            max_length: 150
+                        })
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success && data.items && data.items.length >= 4) {
+                            showAITitlePopup(data.items);
+                        } else if (data.success && data.titles && data.titles.length >= 3) {
+                            var items = data.titles.slice(0, 3).map(function(t) { return { title: t, score: null }; });
+                            while (items.length < 4) items.push({ title: '', score: null });
+                            showAITitlePopup(items);
+                        } else {
+                            alert('Failed to generate titles: ' + (data.message || 'Unknown error'));
+                        }
+                    })
+                    .catch(err => {
+                        console.error('AI generate title error:', err);
+                        alert('Error: ' + (err.message || 'Network or server error'));
+                    })
+                    .finally(() => {
+                        btn.disabled = false;
+                        btn.innerHTML = originalHtml;
+                    });
+                });
+            }
+
+            // AI Title popup: Keep buttons (per option) and Regenerate
+            document.querySelectorAll('.ai-keep-btn').forEach(function(btn) {
+                btn.addEventListener('click', function() {
+                    const idx = parseInt(this.getAttribute('data-option'), 10);
+                    const title = currentAIGeneratedTitles[idx];
+                    const el150 = document.getElementById('title150');
+                    if (el150 && title) {
+                        el150.value = title;
+                        updateModalCounter('title150');
+                    }
+                    if (aiTitleModalInstance) aiTitleModalInstance.hide();
+                    alert('Title applied to Title 150 field. Click Save to store.');
+                });
+            });
+            const aiRegenBtn = document.getElementById('aiRegenerateBtn');
+            if (aiRegenBtn) {
+                aiRegenBtn.addEventListener('click', function() {
+                    if (aiTitleModalInstance) aiTitleModalInstance.hide();
+                    setTimeout(function() {
+                        if (aiImproveBtn) aiImproveBtn.click();
+                    }, 300);
+                });
+            }
+        }
+
+        function showAITitlePopup(items) {
+            if (!Array.isArray(items) || items.length < 3) return;
+            currentAIGeneratedTitles = items.slice(0, 4).map(function(x) {
+                return (x && (typeof x === 'string' ? x : x.title)) || '';
+            });
+            const options = document.querySelectorAll('#aiTitleOption1, #aiTitleOption2, #aiTitleOption3, #aiTitleOption4');
+            const minLen = 140;
+            const maxLen = 150;
+            options.forEach(function(opt, i) {
+                const item = items[i];
+                const title = (item && (typeof item === 'string' ? item : item.title)) || '';
+                const score = item && typeof item === 'object' && item.score != null ? item.score : null;
+                const len = title.length;
+                const textEl = opt.querySelector('.ai-title-text');
+                const scoreEl = opt.querySelector('.ai-title-score');
+                const badgeEl = opt.querySelector('.ai-char-badge');
+                const statusEl = opt.querySelector('.ai-char-status');
+                if (textEl) textEl.textContent = title;
+                if (scoreEl) {
+                    if (score != null) scoreEl.textContent = 'Success score: ' + score + '/10';
+                    else scoreEl.textContent = '';
+                }
+                if (badgeEl) {
+                    badgeEl.textContent = len + '/150 chars';
+                    badgeEl.className = 'badge ai-char-badge ';
+                    if (len > maxLen) badgeEl.classList.add('bg-danger');
+                    else if (len < minLen) badgeEl.classList.add('bg-warning', 'text-dark');
+                    else badgeEl.classList.add('bg-success');
+                }
+                if (statusEl) {
+                    if (len > maxLen) statusEl.innerHTML = '<span class="text-danger"><i class="fas fa-exclamation-triangle"></i> Too long</span>';
+                    else if (len < minLen) statusEl.innerHTML = '<span class="text-warning"><i class="fas fa-exclamation-triangle"></i> Too short (aim 140-150)</span>';
+                    else statusEl.innerHTML = '<span class="text-success"><i class="fas fa-check-circle"></i> ✓</span>';
+                }
+            });
+            if (aiTitleModalInstance) aiTitleModalInstance.show();
         }
 
         function loadTitleData() {
             document.getElementById('rainbow-loader').style.display = 'block';
             
-            fetch('/product-master-data-view')
+            fetch('/title-master-data')
                 .then(response => {
                     if (!response.ok) {
                         throw new Error('Network response was not ok');
@@ -953,12 +1506,57 @@
                 });
         }
 
+        function renderMarketplaceDots(sku, statusMap) {
+            const mps = ['amazon', 'temu', 'reverb', 'wayfair'];
+            const labels = { amazon: 'Amazon', temu: 'Temu', reverb: 'Reverb', wayfair: 'Wayfair' };
+            let html = '<div class="marketplaces-dots" data-sku="' + (sku || '') + '">';
+            mps.forEach(function(mp) {
+                const st = (statusMap && statusMap[mp]) ? statusMap[mp] : 'pending';
+                const title = labels[mp] + ': ' + (st === 'success' ? 'Pushed' : st === 'failed' ? 'Failed' : st === 'loading' ? 'In progress...' : 'Not pushed');
+                html += '<span class="mp-dot ' + mp + ' ' + st + '" data-marketplace="' + mp + '" title="' + title + '"></span>';
+            });
+            html += '</div>';
+            return html;
+        }
+
+        function updateMarketplaceDotsInRow(row, results) {
+            const cell = row.querySelector('.marketplaces-cell');
+            if (!cell || !results) return;
+            const btn = row.querySelector('.push-all-marketplaces-btn');
+            const skuVal = (btn && btn.getAttribute('data-sku')) ? btn.getAttribute('data-sku') : '';
+            const statusMap = {};
+            ['amazon', 'temu', 'reverb', 'wayfair'].forEach(function(mp) {
+                statusMap[mp] = (results[mp] && results[mp].status) ? results[mp].status : 'pending';
+            });
+            cell.innerHTML = renderMarketplaceDots(skuVal, statusMap);
+        }
+
+        function formatTitleWithIndicator(title) {
+            if (!title || (typeof title === 'string' && title.trim() === '')) {
+                return { html: '-', tooltip: '' };
+            }
+            const maxLength = 150;
+            const totalChars = title.length;
+            const excess = totalChars - maxLength;
+            if (totalChars <= maxLength) {
+                return {
+                    html: '<span class="title-indicator success">✅</span> ' + escapeHtml(title),
+                    tooltip: '✓ ' + totalChars + '/' + maxLength + ' characters — within limit\n\n' + title
+                };
+            } else {
+                return {
+                    html: '<span class="title-indicator danger">❌</span> <span class="excess-badge">(+' + excess + ')</span> ' + escapeHtml(title),
+                    tooltip: '⚠️ ' + totalChars + '/' + maxLength + ' characters\n' + excess + ' characters above limit\n\nFull title:\n' + title
+                };
+            }
+        }
+
         function renderTable(data) {
             const tbody = document.getElementById('table-body');
             tbody.innerHTML = '';
 
             if (data.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="9" class="text-center">No products found</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="11" class="text-center">No products found</td></tr>';
                 return;
             }
 
@@ -968,7 +1566,7 @@
             });
 
             if (filteredData.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="9" class="text-center">No products found</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="11" class="text-center">No products found</td></tr>';
                 return;
             }
 
@@ -982,8 +1580,9 @@
 
                 // Images
                 const imageCell = document.createElement('td');
+                imageCell.className = 'table-img-cell';
                 imageCell.innerHTML = item.image_path 
-                    ? '<img src="' + item.image_path + '" style="width:40px;height:40px;object-fit:cover;border-radius:4px;">'
+                    ? '<img src="' + item.image_path + '" alt="">'
                     : '-';
                 row.appendChild(imageCell);
 
@@ -997,11 +1596,13 @@
                 skuCell.textContent = escapeHtml(item.SKU) || '-';
                 row.appendChild(skuCell);
 
-                // Title 150
+                // Title 150 (Amazon title with ✅/❌ and (+X) excess, tooltip with char count)
+                const title150Formatted = formatTitleWithIndicator(item.amazon_title);
                 const title150Cell = document.createElement('td');
-                title150Cell.className = 'title-text';
-                title150Cell.textContent = item.title150 || '-';
-                title150Cell.title = item.title150 || '';
+                title150Cell.className = 'title-text title-cell';
+                title150Cell.innerHTML = title150Formatted.html;
+                const tooltipText = title150Formatted.tooltip || item.amazon_title || '';
+                title150Cell.setAttribute('title', tooltipText.replace(/"/g, '&quot;').replace(/</g, '&lt;'));
                 row.appendChild(title150Cell);
 
                 // Title 100
@@ -1025,18 +1626,34 @@
                 title60Cell.title = item.title60 || '';
                 row.appendChild(title60Cell);
 
-                // Action - View and Edit Buttons
+                // ACTION column: View + Edit side by side
                 const actionCell = document.createElement('td');
-                actionCell.innerHTML = '<button class="action-btn view-btn" data-sku="' + escapeHtml(item.SKU) + '" style="background: linear-gradient(135deg, #17a2b8 0%, #138496 100%); color: white; margin-right: 4px;"><i class="fas fa-eye"></i> View</button>' +
-                    '<button class="action-btn edit-btn" data-sku="' + escapeHtml(item.SKU) + '"><i class="fas fa-edit"></i> Edit</button>';
+                actionCell.className = 'action-buttons-cell';
+                actionCell.innerHTML = '<div class="action-buttons-group">' +
+                    '<button type="button" class="action-btn view-btn" data-sku="' + escapeHtml(item.SKU) + '" title="View title details"><i class="fas fa-eye"></i> View</button>' +
+                    '<button type="button" class="action-btn edit-btn" data-sku="' + escapeHtml(item.SKU) + '" title="Edit title"><i class="fas fa-edit"></i> Edit</button>' +
+                    '</div>';
                 row.appendChild(actionCell);
+
+                // Marketplaces column: dot indicators (Amazon, Temu, Reverb, Wayfair)
+                const marketplacesCell = document.createElement('td');
+                marketplacesCell.className = 'marketplaces-cell';
+                marketplacesCell.innerHTML = renderMarketplaceDots(escapeHtml(item.SKU), null);
+                row.appendChild(marketplacesCell);
+
+                // PUSH TO ALL MARKETPLACES column
+                const pushCell = document.createElement('td');
+                pushCell.className = 'push-button-cell';
+                pushCell.innerHTML = '<button type="button" class="action-btn push-amazon-btn push-all-marketplaces-btn" data-sku="' + escapeHtml(item.SKU) + '" title="Push Title 150 to Amazon, Temu, Reverb, Wayfair"><i class="fas fa-cloud-upload-alt"></i> Push to All</button>';
+                row.appendChild(pushCell);
 
                 tbody.appendChild(row);
             });
 
             setupEditButtons();
             setupViewButtons();
-            setupCheckboxHandlers();
+            setupPushAmazonButtons();
+            updateSelectedCount();
         }
 
         function setupEditButtons() {
@@ -1057,6 +1674,144 @@
             });
         }
 
+        function setupPushAmazonButtons() {
+            document.querySelectorAll('.push-amazon-btn, .push-all-marketplaces-btn').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    const sku = this.getAttribute('data-sku');
+                    const modalSku = (document.getElementById('editSku') && document.getElementById('editSku').value) || (document.getElementById('selectSku') && document.getElementById('selectSku').value) || '';
+                    const title150Input = document.getElementById('title150');
+                    let title = '';
+                    if (modalSku === sku && title150Input && title150Input.value.trim()) {
+                        title = title150Input.value.trim();
+                    }
+                    if (!title) {
+                        const item = tableData.find(d => d.SKU === sku);
+                        title = item ? (item.amazon_title || item.title150 || '').toString().trim() : '';
+                    }
+                    if (!title) {
+                        alert('No title to push. Edit the row and set Title 150 first.');
+                        return;
+                    }
+                    pushToAllMarketplaces(this, sku, title);
+                });
+            });
+        }
+
+        function pushToAllMarketplaces(btn, sku, title) {
+            const originalHtml = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status"></span>';
+            const row = btn.closest('tr');
+            if (row) {
+                const cell = row.querySelector('.marketplaces-cell');
+                if (cell) {
+                    cell.innerHTML = renderMarketplaceDots(sku, { amazon: 'loading', temu: 'loading', reverb: 'loading', wayfair: 'loading' });
+                }
+            }
+
+            fetch('/api/marketplaces/push-title', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': csrfToken
+                },
+                body: JSON.stringify({ sku: sku, title: title })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success && data.results) {
+                    if (row) updateMarketplaceDotsInRow(row, data.results);
+                    const r = data.results;
+                    const ok = [r.amazon, r.temu, r.reverb, r.wayfair].filter(x => x && x.status === 'success').length;
+                    const fail = [r.amazon, r.temu, r.reverb, r.wayfair].filter(x => x && x.status === 'failed').length;
+                    alert('Push completed for ' + sku + ': ' + ok + ' succeeded, ' + fail + ' failed.');
+                } else {
+                    if (row) {
+                        const cell = row.querySelector('.marketplaces-cell');
+                        if (cell) cell.innerHTML = renderMarketplaceDots(sku, null);
+                    }
+                    alert('Failed: ' + (data.message || 'Unknown error'));
+                }
+            })
+            .catch(err => {
+                if (row) {
+                    const cell = row.querySelector('.marketplaces-cell');
+                    if (cell) cell.innerHTML = renderMarketplaceDots(sku, null);
+                }
+                alert('Error: ' + err.message);
+            })
+            .finally(() => {
+                btn.disabled = false;
+                btn.innerHTML = originalHtml;
+            });
+        }
+
+        function runPushBulk(items) {
+            const batchSize = 5;
+            const total = items.length;
+            let successCount = 0;
+            let failedCount = 0;
+            const progressModal = new bootstrap.Modal(document.getElementById('pushProgressModal'));
+            const progressBar = document.getElementById('pushProgressBar');
+            const progressText = document.getElementById('pushProgressText');
+            progressModal.show();
+            progressText.textContent = 'Pushing to Amazon, Temu, Reverb, Wayfair...';
+
+            function updateProgress(done) {
+                const pct = total ? Math.round((done / total) * 100) : 0;
+                progressBar.style.width = pct + '%';
+                progressBar.textContent = pct + '%';
+                progressText.textContent = 'Pushing ' + done + '/' + total + ' to all marketplaces...';
+            }
+
+            function updateRowDots(sku, results) {
+                const btn = document.querySelector('.push-all-marketplaces-btn[data-sku="' + sku + '"]');
+                if (btn && btn.closest('tr')) updateMarketplaceDotsInRow(btn.closest('tr'), results);
+            }
+
+            function doNext(start) {
+                if (start >= total) {
+                    progressModal.hide();
+                    alert(successCount + ' successful, ' + failedCount + ' failed (across all 4 marketplaces)');
+                    document.querySelectorAll('.row-checkbox:checked').forEach(function(cb) { cb.checked = false; });
+                    document.getElementById('selectAll').checked = false;
+                    updateSelectedCount();
+                    return;
+                }
+                const batch = items.slice(start, start + batchSize);
+                const skus = batch.map(function(x) { return x.sku; });
+                const titles = {};
+                batch.forEach(function(x) { titles[x.sku] = x.title; });
+                fetch('/api/marketplaces/push-bulk', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': csrfToken
+                    },
+                    body: JSON.stringify({ skus: skus, titles: titles })
+                })
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    successCount += data.success_count || 0;
+                    failedCount += data.failed_count || 0;
+                    const perSku = data.per_sku_results || {};
+                    Object.keys(perSku).forEach(function(sku) {
+                        if (perSku[sku] && !perSku[sku].error) updateRowDots(sku, perSku[sku]);
+                    });
+                    updateProgress(Math.min(start + batchSize, total));
+                    doNext(start + batchSize);
+                })
+                .catch(function(err) {
+                    failedCount += batch.length;
+                    updateProgress(Math.min(start + batchSize, total));
+                    doNext(start + batchSize);
+                });
+            }
+
+            updateProgress(0);
+            doNext(0);
+        }
+
         function openViewModal(sku) {
             const item = tableData.find(d => d.SKU === sku);
             if (!item) {
@@ -1074,7 +1829,7 @@
 
             document.getElementById('viewSku').textContent = escapeHtml(item.SKU) || '-';
             document.getElementById('viewParent').textContent = escapeHtml(item.Parent) || '-';
-            document.getElementById('viewTitle150').textContent = item.title150 || '-';
+            document.getElementById('viewTitle150').textContent = (item.amazon_title != null && item.amazon_title !== '') ? item.amazon_title : (item.title150 || '-');
             document.getElementById('viewTitle100').textContent = item.title100 || '-';
             document.getElementById('viewTitle80').textContent = item.title80 || '-';
             document.getElementById('viewTitle60').textContent = item.title60 || '-';
@@ -1135,10 +1890,17 @@
                     $(selectSku).select2('destroy');
                 }
                 
-                // Load existing data
+                // Load existing data (Title 150 = Amazon title; Title 100/80/60 = Product Master)
                 const item = tableData.find(d => d.SKU === sku);
                 if (item) {
-                    ['title150', 'title100', 'title80', 'title60'].forEach(field => {
+                    const title150Input = document.getElementById('title150');
+                    const cleanTitle150 = (item.amazon_title != null && item.amazon_title !== '') ? item.amazon_title : (item.title150 || '');
+                    title150Input.value = cleanTitle150;
+                    const len150 = cleanTitle150.length;
+                    const counter150 = document.getElementById('counter150');
+                    counter150.textContent = len150 + '/150';
+                    if (len150 > 150) counter150.classList.add('error'); else counter150.classList.remove('error');
+                    ['title100', 'title80', 'title60'].forEach(field => {
                         const input = document.getElementById(field);
                         input.value = item[field] || '';
                         const maxLength = parseInt(field.replace('title', ''));
@@ -1196,8 +1958,16 @@
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
+                    const index = tableData.findIndex(item => item.SKU === sku);
+                    if (index !== -1) {
+                        tableData[index].title150 = title150;
+                        tableData[index].amazon_title = title150;
+                        tableData[index].title100 = title100 || tableData[index].title100;
+                        tableData[index].title80 = title80 || tableData[index].title80;
+                        tableData[index].title60 = title60 || tableData[index].title60;
+                    }
+                    renderTable(tableData);
                     titleModal.hide();
-                    loadTitleData(); // Reload data
                     alert('Title saved successfully!');
                 } else {
                     alert(data.message || 'Failed to save title');
@@ -1219,7 +1989,7 @@
                 .map(item => ({
                     'Parent': item.Parent || '',
                     'SKU': item.SKU || '',
-                    'Title 150': item.title150 || '',
+                    'Title 150': (item.amazon_title != null && item.amazon_title !== '') ? item.amazon_title : (item.title150 || ''),
                     'Title 100': item.title100 || '',
                     'Title 80': item.title80 || '',
                     'Title 60': item.title60 || ''
@@ -1517,9 +2287,14 @@
                     return false;
                 }
 
-                // Title 150 filter
-                if (filterTitle150 === 'missing' && !isMissing(item.title150)) {
+                // Title 150 filter (Amazon titles: missing or exceeds 150 chars)
+                if (filterTitle150 === 'missing' && !isMissing(item.amazon_title)) {
                     return false;
+                }
+                if (filterTitle150 === 'exceeds') {
+                    if (isMissing(item.amazon_title) || item.amazon_title.length <= 150) {
+                        return false;
+                    }
                 }
 
                 // Title 100 filter
@@ -1589,9 +2364,8 @@
                 if (item.Parent) parentSet.add(item.Parent);
                 if (item.SKU && !String(item.SKU).toUpperCase().includes('PARENT')) {
                     skuCount++;
-                    
-                    // Count missing data for each title column
-                    if (isMissing(item.title150)) title150MissingCount++;
+                    // Title 150 = Amazon title (from amazon_listings_raw); Title 100/80/60 = Product Master
+                    if (isMissing(item.amazon_title)) title150MissingCount++;
                     if (isMissing(item.title100)) title100MissingCount++;
                     if (isMissing(item.title80)) title80MissingCount++;
                     if (isMissing(item.title60)) title60MissingCount++;
@@ -1600,7 +2374,7 @@
 
             document.getElementById('parentCount').textContent = `(${parentSet.size})`;
             document.getElementById('skuCount').textContent = `(${skuCount})`;
-            document.getElementById('title150MissingCount').textContent = `(${title150MissingCount})`;
+            document.getElementById('title150MissingCount').textContent = `(${title150MissingCount} missing)`;
             document.getElementById('title100MissingCount').textContent = `(${title100MissingCount})`;
             document.getElementById('title80MissingCount').textContent = `(${title80MissingCount})`;
             document.getElementById('title60MissingCount').textContent = `(${title60MissingCount})`;

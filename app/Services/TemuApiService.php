@@ -23,41 +23,43 @@ class TemuApiService
     protected $endpoint;
     protected $allItems = [];
 
-private function generateSignValue($requestBody)
+/**
+     * Generate signed request for Temu Open API.
+     * Uses access_token (underscore), app_key, timestamp, data_type; adds sign.
+     * All credentials are trimmed to avoid "application information query is abnormal".
+     *
+     * @param array $requestBody API-specific params only (e.g. type, outGoodsSn, goodsName)
+     * @return array Full request with access_token, app_key, timestamp, data_type, sign, and requestBody keys
+     */
+    private function generateSignValue($requestBody)
     {
-        // Environment/config variables
-        $appKey = config('services.temu.app_key');
-        $appSecret = config('services.temu.secret_key');
-        $accessToken = config('services.temu.access_token');
+        $appKey = trim((string) (config('services.temu.app_key') ?? ''));
+        $appSecret = trim((string) (config('services.temu.secret_key') ?? ''));
+        $accessToken = trim((string) (config('services.temu.access_token') ?? ''));
+
         $timestamp = time();
-        
-        // Top-level params
         $params = [
             'access_token' => $accessToken,
             'app_key' => $appKey,
-            'timestamp' => $timestamp,
+            'timestamp' => (string) $timestamp,
             'data_type' => 'JSON',
         ];
 
-        // Flatten and sort for signing
         $signParams = array_merge($params, $requestBody);
         ksort($signParams);
-        
+
         $temp = '';
         foreach ($signParams as $key => $value) {
             if (is_array($value) || is_object($value)) {
                 $value = json_encode($value, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
             }
-            $temp .= $key . $value;
+            $temp .= $key . (string) $value;
         }
 
         $signStr = $appSecret . $temp . $appSecret;
         $sign = strtoupper(md5($signStr));
         $params['sign'] = $sign;
 
-        
-        // Log the request
-        // Log::info("Generated Sign: $sign");
         return array_merge($params, $requestBody);
     }
 
@@ -458,4 +460,113 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
     return $results;
 }
 
+    /**
+     * Update product title on Temu by seller SKU (outGoodsSn).
+     * API type is configurable via config('services.temu.goods_update_type') or TEMU_GOODS_UPDATE_TYPE.
+     * If you get "type not exists" (3000003), set the correct type from Temu Partner API docs.
+     *
+     * @param string $sku Seller SKU (outGoodsSn)
+     * @param string $title New title
+     * @return array{success: bool, message: string}
+     */
+    public function updateTitle(string $sku, string $title): array
+    {
+        $sku = trim($sku);
+        $title = trim($title);
+        if ($sku === '' || $title === '') {
+            return ['success' => false, 'message' => 'SKU and title are required.'];
+        }
+
+        $apiType = config('services.temu.goods_update_type', 'bg.local.goods.update');
+        $url = 'https://openapi-b-us.temu.com/openapi/router';
+
+        Log::debug('Temu config check (updateTitle)', [
+            'app_key_exists' => ! empty(config('services.temu.app_key')),
+            'app_key_prefix' => substr(config('services.temu.app_key') ?? '', 0, 10),
+            'secret_key_exists' => ! empty(config('services.temu.secret_key')),
+            'access_token_exists' => ! empty(config('services.temu.access_token')),
+            'access_token_prefix' => substr(config('services.temu.access_token') ?? '', 0, 10),
+        ]);
+
+        // API-specific parameters only; generateSignValue adds access_token, app_key, timestamp, sign
+        $requestBody = [
+            'type' => $apiType,
+            'outGoodsSn' => $sku,
+            'goodsName' => $title,
+        ];
+
+        Log::debug('Temu - Before generateSignValue', [
+            'requestBody' => $requestBody,
+        ]);
+
+        $signedRequest = $this->generateSignValue($requestBody);
+
+        Log::debug('Temu - After generateSignValue', [
+            'signedRequest_keys' => array_keys($signedRequest),
+            'has_access_token' => isset($signedRequest['access_token']),
+            'has_app_key' => isset($signedRequest['app_key']),
+            'has_timestamp' => isset($signedRequest['timestamp']),
+            'has_sign' => isset($signedRequest['sign']),
+            'access_token_preview' => isset($signedRequest['access_token']) ? substr($signedRequest['access_token'], 0, 10) . '...' : 'MISSING',
+            'type' => $signedRequest['type'] ?? null,
+        ]);
+
+        Log::info('Temu API Request - updateTitle', [
+            'url' => $url,
+            'method' => 'POST',
+            'type' => $apiType,
+            'sku' => $sku,
+            'title_preview' => mb_substr($title, 0, 50),
+            'payload_keys' => array_keys($requestBody),
+        ]);
+
+        $request = Http::withHeaders(['Content-Type' => 'application/json']);
+        if (config('filesystems.default') === 'local') {
+            $request = $request->withoutVerifying();
+        }
+
+        try {
+            $response = $request->post($url, $signedRequest);
+            $status = $response->status();
+            $data = $response->json();
+            $bodyRaw = $response->body();
+
+            Log::info('Temu API Response - updateTitle', [
+                'sku' => $sku,
+                'status' => $status,
+                'success' => $data['success'] ?? null,
+                'errorCode' => $data['errorCode'] ?? null,
+                'errorMsg' => $data['errorMsg'] ?? null,
+                'response_preview' => mb_substr($bodyRaw, 0, 500),
+            ]);
+
+            if ($response->successful() && ($data['success'] ?? false)) {
+                Log::info('Temu title updated successfully', ['sku' => $sku]);
+                return ['success' => true, 'message' => "Title updated for SKU: {$sku}."];
+            }
+
+            $errorCode = $data['errorCode'] ?? null;
+            $errorMsg = $data['errorMsg'] ?? $data['message'] ?? $bodyRaw;
+
+            if ((int) $errorCode === 3000003) {
+                Log::warning('Temu API "type not exists" (3000003). Set TEMU_GOODS_UPDATE_TYPE in .env to the correct type from Temu Partner API docs (e.g. bg.goods.update, bg.local.goods.update).', [
+                    'sku' => $sku,
+                    'current_type' => $apiType,
+                ]);
+            }
+
+            Log::warning('Temu title update failed', [
+                'sku' => $sku,
+                'response' => $data,
+                'status' => $status,
+            ]);
+            return ['success' => false, 'message' => (string) $errorMsg];
+        } catch (\Throwable $e) {
+            Log::error('Temu updateTitle exception: ' . $e->getMessage(), [
+                'sku' => $sku,
+                'trace' => $e->getTraceAsString(),
+            ]);
+            return ['success' => false, 'message' => 'Exception: ' . $e->getMessage()];
+        }
+    }
 }

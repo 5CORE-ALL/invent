@@ -434,6 +434,10 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/listing-master/amz-data/import', [AmzListingController::class, 'import'])->name('listing.master.amz.data.import');
     Route::get('/listing-master/amz-data/import-debug', [AmzListingController::class, 'importDebug'])->name('listing.master.amz.data.import.debug');
     Route::post('/listing-master/amz-data/enrich-single', [AmzListingController::class, 'enrichSingle'])->name('listing.master.amz.data.enrich-single');
+    Route::post('/listing-master/amz-data/extract-titles', [AmzListingController::class, 'extractTitlesToTitleMaster'])->name('listing.master.amz.data.extract-titles');
+    Route::get('/listing-master/amz-data/analyze', [AmzListingController::class, 'analyzeAmazonData'])->name('listing.master.amz.data.analyze');
+    Route::get('/listing-master/amz-data/debug/{sku}', [AmzListingController::class, 'debugSku'])->name('listing.master.amz.data.debug');
+    Route::get('/listing-master/amz-data/check-raw/{sku}', [AmzListingController::class, 'checkRawData'])->name('listing.master.amz.data.check-raw');
 
 
     // Marketplace Sync: dynamic routes per marketplace (reverb, amazon, ebay, walmart)
@@ -1028,7 +1032,15 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/product-master', [ProductMasterController::class, 'product_master_index'])
         ->name('product.master');
     Route::get('/title-master', fn() => view('title-master'))->name('title.master');
+    Route::get('/title-master-data', [ProductMasterController::class, 'getTitleMasterData'])->name('title.master.data');
     Route::post('/title-master/save', [ProductMasterController::class, 'saveTitleData'])->name('title.master.save');
+    Route::post('/title-master/ai/generate-titles', [ProductMasterController::class, 'generateTitlesWithAI'])->name('title.master.ai.generate');
+    Route::post('/title-master/ai/generate-title-150', [ProductMasterController::class, 'generateTitle150WithAI'])->name('title.master.ai.generate.title150');
+    Route::post('/api/amazon/push-title', [ProductMasterController::class, 'pushTitleToAmazon'])->name('amazon.push.title');
+    Route::post('/api/amazon/push-bulk', [ProductMasterController::class, 'pushBulkToAmazon'])->name('amazon.push.bulk');
+    Route::post('/api/marketplaces/push-title', [ProductMasterController::class, 'pushTitleToAllMarketplaces'])->name('marketplaces.push.title');
+    Route::post('/api/marketplaces/push-bulk', [ProductMasterController::class, 'pushBulkToAllMarketplaces'])->name('marketplaces.push.bulk');
+    Route::get('/api/marketplaces/push-status', [ProductMasterController::class, 'getMarketplacePushStatus'])->name('marketplaces.push.status');
     Route::post('/title-master/update-amazon', [ProductMasterController::class, 'updateTitlesToAmazon'])->name('title.master.update.amazon');
     Route::post('/title-master/update-platforms', [ProductMasterController::class, 'updateTitlesToPlatforms'])->name('title.master.update.platforms');
     Route::get('/videos-master', fn() => view('videos-master'))->name('videos.master');
@@ -3012,7 +3024,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::prefix('repricer/amazon-search')->group(function () {
         Route::get('/', [\App\Http\Controllers\RePricer\AmazonSearchController::class, 'index']);
         Route::post('/search', [\App\Http\Controllers\RePricer\AmazonSearchController::class, 'search']);
-        Route::post('/backfill-sku-competitors-by-asin', [\App\Http\Controllers\RePricer\AmazonSearchController::class, 'backfillSkuCompetitorsByAsin']);
         Route::get('/history', [\App\Http\Controllers\RePricer\AmazonSearchController::class, 'getSearchHistory']);
         Route::get('/results', [\App\Http\Controllers\RePricer\AmazonSearchController::class, 'getResults']);
         Route::get('/filter-options', [\App\Http\Controllers\RePricer\AmazonSearchController::class, 'getFilterOptions']);
