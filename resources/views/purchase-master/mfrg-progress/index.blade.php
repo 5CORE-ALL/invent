@@ -65,6 +65,67 @@
     td {
         overflow: visible !important;
     }
+    .wide-table .column-search {
+        text-align: center;
+    }
+    /* Toolbar: uniform height, alignment, equal spread */
+    #columnControls .toolbar-row {
+        display: flex;
+        flex-wrap: nowrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0;
+        width: 100%;
+        min-height: 44px;
+    }
+    #columnControls .toolbar-item {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex: 1;
+        min-width: 0;
+    }
+    #columnControls .toolbar-item.controls-group {
+        flex: 0 0 auto;
+        justify-content: flex-start;
+        gap: 12px;
+    }
+    #columnControls .toolbar-item.stats-group {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0;
+        min-width: 0;
+        padding-left: 24px;
+    }
+    #columnControls .toolbar-item .btn,
+    #columnControls .toolbar-item .custom-select-box {
+        height: 38px !important;
+        min-height: 38px;
+        display: inline-flex;
+        align-items: center;
+    }
+    #columnControls .toolbar-item .btn.rounded-circle {
+        width: 38px;
+        height: 38px;
+        padding: 0;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+    }
+    #columnControls #play-auto i.fa-play {
+        margin-left: -1px; /* Center the play triangle - FA icon has slight right bias */
+    }
+    #columnControls .stat-panel {
+        flex: 1;
+        min-width: 60px;
+        text-align: center;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+    }
     
 </style>
 @endsection
@@ -76,75 +137,34 @@
             <div class="card-body">
                 <!-- Filters Row - First Row -->
                 <div class="column-controls card mb-3 p-3 shadow-sm" id="columnControls" style="background: #f8f9fa; border-radius: 10px;">
-                    <div class="d-flex flex-wrap align-items-center gap-3">
-                        <!-- Navigation -->
-                        <div class="col-auto">
-                            <label class="form-label fw-semibold mb-1 d-block">▶️ Navigation</label>
-                            <div class="btn-group time-navigation-group" role="group">
-                                <button id="play-backward" class="btn btn-light rounded-circle shadow-sm me-2" title="Previous parent">
+                    <div class="toolbar-row" style="overflow-x: auto;">
+                        <!-- Controls Group -->
+                        <div class="toolbar-item controls-group d-flex flex-nowrap">
+                            <div class="btn-group time-navigation-group d-flex align-items-center gap-1" role="group">
+                                <button id="play-backward" class="btn btn-light rounded-circle shadow-sm" title="Previous parent">
                                     <i class="fas fa-step-backward"></i>
                                 </button>
-                                <button id="play-pause" class="btn btn-light rounded-circle shadow-sm me-2" style="display: none;" title="Pause">
+                                <button id="play-pause" class="btn btn-light rounded-circle shadow-sm" style="display: none;" title="Pause">
                                     <i class="fas fa-pause"></i>
                                 </button>
-                                <button id="play-auto" class="btn btn-primary rounded-circle shadow-sm me-2" title="Play">
+                                <button id="play-auto" class="btn btn-primary rounded-circle shadow-sm" title="Play">
                                     <i class="fas fa-play"></i>
                                 </button>
-                                <button id="play-forward" class="btn btn-light rounded-circle shadow-sm me-2" title="Next parent">
+                                <button id="play-forward" class="btn btn-light rounded-circle shadow-sm" title="Next parent">
                                     <i class="fas fa-step-forward"></i>
                                 </button>
-                                <button id="supplier-remarks-btn" class="btn btn-success shadow-sm" style="border-radius: 6px; margin-left: 8px;" title="Supplier Remarks/Updates">
-                                    <i class="fas fa-comment-alt"></i> Remarks
+                                <button id="supplier-remarks-btn" class="btn btn-success shadow-sm" style="border-radius: 6px;" title="Follow-Up History">
+                                    <i class="fas fa-comment-alt"></i> Follow-Up History
                                 </button>
                             </div>
-                        </div>
-
-                        <!-- Search Table -->
-                        <div class="col-auto">
-                            <label class="form-label fw-semibold mb-1 d-block" style="visibility: hidden;">Search</label>
-                            <input type="text" class="form-control" id="wholeSearchInput"
-                                placeholder="🔍 Search entire table..."
-                                style="width: 200px; font-size: 0.97rem; height: 36px; border-radius: 6px;">
-                        </div>
-
-                        <!-- Toggle Columns Dropdown -->
-                        <div class="col-auto">
-                            <label class="form-label fw-semibold mb-1 d-block" style="visibility: hidden;">Columns</label>
-                            <div class="column-dropdown position-relative">
-                                <button class="btn text-white column-dropdown-btn d-flex align-items-center gap-1" id="columnDropdownBtn" style="border-radius: 6px;">
-                                    <i class="mdi mdi-format-columns"></i> Toggle Columns
-                                </button>
-                                <div class="column-dropdown-content" id="columnDropdownContent"
-                                    style="position: absolute; left: 0; top: 110%; min-width: 220px; z-index: 20; background: #fff; box-shadow: 0 2px 12px rgba(60,192,195,0.10); border-radius: 8px; border: 1px solid #e3e3e3; padding: 12px; max-height: 350px; overflow-y: auto;">
-                                    <!-- Dynamic Checkboxes -->
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Show All Columns -->
-                        <div class="col-auto">
-                            <label class="form-label fw-semibold mb-1 d-block" style="visibility: hidden;">Show All</label>
-                            <button class="btn text-white show-all-columns d-flex align-items-center gap-1" id="showAllColumns" style="border-radius: 6px;">
-                                <i class="mdi mdi-eye-check-outline"></i> Show All
-                            </button>
-                        </div>
-
-                        <!-- Delete Selected Button -->
-                        <div class="col-auto">
-                            <label class="form-label fw-semibold mb-1 d-block" style="visibility: hidden;">Delete</label>
                             <button class="btn btn-danger d-flex align-items-center gap-1" id="deleteSelectedBtn" style="border-radius: 6px; display: none;">
-                                <i class="mdi mdi-delete"></i> Delete Selected (<span id="selectedCount">0</span>)
+                                <i class="mdi mdi-delete"></i> Delete
                             </button>
-                        </div>
-
-                        <!-- Supplier Dropdown -->
-                        <div class="col-auto">
-                            <label class="form-label fw-semibold mb-1 d-block" style="visibility: hidden;">Supplier</label>
-                            <div class="custom-select-wrapper" style="min-width: 150px; position: relative;">
+                            <div class="custom-select-wrapper" style="min-width: 140px; position: relative;">
                                 <div class="custom-select-box d-flex align-items-center justify-content-between" id="customSelectBox"
                                     style="border: 1.5px solid #e0e6ed; border-radius: 7px; background: #fff; height: 38px; padding: 0 14px; cursor: pointer; box-shadow: 0 1px 4px rgba(60,192,195,0.07); transition: border-color 0.2s;">
-                                    <span id="customSelectSelectedText" class="flex-grow-1 text-truncate" style="font-size: 1rem; color: #222;">All supplier</span>
-                                    <i class="mdi mdi-menu-down" style="font-size: 1.3rem; color: #3bc0c3;"></i>
+                                    <span id="customSelectSelectedText" class="flex-grow-1 text-truncate" style="font-size: 0.9rem; color: #222;">All supplier</span>
+                                    <i class="mdi mdi-menu-down" style="font-size: 1.2rem; color: #3bc0c3;"></i>
                                 </div>
                                 <div class="custom-select-dropdown shadow" id="customSelectDropdown"
                                     style="display: none; position: absolute; z-index: 30; background: #fff; min-width: 220px; max-width: 320px; border-radius: 10px; border: 1.5px solid #e0e6ed; margin-top: 4px;">
@@ -161,118 +181,56 @@
                                     </div>
                                 </div>
                             </div>
-                        </div>
-
-                        <!-- 💰 Advance + Pending Summary -->
-                        <div class="col-auto">
-                            <label class="form-label fw-semibold mb-1 d-block" style="visibility: hidden;">Advance</label>
                             <div id="advance-total-wrapper" style="display: none;">
                                 <div id="advance-total-display" class="py-1 px-2 rounded shadow-sm d-inline-flex align-items-center gap-2 flex-wrap"
-                                    style="background: linear-gradient(90deg, #e6f4f1 60%, #f8f9fa 100%); color: #10635b; font-weight: 600; font-size: 16px; border: 1.5px solid #3bc0c3; box-shadow: 0 2px 8px rgba(60,192,195,0.08); transition: all 0.3s ease;">
-                                    <div class="d-flex align-items-center gap-2" style="min-width: 170px;">
-                                        <span class="rounded-circle d-flex align-items-center justify-content-center" style="background: #d1f2eb; width: 36px; height: 36px;">
-                                            <i class="mdi mdi-cash-multiple" style="font-size: 22px; color: #10b39c;"></i>
+                                    style="background: linear-gradient(90deg, #e6f4f1 60%, #f8f9fa 100%); color: #10635b; font-weight: 600; font-size: 14px; border: 1.5px solid #3bc0c3; box-shadow: 0 2px 8px rgba(60,192,195,0.08);">
+                                    <div class="d-flex align-items-center gap-2" style="min-width: 140px;">
+                                        <span class="rounded-circle d-flex align-items-center justify-content-center" style="background: #d1f2eb; width: 32px; height: 32px;">
+                                            <i class="mdi mdi-cash-multiple" style="font-size: 18px; color: #10b39c;"></i>
                                         </span>
-                                        <span>
-                                            <span style="font-size: 13px; color: #23979b;">Total Advance</span><br>
-                                            <span style="font-size: 18px; color: #10635b;">$ <span id="advance-amount">0</span></span>
-                                        </span>
+                                        <span><span style="font-size: 11px; color: #23979b;">Total Advance</span><br><span style="font-size: 14px; color: #10635b;">$ <span id="advance-amount">0</span></span></span>
                                     </div>
-
-                                    <div class="vr" style="height: 38px; width: 2px; background: #cde7e2; margin: 0 18px;"></div>
-
-                                    <div class="d-flex align-items-center gap-2" style="min-width: 170px;">
-                                        <span class="rounded-circle d-flex align-items-center justify-content-center" style="background: #ffeaea; width: 36px; height: 36px;">
-                                            <i class="mdi mdi-alert-decagram" style="font-size: 22px; color: #ff6b6b;"></i>
+                                    <div class="vr" style="height: 32px; width: 1px; background: #cde7e2; margin: 0 8px;"></div>
+                                    <div class="d-flex align-items-center gap-2" style="min-width: 140px;">
+                                        <span class="rounded-circle d-flex align-items-center justify-content-center" style="background: #ffeaea; width: 32px; height: 32px;">
+                                            <i class="mdi mdi-alert-decagram" style="font-size: 18px; color: #ff6b6b;"></i>
                                         </span>
-                                        <span>
-                                            <span style="font-size: 13px; color: #ff6b6b;">Total Pending</span><br>
-                                            <span style="font-size: 18px; color: #b23c3c;">$ <span id="pending-amount">0</span></span>
-                                        </span>
+                                        <span><span style="font-size: 11px; color: #ff6b6b;">Total Pending</span><br><span style="font-size: 14px; color: #b23c3c;">$ <span id="pending-amount">0</span></span></span>
                                     </div>
                                 </div>
                             </div>
                         </div>
 
-                        <!-- Pending Status -->
-                        <div class="col-auto">
-                            <label class="form-label fw-semibold mb-1 d-block">Pending Status</label>
-                            <select id="row-data-pending-status" class="form-select border border-primary" style="min-width: 120px;">
-                                <option value="">select color</option>
-                                <option value="green">Green <span id="greenCount"></span></option>
-                                <option value="yellow">yellow <span id="yellowCount"></span></option>
-                                <option value="red">red <span id="redCount"></span></option>
-                            </select>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Counts/Stats Row - Second Row -->
-                <div class="card mb-4 shadow-sm border-0" style="background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);">
-                    <div class="card-body p-3">
-                        <div class="d-flex align-items-center justify-content-between" style="flex-wrap: nowrap; gap: 0; overflow-x: auto;">
-                            <div class="text-center flex-fill" style="min-width: 110px;">
-                                <div class="text-muted mb-1" style="font-size: 0.75rem; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase;">
-                                    💰 Total Amount
-                                </div>
-                                <div id="total-amount" class="fw-bold text-dark" style="font-size: 2.5rem; line-height: 1.2; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
-                                    0
-                                </div>
+                        <!-- Stats Section - Equal width, spread from left to right -->
+                        <div class="toolbar-item stats-group">
+                            <div class="stat-panel">
+                                <div class="text-muted" style="font-size: 0.975rem; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase;">👥 Suppliers</div>
+                                <div id="followSupplierCount" class="fw-bold" style="font-size: 1.15rem; line-height: 1.2; color: #000;">0</div>
                             </div>
-                            <div class="vr mx-3" style="height: 50px; width: 1px; background: linear-gradient(to bottom, transparent, #dee2e6, transparent);"></div>
-                            <div class="text-center flex-fill" style="min-width: 110px;">
-                                <div class="text-muted mb-1" style="font-size: 0.75rem; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase;">
-                                    📦 Total Ord. Qty
-                                </div>
-                                <div id="total-order-qty" class="fw-bold text-info" style="font-size: 2.5rem; line-height: 1.2; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
-                                    0
-                                </div>
+                            <div class="stat-panel">
+                                <div class="text-muted" style="font-size: 0.975rem; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase;">💰 Amount</div>
+                                <div id="total-amount" class="fw-bold" style="font-size: 1.15rem; line-height: 1.2; color: #000;">$0</div>
                             </div>
-                            <div class="vr mx-3" style="height: 50px; width: 1px; background: linear-gradient(to bottom, transparent, #dee2e6, transparent);"></div>
-                            <div class="text-center flex-fill" style="min-width: 110px;">
-                                <div class="text-muted mb-1" style="font-size: 0.75rem; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase;">
-                                    📊 Total CBM
-                                </div>
-                                <div id="total-cbm" class="fw-bold text-success" style="font-size: 2.5rem; line-height: 1.2; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
-                                    0
-                                </div>
+                            <div class="stat-panel">
+                                <div class="text-muted" style="font-size: 0.975rem; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase;">📊 CBM</div>
+                                <div id="total-cbm" class="fw-bold" style="font-size: 1.15rem; line-height: 1.2; color: #000;">0</div>
                             </div>
-                            <div class="vr mx-3" style="height: 50px; width: 1px; background: linear-gradient(to bottom, transparent, #dee2e6, transparent);"></div>
-                            <div class="text-center flex-fill" style="min-width: 110px;">
-                                <div class="text-muted mb-1" style="font-size: 0.75rem; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase;">
-                                    🔢 Total Items
-                                </div>
-                                <div id="total-order-items" class="fw-bold text-warning" style="font-size: 2.5rem; line-height: 1.2; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
-                                    0
-                                </div>
+                            <div class="stat-panel">
+                                <div class="text-muted" style="font-size: 0.975rem; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase;">🔢 Items</div>
+                                <div id="total-order-items" class="fw-bold" style="font-size: 1.15rem; line-height: 1.2; color: #000;">0</div>
                             </div>
-                            <div class="vr mx-3" style="height: 50px; width: 1px; background: linear-gradient(to bottom, transparent, #dee2e6, transparent);"></div>
-                            <div class="text-center flex-fill" style="min-width: 110px;">
-                                <div class="text-muted mb-1" style="font-size: 0.75rem; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase;">
-                                    📦 Total CTN CBM
-                                </div>
-                                <div id="total-ctn-cbm" class="fw-bold text-primary" style="font-size: 2.5rem; line-height: 1.2; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
-                                    0
-                                </div>
+                            <div class="stat-panel">
+                                <div class="text-muted" style="font-size: 0.975rem; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase;">📦 CTN CBM</div>
+                                <div id="total-ctn-cbm" class="fw-bold" style="font-size: 1.15rem; line-height: 1.2; color: #000;">0</div>
                             </div>
-                            <div class="vr mx-3" style="height: 50px; width: 1px; background: linear-gradient(to bottom, transparent, #dee2e6, transparent);"></div>
-                            <div class="text-center flex-fill" style="min-width: 110px;">
-                                <div class="text-muted mb-1" style="font-size: 0.75rem; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase;">
-                                    👥 Follow Supplier
-                                </div>
-                                <div id="followSupplierCount" class="fw-bold text-danger" style="font-size: 2.5rem; line-height: 1.2; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: #dc3545;">
-                                    0
-                                </div>
+                            <div class="flex-shrink-0" style="display: none; width: 1px; height: 32px; background: #dee2e6; margin: 0 8px;" id="supplier-badge-vr"></div>
+                            <div class="stat-panel" style="display: none;" id="supplier-badge-container">
+                                <div class="text-muted" style="font-size: 0.975rem; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase;">🏭 Current Supplier</div>
+                                <div id="current-supplier" class="fw-bold text-white" style="font-size: 1rem; line-height: 1.2; background-color: #28a745; padding: 2px 8px; border-radius: 4px;">-</div>
                             </div>
-                            <div class="vr mx-3" style="height: 50px; width: 1px; background: linear-gradient(to bottom, transparent, #dee2e6, transparent); display: none;" id="supplier-badge-vr"></div>
-                            <div class="text-center flex-fill" style="min-width: 140px; display: none;" id="supplier-badge-container">
-                                <div class="text-muted mb-1" style="font-size: 0.75rem; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase;">
-                                    🏭 Current Supplier
-                                </div>
-                                <div id="current-supplier" class="fw-bold text-white" style="font-size: 2.5rem; line-height: 1.2; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #28a745; padding: 8px 16px; border-radius: 6px; display: inline-block; min-width: 120px; word-break: break-word;">
-                                    -
-                                </div>
-                            </div>
+                            <button type="button" id="mip-summary-export-btn" class="btn btn-link p-0 border-0 bg-transparent flex-shrink-0" title="Export summary to Excel" style="margin-left: 12px;">
+                                <img src="{{ asset('assets/images/summary-icon.png') }}" alt="Summary" style="width: 36px; height: 36px; object-fit: contain; cursor: pointer;">
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -283,7 +241,7 @@
                         <div class="modal-content">
                             <div class="modal-header bg-success text-white">
                                 <h5 class="modal-title" id="supplierRemarksModalLabel">
-                                    <i class="fas fa-comment-alt"></i> Supplier Remarks/Updates
+                                    <i class="fas fa-comment-alt"></i> Follow-Up History
                                 </h5>
                                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
                             </div>
@@ -341,16 +299,14 @@
                                 </th>
                                 <th data-column="17" class="text-center">Stage<div class="resizer"></div></th>
                                 <th data-column="18" class="text-center" hidden>NRP<div class="resizer"></div></th>
-                                <th data-column="4" class="text-center">Order<br/>QTY<div class="resizer"></div></th>
+                                <th data-column="4" class="text-center">QTY<div class="resizer"></div></th>
                                 <th data-column="5" hidden>Rate<div class="resizer"></div></th>
                                 <th data-column="6" class="text-center" style="width: 150px; min-width: 150px; max-width: 150px;">Supplier<div class="resizer"></div></th>
-                                <th data-column="21" class="text-center" style="width: 120px; min-width: 120px;">Supplier<br/>SKU<div class="resizer"></div></th>
                                 <th data-column="7" hidden>Advance<br/>Amt<div class="resizer"></div></th>
                                 <th data-column="8" hidden>Adv<br/>Date<div class="resizer"></div></th>
                                 <th data-column="9" hidden>pay conf.<br/>date<div class="resizer"></div></th>
                                 {{-- <th data-column="9">pay term<div class="resizer"></div></th> --}}
                                 <th data-column="10" class="text-center">Order<br/>Date<div class="resizer"></div></th>
-                                <th data-column="11">Del<br/>Date<div class="resizer"></div></th>
                                 {{-- <th data-column="12">O Links<div class="resizer"></div></th> --}}
                                 <th data-column="12" hidden>value<div class="resizer"></div></th>
                                 <th data-column="13" hidden>Payment<br/>Pending<div class="resizer"></div></th>
@@ -464,7 +420,7 @@
                                             <option value="LATER" {{ $nrValue === 'LATER' ? 'selected' : '' }}>LATER</option>
                                         </select>
                                     </td>
-                                    <td data-column="4" data-qty="{{ $item->qty ?? 0 }}" style="text-align: end; background-color: #e9ecef;">
+                                    <td data-column="4" data-qty="{{ $item->qty ?? 0 }}" class="text-center" style="background-color: #e9ecef;">
                                         <input type="number" 
                                             value="{{ $item->qty ?? 0 }}" 
                                             readonly
@@ -495,15 +451,6 @@
                                                 </option>
                                             @endforeach
                                         </select>
-                                    </td>
-                                    <td data-column="21" class="text-center" style="width: 120px; min-width: 120px;">
-                                        <input type="text" 
-                                            data-sku="{{ $item->sku }}" 
-                                            data-column="supplier_sku" 
-                                            class="form-control form-control-sm auto-save" 
-                                            value="{{ $item->supplier_sku ?? '' }}" 
-                                            placeholder="Supplier SKU"
-                                            style="min-width: 110px; font-size: 12px; text-align: center;">
                                     </td>
                                     <td data-column="7" hidden>
                                         @php
@@ -567,35 +514,16 @@
                                             }
                                         }
                                     @endphp
-                                    <td data-column="10">
-                                        <div style="display: flex; flex-direction: column; align-items: flex-start; gap: 2px;">
+                                    <td data-column="10" class="text-center">
+                                        <div style="display: flex; flex-direction: column; align-items: center; gap: 2px;">
                                             <input type="date" data-sku="{{ $item->sku }}" data-column="created_at" value="{{ !empty($item->created_at) ? \Carbon\Carbon::parse($item->created_at)->format('Y-m-d') : '' }}" 
-                                            class="form-control form-control-sm auto-save" style="width: 80px; font-size: 13px; {{ $textColor }}">
+                                            class="form-control form-control-sm auto-save d-none" style="width: 80px; font-size: 13px; {{ $textColor }}">
                                             @if ($daysDiff !== null && !empty($formattedDate))
                                                 <span style="font-size: 11px; {{ $textColor }}; white-space: nowrap; font-weight: 500;">
                                                     {{ $formattedDate }} ({{ $daysDiff }} D)
                                                 </span>
-                                            @endif
-                                        </div>
-                                    </td>
-                                    <td data-column="11">
-                                        @php
-                                            $delFormattedDate = '';
-                                            if (!empty($item->del_date)) {
-                                                $delDate = \Carbon\Carbon::parse($item->del_date);
-                                                $delDay = $delDate->format('d');
-                                                $delMonth = strtoupper($delDate->format('M'));
-                                                $delFormattedDate = $delDay . ' ' . $delMonth;
-                                            }
-                                        @endphp
-                                        <div style="display: flex; flex-direction: column; align-items: flex-start; gap: 2px;">
-                                            <input type="date" data-sku="{{ $item->sku }}" data-column="del_date" 
-                                                value="{{ !empty($item->del_date) ? \Carbon\Carbon::parse($item->del_date)->format('Y-m-d') : '' }}" 
-                                            class="form-control form-control-sm auto-save" style="width: 80px; font-size: 13px;">
-                                            @if (!empty($delFormattedDate))
-                                                <span style="font-size: 11px; color: black; white-space: nowrap; font-weight: 500;">
-                                                    {{ $delFormattedDate }}
-                                                </span>
+                                            @else
+                                                <span class="text-muted" style="font-size: 11px;">-</span>
                                             @endif
                                         </div>
                                     </td>
@@ -725,6 +653,7 @@
     </div>
 </div>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
     document.body.style.zoom = '85%';
 
@@ -746,6 +675,26 @@
         });
     });
 
+    function calculateTotalCBM() {
+        let totalCBM = 0;
+        document.querySelectorAll('table.wide-table tbody tr').forEach(row => {
+            const rowStageAttr = row.getAttribute('data-stage') ? row.getAttribute('data-stage').toLowerCase().trim() : '';
+            const stageSelect = row.querySelector('.editable-select-stage');
+            const rowStageSelect = stageSelect ? stageSelect.value.toLowerCase().trim() : '';
+            const rowStage = rowStageSelect || rowStageAttr;
+            if (rowStage !== 'mip') return;
+            if (row.style.display !== "none") {
+                const input = row.querySelector('input[data-column="total_cbm"]');
+                if (input) {
+                    const value = parseFloat(input.value);
+                    if (!isNaN(value)) totalCBM += value;
+                }
+            }
+        });
+        const el = document.getElementById('total-cbm');
+        if (el) el.textContent = totalCBM.toFixed(2);
+    }
+
     document.addEventListener('DOMContentLoaded', function () {
         document.documentElement.setAttribute("data-sidenav-size", "condensed");
 
@@ -759,8 +708,6 @@
         // Column Visibility
         setupColumnVisibility();
 
-        // Full Table Search
-        setupWholeTableSearch();
 
         // ✅ Column-Specific Filter (Professional Version)
         setupColumnSearch();
@@ -788,7 +735,6 @@
         calculateTotalCBM();
 
         //total order qty
-        calculateTotalOrderQty();
 
         //total amount
         calculateTotalAmount();
@@ -801,6 +747,10 @@
 
         // Delete with checkbox functionality
         setupDeleteWithCheckbox();
+
+        // Summary Export to Excel
+        const summaryExportBtn = document.getElementById('mip-summary-export-btn');
+        if (summaryExportBtn) summaryExportBtn.addEventListener('click', exportMipSummaryToExcel);
 
         // Filter to show only MIP stage on page load
         setTimeout(() => {
@@ -864,153 +814,20 @@
         }
 
         function setupColumnVisibility() {
-            const showAllBtn = document.getElementById('showAllColumns');
-            const dropdownBtn = document.getElementById('columnDropdownBtn');
-            const dropdownContent = document.getElementById('columnDropdownContent');
             const ths = document.querySelectorAll('.wide-table thead th');
-
-            function capitalizeWords(str) {
-                return str.replace(/\w\S*/g, txt => txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase());
-            }
-
-            dropdownBtn.addEventListener('click', function (e) {
-                e.stopPropagation();
-                dropdownContent.classList.toggle('show');
-            });
-
-            window.addEventListener('click', function (e) {
-                if (!e.target.matches('.column-dropdown-btn') && !dropdownContent.contains(e.target)) {
-                    dropdownContent.classList.remove('show');
-                }
-            });
-
-            dropdownContent.innerHTML = '';
-            ths.forEach((th, i) => {
-                const colIndex = i + 1;
-                if (!th) return;
-                const colNameText = th.childNodes[0]?.nodeValue?.trim() || th.textContent?.trim() || `Column ${colIndex}`;
-                const colName = capitalizeWords(colNameText);
-                const item = document.createElement('div');
-                item.className = 'column-checkbox-item';
-                const checkbox = document.createElement('input');
-                checkbox.type = 'checkbox';
-                checkbox.id = `column-${colIndex}`;
-                checkbox.className = 'column-checkbox';
-                checkbox.setAttribute('data-column', colIndex);
-                const label = document.createElement('label');
-                label.htmlFor = `column-${colIndex}`;
-                label.innerHTML = `${colName} <i class="mdi mdi-eye text-primary"></i>`;
-                item.appendChild(checkbox);
-                item.appendChild(label);
-                dropdownContent.appendChild(item);
-            });
-
-            function saveHiddenColumns(hidden) {
-                localStorage.setItem('hiddenColumns_mfrg', JSON.stringify(hidden));
-            }
 
             function getHiddenColumns() {
                 return JSON.parse(localStorage.getItem('hiddenColumns_mfrg') || '[]');
             }
 
             const hiddenColumns = getHiddenColumns();
-            // Ensure column 1 (Image) is always visible - remove it from hidden columns if present
-            if (hiddenColumns.includes('1')) {
-                hiddenColumns.splice(hiddenColumns.indexOf('1'), 1);
-                saveHiddenColumns(hiddenColumns);
-            }
-            
-            document.querySelectorAll('.column-checkbox').forEach(checkbox => {
-                const columnIndex = checkbox.getAttribute('data-column');
-                const th = document.querySelector(`.wide-table thead th[data-column="${columnIndex}"]`);
-                const label = document.querySelector(`label[for="column-${columnIndex}"]`);
-                if (!th || !label) return;
-                const colNameText = th.childNodes[0]?.nodeValue?.trim() || th.textContent?.trim() || `Column ${columnIndex}`;
-                const colName = capitalizeWords(colNameText);
-                
-                // Force column 1 (Image) to always be visible
-                if (columnIndex === '1') {
-                    checkbox.checked = true;
-                    document.querySelectorAll(`[data-column="${columnIndex}"]`).forEach(cell => cell.style.display = '');
-                    label.innerHTML = `${colName} <i class="mdi mdi-eye text-primary"></i>`;
-                } else if (hiddenColumns.includes(columnIndex)) {
-                    checkbox.checked = false;
+            ths.forEach((th) => {
+                const columnIndex = th.getAttribute('data-column');
+                if (!columnIndex) return;
+                if (columnIndex === '1') return;
+                if (hiddenColumns.includes(columnIndex)) {
                     document.querySelectorAll(`[data-column="${columnIndex}"]`).forEach(cell => cell.style.display = 'none');
-                    label.innerHTML = `${colName} <i class="mdi mdi-eye-off text-muted"></i>`;
-                } else {
-                    checkbox.checked = true;
-                    document.querySelectorAll(`[data-column="${columnIndex}"]`).forEach(cell => cell.style.display = '');
-                    label.innerHTML = `${colName} <i class="mdi mdi-eye text-primary"></i>`;
                 }
-            });
-
-            dropdownContent.querySelectorAll('.column-checkbox').forEach(checkbox => {
-                checkbox.addEventListener('change', function () {
-                    const columnIndex = this.getAttribute('data-column');
-                    const th = document.querySelector(`.wide-table thead th[data-column="${columnIndex}"]`);
-                    const label = document.querySelector(`label[for="column-${columnIndex}"]`);
-                    if (!th || !label) return;
-                    
-                    // Prevent hiding column 1 (Image)
-                    if (columnIndex === '1') {
-                        this.checked = true;
-                        alert('Image column cannot be hidden');
-                        return;
-                    }
-                    
-                    const colNameText = th.childNodes[0]?.nodeValue?.trim() || th.textContent?.trim() || `Column ${columnIndex}`;
-                    const colName = capitalizeWords(colNameText);
-                    let hidden = getHiddenColumns();
-                    if (this.checked) {
-                        document.querySelectorAll(`[data-column="${columnIndex}"]`).forEach(cell => cell.style.display = '');
-                        label.innerHTML = `${colName} <i class="mdi mdi-eye text-primary"></i>`;
-                        hidden = hidden.filter(c => c !== columnIndex);
-                    } else {
-                        document.querySelectorAll(`[data-column="${columnIndex}"]`).forEach(cell => cell.style.display = 'none');
-                        label.innerHTML = `${colName} <i class="mdi mdi-eye-off text-muted"></i>`;
-                        if (!hidden.includes(columnIndex)) hidden.push(columnIndex);
-                    }
-                    saveHiddenColumns(hidden);
-                });
-            });
-
-            showAllBtn.addEventListener('click', function () {
-                document.querySelectorAll('.column-checkbox').forEach(checkbox => {
-                    checkbox.checked = true;
-                    const columnIndex = checkbox.getAttribute('data-column');
-                    document.querySelectorAll(`[data-column="${columnIndex}"]`).forEach(cell => cell.style.display = '');
-                    const th = document.querySelector(`.wide-table thead th[data-column="${columnIndex}"]`);
-                    const label = document.querySelector(`label[for="column-${columnIndex}"]`);
-                    if (!th || !label) return;
-                    const colNameText = th.childNodes[0]?.nodeValue?.trim() || th.textContent?.trim() || `Column ${columnIndex}`;
-                    const colName = capitalizeWords(colNameText);
-                    label.innerHTML = `${colName} <i class="mdi mdi-eye text-primary"></i>`;
-                });
-                saveHiddenColumns([]);
-            });
-        }
-
-        function setupWholeTableSearch() {
-            const searchInput = document.getElementById('wholeSearchInput');
-            searchInput.addEventListener('input', function () {
-                const search = this.value.trim().toLowerCase();
-                rows.forEach(row => {
-                    // Check if stage is MIP
-                    const rowStageAttr = row.getAttribute('data-stage') ? row.getAttribute('data-stage').toLowerCase().trim() : '';
-                    const stageSelect = row.querySelector('.editable-select-stage');
-                    const rowStageSelect = stageSelect ? stageSelect.value.toLowerCase().trim() : '';
-                    const rowStage = rowStageSelect || rowStageAttr;
-                    const isMIP = rowStage === 'mip';
-                    
-                    // Only show MIP stage rows
-                    if (!isMIP) {
-                        row.style.display = 'none';
-                        return;
-                    }
-                    
-                    const match = Array.from(row.querySelectorAll('td')).some(td => td.textContent.toLowerCase().includes(search));
-                    row.style.display = match ? '' : 'none';
-                });
             });
         }
 
@@ -1340,7 +1157,6 @@
             // Recalculate totals after filtering
             calculateTotalCBM();
             calculateTotalAmount();
-            calculateTotalOrderQty();
             calculateTotalOrderItems();
             calculateTotalCTNCBM();
             updateFollowSupplierCount();
@@ -1560,7 +1376,6 @@
                             // Recalculate totals
                             calculateTotalCBM();
                             calculateTotalAmount();
-                            calculateTotalOrderQty();
                             calculateTotalOrderItems();
                             calculateTotalCTNCBM();
                             updateFollowSupplierCount();
@@ -1643,7 +1458,6 @@
                     });
                     calculateTotalCBM();
                     calculateTotalAmount();
-                    calculateTotalOrderQty();
                     calculateTotalCTNCBM();
                     return;
                 }
@@ -1740,7 +1554,6 @@
                     // Recalculate totals for all visible rows
                     calculateTotalCBM();
                     calculateTotalAmount();
-                    calculateTotalOrderQty();
                     calculateTotalOrderItems();
                     calculateTotalCTNCBM();
                     updateFollowSupplierCount();
@@ -1805,7 +1618,6 @@
                     const cbm = parseFloat(cbmInput?.value || '0');
 
                     if (!isNaN(cbm)) supplierTotalCBM += cbm;
-                    if (!isNaN(qty)) supplierTotalOrderQty += qty;
                     supplierTotalAmount += rowTotal;
                     supplierTotalItems++;
                     
@@ -1837,10 +1649,9 @@
                 document.getElementById('advance-amount').textContent = totalAdvance.toFixed(2);
                 document.getElementById('pending-amount').textContent = totalPending.toFixed(2);
 
-                // Update supplier cbm and order qty (update main totals with supplier filtered values)
+                // Update supplier cbm (update main totals with supplier filtered values)
                 document.getElementById('total-cbm').textContent = supplierTotalCBM.toFixed(2);
-                document.getElementById('total-order-qty').textContent = supplierTotalOrderQty;
-                document.getElementById('total-amount').textContent = supplierTotalAmount.toFixed(0);
+                document.getElementById('total-amount').textContent = '$' + supplierTotalAmount.toFixed(0);
                 document.getElementById('total-order-items').textContent = supplierTotalItems;
                 document.getElementById('total-ctn-cbm').textContent = supplierTotalCTNCBM.toFixed(2);
 
@@ -2034,10 +1845,6 @@
 
     document.addEventListener("DOMContentLoaded", function () {
         const rows = document.querySelectorAll("table.wide-table tbody tr");
-        const filterSelect = document.getElementById("row-data-pending-status");
-        const greenSpan = document.getElementById("greenCount");
-        const yellowSpan = document.getElementById("yellowCount");
-        const redSpan = document.getElementById("redCount");
 
         const suppliers = [];
         let supplierIndex = 0;
@@ -2133,7 +1940,6 @@
             setTimeout(() => {
                 calculateTotalCBM();
                 calculateTotalAmount();
-                calculateTotalOrderQty();
                 calculateTotalOrderItems();
                 calculateTotalCTNCBM();
                 updateFollowSupplierCount();
@@ -2235,7 +2041,6 @@
             if (title) title.textContent = "-";
             calculateTotalCBM();
             calculateTotalAmount();
-            calculateTotalOrderQty();
             calculateTotalOrderItems();
             calculateTotalCTNCBM();
             updateFollowSupplierCount();
@@ -2310,9 +2115,12 @@
                 }
             });
 
-            greenSpan.textContent = `(${green})`;
-            yellowSpan.textContent = `(${yellow})`;
-            redSpan.textContent = `(${red})`;
+            const greenSpan = document.getElementById("greenCount");
+            const yellowSpan = document.getElementById("yellowCount");
+            const redSpan = document.getElementById("redCount");
+            if (greenSpan) greenSpan.textContent = `(${green})`;
+            if (yellowSpan) yellowSpan.textContent = `(${yellow})`;
+            if (redSpan) redSpan.textContent = `(${red})`;
         }
 
         function filterDateRows(type) {
@@ -2375,7 +2183,6 @@
 
             calculateTotalCBM();
             calculateTotalAmount();
-            calculateTotalOrderQty();
             calculateTotalOrderItems();
             calculateTotalCTNCBM();
             updateFollowSupplierCount();
@@ -2384,10 +2191,6 @@
 
         updateCounts();
         updateFollowSupplierCount();
-
-        filterSelect.addEventListener("change", function () {
-            filterDateRows(this.value);
-        });
 
         // Supplier Remarks Functionality
         let currentSupplierForRemarks = '';
@@ -2526,33 +2329,6 @@
         }
     });
 
-    function calculateTotalCBM() {
-        let totalCBM = 0;
-
-        document.querySelectorAll('table.wide-table tbody tr').forEach(row => {
-            // Check stage from data attribute first (more reliable)
-            const rowStageAttr = row.getAttribute('data-stage') ? row.getAttribute('data-stage').toLowerCase().trim() : '';
-            const stageSelect = row.querySelector('.editable-select-stage');
-            const rowStageSelect = stageSelect ? stageSelect.value.toLowerCase().trim() : '';
-            const rowStage = rowStageSelect || rowStageAttr;
-            
-            // Only count MIP stage rows
-            if (rowStage !== 'mip') {
-                return;
-            }
-            
-            if (row.style.display !== "none") {
-                const input = row.querySelector('input[data-column="total_cbm"]');
-                if (input) {
-                    const value = parseFloat(input.value);
-                    if (!isNaN(value)) totalCBM += value;
-                }
-            }
-        });
-
-        document.getElementById('total-cbm').textContent = totalCBM.toFixed(0);
-    } 
-
     function calculateTotalAmount() {
         let totalAmount = 0;
 
@@ -2579,45 +2355,7 @@
             }
         });
 
-        document.getElementById('total-amount').textContent = totalAmount.toFixed(0);
-    }
-
-    function calculateTotalOrderQty() {
-        let totalOrderQty = 0;
-        document.querySelectorAll('table.wide-table tbody tr').forEach(row => {
-            // Check stage from data attribute first (more reliable)
-            const rowStageAttr = row.getAttribute('data-stage') ? row.getAttribute('data-stage').toLowerCase().trim() : '';
-            const stageSelect = row.querySelector('.editable-select-stage');
-            const rowStageSelect = stageSelect ? stageSelect.value.toLowerCase().trim() : '';
-            const rowStage = rowStageSelect || rowStageAttr;
-            
-            // Only count MIP stage rows
-            if (rowStage !== 'mip') {
-                return;
-            }
-            
-            if (row.style.display !== "none") { 
-                const cell = row.querySelector('td[data-column="4"]');
-                if (cell) {
-                    // Try to get value from input field first
-                    const input = cell.querySelector('input');
-                    let value = 0;
-                    
-                    if (input) {
-                        value = parseFloat(input.value) || 0;
-                    } else {
-                        // Fallback to textContent or data attribute
-                        value = parseFloat(cell.textContent.trim()) || parseFloat(cell.getAttribute('data-qty')) || 0;
-                    }
-                    
-                    if (!isNaN(value)) {
-                        totalOrderQty += value;
-                    }
-                }
-            }
-        });
-
-        document.getElementById('total-order-qty').textContent = totalOrderQty;
+        document.getElementById('total-amount').textContent = '$' + totalAmount.toFixed(0);
     }
 
     function calculateTotalOrderItems() {
@@ -2813,10 +2551,101 @@
         });
         calculateTotalCBM();
         calculateTotalAmount();
-        calculateTotalOrderQty();
         calculateTotalOrderItems();
         calculateTotalCTNCBM();
         updateFollowSupplierCount();
+    }
+
+    function exportMipSummaryToExcel() {
+        const rows = document.querySelectorAll('table.wide-table tbody tr');
+        const exportData = [];
+        rows.forEach(row => {
+            if (row.style.display === 'none') return;
+            const getCellText = (col) => {
+                const cell = row.querySelector(`td[data-column="${col}"]`);
+                if (!cell) return '';
+                const input = cell.querySelector('input, select');
+                if (input) return (input.value || '').trim();
+                return (cell.textContent || '').trim();
+            };
+            const getCellVal = (col) => {
+                const cell = row.querySelector(`td[data-column="${col}"]`);
+                if (!cell) return '';
+                const input = cell.querySelector('input');
+                return input ? (input.value || '').trim() : (cell.textContent || '').trim();
+            };
+            const getImageUrl = (col) => {
+                const cell = row.querySelector(`td[data-column="${col}"]`);
+                if (!cell) return '';
+                const img = cell.querySelector('img');
+                let url = img ? (img.dataset.src || img.src || '').trim() : '';
+                if (url && !url.startsWith('http') && !url.startsWith('//')) {
+                    url = (url.startsWith('/') ? window.location.origin : window.location.origin + '/') + url;
+                }
+                return url;
+            };
+            const orderDateStr = getCellVal('10');
+            let daysDiff = '';
+            let orderDateFormatted = '';
+            if (orderDateStr) {
+                const orderDate = new Date(orderDateStr);
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+                orderDate.setHours(0, 0, 0, 0);
+                daysDiff = Math.floor((today - orderDate) / (1000 * 60 * 60 * 24));
+                const d = String(orderDate.getDate()).padStart(2, '0');
+                const m = String(orderDate.getMonth() + 1).padStart(2, '0');
+                const y = String(orderDate.getFullYear()).slice(-2);
+                orderDateFormatted = d + '-' + m + '-' + y;
+            }
+            exportData.push({
+                'SKU': getCellText('3'),
+                'Image': getImageUrl('1'),
+                'QTY': getCellVal('4'),
+                'Order Date': orderDateFormatted,
+                'Days': daysDiff !== '' ? daysDiff : ''
+            });
+        });
+        if (exportData.length === 0) {
+            alert('No data to export.');
+            return;
+        }
+        try {
+            const supplierBadge = document.getElementById('supplier-badge-container');
+            const supplierEl = document.getElementById('current-supplier');
+            const supplierName = (supplierBadge && supplierBadge.style.display !== 'none' && supplierEl) ? supplierEl.textContent.trim() : 'All supplier';
+            const itemsCount = exportData.length;
+
+            const headerRows = [
+                ['Supplier', supplierName],
+                ['Items', itemsCount],
+                [],
+                ['SKU', 'Image', 'QTY', 'Order Date', 'Days']
+            ];
+            const dataRows = exportData.map(r => [r['SKU'], r['Image'], r['QTY'], r['Order Date'], r['Days']]);
+            const aoa = [...headerRows, ...dataRows];
+
+            const ws = XLSX.utils.aoa_to_sheet(aoa);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, 'MIP Summary');
+            const dateStr = new Date().toISOString().split('T')[0];
+
+            const imageUrls = exportData.map(r => r['Image']).filter(url => url);
+            if (imageUrls.length > 0) {
+                const urlsJson = JSON.stringify([...new Set(imageUrls)]);
+                const html = '<!DOCTYPE html><html><head><meta charset="utf-8"><title>MIP Summary ' + dateStr + '</title><style>body{font-family:Arial,sans-serif;padding:20px;}table{border-collapse:collapse;width:100%;margin-top:20px;}th,td{border:1px solid #ddd;padding:8px;text-align:left;}th{background:#3bc0c3;color:#fff;}</style></head><body><h2>MIP Summary - ' + dateStr + '</h2><p><strong>Supplier:</strong> ' + supplierName.replace(/&/g,'&amp;').replace(/</g,'&lt;') + ' | <strong>Items:</strong> ' + itemsCount + '</p><table><thead><tr><th>SKU</th><th>Image</th><th>QTY</th><th>Order Date</th><th>Days</th></tr></thead><tbody>' + exportData.map(r => '<tr><td>' + (r['SKU']||'').replace(/&/g,'&amp;').replace(/</g,'&lt;') + '</td><td>' + (r['Image'] ? '<a href="' + r['Image'].replace(/"/g,'&quot;') + '" target="_blank">View</a>' : '') + '</td><td>' + (r['QTY']||'') + '</td><td>' + (r['Order Date']||'') + '</td><td>' + (r['Days']||'') + '</td></tr>').join('') + '</tbody></table><script>var urls=' + urlsJson + ';var i=0;function openNext(){if(i<urls.length){window.open(urls[i],"_blank");i++;setTimeout(openNext,800);}}setTimeout(openNext,1000);<\/script></body></html>';
+                const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'MIP_Summary_' + dateStr + '.html';
+                a.click();
+                URL.revokeObjectURL(url);
+            }
+            XLSX.writeFile(wb, 'MIP_Summary_' + dateStr + '.xlsx');
+        } catch (e) {
+            alert('Export failed: ' + (e.message || e));
+        }
     }
 
     // Initialize filter on page load

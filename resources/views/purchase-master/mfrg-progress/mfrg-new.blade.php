@@ -175,23 +175,15 @@
 
                         {{-- total amount --}}
                         <div class="col-auto">
-                            <label class="form-label fw-semibold mb-1 d-block">💰 Total Amount</label>
+                            <label class="form-label fw-semibold mb-1 d-block">💰 Amount</label>
                             <div id="totalAmount" class="fw-bold text-primary" style="font-size: 1.1rem;">
                                 00
                             </div>
                         </div>
 
-                        {{-- Ordered Items --}}
+                        {{-- 📦 CBM --}}
                         <div class="col-auto">
-                            <label class="form-label fw-semibold mb-1 d-block">Total Order Qty</label>
-                            <div id="pendingItemsCount" class="fw-bold text-primary" style="font-size: 1.1rem;">
-                                00
-                            </div>
-                        </div>
-
-                        {{-- 📦 Total CBM --}}
-                        <div class="col-auto">
-                            <label class="form-label fw-semibold mb-1 d-block">📦 Total CBM</label>
+                            image.png                            <label class="form-label fw-semibold mb-1 d-block">📦 CBM</label>
                             <div id="totalCBM" class="fw-bold text-success" style="font-size: 1.1rem;">
                                 00
                             </div>
@@ -311,7 +303,7 @@
                         headerFilterLiveFilter: true,
                     },
                     {
-                        title: "Order Qty",
+                        title: "QTY",
                         field: "qty",
                         hozAlign: "center",
                         formatter: function (cell) {
@@ -403,34 +395,6 @@
 
                             // setTimeout(() => {
                             //     const input = cell.getElement().querySelector(".order_date_input");
-                            //     if (input) {
-                            //         input.addEventListener("change", function () {
-                            //             const newValue = this.value;
-                            //             saveLinkUpdate(cell, newValue);
-                            //         });
-                            //     }
-                            // }, 10);
-
-                            return html;
-                        }
-                    },
-                    {
-                        title: "Del Date",
-                        field: "del_date",
-                        hozAlign: "center",
-                        formatter: function (cell) {
-                            const rawValue = cell.getValue() || "";
-                            const formattedDate = rawValue ? new Date(rawValue).toISOString().split('T')[0] : "";
-                            const rowData = cell.getRow().getData();
-
-                            const html = `
-                                <div style="display: flex; flex-direction: column; align-items: flex-start;">
-                                    <input type="date" class="form-control form-control-sm del_date_input" value="${formattedDate}" style="width:82px;">
-                                </div>
-                            `;
-
-                            // setTimeout(() => {
-                            //     const input = cell.getElement().querySelector(".del_date_input");
                             //     if (input) {
                             //         input.addEventListener("change", function () {
                             //             const newValue = this.value;

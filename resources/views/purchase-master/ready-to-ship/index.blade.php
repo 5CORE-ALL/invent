@@ -217,19 +217,10 @@
                         <div class="d-flex align-items-center justify-content-between" style="flex-wrap: nowrap; gap: 0; overflow-x: auto;">
                             <div class="text-center flex-fill" style="min-width: 110px;">
                                 <div class="text-muted mb-1" style="font-size: 0.75rem; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase;">
-                                    💰 Total Amount
+                                    💰 Amount
                                 </div>
                                 <div id="total-amount" class="fw-bold text-dark" style="font-size: 2.5rem; line-height: 1.2; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
-                                    0
-                                </div>
-                            </div>
-                            <div class="vr mx-3" style="height: 50px; width: 1px; background: linear-gradient(to bottom, transparent, #dee2e6, transparent);"></div>
-                            <div class="text-center flex-fill" style="min-width: 110px;">
-                                <div class="text-muted mb-1" style="font-size: 0.75rem; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase;">
-                                    📦 Total Ord. Qty
-                                </div>
-                                <div id="total-order-qty" class="fw-bold text-info" style="font-size: 2.5rem; line-height: 1.2; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
-                                    0
+                                    $0
                                 </div>
                             </div>
                             <div class="vr mx-3" style="height: 50px; width: 1px; background: linear-gradient(to bottom, transparent, #dee2e6, transparent);"></div>
@@ -244,7 +235,7 @@
                             <div class="vr mx-3" style="height: 50px; width: 1px; background: linear-gradient(to bottom, transparent, #dee2e6, transparent);"></div>
                             <div class="text-center flex-fill" style="min-width: 110px;">
                                 <div class="text-muted mb-1" style="font-size: 0.75rem; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase;">
-                                    🔢 Total Items
+                                    🔢 Items
                                 </div>
                                 <div id="total-order-items" class="fw-bold text-warning" style="font-size: 2.5rem; line-height: 1.2; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
                                     0
@@ -253,7 +244,7 @@
                             <div class="vr mx-3" style="height: 50px; width: 1px; background: linear-gradient(to bottom, transparent, #dee2e6, transparent);"></div>
                             <div class="text-center flex-fill" style="min-width: 110px;">
                                 <div class="text-muted mb-1" style="font-size: 0.75rem; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase;">
-                                    📦 Total CTN CBM
+                                    📦 CTN CBM
                                 </div>
                                 <div id="total-ctn-cbm" class="fw-bold text-primary" style="font-size: 2.5rem; line-height: 1.2; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
                                     0
@@ -262,7 +253,7 @@
                             <div class="vr mx-3" style="height: 50px; width: 1px; background: linear-gradient(to bottom, transparent, #dee2e6, transparent);"></div>
                             <div class="text-center flex-fill" style="min-width: 110px;">
                                 <div class="text-muted mb-1" style="font-size: 0.75rem; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase;">
-                                    👥 Follow Supplier
+                                    👥 Suppliers
                                 </div>
                                 <div id="followSupplierCount" class="fw-bold text-danger" style="font-size: 2.5rem; line-height: 1.2; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: #dc3545;">
                                     0
@@ -1234,7 +1225,6 @@
         setTimeout(() => {
             calculateTotalCBM();
             calculateTotalAmount();
-            calculateTotalOrderQty();
             calculateTotalOrderItems();
             calculateTotalCTNCBM();
             updateFollowSupplierCount();
@@ -1291,7 +1281,6 @@
                     });
                     calculateTotalCBM();
                     calculateTotalAmount();
-                    calculateTotalOrderQty();
                     calculateTotalOrderItems();
                     calculateTotalCTNCBM();
                     updateFollowSupplierCount();
@@ -1358,7 +1347,6 @@
                 if (selectedValue === '__all_suppliers__' || selectedSupplier === 'Supplier') {
                     calculateTotalCBM();
                     calculateTotalAmount();
-                    calculateTotalOrderQty();
                     calculateTotalOrderItems();
                     calculateTotalCTNCBM();
                     updateFollowSupplierCount();
@@ -1421,7 +1409,6 @@
 
                 calculateTotalCBM();
                 calculateTotalAmount();
-                calculateTotalOrderQty();
                 calculateTotalOrderItems();
                 calculateTotalCTNCBM();
                 updateFollowSupplierCount();
@@ -1473,7 +1460,6 @@
         function calculateSupplierTotals(visibleRows) {
             let totalAmount = 0;
             let totalCBM = 0;
-            let totalOrderQty = 0;
 
             visibleRows.forEach(row => {
                 // Amount
@@ -1485,16 +1471,10 @@
                 const cbmCell = row.querySelector('[data-column="19"]');
                 const cbmValue = parseFloat(cbmCell?.textContent.trim());
                 if (!isNaN(cbmValue)) totalCBM += cbmValue;
-
-                // Order Qty
-                const qtyInput = row.querySelector('td[data-column="4"] input');
-                const qtyValue = parseFloat(qtyInput?.value || qtyInput?.textContent || 0);
-                if (!isNaN(qtyValue)) totalOrderQty += qtyValue;
             });
 
-            document.getElementById('total-amount').textContent = totalAmount.toFixed(0);
+            document.getElementById('total-amount').textContent = '$' + totalAmount.toFixed(0);
             document.getElementById('total-cbm').textContent = totalCBM.toFixed(0);
-            document.getElementById('total-order-qty').textContent = totalOrderQty;
         }
 
         // Zone filter event listener
@@ -1598,33 +1578,7 @@
             }
         });
         const totalAmountEl = document.getElementById('total-amount');
-        if (totalAmountEl) totalAmountEl.textContent = totalAmount.toFixed(0);
-    }
-
-    function calculateTotalOrderQty() {
-        let totalOrderQty = 0;
-        document.querySelectorAll('table.wide-table tbody tr').forEach(row => {
-            const rowStageAttr = row.getAttribute('data-stage') ? row.getAttribute('data-stage').toLowerCase().trim() : '';
-            const stageSelect = row.querySelector('.editable-select-stage');
-            const rowStageSelect = stageSelect ? stageSelect.value.toLowerCase().trim() : '';
-            const rowStage = rowStageSelect || rowStageAttr;
-            if (rowStage !== 'r2s') return;
-            if (row.style.display !== "none") {
-                const cell = row.querySelector('td[data-column="4"]');
-                if (cell) {
-                    const input = cell.querySelector('input');
-                    let value = 0;
-                    if (input) {
-                        value = parseFloat(input.value) || 0;
-                    } else {
-                        value = parseFloat(cell.textContent.trim()) || parseFloat(cell.getAttribute('data-qty')) || 0;
-                    }
-                    if (!isNaN(value)) totalOrderQty += value;
-                }
-            }
-        });
-        const totalOrderQtyEl = document.getElementById('total-order-qty');
-        if (totalOrderQtyEl) totalOrderQtyEl.textContent = totalOrderQty;
+        if (totalAmountEl) totalAmountEl.textContent = '$' + totalAmount.toFixed(0);
     }
 
     function calculateTotalOrderItems() {
@@ -1882,7 +1836,6 @@
             setTimeout(() => {
                 calculateTotalCBM();
                 calculateTotalAmount();
-                calculateTotalOrderQty();
                 calculateTotalOrderItems();
                 calculateTotalCTNCBM();
                 updateFollowSupplierCount();
@@ -1916,7 +1869,6 @@
             setTimeout(() => {
                 calculateTotalCBM();
                 calculateTotalAmount();
-                calculateTotalOrderQty();
                 calculateTotalOrderItems();
                 calculateTotalCTNCBM();
                 updateFollowSupplierCount();
@@ -1962,7 +1914,6 @@
                 if (title) title.textContent = "-";
                 calculateTotalCBM();
                 calculateTotalAmount();
-                calculateTotalOrderQty();
                 calculateTotalOrderItems();
                 calculateTotalCTNCBM();
                 updateFollowSupplierCount();
@@ -1983,7 +1934,6 @@
                     setTimeout(() => {
                         calculateTotalCBM();
                         calculateTotalAmount();
-                        calculateTotalOrderQty();
                         calculateTotalOrderItems();
                         calculateTotalCTNCBM();
                         updateFollowSupplierCount();
@@ -2030,7 +1980,6 @@
         setTimeout(() => {
             calculateTotalCBM();
             calculateTotalAmount();
-            calculateTotalOrderQty();
             calculateTotalOrderItems();
             calculateTotalCTNCBM();
             updateFollowSupplierCount();
