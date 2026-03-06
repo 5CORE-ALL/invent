@@ -752,10 +752,15 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
             'access_token_exists' => ! empty(config('services.temu.access_token')),
         ]);
 
-        $skuListField = config('services.temu.update_sku_list_field', 'skuInfoList');
+        $skuListField = config('services.temu.update_sku_list_field', 'skuList');
         $goodsBasicField = config('services.temu.goods_basic_field', 'goodsBasic');
         $skuIdField = config('services.temu.sku_id_field', 'skuId');
         $skuCodeField = config('services.temu.sku_code_field', 'outSkuSn');
+
+        Log::info('Temu - Config for updateTitle', [
+            'sku_list_field' => $skuListField,
+            'goods_basic_field' => $goodsBasicField,
+        ]);
 
         $requestBody = [
             'type' => $apiType,
@@ -788,16 +793,17 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
             ];
             $requestBody[$skuListField] = [$skuEntry];
 
-            Log::info('Temu - Full SKU entry', [
+            Log::info('Temu - Full SKU entry (field name: ' . $skuListField . ')', [
                 'sku' => $sku,
                 'skuEntry' => $skuEntry,
             ]);
         }
 
-        Log::info('Temu updateTitle request', [
+        Log::info('Temu updateTitle - exact request body (field name: ' . $skuListField . ')', [
             'sku' => $sku,
             'goodsId' => $goodsId,
             'body' => $requestBody,
+            'body_json' => json_encode($requestBody, JSON_UNESCAPED_UNICODE),
         ]);
 
         $signedRequest = $this->generateSignValue($requestBody);
@@ -835,11 +841,13 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
                 ]);
             }
             if ($isAddSkuError) {
-                Log::warning('Temu API "Add at least one SKU". Request now includes outGoodsSn and skuInfoList when skuId is available. If still failing, check Temu docs for exact skuInfoList structure.', [
+                Log::warning('Temu API "Add at least one SKU" - SKU fields may not be recognized. Official docs use skuList (not skuInfoList). Try TEMU_UPDATE_SKU_LIST_FIELD=skuList in .env if using skuInfoList.', [
                     'sku' => $sku,
                     'goodsId' => $goodsId,
+                    'sku_list_field_used' => $skuListField ?? config('services.temu.update_sku_list_field'),
                     'skuInfo' => $skuInfo ?? null,
                     'requestBody_keys' => array_keys($requestBody),
+                    'requestBody' => $requestBody,
                 ]);
             }
             if ((int) $errorCode === 3000003) {
