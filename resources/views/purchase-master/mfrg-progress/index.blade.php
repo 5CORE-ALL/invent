@@ -3,53 +3,6 @@
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 <link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
 <style>
-    .custom-select-wrapper {
-        position: relative;
-        font-family: 'Inter', 'Segoe UI', Arial, sans-serif;
-    }
-    .custom-select-box {
-        transition: border-color 0.18s, box-shadow 0.18s;
-        background: #fff;
-    }
-    .custom-select-box.active, .custom-select-box:focus-within {
-        border-color: #3bc0c3;
-        box-shadow: 0 0 0 2px #3bc0c340;
-    }
-    .custom-select-dropdown {
-        animation: fadeIn 0.18s;
-    }
-    @keyframes fadeIn {
-        from { opacity: 0; transform: translateY(-8px);}
-        to { opacity: 1; transform: translateY(0);}
-    }
-    .custom-select-option {
-        cursor: pointer;
-        font-size: 1rem;
-        transition: background 0.13s, color 0.13s;
-        margin: 0 4px;
-        color: #222;
-        background: #fff;
-        border-radius: 6px;
-        user-select: none;
-    }
-    .custom-select-option.selected,
-    .custom-select-option:hover,
-    .custom-select-option.bg-primary {
-        background: #3bc0c3 !important;
-        color: #fff !important;
-    }
-    .custom-select-option:not(:last-child) {
-        margin-bottom: 2px;
-    }
-    .custom-select-dropdown::-webkit-scrollbar {
-        width: 7px;
-        background: #f4f6fa;
-        border-radius: 6px;
-    }
-    .custom-select-dropdown::-webkit-scrollbar-thumb {
-        background: #e0e6ed;
-        border-radius: 6px;
-    }
     .preview-popup {
         position: fixed;
         display: none;
@@ -160,45 +113,6 @@
                             <button class="btn btn-danger d-flex align-items-center gap-1" id="deleteSelectedBtn" style="border-radius: 6px; display: none;">
                                 <i class="mdi mdi-delete"></i> Delete
                             </button>
-                            <div class="custom-select-wrapper" style="min-width: 140px; position: relative;">
-                                <div class="custom-select-box d-flex align-items-center justify-content-between" id="customSelectBox"
-                                    style="border: 1.5px solid #e0e6ed; border-radius: 7px; background: #fff; height: 38px; padding: 0 14px; cursor: pointer; box-shadow: 0 1px 4px rgba(60,192,195,0.07); transition: border-color 0.2s;">
-                                    <span id="customSelectSelectedText" class="flex-grow-1 text-truncate" style="font-size: 0.9rem; color: #222;">All supplier</span>
-                                    <i class="mdi mdi-menu-down" style="font-size: 1.2rem; color: #3bc0c3;"></i>
-                                </div>
-                                <div class="custom-select-dropdown shadow" id="customSelectDropdown"
-                                    style="display: none; position: absolute; z-index: 30; background: #fff; min-width: 220px; max-width: 320px; border-radius: 10px; border: 1.5px solid #e0e6ed; margin-top: 4px;">
-                                    <div class="p-2 border-bottom" style="background: #f8f9fa; border-radius: 10px 10px 0 0;">
-                                        <input type="text" class="form-control border-0 shadow-none" id="customSelectSearchInput"
-                                            placeholder="🔍 Search supplier..." style="font-size: 0.97rem; height: 32px; border-radius: 6px; background: #f4f6fa;">
-                                    </div>
-                                    <div id="customSelectOptions" style="max-height: 160px; overflow-y: auto; padding: 2px 0;">
-                                        <div class="custom-select-option px-3 py-2 rounded" data-value="">All supplier</div>
-                                        <div class="custom-select-option px-3 py-2 rounded" data-value="__all_suppliers__" style="font-weight: 600; border-bottom: 1px solid #e0e6ed; margin-bottom: 4px;">Supplier</div>
-                                        @foreach ($suppliers as $item)
-                                            <div class="custom-select-option px-3 py-2 rounded" data-value="">{{ $item }}</div>
-                                        @endforeach
-                                    </div>
-                                </div>
-                            </div>
-                            <div id="advance-total-wrapper" style="display: none;">
-                                <div id="advance-total-display" class="py-1 px-2 rounded shadow-sm d-inline-flex align-items-center gap-2 flex-wrap"
-                                    style="background: linear-gradient(90deg, #e6f4f1 60%, #f8f9fa 100%); color: #10635b; font-weight: 600; font-size: 14px; border: 1.5px solid #3bc0c3; box-shadow: 0 2px 8px rgba(60,192,195,0.08);">
-                                    <div class="d-flex align-items-center gap-2" style="min-width: 140px;">
-                                        <span class="rounded-circle d-flex align-items-center justify-content-center" style="background: #d1f2eb; width: 32px; height: 32px;">
-                                            <i class="mdi mdi-cash-multiple" style="font-size: 18px; color: #10b39c;"></i>
-                                        </span>
-                                        <span><span style="font-size: 11px; color: #23979b;">Total Advance</span><br><span style="font-size: 14px; color: #10635b;">$ <span id="advance-amount">0</span></span></span>
-                                    </div>
-                                    <div class="vr" style="height: 32px; width: 1px; background: #cde7e2; margin: 0 8px;"></div>
-                                    <div class="d-flex align-items-center gap-2" style="min-width: 140px;">
-                                        <span class="rounded-circle d-flex align-items-center justify-content-center" style="background: #ffeaea; width: 32px; height: 32px;">
-                                            <i class="mdi mdi-alert-decagram" style="font-size: 18px; color: #ff6b6b;"></i>
-                                        </span>
-                                        <span><span style="font-size: 11px; color: #ff6b6b;">Total Pending</span><br><span style="font-size: 14px; color: #b23c3c;">$ <span id="pending-amount">0</span></span></span>
-                                    </div>
-                                </div>
-                            </div>
                         </div>
 
                         <!-- Stats Section - Equal width, spread from left to right -->
@@ -297,16 +211,17 @@
                                     <input type="text" class="form-control column-search" data-search-column="3" placeholder="Search SKU..." style="margin-top:4px; font-size:12px; height:28px; width: 150px;">
                                     <div class="search-results" data-results-column="3" style="position:relative; z-index:10;"></div>
                                 </th>
-                                <th data-column="17" class="text-center">Stage<div class="resizer"></div></th>
                                 <th data-column="18" class="text-center" hidden>NRP<div class="resizer"></div></th>
                                 <th data-column="4" class="text-center">QTY<div class="resizer"></div></th>
+                                <th data-column="10" class="text-center">Order<br/>Date<div class="resizer"></div></th>
                                 <th data-column="5" hidden>Rate<div class="resizer"></div></th>
-                                <th data-column="6" class="text-center" style="width: 150px; min-width: 150px; max-width: 150px;">Supplier<div class="resizer"></div></th>
+                                <th data-column="6" class="text-center" style="width: 150px; min-width: 150px; max-width: 150px;">Supplier<div class="resizer"></div>
+                                    <input type="text" class="form-control column-search" data-search-column="6" placeholder="Search Supplier..." style="margin-top:4px; font-size:12px; height:28px; min-width: 120px;">
+                                </th>
                                 <th data-column="7" hidden>Advance<br/>Amt<div class="resizer"></div></th>
                                 <th data-column="8" hidden>Adv<br/>Date<div class="resizer"></div></th>
                                 <th data-column="9" hidden>pay conf.<br/>date<div class="resizer"></div></th>
                                 {{-- <th data-column="9">pay term<div class="resizer"></div></th> --}}
-                                <th data-column="10" class="text-center">Order<br/>Date<div class="resizer"></div></th>
                                 {{-- <th data-column="12">O Links<div class="resizer"></div></th> --}}
                                 <th data-column="12" hidden>value<div class="resizer"></div></th>
                                 <th data-column="13" hidden>Payment<br/>Pending<div class="resizer"></div></th>
@@ -315,6 +230,7 @@
                                 <th data-column="14">CBM<div class="resizer"></div></th>
                                 <th data-column="15" hidden>total<br/>cbm<div class="resizer"></div></th>
                                 <th data-column="20" class="text-center">CTN CBM E<div class="resizer"></div></th>
+                                <th data-column="17" class="text-center">Stage<div class="resizer"></div></th>
                                 {{-- <th data-column="19" class="text-center">BARCODE<br/>&<br/>SKU<div class="resizer"></div></th> --}}
                                 {{-- <th data-column="20">artwork<br/>&<br/>maual<br/>book<div class="resizer"></div></th> --}}
                                 {{-- <th data-column="21">notes<div class="resizer"></div></th> --}}
@@ -357,34 +273,6 @@
                                     <td data-column="3" class="text-center">
                                         {{ $item->sku ?? '' }}
                                     </td>
-                                    <td data-column="17" class="text-center">
-                                        @php
-                                            $stageValue = $item->stage ?? '';
-                                            $bgColor = '#fff';
-                                            if ($stageValue === 'to_order_analysis') {
-                                                $bgColor = '#ffc107'; // Yellow
-                                            } elseif ($stageValue === 'mip') {
-                                                $bgColor = '#ADD8E6'; // Light Blue
-                                            } elseif ($stageValue === 'r2s') {
-                                                $bgColor = '#90EE90'; // Light Green
-                                            }
-                                        @endphp
-                                        <select class="form-select form-select-sm editable-select-stage" 
-                                            data-type="Stage"
-                                            data-sku="{{ $item->sku }}"
-                                            data-parent="{{ $item->parent ?? '' }}"
-                                            style="width: auto; min-width: 100px; padding: 4px 24px 4px 8px;
-                                                font-size: 0.875rem; border-radius: 4px; border: 1px solid #dee2e6;
-                                                background-color: {{ $bgColor }}; color: #000;">
-                                            <option value="">Select</option>
-                                            <option value="appr_req" {{ $stageValue === 'appr_req' ? 'selected' : '' }}>Appr. Req</option>
-                                            <option value="mip" {{ $stageValue === 'mip' ? 'selected' : '' }}>MIP</option>
-                                            <option value="r2s" {{ $stageValue === 'r2s' ? 'selected' : '' }}>R2S</option>
-                                            <option value="transit" {{ $stageValue === 'transit' ? 'selected' : '' }}>Transit</option>
-                                            <option value="all_good" {{ $stageValue === 'all_good' ? 'selected' : '' }}>😊 All Good</option>
-                                            <option value="to_order_analysis" {{ $stageValue === 'to_order_analysis' ? 'selected' : '' }}>2 Order</option>
-                                        </select>
-                                    </td>
                                     <td data-column="18" class="text-center" hidden>
                                         @php
                                             $nrValue = strtoupper(trim($item->nr ?? ''));
@@ -426,6 +314,42 @@
                                             readonly
                                             style="width:80px; text-align:center; background-color: #e9ecef; cursor: not-allowed; border: none;"
                                             class="form-control form-control-sm">
+                                    </td>
+                                    @php
+                                        $textColor = '';
+                                        $daysDiff = null;
+                                        $formattedDate = '';
+
+                                        if (!empty($item->created_at)) {
+                                            $date = \Carbon\Carbon::parse($item->created_at);
+                                            $daysDiff = $date->diffInDays(\Carbon\Carbon::today());
+                                            
+                                            // Format date with 3-letter month in uppercase: 15 DEC (without year)
+                                            $day = $date->format('d');
+                                            $month = strtoupper($date->format('M')); // M gives 3-letter month like Jan, Feb - convert to uppercase
+                                            $formattedDate = $day . ' ' . $month;
+
+                                            if ($daysDiff > 25) {
+                                                $textColor = 'color: red;';
+                                            } elseif ($daysDiff >= 15 && $daysDiff <= 25) {
+                                                $textColor = 'color: #ffc107;'; // Yellow text
+                                            } else {
+                                                $textColor = 'color: black;';
+                                            }
+                                        }
+                                    @endphp
+                                    <td data-column="10" class="text-center">
+                                        <div style="display: flex; flex-direction: column; align-items: center; gap: 2px;">
+                                            <input type="date" data-sku="{{ $item->sku }}" data-column="created_at" value="{{ !empty($item->created_at) ? \Carbon\Carbon::parse($item->created_at)->format('Y-m-d') : '' }}" 
+                                            class="form-control form-control-sm auto-save d-none" style="width: 80px; font-size: 13px; {{ $textColor }}">
+                                            @if ($daysDiff !== null && !empty($formattedDate))
+                                                <span style="font-size: 11px; {{ $textColor }}; white-space: nowrap; font-weight: 500;">
+                                                    {{ $formattedDate }} ({{ $daysDiff }} D)
+                                                </span>
+                                            @else
+                                                <span class="text-muted" style="font-size: 11px;">-</span>
+                                            @endif
+                                        </div>
                                     </td>
                                     <td data-column="5" hidden>
                                         <div class="input-group input-group-sm" style="width:105px;">
@@ -490,42 +414,6 @@
                                     <td data-column="9" hidden>
                                         <input type="date" value="{{ !empty($item->pay_conf_date) ? \Carbon\Carbon::parse($item->pay_conf_date)->format('Y-m-d') : '' }}" data-sku="{{ $item->sku }}"
                                          data-column="pay_conf_date" class="form-control form-control-sm auto-save" style="width: 80px; font-size: 13px;">
-                                    </td>
-                                    @php
-                                        $textColor = '';
-                                        $daysDiff = null;
-                                        $formattedDate = '';
-
-                                        if (!empty($item->created_at)) {
-                                            $date = \Carbon\Carbon::parse($item->created_at);
-                                            $daysDiff = $date->diffInDays(\Carbon\Carbon::today());
-                                            
-                                            // Format date with 3-letter month in uppercase: 15 DEC (without year)
-                                            $day = $date->format('d');
-                                            $month = strtoupper($date->format('M')); // M gives 3-letter month like Jan, Feb - convert to uppercase
-                                            $formattedDate = $day . ' ' . $month;
-
-                                            if ($daysDiff > 25) {
-                                                $textColor = 'color: red;';
-                                            } elseif ($daysDiff >= 15 && $daysDiff <= 25) {
-                                                $textColor = 'color: #ffc107;'; // Yellow text
-                                            } else {
-                                                $textColor = 'color: black;';
-                                            }
-                                        }
-                                    @endphp
-                                    <td data-column="10" class="text-center">
-                                        <div style="display: flex; flex-direction: column; align-items: center; gap: 2px;">
-                                            <input type="date" data-sku="{{ $item->sku }}" data-column="created_at" value="{{ !empty($item->created_at) ? \Carbon\Carbon::parse($item->created_at)->format('Y-m-d') : '' }}" 
-                                            class="form-control form-control-sm auto-save d-none" style="width: 80px; font-size: 13px; {{ $textColor }}">
-                                            @if ($daysDiff !== null && !empty($formattedDate))
-                                                <span style="font-size: 11px; {{ $textColor }}; white-space: nowrap; font-weight: 500;">
-                                                    {{ $formattedDate }} ({{ $daysDiff }} D)
-                                                </span>
-                                            @else
-                                                <span class="text-muted" style="font-size: 11px;">-</span>
-                                            @endif
-                                        </div>
                                     </td>
                                     {{-- <td data-column="12">
                                         <div class="input-group input-group-sm align-items-center" style="gap: 4px;">
@@ -606,7 +494,34 @@
                                     <td data-column="20" class="text-center">
                                         {{ isset($item->ctn_cbm_e) && $item->ctn_cbm_e !== null ? number_format($item->ctn_cbm_e, 4) : 'N/A' }}
                                     </td>
-
+                                    <td data-column="17" class="text-center">
+                                        @php
+                                            $stageValue = $item->stage ?? '';
+                                            $bgColor = '#fff';
+                                            if ($stageValue === 'to_order_analysis') {
+                                                $bgColor = '#ffc107'; // Yellow
+                                            } elseif ($stageValue === 'mip') {
+                                                $bgColor = '#ADD8E6'; // Light Blue
+                                            } elseif ($stageValue === 'r2s') {
+                                                $bgColor = '#90EE90'; // Light Green
+                                            }
+                                        @endphp
+                                        <select class="form-select form-select-sm editable-select-stage" 
+                                            data-type="Stage"
+                                            data-sku="{{ $item->sku }}"
+                                            data-parent="{{ $item->parent ?? '' }}"
+                                            style="width: auto; min-width: 100px; padding: 4px 24px 4px 8px;
+                                                font-size: 0.875rem; border-radius: 4px; border: 1px solid #dee2e6;
+                                                background-color: {{ $bgColor }}; color: #000;">
+                                            <option value="">Select</option>
+                                            <option value="appr_req" {{ $stageValue === 'appr_req' ? 'selected' : '' }}>Appr. Req</option>
+                                            <option value="mip" {{ $stageValue === 'mip' ? 'selected' : '' }}>MIP</option>
+                                            <option value="r2s" {{ $stageValue === 'r2s' ? 'selected' : '' }}>R2S</option>
+                                            <option value="transit" {{ $stageValue === 'transit' ? 'selected' : '' }}>Transit</option>
+                                            <option value="all_good" {{ $stageValue === 'all_good' ? 'selected' : '' }}>😊 All Good</option>
+                                            <option value="to_order_analysis" {{ $stageValue === 'to_order_analysis' ? 'selected' : '' }}>2 Order</option>
+                                        </select>
+                                    </td>
                                     <td data-column="15" hidden>
                                         <input type="number"
                                             data-sku="{{ $item->sku }}"
@@ -721,15 +636,22 @@
 
         // Filter to show only MIP stage on page load
         filterByMIPStage();
+        // Sort visible MIP rows by order date (oldest first)
+        const visibleMipRows = Array.from(rows).filter(r => {
+            const stageAttr = (r.getAttribute('data-stage') || '').toLowerCase().trim();
+            const stageSelect = r.querySelector('.editable-select-stage');
+            const stage = (stageSelect ? stageSelect.value : '').toLowerCase().trim() || stageAttr;
+            return stage === 'mip' && r.style.display !== 'none';
+        });
+        if (visibleMipRows.length > 0 && typeof sortRowsByOrderDate === 'function') {
+            sortRowsByOrderDate(visibleMipRows);
+        }
 
         // Currency Conversion
         setupCurrencyConversion();
 
         // Open/Edit O Links
         setupOlinkEditor();
-
-        // Supplier Wise Advance + Pending
-        setupSupplierAdvanceCalculation();
 
         // Total CBM calculation
         calculateTotalCBM();
@@ -755,6 +677,15 @@
         // Filter to show only MIP stage on page load
         setTimeout(() => {
             filterByMIPStage();
+            const visibleMip = Array.from(rows).filter(r => {
+                const stageAttr = (r.getAttribute('data-stage') || '').toLowerCase().trim();
+                const stageSelect = r.querySelector('.editable-select-stage');
+                const stage = (stageSelect ? stageSelect.value : '').toLowerCase().trim() || stageAttr;
+                return stage === 'mip' && r.style.display !== 'none';
+            });
+            if (visibleMip.length > 0 && typeof sortRowsByOrderDate === 'function') {
+                sortRowsByOrderDate(visibleMip);
+            }
         }, 100);
 
         // ========= FUNCTIONS ========= //
@@ -861,13 +792,31 @@
                         let show = true;
                         for (const col in filters) {
                             const cell = row.querySelector(`td[data-column="${col}"]`);
-                            if (!cell || !cell.textContent.toLowerCase().includes(filters[col])) {
+                            if (!cell) {
+                                show = false;
+                                break;
+                            }
+                            let cellText = '';
+                            if (col === '6') {
+                                // Supplier column: use selected option text, not all options
+                                const sel = cell.querySelector('select[data-column="supplier"]');
+                                const opt = sel?.selectedOptions?.[0] || sel?.querySelector('option:checked');
+                                cellText = (opt ? opt.textContent : (sel?.value || '')).trim().toLowerCase();
+                            } else {
+                                cellText = (cell.textContent || '').toLowerCase();
+                            }
+                            if (!cellText.includes(filters[col])) {
                                 show = false;
                                 break;
                             }
                         }
                         row.style.display = show ? '' : 'none';
                     });
+                    // Sort visible rows by order date (oldest first)
+                    const visibleRows = Array.from(rows).filter(r => r.style.display !== 'none');
+                    if (visibleRows.length > 0 && typeof sortRowsByOrderDate === 'function') {
+                        sortRowsByOrderDate(visibleRows);
+                    }
                 });
             });
         }
@@ -897,10 +846,6 @@
                             this.style.border = '2px solid green';
                             setTimeout(() => this.style.border = '', 1000);
 
-                            // Update supplier counts if supplier changed
-                            if (column === 'supplier' && updateSupplierCounts) {
-                                updateSupplierCounts();
-                            }
 
                             // ✅ Recalculate Total on rate change
                             if (column === 'rate') {
@@ -1394,313 +1339,6 @@
 
             // Initialize button state
             updateDeleteButton();
-        }
-
-
-        function setupSupplierAdvanceCalculation() {
-            const selectBox = document.getElementById('customSelectBox');
-            const dropdown = document.getElementById('customSelectDropdown');
-            const selectedText = document.getElementById('customSelectSelectedText');
-            const searchInput = document.getElementById('customSelectSearchInput');
-            const optionsContainer = document.getElementById('customSelectOptions');
-            const wrapper = document.getElementById('advance-total-wrapper');
-
-            let allOptions = Array.from(optionsContainer.querySelectorAll('.custom-select-option'));
-
-            selectBox.addEventListener('click', function () {
-                dropdown.style.display = dropdown.style.display === 'block' ? 'none' : 'block';
-                selectBox.classList.toggle('active', dropdown.style.display === 'block');
-                searchInput.value = '';
-                allOptions.forEach(option => option.style.display = '');
-                
-                // Update counts when dropdown opens
-                updateSupplierCounts();
-                
-                setTimeout(() => searchInput.focus(), 100);
-            });
-
-            optionsContainer.addEventListener('click', function (e) {
-                if (!e.target.classList.contains('custom-select-option')) return;
-
-                // UI update
-                allOptions.forEach(opt => opt.classList.remove('selected', 'bg-primary', 'text-white'));
-                e.target.classList.add('selected', 'bg-primary', 'text-white');
-                
-                // Get text without count for display
-                const optionText = e.target.textContent.trim();
-                const displayText = optionText.replace(/\s*\(\d+\)\s*$/, '');
-                selectedText.textContent = displayText;
-                
-                dropdown.style.display = 'none';
-                selectBox.classList.remove('active');
-
-                // Remove count from supplier name for comparison
-                const selectedSupplier = optionText.replace(/\s*\(\d+\)\s*$/, '').trim();
-                const selectedValue = e.target.getAttribute('data-value');
-                const allRows = document.querySelectorAll('tbody tr');
-
-                if (!selectedSupplier || selectedSupplier === 'Select supplier' || selectedSupplier === 'All supplier') {
-                    document.getElementById('advance-total-wrapper').style.display = 'none';
-                    // Reset all rows visibility
-                    allRows.forEach(row => {
-                        // Check stage from data attribute first (more reliable)
-                        const rowStageAttr = row.getAttribute('data-stage') ? row.getAttribute('data-stage').toLowerCase().trim() : '';
-                        const stageSelect = row.querySelector('.editable-select-stage');
-                        const rowStageSelect = stageSelect ? stageSelect.value.toLowerCase().trim() : '';
-                        const rowStage = rowStageSelect || rowStageAttr;
-                        
-                        // Only show MIP stage rows
-                        if (rowStage === 'mip') {
-                            row.style.display = '';
-                        } else {
-                            row.style.display = 'none';
-                        }
-                    });
-                    calculateTotalCBM();
-                    calculateTotalAmount();
-                    calculateTotalCTNCBM();
-                    return;
-                }
-
-                // Reset visibility
-                allRows.forEach(row => row.style.display = '');
-
-                // Filter rows matching selected supplier
-                let matchingRows = [];
-                
-                // Special case: "Supplier" option - show only rows with blank/empty supplier
-                if (selectedValue === '__all_suppliers__' || selectedSupplier === 'Supplier') {
-                    // Show only rows that have blank/empty supplier
-                    allRows.forEach(row => {
-                        // Check stage from data attribute first (more reliable)
-                        const rowStageAttr = row.getAttribute('data-stage') ? row.getAttribute('data-stage').toLowerCase().trim() : '';
-                        const stageSelect = row.querySelector('.editable-select-stage');
-                        const rowStageSelect = stageSelect ? stageSelect.value.toLowerCase().trim() : '';
-                        const rowStage = rowStageSelect || rowStageAttr;
-                        
-                        // Only show MIP stage rows
-                        if (rowStage !== 'mip') {
-                            row.style.display = 'none';
-                            return;
-                        }
-                        
-                        const supplierCell = row.querySelector('td[data-column="6"]');
-                        if (supplierCell) {
-                            const supplierSelect = supplierCell.querySelector('select[data-column="supplier"]');
-                            const supplierName = supplierSelect ? supplierSelect.value.trim() : '';
-                            // Show only rows where supplier is blank/empty
-                            if (!supplierName || supplierName === '' || supplierName === 'supplier') {
-                                row.style.display = '';
-                                matchingRows.push(row);
-                            } else {
-                                row.style.display = 'none';
-                            }
-                        } else {
-                            // If no supplier cell, show the row
-                            row.style.display = '';
-                            matchingRows.push(row);
-                        }
-                    });
-                } else {
-                    // Normal supplier filtering - match exact supplier name
-                    allRows.forEach(row => {
-                        // Check stage from data attribute first (more reliable)
-                        const rowStageAttr = row.getAttribute('data-stage') ? row.getAttribute('data-stage').toLowerCase().trim() : '';
-                        const stageSelect = row.querySelector('.editable-select-stage');
-                        const rowStageSelect = stageSelect ? stageSelect.value.toLowerCase().trim() : '';
-                        const rowStage = rowStageSelect || rowStageAttr;
-                        
-                        // Only show MIP stage rows
-                        if (rowStage !== 'mip') {
-                            row.style.display = 'none';
-                            return;
-                        }
-                        
-                        const supplierCell = row.querySelector('td[data-column="6"]');
-                        if (supplierCell) {
-                            const supplierSelect = supplierCell.querySelector('select[data-column="supplier"]');
-                            const supplierName = supplierSelect ? supplierSelect.value.trim() : '';
-                            if (supplierName.toLowerCase() === selectedSupplier.toLowerCase()) {
-                                row.style.display = '';
-                                matchingRows.push(row);
-                            } else {
-                                row.style.display = 'none';
-                            }
-                        } else {
-                            row.style.display = 'none';
-                        }
-                    });
-                }
-
-                if (!wrapper) {
-                    console.warn("Wrapper not found! Skipping animation and totals.");
-                    return;
-                }
-
-                if (matchingRows.length === 0) {
-                    wrapper.style.display = 'none';
-                    console.log("No matching rows, hiding wrapper.");
-                    return;
-                }
-                
-                // Hide advance wrapper when any supplier is selected
-                wrapper.style.display = 'none';
-                
-                // For "Supplier" option, sort visible rows by order date (oldest first)
-                if (selectedValue === '__all_suppliers__' || selectedSupplier === 'Supplier') {
-                    // Sort visible rows by order date (oldest first)
-                    const visibleRows = Array.from(allRows).filter(row => row.style.display !== 'none');
-                    sortRowsByOrderDate(visibleRows);
-                    // Recalculate totals for all visible rows
-                    calculateTotalCBM();
-                    calculateTotalAmount();
-                    calculateTotalOrderItems();
-                    calculateTotalCTNCBM();
-                    updateFollowSupplierCount();
-                    return;
-                } else {
-                    // Sort matching rows by order date (oldest first)
-                    sortRowsByOrderDate(matchingRows);
-                }
-
-                // Calculate total group value
-                let totalGroupValue = 0;
-                matchingRows.forEach(row => {
-                    const qtyCell = row.querySelector('td[data-column="4"]');
-                    let qty = 0;
-                    if (qtyCell) {
-                        const qtyInput = qtyCell.querySelector('input');
-                        if (qtyInput) {
-                            qty = parseFloat(qtyInput.value) || 0;
-                        } else {
-                            qty = parseFloat(qtyCell.textContent.trim()) || parseFloat(qtyCell.getAttribute('data-qty')) || 0;
-                        }
-                    }
-                    const rate = parseFloat(row.querySelector('input[data-column="rate"]')?.value || '0') || 0;
-                    totalGroupValue += qty * rate;
-                });
-
-                // Calculate total advance
-                let totalAdvance = 0;
-                matchingRows.forEach(row => {
-                    const input = row.querySelector('input[data-supplier]');
-                    if (input && !input.disabled) {
-                        totalAdvance += parseFloat(input.value || '0') || 0;
-                    }
-                });
-
-                let totalPending = 0;
-                let supplierTotalCBM = 0;
-                let supplierTotalOrderQty = 0;
-                let supplierTotalAmount = 0;
-                let supplierTotalItems = 0;
-                let supplierTotalCTNCBM = 0;
-
-                matchingRows.forEach(row => {
-                    const qtyCell = row.querySelector('td[data-column="4"]');
-                    let qty = 0;
-                    if (qtyCell) {
-                        const qtyInput = qtyCell.querySelector('input');
-                        if (qtyInput) {
-                            qty = parseFloat(qtyInput.value) || 0;
-                        } else {
-                            qty = parseFloat(qtyCell.textContent.trim()) || parseFloat(qtyCell.getAttribute('data-qty')) || 0;
-                        }
-                    }
-                    const rate = parseFloat(row.querySelector('input[data-column="rate"]')?.value || '0') || 0;
-                    const rowTotal = qty * rate;
-
-                    const advanceInput = row.querySelector('input[data-column="advance"]');
-                    const pendingInput = row.querySelector('input[data-column="pending"]');
-
-                    const cbmInput = row.querySelector('input[data-column="total_cbm"]');
-
-                    const cbm = parseFloat(cbmInput?.value || '0');
-
-                    if (!isNaN(cbm)) supplierTotalCBM += cbm;
-                    supplierTotalAmount += rowTotal;
-                    supplierTotalItems++;
-                    
-                    // Calculate CTN CBM E
-                    const ctnCbmECell = row.querySelector('td[data-column="20"]');
-                    let ctnCbmE = 0;
-                    if (ctnCbmECell) {
-                        const ctnCbmEText = ctnCbmECell.textContent.trim();
-                        if (ctnCbmEText !== 'N/A' && ctnCbmEText !== '') {
-                            ctnCbmE = parseFloat(ctnCbmEText.replace(/,/g, '')) || 0;
-                        }
-                    }
-                    // Add: Order Qty * CTN CBM E
-                    supplierTotalCTNCBM += qty * ctnCbmE;
-
-                    let rowAdvance = 0;
-                    if (totalGroupValue > 0 && rowTotal > 0) {
-                        rowAdvance = (rowTotal / totalGroupValue) * totalAdvance;
-                    }
-
-                    const rowPending = rowTotal - rowAdvance;
-                    totalPending += rowPending;
-
-                    if (advanceInput) advanceInput.value = rowAdvance.toFixed(2);
-                    if (pendingInput) pendingInput.value = rowPending.toFixed(2);
-                });
-
-                // Update summary display
-                document.getElementById('advance-amount').textContent = totalAdvance.toFixed(2);
-                document.getElementById('pending-amount').textContent = totalPending.toFixed(2);
-
-                // Update supplier cbm (update main totals with supplier filtered values)
-                document.getElementById('total-cbm').textContent = supplierTotalCBM.toFixed(2);
-                document.getElementById('total-amount').textContent = '$' + supplierTotalAmount.toFixed(0);
-                document.getElementById('total-order-items').textContent = supplierTotalItems;
-                document.getElementById('total-ctn-cbm').textContent = supplierTotalCTNCBM.toFixed(2);
-
-                // Animate wrapper
-                wrapper.classList.add('animate__animated', 'animate__fadeIn');
-                setTimeout(() => wrapper.classList.remove('animate__animated', 'animate__fadeIn'), 800);
-            });
-
-
-            // 🔍 Search filter
-            searchInput.addEventListener('input', function () {
-                const search = this.value.trim().toLowerCase();
-                allOptions.forEach(option => {
-                    option.style.display = option.textContent.toLowerCase().includes(search) ? '' : 'none';
-                });
-            });
-
-            // ⌨️ Keyboard navigation
-            searchInput.addEventListener('keydown', function (e) {
-                let visibleOptions = allOptions.filter(opt => opt.style.display !== 'none');
-                let selectedIdx = visibleOptions.findIndex(opt => opt.classList.contains('selected'));
-                if (e.key === 'ArrowDown') {
-                    e.preventDefault();
-                    if (selectedIdx < visibleOptions.length - 1) {
-                        if (selectedIdx >= 0) visibleOptions[selectedIdx].classList.remove('selected', 'bg-primary', 'text-white');
-                        visibleOptions[selectedIdx + 1].classList.add('selected', 'bg-primary', 'text-white');
-                        visibleOptions[selectedIdx + 1].scrollIntoView({ block: 'nearest' });
-                    }
-                } else if (e.key === 'ArrowUp') {
-                    e.preventDefault();
-                    if (selectedIdx > 0) {
-                        visibleOptions[selectedIdx].classList.remove('selected', 'bg-primary', 'text-white');
-                        visibleOptions[selectedIdx - 1].classList.add('selected', 'bg-primary', 'text-white');
-                        visibleOptions[selectedIdx - 1].scrollIntoView({ block: 'nearest' });
-                    }
-                } else if (e.key === 'Enter') {
-                    if (selectedIdx >= 0) {
-                        visibleOptions[selectedIdx].click();
-                    }
-                }
-            });
-
-            // 🖱️ Close on outside click
-            document.addEventListener('mousedown', function (e) {
-                if (!selectBox.contains(e.target) && !dropdown.contains(e.target)) {
-                    dropdown.style.display = 'none';
-                    selectBox.classList.remove('active');
-                }
-            });
         }
 
 
@@ -2430,59 +2068,6 @@
         document.getElementById('total-ctn-cbm').textContent = totalCTNCBM.toFixed(2);
     }
 
-    // Function to calculate and update supplier counts (defined globally)
-    function updateSupplierCounts() {
-        const optionsContainer = document.getElementById('customSelectOptions');
-        if (!optionsContainer) return;
-        
-        const allOptions = Array.from(optionsContainer.querySelectorAll('.custom-select-option'));
-        const allRows = document.querySelectorAll('tbody tr');
-        const supplierCounts = {};
-        
-        // Count rows for each supplier (only MIP stage)
-        allRows.forEach(row => {
-            // Check stage from data attribute first (more reliable)
-            const rowStageAttr = row.getAttribute('data-stage') ? row.getAttribute('data-stage').toLowerCase().trim() : '';
-            const stageSelect = row.querySelector('.editable-select-stage');
-            const rowStageSelect = stageSelect ? stageSelect.value.toLowerCase().trim() : '';
-            const rowStage = rowStageSelect || rowStageAttr;
-            
-            // Only count MIP stage rows
-            if (rowStage !== 'mip') {
-                return;
-            }
-            
-            const supplierCell = row.querySelector('td[data-column="6"]');
-            if (supplierCell) {
-                const supplierSelect = supplierCell.querySelector('select[data-column="supplier"]');
-                const supplierName = supplierSelect ? supplierSelect.value.trim() : '';
-                if (supplierName && supplierName !== '' && supplierName !== 'supplier') {
-                    supplierCounts[supplierName] = (supplierCounts[supplierName] || 0) + 1;
-                }
-            }
-        });
-        
-        // Update option text with counts
-        allOptions.forEach(option => {
-            const optionText = option.textContent.trim();
-            const supplierName = optionText.replace(/\s*\(\d+\)\s*$/, ''); // Remove existing count
-            
-            // Skip "All supplier" and "Supplier" options
-            if (optionText === 'All supplier' || optionText === 'Supplier' || option.getAttribute('data-value') === '__all_suppliers__') {
-                return;
-            }
-            
-            // Update with count if supplier exists
-            if (supplierCounts[supplierName] !== undefined) {
-                option.textContent = `${supplierName} (${supplierCounts[supplierName]})`;
-                option.setAttribute('data-count', supplierCounts[supplierName]);
-            } else {
-                option.textContent = supplierName;
-                option.setAttribute('data-count', '0');
-            }
-        });
-    }
-
     // Function to update Follow Supplier count (defined globally)
     function updateFollowSupplierCount() {
         const followSupplierSpan = document.getElementById("followSupplierCount");
@@ -2536,7 +2121,7 @@
 
     // Filter to show only MIP stage on page load
     function filterByMIPStageOnLoad() {
-        const rows = document.querySelectorAll('tbody tr.stage-row');
+        const rows = document.querySelectorAll('table.wide-table tbody tr.stage-row');
         rows.forEach(row => {
             const rowStageAttr = row.getAttribute('data-stage') ? row.getAttribute('data-stage').toLowerCase().trim() : '';
             const stageSelect = row.querySelector('.editable-select-stage');
@@ -2549,6 +2134,11 @@
                 row.style.display = 'none';
             }
         });
+        // Sort visible MIP rows by order date (oldest first)
+        const visibleMipRows = Array.from(rows).filter(r => r.style.display !== 'none');
+        if (visibleMipRows.length > 0 && typeof sortRowsByOrderDate === 'function') {
+            sortRowsByOrderDate(visibleMipRows);
+        }
         calculateTotalCBM();
         calculateTotalAmount();
         calculateTotalOrderItems();
@@ -2651,12 +2241,6 @@
     // Initialize filter on page load
     filterByMIPStageOnLoad();
     
-    // Update supplier counts on page load
-    setTimeout(() => {
-        if (updateSupplierCounts) {
-            updateSupplierCounts();
-        }
-    }, 500);
 
 </script>
 

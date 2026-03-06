@@ -423,6 +423,7 @@
                 ajaxConfig: "GET",
                 layout: "fitData",
                 height: "700px",
+                initialSort: [{ column: "Date of Appr", dir: "asc" }],
                 pagination: true,
                 paginationSize: 100,
                 paginationCounter: "rows",
@@ -563,18 +564,25 @@
                         field: "Date of Appr",
                         width: 150,
                         minWidth: 145,
+                        sorter: "date",
+                        sorterParams: { format: "YYYY-MM-DD", alignEmptyValues: "bottom" },
                         formatter: function (cell) {
                             const value = cell.getValue() || "";
-                            const rowData = cell.getRow().getData();
-
-                            let daysDiff = null;
+                            let displayText = "-";
                             let bgColor = "";
 
                             if (value) {
-                                let doa = new Date(value);
-                                let today = new Date();
-                                let diffTime = today - doa;
-                                daysDiff = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+                                const d = new Date(value);
+                                const day = String(d.getDate()).padStart(2, "0");
+                                const month = String(d.getMonth() + 1).padStart(2, "0");
+                                const year = d.getFullYear();
+                                displayText = `${day}-${month}-${year}`;
+
+                                const today = new Date();
+                                today.setHours(0, 0, 0, 0);
+                                d.setHours(0, 0, 0, 0);
+                                const diffTime = today - d;
+                                const daysDiff = Math.floor(diffTime / (1000 * 60 * 60 * 24));
 
                                 if (daysDiff >= 14) {
                                     bgColor = "color:red; font-weight:700;";
@@ -583,23 +591,7 @@
                                 }
                             }
 
-                            const html = `
-                                <div style="display: flex; flex-direction: column; align-items: flex-start;">
-                                    <input type="date" class="form-control form-control-sm doa-input" value="${value}" style="width:100%; min-width:140px; max-width:145px; ${bgColor}">
-                                </div>
-                            `;
-
-                            setTimeout(() => {
-                                const input = cell.getElement().querySelector(".doa-input");
-                                if (input) {
-                                    input.addEventListener("change", function () {
-                                        const newValue = this.value;
-                                        saveLinkUpdate(cell, newValue);
-                                    });
-                                }
-                            }, 10);
-
-                            return html;
+                            return `<span style="min-width:100px; display:inline-block; ${bgColor}">${displayText}</span>`;
                         }
                     },
                     {
@@ -693,6 +685,7 @@
                     {
                         title: "Adv date",
                         field: "Adv date",
+                        visible: false,
                         formatter: function (cell) {
                             const value = cell.getValue() || "";
                             const rowData = cell.getRow().getData();
