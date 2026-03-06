@@ -752,8 +752,10 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
             'access_token_exists' => ! empty(config('services.temu.access_token')),
         ]);
 
-        $skuListField = config('services.temu.sku_list_field', 'skuList');
+        $skuListField = config('services.temu.update_sku_list_field', 'skuInfoList');
         $goodsBasicField = config('services.temu.goods_basic_field', 'goodsBasic');
+        $skuIdField = config('services.temu.sku_id_field', 'skuId');
+        $skuCodeField = config('services.temu.sku_code_field', 'outSkuSn');
 
         $requestBody = [
             'type' => $apiType,
@@ -765,8 +767,8 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
 
         if ($skuInfo !== null && isset($skuInfo['skuId'])) {
             $skuEntry = [
-                'skuId' => (int) $skuInfo['skuId'],
-                'outSkuSn' => $sku,
+                $skuIdField => (int) $skuInfo['skuId'],
+                $skuCodeField => $sku,
             ];
             $requestBody[$skuListField] = [$skuEntry];
         }
