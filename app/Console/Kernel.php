@@ -697,37 +697,37 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
-        $schedule->command('sbid:update')
-            ->dailyAt('00:01')
-            ->timezone('Asia/Kolkata')
-            ->name('sbid-update')
-            ->withoutOverlapping()
-            ->runInBackground()
-            ->appendOutputTo($log);
+        // $schedule->command('sbid:update')
+        //     ->dailyAt('00:01')
+        //     ->timezone('Asia/Kolkata')
+        //     ->name('sbid-update')
+        //     ->withoutOverlapping()
+        //     ->runInBackground()
+        //     ->appendOutputTo($log);
 
-        $schedule->command('sbid:update-serp')
-            ->dailyAt('00:02')
-            ->timezone('Asia/Kolkata')
-            ->name('sbid-update-serp')
-            ->withoutOverlapping()
-            ->runInBackground()
-            ->appendOutputTo($log);
+        // $schedule->command('sbid:update-serp')
+        //     ->dailyAt('00:02')
+        //     ->timezone('Asia/Kolkata')
+        //     ->name('sbid-update-serp')
+        //     ->withoutOverlapping()
+        //     ->runInBackground()
+        //     ->appendOutputTo($log);
 
-        $schedule->command('budget:update-shopping')
-            ->dailyAt('00:03')
-            ->timezone('Asia/Kolkata')
-            ->name('budget-shopping')
-            ->withoutOverlapping()
-            ->runInBackground()
-            ->appendOutputTo($log);
+        // $schedule->command('budget:update-shopping')
+        //     ->dailyAt('00:03')
+        //     ->timezone('Asia/Kolkata')
+        //     ->name('budget-shopping')
+        //     ->withoutOverlapping()
+        //     ->runInBackground()
+        //     ->appendOutputTo($log);
 
-        $schedule->command('budget:update-serp')
-            ->dailyAt('00:04')
-            ->timezone('Asia/Kolkata')
-            ->name('budget-serp')
-            ->withoutOverlapping()
-            ->runInBackground()
-            ->appendOutputTo($log);
+        // $schedule->command('budget:update-serp')
+        //     ->dailyAt('00:04')
+        //     ->timezone('Asia/Kolkata')
+        //     ->name('budget-serp')
+        //     ->withoutOverlapping()
+        //     ->runInBackground()
+        //     ->appendOutputTo($log);
 
         $schedule->command('google:store-shopping-utilization-counts')
             ->dailyAt('00:15')
