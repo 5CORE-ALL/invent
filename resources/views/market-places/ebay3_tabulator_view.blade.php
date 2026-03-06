@@ -482,6 +482,10 @@
                         <i class="fas fa-trash"></i> Clear All SPRICE
                     </button>
 
+                    <button type="button" id="export-section-btn" class="btn btn-sm btn-success" title="Export current section (visible columns & filtered data)">
+                        <i class="fas fa-file-export"></i> Export
+                    </button>
+
                     <!-- Play / Pause parent navigation (like pricing-master-cvr) -->
                     <div class="btn-group align-items-center ms-2 pricing-filter-item" role="group">
                         <button type="button" id="play-backward" class="btn btn-sm btn-light rounded-circle shadow-sm" title="Previous parent" disabled>
@@ -4068,6 +4072,26 @@
                 $('.pmt-ads-filter-item').css('display', 'inline-block');
                 $('#pmt-ads-filter-section').show();
                 applyFilters();
+            }
+        });
+
+        // Export button: download CSV for current section (visible columns + filtered data)
+        $('#export-section-btn').on('click', function() {
+            var sectionVal = $('#section-filter').val() || 'all';
+            var dateStr = new Date().toISOString().slice(0, 10);
+            var filename = 'ebay3_' + sectionVal + '_export_' + dateStr + '.csv';
+            try {
+                // Tabulator 6: downloadRowRange "active" = rows that pass filters; visible columns included by default
+                table.download('csv', filename, { downloadRowRange: 'active' });
+                if (typeof showToast === 'function') {
+                    showToast('success', 'Export started');
+                }
+            } catch (e) {
+                if (typeof showToast === 'function') {
+                    showToast('error', 'Export failed: ' + (e.message || e));
+                } else {
+                    alert('Export failed: ' + (e.message || e));
+                }
             }
         });
 
