@@ -606,7 +606,44 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
     }
 
     /**
-     * Get SKU info (skuId, outSkuSn) for a given seller SKU. Used when update API requires skuInfoList.
+     * Get product price for SKU (from TemuPricing or TemuMetric).
+     *
+     * @param string $sku Seller SKU
+     * @return float|null Price or null if not found
+     */
+    public function getProductPrice(string $sku): ?float
+    {
+        $price = TemuPricing::where('sku', $sku)->value('base_price');
+        if ($price !== null && (float) $price > 0) {
+            return (float) $price;
+        }
+        $price = TemuMetric::where('sku', $sku)->orWhere('sku_id', $sku)->value('base_price');
+        if ($price !== null && (float) $price > 0) {
+            return (float) $price;
+        }
+        return null;
+    }
+
+    /**
+     * Get product dimensions for SKU. Returns defaults when not in database.
+     *
+     * @param string $sku Seller SKU
+     * @return array{weight: string, length: string, width: string, height: string, weightUnit: string, volumeUnit: string}
+     */
+    public function getProductDimensions(string $sku): array
+    {
+        return [
+            'weight' => '1',
+            'length' => '1',
+            'width' => '1',
+            'height' => '1',
+            'weightUnit' => 'g',
+            'volumeUnit' => 'cm',
+        ];
+    }
+
+    /**
+     * Get SKU info (skuId, outSkuSn) for a given seller SKU. Used when update API requires skuList.
      *
      * @param string $goodsId Temu goodsId (already resolved)
      * @param string $sku Seller SKU
@@ -664,38 +701,49 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
             'access_token_exists' => ! empty(config('services.temu.access_token')),
         ]);
 
-        // API requires goodsId + goodsName and "at least one SKU". Field names configurable via .env.
-        $skuListField = config('services.temu.update_sku_list_field', 'skuList');
+        // Per official docs: type, goodsId, goodsBasic.goodsName, skuList with skuId, outSkuSn, listPrice, weight, dimensions, images
+        $skuListField = config('services.temu.sku_list_field', 'skuList');
+        $goodsBasicField = config('services.temu.goods_basic_field', 'goodsBasic');
+        $listPriceField = config('services.temu.list_price_field', 'listPrice');
         $skuIdField = config('services.temu.sku_id_field', 'skuId');
         $skuCodeField = config('services.temu.sku_code_field', 'outSkuSn');
-        $skuNameField = config('services.temu.sku_name_field', 'skuName');
-        $goodsNameField = config('services.temu.goods_name_field', 'goodsName');
-        $skuStructure = config('services.temu.update_sku_structure', 'array');
+
+        $price = $this->getProductPrice($sku);
+        if ($price === null) {
+            Log::warning('Temu updateTitle: no price found for SKU, using 1.00 as listPrice fallback', ['sku' => $sku]);
+        }
+        $dimensions = $this->getProductDimensions($sku);
 
         $requestBody = [
             'type' => $apiType,
             'goodsId' => (int) $goodsId,
-            $goodsNameField => $title,
-            'outGoodsSn' => $sku,
+            $goodsBasicField => [
+                'goodsName' => $title,
+            ],
         ];
+
         if ($skuInfo !== null && isset($skuInfo['skuId'])) {
             $skuEntry = [
                 $skuIdField => (int) $skuInfo['skuId'],
                 $skuCodeField => $sku,
-                $skuNameField => $title,
+                $listPriceField => [
+                    'amount' => (string) ($price ?? 1.00),
+                    'currency' => 'USD',
+                ],
+                'weight' => $dimensions['weight'],
+                'length' => $dimensions['length'],
+                'width' => $dimensions['width'],
+                'height' => $dimensions['height'],
+                'weightUnit' => $dimensions['weightUnit'],
+                'volumeUnit' => $dimensions['volumeUnit'],
+                'images' => [],
             ];
-            $requestBody[$skuListField] = ($skuStructure === 'object') ? $skuEntry : [$skuEntry];
+            $requestBody[$skuListField] = [$skuEntry];
         }
 
-        $skuListVal = $requestBody[$skuListField] ?? null;
-        $skuListKeys = null;
-        if (is_array($skuListVal)) {
-            $skuListKeys = isset($skuListVal[0]) && is_array($skuListVal[0]) ? array_keys($skuListVal[0]) : array_keys($skuListVal);
-        }
-        Log::info('Temu Request Structure', [
+        Log::info('Temu Request Structure (per official docs)', [
             'skuList_field' => $skuListField,
-            'skuList_type' => gettype($skuListVal),
-            'skuList_keys' => $skuListKeys,
+            'goodsBasic_field' => $goodsBasicField,
             'full_body_json' => json_encode($requestBody, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE),
         ]);
         Log::debug('Temu - Before generateSignValue', ['requestBody' => $requestBody]);

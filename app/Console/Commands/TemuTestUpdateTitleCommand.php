@@ -49,6 +49,20 @@ class TemuTestUpdateTitleCommand extends Command
         }
 
         $url = 'https://openapi-b-us.temu.com/openapi/router';
+        $price = $service->getProductPrice($sku) ?? 1.00;
+
+        $skuEntryOfficial = $skuId !== null ? [
+            'skuId' => (int) $skuId,
+            'outSkuSn' => $sku,
+            'listPrice' => ['amount' => (string) $price, 'currency' => 'USD'],
+            'weight' => '1',
+            'length' => '1',
+            'width' => '1',
+            'height' => '1',
+            'weightUnit' => 'g',
+            'volumeUnit' => 'cm',
+            'images' => [],
+        ] : null;
 
         $skuEntry = $skuId !== null ? [
             'skuId' => (int) $skuId,
@@ -63,6 +77,24 @@ class TemuTestUpdateTitleCommand extends Command
         ] : ['skuCode' => $sku];
 
         $workingResult = null;
+
+        if ($skuEntryOfficial !== null) {
+            $this->line("Testing: Official docs structure (goodsBasic.goodsName, skuList with listPrice)");
+            $body = [
+                'type' => 'bg.local.goods.update',
+                'goodsId' => (int) $goodsId,
+                'goodsBasic' => ['goodsName' => $title],
+                'skuList' => [$skuEntryOfficial],
+            ];
+            $result = $this->tryRequest($url, $body, $service, $sku);
+            if ($result['success']) {
+                $this->info("  OK – Official docs structure works!");
+                $workingResult = ['type' => 'bg.local.goods.update', 'field' => 'skuList', 'structure' => 'official'];
+            } else {
+                $this->warn("  Failed: " . ($result['message'] ?? 'Unknown'));
+            }
+            $this->newLine();
+        }
 
         foreach ($this->apiTypesToTest as $apiType) {
             $this->line("Testing API type: <comment>{$apiType}</comment>");
@@ -145,12 +177,13 @@ class TemuTestUpdateTitleCommand extends Command
         $this->newLine();
         if ($workingResult !== null) {
             $this->info("Working structure: <info>" . json_encode($workingResult) . "</info>");
-            $this->line("Add to .env:");
-            $this->line("  TEMU_GOODS_UPDATE_TYPE=" . $workingResult['type']);
-            $this->line("  TEMU_UPDATE_SKU_LIST_FIELD=" . $workingResult['field']);
-            if (isset($workingResult['structure'])) {
-                $this->line("  TEMU_UPDATE_SKU_STRUCTURE=" . $workingResult['structure']);
-                if ($workingResult['structure'] === 'variation_d') {
+            if (($workingResult['structure'] ?? '') === 'official') {
+                $this->line("Official docs structure works – no .env changes needed (defaults are correct).");
+            } else {
+                $this->line("Add to .env:");
+                $this->line("  TEMU_GOODS_UPDATE_TYPE=" . $workingResult['type']);
+                $this->line("  TEMU_SKU_LIST_FIELD=" . $workingResult['field']);
+                if (($workingResult['structure'] ?? '') === 'variation_d') {
                     $this->line("  TEMU_GOODS_NAME_FIELD=itemName");
                     $this->line("  TEMU_SKU_CODE_FIELD=skuCode");
                 }

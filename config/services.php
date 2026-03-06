@@ -265,18 +265,14 @@ return [
         'app_key' => env('TEMU_APP_KEY'),
         'secret_key' => env('TEMU_SECRET_KEY'),
         'access_token' => env('TEMU_ACCESS_TOKEN'),
-        // API type for updating goods title. If you get "type not exists" (3000003), try in .env: TEMU_GOODS_UPDATE_TYPE=bg.local.goods.update or bg.goods.update (check Temu Partner API docs).
+        // API type for updating goods title (per official docs: bg.local.goods.update)
         'goods_update_type' => env('TEMU_GOODS_UPDATE_TYPE', 'bg.local.goods.update'),
-        // SKU list field name for title update. If you get "Add at least one SKU" (150010016), run: php artisan temu:test-update-title --sku=YOUR-SKU
-        'update_sku_list_field' => env('TEMU_UPDATE_SKU_LIST_FIELD', 'skuList'),
-        // Field names for SKU list items (configurable via .env)
+        // Per official docs: skuList (not skuInfoList), title in goodsBasic.goodsName
+        'sku_list_field' => env('TEMU_SKU_LIST_FIELD', 'skuList'),
+        'goods_basic_field' => env('TEMU_GOODS_BASIC_FIELD', 'goodsBasic'),
+        'list_price_field' => env('TEMU_LIST_PRICE_FIELD', 'listPrice'),
         'sku_id_field' => env('TEMU_SKU_ID_FIELD', 'skuId'),
         'sku_code_field' => env('TEMU_SKU_CODE_FIELD', 'outSkuSn'),
-        'sku_name_field' => env('TEMU_SKU_NAME_FIELD', 'skuName'),
-        // Title field for goods (goodsName vs itemName)
-        'goods_name_field' => env('TEMU_GOODS_NAME_FIELD', 'goodsName'),
-        // SKU list structure: 'array' (default) or 'object' (single object for Variation B)
-        'update_sku_structure' => env('TEMU_UPDATE_SKU_STRUCTURE', 'array'),
     ],
 
     /*
