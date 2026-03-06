@@ -265,8 +265,8 @@ return [
         'app_key' => env('TEMU_APP_KEY'),
         'secret_key' => env('TEMU_SECRET_KEY'),
         'access_token' => env('TEMU_ACCESS_TOKEN'),
-        // API type for updating goods title (per official docs: bg.local.goods.update)
-        'goods_update_type' => env('TEMU_GOODS_UPDATE_TYPE', 'bg.local.goods.update'),
+        // API type for updating goods title (per official docs: use partial update for efficiency)
+        'goods_update_type' => env('TEMU_GOODS_UPDATE_TYPE', 'bg.local.goods.partial.update'),
         // Per official docs: skuList (not skuInfoList), title in goodsBasic.goodsName
         'sku_list_field' => env('TEMU_SKU_LIST_FIELD', 'skuList'),
         'goods_basic_field' => env('TEMU_GOODS_BASIC_FIELD', 'goodsBasic'),

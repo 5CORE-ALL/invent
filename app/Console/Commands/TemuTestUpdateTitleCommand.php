@@ -17,7 +17,7 @@ class TemuTestUpdateTitleCommand extends Command
 
     protected array $skuListFieldNames = ['skuList', 'skuInfoList', 'skus', 'skuInfos', 'outSkuSnList'];
 
-    protected array $apiTypesToTest = ['bg.local.goods.update', 'bg.goods.update', 'bg.product.update', 'bg.local.product.update'];
+    protected array $apiTypesToTest = ['bg.local.goods.partial.update', 'bg.local.goods.update', 'bg.goods.update', 'bg.product.update', 'bg.local.product.update'];
 
     public function handle(): int
     {
@@ -55,6 +55,7 @@ class TemuTestUpdateTitleCommand extends Command
             'skuId' => (int) $skuId,
             'outSkuSn' => $sku,
             'listPrice' => ['amount' => (string) $price, 'currency' => 'USD'],
+            'listPriceType' => 0,
             'weight' => '1',
             'length' => '1',
             'width' => '1',
@@ -79,17 +80,17 @@ class TemuTestUpdateTitleCommand extends Command
         $workingResult = null;
 
         if ($skuEntryOfficial !== null) {
-            $this->line("Testing: Official docs structure (goodsBasic.goodsName, skuList with listPrice)");
+            $this->line("Testing: Partial update (goodsBasic.goodsName, skuList with listPrice + listPriceType)");
             $body = [
-                'type' => 'bg.local.goods.update',
+                'type' => 'bg.local.goods.partial.update',
                 'goodsId' => (int) $goodsId,
                 'goodsBasic' => ['goodsName' => $title],
                 'skuList' => [$skuEntryOfficial],
             ];
             $result = $this->tryRequest($url, $body, $service, $sku);
             if ($result['success']) {
-                $this->info("  OK – Official docs structure works!");
-                $workingResult = ['type' => 'bg.local.goods.update', 'field' => 'skuList', 'structure' => 'official'];
+                $this->info("  OK – Partial update with listPriceType works!");
+                $workingResult = ['type' => 'bg.local.goods.partial.update', 'field' => 'skuList', 'structure' => 'official'];
             } else {
                 $this->warn("  Failed: " . ($result['message'] ?? 'Unknown'));
             }
@@ -119,7 +120,7 @@ class TemuTestUpdateTitleCommand extends Command
         }
 
         if ($workingResult === null) {
-            $apiType = config('services.temu.goods_update_type', 'bg.local.goods.update');
+            $apiType = config('services.temu.goods_update_type', 'bg.local.goods.partial.update');
             $baseBody = ['type' => $apiType, 'goodsId' => (int) $goodsId, 'goodsName' => $title, 'outGoodsSn' => $sku];
 
             $this->newLine();
@@ -137,7 +138,7 @@ class TemuTestUpdateTitleCommand extends Command
         if ($workingResult === null) {
             $this->newLine();
             $this->line("Testing Variation C: skuId at root level");
-            $apiType = config('services.temu.goods_update_type', 'bg.local.goods.update');
+            $apiType = config('services.temu.goods_update_type', 'bg.local.goods.partial.update');
             $bodyRoot = [
                 'type' => $apiType,
                 'goodsId' => (int) $goodsId,
@@ -157,7 +158,7 @@ class TemuTestUpdateTitleCommand extends Command
         if ($workingResult === null) {
             $this->newLine();
             $this->line("Testing Variation D: itemName + skuInfos with skuCode");
-            $apiType = config('services.temu.goods_update_type', 'bg.local.goods.update');
+            $apiType = config('services.temu.goods_update_type', 'bg.local.goods.partial.update');
             $body = [
                 'type' => $apiType,
                 'goodsId' => (int) $goodsId,

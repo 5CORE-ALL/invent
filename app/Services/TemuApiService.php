@@ -692,7 +692,7 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
             'skuInfo' => $skuInfo,
         ]);
 
-        $apiType = config('services.temu.goods_update_type', 'bg.local.goods.update');
+        $apiType = config('services.temu.goods_update_type', 'bg.local.goods.partial.update');
         $url = 'https://openapi-b-us.temu.com/openapi/router';
 
         Log::debug('Temu config check (updateTitle)', [
@@ -730,6 +730,7 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
                     'amount' => (string) ($price ?? 1.00),
                     'currency' => 'USD',
                 ],
+                'listPriceType' => 0,
                 'weight' => $dimensions['weight'],
                 'length' => $dimensions['length'],
                 'width' => $dimensions['width'],
