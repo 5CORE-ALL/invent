@@ -65,6 +65,17 @@ class TemuApiService
         return array_merge($params, $requestBody);
     }
 
+    /**
+     * Sign a request body for Temu API (for testing). Use generateSignValue internally.
+     *
+     * @param array $requestBody API-specific params (type, goodsId, goodsName, etc.)
+     * @return array Full signed request with access_token, app_key, timestamp, sign, etc.
+     */
+    public function signRequest(array $requestBody): array
+    {
+        return $this->generateSignValue($requestBody);
+    }
+
 
         public function getInventory()
     {
@@ -653,23 +664,40 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
             'access_token_exists' => ! empty(config('services.temu.access_token')),
         ]);
 
-        // API requires goodsId + goodsName and "at least one SKU" (outGoodsSn and/or skuInfoList).
+        // API requires goodsId + goodsName and "at least one SKU". Field names configurable via .env.
+        $skuListField = config('services.temu.update_sku_list_field', 'skuList');
+        $skuIdField = config('services.temu.sku_id_field', 'skuId');
+        $skuCodeField = config('services.temu.sku_code_field', 'outSkuSn');
+        $skuNameField = config('services.temu.sku_name_field', 'skuName');
+        $goodsNameField = config('services.temu.goods_name_field', 'goodsName');
+        $skuStructure = config('services.temu.update_sku_structure', 'array');
+
         $requestBody = [
             'type' => $apiType,
             'goodsId' => (int) $goodsId,
-            'goodsName' => $title,
+            $goodsNameField => $title,
             'outGoodsSn' => $sku,
         ];
         if ($skuInfo !== null && isset($skuInfo['skuId'])) {
-            $requestBody['skuInfoList'] = [
-                [
-                    'skuId' => (int) $skuInfo['skuId'],
-                    'outSkuSn' => $sku,
-                    'skuName' => $title,
-                ],
+            $skuEntry = [
+                $skuIdField => (int) $skuInfo['skuId'],
+                $skuCodeField => $sku,
+                $skuNameField => $title,
             ];
+            $requestBody[$skuListField] = ($skuStructure === 'object') ? $skuEntry : [$skuEntry];
         }
 
+        $skuListVal = $requestBody[$skuListField] ?? null;
+        $skuListKeys = null;
+        if (is_array($skuListVal)) {
+            $skuListKeys = isset($skuListVal[0]) && is_array($skuListVal[0]) ? array_keys($skuListVal[0]) : array_keys($skuListVal);
+        }
+        Log::info('Temu Request Structure', [
+            'skuList_field' => $skuListField,
+            'skuList_type' => gettype($skuListVal),
+            'skuList_keys' => $skuListKeys,
+            'full_body_json' => json_encode($requestBody, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE),
+        ]);
         Log::debug('Temu - Before generateSignValue', ['requestBody' => $requestBody]);
 
         $signedRequest = $this->generateSignValue($requestBody);
