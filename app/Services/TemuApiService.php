@@ -757,7 +757,8 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
         $skuIdField = config('services.temu.sku_id_field', 'skuId');
         $skuCodeField = config('services.temu.sku_code_field', 'outSkuSn');
 
-        Log::info('Temu - Config for updateTitle', [
+        Log::info('Temu - API type and config for updateTitle', [
+            'type' => $apiType,
             'sku_list_field' => $skuListField,
             'goods_basic_field' => $goodsBasicField,
         ]);
