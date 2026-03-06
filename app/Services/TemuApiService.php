@@ -765,12 +765,33 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
             ],
         ];
 
+        $price = $this->getProductPrice($sku);
+        $dimensions = $this->getProductDimensions($sku);
+        $images = $this->getProductImages($sku);
+
         if ($skuInfo !== null && isset($skuInfo['skuId'])) {
             $skuEntry = [
                 $skuIdField => (int) $skuInfo['skuId'],
                 $skuCodeField => $sku,
+                'listPrice' => [
+                    'amount' => (string) ($price ?? 1.00),
+                    'currency' => 'USD',
+                ],
+                'listPriceType' => 0,
+                'weight' => $dimensions['weight'],
+                'length' => $dimensions['length'],
+                'width' => $dimensions['width'],
+                'height' => $dimensions['height'],
+                'weightUnit' => $dimensions['weightUnit'],
+                'volumeUnit' => $dimensions['volumeUnit'],
+                'images' => $images,
             ];
             $requestBody[$skuListField] = [$skuEntry];
+
+            Log::info('Temu - Full SKU entry', [
+                'sku' => $sku,
+                'skuEntry' => $skuEntry,
+            ]);
         }
 
         Log::info('Temu updateTitle request', [
