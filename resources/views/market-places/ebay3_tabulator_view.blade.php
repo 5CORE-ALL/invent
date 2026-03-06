@@ -418,6 +418,15 @@
                         <option value="NR">NR</option>
                     </select>
 
+                    <select id="dilution-filter" class="form-select form-select-sm pricing-filter-item"
+                        style="width: auto; display: inline-block;">
+                        <option value="all">Dilution (E Dil%)</option>
+                        <option value="red">Red (&lt;16.66%)</option>
+                        <option value="yellow">Yellow (16.66-25%)</option>
+                        <option value="green">Green (25-50%)</option>
+                        <option value="pink">Pink (50%+)</option>
+                    </select>
+
                     <select id="ads-filter" class="form-select form-select-sm pricing-filter-item"
                         style="width: auto; display: inline-block;">
                         <option value="all">AD%</option>
@@ -472,6 +481,22 @@
                     <button id="clear-all-sprice-btn" class="btn btn-sm btn-danger pricing-filter-item">
                         <i class="fas fa-trash"></i> Clear All SPRICE
                     </button>
+
+                    <!-- Play / Pause parent navigation (like pricing-master-cvr) -->
+                    <div class="btn-group align-items-center ms-2 pricing-filter-item" role="group">
+                        <button type="button" id="play-backward" class="btn btn-sm btn-light rounded-circle shadow-sm" title="Previous parent" disabled>
+                            <i class="fas fa-step-backward"></i>
+                        </button>
+                        <button type="button" id="play-auto" class="btn btn-sm btn-primary rounded-circle shadow-sm me-1" title="Play - step through parents">
+                            <i class="fas fa-play"></i>
+                        </button>
+                        <button type="button" id="play-pause" class="btn btn-sm btn-primary rounded-circle shadow-sm me-1" style="display: none;" title="Pause - show all">
+                            <i class="fas fa-pause"></i>
+                        </button>
+                        <button type="button" id="play-forward" class="btn btn-sm btn-light rounded-circle shadow-sm" title="Next parent" disabled>
+                            <i class="fas fa-step-forward"></i>
+                        </button>
+                    </div>
                 </div>
 
                 <!-- KW Ads Statistics (shown only when KW Ads is selected) -->
@@ -981,13 +1006,23 @@
                     },
                     success: function(response) {
                         if (row) {
-                            row.update({
-                                SPRICE: sprice,
-                                SPFT: response.data?.spft || response.spft_percent,
-                                SROI: response.data?.sroi || response.sroi_percent,
-                                SGPFT: response.data?.sgpft || response.sgpft_percent,
-                                SPRICE_STATUS: 'saved'
-                            });
+                            if (sprice === 0 || sprice === '0') {
+                                row.update({
+                                    SPRICE: null,
+                                    SPFT: null,
+                                    SROI: null,
+                                    SGPFT: null,
+                                    SPRICE_STATUS: 'saved'
+                                });
+                            } else {
+                                row.update({
+                                    SPRICE: sprice,
+                                    SPFT: response.data?.spft || response.spft_percent,
+                                    SROI: response.data?.sroi || response.sroi_percent,
+                                    SGPFT: response.data?.sgpft || response.sgpft_percent,
+                                    SPRICE_STATUS: 'saved'
+                                });
+                            }
                         }
                         resolve(response);
                     },
@@ -1668,7 +1703,7 @@
             }
         }
 
-        // Clear SPRICE for selected SKUs
+        // Clear SPRICE for selected SKUs (use getRows() so tree child rows are included)
         function clearSpriceForSelected() {
             if (selectedSkus.size === 0) {
                 showToast('Please select SKUs first', 'error');
@@ -1680,39 +1715,158 @@
             }
 
             let clearedCount = 0;
-            const allData = table.getData('all');
+            const allRows = table.getRows();
 
-            allData.forEach(row => {
-                const isParent = row.Parent && row.Parent.startsWith('PARENT');
-                if (isParent) return;
+            allRows.forEach(function(tableRow) {
+                const rowData = tableRow.getData();
+                const sku = rowData['(Child) sku'] || '';
+                if (!sku || sku.toUpperCase().includes('PARENT')) return;
+                if (!selectedSkus.has(sku)) return;
 
-                const sku = row['(Child) sku'];
-                if (selectedSkus.has(sku)) {
-                    const tableRow = table.getRows().find(r => {
-                        const rowData = r.getData();
-                        return rowData['(Child) sku'] === sku;
-                    });
-                    
-                    if (tableRow) {
-                        tableRow.update({ 
-                            SPRICE: 0,
-                            SPRICE_STATUS: 'processing'
-                        });
+                tableRow.update({
+                    SPRICE: 0,
+                    SPRICE_STATUS: 'processing'
+                });
 
-                        saveSpriceWithRetry(sku, 0, tableRow)
-                            .then((response) => {
-                                clearedCount++;
-                                if (clearedCount === selectedSkus.size) {
-                                    showToast(`SPRICE cleared for ${clearedCount} SKU(s)`, 'success');
+                saveSpriceWithRetry(sku, 0, tableRow)
+                    .then(function(response) {
+                        clearedCount++;
+                        if (clearedCount === selectedSkus.size) {
+                            showToast('SPRICE cleared for ' + clearedCount + ' SKU(s)', 'success');
+                            // Refetch from server so table shows cleared state without page refresh
+                            table.replaceData('/ebay3-data-json?_=' + Date.now()).then(function() {
+                                if (typeof allTableData !== 'undefined') {
+                                    allTableData = table.getData('all');
                                 }
-                            })
-                            .catch((error) => {
-                                console.error('Failed to clear SPRICE for', sku);
+                                applyFilters();
+                            }).catch(function(err) {
+                                console.error('Reload after clear failed:', err);
                             });
-                    }
-                }
+                        }
+                    })
+                    .catch(function(error) {
+                        console.error('Failed to clear SPRICE for', sku);
+                    });
             });
         }
+
+        // Clear All SPRICE – if checkboxes selected: clear only those SKUs; else clear ALL records
+        $('#clear-all-sprice-btn').on('click', function() {
+            if (selectedSkus.size > 0) {
+                if (!confirm(`Clear SPRICE for ${selectedSkus.size} selected SKU(s)?`)) {
+                    return;
+                }
+                clearSpriceForSelected();
+                return;
+            }
+            if (!confirm('Are you sure you want to clear SPRICE (and SPFT, SROI, SGPFT) for ALL records? This cannot be undone.')) {
+                return;
+            }
+            var $btn = $(this);
+            $btn.prop('disabled', true);
+            $.ajax({
+                url: '/clear-all-sprice-ebay3',
+                method: 'POST',
+                headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+                contentType: 'application/json',
+                data: JSON.stringify({}),
+                success: function(response) {
+                    if (response.success) {
+                        showToast(response.message || 'Cleared SPRICE for all records', 'success');
+                        table.replaceData('/ebay3-data-json?_=' + Date.now()).then(function() {
+                            if (typeof allTableData !== 'undefined') {
+                                allTableData = table.getData('all');
+                            }
+                            applyFilters();
+                        }).catch(function(err) {
+                            console.error('Reload after clear failed:', err);
+                        });
+                    } else {
+                        showToast(response.error || 'Clear failed', 'error');
+                    }
+                },
+                error: function(xhr) {
+                    var msg = (xhr.responseJSON && xhr.responseJSON.error) ? xhr.responseJSON.error : 'Failed to clear all SPRICE';
+                    showToast(msg, 'error');
+                },
+                complete: function() {
+                    $btn.prop('disabled', false);
+                }
+            });
+        });
+
+        // Clear SPRICE for selected SKUs only
+        $('#clear-sprice-btn').on('click', function() {
+            if (selectedSkus.size === 0) {
+                showToast('Please select SKUs first', 'error');
+                return;
+            }
+            clearSpriceForSelected();
+        });
+
+        // ==================== Play/Pause parent navigation (like pricing-master-cvr) ====================
+        function showCurrentParentPlayView() {
+            if (!allTableData || allTableData.length === 0) return;
+            if (currentPlayParentIndex < 0 || currentPlayParentIndex >= allTableData.length) return;
+            const parentRow = allTableData[currentPlayParentIndex];
+            const children = (parentRow._children && Array.isArray(parentRow._children)) ? parentRow._children : [];
+            const displayData = [...children, parentRow];
+            table.clearFilter(true);
+            table.setData(displayData).then(function() {
+                updateCalcValues();
+                updateSummary();
+                updatePlayButtonStates();
+            });
+        }
+
+        function startPlayNavigation() {
+            if (!allTableData || allTableData.length === 0) {
+                showToast('No parent data to navigate', 'warning');
+                return;
+            }
+            isPlayNavigationActive = true;
+            currentPlayParentIndex = 0;
+            showCurrentParentPlayView();
+            $('#play-auto').hide();
+            $('#play-pause').show();
+            updatePlayButtonStates();
+        }
+
+        function stopPlayNavigation() {
+            isPlayNavigationActive = false;
+            currentPlayParentIndex = 0;
+            $('#play-pause').hide();
+            $('#play-auto').show();
+            $('#play-backward, #play-forward').prop('disabled', true);
+            table.setData(allTableData);
+            applyFilters();
+        }
+
+        function updatePlayButtonStates() {
+            $('#play-backward').prop('disabled', !isPlayNavigationActive || currentPlayParentIndex <= 0);
+            $('#play-forward').prop('disabled', !isPlayNavigationActive || currentPlayParentIndex >= allTableData.length - 1);
+            $('#play-auto').attr('title', isPlayNavigationActive ? 'Show all' : 'Play - step through parents');
+            $('#play-pause').attr('title', 'Pause - show all');
+        }
+
+        function playNextParent() {
+            if (!isPlayNavigationActive || !allTableData.length) return;
+            if (currentPlayParentIndex >= allTableData.length - 1) return;
+            currentPlayParentIndex++;
+            showCurrentParentPlayView();
+        }
+
+        function playPreviousParent() {
+            if (!isPlayNavigationActive) return;
+            if (currentPlayParentIndex <= 0) return;
+            currentPlayParentIndex--;
+            showCurrentParentPlayView();
+        }
+
+        $('#play-auto').on('click', startPlayNavigation);
+        $('#play-pause').on('click', stopPlayNavigation);
+        $('#play-forward').on('click', playNextParent);
+        $('#play-backward').on('click', playPreviousParent);
 
         // Badge click handlers
         $('#zero-sold-count-badge').on('click', function() {
@@ -1814,6 +1968,10 @@
 
         // Store all unfiltered data for summary calculations
         let allTableData = [];
+
+        // Play/Pause parent navigation (like pricing-master-cvr)
+        let isPlayNavigationActive = false;
+        let currentPlayParentIndex = 0;
         
         // Initialize Tabulator
         table = new Tabulator("#ebay3-table", {
@@ -2324,18 +2482,16 @@
                         const ebayPrice = parseFloat(rowData['eBay Price']) || 0;
                         const sprice = parseFloat(value) || 0;
                         
-                        if (!value) return '';
+                        if (value === null || value === undefined || value === '') return '<span style="color: #999;">-</span>';
+                        if (isNaN(sprice)) return '<span style="color: #999;">-</span>';
                         
+                        const formattedValue = `$${sprice.toFixed(2)}`;
                         if (sprice === ebayPrice) {
-                            return '<span style="color: #999; font-style: italic;">-</span>';
+                            return `<span style="color: #6c757d; font-weight: 500;">${formattedValue}</span>`;
                         }
-                        
-                        const formattedValue = `$${parseFloat(value).toFixed(2)}`;
-                        
                         if (hasCustomSprice === false) {
                             return `<span style="color: #0d6efd; font-weight: 500;">${formattedValue}</span>`;
                         }
-                        
                         return formattedValue;
                     },
                     width: 80
@@ -3267,12 +3423,18 @@
 
         // Apply filters
         function applyFilters() {
+            if (isPlayNavigationActive) {
+                showCurrentParentPlayView();
+                return;
+            }
+
             const viewModeFilter = $('#view-mode-filter').val();
             const inventoryFilter = $('#inventory-filter').val();
             const nrlFilter = $('#nrl-filter').val();
             const gpftFilter = $('#gpft-filter').val();
             const cvrFilter = $('#cvr-filter').val();
             const statusFilter = $('#status-filter').val();
+            const dilutionFilter = $('#dilution-filter').val();
             const adsFilter = $('#ads-filter').val();
             const rangeMin = parseFloat($('#range-min').val()) || null;
             const rangeMax = parseFloat($('#range-max').val()) || null;
@@ -3397,6 +3559,24 @@
                         return status === 'NR';
                     }
                     return true;
+                });
+            }
+
+            // Dilution (E Dil%) filter - same bands as column: red <16.66, yellow 16.66-25, green 25-50, pink 50+
+            if (dilutionFilter !== 'all') {
+                table.addFilter(function(data) {
+                    const sku = data['(Child) sku'] || '';
+                    if (viewModeFilter !== 'sku' && sku.toUpperCase().includes('PARENT')) return true;
+
+                    const inv = parseFloat(data.INV) || 0;
+                    const l30 = parseFloat(data['L30']) || 0;
+                    const dil = inv === 0 ? 0 : (l30 / inv) * 100;
+                    let color = 'red';
+                    if (dil >= 50) color = 'pink';
+                    else if (dil >= 25) color = 'green';
+                    else if (dil >= 16.66) color = 'yellow';
+                    else color = 'red';
+                    return color === dilutionFilter;
                 });
             }
 
@@ -3730,10 +3910,11 @@
                 });
             }
 
-            // Unified Range Filter (E L30 & Views)
+            // Unified Range Filter (E L30 & Views) - map E_L30 to actual field "eBay L30"
             if (rangeColumn && (rangeMin !== null || rangeMax !== null)) {
                 table.addFilter(function(data) {
-                    const value = parseFloat(data[rangeColumn]) || 0;
+                    const fieldName = rangeColumn === 'E_L30' ? 'eBay L30' : rangeColumn;
+                    const value = parseFloat(data[fieldName]) || 0;
                     
                     // Apply min filter
                     if (rangeMin !== null && value < rangeMin) {
@@ -3759,7 +3940,7 @@
             }, 100);
         }
 
-        $('#view-mode-filter, #inventory-filter, #nrl-filter, #gpft-filter, #cvr-filter, #status-filter, #ads-filter').on('change', function() {
+        $('#view-mode-filter, #inventory-filter, #nrl-filter, #gpft-filter, #cvr-filter, #status-filter, #dilution-filter, #ads-filter').on('change', function() {
             applyFilters();
         });
 
@@ -4631,6 +4812,38 @@
                 });
                 updateSelectAllCheckbox();
             }, 100);
+        });
+
+        // Row checkbox: add/remove SKU from selectedSkus so Clear (selected) and Clear All SPRICE work
+        $(document).on('change', '.sku-select-checkbox', function() {
+            const sku = $(this).attr('data-sku') || $(this).data('sku');
+            if (!sku) return;
+            if ($(this).prop('checked')) {
+                selectedSkus.add(sku);
+            } else {
+                selectedSkus.delete(sku);
+            }
+            $('#selected-skus-count').text(selectedSkus.size + ' SKU' + (selectedSkus.size !== 1 ? 's' : '') + ' selected');
+            updateSelectAllCheckbox();
+        });
+
+        // Select-all checkbox: add/remove all filtered (non-parent) SKUs
+        $(document).on('change', '#select-all-checkbox', function() {
+            const checked = $(this).prop('checked');
+            const filteredData = table.getData('active').filter(function(row) {
+                return !(row.Parent && row.Parent.startsWith('PARENT'));
+            });
+            const filteredSkus = filteredData.map(function(row) { return row['(Child) sku']; }).filter(Boolean);
+            if (checked) {
+                filteredSkus.forEach(function(sku) { selectedSkus.add(sku); });
+            } else {
+                filteredSkus.forEach(function(sku) { selectedSkus.delete(sku); });
+            }
+            $('#selected-skus-count').text(selectedSkus.size + ' SKU' + (selectedSkus.size !== 1 ? 's' : '') + ' selected');
+            table.getRows().forEach(function(row) {
+                row.reformat();
+            });
+            updateSelectAllCheckbox();
         });
 
         // Toggle column from dropdown

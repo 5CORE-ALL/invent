@@ -117,11 +117,13 @@ class EbayThreeController extends Controller
         $spftValues = [];
         $sroiValues = [];
         $sgpftValues = [];
+        $spriceCleared = []; // SKUs that user explicitly cleared (show "-" not eBay Price)
         $nrReqValues = [];
         $hideValues = [];
 
         foreach ($ebayDataViews as $sku => $dataView) {
             $value = is_array($dataView->value) ? $dataView->value : (json_decode($dataView->value, true) ?: []);
+            $skuUpper = strtoupper(trim((string) $sku));
             $nrValues[$sku] = $value['NR'] ?? null;
             $listedValues[$sku] = isset($value['Listed']) ? (int) $value['Listed'] : false;
             $liveValues[$sku] = isset($value['Live']) ? (int) $value['Live'] : false;
@@ -129,6 +131,9 @@ class EbayThreeController extends Controller
             $spftValues[$sku] = isset($value['SPFT']) ? floatval($value['SPFT']) : null;
             $sroiValues[$sku] = isset($value['SROI']) ? floatval($value['SROI']) : null;
             $sgpftValues[$sku] = isset($value['SGPFT']) ? floatval($value['SGPFT']) : null;
+            $spriceCleared[$skuUpper] = isset($value['SPRICE_CLEARED']) && (
+                $value['SPRICE_CLEARED'] === true || $value['SPRICE_CLEARED'] === 1 || $value['SPRICE_CLEARED'] === '1' || $value['SPRICE_CLEARED'] === 'true'
+            );
             $hideValues[$sku] = isset($value['Hide']) ? filter_var($value['Hide'], FILTER_VALIDATE_BOOLEAN) : false;
             // Get NRL value from EbayThreeDataView
             $nrReqValues[$sku] = isset($value['NRL']) ? $value['NRL'] : 'REQ';
@@ -900,10 +905,9 @@ class EbayThreeController extends Controller
                     2
                 );
                 
-                // Calculate SCVR = (eBay L30 / views) * 100
+                // Calculate SCVR = (eBay L30 / views) * 100 (for display/filter only; not used for SPRICE)
                 $row['SCVR'] = $views > 0 ? round(($ebayL30 / $views) * 100, 2) : 0;
-                $cvr = $row['SCVR'] ?? 0;
-                
+
                 // Calculate E Dil% = (L30 / INV) if INV > 0
                 $inv = floatval($row['INV'] ?? 0);
                 $l30 = floatval($row['L30'] ?? 0);
@@ -912,10 +916,11 @@ class EbayThreeController extends Controller
                 $row['percentage'] = $percentage;
                 $row['ad_updates'] = $adUpdates;
 
-                // SPRICE calculation - default to eBay Price (no CVR condition)
+                // SPRICE calculation: no CVR condition. Default = eBay Price when price > 0 and not explicitly cleared.
                 $calculatedSprice = null;
-                if ($price > 0) {
-                    // SPRICE defaults to eBay Price (CVR condition removed)
+                $skuUpperLookup = strtoupper(trim((string) $sku));
+                $explicitlyCleared = !empty($spriceCleared[$skuUpperLookup]);
+                if ($price > 0 && !$explicitlyCleared) {
                     $calculatedSprice = round($price, 2);
                     
                     // Check for saved SPRICE
@@ -936,27 +941,20 @@ class EbayThreeController extends Controller
                     if ($savedSprice !== null && abs($savedSprice - $calculatedSprice) > 0.01) {
                         $row['SPRICE'] = $savedSprice;
                         $row['has_custom_sprice'] = true;
-                        // Use saved status if exists (pushed/applied/error/account_restricted), otherwise 'saved'
                         $row['SPRICE_STATUS'] = $savedStatus ?: 'saved';
                     } else {
                         $row['SPRICE'] = $calculatedSprice;
                         $row['has_custom_sprice'] = false;
-                        // Use saved status if exists, otherwise null
                         $row['SPRICE_STATUS'] = $savedStatus;
                     }
                     
-                    // Calculate SGPFT based on actual SPRICE being used
                     $sprice = $row['SPRICE'];
                     $sgpft = round(
                         $sprice > 0 ? (($sprice * $percentage - $ship - $lp) / $sprice) * 100 : 0,
                         2
                     );
                     $row['SGPFT'] = $sgpft;
-                    
-                    // Calculate SPFT = SGPFT - AD%
                     $row['SPFT'] = $sgpft;
-                    
-                    // Calculate SROI
                     $row['SROI'] = round(
                         $lp > 0 ? (($sprice * $percentage - $lp - $ship) / $lp) * 100 : 0,
                         2
@@ -2048,14 +2046,39 @@ class EbayThreeController extends Controller
     public function saveSpriceToDatabase(Request $request)
     {
         Log::info('Saving eBay3 pricing data', $request->all());
-        $sku = strtoupper($request->input('sku'));
+        $sku = strtoupper(trim($request->input('sku', '')));
         $sprice = $request->input('sprice');
         $spft_percent = $request->input('spft_percent');
         $sroi_percent = $request->input('sroi_percent');
 
-        if (!$sku || !$sprice) {
-            Log::error('SKU or sprice missing', ['sku' => $sku, 'sprice' => $sprice]);
-            return response()->json(['error' => 'SKU and sprice are required.'], 400);
+        if (empty($sku)) {
+            Log::error('SKU missing', ['sku' => $sku]);
+            return response()->json(['error' => 'SKU is required.'], 400);
+        }
+        // Allow 0 for "clear SPRICE" (PHP treats 0 as falsy, so check explicitly)
+        if ($sprice === null || $sprice === '') {
+            Log::error('SPRICE value missing', ['sku' => $sku, 'sprice' => $sprice]);
+            return response()->json(['error' => 'SPRICE value is required.'], 400);
+        }
+
+        $spriceFloat = floatval($sprice);
+        $ebayThreeDataView = EbayThreeDataView::firstOrNew(['sku' => $sku]);
+        $existing = is_array($ebayThreeDataView->value)
+            ? $ebayThreeDataView->value
+            : (json_decode($ebayThreeDataView->value, true) ?: []);
+
+        // Clear SPRICE: when 0, remove SPRICE/SPFT/SROI/SGPFT and set flag so API returns null (not eBay Price)
+        if ($spriceFloat <= 0) {
+            unset($existing['SPRICE'], $existing['SPFT'], $existing['SROI'], $existing['SGPFT']);
+            $existing['SPRICE_CLEARED'] = true;
+            $ebayThreeDataView->value = $existing;
+            $ebayThreeDataView->save();
+            Log::info('SPRICE cleared for SKU in EbayThreeDataView', ['sku' => $sku]);
+            return response()->json([
+                'success' => true,
+                'message' => 'SPRICE cleared for Ebay3',
+                'data' => ['sku' => $sku, 'sprice' => 0, 'spft' => null, 'sroi' => null, 'sgpft' => null]
+            ]);
         }
 
         // Get current marketplace percentage for Ebay3
@@ -2063,14 +2086,12 @@ class EbayThreeController extends Controller
         $percentage = $marketplaceData ? ($marketplaceData->percentage / 100) : 1;
         Log::info('Using percentage', ['percentage' => $percentage]);
 
-        // Get ProductMaster for lp and ship
         $pm = ProductMaster::where('sku', $sku)->first();
         if (!$pm) {
             Log::error('SKU not found in ProductMaster', ['sku' => $sku]);
             return response()->json(['error' => 'SKU not found in ProductMaster.'], 404);
         }
 
-        // Extract lp and ship
         $values = is_array($pm->Values) ? $pm->Values : (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
         $lp = 0;
         foreach ($values as $k => $v) {
@@ -2082,57 +2103,34 @@ class EbayThreeController extends Controller
         if ($lp === 0 && isset($pm->lp)) {
             $lp = floatval($pm->lp);
         }
-
         $ship = isset($values["ship"]) ? floatval($values["ship"]) : (isset($pm->ship) ? floatval($pm->ship) : 0);
         Log::info('LP and Ship', ['lp' => $lp, 'ship' => $ship]);
 
-        // Calculate profit - Use fixed 0.85 (85%) margin for eBay3 tabulator
         $fixedMargin = 0.85;
-        $spriceFloat = floatval($sprice);
         $profit = ($spriceFloat * $fixedMargin - $lp - $ship);
-
-        // Calculate SGPFT first with 0.85 margin
         $sgpft = $spriceFloat > 0 ? round((($spriceFloat * $fixedMargin - $ship - $lp) / $spriceFloat) * 100, 2) : 0;
-        
-        // Get AD% from the product (using Ebay3Metric)
+
         $adPercent = 0;
         $ebay3Metric = Ebay3Metric::where('sku', $sku)->first();
-        
-        // For Ebay3, we'll calculate AD% if we have the metric data
-        // You may need to adjust this based on your actual data structure
         if ($ebay3Metric) {
-            // Calculate AD% based on available data
-            // This is a simplified version - adjust based on your actual requirements
-            $adPercent = 0; // Default to 0 if no specific calculation available
+            $adPercent = 0;
         }
-        
-        // Use provided SPFT and SROI if available, otherwise calculate
+
         $spft = $spft_percent !== null ? floatval($spft_percent) : round($sgpft - $adPercent, 2);
-        
-        // SROI = ((SPRICE * (0.85 - AD%/100) - ship - lp) / lp) * 100 - using 0.85 margin
         $adDecimal = $adPercent / 100;
         $sroi = $sroi_percent !== null ? floatval($sroi_percent) : round(
             $lp > 0 ? (($spriceFloat * ($fixedMargin - $adDecimal) - $ship - $lp) / $lp) * 100 : 0,
             2
         );
-        
         Log::info('Calculated values', ['sprice' => $spriceFloat, 'sgpft' => $sgpft, 'ad_percent' => $adPercent, 'spft' => $spft, 'sroi' => $sroi]);
 
-        $ebayThreeDataView = EbayThreeDataView::firstOrNew(['sku' => $sku]);
-
-        // Decode value column safely
-        $existing = is_array($ebayThreeDataView->value)
-            ? $ebayThreeDataView->value
-            : (json_decode($ebayThreeDataView->value, true) ?: []);
-
-        // Merge new sprice data
+        unset($existing['SPRICE_CLEARED']); // user set a price, no longer "cleared"
         $merged = array_merge($existing, [
             'SPRICE' => $spriceFloat,
             'SPFT' => $spft,
             'SROI' => $sroi,
             'SGPFT' => $sgpft,
         ]);
-
         $ebayThreeDataView->value = $merged;
         $ebayThreeDataView->save();
         Log::info('Data saved successfully to EbayThreeDataView', ['sku' => $sku]);
@@ -2175,11 +2173,12 @@ class EbayThreeController extends Controller
                              isset($value['SROI']) || isset($value['SGPFT']);
                 
                 if ($hasSprice) {
-                    // Remove only SPRICE-related fields
+                    // Remove only SPRICE-related fields and set flag so API returns null (not eBay Price)
                     unset($value['SPRICE']);
                     unset($value['SPFT']);
                     unset($value['SROI']);
                     unset($value['SGPFT']);
+                    $value['SPRICE_CLEARED'] = true;
                     
                     // Save the updated value (keeping NR, Listed, Live, Hide, NRL, etc.)
                     $record->value = $value;
