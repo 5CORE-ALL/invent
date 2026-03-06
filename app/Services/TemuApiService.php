@@ -165,14 +165,12 @@ class TemuApiService
 
         Log::info("======================= Ended Inventory Sync =======================");
         Log::info("Total Temu inventory items collected: " . count($this->allItems));
-        foreach($this->allItems as $titem){    
-            // ProductStockMapping::updateOrCreate(
-            //     ['sku' => $titem['outSkuSnList'][0]],
-            //     ['inventory_temu' => $titem['quantity']]
-            // );
-
-                                     ProductStockMapping::where('sku', $sku)->update(['inventory_temu' => (int) $quantity]); 
-                         ProductStockMapping::where('sku', $sku)->update(['inventory_temu' => (int) $quantity]);    
+        foreach ($this->allItems as $titem) {
+            $sku = $titem['outGoodsSn'] ?? null;
+            $quantity = $titem['quantity'] ?? 0;
+            if ($sku) {
+                ProductStockMapping::where('sku', $sku)->update(['inventory_temu' => (int) $quantity]);
+            }
         }
         Log::info($this->allItems);
         return $this->allItems;
@@ -207,13 +205,13 @@ public function getInventory__()
         $response = $request->post('https://openapi-b-us.temu.com/openapi/router', $signedRequest);
 
         if ($response->failed()) {
-            $this->error("Request failed: " . $response->body());
+            Log::error("Temu getInventory__ request failed: " . $response->body());
             break;
         }
 
         $data = $response->json();
         if (!($data['success'] ?? false)) {
-            $this->error("Temu Error: " . ($data['errorMsg'] ?? 'Unknown'));
+            Log::error("Temu getInventory__ API error: " . ($data['errorMsg'] ?? 'Unknown'));
             break;
         }
 
@@ -302,7 +300,7 @@ public function getInventory1()
         $response = $request->post('https://openapi-b-us.temu.com/openapi/router', $signedRequest);
 
         if ($response->failed()) {
-            \Log::error("Temu API request failed (Page {$pageNumber})", [
+            Log::error("Temu API request failed (Page {$pageNumber})", [
                 'status' => $response->status(),
                 'body' => $response->body(),
             ]);
@@ -313,7 +311,7 @@ public function getInventory1()
         
 
         if (!($data['success'] ?? false)) {
-            \Log::error("Temu API error (Page {$pageNumber})", [
+            Log::error("Temu API error (Page {$pageNumber})", [
                 'errorCode' => $data['errorCode'] ?? null,
                 'errorMsg' => $data['errorMsg'] ?? 'Unknown error',
             ]);
@@ -338,12 +336,9 @@ public function getInventory1()
                 'quantity' => $qty,
             ];
 
-            // ProductStockMapping::updateOrCreate(
-            //     ['sku' => $skuId],
-            //     ['inventory_temu' => $qty]
-            // );     
-            
-            ProductStockMapping::where('sku', $sku)->update(['inventory_temu' => (int) $qty]);    
+            if ($skuId) {
+                ProductStockMapping::where('sku', $skuId)->update(['inventory_temu' => (int) $qty]);
+            }
         }
 
         // Stop if this is the last page (fewer items than page size)
@@ -358,7 +353,7 @@ public function getInventory1()
 
     } while ($pageNumber <= $maxPages);
 
-    \Log::info('Total Temu inventory items collected: ' . count($allItems));
+    Log::info('Total Temu inventory items collected: ' . count($allItems));
 
     return $allItems;
 }
@@ -733,11 +728,11 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
         }
 
         $goodsId = $this->getGoodsIdBySku($sku);
-        if ($goodsId === null || $goodsId === '') {
-            Log::warning('Temu updateTitle: could not resolve goodsId for SKU', ['sku' => $sku]);
+        if (! $goodsId) {
+            Log::warning('Temu updateTitle: goodsId not found for SKU', ['sku' => $sku]);
             return [
                 'success' => false,
-                'message' => "Temu: SKU not found or goods_id not mapped. Ensure the product exists on Temu and run goods-id sync (e.g. FetchTemuMetrics fetchGoodsId) or add sku/goods_id in temu_pricing.",
+                'message' => 'goodsId not found for SKU. Ensure the product exists on Temu and run goods-id sync (e.g. FetchTemuMetrics) or add sku/goods_id in temu_pricing.',
             ];
         }
 
@@ -757,22 +752,8 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
             'access_token_exists' => ! empty(config('services.temu.access_token')),
         ]);
 
-        // Per official docs: type, goodsId, goodsBasic.goodsName, skuList with skuId, outSkuSn, listPrice, weight, dimensions, images
         $skuListField = config('services.temu.sku_list_field', 'skuList');
         $goodsBasicField = config('services.temu.goods_basic_field', 'goodsBasic');
-        $listPriceField = config('services.temu.list_price_field', 'listPrice');
-        $skuIdField = config('services.temu.sku_id_field', 'skuId');
-        $skuCodeField = config('services.temu.sku_code_field', 'outSkuSn');
-
-        $price = $this->getProductPrice($sku);
-        if ($price === null) {
-            Log::warning('Temu updateTitle: no price found for SKU, using 1.00 as listPrice fallback', ['sku' => $sku]);
-        }
-        $dimensions = $this->getProductDimensions($sku);
-        $images = $this->getProductImages($sku);
-        if (empty($images)) {
-            Log::warning('Temu updateTitle: no product images found for SKU, using empty array (may cause "Upload image URL link" error)', ['sku' => $sku]);
-        }
 
         $requestBody = [
             'type' => $apiType,
@@ -784,40 +765,19 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
 
         if ($skuInfo !== null && isset($skuInfo['skuId'])) {
             $skuEntry = [
-                $skuIdField => (int) $skuInfo['skuId'],
-                $skuCodeField => $sku,
-                $listPriceField => [
-                    'amount' => (string) ($price ?? 1.00),
-                    'currency' => 'USD',
-                ],
-                'listPriceType' => 0,
-                'weight' => $dimensions['weight'],
-                'length' => $dimensions['length'],
-                'width' => $dimensions['width'],
-                'height' => $dimensions['height'],
-                'weightUnit' => $dimensions['weightUnit'],
-                'volumeUnit' => $dimensions['volumeUnit'],
-                'images' => $images,
+                'skuId' => (int) $skuInfo['skuId'],
+                'outSkuSn' => $sku,
             ];
             $requestBody[$skuListField] = [$skuEntry];
         }
 
-        Log::info('Temu Request Structure (per official docs)', [
-            'skuList_field' => $skuListField,
-            'goodsBasic_field' => $goodsBasicField,
-            'full_body_json' => json_encode($requestBody, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE),
-        ]);
-        Log::debug('Temu - Before generateSignValue', ['requestBody' => $requestBody]);
-
-        $signedRequest = $this->generateSignValue($requestBody);
-
-        Log::info('Temu Full Request - updateTitle', [
-            'url' => $url,
-            'headers' => ['Content-Type' => 'application/json'],
-            'body' => array_merge($signedRequest, ['access_token' => isset($signedRequest['access_token']) ? substr($signedRequest['access_token'], 0, 15) . '...' : 'MISSING']),
+        Log::info('Temu updateTitle request', [
             'sku' => $sku,
             'goodsId' => $goodsId,
+            'body' => $requestBody,
         ]);
+
+        $signedRequest = $this->generateSignValue($requestBody);
 
         $request = Http::withHeaders(['Content-Type' => 'application/json']);
         if (config('filesystems.default') === 'local') {
@@ -830,11 +790,9 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
             $bodyRaw = $response->body();
             $data = $response->json();
 
-            Log::info('Temu Full Response - updateTitle', [
+            Log::info('Temu updateTitle response', [
                 'status' => $status,
                 'body' => $bodyRaw,
-                'sku' => $sku,
-                'goodsId' => $goodsId,
             ]);
 
             if ($response->successful() && ($data['success'] ?? false)) {
