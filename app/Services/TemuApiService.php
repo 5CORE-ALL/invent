@@ -535,6 +535,83 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
     }
 
     /**
+     * Resolve seller SKU to Temu skuId (internal SKU ID) for update APIs that require "at least one SKU".
+     * Checks TemuPricing/TemuMetric first; if not found, calls temu.local.sku.list.retrieve.
+     *
+     * @param string $sku Seller SKU (outSkuSn)
+     * @return string|null skuId (numeric string) or null
+     */
+    public function getSkuIdBySku(string $sku): ?string
+    {
+        $sku = trim($sku);
+        if ($sku === '') {
+            return null;
+        }
+        $skuId = TemuPricing::where('sku', $sku)->value('sku_id');
+        if ($skuId !== null && $skuId !== '') {
+            return (string) $skuId;
+        }
+        $skuId = TemuMetric::where('sku', $sku)->orWhere('sku_id', $sku)->value('sku_id');
+        if ($skuId !== null && $skuId !== '') {
+            return (string) $skuId;
+        }
+        try {
+            $pageToken = null;
+            do {
+                $requestBody = [
+                    'type' => 'temu.local.sku.list.retrieve',
+                    'skuSearchType' => 'ACTIVE',
+                    'pageSize' => 100,
+                ];
+                if ($pageToken) {
+                    $requestBody['pageToken'] = $pageToken;
+                }
+                $signedRequest = $this->generateSignValue($requestBody);
+                $request = Http::withHeaders(['Content-Type' => 'application/json']);
+                if (config('filesystems.default') === 'local') {
+                    $request = $request->withoutVerifying();
+                }
+                $response = $request->post('https://openapi-b-us.temu.com/openapi/router', $signedRequest);
+                $data = $response->json();
+                if ($response->failed() || ! ($data['success'] ?? false)) {
+                    break;
+                }
+                $skuList = $data['result']['skuList'] ?? [];
+                foreach ($skuList as $item) {
+                    $outSkuSn = isset($item['outSkuSn']) ? trim((string) $item['outSkuSn']) : null;
+                    if ($outSkuSn === $sku) {
+                        $id = $item['skuId'] ?? null;
+                        if ($id !== null && $id !== '') {
+                            return (string) $id;
+                        }
+                    }
+                }
+                $pageToken = $data['result']['pagination']['nextToken'] ?? null;
+            } while ($pageToken);
+        } catch (\Throwable $e) {
+            Log::warning('Temu getSkuIdBySku list API fallback failed', ['sku' => $sku, 'error' => $e->getMessage()]);
+        }
+        return null;
+    }
+
+    /**
+     * Get SKU info (skuId, outSkuSn) for a given seller SKU. Used when update API requires skuInfoList.
+     *
+     * @param string $goodsId Temu goodsId (already resolved)
+     * @param string $sku Seller SKU
+     * @return array{skuId: string, outSkuSn: string}|null
+     */
+    public function getSkuInfoForGoodsAndSku(string $goodsId, string $sku): ?array
+    {
+        $sku = trim($sku);
+        $skuId = $this->getSkuIdBySku($sku);
+        if ($skuId !== null && $skuId !== '') {
+            return ['skuId' => $skuId, 'outSkuSn' => $sku];
+        }
+        return null;
+    }
+
+    /**
      * Update product title on Temu by seller SKU.
      * Resolves SKU → goodsId (required by API); uses goodsId + goodsName in request.
      * API type is configurable via config('services.temu.goods_update_type') or TEMU_GOODS_UPDATE_TYPE.
@@ -560,6 +637,13 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
             ];
         }
 
+        $skuInfo = $this->getSkuInfoForGoodsAndSku($goodsId, $sku);
+        Log::info('Temu - SKU resolution for updateTitle', [
+            'sku' => $sku,
+            'goodsId' => $goodsId,
+            'skuInfo' => $skuInfo,
+        ]);
+
         $apiType = config('services.temu.goods_update_type', 'bg.local.goods.update');
         $url = 'https://openapi-b-us.temu.com/openapi/router';
 
@@ -569,12 +653,22 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
             'access_token_exists' => ! empty(config('services.temu.access_token')),
         ]);
 
-        // API requires goodsId (int64), not outGoodsSn. Use goodsName for title (per Temu docs).
+        // API requires goodsId + goodsName and "at least one SKU" (outGoodsSn and/or skuInfoList).
         $requestBody = [
             'type' => $apiType,
             'goodsId' => (int) $goodsId,
             'goodsName' => $title,
+            'outGoodsSn' => $sku,
         ];
+        if ($skuInfo !== null && isset($skuInfo['skuId'])) {
+            $requestBody['skuInfoList'] = [
+                [
+                    'skuId' => (int) $skuInfo['skuId'],
+                    'outSkuSn' => $sku,
+                    'skuName' => $title,
+                ],
+            ];
+        }
 
         Log::debug('Temu - Before generateSignValue', ['requestBody' => $requestBody]);
 
@@ -613,12 +707,21 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
 
             $errorCode = $data['errorCode'] ?? null;
             $errorMsg = $data['errorMsg'] ?? $data['message'] ?? $bodyRaw;
+            $isAddSkuError = stripos((string) $errorMsg, 'Add at least one SKU') !== false;
 
             if ((int) $errorCode === 150011003) {
                 Log::warning('Temu API "Invalid Request Parameters [goodsId]" (150011003). Ensure goodsId is resolved from SKU (TemuPricing/TemuMetric or list API) and is a valid Temu product ID.', [
                     'sku' => $sku,
                     'goodsId' => $goodsId,
                     'requestBody' => $requestBody,
+                ]);
+            }
+            if ($isAddSkuError) {
+                Log::warning('Temu API "Add at least one SKU". Request now includes outGoodsSn and skuInfoList when skuId is available. If still failing, check Temu docs for exact skuInfoList structure.', [
+                    'sku' => $sku,
+                    'goodsId' => $goodsId,
+                    'skuInfo' => $skuInfo ?? null,
+                    'requestBody_keys' => array_keys($requestBody),
                 ]);
             }
             if ((int) $errorCode === 3000003) {
