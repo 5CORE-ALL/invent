@@ -302,6 +302,10 @@
             color: white;
         }
 
+        .char-counter.warning {
+            color: #b8860b;
+            font-weight: 600;
+        }
         .char-counter {
             font-size: 11px;
             color: #6c757d;
@@ -578,6 +582,12 @@
                         </div>
 
                         <div class="mb-3">
+                            <button type="button" class="btn btn-ai-improve" id="aiImproveBtn100" title="Generate Title 100 (≤100 chars) with AI and review in popup">
+                                <i class="fas fa-magic"></i> Improve with AI
+                            </button>
+                        </div>
+
+                        <div class="mb-3">
                             <label for="title80" class="form-label">
                                 Title 80 <span class="char-counter" id="counter80">0/80</span>
                             </label>
@@ -648,6 +658,64 @@
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- AI Generated Title 100 Preview Modal (4 options) -->
+    <div class="modal fade" id="aiTitle100Modal" tabindex="-1" aria-labelledby="aiTitle100ModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-lg">
+            <div class="modal-content">
+                <div class="modal-header" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">
+                    <h5 class="modal-title" id="aiTitle100ModalLabel">
+                        <i class="fas fa-magic me-2"></i>AI Generated Titles (100 chars)
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="aiTitle100Option1" class="p-3 bg-light rounded mb-3 border">
+                        <div class="fw-bold mb-2">Option 1:</div>
+                        <p class="mb-2 ai-title100-text" style="font-size: 15px; line-height: 1.5; white-space: pre-wrap; word-wrap: break-word;"></p>
+                        <div class="d-flex align-items-center flex-wrap gap-2 mb-2">
+                            <span class="ai-char100-badge badge">0/100 chars</span>
+                            <span class="ai-char100-status text-success"></span>
+                        </div>
+                        <button type="button" class="btn btn-keep-title ai-keep-btn-100" data-option="0"><i class="fas fa-check me-1"></i> KEEP THIS TITLE</button>
+                    </div>
+                    <div id="aiTitle100Option2" class="p-3 bg-light rounded mb-3 border">
+                        <div class="fw-bold mb-2">Option 2:</div>
+                        <p class="mb-2 ai-title100-text" style="font-size: 15px; line-height: 1.5; white-space: pre-wrap; word-wrap: break-word;"></p>
+                        <div class="d-flex align-items-center flex-wrap gap-2 mb-2">
+                            <span class="ai-char100-badge badge">0/100 chars</span>
+                            <span class="ai-char100-status text-success"></span>
+                        </div>
+                        <button type="button" class="btn btn-keep-title ai-keep-btn-100" data-option="1"><i class="fas fa-check me-1"></i> KEEP THIS TITLE</button>
+                    </div>
+                    <div id="aiTitle100Option3" class="p-3 bg-light rounded mb-3 border">
+                        <div class="fw-bold mb-2">Option 3:</div>
+                        <p class="mb-2 ai-title100-text" style="font-size: 15px; line-height: 1.5; white-space: pre-wrap; word-wrap: break-word;"></p>
+                        <div class="d-flex align-items-center flex-wrap gap-2 mb-2">
+                            <span class="ai-char100-badge badge">0/100 chars</span>
+                            <span class="ai-char100-status text-success"></span>
+                        </div>
+                        <button type="button" class="btn btn-keep-title ai-keep-btn-100" data-option="2"><i class="fas fa-check me-1"></i> KEEP THIS TITLE</button>
+                    </div>
+                    <div id="aiTitle100Option4" class="p-3 bg-light rounded mb-3 border">
+                        <div class="fw-bold mb-2">Option 4:</div>
+                        <p class="mb-2 ai-title100-text" style="font-size: 15px; line-height: 1.5; white-space: pre-wrap; word-wrap: break-word;"></p>
+                        <div class="d-flex align-items-center flex-wrap gap-2 mb-2">
+                            <span class="ai-char100-badge badge">0/100 chars</span>
+                            <span class="ai-char100-status text-success"></span>
+                        </div>
+                        <button type="button" class="btn btn-keep-title ai-keep-btn-100" data-option="3"><i class="fas fa-check me-1"></i> KEEP THIS TITLE</button>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-regen-titles" id="aiRegenerateBtn100">
+                        <i class="fas fa-redo-alt me-1"></i> REGENERATE 4 NEW TITLES
+                    </button>
+                    <button type="button" class="btn btn-cancel-ai" data-bs-dismiss="modal">Cancel</button>
                 </div>
             </div>
         </div>
@@ -992,12 +1060,16 @@
         let platformModal;
         let aiTitleModalInstance;
         let currentAIGeneratedTitles = [];
+        let aiTitle100ModalInstance;
+        let currentAIGeneratedTitles100 = [];
 
         document.addEventListener('DOMContentLoaded', function() {
             titleModal = new bootstrap.Modal(document.getElementById('titleModal'));
             platformModal = new bootstrap.Modal(document.getElementById('platformModal'));
             const aiTitleModalEl = document.getElementById('aiTitleModal');
             if (aiTitleModalEl) aiTitleModalInstance = new bootstrap.Modal(aiTitleModalEl);
+            const aiTitle100ModalEl = document.getElementById('aiTitle100Modal');
+            if (aiTitle100ModalEl) aiTitle100ModalInstance = new bootstrap.Modal(aiTitle100ModalEl);
             loadTitleData();
             setupSearchHandlers();
             setupModalHandlers();
@@ -1313,7 +1385,9 @@
             if (!input || !counter) return;
             const len = input.value.length;
             counter.textContent = len + '/' + maxLen;
-            if (len > maxLen) counter.classList.add('error'); else counter.classList.remove('error');
+            counter.classList.remove('error', 'warning');
+            if (len > maxLen) counter.classList.add('error');
+            else if (fieldId === 'title100' && len >= 95 && len <= maxLen) counter.classList.add('warning');
         }
 
         function showFieldLoading(fieldId) {
@@ -1343,10 +1417,11 @@
                 input.addEventListener('input', function() {
                     const length = this.value.length;
                     counter.textContent = length + '/' + maxLength;
+                    counter.classList.remove('error', 'warning');
                     if (length > maxLength) {
                         counter.classList.add('error');
-                    } else {
-                        counter.classList.remove('error');
+                    } else if (field === 'title100' && length >= 95 && length <= 100) {
+                        counter.classList.add('warning');
                     }
                 });
             });
@@ -1412,6 +1487,82 @@
                 });
             }
 
+            // Improve with AI button for Title 100 (4 options, ≤100 chars)
+            const aiImproveBtn100 = document.getElementById('aiImproveBtn100');
+            if (aiImproveBtn100) {
+                aiImproveBtn100.addEventListener('click', function() {
+                    const btn = this;
+                    const originalHtml = btn.innerHTML;
+                    const title150 = document.getElementById('title150').value.trim();
+                    const currentTitle100 = document.getElementById('title100').value.trim();
+                    const sku = (document.getElementById('editSku') && document.getElementById('editSku').value) || (document.getElementById('selectSku') && document.getElementById('selectSku').value) || '';
+                    const item = tableData && sku ? tableData.find(d => d.SKU === sku) : null;
+                    const category = (item && item.Parent) ? item.Parent : '';
+
+                    if (!title150) {
+                        alert('Please enter or load a Title 150 before using Improve with AI for Title 100.');
+                        return;
+                    }
+
+                    btn.disabled = true;
+                    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status"></span>Generating 100-char titles...';
+
+                    fetch('/title-master/ai/generate-title-100', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': csrfToken
+                        },
+                        body: JSON.stringify({
+                            sku: sku,
+                            title_150: title150,
+                            current_title_100: currentTitle100,
+                            category: category
+                        })
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success && data.titles && data.titles.length >= 4) {
+                            showTitle100Popup(data.titles);
+                        } else {
+                            alert('Failed to generate titles: ' + (data.message || 'Unknown error'));
+                        }
+                    })
+                    .catch(err => {
+                        console.error('AI generate title 100 error:', err);
+                        alert('Error: ' + (err.message || 'Network or server error'));
+                    })
+                    .finally(function() {
+                        btn.disabled = false;
+                        btn.innerHTML = originalHtml;
+                    });
+                });
+            }
+
+            // AI Title 100 popup: Keep buttons (apply to Title 100 field) and Regenerate
+            document.querySelectorAll('.ai-keep-btn-100').forEach(function(btn) {
+                btn.addEventListener('click', function() {
+                    const idx = parseInt(this.getAttribute('data-option'), 10);
+                    const title = currentAIGeneratedTitles100[idx];
+                    const el100 = document.getElementById('title100');
+                    if (el100 && title) {
+                        el100.value = title.length > 100 ? title.substring(0, 100) : title;
+                        updateModalCounter('title100');
+                    }
+                    if (aiTitle100ModalInstance) aiTitle100ModalInstance.hide();
+                    alert('Title applied to Title 100 field. Click Save to store.');
+                });
+            });
+            const aiRegenBtn100 = document.getElementById('aiRegenerateBtn100');
+            if (aiRegenBtn100) {
+                aiRegenBtn100.addEventListener('click', function() {
+                    if (aiTitle100ModalInstance) aiTitle100ModalInstance.hide();
+                    setTimeout(function() {
+                        if (aiImproveBtn100) aiImproveBtn100.click();
+                    }, 300);
+                });
+            }
+
             // AI Title popup: Keep buttons (per option) and Regenerate
             document.querySelectorAll('.ai-keep-btn').forEach(function(btn) {
                 btn.addEventListener('click', function() {
@@ -1473,6 +1624,34 @@
                 }
             });
             if (aiTitleModalInstance) aiTitleModalInstance.show();
+        }
+
+        function showTitle100Popup(titles) {
+            if (!Array.isArray(titles) || titles.length < 4) return;
+            currentAIGeneratedTitles100 = titles.slice(0, 4).map(function(t) { return (t && typeof t === 'string' ? t : (t.title || '')) || ''; });
+            const maxLen = 100;
+            const options = document.querySelectorAll('#aiTitle100Option1, #aiTitle100Option2, #aiTitle100Option3, #aiTitle100Option4');
+            options.forEach(function(opt, i) {
+                const title = currentAIGeneratedTitles100[i] || '';
+                const len = title.length;
+                const textEl = opt.querySelector('.ai-title100-text');
+                const badgeEl = opt.querySelector('.ai-char100-badge');
+                const statusEl = opt.querySelector('.ai-char100-status');
+                if (textEl) textEl.textContent = title;
+                if (badgeEl) {
+                    badgeEl.textContent = len + '/100 chars';
+                    badgeEl.className = 'badge ai-char100-badge ';
+                    if (len > maxLen) badgeEl.classList.add('bg-danger');
+                    else if (len >= 95 && len <= maxLen) badgeEl.classList.add('bg-warning', 'text-dark');
+                    else badgeEl.classList.add('bg-success');
+                }
+                if (statusEl) {
+                    if (len > maxLen) statusEl.innerHTML = '<span class="text-danger"><i class="fas fa-exclamation-triangle"></i> Too long</span>';
+                    else if (len >= 95 && len <= maxLen) statusEl.innerHTML = '<span class="text-warning"><i class="fas fa-exclamation-triangle"></i> ⚠️</span>';
+                    else statusEl.innerHTML = '<span class="text-success"><i class="fas fa-check-circle"></i> ✓</span>';
+                }
+            });
+            if (aiTitle100ModalInstance) aiTitle100ModalInstance.show();
         }
 
         function loadTitleData() {

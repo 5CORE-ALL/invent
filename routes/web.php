@@ -1036,6 +1036,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/title-master/save', [ProductMasterController::class, 'saveTitleData'])->name('title.master.save');
     Route::post('/title-master/ai/generate-titles', [ProductMasterController::class, 'generateTitlesWithAI'])->name('title.master.ai.generate');
     Route::post('/title-master/ai/generate-title-150', [ProductMasterController::class, 'generateTitle150WithAI'])->name('title.master.ai.generate.title150');
+    Route::post('/title-master/ai/generate-title-100', [ProductMasterController::class, 'generateTitle100WithAI'])->name('title.master.ai.generate.title100');
     Route::post('/api/amazon/push-title', [ProductMasterController::class, 'pushTitleToAmazon'])->name('amazon.push.title');
     Route::post('/api/amazon/push-bulk', [ProductMasterController::class, 'pushBulkToAmazon'])->name('amazon.push.bulk');
     Route::post('/api/marketplaces/push-title', [ProductMasterController::class, 'pushTitleToAllMarketplaces'])->name('marketplaces.push.title');
