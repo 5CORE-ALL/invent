@@ -2097,6 +2097,148 @@ PROMPT;
     }
 
     /**
+     * Generate 4 Title 100 options (90-105 chars) using Claude for the "Improve with AI" popup.
+     * Target: 95-100 (ideal). Absolute range: 90-105. Reject if any title <90 or >105.
+     */
+    public function generateTitle100WithAI(Request $request)
+    {
+        $request->validate([
+            'sku' => 'nullable|string',
+            'title_150' => 'required|string',
+            'current_title_100' => 'nullable|string',
+            'category' => 'nullable|string',
+        ]);
+
+        $apiKey = config('services.anthropic.key');
+        if (! $apiKey) {
+            Log::warning('AI generate title 100: ANTHROPIC_API_KEY not configured');
+
+            return response()->json([
+                'success' => false,
+                'message' => 'ANTHROPIC_API_KEY is not configured.',
+            ], 503);
+        }
+
+        $title150 = trim($request->input('title_150', ''));
+        $currentTitle100 = trim($request->input('current_title_100', ''));
+        $sku = $request->input('sku', '');
+        $category = $request->input('category', '');
+
+        $model = 'claude-sonnet-4-20250514';
+        $minLen = 90;
+        $maxLen = 105;
+
+        $prompt = <<<PROMPT
+You are an expert e-commerce copywriter. Generate 4 titles for the Title 100 field.
+
+Original title: "{$title150}"
+SKU: {$sku}
+Category: {$category}
+Existing Title 100 (if any): "{$currentTitle100}"
+
+STRICT REQUIREMENTS:
+- Absolute limits: MINIMUM 90 characters, MAXIMUM 105 characters
+- TARGET: Try to make titles between 95-100 characters
+- Ideal length: 100 characters
+- Acceptable range: 95-100 (best), 90-94 (acceptable), 101-105 (slightly long but OK)
+- NEVER exceed 105 characters
+- NEVER go below 90 characters
+- Include brand "5 Core" at beginning
+- SEO optimized
+- Return 4 distinct variations (feature, benefit, technical, usage-focused)
+
+For each title, provide a success score out of 10 (how likely the title is to convert and rank well for 100-char platforms: 1=weak, 10=excellent).
+
+Technical requirement: Return ONLY a JSON array of exactly 4 objects. No markdown, no code block, no explanations. Each object must have "title" (string) and "score" (integer 1-10).
+Example format: [{"title": "5 Core First title here 90-105 chars...", "score": 8}, {"title": "5 Core Second title...", "score": 7}, {"title": "5 Core Third title...", "score": 9}, {"title": "5 Core Fourth title...", "score": 8}]
+PROMPT;
+
+        try {
+            Log::info('AI generate title 100: start', ['sku' => $sku]);
+
+            $response = Http::timeout(90)
+                ->withHeaders([
+                    'x-api-key' => $apiKey,
+                    'anthropic-version' => '2023-06-01',
+                    'content-type' => 'application/json',
+                ])
+                ->post('https://api.anthropic.com/v1/messages', [
+                    'model' => $model,
+                    'max_tokens' => 1024,
+                    'messages' => [['role' => 'user', 'content' => $prompt]],
+                ]);
+
+            if (! $response->successful()) {
+                $bodyJson = $response->json();
+                $errorMsg = $bodyJson['error']['message'] ?? $response->body();
+                Log::warning('AI generate title 100: API error', ['status' => $response->status()]);
+
+                return response()->json([
+                    'success' => false,
+                    'message' => 'AI service error: '.$errorMsg,
+                ], 502);
+            }
+
+            $body = $response->json();
+            $text = trim($body['content'][0]['text'] ?? '');
+            $text = preg_replace('/^```\w*\s*|\s*```$/m', '', $text);
+            $arr = json_decode($text, true);
+
+            if (! is_array($arr) || count($arr) < 4) {
+                Log::warning('AI generate title 100: invalid response format', ['preview' => mb_substr($text, 0, 300)]);
+
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Invalid AI response: expected 4 titles with scores.',
+                ], 422);
+            }
+
+            $validItems = [];
+            $invalidCount = 0;
+            for ($i = 0; $i < 4; $i++) {
+                $raw = $arr[$i] ?? null;
+                $t = is_array($raw) && ! empty($raw['title'])
+                    ? trim((string) $raw['title'])
+                    : trim(is_string($raw) ? $raw : (string) ($raw ?? ''));
+                $len = mb_strlen($t);
+                $valid = $len >= $minLen && $len <= $maxLen;
+                if (! $valid) {
+                    $invalidCount++;
+                    Log::info('AI generate title 100: title '.($i + 1).' out of range (discarded)', ['len' => $len, 'min' => $minLen, 'max' => $maxLen]);
+                    continue;
+                }
+                $scoreFromAi = (is_array($raw) && isset($raw['score'])) ? max(1, min(10, (int) $raw['score'])) : null;
+                if ($scoreFromAi === null) {
+                    $scoreFromAi = ($len >= 95 && $len <= 100) ? 10 : ((($len >= 101 && $len <= 105) || ($len >= 90 && $len <= 94)) ? 7 : 1);
+                }
+                $validItems[] = ['title' => $t, 'score' => $scoreFromAi];
+            }
+
+            if (count($validItems) === 0) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'All 4 titles were out of range (90-105 characters). Please click Regenerate to try again.',
+                ], 422);
+            }
+
+            Log::info('AI generate title 100: success', ['sku' => $sku, 'valid' => count($validItems), 'invalid' => $invalidCount]);
+
+            return response()->json([
+                'success' => true,
+                'titles' => $validItems,
+                'invalid_count' => $invalidCount,
+            ]);
+        } catch (\Exception $e) {
+            Log::error('AI generate title 100: exception', ['message' => $e->getMessage()]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Error: '.$e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
      * Push Title 150 to Amazon for a single SKU via SP-API Listings Items API.
      */
     public function pushTitleToAmazon(Request $request)
@@ -2871,6 +3013,19 @@ PROMPT;
         }
     }
 
+    private function updateShopifyPLSTitle($sku, $title)
+    {
+        try {
+            $service = app(\App\Services\ShopifyPLSApiService::class);
+
+            return $service->updateTitle($sku, $title);
+        } catch (\Exception $e) {
+            Log::error('❌ Push to ShopifyPLS - Failed', ['sku' => $sku, 'error' => $e->getMessage()]);
+
+            return false;
+        }
+    }
+
     public function updateTitlesToPlatforms(Request $request)
     {
         try {
@@ -2889,6 +3044,7 @@ PROMPT;
             $platformTitleMap = [
                 'amazon' => 'title150',
                 'shopify' => 'title100',
+                'shopify_pls' => 'title100',
                 'ebay1' => 'title80',
                 'ebay2' => 'title80',
                 'ebay3' => 'title80',
@@ -2956,7 +3112,7 @@ PROMPT;
                     }
 
                     // Rate limiting delay - Shopify needs more time (2 calls per product)
-                    if ($platform === 'shopify') {
+                    if (in_array($platform, ['shopify', 'shopify_pls'])) {
                         sleep(5); // 5 seconds for Shopify to safely clear rate limit
                     } else {
                         sleep(1); // 1 second for other platforms
@@ -3000,6 +3156,9 @@ PROMPT;
 
                 case 'shopify':
                     return $this->updateShopifyTitle($sku, $title);
+
+                case 'shopify_pls':
+                    return $this->updateShopifyPLSTitle($sku, $title);
 
                 case 'ebay1':
                 case 'ebay2':
@@ -4899,8 +5058,14 @@ GRAPHQL;
     private function updateDobaTitle($sku, $title)
     {
         try {
-            Log::info("Starting Doba title update for SKU: {$sku}, Title: {$title}");
+            // Try DobaApiService (OpenAPI) first
+            $service = app(\App\Services\DobaApiService::class);
+            if ($service->updateTitle($sku, $title)) {
+                return true;
+            }
 
+            // Fallback to legacy api.doba.com implementation (OpenAPI endpoints returned 404)
+            Log::info('Doba: trying legacy api.doba.com/v1/products/update', ['sku' => $sku]);
             $publicKey = config('services.doba.public_key');
             $privateKey = config('services.doba.private_key');
             $appKey = config('services.doba.app_key');
@@ -5009,22 +5174,23 @@ GRAPHQL;
                 $responseData = $response->json();
 
                 if (isset($responseData['success']) && $responseData['success'] === true) {
-                    Log::info("✓ Successfully updated Doba title for SKU: {$sku}");
+                    Log::info('✅ Push to Doba - Success', ['sku' => $sku]);
 
                     return true;
                 } elseif (isset($responseData['status']) && $responseData['status'] === 'success') {
-                    Log::info("✓ Successfully updated Doba title for SKU: {$sku}");
+                    Log::info('✅ Push to Doba - Success', ['sku' => $sku]);
 
                     return true;
                 } else {
                     $errorMsg = $responseData['message'] ?? $responseData['error'] ?? 'Unknown error';
-                    Log::error("✗ Doba API returned error: {$errorMsg}");
+                    Log::error('❌ Push to Doba - Failed', ['sku' => $sku, 'error' => $errorMsg]);
                     Log::error('Full response: '.json_encode($responseData));
 
                     return false;
                 }
             } else {
-                Log::error("✗ Failed to update Doba title for SKU {$sku}. Status: {$status}, Error: {$body}");
+                $errMsg = "Status: {$status}, Error: {$body}";
+                Log::error('❌ Push to Doba - Failed', ['sku' => $sku, 'error' => $errMsg]);
 
                 if ($status == 401) {
                     Log::error('Authentication failed. Check Doba credentials in .env');
@@ -5038,7 +5204,7 @@ GRAPHQL;
                 return false;
             }
         } catch (\Exception $e) {
-            Log::error("✗ Exception updating Doba title for SKU {$sku}: ".$e->getMessage());
+            Log::error('❌ Push to Doba - Failed', ['sku' => $sku, 'error' => $e->getMessage()]);
             Log::error('Stack trace: '.$e->getTraceAsString());
 
             return false;

@@ -315,6 +315,10 @@
         .char-counter.error {
             color: #dc3545;
         }
+        .char-counter.success {
+            color: #198754;
+            font-weight: 600;
+        }
 
         .platform-selector-modal .platform-item {
             padding: 15px;
@@ -417,6 +421,19 @@
             font-size: 13px;
         }
         .ai-title-score:not(:empty) {
+            display: inline-block;
+            background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+            color: #92400e;
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-weight: 700;
+            border: 1px solid #f59e0b;
+            box-shadow: 0 1px 3px rgba(245, 158, 11, 0.3);
+        }
+        .ai-title100-score {
+            font-size: 13px;
+        }
+        .ai-title100-score:not(:empty) {
             display: inline-block;
             background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
             color: #92400e;
@@ -576,13 +593,13 @@
 
                         <div class="mb-3">
                             <label for="title100" class="form-label">
-                                Title 100 <span class="char-counter" id="counter100">0/100</span>
+                                Title 100 <span class="char-counter" id="counter100">0/105</span>
                             </label>
-                            <textarea class="form-control" id="title100" name="title100" rows="2" maxlength="100"></textarea>
+                            <textarea class="form-control" id="title100" name="title100" rows="2" maxlength="105"></textarea>
                         </div>
 
                         <div class="mb-3">
-                            <button type="button" class="btn btn-ai-improve" id="aiImproveBtn100" title="Generate Title 100 (≤100 chars) with AI and review in popup">
+                            <button type="button" class="btn btn-ai-improve" id="aiImproveBtn100" title="Generate Title 100 (90-105 chars, target 95-100) with AI and review in popup">
                                 <i class="fas fa-magic"></i> Improve with AI
                             </button>
                         </div>
@@ -668,17 +685,19 @@
         <div class="modal-dialog modal-dialog-centered modal-lg">
             <div class="modal-content">
                 <div class="modal-header" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">
-                    <h5 class="modal-title" id="aiTitle100ModalLabel">
-                        <i class="fas fa-magic me-2"></i>AI Generated Titles (100 chars)
+                    <h5 class="modal-title" id="aiTitle100ModalLabel" title="90-105 chars. Perfect (95-100), Slightly long (101-105), Good (90-94). Target: 100 chars.">
+                        <i class="fas fa-magic me-2"></i>AI Generated Titles (90-105 chars)
                     </h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
+                    <div id="aiTitle100Warning" class="alert alert-warning mb-3 d-none" role="alert"></div>
                     <div id="aiTitle100Option1" class="p-3 bg-light rounded mb-3 border">
                         <div class="fw-bold mb-2">Option 1:</div>
                         <p class="mb-2 ai-title100-text" style="font-size: 15px; line-height: 1.5; white-space: pre-wrap; word-wrap: break-word;"></p>
+                        <div class="ai-title100-score mb-2 text-muted small fw-bold"></div>
                         <div class="d-flex align-items-center flex-wrap gap-2 mb-2">
-                            <span class="ai-char100-badge badge">0/100 chars</span>
+                            <span class="ai-char100-badge badge">0/105 chars</span>
                             <span class="ai-char100-status text-success"></span>
                         </div>
                         <button type="button" class="btn btn-keep-title ai-keep-btn-100" data-option="0"><i class="fas fa-check me-1"></i> KEEP THIS TITLE</button>
@@ -686,8 +705,9 @@
                     <div id="aiTitle100Option2" class="p-3 bg-light rounded mb-3 border">
                         <div class="fw-bold mb-2">Option 2:</div>
                         <p class="mb-2 ai-title100-text" style="font-size: 15px; line-height: 1.5; white-space: pre-wrap; word-wrap: break-word;"></p>
+                        <div class="ai-title100-score mb-2 text-muted small fw-bold"></div>
                         <div class="d-flex align-items-center flex-wrap gap-2 mb-2">
-                            <span class="ai-char100-badge badge">0/100 chars</span>
+                            <span class="ai-char100-badge badge">0/105 chars</span>
                             <span class="ai-char100-status text-success"></span>
                         </div>
                         <button type="button" class="btn btn-keep-title ai-keep-btn-100" data-option="1"><i class="fas fa-check me-1"></i> KEEP THIS TITLE</button>
@@ -695,8 +715,9 @@
                     <div id="aiTitle100Option3" class="p-3 bg-light rounded mb-3 border">
                         <div class="fw-bold mb-2">Option 3:</div>
                         <p class="mb-2 ai-title100-text" style="font-size: 15px; line-height: 1.5; white-space: pre-wrap; word-wrap: break-word;"></p>
+                        <div class="ai-title100-score mb-2 text-muted small fw-bold"></div>
                         <div class="d-flex align-items-center flex-wrap gap-2 mb-2">
-                            <span class="ai-char100-badge badge">0/100 chars</span>
+                            <span class="ai-char100-badge badge">0/105 chars</span>
                             <span class="ai-char100-status text-success"></span>
                         </div>
                         <button type="button" class="btn btn-keep-title ai-keep-btn-100" data-option="2"><i class="fas fa-check me-1"></i> KEEP THIS TITLE</button>
@@ -704,8 +725,9 @@
                     <div id="aiTitle100Option4" class="p-3 bg-light rounded mb-3 border">
                         <div class="fw-bold mb-2">Option 4:</div>
                         <p class="mb-2 ai-title100-text" style="font-size: 15px; line-height: 1.5; white-space: pre-wrap; word-wrap: break-word;"></p>
+                        <div class="ai-title100-score mb-2 text-muted small fw-bold"></div>
                         <div class="d-flex align-items-center flex-wrap gap-2 mb-2">
-                            <span class="ai-char100-badge badge">0/100 chars</span>
+                            <span class="ai-char100-badge badge">0/105 chars</span>
                             <span class="ai-char100-status text-success"></span>
                         </div>
                         <button type="button" class="btn btn-keep-title ai-keep-btn-100" data-option="3"><i class="fas fa-check me-1"></i> KEEP THIS TITLE</button>
@@ -821,6 +843,20 @@
                                     <label class="form-check-label w-100" for="platform_shopify">
                                         <i class="fab fa-shopify platform-icon text-success"></i>
                                         <strong>Shopify</strong>
+                                        <span class="badge bg-success platform-badge">Title 100</span>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Shopify PLS (ProLightSounds) -->
+                        <div class="col-md-6 mb-3">
+                            <div class="platform-item" onclick="togglePlatform('shopify_pls')">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" value="shopify_pls" id="platform_shopify_pls">
+                                    <label class="form-check-label w-100" for="platform_shopify_pls">
+                                        <i class="fab fa-shopify platform-icon text-success"></i>
+                                        <strong>Shopify PLS</strong>
                                         <span class="badge bg-success platform-badge">Title 100</span>
                                     </label>
                                 </div>
@@ -1229,6 +1265,7 @@
             const platforms = [];
             if (document.getElementById('platform_amazon').checked) platforms.push('amazon');
             if (document.getElementById('platform_shopify').checked) platforms.push('shopify');
+            if (document.getElementById('platform_shopify_pls').checked) platforms.push('shopify_pls');
             if (document.getElementById('platform_ebay1').checked) platforms.push('ebay1');
             if (document.getElementById('platform_ebay2').checked) platforms.push('ebay2');
             if (document.getElementById('platform_ebay3').checked) platforms.push('ebay3');
@@ -1251,6 +1288,7 @@
             const platformNames = {
                 'amazon': 'Amazon (Title 150)',
                 'shopify': 'Shopify (Title 100)',
+                'shopify_pls': 'Shopify PLS (Title 100)',
                 'ebay1': 'eBay 1 (Title 80)',
                 'ebay2': 'eBay 2 (Title 80)',
                 'ebay3': 'eBay 3 (Title 80)',
@@ -1381,13 +1419,21 @@
         function updateModalCounter(fieldId) {
             const input = document.getElementById(fieldId);
             const maxLen = parseInt(fieldId.replace('title', ''), 10);
-            const counter = document.getElementById('counter' + maxLen);
+            const counter = document.getElementById('counter' + (fieldId === 'title100' ? 100 : maxLen));
             if (!input || !counter) return;
             const len = input.value.length;
-            counter.textContent = len + '/' + maxLen;
-            counter.classList.remove('error', 'warning');
-            if (len > maxLen) counter.classList.add('error');
-            else if (fieldId === 'title100' && len >= 95 && len <= maxLen) counter.classList.add('warning');
+            counter.classList.remove('error', 'warning', 'success', 'opacity-75');
+            if (fieldId === 'title100') {
+                const max105 = 105;
+                counter.textContent = len + '/' + max105;
+                if (len >= 95 && len <= 100) counter.classList.add('success');
+                else if (len >= 101 && len <= max105) counter.classList.add('warning');
+                else if (len >= 90 && len <= 94) counter.classList.add('success', 'opacity-75');
+                else counter.classList.add('error');
+            } else {
+                counter.textContent = len + '/' + maxLen;
+                if (len > maxLen) counter.classList.add('error');
+            }
         }
 
         function showFieldLoading(fieldId) {
@@ -1416,12 +1462,17 @@
                 
                 input.addEventListener('input', function() {
                     const length = this.value.length;
-                    counter.textContent = length + '/' + maxLength;
-                    counter.classList.remove('error', 'warning');
-                    if (length > maxLength) {
-                        counter.classList.add('error');
-                    } else if (field === 'title100' && length >= 95 && length <= 100) {
-                        counter.classList.add('warning');
+                    counter.classList.remove('error', 'warning', 'success', 'opacity-75');
+                    if (field === 'title100') {
+                        const max105 = 105;
+                        counter.textContent = length + '/' + max105;
+                        if (length >= 95 && length <= 100) counter.classList.add('success');
+                        else if (length >= 101 && length <= max105) counter.classList.add('warning');
+                        else if (length >= 90 && length <= 94) counter.classList.add('success', 'opacity-75');
+                        else counter.classList.add('error');
+                    } else {
+                        counter.textContent = length + '/' + maxLength;
+                        if (length > maxLength) counter.classList.add('error');
                     }
                 });
             });
@@ -1522,10 +1573,10 @@
                     })
                     .then(response => response.json())
                     .then(data => {
-                        if (data.success && data.titles && data.titles.length >= 4) {
-                            showTitle100Popup(data.titles);
+                        if (data.success && data.titles && data.titles.length >= 1) {
+                            showTitle100Popup(data.titles, data.invalid_count || 0);
                         } else {
-                            alert('Failed to generate titles: ' + (data.message || 'Unknown error'));
+                            alert(data.message || 'Failed to generate titles. Please click Regenerate to try again.');
                         }
                     })
                     .catch(err => {
@@ -1546,7 +1597,7 @@
                     const title = currentAIGeneratedTitles100[idx];
                     const el100 = document.getElementById('title100');
                     if (el100 && title) {
-                        el100.value = title.length > 100 ? title.substring(0, 100) : title;
+                        el100.value = title.length > 105 ? title.substring(0, 105) : title;
                         updateModalCounter('title100');
                     }
                     if (aiTitle100ModalInstance) aiTitle100ModalInstance.hide();
@@ -1626,29 +1677,69 @@
             if (aiTitleModalInstance) aiTitleModalInstance.show();
         }
 
-        function showTitle100Popup(titles) {
-            if (!Array.isArray(titles) || titles.length < 4) return;
-            currentAIGeneratedTitles100 = titles.slice(0, 4).map(function(t) { return (t && typeof t === 'string' ? t : (t.title || '')) || ''; });
-            const maxLen = 100;
-            const options = document.querySelectorAll('#aiTitle100Option1, #aiTitle100Option2, #aiTitle100Option3, #aiTitle100Option4');
-            options.forEach(function(opt, i) {
+        function showTitle100Popup(titles, invalidCount) {
+            invalidCount = invalidCount || 0;
+            if (!Array.isArray(titles) || titles.length < 1) return;
+            var padded = titles.slice(0, 4);
+            while (padded.length < 4) padded.push({ title: '', score: null });
+            currentAIGeneratedTitles100 = padded.map(function(t) { return (t && typeof t === 'string' ? t : (t.title || '')) || ''; });
+            const maxLen = 105;
+            const optionIds = ['aiTitle100Option1', 'aiTitle100Option2', 'aiTitle100Option3', 'aiTitle100Option4'];
+            const warningEl = document.getElementById('aiTitle100Warning');
+            if (warningEl) {
+                if (invalidCount > 0) {
+                    const validN = titles.length;
+                    warningEl.textContent = validN + ' title(s) generated, ' + invalidCount + ' was out of range (90-105).';
+                    warningEl.classList.remove('d-none');
+                } else {
+                    warningEl.classList.add('d-none');
+                }
+            }
+            optionIds.forEach(function(id, i) {
+                const opt = document.getElementById(id);
+                if (!opt) return;
+                const item = padded[i];
                 const title = currentAIGeneratedTitles100[i] || '';
+                const hasTitle = title.length > 0;
+                const score = item && typeof item === 'object' && item.score != null ? item.score : null;
                 const len = title.length;
+                const perfect = len >= 95 && len <= 100;
+                const slightlyLong = len >= 101 && len <= 105;
+                const good = len >= 90 && len <= 94;
                 const textEl = opt.querySelector('.ai-title100-text');
+                const scoreEl = opt.querySelector('.ai-title100-score');
                 const badgeEl = opt.querySelector('.ai-char100-badge');
                 const statusEl = opt.querySelector('.ai-char100-status');
-                if (textEl) textEl.textContent = title;
-                if (badgeEl) {
-                    badgeEl.textContent = len + '/100 chars';
-                    badgeEl.className = 'badge ai-char100-badge ';
-                    if (len > maxLen) badgeEl.classList.add('bg-danger');
-                    else if (len >= 95 && len <= maxLen) badgeEl.classList.add('bg-warning', 'text-dark');
-                    else badgeEl.classList.add('bg-success');
-                }
-                if (statusEl) {
-                    if (len > maxLen) statusEl.innerHTML = '<span class="text-danger"><i class="fas fa-exclamation-triangle"></i> Too long</span>';
-                    else if (len >= 95 && len <= maxLen) statusEl.innerHTML = '<span class="text-warning"><i class="fas fa-exclamation-triangle"></i> ⚠️</span>';
-                    else statusEl.innerHTML = '<span class="text-success"><i class="fas fa-check-circle"></i> ✓</span>';
+                const keepBtn = opt.querySelector('.ai-keep-btn-100');
+                if (hasTitle) {
+                    opt.style.display = '';
+                    if (textEl) textEl.textContent = title;
+                    if (scoreEl) {
+                        if (score != null) scoreEl.textContent = 'Success score: ' + score + '/10';
+                        else scoreEl.textContent = '';
+                    }
+                    if (badgeEl) {
+                        badgeEl.textContent = len + '/105 chars';
+                        let badgeClass = 'badge ai-char100-badge ';
+                        if (perfect) badgeClass += 'bg-success';
+                        else if (slightlyLong) badgeClass += 'bg-warning text-dark';
+                        else if (good) badgeClass += 'bg-success bg-opacity-75';
+                        else badgeClass += 'bg-danger';
+                        badgeEl.className = badgeClass;
+                    }
+                    if (statusEl) {
+                        let statusText = len + ' chars ';
+                        if (perfect) statusText += '✅ Perfect (Target)';
+                        else if (slightlyLong) statusText += '⚠️ Slightly long (Acceptable)';
+                        else if (good) statusText += '🟢 Good (Within range)';
+                        else statusText += '❌ Out of range';
+                        statusEl.textContent = statusText;
+                        statusEl.className = 'ai-char100-status ' + (perfect ? 'text-success' : slightlyLong ? 'text-warning' : good ? 'text-success' : 'text-danger');
+                    }
+                    if (keepBtn) { keepBtn.disabled = false; keepBtn.style.display = ''; }
+                } else {
+                    opt.style.display = 'none';
+                    if (keepBtn) keepBtn.disabled = true;
                 }
             });
             if (aiTitle100ModalInstance) aiTitle100ModalInstance.show();

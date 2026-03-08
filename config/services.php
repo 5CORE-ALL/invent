@@ -63,14 +63,15 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Shopify ProLightSounds Store
+    | Shopify ProLightSounds Store (PLS / 5core-wholesale)
     |--------------------------------------------------------------------------
     */
- 'prolightsounds' => [
-    'api_key' => 'PROLIGHTSOUNDS_SHOPIFY_API_KEY',  // ← Direct env
-    'password' => 'PROLIGHTSOUNDS_SHOPIFY_PASSWORD',
-    'store_url' => 'PROLIGHTSOUNDS_SHOPIFY_DOMAIN',
-],
+    'prolightsounds' => [
+        'api_key' => env('PROLIGHTSOUNDS_SHOPIFY_API_KEY'),
+        'password' => env('PROLIGHTSOUNDS_SHOPIFY_PASSWORD'),
+        'domain' => env('PROLIGHTSOUNDS_SHOPIFY_DOMAIN'),
+        'store_url' => env('PROLIGHTSOUNDS_SHOPIFY_DOMAIN'),
+    ],
 
     /*
     |--------------------------------------------------------------------------

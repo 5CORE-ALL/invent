@@ -2,10 +2,13 @@
 
 namespace App\Services;
 
+use App\Models\DobaDataView;
+use App\Models\DobaMetric;
 use Exception;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use App\Models\ProductStockMapping;
+
 class DobaApiService
 {
     protected $baseUrl;
@@ -13,6 +16,112 @@ class DobaApiService
     public function __construct()
     {
         $this->baseUrl = 'https://openapi.doba.com/api';
+    }
+
+    /**
+     * Update product title for the given SKU on Doba.
+     * Resolves SKU to itemNo via DobaMetric or DobaDataView, then calls OpenAPI.
+     *
+     * @param  string  $sku
+     * @param  string  $title
+     * @return bool
+     */
+    public function updateTitle(string $sku, string $title): bool
+    {
+        Log::info('🚀 Push to Doba - Started', ['sku' => $sku]);
+
+        try {
+            $itemNo = $this->resolveSkuToItemNo($sku);
+            if (! $itemNo) {
+                Log::warning('Doba: could not resolve SKU to itemNo', ['sku' => $sku]);
+                Log::error('❌ Push to Doba - Failed', ['sku' => $sku, 'error' => 'SKU not found in DobaMetric/DobaDataView']);
+
+                return false;
+            }
+
+            $timestamp = $this->getMillisecond();
+            $content = $this->getContent($timestamp);
+            $sign = $this->generateSignature($content);
+
+            $payload = [
+                'itemNo' => (string) $itemNo,
+                'productTitle' => $title,
+            ];
+
+            $headers = [
+                'appKey' => config('services.doba.app_key'),
+                'signType' => 'rsa2',
+                'timestamp' => $timestamp,
+                'sign' => $sign,
+                'Content-Type' => 'application/x-www-form-urlencoded',
+            ];
+
+            $endpoints = [
+                $this->baseUrl . '/goods/info/update',
+                $this->baseUrl . '/goods/update',
+                $this->baseUrl . '/product/update',
+            ];
+
+            foreach ($endpoints as $url) {
+                Log::info('Doba title update attempt', ['url' => $url, 'item_no' => $itemNo, 'sku' => $sku]);
+
+                $response = Http::withHeaders($headers)->asForm()->post($url, $payload);
+                $statusCode = $response->status();
+                $responseData = $response->json();
+
+                Log::info('Doba title update response', ['url' => $url, 'status' => $statusCode, 'response' => $responseData]);
+
+                if ($statusCode === 404) {
+                    Log::warning('Doba endpoint returned 404, trying next', ['url' => $url]);
+                    continue;
+                }
+
+                if ($response->failed()) {
+                    $err = "HTTP {$statusCode}: " . ($responseData['responseMessage'] ?? $response->body());
+                    Log::error('❌ Push to Doba - Failed', ['sku' => $sku, 'url' => $url, 'error' => $err]);
+                    return false;
+                }
+
+                if (isset($responseData['responseCode']) && $responseData['responseCode'] !== '000000') {
+                    $err = $responseData['responseMessage'] ?? 'Unknown error';
+                    Log::error('❌ Push to Doba - Failed', ['sku' => $sku, 'url' => $url, 'error' => $err]);
+                    return false;
+                }
+
+                Log::info('✅ Push to Doba - Success', ['sku' => $sku, 'url' => $url]);
+                return true;
+            }
+
+            Log::warning('All Doba OpenAPI endpoints returned 404, falling back to legacy api.doba.com', ['sku' => $sku]);
+            return false;
+        } catch (Exception $e) {
+            Log::error('❌ Push to Doba - Failed', ['sku' => $sku, 'error' => $e->getMessage()]);
+
+            return false;
+        }
+    }
+
+    private function resolveSkuToItemNo(string $sku): ?string
+    {
+        $metric = DobaMetric::where('sku', $sku)
+            ->orWhere('sku', strtoupper($sku))
+            ->orWhere('sku', strtolower($sku))
+            ->first();
+
+        if ($metric && $metric->item_id) {
+            return (string) $metric->item_id;
+        }
+
+        $view = DobaDataView::where('sku', $sku)
+            ->orWhere('sku', strtoupper($sku))
+            ->orWhere('sku', strtolower($sku))
+            ->first();
+
+        if ($view && isset($view->doba_product_id)) {
+            return (string) $view->doba_product_id;
+        }
+
+        return null;
     }
 
     /**
