@@ -56,23 +56,33 @@ class DobaApiService
                 'Content-Type' => 'application/x-www-form-urlencoded',
             ];
 
-            $endpoints = [
-                $this->baseUrl . '/goods/info/update',
-                $this->baseUrl . '/goods/update',
-                $this->baseUrl . '/product/update',
+            $attempts = [
+                ['url' => 'https://openapi.doba.com/api/goods/info/update', 'method' => 'post', 'body' => 'form'],
+                ['url' => 'https://openapi.doba.com/api/goods/update', 'method' => 'post', 'body' => 'form'],
+                ['url' => 'https://openapi.doba.com/api/product/update', 'method' => 'post', 'body' => 'form'],
+                ['url' => 'https://openapi.doba.com/v1/products/update', 'method' => 'post', 'body' => 'form'],
+                ['url' => 'https://openapi.doba.com/v1/products/' . $itemNo, 'method' => 'put', 'body' => 'json'],
+                ['url' => 'https://openapi.doba.com/v1/products/' . $itemNo, 'method' => 'post', 'body' => 'form'],
+                ['url' => 'https://api.doba.com/v1/products/update', 'method' => 'post', 'body' => 'form'],
             ];
 
-            foreach ($endpoints as $url) {
-                Log::info('Doba title update attempt', ['url' => $url, 'item_no' => $itemNo, 'sku' => $sku]);
+            foreach ($attempts as $attempt) {
+                $url = $attempt['url'];
+                Log::info('Doba title update attempt', ['url' => $url, 'method' => strtoupper($attempt['method']), 'item_no' => $itemNo, 'sku' => $sku]);
 
-                $response = Http::withHeaders($headers)->asForm()->post($url, $payload);
+                if ($attempt['method'] === 'put' && $attempt['body'] === 'json') {
+                    $response = Http::withHeaders(array_merge($headers, ['Content-Type' => 'application/json']))
+                        ->put($url, $payload);
+                } else {
+                    $response = Http::withHeaders($headers)->asForm()->post($url, $payload);
+                }
                 $statusCode = $response->status();
                 $responseData = $response->json();
 
                 Log::info('Doba title update response', ['url' => $url, 'status' => $statusCode, 'response' => $responseData]);
 
-                if ($statusCode === 404) {
-                    Log::warning('Doba endpoint returned 404, trying next', ['url' => $url]);
+                if (in_array($statusCode, [404, 500])) {
+                    Log::warning('Doba endpoint returned ' . $statusCode . ', trying next', ['url' => $url]);
                     continue;
                 }
 
@@ -92,7 +102,7 @@ class DobaApiService
                 return true;
             }
 
-            Log::warning('All Doba OpenAPI endpoints returned 404, falling back to legacy api.doba.com', ['sku' => $sku]);
+            Log::warning('All Doba OpenAPI endpoints returned 404/500, falling back to legacy api.doba.com', ['sku' => $sku]);
             return false;
         } catch (Exception $e) {
             Log::error('❌ Push to Doba - Failed', ['sku' => $sku, 'error' => $e->getMessage()]);
