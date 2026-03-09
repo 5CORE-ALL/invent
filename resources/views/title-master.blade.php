@@ -203,6 +203,67 @@
             gap: 4px;
             white-space: nowrap;
         }
+
+        .marketplace-buttons {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+            min-width: 120px;
+        }
+
+        .marketplace-btn {
+            width: 28px;
+            height: 28px;
+            border: none;
+            border-radius: 4px;
+            color: #fff;
+            font-weight: 600;
+            font-size: 11px;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+            padding: 0;
+        }
+
+        .marketplace-btn:hover:not(:disabled) {
+            transform: translateY(-1px);
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.18);
+        }
+
+        .marketplace-btn:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        .btn-amazon { background-color: #146eb4; }
+        .btn-temu { background-color: #28a745; }
+        .btn-reverb { background-color: #ffc107; color: #333; }
+        .btn-wayfair { background-color: #dc3545; }
+        .btn-shopify { background-color: #6f42c1; }
+        .btn-doba { background-color: #fd7e14; }
+
+        .marketplace-btn[data-tooltip] {
+            position: relative;
+        }
+
+        .marketplace-btn[data-tooltip]:hover:after {
+            content: attr(data-tooltip);
+            position: absolute;
+            bottom: -26px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #111827;
+            color: #fff;
+            padding: 3px 6px;
+            border-radius: 4px;
+            font-size: 10px;
+            white-space: nowrap;
+            z-index: 1000;
+        }
         .action-btn i {
             font-size: 11px;
         }
@@ -538,7 +599,8 @@
                                         </select>
                                     </th>
                                     <th>ACTION</th>
-                                    <th title="Amazon, Temu, Reverb, Wayfair">Marketplaces</th>
+                                    <th title="Amazon, Temu, Reverb, Wayfair">MARKETPLACES (150)</th>
+                                    <th title="Shopify, Doba">MARKETPLACES (100)</th>
                                     <th>PUSH TO ALL</th>
                                 </tr>
                             </thead>
@@ -1790,15 +1852,15 @@
         }
 
         function updateMarketplaceDotsInRow(row, results) {
-            const cell = row.querySelector('.marketplaces-cell');
-            if (!cell || !results) return;
+            const wrapper = row.querySelector('.marketplaces-dots-wrapper');
+            if (!wrapper || !results) return;
             const btn = row.querySelector('.push-all-marketplaces-btn');
             const skuVal = (btn && btn.getAttribute('data-sku')) ? btn.getAttribute('data-sku') : '';
             const statusMap = {};
             ['amazon', 'temu', 'reverb', 'wayfair'].forEach(function(mp) {
                 statusMap[mp] = (results[mp] && results[mp].status) ? results[mp].status : 'pending';
             });
-            cell.innerHTML = renderMarketplaceDots(skuVal, statusMap);
+            wrapper.innerHTML = renderMarketplaceDots(skuVal, statusMap);
         }
 
         function formatTitleWithIndicator(title) {
@@ -1826,7 +1888,7 @@
             tbody.innerHTML = '';
 
             if (data.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="11" class="text-center">No products found</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="12" class="text-center">No products found</td></tr>';
                 return;
             }
 
@@ -1836,7 +1898,7 @@
             });
 
             if (filteredData.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="11" class="text-center">No products found</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="12" class="text-center">No products found</td></tr>';
                 return;
             }
 
@@ -1905,11 +1967,33 @@
                     '</div>';
                 row.appendChild(actionCell);
 
-                // Marketplaces column: dot indicators (Amazon, Temu, Reverb, Wayfair)
-                const marketplacesCell = document.createElement('td');
-                marketplacesCell.className = 'marketplaces-cell';
-                marketplacesCell.innerHTML = renderMarketplaceDots(escapeHtml(item.SKU), null);
-                row.appendChild(marketplacesCell);
+                // MARKETPLACES (150): dot indicators + individual buttons for Amazon, Temu, Reverb, Wayfair
+                const marketplaces150Cell = document.createElement('td');
+                marketplaces150Cell.className = 'marketplaces-cell marketplaces-150-cell';
+                const skuEscaped = escapeHtml(item.SKU);
+                const hasTitle150 = !!(item.amazon_title && String(item.amazon_title).trim() !== '');
+                let mp150Html = '<div class="marketplaces-dots-wrapper">' +
+                    renderMarketplaceDots(skuEscaped, null) +
+                    '</div>';
+                mp150Html += '<div class="marketplace-buttons">';
+                mp150Html += '<button type="button" class="marketplace-btn marketplace-btn-150 btn-amazon" data-sku="' + skuEscaped + '" data-marketplace="amazon" data-title-type="150" data-tooltip="Amazon (Title 150)" ' + (hasTitle150 ? '' : 'disabled') + '><i class="fab fa-amazon"></i></button>';
+                mp150Html += '<button type="button" class="marketplace-btn marketplace-btn-150 btn-temu" data-sku="' + skuEscaped + '" data-marketplace="temu" data-title-type="150" data-tooltip="Temu (Title 150)" ' + (hasTitle150 ? '' : 'disabled') + '>T</button>';
+                mp150Html += '<button type="button" class="marketplace-btn marketplace-btn-150 btn-reverb" data-sku="' + skuEscaped + '" data-marketplace="reverb" data-title-type="150" data-tooltip="Reverb (Title 150)" ' + (hasTitle150 ? '' : 'disabled') + '><i class="fas fa-guitar"></i></button>';
+                mp150Html += '<button type="button" class="marketplace-btn marketplace-btn-150 btn-wayfair" data-sku="' + skuEscaped + '" data-marketplace="wayfair" data-title-type="150" data-tooltip="Wayfair (Title 150)" ' + (hasTitle150 ? '' : 'disabled') + '><i class="fas fa-home"></i></button>';
+                mp150Html += '</div>';
+                marketplaces150Cell.innerHTML = mp150Html;
+                row.appendChild(marketplaces150Cell);
+
+                // MARKETPLACES (100): individual buttons for Shopify, Doba (Title 100)
+                const marketplaces100Cell = document.createElement('td');
+                marketplaces100Cell.className = 'marketplaces-100-cell';
+                const hasTitle100 = !!(item.title100 && String(item.title100).trim() !== '');
+                let mp100Html = '<div class="marketplace-buttons">';
+                mp100Html += '<button type="button" class="marketplace-btn marketplace-btn-100 btn-shopify" data-sku="' + skuEscaped + '" data-marketplace="shopify" data-title-type="100" data-tooltip="Shopify (Title 100)" ' + (hasTitle100 ? '' : 'disabled') + '><i class="fab fa-shopify"></i></button>';
+                mp100Html += '<button type="button" class="marketplace-btn marketplace-btn-100 btn-doba" data-sku="' + skuEscaped + '" data-marketplace="doba" data-title-type="100" data-tooltip="Doba (Title 100)" ' + (hasTitle100 ? '' : 'disabled') + '><i class="fas fa-box"></i></button>';
+                mp100Html += '</div>';
+                marketplaces100Cell.innerHTML = mp100Html;
+                row.appendChild(marketplaces100Cell);
 
                 // PUSH TO ALL MARKETPLACES column
                 const pushCell = document.createElement('td');
@@ -1923,7 +2007,102 @@
             setupEditButtons();
             setupViewButtons();
             setupPushAmazonButtons();
+            setupIndividualMarketplaceButtons();
             updateSelectedCount();
+        }
+
+        const marketplaceLabels = {
+            amazon: 'Amazon',
+            temu: 'Temu',
+            reverb: 'Reverb',
+            wayfair: 'Wayfair',
+            shopify: 'Shopify',
+            doba: 'Doba',
+        };
+
+        function setupIndividualMarketplaceButtons() {
+            document.querySelectorAll('.marketplace-btn-150, .marketplace-btn-100').forEach(btn => {
+                btn.addEventListener('click', function (e) {
+                    e.preventDefault();
+                    const button = this;
+                    const sku = button.getAttribute('data-sku');
+                    const marketplace = button.getAttribute('data-marketplace');
+                    const titleType = button.getAttribute('data-title-type'); // '150' or '100'
+                    const marketplaceName = marketplaceLabels[marketplace] || marketplace.toUpperCase();
+
+                    const item = tableData.find(x => x.SKU === sku);
+                    let title = '';
+                    if (item) {
+                        title = titleType === '150'
+                            ? (item.amazon_title || '')
+                            : (item.title100 || '');
+                    }
+
+                    if (!title || String(title).trim() === '') {
+                        if (typeof showToast === 'function') {
+                            showToast('error', `No Title ${titleType} available for SKU ${sku}.`);
+                        } else {
+                            alert(`No Title ${titleType} available for SKU ${sku}.`);
+                        }
+                        return;
+                    }
+
+                    const originalHtml = button.innerHTML;
+                    button.disabled = true;
+                    button.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>';
+
+                    console.log(`🖱️ Pushing ${titleType} to ${marketplaceName}`, { sku, title: String(title).substring(0, 50) });
+
+                    if (typeof showToast === 'function') {
+                        // 0 duration hint for persistent loading toast; ignored if not supported
+                        showToast('info', `⏳ Pushing Title ${titleType} to ${marketplaceName}...`, 0);
+                    }
+
+                    const row = button.closest('tr');
+
+                    fetch('/api/marketplaces/push-single', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': csrfToken
+                        },
+                        body: JSON.stringify({
+                            sku: sku,
+                            marketplace: marketplace,
+                            title_type: titleType,
+                            title: title
+                        })
+                    })
+                        .then(response => response.json())
+                        .then(data => {
+                            if (data.success) {
+                                if (typeof showToast === 'function') {
+                                    showToast('success', `✅ ${marketplaceName} (Title ${titleType}) updated for ${sku}`);
+                                }
+                                console.log('✅ Push successful', data);
+                                if (data.statuses && row) {
+                                    updateMarketplaceDotsInRow(row, data.statuses);
+                                }
+                            } else {
+                                const msg = data.message || 'Unknown error';
+                                if (typeof showToast === 'function') {
+                                    showToast('error', `❌ ${marketplaceName} (Title ${titleType}) failed: ${msg}`);
+                                }
+                                console.error('❌ Push failed', data);
+                            }
+                        })
+                        .catch(error => {
+                            if (typeof showToast === 'function') {
+                                showToast('error', `❌ ${marketplaceName} push error: ${error.message}`);
+                            }
+                            console.error('❌ Push error', error);
+                        })
+                        .finally(() => {
+                            button.disabled = false;
+                            button.innerHTML = originalHtml;
+                        });
+                });
+            });
         }
 
         function setupEditButtons() {

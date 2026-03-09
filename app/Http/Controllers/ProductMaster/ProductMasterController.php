@@ -1807,15 +1807,34 @@ class ProductMasterController extends Controller
                 'title60' => 'nullable|string',
             ]);
 
-            // Try both uppercase SKU and lowercase sku columns
-            $product = ProductMaster::where('SKU', $validated['sku'])
-                ->orWhere('sku', $validated['sku'])
-                ->first();
+            $sku = $validated['sku'];
+
+            // Build query for debug logging
+            $query = ProductMaster::query()
+                ->where('SKU', $sku)
+                ->orWhere('sku', $sku);
+
+            $results = $query->get();
+
+            Log::info('🔍 Title 100 Save - SKU lookup', [
+                'sku' => $sku,
+                'sku_trimmed' => trim($sku),
+                'sku_lowercase' => mb_strtolower($sku),
+                'sku_without_spaces' => str_replace(' ', '', $sku),
+                'table_queried' => 'product_master',
+                'query' => $query->toSql(),
+                'bindings' => $query->getBindings(),
+                'result_count' => $results->count(),
+                'timestamp' => now()->toIso8601String(),
+            ]);
+
+            // Use first matching product
+            $product = $results->first();
 
             if (! $product) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Product with SKU "'.$validated['sku'].'" not found in database.',
+                    'message' => 'Product with SKU "'.$sku.'" not found in database.',
                 ], 404);
             }
 
@@ -2504,6 +2523,197 @@ PROMPT;
             'results' => $results,
             'message' => 'Push completed for all marketplaces.',
         ]);
+    }
+
+    /**
+     * Push a single title (150 or 100) to a single marketplace.
+     * Used by per-row buttons on Title Master screen.
+     */
+    public function pushSingleMarketplace(Request $request)
+    {
+        $request->validate([
+            'sku' => 'required|string|max:255',
+            'marketplace' => 'required|string|in:amazon,temu,reverb,wayfair,shopify,doba',
+            'title_type' => 'required|string|in:150,100',
+            'title' => 'nullable|string|max:2000',
+        ]);
+
+        $sku = trim($request->input('sku'));
+        $marketplace = $request->input('marketplace');
+        $titleType = $request->input('title_type');
+        $title = trim((string) $request->input('title', ''));
+        $userId = auth()->id();
+
+        // Guard against invalid marketplace / title_type combos
+        if ($titleType === '150' && ! in_array($marketplace, ['amazon', 'temu', 'reverb', 'wayfair'], true)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Title 150 is only valid for Amazon, Temu, Reverb, Wayfair.',
+            ], 422);
+        }
+        if ($titleType === '100' && ! in_array($marketplace, ['shopify', 'doba'], true)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Title 100 is only valid for Shopify and Doba.',
+            ], 422);
+        }
+
+        // If title not provided, attempt to resolve from DB for safety
+        if ($title === '') {
+            $product = ProductMaster::where('SKU', $sku)
+                ->orWhere('sku', $sku)
+                ->first();
+
+            if ($product) {
+                if ($titleType === '150') {
+                    $title = $product->title150 ?? $product->amazon_title ?? '';
+                } else {
+                    $title = $product->title100 ?? '';
+                }
+            }
+        }
+
+        if ($title === '') {
+            return response()->json([
+                'success' => false,
+                'message' => "No Title {$titleType} available for SKU {$sku}.",
+            ], 422);
+        }
+
+        Log::info('🖱️ Individual push button clicked', [
+            'sku' => $sku,
+            'marketplace' => $marketplace,
+            'title_type' => $titleType,
+            'title_preview' => mb_substr($title, 0, 50),
+            'user_id' => $userId,
+            'timestamp' => now()->toIso8601String(),
+        ]);
+
+        $success = false;
+        $message = '';
+        $endpoint = null;
+        $start = microtime(true);
+
+        try {
+            Log::info("🚀 Pushing to {$marketplace} ({$titleType})", [
+                'sku' => $sku,
+                'title' => mb_substr($title, 0, 100),
+            ]);
+
+            switch ($marketplace) {
+                case 'amazon':
+                    $endpoint = 'AmazonSpApiService::updateAmazonTitle';
+                    $service = new AmazonSpApiService;
+                    $res = $service->updateAmazonTitle($sku, $title);
+                    $success = isset($res['success']) && $res['success'] === true;
+                    $message = $res['message'] ?? ($success ? 'OK' : json_encode($res));
+                    break;
+
+                case 'temu':
+                    $endpoint = 'TemuApiService::updateTitle';
+                    $service = new TemuApiService;
+                    $res = $service->updateTitle($sku, $title);
+                    $success = $res['success'] ?? false;
+                    $message = $res['message'] ?? ($success ? 'OK' : 'Unknown error');
+                    break;
+
+                case 'reverb':
+                    $endpoint = 'ReverbApiService::updateTitle';
+                    $service = new ReverbApiService;
+                    $res = $service->updateTitle($sku, $title);
+                    $success = $res['success'] ?? false;
+                    $message = $res['message'] ?? ($success ? 'OK' : 'Unknown error');
+                    break;
+
+                case 'wayfair':
+                    $endpoint = 'WayfairApiService::updateTitle';
+                    $service = new WayfairApiService;
+                    $res = $service->updateTitle($sku, $title);
+                    $success = $res['success'] ?? false;
+                    $message = $res['message'] ?? ($success ? 'OK' : 'Unknown error');
+                    break;
+
+                case 'shopify':
+                    $endpoint = 'ProductMasterController::updateShopifyTitle';
+                    $success = $this->updateShopifyTitle($sku, $title);
+                    $message = $success ? 'OK' : 'Update failed, see logs.';
+                    break;
+
+                case 'doba':
+                    $endpoint = 'ProductMasterController::updateDobaTitle';
+                    $success = $this->updateDobaTitle($sku, $title);
+                    $message = $success ? 'OK' : 'Update failed, see logs.';
+                    break;
+            }
+        } catch (\Throwable $e) {
+            $success = false;
+            $message = $e->getMessage();
+        }
+
+        $elapsedMs = (int) round((microtime(true) - $start) * 1000);
+
+        if ($success) {
+            Log::info("✅ {$marketplace} ({$titleType}) push success", [
+                'sku' => $sku,
+                'response_time_ms' => $elapsedMs,
+                'endpoint' => $endpoint,
+                'message' => $message,
+            ]);
+        } else {
+            Log::error("❌ {$marketplace} ({$titleType}) push failed", [
+                'sku' => $sku,
+                'response_time_ms' => $elapsedMs,
+                'endpoint' => $endpoint,
+                'error' => $message,
+            ]);
+        }
+
+        // Log to marketplace_push_logs (map Shopify to shopify_pls only if needed later)
+        $mpForLog = $marketplace;
+        if ($marketplace === 'shopify') {
+            $mpForLog = 'shopify_pls';
+        }
+        $this->logMarketplacePush(
+            $sku,
+            $mpForLog,
+            $success ? MarketplacePushLog::STATUS_SUCCESS : MarketplacePushLog::STATUS_FAILED,
+            $success ? null : $message,
+            $userId
+        );
+
+        // Build latest status map (same shape as getMarketplacePushStatus)
+        $logs = MarketplacePushLog::where('sku', $sku)
+            ->whereIn('marketplace', MarketplacePushLog::MARKETPLACES)
+            ->orderBy('created_at', 'desc')
+            ->get()
+            ->unique('marketplace')
+            ->keyBy('marketplace');
+
+        $status = [];
+        foreach (MarketplacePushLog::MARKETPLACES as $mp) {
+            $log = $logs->get($mp);
+            $status[$mp] = [
+                'status' => $log ? $log->status : null,
+                'message' => $log ? $log->error_message : null,
+                'updated_at' => $log ? $log->updated_at?->toIso8601String() : null,
+            ];
+        }
+
+        Log::info('📊 Individual push complete', [
+            'sku' => $sku,
+            'marketplace' => $marketplace,
+            'title_type' => $titleType,
+            'success' => $success,
+        ]);
+
+        return response()->json([
+            'success' => $success,
+            'message' => $message,
+            'sku' => $sku,
+            'marketplace' => $marketplace,
+            'title_type' => $titleType,
+            'statuses' => $status,
+        ], $success ? 200 : 500);
     }
 
     /**
