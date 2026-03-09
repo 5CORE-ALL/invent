@@ -1448,14 +1448,24 @@ class OverallAmazonController extends Controller
 
         $skus = $productMasters->pluck('sku')->filter()->unique()->values()->all();
 
-        // Also build cleaned SKUs (non-breaking spaces → regular spaces) for amazon_datsheets lookup
+        // Build SKU variants for amazon_datsheets lookup: as-is, nbsp→space, and space-removed (so "PS 01 WH" and "PS01WH" both match)
         $cleanedSkus = array_map(function ($s) {
-            return str_replace("\xC2\xA0", ' ', $s);
+            return str_replace("\xC2\xA0", ' ', trim($s));
         }, $skus);
-        $allSkusForLookup = array_values(array_unique(array_merge($skus, $cleanedSkus)));
+        $noSpaceSkus = array_values(array_unique(array_filter(array_map(function ($s) {
+            return str_replace(' ', '', strtoupper(str_replace("\xC2\xA0", ' ', trim($s))));
+        }, $skus))));
+        $allSkusForLookup = array_values(array_unique(array_filter(array_merge($skus, $cleanedSkus, $noSpaceSkus))));
 
-        $amazonDatasheetsBySku = AmazonDatasheet::whereIn('sku', $allSkusForLookup)->get()->keyBy(function ($item) {
-            return strtoupper(str_replace("\xC2\xA0", ' ', $item->sku));
+        // Fetch by exact SKU match OR by normalized (space-removed) match so "SP12120 8OHM GTR" in DB matches product "SP 12120 8OHM GTR"
+        $amazonDatasheetsBySku = AmazonDatasheet::where(function ($q) use ($allSkusForLookup, $noSpaceSkus) {
+            $q->whereIn('sku', $allSkusForLookup);
+            if (!empty($noSpaceSkus)) {
+                $q->orWhereIn(DB::raw("UPPER(REPLACE(REPLACE(TRIM(COALESCE(sku,'')), UNHEX('C2A0'), ' '), ' ', ''))"), $noSpaceSkus);
+            }
+        })->get()->keyBy(function ($item) {
+            $norm = strtoupper(str_replace("\xC2\xA0", ' ', trim($item->sku ?? '')));
+            return str_replace(' ', '', $norm);
         });
 
         $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
@@ -2104,7 +2114,8 @@ class OverallAmazonController extends Controller
 
         foreach ($productMasters as $pm) {
             $sku = strtoupper($pm->sku);
-            $skuClean = strtoupper(str_replace("\xC2\xA0", ' ', $pm->sku));
+            $skuClean = strtoupper(str_replace("\xC2\xA0", ' ', trim($pm->sku)));
+            $skuLookupKey = str_replace(' ', '', $skuClean);
 
             if (str_starts_with($sku, 'PARENT ')) {
                 continue;
@@ -2112,7 +2123,7 @@ class OverallAmazonController extends Controller
 
             // Normalize parent: trim, collapse multiple spaces, so "10  FR" and "10 FR" group together and get one parent summary row
             $parent = preg_replace('/\s+/', ' ', trim((string) ($pm->parent ?? '')));
-            $amazonSheet = $amazonDatasheetsBySku[$skuClean] ?? ($amazonDatasheetsBySku[$sku] ?? null);
+            $amazonSheet = $amazonDatasheetsBySku[$skuLookupKey] ?? ($amazonDatasheetsBySku[$skuClean] ?? ($amazonDatasheetsBySku[$sku] ?? null));
             $shopify = $shopifyData[$pm->sku] ?? null;
 
             $row = [];

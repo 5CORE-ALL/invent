@@ -537,8 +537,11 @@
                         <span class="badge bg-danger fs-6 p-2 map-filter-badge amz-hover-chart" data-filter="nmapped" data-metric="nmap_count" data-source="badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter · Hover for trend">
                              N Map: <span id="nmap-count">0</span>
                         </span>
-                        <span class="badge bg-success fs-6 p-2 missing-amz-filter-badge amz-hover-chart" id="missing-amazon-badge" data-filter="missing-amazon" data-metric="missing_count" data-source="badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter · Hover for trend">
-                            Missing L: <span id="missing-amazon-count">0</span>
+                        <span class="badge bg-secondary fs-6 p-2 missing-amz-fba-filter-badge" id="missing-amazon-fba-badge" data-filter="missing-amazon-fba" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter: Missing L (FBA only)">
+                            Missing L (FBA): <span id="missing-amazon-fba-count">0</span>
+                        </span>
+                        <span class="badge bg-success fs-6 p-2 missing-amz-nonfba-filter-badge" id="missing-amazon-nonfba-badge" data-filter="missing-amazon-nonfba" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter: Missing L (Non-FBA only)">
+                            Missing L (Non-FBA): <span id="missing-amazon-nonfba-count">0</span>
                         </span>
                         <span class="badge bg-success fs-6 p-2" id="variation-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Variation (NRL count)">
                             Variation: <span id="variation-count">0</span>
@@ -923,7 +926,9 @@
         let soldFilterActive = 'all'; // Track sold filter state: 'all', 'sold', 'zero'
         let priceFilterActive = false; // Track price filter state: true = show only Prc > LMP
         let mapFilterActive = 'all'; // Track map filter state: 'all', 'mapped', 'missing'
-        let missingAmazonFilterActive = false; // Track Missing L (missing from Amazon) filter
+        let missingAmazonFilterActive = false;   // Track Missing L (all) — header dot
+        let missingAmazonFbaFilterActive = false;    // Track Missing L (FBA only) filter
+        let missingAmazonNonFbaFilterActive = false; // Track Missing L (Non-FBA only) filter
         let seoModeActive = false; // Track SEO mode state
 
         // Play / Pause parent navigation (same as product-master / eBay)
@@ -1044,7 +1049,7 @@
 
         // Hover-to-chart for badges (500ms delay). Filter badges: no hover chart so click = filter only.
         let amzHoverTimer = null;
-        var amzHoverChartFilterBadgeSelector = '.sold-filter-badge, .map-filter-badge, .missing-amz-filter-badge, .price-filter-badge, .missing-campaign-badge';
+        var amzHoverChartFilterBadgeSelector = '.sold-filter-badge, .map-filter-badge, .missing-amz-fba-filter-badge, .missing-amz-nonfba-filter-badge, .price-filter-badge, .missing-campaign-badge';
         $(document).on('mouseenter', '.amz-hover-chart', function() {
             if ($(this).is(amzHoverChartFilterBadgeSelector)) return; // filter badges: click applies filter, never open chart on hover
             const metric = $(this).data('metric');
@@ -1469,28 +1474,43 @@
                 applyFilters();
             });
 
-            // Missing Amazon filter badge click handler (delegated so it works when table re-renders)
-            $(document).on('click', '.missing-amz-filter-badge', function() {
-                missingAmazonFilterActive = !missingAmazonFilterActive;
-                
-                // Update badge appearance
-                if (missingAmazonFilterActive) {
-                    $(this).removeClass('bg-warning').addClass('bg-info').css('color', 'black');
-                    // Turn off map filters
+            // Missing L (FBA) filter badge click — show only Missing L rows that are FBA
+            $(document).on('click', '.missing-amz-fba-filter-badge', function() {
+                missingAmazonFbaFilterActive = !missingAmazonFbaFilterActive;
+                if (missingAmazonFbaFilterActive) {
+                    missingAmazonNonFbaFilterActive = false;
+                    missingAmazonFilterActive = false;
+                    $(this).removeClass('bg-secondary bg-warning').addClass('bg-info').css('color', 'black');
+                    $('#missing-amazon-nonfba-badge').removeClass('bg-info').addClass('bg-success').css('color', 'white');
                     mapFilterActive = 'all';
                     $('.map-filter-badge').each(function() {
                         const badgeFilter = $(this).data('filter');
-                        if (badgeFilter === 'mapped') {
-                            $(this).removeClass('bg-warning').addClass('bg-success').css('color', 'black');
-                        } else {
-                            $(this).removeClass('bg-warning').addClass('bg-danger').css('color', 'white');
-                        }
+                        if (badgeFilter === 'mapped') $(this).removeClass('bg-warning').addClass('bg-success').css('color', 'black');
+                        else $(this).removeClass('bg-warning').addClass('bg-danger').css('color', 'white');
                     });
                 } else {
-                    $(this).removeClass('bg-info').addClass('bg-warning').css('color', 'black');
+                    $(this).removeClass('bg-info').addClass('bg-secondary').css('color', 'white');
                 }
-                
-                // Re-apply filters
+                applyFilters();
+            });
+
+            // Missing L (Non-FBA) filter badge click — show only Missing L rows that are Non-FBA
+            $(document).on('click', '.missing-amz-nonfba-filter-badge', function() {
+                missingAmazonNonFbaFilterActive = !missingAmazonNonFbaFilterActive;
+                if (missingAmazonNonFbaFilterActive) {
+                    missingAmazonFbaFilterActive = false;
+                    missingAmazonFilterActive = false;
+                    $(this).removeClass('bg-success bg-warning').addClass('bg-info').css('color', 'black');
+                    $('#missing-amazon-fba-badge').removeClass('bg-info').addClass('bg-secondary').css('color', 'white');
+                    mapFilterActive = 'all';
+                    $('.map-filter-badge').each(function() {
+                        const badgeFilter = $(this).data('filter');
+                        if (badgeFilter === 'mapped') $(this).removeClass('bg-warning').addClass('bg-success').css('color', 'black');
+                        else $(this).removeClass('bg-warning').addClass('bg-danger').css('color', 'white');
+                    });
+                } else {
+                    $(this).removeClass('bg-info').addClass('bg-success').css('color', 'white');
+                }
                 applyFilters();
             });
 
@@ -2445,14 +2465,14 @@
                                 return `<span style="font-weight: bold;">${sku}</span>`;
                             }
 
+                            const isListed = !rowData.is_missing_amazon;
+                            const chartBtn = (sku && isListed) ? `<button class="btn btn-sm ms-1 view-sku-chart" data-sku="${sku}" title="View Metrics Chart" style="border: none; background: none; color: #87CEEB; padding: 2px 6px;"><i class="fa fa-info-circle"></i></button>` : '';
                             return `<div style="display: flex; align-items: center; gap: 5px;">
                                 <span>${sku}</span>
                                 <button class="btn btn-sm btn-link copy-sku-btn p-0" data-sku="${sku}" title="Copy SKU">
                                     <i class="fas fa-copy"></i>
                                 </button>
-                                <button class="btn btn-sm ms-1 view-sku-chart" data-sku="${sku}" title="View Metrics Chart" style="border: none; background: none; color: #87CEEB; padding: 2px 6px;">
-                                    <i class="fa fa-info-circle"></i>
-                                </button>
+                                ${chartBtn}
                             </div>`;
                         },
                      
@@ -2464,11 +2484,12 @@
                         formatter: function(cell) {
                             const row = cell.getRow().getData();
                             const sku = row['(Child) sku'] || '';
+                            const isListed = !row.is_missing_amazon;
                             const aL30 = parseFloat(row['A_L30']) || 0;
                             const sess30 = parseFloat(row['Sess30']) || 0;
 
                             if (sess30 === 0) {
-                                const dotBtn = sku ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${sku}" data-metric="cvr" title="View CVR% chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #008000;"></span></button>` : '';
+                                const dotBtn = (sku && isListed) ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${sku}" data-metric="cvr" title="View CVR% chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #008000;"></span></button>` : '';
                                 return `<span style="color: #a00211; font-weight: 600;">0.0%</span> ${dotBtn}`.trim();
                             }
 
@@ -2478,7 +2499,7 @@
                             else if (cvr > 4 && cvr <= 7) color = '#ffc107';
                             else if (cvr > 7 && cvr <= 10) color = '#28a745';
                             else color = '#e83e8c';
-                            const dotBtn = sku ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${sku}" data-metric="cvr" title="View CVR% chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #008000;"></span></button>` : '';
+                            const dotBtn = (sku && isListed) ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${sku}" data-metric="cvr" title="View CVR% chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #008000;"></span></button>` : '';
                             return `<span style="color: ${color}; font-weight: 600;">${cvr.toFixed(1)}%</span> ${dotBtn}`.trim();
                         },
                         sorter: function(a, b, aRow, bRow) {
@@ -2593,16 +2614,11 @@
                             // Empty for parent rows
                             if (rowData.is_parent_summary) return '';
                             
-                            const inv = parseFloat(rowData.INV) || 0;
-                            const nrValue = rowData.NR || '';
                             const isMissingAmazon = rowData.is_missing_amazon || false;
-                            const rowPrice = parseFloat(rowData.price || 0);
                             
-                            // Only check for INV > 0 and NR = REQ
-                            if (inv > 0 && nrValue === 'REQ') {
-                                if (isMissingAmazon || rowPrice <= 0) {
-                                    return `<span style="font-size: 16px; color: #dc3545; font-weight: bold;">M</span>`;
-                                }
+                            // Show M whenever SKU is not listed on Amazon (missing listing)
+                            if (isMissingAmazon) {
+                                return `<span style="font-size: 16px; color: #dc3545; font-weight: bold;">M</span>`;
                             }
                             
                             return '';
@@ -2761,9 +2777,10 @@
                         formatter: function(cell) {
                             const row = cell.getRow().getData();
                             const sku = row['(Child) sku'] || '';
+                            const isListed = !row.is_missing_amazon;
                             const value = cell.getValue();
                             const num = Math.round(parseFloat(value) || 0);
-                            const dotBtn = sku ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${sku}" data-metric="inv" title="View INV chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #6c757d;"></span></button>` : '';
+                            const dotBtn = (sku && isListed) ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${sku}" data-metric="inv" title="View INV chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #6c757d;"></span></button>` : '';
                             return `${num} ${dotBtn}`.trim();
                         }
                     },
@@ -2778,13 +2795,14 @@
                             const value = parseFloat(cell.getValue()) || 0;
                             const rowData = cell.getRow().getData();
                             const sku = rowData['(Child) sku'] || '';
+                            const isListed = !rowData.is_missing_amazon;
                             const shopifyInv = parseFloat(rowData.INV) || 0;
                             let color = '';
                             const difference = Math.abs(value - shopifyInv);
                             if (difference === 0) color = '#28a745';
                             else if (difference <= 3) color = '#ffc107';
                             else color = '#dc3545';
-                            const dotBtn = sku ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${sku}" data-metric="inv_amz" title="View INV AMZ chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #17a2b8;"></span></button>` : '';
+                            const dotBtn = (sku && isListed) ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${sku}" data-metric="inv_amz" title="View INV AMZ chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #17a2b8;"></span></button>` : '';
                             return `<span style="color: ${color}; font-weight: 600;">${Math.round(value)}</span> ${dotBtn}`.trim();
                         }
                     },
@@ -2798,9 +2816,10 @@
                         formatter: function(cell) {
                             const row = cell.getRow().getData();
                             const sku = row['(Child) sku'] || '';
+                            const isListed = !row.is_missing_amazon;
                             const value = cell.getValue();
                             const num = Math.round(parseFloat(value) || 0);
-                            const dotBtn = sku ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${sku}" data-metric="ovl30" title="View OV L30 chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #fd7e14;"></span></button>` : '';
+                            const dotBtn = (sku && isListed) ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${sku}" data-metric="ovl30" title="View OV L30 chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #fd7e14;"></span></button>` : '';
                             return `${num} ${dotBtn}`.trim();
                         }
                     },
@@ -2841,9 +2860,10 @@
                         formatter: function(cell) {
                             const row = cell.getRow().getData();
                             const sku = row['(Child) sku'] || '';
+                            const isListed = !row.is_missing_amazon;
                             const value = cell.getValue();
                             const num = Math.round(value || 0);
-                            const dotBtn = sku ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${sku}" data-metric="al30" title="View A L30 chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #e83e8c;"></span></button>` : '';
+                            const dotBtn = (sku && isListed) ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${sku}" data-metric="al30" title="View A L30 chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #e83e8c;"></span></button>` : '';
                             return `${num} ${dotBtn}`.trim();
                         }
                     },
@@ -2926,9 +2946,10 @@
                         formatter: function(cell) {
                             const row = cell.getRow().getData();
                             const sku = row['(Child) sku'] || '';
+                            const isListed = !row.is_missing_amazon;
                             const value = cell.getValue();
                             const num = Math.round(value || 0);
-                            const dotBtn = sku ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${sku}" data-metric="views" title="View View L30 chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #0000FF;"></span></button>` : '';
+                            const dotBtn = (sku && isListed) ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${sku}" data-metric="views" title="View View L30 chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #0000FF;"></span></button>` : '';
                             return `${num.toLocaleString('en-US')} ${dotBtn}`.trim();
                         }
                     },
@@ -2948,9 +2969,13 @@
                             const price = parseFloat(value || 0);
                             const lmpPrice = parseFloat(rowData.lmp_price || 0);
                             const lmpaPrice = parseFloat(rowData.price_lmpa || 0);
+                            const isListed = !rowData.is_missing_amazon;
 
-                            // Dot icon: opens SKU metrics chart (same color as Price line in chart)
-                            const dotBtn = sku ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${sku}" title="View metrics chart (Price, Views, CVR%, AD%, Sold)" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #adb5bd;"></span></button>` : '';
+                            // Dot icon: only for listed SKUs — opens SKU metrics chart (Price, Views, CVR%, AD%, Sold)
+                            const dotBtn = (sku && isListed) ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${sku}" title="View metrics chart (Price, Views, CVR%, AD%, Sold)" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #adb5bd;"></span></button>` : '';
+
+                            // If no listing, show nothing (no price, no dot)
+                            if (!isListed) return '';
 
                             // If no Amazon price, show best available fallback price (in gray italic)
                             if (price <= 0) {
@@ -3079,9 +3104,10 @@
                             const value = cell.getValue();
                             const rowData = cell.getRow().getData();
                             const sku = rowData['(Child) sku'] || '';
+                            const isListed = !rowData.is_missing_amazon;
                             const adSpend = parseFloat(rowData.AD_Spend_L30) || 0;
                             const sales = parseFloat(rowData['A_L30']) || 0;
-                            const dotBtn = sku ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${sku}" data-metric="tacos" title="View TACOS% chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #FFD700;"></span></button>` : '';
+                            const dotBtn = (sku && isListed) ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${sku}" data-metric="tacos" title="View TACOS% chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #FFD700;"></span></button>` : '';
 
                             // If there is ad spend but no sales, show 100%
                             if (adSpend > 0 && sales === 0) {
@@ -5596,18 +5622,40 @@
                     });
                 }
 
-                // Missing L filter - items not in amazon_datsheets OR with blank/zero price
+                // Helper: treat as FBA if fba flag is set OR SKU/product name contains "FBA"
+                function rowIsFba(data) {
+                    if (!data) return false;
+                    const fbaFlag = data.fba;
+                    if (fbaFlag === 1 || fbaFlag === '1' || fbaFlag === true) return true;
+                    const sku = (data['(Child) sku'] || data['Parent'] || '').toUpperCase();
+                    return sku.indexOf('FBA') !== -1;
+                }
+                // Helper: true if row is a parent summary row (exclude from Missing L results)
+                function isParentRow(data) {
+                    if (!data) return false;
+                    if (data.is_parent_summary === true || data.is_parent_summary === 1) return true;
+                    const sku = String(data['(Child) sku'] || data['Parent'] || '').trim().toUpperCase();
+                    return sku.indexOf('PARENT ') === 0 || sku === 'PARENT';
+                }
+                // Missing L filter — FBA only: not listed on Amazon and row is FBA (by flag or SKU). Exclude parent rows.
+                if (missingAmazonFbaFilterActive) {
+                    table.addFilter(function(data) {
+                        if (isParentRow(data)) return false;
+                        return !!(data.is_missing_amazon && rowIsFba(data));
+                    });
+                }
+                // Missing L filter — Non-FBA only: not listed on Amazon and row is not FBA. Exclude parent rows.
+                if (missingAmazonNonFbaFilterActive) {
+                    table.addFilter(function(data) {
+                        if (isParentRow(data)) return false;
+                        return !!(data.is_missing_amazon && !rowIsFba(data));
+                    });
+                }
+                // Missing L filter — all (header dot): not listed on Amazon. Exclude parent rows.
                 if (missingAmazonFilterActive) {
                     table.addFilter(function(data) {
-                        if (data.is_parent_summary) return isProductNavigationActive;
-                        
-                        const inv = parseFloat(data.INV) || 0;
-                        const nrValue = data.NR || '';
-                        const isMissingAmazon = data.is_missing_amazon || false;
-                        const price = parseFloat(data.price || 0);
-                        
-                        // Show REQ items with INV > 0 that are missing from Amazon OR have blank/zero price
-                        return inv > 0 && nrValue === 'REQ' && (isMissingAmazon || price <= 0);
+                        if (isParentRow(data)) return false;
+                        return !!(data.is_missing_amazon);
                     });
                 }
 
@@ -5885,24 +5933,22 @@
                 applyFilters();
             });
 
-            // Missing L header red dot: click to show only red (Missing L) rows; click again to show all
+            // Missing L header red dot: click to show all Missing L rows (FBA + Non-FBA); click again to show all
             $(document).on('click', '.missing-l-header-red-dot', function(e) {
                 e.stopPropagation();
                 e.preventDefault();
                 missingAmazonFilterActive = !missingAmazonFilterActive;
                 if (missingAmazonFilterActive) {
+                    missingAmazonFbaFilterActive = false;
+                    missingAmazonNonFbaFilterActive = false;
                     mapFilterActive = 'all';
                     $('.map-filter-badge').each(function() {
                         var badgeFilter = $(this).data('filter');
-                        if (badgeFilter === 'mapped') {
-                            $(this).removeClass('bg-warning').addClass('bg-success').css('color', 'black');
-                        } else {
-                            $(this).removeClass('bg-warning').addClass('bg-danger').css('color', 'white');
-                        }
+                        if (badgeFilter === 'mapped') $(this).removeClass('bg-warning').addClass('bg-success').css('color', 'black');
+                        else $(this).removeClass('bg-warning').addClass('bg-danger').css('color', 'white');
                     });
-                    $('.missing-amz-filter-badge').removeClass('bg-warning').addClass('bg-info').css('color', 'black');
-                } else {
-                    $('.missing-amz-filter-badge').removeClass('bg-info').addClass('bg-warning').css('color', 'black');
+                    $('#missing-amazon-fba-badge').removeClass('bg-info').addClass('bg-secondary').css('color', 'white');
+                    $('#missing-amazon-nonfba-badge').removeClass('bg-info').addClass('bg-success').css('color', 'white');
                 }
                 applyFilters();
             });
@@ -6723,7 +6769,8 @@
                 let prcGtLmpCount = 0;
                 let mapCount = 0;
                 let missingCount = 0;
-                let missingAmazonCount = 0;
+                let missingAmazonFbaCount = 0;
+                let missingAmazonNonFbaCount = 0;
                 let variationCount = 0;
                 
                 // KW page counts - Use Set to track unique campaigns
@@ -6821,27 +6868,31 @@
                             prcGtLmpCount++;
                         }
                         
-                        // Count Missing L, Map, N Map
-                        // Only count for INV > 0 and NR = REQ
+                        // Count Missing L (not listed on Amazon), Map, N Map
                         const inv = parseFloat(row['INV'] || 0);
                         const nrValue = row['NR'] || '';
                         const isMissingAmazon = row['is_missing_amazon'] || false;
                         const rowPrice = parseFloat(row['price'] || 0);
                         
-                        if (inv > 0 && nrValue === 'REQ') {
-                            if (isMissingAmazon || rowPrice <= 0) {
-                                // SKU doesn't exist in amazon_datsheets OR has blank/zero price
-                                missingAmazonCount++;
+                        // Missing L: split by FBA / Non-FBA (FBA = fba flag OR SKU contains "FBA")
+                        if (isMissingAmazon) {
+                            const isFba = row['fba'] === 1 || row['fba'] === '1' || row['fba'] === true ||
+                                String((row['(Child) sku'] || row['Parent'] || '')).toUpperCase().indexOf('FBA') !== -1;
+                            if (isFba) {
+                                missingAmazonFbaCount++;
                             } else {
-                                // SKU exists in amazon_datsheets with a valid price, check inventory sync
-                                const invAmzNum = parseFloat(row['INV_AMZ'] || 0);
-                                const invDifference = Math.abs(inv - invAmzNum);
-                                
-                                if (invDifference === 0) {
-                                    mapCount++; // Perfect match
-                                } else {
-                                    missingCount++; // Inventory mismatch
-                                }
+                                missingAmazonNonFbaCount++;
+                            }
+                        }
+                        
+                        // Map / N Map: only for INV > 0, NR = REQ, and listed on Amazon with price
+                        if (inv > 0 && nrValue === 'REQ' && !isMissingAmazon && rowPrice > 0) {
+                            const invAmzNum = parseFloat(row['INV_AMZ'] || 0);
+                            const invDifference = Math.abs(inv - invAmzNum);
+                            if (invDifference === 0) {
+                                mapCount++; // Perfect match
+                            } else {
+                                missingCount++; // Inventory mismatch
                             }
                         }
                         
@@ -6949,13 +7000,20 @@
                 // Update Map and N Map counts (inventory sync for items that exist in Amazon)
 $('#nmap-count').text(missingCount.toLocaleString());
 
-                // Update Missing Amazon count (items not in amazon_datsheets)
-                $('#missing-amazon-count').text(missingAmazonCount.toLocaleString());
-                var $missingBadge = $('#missing-amazon-badge');
-                if (missingAmazonCount > 0) {
-                    $missingBadge.removeClass('bg-success bg-warning').addClass('bg-danger').css('color', 'white');
+                // Update Missing L (FBA) and Missing L (Non-FBA) counts
+                $('#missing-amazon-fba-count').text(missingAmazonFbaCount.toLocaleString());
+                $('#missing-amazon-nonfba-count').text(missingAmazonNonFbaCount.toLocaleString());
+                var $missingFbaBadge = $('#missing-amazon-fba-badge');
+                var $missingNonFbaBadge = $('#missing-amazon-nonfba-badge');
+                if (missingAmazonFbaCount > 0) {
+                    $missingFbaBadge.removeClass('bg-success bg-warning').addClass('bg-danger').css('color', 'white');
                 } else {
-                    $missingBadge.removeClass('bg-danger bg-warning').addClass('bg-success').css('color', 'white');
+                    $missingFbaBadge.removeClass('bg-danger bg-warning').addClass('bg-secondary').css('color', 'white');
+                }
+                if (missingAmazonNonFbaCount > 0) {
+                    $missingNonFbaBadge.removeClass('bg-success bg-warning').addClass('bg-danger').css('color', 'white');
+                } else {
+                    $missingNonFbaBadge.removeClass('bg-danger bg-warning').addClass('bg-success').css('color', 'white');
                 }
                 
                 // Update Variation count badge (NRL / red dot rows)
@@ -7030,7 +7088,9 @@ $('#nmap-count').text(missingCount.toLocaleString());
                         zero_sold_count: zeroSoldCount,
                         map_count: mapCount,
                         nmap_count: missingCount,
-                        missing_count: missingAmazonCount,
+                        missing_count: missingAmazonFbaCount + missingAmazonNonFbaCount,
+                        missing_fba_count: missingAmazonFbaCount,
+                        missing_nonfba_count: missingAmazonNonFbaCount,
                         prc_gt_lmp_count: prcGtLmpCount,
                         campaign_count: uniqueCampaigns.size,
                         missing_campaign_count: missingCampaignCount,

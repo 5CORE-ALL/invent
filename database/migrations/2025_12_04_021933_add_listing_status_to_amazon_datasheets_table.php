@@ -11,7 +11,7 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table('amazon_datasheets', function (Blueprint $table) {
+        Schema::table('amazon_datsheets', function (Blueprint $table) {
             $table->string('listing_status')->nullable()->after('sold');
         });
     }
@@ -21,7 +21,7 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::table('amazon_datasheets', function (Blueprint $table) {
+        Schema::table('amazon_datsheets', function (Blueprint $table) {
             $table->dropColumn('listing_status');
         });
     }
