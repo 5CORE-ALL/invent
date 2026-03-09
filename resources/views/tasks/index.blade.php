@@ -1132,6 +1132,10 @@
                                             <i class="mdi mdi-file-upload me-2"></i> CSV
                                         </button>
 
+                                        <button type="button" class="btn btn-primary ms-2" id="bulk-task-btn">
+                                            <i class="mdi mdi-plus-box-multiple me-2"></i> Bulk Task
+                                        </button>
+
                                         <a href="{{ route('tasks.deleted') }}" class="btn btn-secondary ms-2">
                                             <i class="mdi mdi-archive me-2"></i> Archived
                                         </a>
@@ -1153,6 +1157,11 @@
                                     <button type="button" class="mobile-action-btn btn-success" id="upload-csv-btn-mobile">
                                         <i class="mdi mdi-file-upload"></i>
                                         <span>CSV</span>
+                                    </button>
+
+                                    <button type="button" class="mobile-action-btn btn-primary" id="bulk-task-btn-mobile">
+                                        <i class="mdi mdi-plus-box-multiple"></i>
+                                        <span>Bulk Task</span>
                                     </button>
 
                                     <a href="{{ route('tasks.deleted') }}" class="mobile-action-btn btn-secondary">
@@ -1574,6 +1583,73 @@
                 <div class="modal-footer">
                     <button type="submit" class="btn btn-success" id="upload-csv-submit">
                         <i class="mdi mdi-upload me-1"></i> Upload & Import
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Bulk Task Create Modal -->
+<div class="modal fade" id="bulkTaskModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">
+                <h5 class="modal-title">
+                    <i class="mdi mdi-plus-box-multiple me-2"></i>Bulk Create Tasks
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <form action="{{ route('tasks.bulkStore') }}" method="POST" id="bulk-task-form">
+                @csrf
+                <div class="modal-body">
+                    <div class="alert alert-info mb-3">
+                        <i class="mdi mdi-information me-2"></i>
+                        Enter one task title per line. All tasks will use the same assignee, priority, group, and date below.
+                    </div>
+                    <div class="mb-3">
+                        <label for="bulk-task-titles" class="form-label fw-bold">Task titles <span class="text-danger">*</span></label>
+                        <textarea class="form-control font-monospace" id="bulk-task-titles" name="titles" rows="8" placeholder="Task one&#10;Task two&#10;Task three" required></textarea>
+                        <small class="text-muted">One task per line. Empty lines are ignored.</small>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="bulk-task-priority" class="form-label">Priority</label>
+                            <select class="form-select" id="bulk-task-priority" name="priority" required>
+                                <option value="low">Low</option>
+                                <option value="normal" selected>Normal</option>
+                                <option value="high">High</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="bulk-task-assignee" class="form-label">Assign to</label>
+                            <select class="form-select" id="bulk-task-assignee" name="assignee_id">
+                                <option value="">— Select assignee —</option>
+                                @foreach($users ?? [] as $u)
+                                    <option value="{{ $u->id }}">{{ $u->name }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="bulk-task-group" class="form-label">Group</label>
+                            <input type="text" class="form-control" id="bulk-task-group" name="group" placeholder="Optional group name">
+                        </div>
+                        <div class="col-md-3 mb-3">
+                            <label for="bulk-task-tid" class="form-label">TID / Start date</label>
+                            <input type="datetime-local" class="form-control" id="bulk-task-tid" name="tid" value="{{ now()->format('Y-m-d\TH:i') }}">
+                        </div>
+                        <div class="col-md-3 mb-3">
+                            <label for="bulk-task-etc" class="form-label">ETC (min)</label>
+                            <input type="number" class="form-control" id="bulk-task-etc" name="etc_minutes" value="10" min="1" placeholder="10">
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="mdi mdi-plus-box-multiple me-1"></i> Create tasks
                     </button>
                 </div>
             </form>
@@ -2865,6 +2941,10 @@
             // Show CSV Upload Modal
             $('#upload-csv-btn').on('click', function() {
                 $('#csvUploadModal').modal('show');
+            });
+
+            $('#bulk-task-btn, #bulk-task-btn-mobile').on('click', function() {
+                $('#bulkTaskModal').modal('show');
             });
 
             // Handle CSV Upload

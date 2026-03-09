@@ -1620,4 +1620,100 @@ class TaskController extends Controller
         return response()->json($deletedTasks);
     }
 
+    /**
+     * Show bulk task create form (optional; modal on index can be used without this).
+     */
+    public function bulkCreate()
+    {
+        $users = User::select('id', 'name', 'email')->orderBy('name')->get();
+        return view('tasks.bulk-create', compact('users'));
+    }
+
+    /**
+     * Store multiple tasks at once (bulk create).
+     * Accepts: titles (newline-separated or array), common assignee/priority/group/tid/etc.
+     */
+    public function bulkStore(Request $request)
+    {
+        $validated = $request->validate([
+            'titles' => 'required|string',
+            'priority' => 'required|in:low,normal,high',
+            'assignee_id' => 'nullable|exists:users,id',
+            'assignee_ids' => 'nullable|array',
+            'assignee_ids.*' => 'exists:users,id',
+            'group' => 'nullable|string|max:255',
+            'tid' => 'nullable|date',
+            'etc_minutes' => 'nullable|integer|min:1',
+        ]);
+
+        $titlesRaw = $validated['titles'];
+        $titles = array_filter(array_map('trim', preg_split('/\r\n|\r|\n/', $titlesRaw)));
+        if (empty($titles)) {
+            return redirect()->back()->with('warning', 'Please enter at least one task title (one per line).');
+        }
+
+        $user = Auth::user();
+        $isAdmin = strtolower($user->role ?? '') === 'admin';
+        $assignorEmail = $user->email;
+
+        $assigneeIds = $request->assignee_ids ?? [];
+        if ($request->has('assignee_id') && $request->assignee_id) {
+            $assigneeIds = array_unique(array_merge($assigneeIds, [$request->assignee_id]));
+        }
+        $assigneeEmail = null;
+        if (!empty($assigneeIds)) {
+            $assigneeEmail = User::whereIn('id', $assigneeIds)->pluck('email')->implode(', ');
+        }
+
+        $startDate = $validated['tid'] ?? now();
+        $completionDate = \Carbon\Carbon::parse($startDate)->addDays(5);
+        $etcMinutes = (int) ($validated['etc_minutes'] ?? 10);
+        $group = $validated['group'] ?? null;
+        $priority = $validated['priority'];
+
+        $created = 0;
+        foreach ($titles as $title) {
+            if (strlen($title) > 1000) {
+                continue;
+            }
+            $taskData = [
+                'title' => $title,
+                'description' => null,
+                'group' => $group,
+                'priority' => $priority,
+                'assignor' => $assignorEmail,
+                'assign_to' => $assigneeEmail,
+                'split_tasks' => 0,
+                'status' => 'Todo',
+                'eta_time' => $etcMinutes,
+                'start_date' => $startDate,
+                'completion_date' => $completionDate,
+                'due_date' => $completionDate,
+                'completion_day' => 0,
+                'etc_done' => 0,
+                'is_missed' => 0,
+                'is_missed_track' => 0,
+                'workspace' => 0,
+                'order' => 0,
+                'task_id' => '',
+                'link1' => '', 'link2' => '', 'link3' => '', 'link4' => '', 'link5' => '', 'link6' => '', 'link7' => '', 'link8' => '', 'link9' => '',
+                'image' => null,
+                'is_data_from' => 0,
+                'is_automate_task' => 0,
+                'task_type' => 'manual',
+                'rework_reason' => '',
+                'delete_rating' => 0,
+                'delete_feedback' => '',
+            ];
+            Task::create($taskData);
+            $created++;
+        }
+
+        $message = $created . ' task(s) created successfully.';
+        if ($created < count($titles)) {
+            $message .= ' ' . (count($titles) - $created) . ' skipped (title too long or empty).';
+        }
+        return redirect()->route('tasks.index')->with('success', $message);
+    }
+
 }
