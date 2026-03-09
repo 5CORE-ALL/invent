@@ -192,6 +192,9 @@
                                             placeholder="Search SKU">
                                     </th>
                                     <th>
+                                        <div>Shopify Inv</div>
+                                    </th>
+                                    <th>
                                         <div>Product Overview <span id="productOverviewMissingCount" class="text-danger" style="font-weight: bold;">(0)</span></div>
                                         <select id="filterProductOverview" class="form-control form-control-sm mt-1" style="font-size: 11px;">
                                             <option value="all">All Data</option>
@@ -407,7 +410,7 @@
             tbody.innerHTML = '';
 
             if (data.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="11" class="text-center">No products found</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="12" class="text-center">No products found</td></tr>';
                 return;
             }
 
@@ -417,7 +420,7 @@
             });
 
             if (filteredData.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="11" class="text-center">No products found</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="12" class="text-center">No products found</td></tr>';
                 return;
             }
 
@@ -440,6 +443,13 @@
                 const skuCell = document.createElement('td');
                 skuCell.textContent = escapeHtml(item.SKU) || '-';
                 row.appendChild(skuCell);
+
+                // Shopify Inv
+                const shopifyInvCell = document.createElement('td');
+                const invVal = item.shopify_inv;
+                shopifyInvCell.textContent = (invVal !== null && invVal !== undefined && invVal !== '') ? Number(invVal) : '-';
+                shopifyInvCell.style.textAlign = 'right';
+                row.appendChild(shopifyInvCell);
 
                 // Video fields
                 const videoFields = [
@@ -630,6 +640,7 @@
                 .map(item => ({
                     'Parent': item.Parent || '',
                     'SKU': item.SKU || '',
+                    'Shopify Inv': item.shopify_inv !== null && item.shopify_inv !== undefined && item.shopify_inv !== '' ? Number(item.shopify_inv) : '',
                     'Product Overview': item.video_product_overview || '',
                     'Unboxing': item.video_unboxing || '',
                     'How To': item.video_how_to || '',
