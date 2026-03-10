@@ -965,6 +965,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
     // Amazon Sales Routes
     Route::get('/amazon/daily-sales-data', [AmazonSalesController::class, 'getData'])->name('amazon.daily.sales.data');
+    Route::get('/amazon/daily-sales-date-coverage', [AmazonSalesController::class, 'getDateCoverage'])->name('amazon.daily.sales.date.coverage');
+    Route::get('/amazon/compare-datsheets-orders', [AmazonSalesController::class, 'compareDatsheetsWithOrders'])->name('amazon.compare.datsheets.orders');
     Route::get('/amazon/daily-sales', [AmazonSalesController::class, 'index'])->name('amazon.daily.sales');
     Route::get('/amazon-column-visibility', [AmazonSalesController::class, 'getColumnVisibility']);
     Route::post('/amazon-column-visibility', [AmazonSalesController::class, 'saveColumnVisibility']);

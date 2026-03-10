@@ -62,60 +62,63 @@ class AmazonSalesController extends Controller
     public function getData(Request $request)
     {
         // ============================================================
-        // LAST 30 DAYS - MATCHING AMAZON'S DATE RANGE
-        // Amazon shows yesterday and previous 29 days (30 days total)
-        // Example: Today Feb 14 → Show Jan 15 to Feb 13 (30 days)
-        // CRITICAL: Must use Pacific Time to match Amazon Seller Central
+        // SALES FROM AMAZON_DATSHEETS: price * L30 units only
+        // Table already stores L30 data; no timezone/date range needed
         // ============================================================
-    
-        // Use yesterday as the end date (Amazon doesn't include today)
-        // FIXED: Use Pacific Time to match Amazon Seller Central
-        $yesterday = \Carbon\Carbon::yesterday('America/Los_Angeles');
-        $endDateCarbon = $yesterday->endOfDay(); // Yesterday 23:59:59 PT
-        $startDateCarbon = $yesterday->copy()->subDays(29)->startOfDay(); // 30 days total (yesterday - 29 days = 30 days)
-    
-        $startDateStr = $startDateCarbon->format('Y-m-d');
-        $endDateStr   = $endDateCarbon->format('Y-m-d');
-    
+
+        // Date range for KW/PT spend only (no timezone - use app default)
+        $startDateStr = now()->subDays(29)->format('Y-m-d');
+        $endDateStr   = now()->format('Y-m-d');
+
         // ============================================================
-        // QUERY 1: Inventory Database - Amazon Orders + Items
-        // CRITICAL FIX: Proper status filtering
+        // QUERY: amazon_datsheets - sales = price * units_ordered_l30
+        // Only rows with L30 units > 0 (have sales)
         // ============================================================
-    
-        $orderItems = DB::table('amazon_orders as o')
-            ->join('amazon_order_items as i', 'o.id', '=', 'i.amazon_order_id')
-            ->where('o.order_date', '>=', $startDateCarbon)
-            ->where('o.order_date', '<=', $endDateCarbon)
-            ->where(function ($query) {
-                // Only exclude if status is explicitly 'Canceled'
-                $query->whereNull('o.status')
-                    ->orWhere('o.status', '!=', 'Canceled');
+
+        $datasheetRows = DB::table('amazon_datsheets')
+            ->whereNotNull('sku')
+            ->where('sku', '!=', '')
+            ->where(function ($q) {
+                $q->whereNotNull('units_ordered_l30')
+                    ->where('units_ordered_l30', '>', 0);
             })
-            ->where('i.quantity', '>', 0) // Exclude cancelled/returned items (qty=0)
             ->select([
-                'o.amazon_order_id as order_id',
-                'o.order_date',
-                'o.status',
-                'o.total_amount',
-                DB::raw("COALESCE(i.currency, o.currency) as currency"),
-                DB::raw("'L30' as period"),
-                'i.asin',
-                'i.sku',
-                'i.title',
-                'i.quantity',
-                'i.price'
+                'sku',
+                'asin',
+                DB::raw('COALESCE(amazon_title, "") as title'),
+                'price',
+                'units_ordered_l30'
             ])
-            ->orderBy('o.order_date', 'desc')
+            ->orderBy('sku')
             ->get();
-    
-        if ($orderItems->isEmpty()) {
+
+        if ($datasheetRows->isEmpty()) {
             return response()->json([]);
         }
-    
+
+        // Build orderItems-like collection: one row per SKU, sales = price * units_ordered_l30
+        $orderItems = $datasheetRows->map(function ($row) {
+            $qty = (int) $row->units_ordered_l30;
+            $price = (float) $row->price;
+            return (object) [
+                'order_id'    => 'L30-' . $row->sku,
+                'order_date'  => null,
+                'status'      => null,
+                'total_amount'=> $price * $qty,
+                'currency'    => 'USD',
+                'period'      => 'L30',
+                'asin'        => $row->asin,
+                'sku'         => $row->sku,
+                'title'       => $row->title,
+                'quantity'    => $qty,
+                'price'       => $price * $qty, // total line price for compatibility
+            ];
+        });
+
         // ============================================================
         // PRODUCT MASTER
         // ============================================================
-    
+
         $skus = $orderItems->pluck('sku')->filter()->unique()->values()->toArray();
     
         $productMasters = ProductMaster::whereIn('sku', $skus)
@@ -235,7 +238,7 @@ class AmazonSalesController extends Controller
                 'currency' => $item->currency,
                 'order_date' => $item->order_date,
                 'status' => $item->status,
-                'period' => 'L31',
+                'period' => 'L30',
                 'lp' => round($lp, 2),
                 'ship' => round($ship, 2),
                 't_weight' => round($tWeight, 2),
@@ -390,7 +393,6 @@ class AmazonSalesController extends Controller
                 $query->whereNull('o.status')
                     ->orWhere('o.status', '!=', 'Canceled');
             })
-            ->where('i.quantity', '>', 0) // Exclude cancelled/returned items
             ->count();
         $debug['total_order_items_joined'] = $itemCount;
         
@@ -403,7 +405,6 @@ class AmazonSalesController extends Controller
                 $query->whereNull('o.status')
                     ->orWhere('o.status', '!=', 'Canceled');
             })
-            ->where('i.quantity', '>', 0) // Exclude cancelled/returned items
             ->sum('i.quantity');
         $debug['total_quantity_from_items'] = $totalQty;
         
@@ -416,7 +417,6 @@ class AmazonSalesController extends Controller
                 $query->whereNull('o.status')
                     ->orWhere('o.status', '!=', 'Canceled');
             })
-            ->where('i.quantity', '>', 0) // Exclude cancelled/returned items
             ->sum('i.price');
         $debug['total_sales_from_item_prices'] = round($totalSales, 2);
         
