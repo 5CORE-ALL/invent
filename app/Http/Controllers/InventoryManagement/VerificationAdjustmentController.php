@@ -1458,8 +1458,9 @@ class VerificationAdjustmentController extends Controller
             }
         }
         
-        // Order by updated_at so recently updated rows (e.g. remark changes) appear at top
-        $activityLogs = $query->orderByDesc('updated_at')
+        // Order: latest update/approval first (approved_at then updated_at)
+        $activityLogs = $query->orderByDesc('approved_at')
+            ->orderByDesc('updated_at')
             ->orderByDesc('created_at')
             ->get()
             ->map(function ($item) {

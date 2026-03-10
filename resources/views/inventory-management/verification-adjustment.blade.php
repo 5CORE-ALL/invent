@@ -1378,6 +1378,9 @@
                             <button id="exportToGoogleSheets" class="btn btn-success btn-sm">
                                 <i class="fab fa-google"></i> Export to Google Sheets
                             </button>
+                            <button id="activity-log-btn" class="btn btn-dark btn-sm" data-toggle="modal" data-target="#activityLogModal" title="All history by work date">
+                                <i class="fas fa-history"></i> Activity Log
+                            </button>
                             <div class="dropdown">
                                 <button class="btn btn-info btn-sm dropdown-toggle" type="button" id="historyDateFilterBtn" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
                                     <i class="fas fa-calendar-alt"></i> Filter by History Date
@@ -1459,6 +1462,73 @@
                         </div>
                     </div>
 
+                    <!-- Activity Log modal: all history by work date (top Activity Log button) -->
+                    <div class="modal fade" id="activityLogModal" tabindex="-1" role="dialog" aria-labelledby="activityLogModalLabel" aria-hidden="true">
+                        <div class="modal-dialog modal-xl activity-log-modal-wide">
+                            <div class="modal-content">
+                                <div class="modal-header">
+                                    <h5 class="modal-title" id="activityLogModalLabel">Activity Log — All history by work date</h5>
+                                    <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                                        <span aria-hidden="true">&times;</span>
+                                    </button>
+                                </div>
+                                <div class="modal-body p-0">
+                                    <div class="activity-log-filter-bar p-3 mb-0" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+                                        <div class="row g-2">
+                                            <div class="col-md-3">
+                                                <label for="activityLogFilterParent" class="form-label text-white small font-weight-600">Parent</label>
+                                                <input type="text" id="activityLogFilterParent" class="form-control form-control-sm" placeholder="Search Parent...">
+                                            </div>
+                                            <div class="col-md-3">
+                                                <label for="activityLogFilterSku" class="form-label text-white small font-weight-600">SKU</label>
+                                                <input type="text" id="activityLogFilterSku" class="form-control form-control-sm" placeholder="Search SKU...">
+                                            </div>
+                                            <div class="col-md-3">
+                                                <label for="activityLogFilterReason" class="form-label text-white small font-weight-600">Reason</label>
+                                                <input type="text" id="activityLogFilterReason" class="form-control form-control-sm" placeholder="Search Reason...">
+                                            </div>
+                                            <div class="col-md-3">
+                                                <label for="activityLogFilterPerson" class="form-label text-white small font-weight-600">Person</label>
+                                                <input type="text" id="activityLogFilterPerson" class="form-control form-control-sm" placeholder="Search Person...">
+                                            </div>
+                                            <div class="col-md-3">
+                                                <label for="activityLogFilterRemarks" class="form-label text-white small font-weight-600">Remarks</label>
+                                                <input type="text" id="activityLogFilterRemarks" class="form-control form-control-sm" placeholder="Search Remarks...">
+                                            </div>
+                                        </div>
+                                        <div class="row mt-2">
+                                            <div class="col-12 text-end">
+                                                <button id="activityLogClearFilters" class="btn btn-light btn-sm">
+                                                    <i class="fas fa-times"></i> Clear filters
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="p-3 activity-log-table-wrap">
+                                        <div class="table-responsive">
+                                            <table class="table table-bordered table-sm mb-0" id="activityLogTable">
+                                                <thead>
+                                                    <tr>
+                                                        <th>Parent</th>
+                                                        <th>SKU</th>
+                                                        <th>Verified</th>
+                                                        <th>Adjusted</th>
+                                                        <th><span id="activityLossGainTotal" class="badge bg-primary">0</span> Loss/Gain</th>
+                                                        <th>Reason</th>
+                                                        <th>Approved By</th>
+                                                        <th>Approved</th>
+                                                        <th class="activity-log-remarks-col">Remarks</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody></tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- History modal (used by Activity Logs column and history icon) -->
                     <div class="modal fade" id="skuHistoryModal" tabindex="-1" aria-labelledby="skuHistoryModalLabel" aria-hidden="true">
                         <div class="modal-dialog modal-xl">
@@ -1478,7 +1548,6 @@
                             </div>
                         </div>
                     </div>
-
 
                     <div class="modal fade" id="hiddenRowsModal" tabindex="-1" aria-labelledby="hideRowsModalLabel" aria-hidden="true">
                         <div class="modal-dialog modal-xl">
@@ -1575,6 +1644,9 @@
                                         <div class="header-text">
                                             <span class="sortable-header">PARENT <span class="sort-arrow">↓</span></span>
                                         </div>
+                                    </th>
+                                    <th data-field="P" class="text-center" style="width: 36px; vertical-align: middle;">
+                                        <span class="sort-arrow">P</span>
                                     </th>
                                     <th data-field="SKU" class="horizontal-header">
                                         <div class="header-text sortable">
@@ -2529,6 +2601,7 @@
                                     LOSS_GAIN: (item.APPROVED === true && !item.approved_at) ? item.LOSS_GAIN : '',
 
                                     APPROVED_AT: item.approved_at ? formatOhioTime(item.approved_at) : '',
+                                    approved_at: item.approved_at || null,
                                     LAST_APPROVED_AT: formatApprovedAt(item.APPROVED_AT),
                                     HISTORY: item.HISTORY ? formatOhioTime(item.HISTORY) : '',
 
@@ -2552,16 +2625,18 @@
                             // Default: Show all items
                             filteredData = [...tableData];
 
-                            // Sort by INV in increasing order by default
+                            // Default sort: latest update/approval first (then by INV)
                             filteredData.sort((a, b) => {
+                                const dateA = a.approved_at ? new Date(a.approved_at).getTime() : 0;
+                                const dateB = b.approved_at ? new Date(b.approved_at).getTime() : 0;
+                                if (dateB !== dateA) return dateB - dateA; // latest first
                                 const valA = parseFloat(a.INV) || 0;
                                 const valB = parseFloat(b.INV) || 0;
-                                return valA - valB; // Increasing order
+                                return valA - valB;
                             });
 
-                            // Set default sort state to INV ascending
-                            currentSort.field = 'INV';
-                            currentSort.direction = 1;
+                            currentSort.field = 'approved_at';
+                            currentSort.direction = -1;
 
                             renderTable(filteredData);
                            
@@ -2583,7 +2658,7 @@
                 $tbody.empty();
 
                 if (isLoading) {
-                    $tbody.append('<tr><td colspan="25" class="text-center va-empty-state py-4"><span class="va-empty-state-icon"><i class="fas fa-spinner fa-spin"></i></span><br>Loading data...</td></tr>');
+                    $tbody.append('<tr><td colspan="26" class="text-center va-empty-state py-4"><span class="va-empty-state-icon"><i class="fas fa-spinner fa-spin"></i></span><br>Loading data...</td></tr>');
                     return;
                 }
 
@@ -2593,7 +2668,7 @@
 
 
                 if (filteredData.length === 0) {
-                    $tbody.append('<tr><td colspan="25" class="text-center va-empty-state py-4"><span class="va-empty-state-icon"><i class="fas fa-inbox text-muted"></i></span><br>No matching records found</td></tr>');
+                    $tbody.append('<tr><td colspan="26" class="text-center va-empty-state py-4"><span class="va-empty-state-icon"><i class="fas fa-inbox text-muted"></i></span><br>No matching records found</td></tr>');
                     return;
                 }
 
@@ -2722,6 +2797,12 @@
 
                     // $row.append($('<td>').text(item.sl_no));
                     $row.append($('<td>').text(item.Parent));
+
+                    // P column: dot to show all SKUs in this parent
+                    const parentName = item.Parent || '(No Parent)';
+                    const $pCell = $('<td>').addClass('text-center p-dot-cell').css('vertical-align', 'middle');
+                    $pCell.html(`<button type="button" class="btn btn-link p-0 border-0 p-dot-btn" data-parent="${parentName.replace(/"/g, '&quot;')}" title="Filter table to this parent only"><i class="fas fa-circle" style="font-size: 8px; color: #6c757d;"></i></button>`);
+                    $row.append($pCell);
 
                     const $skuCell = $('<td>').addClass('skuColumn').css('position', 'static');
                     
@@ -3648,6 +3729,15 @@
                 showParentHistory(parent);
             });
 
+            // P column: dot click – filter main table to show only rows with the same parent
+            $(document).on('click', '.p-dot-btn', function () {
+                const parentName = $(this).data('parent');
+                filteredData = tableData.filter(item => (item.Parent || '(No Parent)') === parentName);
+                $('#parentSearch').val(parentName);
+                currentPage = 1;
+                renderTable();
+            });
+
             // Function to show history for all SKUs in a parent
             function showParentHistory(parent) {
                 // Get all SKUs that belong to this parent from tableData
@@ -4096,6 +4186,101 @@
                 const row = tableData.find(item => item.SKU.trim().toUpperCase() === sku.trim().toUpperCase());
                 return row ? parseFloat(row.raw_data?.LP || 0) : 0;
             }
+
+            // Top Activity Log button: load all history by work date
+            let activityLogData = [];
+            $('#activity-log-btn').on('click', function () {
+                $.ajax({
+                    url: '/verified-stock-activity-log',
+                    method: 'GET',
+                    success: function (res) {
+                        activityLogData = res.data || [];
+                        renderActivityLogTable(activityLogData);
+                        $('#activityLogModal').modal('show');
+                    },
+                    error: function () {
+                        alert('Failed to load activity log.');
+                    }
+                });
+            });
+
+            function renderActivityLogTable(data) {
+                const tableBody = $('#activityLogTable tbody');
+                tableBody.empty();
+                let totalLossGain = 0;
+                if (!data || data.length === 0) {
+                    tableBody.append('<tr><td colspan="9" class="text-center">No activity found.</td></tr>');
+                } else {
+                    data.forEach(item => {
+                        const parentTitle = getParentBySku(item.sku);
+                        const toAdjust = parseFloat(item.to_adjust) || 0;
+                        const lp = getLPBySku(item.sku);
+                        let lossGainValue = (item.loss_gain != null && item.loss_gain !== undefined)
+                            ? parseFloat(item.loss_gain) : (lp ? toAdjust * lp : 0);
+                        totalLossGain += lossGainValue;
+                        const formattedLossGain = lossGainValue !== 0 ? lossGainValue.toFixed(2) : '-';
+                        const copyBtn = '<i class="fas fa-copy text-secondary copy-sku-icon-activity" data-sku="' + (item.sku || '') + '" title="Copy SKU" style="cursor:pointer;margin-left:5px;font-size:12px;"></i>';
+                        const normalizedParent = (parentTitle || '').toString().toLowerCase().trim();
+                        const remarksVal = (item.remarks != null && item.remarks !== undefined) ? String(item.remarks).trim() : '';
+                        const remarksDisplay = remarksVal === '' ? '-' : escapeHtml(remarksVal);
+                        const remarksFilter = remarksVal.toLowerCase();
+                        tableBody.append('<tr data-parent="' + normalizedParent + '" data-sku="' + (item.sku || '').toString().toLowerCase().trim() + '" data-reason="' + (item.reason || '').toString().toLowerCase().trim() + '" data-person="' + (item.approved_by || '').toString().toLowerCase().trim() + '" data-remarks="' + remarksFilter.replace(/"/g, '&quot;') + '">' +
+                            '<td>' + (parentTitle || '-') + '</td>' +
+                            '<td>' + (item.sku || '') + ' ' + copyBtn + '</td>' +
+                            '<td>' + (item.verified_stock ?? '-') + '</td>' +
+                            '<td>' + (item.to_adjust ?? '-') + '</td>' +
+                            '<td>' + formattedLossGain + '</td>' +
+                            '<td>' + (item.reason ?? '-') + '</td>' +
+                            '<td>' + (item.approved_by ?? '-') + '</td>' +
+                            '<td>' + (item.approved_at ?? '-') + '</td>' +
+                            '<td class="activity-log-remarks-cell">' + remarksDisplay + '</td></tr>');
+                    });
+                }
+                $('#activityLossGainTotal').text(Math.trunc(totalLossGain));
+            }
+
+            function filterActivityLogTable() {
+                const parentFilter = $('#activityLogFilterParent').val().toLowerCase().trim();
+                const skuFilter = $('#activityLogFilterSku').val().toLowerCase().trim();
+                const reasonFilter = $('#activityLogFilterReason').val().toLowerCase().trim();
+                const personFilter = $('#activityLogFilterPerson').val().toLowerCase().trim();
+                const remarksFilter = $('#activityLogFilterRemarks').val().toLowerCase().trim();
+                let visibleLossGainTotal = 0;
+                $('#activityLogTable tbody tr').each(function () {
+                    const $row = $(this);
+                    if ($row.find('td').length === 1) return;
+                    const parent = ($row.data('parent') || '').toString();
+                    const sku = ($row.data('sku') || '').toString();
+                    const reason = ($row.data('reason') || '').toString();
+                    const person = ($row.data('person') || '').toString();
+                    const remarks = ($row.data('remarks') || '').toString();
+                    const show = (!parentFilter || parent.indexOf(parentFilter) > -1) &&
+                        (!skuFilter || sku.indexOf(skuFilter) > -1) &&
+                        (!reasonFilter || reason.indexOf(reasonFilter) > -1) &&
+                        (!personFilter || person.indexOf(personFilter) > -1) &&
+                        (!remarksFilter || remarks.indexOf(remarksFilter) > -1);
+                    $row.toggle(show);
+                    if (show) {
+                        const lgText = $row.find('td:eq(4)').text().trim();
+                        const v = parseFloat(lgText);
+                        if (!isNaN(v)) visibleLossGainTotal += v;
+                    }
+                });
+                $('#activityLossGainTotal').text(Math.trunc(visibleLossGainTotal));
+                if ($('#activityLogTable tbody tr:visible').length === 0 && (parentFilter || skuFilter || reasonFilter || personFilter || remarksFilter)) {
+                    $('#activityLogTable tbody').append('<tr><td colspan="9" class="text-center text-muted">No matching records.</td></tr>');
+                }
+            }
+
+            $('#activityLogFilterParent, #activityLogFilterSku, #activityLogFilterReason, #activityLogFilterPerson, #activityLogFilterRemarks').on('keyup', function () {
+                $('#activityLogTable tbody tr').filter(function () { return $(this).find('td').length === 1; }).remove();
+                filterActivityLogTable();
+            });
+            $('#activityLogClearFilters').on('click', function () {
+                $('#activityLogFilterParent, #activityLogFilterSku, #activityLogFilterReason, #activityLogFilterPerson, #activityLogFilterRemarks').val('');
+                $('#activityLogTable tbody tr').filter(function () { return $(this).find('td').length === 1; }).remove();
+                filterActivityLogTable();
+            });
 
             // Activity Logs column: open SKU-wise history modal
             $(document).on('click', '.view-activity-logs-btn', function () {

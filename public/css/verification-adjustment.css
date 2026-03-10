@@ -56,6 +56,60 @@
     white-space: nowrap;
 }
 
+/* Activity Log modal: wider width to fit Remarks column, content inside modal */
+#activityLogModal .modal-dialog.activity-log-modal-wide {
+    max-width: 96vw;
+    width: 96vw;
+}
+@media (min-width: 1400px) {
+    #activityLogModal .modal-dialog.activity-log-modal-wide {
+        max-width: 1400px;
+        width: 1400px;
+    }
+}
+#activityLogModal .modal-content {
+    max-width: 100%;
+    overflow: hidden;
+}
+#activityLogModal .activity-log-remarks-col {
+    min-width: 180px;
+    max-width: 320px;
+}
+#activityLogModal .activity-log-remarks-cell {
+    word-wrap: break-word;
+    word-break: break-word;
+    white-space: normal;
+    max-width: 320px;
+}
+
+#activityLogModal .modal-body {
+    overflow: hidden;
+    max-height: 70vh;
+    display: flex;
+    flex-direction: column;
+}
+
+#activityLogModal .activity-log-filter-bar {
+    flex-shrink: 0;
+}
+
+#activityLogModal .activity-log-table-wrap {
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+}
+
+#activityLogModal .activity-log-table-wrap .table-responsive {
+    overflow-x: auto;
+    overflow-y: auto;
+    max-height: 50vh;
+    -webkit-overflow-scrolling: touch;
+}
+
+#activityLogModal #activityLogTable {
+    margin-bottom: 0;
+}
+
 .va-controls-filters .va-btn-text {
     white-space: nowrap;
 }
