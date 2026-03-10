@@ -153,12 +153,19 @@ class ProductMasterController extends Controller
                 'image11' => $product->image11,
                 'image12' => $product->image12,
                 'video_product_overview' => $product->video_product_overview,
+                'video_product_overview_status' => $product->video_product_overview_status,
                 'video_unboxing' => $product->video_unboxing,
+                'video_unboxing_status' => $product->video_unboxing_status,
                 'video_how_to' => $product->video_how_to,
+                'video_how_to_status' => $product->video_how_to_status,
                 'video_setup' => $product->video_setup,
+                'video_setup_status' => $product->video_setup_status,
                 'video_troubleshooting' => $product->video_troubleshooting,
+                'video_troubleshooting_status' => $product->video_troubleshooting_status,
                 'video_brand_story' => $product->video_brand_story,
+                'video_brand_story_status' => $product->video_brand_story_status,
                 'video_product_benefits' => $product->video_product_benefits,
+                'video_product_benefits_status' => $product->video_product_benefits_status,
             ];
 
             // Merge the Values array (if not null)
@@ -2847,12 +2854,19 @@ PROMPT;
             $validated = $request->validate([
                 'sku' => 'required|string',
                 'video_product_overview' => 'nullable|string|max:500',
+                'video_product_overview_status' => 'nullable|string|in:N/R,Done/Uploaded,Assigned',
                 'video_unboxing' => 'nullable|string|max:500',
+                'video_unboxing_status' => 'nullable|string|in:N/R,Done/Uploaded,Assigned',
                 'video_how_to' => 'nullable|string|max:500',
+                'video_how_to_status' => 'nullable|string|in:N/R,Done/Uploaded,Assigned',
                 'video_setup' => 'nullable|string|max:500',
+                'video_setup_status' => 'nullable|string|in:N/R,Done/Uploaded,Assigned',
                 'video_troubleshooting' => 'nullable|string|max:500',
+                'video_troubleshooting_status' => 'nullable|string|in:N/R,Done/Uploaded,Assigned',
                 'video_brand_story' => 'nullable|string|max:500',
+                'video_brand_story_status' => 'nullable|string|in:N/R,Done/Uploaded,Assigned',
                 'video_product_benefits' => 'nullable|string|max:500',
+                'video_product_benefits_status' => 'nullable|string|in:N/R,Done/Uploaded,Assigned',
             ]);
 
             // Try both uppercase SKU and lowercase sku columns
@@ -2869,12 +2883,19 @@ PROMPT;
 
             // Update video columns in product_master table
             $product->video_product_overview = $validated['video_product_overview'] ?? null;
+            $product->video_product_overview_status = $validated['video_product_overview_status'] ?? null;
             $product->video_unboxing = $validated['video_unboxing'] ?? null;
+            $product->video_unboxing_status = $validated['video_unboxing_status'] ?? null;
             $product->video_how_to = $validated['video_how_to'] ?? null;
+            $product->video_how_to_status = $validated['video_how_to_status'] ?? null;
             $product->video_setup = $validated['video_setup'] ?? null;
+            $product->video_setup_status = $validated['video_setup_status'] ?? null;
             $product->video_troubleshooting = $validated['video_troubleshooting'] ?? null;
+            $product->video_troubleshooting_status = $validated['video_troubleshooting_status'] ?? null;
             $product->video_brand_story = $validated['video_brand_story'] ?? null;
+            $product->video_brand_story_status = $validated['video_brand_story_status'] ?? null;
             $product->video_product_benefits = $validated['video_product_benefits'] ?? null;
+            $product->video_product_benefits_status = $validated['video_product_benefits_status'] ?? null;
             $product->save();
 
             return response()->json([

@@ -196,6 +196,7 @@
                                     </th>
                                     <th>
                                         <div>Product Overview <span id="productOverviewMissingCount" class="text-danger" style="font-weight: bold;">(0)</span></div>
+                                        <div class="small text-white-50">Status</div>
                                         <select id="filterProductOverview" class="form-control form-control-sm mt-1" style="font-size: 11px;">
                                             <option value="all">All Data</option>
                                             <option value="missing">Missing Data</option>
@@ -203,6 +204,7 @@
                                     </th>
                                     <th>
                                         <div>Unboxing <span id="unboxingMissingCount" class="text-danger" style="font-weight: bold;">(0)</span></div>
+                                        <div class="small text-white-50">Status</div>
                                         <select id="filterUnboxing" class="form-control form-control-sm mt-1" style="font-size: 11px;">
                                             <option value="all">All Data</option>
                                             <option value="missing">Missing Data</option>
@@ -210,6 +212,7 @@
                                     </th>
                                     <th>
                                         <div>How To <span id="howToMissingCount" class="text-danger" style="font-weight: bold;">(0)</span></div>
+                                        <div class="small text-white-50">Status</div>
                                         <select id="filterHowTo" class="form-control form-control-sm mt-1" style="font-size: 11px;">
                                             <option value="all">All Data</option>
                                             <option value="missing">Missing Data</option>
@@ -217,6 +220,7 @@
                                     </th>
                                     <th>
                                         <div>Setup <span id="setupMissingCount" class="text-danger" style="font-weight: bold;">(0)</span></div>
+                                        <div class="small text-white-50">Status</div>
                                         <select id="filterSetup" class="form-control form-control-sm mt-1" style="font-size: 11px;">
                                             <option value="all">All Data</option>
                                             <option value="missing">Missing Data</option>
@@ -224,6 +228,7 @@
                                     </th>
                                     <th>
                                         <div>Troubleshooting <span id="troubleshootingMissingCount" class="text-danger" style="font-weight: bold;">(0)</span></div>
+                                        <div class="small text-white-50">Status</div>
                                         <select id="filterTroubleshooting" class="form-control form-control-sm mt-1" style="font-size: 11px;">
                                             <option value="all">All Data</option>
                                             <option value="missing">Missing Data</option>
@@ -231,6 +236,7 @@
                                     </th>
                                     <th>
                                         <div>Brand Story <span id="brandStoryMissingCount" class="text-danger" style="font-weight: bold;">(0)</span></div>
+                                        <div class="small text-white-50">Status</div>
                                         <select id="filterBrandStory" class="form-control form-control-sm mt-1" style="font-size: 11px;">
                                             <option value="all">All Data</option>
                                             <option value="missing">Missing Data</option>
@@ -238,6 +244,7 @@
                                     </th>
                                     <th>
                                         <div>Product Benefits <span id="productBenefitsMissingCount" class="text-danger" style="font-weight: bold;">(0)</span></div>
+                                        <div class="small text-white-50">Status</div>
                                         <select id="filterProductBenefits" class="form-control form-control-sm mt-1" style="font-size: 11px;">
                                             <option value="all">All Data</option>
                                             <option value="missing">Missing Data</option>
@@ -285,36 +292,78 @@
                         <div class="mb-3">
                             <label for="video_product_overview" class="form-label">Product Overview</label>
                             <input type="url" class="form-control" id="video_product_overview" name="video_product_overview" placeholder="https://">
+                            <select class="form-select form-select-sm mt-1" id="video_product_overview_status" name="video_product_overview_status">
+                                <option value="">-- Status --</option>
+                                <option value="N/R">N/R</option>
+                                <option value="Done/Uploaded">Done/Uploaded</option>
+                                <option value="Assigned">Assigned</option>
+                            </select>
                         </div>
 
                         <div class="mb-3">
                             <label for="video_unboxing" class="form-label">Unboxing</label>
                             <input type="url" class="form-control" id="video_unboxing" name="video_unboxing" placeholder="https://">
+                            <select class="form-select form-select-sm mt-1" id="video_unboxing_status" name="video_unboxing_status">
+                                <option value="">-- Status --</option>
+                                <option value="N/R">N/R</option>
+                                <option value="Done/Uploaded">Done/Uploaded</option>
+                                <option value="Assigned">Assigned</option>
+                            </select>
                         </div>
 
                         <div class="mb-3">
                             <label for="video_how_to" class="form-label">How To</label>
                             <input type="url" class="form-control" id="video_how_to" name="video_how_to" placeholder="https://">
+                            <select class="form-select form-select-sm mt-1" id="video_how_to_status" name="video_how_to_status">
+                                <option value="">-- Status --</option>
+                                <option value="N/R">N/R</option>
+                                <option value="Done/Uploaded">Done/Uploaded</option>
+                                <option value="Assigned">Assigned</option>
+                            </select>
                         </div>
 
                         <div class="mb-3">
                             <label for="video_setup" class="form-label">Setup</label>
                             <input type="url" class="form-control" id="video_setup" name="video_setup" placeholder="https://">
+                            <select class="form-select form-select-sm mt-1" id="video_setup_status" name="video_setup_status">
+                                <option value="">-- Status --</option>
+                                <option value="N/R">N/R</option>
+                                <option value="Done/Uploaded">Done/Uploaded</option>
+                                <option value="Assigned">Assigned</option>
+                            </select>
                         </div>
 
                         <div class="mb-3">
                             <label for="video_troubleshooting" class="form-label">Troubleshooting</label>
                             <input type="url" class="form-control" id="video_troubleshooting" name="video_troubleshooting" placeholder="https://">
+                            <select class="form-select form-select-sm mt-1" id="video_troubleshooting_status" name="video_troubleshooting_status">
+                                <option value="">-- Status --</option>
+                                <option value="N/R">N/R</option>
+                                <option value="Done/Uploaded">Done/Uploaded</option>
+                                <option value="Assigned">Assigned</option>
+                            </select>
                         </div>
 
                         <div class="mb-3">
                             <label for="video_brand_story" class="form-label">Brand Story</label>
                             <input type="url" class="form-control" id="video_brand_story" name="video_brand_story" placeholder="https://">
+                            <select class="form-select form-select-sm mt-1" id="video_brand_story_status" name="video_brand_story_status">
+                                <option value="">-- Status --</option>
+                                <option value="N/R">N/R</option>
+                                <option value="Done/Uploaded">Done/Uploaded</option>
+                                <option value="Assigned">Assigned</option>
+                            </select>
                         </div>
 
                         <div class="mb-3">
                             <label for="video_product_benefits" class="form-label">Product Benefits</label>
                             <input type="url" class="form-control" id="video_product_benefits" name="video_product_benefits" placeholder="https://">
+                            <select class="form-select form-select-sm mt-1" id="video_product_benefits_status" name="video_product_benefits_status">
+                                <option value="">-- Status --</option>
+                                <option value="N/R">N/R</option>
+                                <option value="Done/Uploaded">Done/Uploaded</option>
+                                <option value="Assigned">Assigned</option>
+                            </select>
                         </div>
                     </form>
                 </div>
@@ -343,6 +392,7 @@
             loadVideoData();
             setupSearchHandlers();
             setupButtonHandlers();
+            setupVideoStatusDropdownHandlers();
         });
 
         function setupButtonHandlers() {
@@ -372,6 +422,50 @@
             // Save button
             document.getElementById('saveVideoBtn').addEventListener('click', function() {
                 saveVideoFromModal();
+            });
+        }
+
+        function setupVideoStatusDropdownHandlers() {
+            document.getElementById('table-body').addEventListener('change', function(e) {
+                if (!e.target.classList.contains('video-status-select')) return;
+                const sku = e.target.getAttribute('data-sku');
+                const field = e.target.getAttribute('data-field');
+                const statusVal = e.target.value;
+                const item = tableData.find(d => d.SKU === sku);
+                if (!item) return;
+                item[field + '_status'] = statusVal;
+                const videoData = {
+                    sku: sku,
+                    video_product_overview: item.video_product_overview || '',
+                    video_product_overview_status: item.video_product_overview_status || '',
+                    video_unboxing: item.video_unboxing || '',
+                    video_unboxing_status: item.video_unboxing_status || '',
+                    video_how_to: item.video_how_to || '',
+                    video_how_to_status: item.video_how_to_status || '',
+                    video_setup: item.video_setup || '',
+                    video_setup_status: item.video_setup_status || '',
+                    video_troubleshooting: item.video_troubleshooting || '',
+                    video_troubleshooting_status: item.video_troubleshooting_status || '',
+                    video_brand_story: item.video_brand_story || '',
+                    video_brand_story_status: item.video_brand_story_status || '',
+                    video_product_benefits: item.video_product_benefits || '',
+                    video_product_benefits_status: item.video_product_benefits_status || ''
+                };
+                fetch('/videos-master/save', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken },
+                    body: JSON.stringify(videoData)
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (!data.success) {
+                        alert(data.message || 'Failed to save status');
+                    }
+                })
+                .catch(err => {
+                    console.error(err);
+                    alert('Error saving status: ' + err.message);
+                });
             });
         }
 
@@ -451,7 +545,7 @@
                 shopifyInvCell.style.textAlign = 'right';
                 row.appendChild(shopifyInvCell);
 
-                // Video fields
+                // Video fields (each has link + status dropdown)
                 const videoFields = [
                     'video_product_overview',
                     'video_unboxing',
@@ -461,21 +555,31 @@
                     'video_brand_story',
                     'video_product_benefits'
                 ];
+                const statusValues = ['', 'N/R', 'Done/Uploaded', 'Assigned'];
+                const statusLabels = ['--', 'N/R', 'Done/Uploaded', 'Assigned'];
 
                 videoFields.forEach(field => {
                     const cell = document.createElement('td');
                     cell.style.textAlign = 'center';
+                    cell.style.verticalAlign = 'middle';
+                    const statusField = field + '_status';
+                    const statusVal = item[statusField] || '';
+
+                    let linkHtml = '';
                     if (item[field]) {
-                        const link = document.createElement('a');
-                        link.href = item[field];
-                        link.target = '_blank';
-                        link.className = 'video-link-icon';
-                        link.innerHTML = '<i class="fas fa-play-circle"></i>';
-                        link.title = item[field];
-                        cell.appendChild(link);
+                        linkHtml = '<a href="' + escapeHtml(item[field]) + '" target="_blank" class="video-link-icon" title="' + escapeHtml(item[field]) + '"><i class="fas fa-play-circle"></i></a>';
                     } else {
-                        cell.textContent = '-';
+                        linkHtml = '<span class="text-muted">-</span>';
                     }
+                    let optionsHtml = statusValues.map((v, i) => {
+                        return '<option value="' + escapeHtml(v) + '"' + (v === statusVal ? ' selected' : '') + '>' + escapeHtml(statusLabels[i]) + '</option>';
+                    }).join('');
+                    cell.innerHTML = '<div class="d-flex flex-column align-items-center gap-1">' +
+                        '<div>' + linkHtml + '</div>' +
+                        '<select class="form-select form-select-sm video-status-select" style="font-size: 11px; min-width: 100px;" data-sku="' + escapeHtml(item.SKU) + '" data-field="' + field + '">' +
+                        optionsHtml +
+                        '</select>' +
+                        '</div>';
                     row.appendChild(cell);
                 });
 
@@ -558,12 +662,11 @@
                         'video_brand_story',
                         'video_product_benefits'
                     ];
-                    
                     videoFields.forEach(field => {
                         const input = document.getElementById(field);
-                        if (input) {
-                            input.value = item[field] || '';
-                        }
+                        if (input) input.value = item[field] || '';
+                        const statusInput = document.getElementById(field + '_status');
+                        if (statusInput) statusInput.value = item[field + '_status'] || '';
                     });
                 }
             }
@@ -594,12 +697,19 @@
             const videoData = {
                 sku: sku,
                 video_product_overview: document.getElementById('video_product_overview').value,
+                video_product_overview_status: document.getElementById('video_product_overview_status').value,
                 video_unboxing: document.getElementById('video_unboxing').value,
+                video_unboxing_status: document.getElementById('video_unboxing_status').value,
                 video_how_to: document.getElementById('video_how_to').value,
+                video_how_to_status: document.getElementById('video_how_to_status').value,
                 video_setup: document.getElementById('video_setup').value,
+                video_setup_status: document.getElementById('video_setup_status').value,
                 video_troubleshooting: document.getElementById('video_troubleshooting').value,
+                video_troubleshooting_status: document.getElementById('video_troubleshooting_status').value,
                 video_brand_story: document.getElementById('video_brand_story').value,
-                video_product_benefits: document.getElementById('video_product_benefits').value
+                video_brand_story_status: document.getElementById('video_brand_story_status').value,
+                video_product_benefits: document.getElementById('video_product_benefits').value,
+                video_product_benefits_status: document.getElementById('video_product_benefits_status').value
             };
 
             const saveBtn = document.getElementById('saveVideoBtn');
@@ -642,12 +752,19 @@
                     'SKU': item.SKU || '',
                     'Shopify Inv': item.shopify_inv !== null && item.shopify_inv !== undefined && item.shopify_inv !== '' ? Number(item.shopify_inv) : '',
                     'Product Overview': item.video_product_overview || '',
+                    'Product Overview Status': item.video_product_overview_status || '',
                     'Unboxing': item.video_unboxing || '',
+                    'Unboxing Status': item.video_unboxing_status || '',
                     'How To': item.video_how_to || '',
+                    'How To Status': item.video_how_to_status || '',
                     'Setup': item.video_setup || '',
+                    'Setup Status': item.video_setup_status || '',
                     'Troubleshooting': item.video_troubleshooting || '',
+                    'Troubleshooting Status': item.video_troubleshooting_status || '',
                     'Brand Story': item.video_brand_story || '',
-                    'Product Benefits': item.video_product_benefits || ''
+                    'Brand Story Status': item.video_brand_story_status || '',
+                    'Product Benefits': item.video_product_benefits || '',
+                    'Product Benefits Status': item.video_product_benefits_status || ''
                 }));
 
             const ws = XLSX.utils.json_to_sheet(exportData);
@@ -696,12 +813,19 @@
                 const videoData = {
                     sku: sku,
                     video_product_overview: row['Product Overview'] || '',
+                    video_product_overview_status: row['Product Overview Status'] || '',
                     video_unboxing: row['Unboxing'] || '',
+                    video_unboxing_status: row['Unboxing Status'] || '',
                     video_how_to: row['How To'] || '',
+                    video_how_to_status: row['How To Status'] || '',
                     video_setup: row['Setup'] || '',
+                    video_setup_status: row['Setup Status'] || '',
                     video_troubleshooting: row['Troubleshooting'] || '',
+                    video_troubleshooting_status: row['Troubleshooting Status'] || '',
                     video_brand_story: row['Brand Story'] || '',
-                    video_product_benefits: row['Product Benefits'] || ''
+                    video_brand_story_status: row['Brand Story Status'] || '',
+                    video_product_benefits: row['Product Benefits'] || '',
+                    video_product_benefits_status: row['Product Benefits Status'] || ''
                 };
 
                 return fetch('/videos-master/save', {

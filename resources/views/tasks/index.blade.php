@@ -1235,7 +1235,7 @@
                                         </button>
 
                                         <button type="button" class="btn btn-primary ms-2" id="bulk-task-btn">
-                                            <i class="mdi mdi-plus-box-multiple me-2"></i> Bulk Task
+                                            <i class="mdi mdi-plus-box-multiple me-2"></i> Multiple Task
                                         </button>
 
                                         <a href="{{ route('tasks.deleted') }}" class="btn btn-secondary ms-2">
@@ -1263,7 +1263,7 @@
 
                                     <button type="button" class="mobile-action-btn btn-primary" id="bulk-task-btn-mobile">
                                         <i class="mdi mdi-plus-box-multiple"></i>
-                                        <span>Bulk Task</span>
+                                        <span>Multiple Task</span>
                                     </button>
 
                                     <a href="{{ route('tasks.deleted') }}" class="mobile-action-btn btn-secondary">
@@ -1684,13 +1684,13 @@
     </div>
 </div>
 
-<!-- Bulk Task Create Modal -->
+<!-- Multiple Task Create Modal -->
 <div class="modal fade" id="bulkTaskModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <div class="modal-header" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">
                 <h5 class="modal-title">
-                    <i class="mdi mdi-plus-box-multiple me-2"></i>Bulk Create Tasks
+                    <i class="mdi mdi-plus-box-multiple me-2"></i>Create Multiple Tasks
                 </h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
