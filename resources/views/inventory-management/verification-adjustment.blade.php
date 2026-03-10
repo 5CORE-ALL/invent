@@ -4,6 +4,7 @@
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+    <link rel="stylesheet" href="{{ asset('css/verification-adjustment.css') }}">
     <style>
         /* ========== TABLE STRUCTURE ========== */
         .table-container {
@@ -386,17 +387,17 @@
             color: #17a2b8 !important;
         }
 
-        /* ========== HORIZONTAL HEADERS (2X SIZE) ========== */
+        /* ========== HORIZONTAL HEADERS (readable, consistent with table) ========== */
         .horizontal-header {
             text-align: center;
             white-space: normal;
             vertical-align: middle;
-            font-size: 2em !important; /* 2x the normal size (24px -> 48px) */
-            font-weight: bold;
-            line-height: 1.2;
-            padding: 15px 10px !important;
+            font-size: 12px !important;
+            font-weight: 600;
+            line-height: 1.3;
+            padding: 12px 10px !important;
             width: auto;
-            min-width: 100px;
+            min-width: 80px;
         }
 
         .horizontal-header .header-text {
@@ -1189,82 +1190,124 @@
 
         /*popup modal style end */
 
-        /* set up table  */
+        /* ========== TABLE FORMAT (readable headers, spacing, stripes) ========== */
         #ebay-table th,
         #ebay-table td {
-            padding: 4px 6px !important;
-            font-size: 12px;
+            padding: 10px 12px !important;
+            font-size: 13px;
             white-space: nowrap;
+            border-color: #e9ecef !important;
+            vertical-align: middle !important;
         }
 
-         #ebay-table thead tr#summaryRow th {
-        position: sticky;
-        top: 0;
-        background: #f8f9fa;
-        z-index: 11;
-        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
-    }
+        #ebay-table thead tr th {
+            position: sticky;
+            top: 0;
+            background: #fff;
+            z-index: 10;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+            padding: 12px 10px !important;
+            font-size: 12px;
+            font-weight: 600;
+            color: #212529;
+            text-transform: uppercase;
+            letter-spacing: 0.02em;
+            border-bottom: 2px solid #dee2e6 !important;
+            min-height: 0;
+            max-width: none;
+        }
 
-    /* Make the main header row stick below summary row */
-    #ebay-table thead tr:nth-child(2) th {
-        position: sticky;
-        top: 36px; /* height of summary row */
-        background: #ffffff;
-        z-index: 10;
-        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
-    }
+        /* Horizontal readable headers (no rotation); most centered */
+        #ebay-table thead th {
+            height: auto;
+            min-height: 0;
+            max-width: none;
+            padding: 12px 10px !important;
+            text-align: center;
+            vertical-align: middle !important;
+        }
 
-    /* Optional: ensure headers are tall enough and vertical */
-    #ebay-table thead th {
-        height: auto;
-        min-height: 120px;
-        max-width: 50px;
-        padding: 8px 4px !important;
-        text-align: center;
-        vertical-align: bottom;
-    }
-    
-    #ebay-table thead th > div {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: flex-start;
-        height: 100%;
-    }
-    
-    #ebay-table thead th > div > div.d-flex:not(.dropdown-search-container) {
-        writing-mode: vertical-rl;
-        text-orientation: mixed;
-        transform: rotate(180deg);
-        white-space: nowrap;
-        margin: 4px 0;
-    }
-    
-    #ebay-table thead th > div > div.dropdown-search-container {
-        writing-mode: horizontal-tb;
-        transform: none;
-        margin-top: 8px;
-        width: 100%;
-        pointer-events: auto;
-        z-index: 100;
-        position: relative;
-    }
-    
-    #ebay-table thead th > div > div.dropdown-search-container input {
-        transform: none;
-        width: 100%;
-        height: 24px;
-        pointer-events: auto;
-        cursor: text;
-        user-select: auto;
-        position: relative;
-        z-index: 101;
-    }
+        #ebay-table thead th:nth-child(3),
+        #ebay-table thead th:nth-child(4) {
+            text-align: left;
+        }
 
-    #ebay-table thead th > div > div.dropdown-search-results {
-        pointer-events: auto;
-        z-index: 102;
-    }
+        #ebay-table thead th > div {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+        }
+
+        #ebay-table thead th > div > div.d-flex:not(.dropdown-search-container) {
+            writing-mode: horizontal-tb;
+            text-orientation: mixed;
+            transform: none;
+            white-space: nowrap;
+            margin: 0;
+        }
+
+        #ebay-table thead th > div > div.dropdown-search-container {
+            margin-top: 6px;
+            width: 100%;
+            pointer-events: auto;
+            z-index: 100;
+            position: relative;
+        }
+
+        #ebay-table thead th > div > div.dropdown-search-container input {
+            width: 100%;
+            height: 28px;
+            font-size: 12px;
+            pointer-events: auto;
+            cursor: text;
+            user-select: auto;
+            position: relative;
+            z-index: 101;
+        }
+
+        #ebay-table thead th > div > div.dropdown-search-results {
+            pointer-events: auto;
+            z-index: 102;
+        }
+
+        /* Data rows: alternating stripe + hover */
+        #ebay-table tbody tr {
+            transition: background-color 0.15s ease;
+        }
+
+        #ebay-table tbody tr:nth-child(even) {
+            background-color: #fafbfc;
+        }
+
+        #ebay-table tbody tr:hover {
+            background-color: #f1f3f5;
+        }
+
+        #ebay-table tbody td {
+            border-bottom: 1px solid #e9ecef !important;
+            text-align: center;
+        }
+
+        /* Parent (3rd) and SKU (4th) columns stay left-aligned */
+        #ebay-table tbody td:nth-child(3),
+        #ebay-table tbody td:nth-child(4) {
+            text-align: left;
+        }
+
+        /* Inputs inside table */
+        #ebay-table .form-control {
+            font-size: 13px;
+            padding: 6px 10px;
+            border-radius: 4px;
+            border: 1px solid #ced4da;
+        }
+
+        #ebay-table .form-control:focus {
+            border-color: #80bdff;
+            box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.15);
+        }
 
     #ebay-table {
         color: #000 !important; /* Force dark black font */
@@ -1314,12 +1357,11 @@
         <div class="col-12">
             <div class="card">
                 <div class="card-body">
-                    <h4 class="header-title">Verification & Adjustment</h4>
-
-                    <div class="d-flex justify-content-between align-items-center mb-3 w-100">
-                        <!-- Left Side: Play Controls + Activity Log -->
-                        <div class="d-flex align-items-center">
-                            <div class="btn-group time-navigation-group mr-2" role="group" aria-label="Parent navigation">
+                    <!-- Top bar: title + primary actions -->
+                    <div class="va-controls-top d-flex flex-wrap align-items-center justify-content-between gap-3 mb-3">
+                        <h4 class="header-title mb-0">Verification & Adjustment</h4>
+                        <div class="d-flex flex-wrap align-items-center gap-2">
+                            <div class="btn-group time-navigation-group" role="group" aria-label="Parent navigation">
                                 <button id="play-backward" class="btn btn-light rounded-circle" title="Previous parent">
                                     <i class="fas fa-step-backward"></i>
                                 </button>
@@ -1333,18 +1375,11 @@
                                     <i class="fas fa-step-forward"></i>
                                 </button>
                             </div>
-
-                            <button id="activity-log-btn" class="btn btn-dark ml-2 me-2" data-toggle="modal" data-target="#activityLogModal">
-                                <i class="fas fa-history"></i> Activity Log
-                            </button>
-
-                            <button id="exportToGoogleSheets" class="btn btn-success ml-2">
+                            <button id="exportToGoogleSheets" class="btn btn-success btn-sm">
                                 <i class="fab fa-google"></i> Export to Google Sheets
                             </button>
-
-                            <!-- History Date Range Filter -->
-                            <div class="dropdown ml-2">
-                                <button class="btn btn-info dropdown-toggle" type="button" id="historyDateFilterBtn" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                            <div class="dropdown">
+                                <button class="btn btn-info btn-sm dropdown-toggle" type="button" id="historyDateFilterBtn" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
                                     <i class="fas fa-calendar-alt"></i> Filter by History Date
                                 </button>
                                 <div class="dropdown-menu dropdown-menu-right p-3" aria-labelledby="historyDateFilterBtn" style="min-width: 320px;">
@@ -1368,92 +1403,63 @@
                                     <div id="historyFilterStatus" class="mt-2 small text-muted"></div>
                                 </div>
                             </div>
-
-                            <!-- <button id="viewHiddenRows" class="btn btn-primary ml-2 ms-2" data-toggle="modal">
-                                <i class="fa-regular fa-eye-slash"></i> Hide Rows
-                            </button> -->
-                        </div>
-
-                    </div>
-
-
-                     <!-- Activity Log Modal -->
-                    <div class="modal fade" id="activityLogModal" tabindex="-1" role="dialog" aria-labelledby="activityLogModalLabel" aria-hidden="true">
-                        <div class="modal-dialog modal-xl">
-                            <div class="modal-content">
-                            <div class="modal-header">
-                                <h5 class="modal-title" id="activityLogModalLabel">Activity Log</h5>
-                                <!-- <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button> -->
-                                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
-                                    <span aria-hidden="true">&times;</span>
-                                </button>
-                            </div>
-                            <div class="modal-body" style="padding: 0;">
-                                <!-- Filter Bar with Colored Background -->
-                                <div class="activity-log-filter-bar" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 20px; margin-bottom: 0;">
-                                    <div class="row g-3">
-                                        <div class="col-md-3">
-                                            <label for="activityLogFilterParent" class="form-label text-white" style="font-weight: 600; margin-bottom: 5px;">
-                                                <i class="fas fa-filter"></i> Filter by Parent
-                                            </label>
-                                            <input type="text" id="activityLogFilterParent" class="form-control form-control-sm" placeholder="Search Parent...">
-                                        </div>
-                                        <div class="col-md-3">
-                                            <label for="activityLogFilterSku" class="form-label text-white" style="font-weight: 600; margin-bottom: 5px;">
-                                                <i class="fas fa-filter"></i> Filter by SKU
-                                            </label>
-                                            <input type="text" id="activityLogFilterSku" class="form-control form-control-sm" placeholder="Search SKU...">
-                                        </div>
-                                        <div class="col-md-3">
-                                            <label for="activityLogFilterReason" class="form-label text-white" style="font-weight: 600; margin-bottom: 5px;">
-                                                <i class="fas fa-tag"></i> Filter by Reason
-                                            </label>
-                                            <input type="text" id="activityLogFilterReason" class="form-control form-control-sm" placeholder="Search Reason...">
-                                        </div>
-                                        <div class="col-md-3">
-                                            <label for="activityLogFilterPerson" class="form-label text-white" style="font-weight: 600; margin-bottom: 5px;">
-                                                <i class="fas fa-user"></i> Filter by Person
-                                            </label>
-                                            <input type="text" id="activityLogFilterPerson" class="form-control form-control-sm" placeholder="Search Person...">
-                                        </div>
-                                    </div>
-                                    <div class="row mt-2">
-                                        <div class="col-12 text-end">
-                                            <button id="activityLogClearFilters" class="btn btn-light btn-sm">
-                                                <i class="fas fa-times"></i> Clear All Filters
-                                            </button>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div style="padding: 15px;">
-                                    <table class="table table-bordered" id="activityLogTable">
-                                <thead>
-                                    <tr>
-                                    <th>Parent</th>
-                                    <th>SKU</th>
-                                    <th>Verified</th>
-                                    <th>Adjusted</th>
-                                    <th>
-                                        <span id="activityLossGainTotal" class="badge bg-primary fs-4"> 0 </span><br>
-                                        Loss/Gain 
-                                    </th>
-                                    <th>Reason</th>
-                                    <th>Approved By</th>
-                                    <th>Approved</th>
-                                    <th>Remarks</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <!-- Will be populated via JS -->
-                                </tbody>
-                                    </table>
-                                </div>
-                            </div>
-                            </div>
                         </div>
                     </div>
 
-                    <!-- History modal  -->
+                    <!-- Filters bar: single line, compact -->
+                    <div class="va-controls-filters d-flex flex-nowrap align-items-center mb-3 py-2 px-2 rounded border bg-light">
+                        <div class="d-flex align-items-center va-controls-inner flex-shrink-0">
+                            <label for="row-data-type" class="mb-0 mr-1 small va-label">Data Type</label>
+                            <select id="row-data-type" class="form-control form-control-sm va-input-sm">
+                                <option value="all">All</option>
+                                <option value="sku">SKU (Child)</option>
+                                <option value="parent">Parent</option>
+                            </select>
+                        </div>
+                        <div class="d-flex align-items-center va-controls-inner flex-shrink-0">
+                            <label for="parentSearch" class="mb-0 mr-1 small va-label">Parent</label>
+                            <div class="dropdown-search-container">
+                                <input type="text" class="form-control form-control-sm parent-search va-input-sm" placeholder="Search parent..." id="parentSearch">
+                                <div class="dropdown-search-results" id="parentSearchResults"></div>
+                            </div>
+                        </div>
+                        <div class="d-flex align-items-center va-controls-inner flex-shrink-0">
+                            <label for="skuSearch" class="mb-0 mr-1 small va-label">SKU</label>
+                            <div class="dropdown-search-container">
+                                <input type="text" class="form-control form-control-sm sku-search va-input-sm" placeholder="Search SKU..." id="skuSearch">
+                                <div class="dropdown-search-results" id="skuSearchResults"></div>
+                            </div>
+                        </div>
+                        <div class="d-flex align-items-center va-controls-inner flex-shrink-0">
+                            <label for="search-input" class="mb-0 mr-1 small va-label">Search</label>
+                            <input type="text" id="search-input" class="form-control form-control-sm va-input-sm" placeholder="Search all columns">
+                        </div>
+                        <div class="d-flex align-items-center va-controls-actions flex-shrink-0">
+                            <label for="bulk-action-select" class="mb-0 mr-1 small va-label">Action</label>
+                            <select id="bulk-action-select" class="form-control form-control-sm va-input-sm">
+                                <option value="">Select action...</option>
+                                <option value="mark-verified">Mark as Verified</option>
+                                <option value="mark-unverified">Mark as Unverified</option>
+                            </select>
+                            <button id="apply-bulk-action" class="btn btn-primary btn-sm ml-1">Apply</button>
+                        </div>
+                        <div class="d-flex align-items-center va-controls-status flex-shrink-0 ml-1">
+                            <button id="filter-verified-green" class="btn btn-success btn-sm verified-filter-btn py-1 px-2" data-status="green">
+                                <i class="fas fa-check-circle"></i> <span class="va-btn-text">Verified</span> <span class="badge badge-light ml-1" id="green-count">0</span>
+                            </button>
+                            <button id="filter-verified-yellow" class="btn btn-danger btn-sm verified-filter-btn py-1 px-2" data-status="yellow">
+                                <i class="fas fa-circle"></i> <span class="va-btn-text">Unverified</span> <span class="badge badge-light ml-1" id="yellow-count">0</span>
+                            </button>
+                            <button id="filter-show-all" class="btn btn-secondary btn-sm filter-show-all-btn active py-1 px-2" data-status="all">
+                                <i class="fas fa-list"></i> <span class="va-btn-text">Show All</span>
+                            </button>
+                            <button id="viewHiddenRows" class="btn btn-outline-primary btn-sm py-1 px-2" data-toggle="modal">
+                                <i class="fas fa-history"></i> <span class="va-btn-text">History</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- History modal (used by Activity Logs column and history icon) -->
                     <div class="modal fade" id="skuHistoryModal" tabindex="-1" aria-labelledby="skuHistoryModalLabel" aria-hidden="true">
                         <div class="modal-dialog modal-xl">
                             <div class="modal-content">
@@ -1516,83 +1522,6 @@
                         </div>
                     </div>
 
-                    <!-- <button id="openActivityLogBtn" class="btn btn-outline-dark rounded-circle ml-2" 
-                            data-toggle="modal" data-target="#activityLogModal" title="Activity Log">
-                        <i class="fas fa-list-alt"></i>
-                    </button> -->
-
-                    <!-- All Controls in One Row -->
-                    <div class="d-flex flex-wrap align-items-center mb-3 gap-2" style="gap: 10px;">
-                        <!-- Data Type -->
-                        <div class="d-flex align-items-center">
-                            <label for="row-data-type" class="mr-2 mb-0">Data Type:</label>
-                            <select id="row-data-type" class="form-control form-control-sm" style="width: auto; min-width: 120px;">
-                                <option value="all">All</option>
-                                <option value="sku">SKU (Child)</option>
-                                <option value="parent">Parent</option>
-                            </select>
-                        </div>
-                        
-                        <!-- Parent Search -->
-                        <div class="d-flex align-items-center">
-                            <label for="parentSearch" class="mr-2 mb-0">Parent:</label>
-                            <div class="dropdown-search-container" style="position: relative;">
-                                <input type="text" class="form-control form-control-sm parent-search" 
-                                    placeholder="Search parent..." id="parentSearch" style="width: 150px;">
-                                <div class="dropdown-search-results" id="parentSearchResults"></div>
-                            </div>
-                        </div>
-                        
-                        <!-- SKU Search -->
-                        <div class="d-flex align-items-center">
-                            <label for="skuSearch" class="mr-2 mb-0">SKU:</label>
-                            <div class="dropdown-search-container" style="position: relative;">
-                                <input type="text" class="form-control form-control-sm sku-search" 
-                                    placeholder="Search SKU..." id="skuSearch" style="width: 150px;">
-                                <div class="dropdown-search-results" id="skuSearchResults"></div>
-                            </div>
-                        </div>
-                        
-                        <!-- Search All Columns -->
-                        <div class="d-flex align-items-center">
-                            <label for="search-input" class="mr-2 mb-0">Search:</label>
-                            <input type="text" id="search-input" class="form-control form-control-sm" placeholder="Search all columns" style="width: 180px;">
-                        </div>
-                        
-                        <!-- Bulk Action Dropdown -->
-                        <div class="d-flex align-items-center">
-                            <label for="bulk-action-select" class="mr-2 mb-0">Action:</label>
-                            <select id="bulk-action-select" class="form-control form-control-sm" style="width: auto; min-width: 180px;">
-                                <option value="">Select action...</option>
-                                <option value="mark-verified">Mark as Verified</option>
-                                <option value="mark-unverified">Mark as Unverified</option>
-                            </select>
-                            <button id="apply-bulk-action" class="btn btn-primary btn-sm ml-2" style="margin-left: 5px;">Apply</button>
-                        </div>
-                        
-                        <!-- All Filters -->
-                        <div class="d-flex align-items-center" style="margin-left: 10px;">
-                            <button id="filter-verified-green" class="btn btn-success btn-sm verified-filter-btn mr-2" data-status="green">
-                                <i class="fas fa-check-circle"></i> Verified 
-                                <span class="badge badge-light ml-1" id="green-count">0</span>
-                            </button>
-                            <button id="filter-verified-yellow" class="btn btn-danger btn-sm verified-filter-btn mr-2" data-status="yellow">
-                                <i class="fas fa-circle"></i> Unverified 
-                                <span class="badge badge-light ml-1" id="yellow-count">0</span>
-                            </button>
-                            <button id="filter-show-all" class="btn btn-secondary btn-sm filter-show-all-btn active" data-status="all">
-                                <i class="fas fa-list"></i> Show All
-                            </button>
-                        </div>
-                        
-                        <!-- View Hidden Rows Button -->
-                        <div class="ml-auto">
-                            <button id="viewHiddenRows" class="btn btn-primary btn-sm" data-toggle="modal">
-                                <i class="fa-regular fa-eye-slash"></i> Verified Rows
-                            </button>
-                        </div>
-                    </div>
-
                         <!-- <div id="zeroInvLabel" style="background-color: #d0e7ff; color: #004080; font-size: 14px; font-weight: 600; padding: 6px 12px; border-radius: 6px; display: inline-block; margin-bottom: 10px;"> -->
                             <!-- Will be filled by JS -->
                         <!-- </div> -->
@@ -1637,31 +1566,6 @@
                     <div class="table-container">
                         <table class="custom-resizable-table" id="ebay-table">
                             <thead>
-                                <tr id="summaryRow">
-                                    <th></th> <!-- Checkbox column -->
-                                    <th colspan="4"></th> <!-- Skip IMAGES, Parent, SKU, R&A (4 columns) -->
-                                    <th>
-                                        <div class="metric-total" id="inv-total" style="font-weight: bold; color: #007bff;">0</div>
-                                    </th>
-                                    <th>
-                                        <div class="metric-total" id="ovl30-total" style="font-weight: bold; color: #007bff;">0</div>
-                                    </th>
-                                    <th>
-                                        <div class="metric-total" id="ovdil-total" style="font-weight: bold; color: #007bff;">0%</div>
-                                    </th>
-                                    <th>
-                                        <div class="metric-total" id="onhand-total" style="font-weight: bold; color: #007bff;">0</div>
-                                    </th> 
-                                    <th>
-                                        <div class="metric-total" id="committed-total" style="font-weight: bold; color: #007bff;">0</div>
-                                    </th> 
-                                    <th>
-                                        <div class="metric-total" id="avltosell-total" style="font-weight: bold; color: #007bff;">0</div>
-                                    </th> 
-                                    <th colspan="10"></th> <!-- Skipping columns: VERIFIED, TO ADJUST, REASON, Accept, ADJ HISTORY (hidden), ADJ QTY, LOSS/GAIN, APPR-AT, VERIFIED, USER -->
-                                    <th></th> <!-- REMARK -->
-                                    <th></th> <!-- HISTORY -->
-                                </tr>
                                 <tr>
                                     <th data-field="bulk-select" style="width: 50px; text-align: center;">
                                         <input type="checkbox" id="select-all-checkbox" title="Select All">
@@ -1828,6 +1732,13 @@
                                             </div>
                                         </div>
                                     </th>
+                                    <th data-field="activityLogs" class="activity-logs-header" style="vertical-align: middle; white-space: nowrap;">
+                                        <div class="d-flex flex-column align-items-center">
+                                            <div class="d-flex align-items-center">
+                                                Activity Logs<span class="sort-arrow"></span>
+                                            </div>
+                                        </div>
+                                    </th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -1849,7 +1760,7 @@
                         <button id="last-page" class="btn btn-sm btn-outline-secondary ml-1">Last</button>
                     </div>
 
-                    <div id="data-loader" class="card-loader-overlay" style="display: none;">
+                    <div id="data-loader" class="card-loader-overlay va-loader-overlay" style="display: none;">
                         <div class="loader-content">
                             <div class="spinner-border text-primary" role="status">
                                 <span class="visually-hidden">Loading...</span>
@@ -1880,11 +1791,11 @@
         });
     </script>
 
-    <!--for popup modal script-->
     <script>
         document.body.style.zoom = "80%";
         $(document).ready(function() {
-            // Global AJAX setup for CSRF token - ensures all AJAX requests include CSRF token
+            // --- OPTIMIZATION: CSRF, debounced search, escapeHtml for XSS, cached product master (controller), external CSS ---
+            // Global AJAX setup for CSRF token
             $.ajaxSetup({
                 headers: {
                     'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
@@ -2672,7 +2583,7 @@
                 $tbody.empty();
 
                 if (isLoading) {
-                    $tbody.append('<tr><td colspan="24" class="text-center">Loading data...</td></tr>');
+                    $tbody.append('<tr><td colspan="25" class="text-center va-empty-state py-4"><span class="va-empty-state-icon"><i class="fas fa-spinner fa-spin"></i></span><br>Loading data...</td></tr>');
                     return;
                 }
 
@@ -2682,7 +2593,7 @@
 
 
                 if (filteredData.length === 0) {
-                    $tbody.append('<tr><td colspan="23" class="text-center">No matching records found</td></tr>');
+                    $tbody.append('<tr><td colspan="25" class="text-center va-empty-state py-4"><span class="va-empty-state-icon"><i class="fas fa-inbox text-muted"></i></span><br>No matching records found</td></tr>');
                     return;
                 }
 
@@ -3003,6 +2914,12 @@
                     }
                     $row.append($('<td>').addClass('history-column').html(historyHTML));
 
+                    // Activity Logs column - View SKU-wise log history
+                    const activityLogsHTML = `<button type="button" class="btn btn-sm btn-outline-primary view-activity-logs-btn" data-sku="${item.SKU || ''}" title="View activity log for this SKU">
+                        <i class="fas fa-list-alt"></i> View
+                    </button>`;
+                    $row.append($('<td>').addClass('activity-logs-column text-center').css('vertical-align', 'middle').html(activityLogsHTML));
+
                     $tbody.append($row);
                 });
 
@@ -3019,13 +2936,28 @@
                 updateVerifiedCounts();
             }
             
-            // Update Verified status counts
+            // Helper: true if row is a parent (do not count in Verified/Unverified)
+            function isParentRow(item) {
+                return !!item.is_parent || (item.SKU && String(item.SKU).toUpperCase().startsWith('PARENT'));
+            }
+
+            // Helper: set verified dot to green in a row (after any value/remark update)
+            function setRowVerifiedGreen($row) {
+                const $btn = $row.find('.verified-status-btn');
+                if ($btn.length) {
+                    $btn.attr('data-verified', '1');
+                    $btn.find('i.fa-circle').css('color', '#28a745');
+                }
+            }
+
+            // Update Verified status counts (exclude parent rows)
             function updateVerifiedCounts() {
-                const greenCount = tableData.filter(item => {
+                const nonParentItems = tableData.filter(item => !isParentRow(item));
+                const greenCount = nonParentItems.filter(item => {
                     const verified = item.IS_VERIFIED === 1 || item.IS_VERIFIED === true || item.is_verified === true || item.is_verified === 1;
                     return verified;
                 }).length;
-                const yellowCount = tableData.filter(item => {
+                const yellowCount = nonParentItems.filter(item => {
                     const verified = item.IS_VERIFIED === 1 || item.IS_VERIFIED === true || item.is_verified === true || item.is_verified === 1;
                     return !verified;
                 }).length;
@@ -3306,16 +3238,18 @@
                     });
                 }
                 
-                // 4. Verified filter
+                // 4. Verified filter (exclude parent rows from Verified/Unverified so count matches list)
                 const verifiedFilter = $('.verified-filter-btn.active').data('status');
                 if (verifiedFilter && verifiedFilter !== 'all') {
                     if (verifiedFilter === 'green') {
                         tempData = tempData.filter(item => {
+                            if (isParentRow(item)) return false;
                             const verified = item.IS_VERIFIED === 1 || item.IS_VERIFIED === true || item.is_verified === true || item.is_verified === 1;
                             return verified;
                         });
                     } else if (verifiedFilter === 'yellow') {
                         tempData = tempData.filter(item => {
+                            if (isParentRow(item)) return false;
                             const verified = item.IS_VERIFIED === 1 || item.IS_VERIFIED === true || item.is_verified === true || item.is_verified === 1;
                             return !verified;
                         });
@@ -3499,7 +3433,15 @@
                                 filteredData[index].TO_ADJUST = toAdjust;
                                 filteredData[index].ADJUSTED_QTY = isApproved ? toAdjust : 0;
                                 filteredData[index].LOSS_GAIN = isApproved ? lossGain : 0;
+                                filteredData[index].IS_VERIFIED = 1;
+                                filteredData[index].is_verified = true;
                             }
+                            const tableDataIdx = tableData.findIndex(item => String(item.SKU || '').trim() === String(sku || '').trim());
+                            if (tableDataIdx !== -1) {
+                                tableData[tableDataIdx].IS_VERIFIED = 1;
+                                tableData[tableDataIdx].is_verified = true;
+                            }
+                            setRowVerifiedGreen($row);
 
                             $row.find('.approved-by').text(isApproved ? approvedBy : '-');
 
@@ -3581,6 +3523,16 @@
                         if (res.success) {
                             // Clear the remark field after saving
                             $input.val('');
+                            const $row = $input.closest('tr');
+                            const skuVal = ($input.data('sku') || '').toString().trim();
+                            [tableData, filteredData].forEach(function(arr) {
+                                const idx = arr.findIndex(item => String(item.SKU || '').trim() === skuVal);
+                                if (idx !== -1) {
+                                    arr[idx].IS_VERIFIED = 1;
+                                    arr[idx].is_verified = true;
+                                }
+                            });
+                            setRowVerifiedGreen($row);
                             showNotification('success', 'Remark saved successfully');
                         } else {
                             showNotification('danger', res.message || 'Failed to save remark');
@@ -3604,54 +3556,63 @@
                 }
             });
 
-            // call after click history icon 
+            // Escape for safe HTML output (XSS prevention)
+            function escapeHtml(str) {
+                if (str == null) return '';
+                const div = document.createElement('div');
+                div.textContent = str;
+                return div.innerHTML;
+            }
+
             // Function to load and show SKU history
             function showSkuHistory(sku) {
+                const safeSku = escapeHtml(String(sku || ''));
                 $.ajax({
-                    url: '/inventory-history', // Adjust if your route is different
+                    url: '/inventory-history',
                     type: 'GET',
-                    data: { sku },
+                    data: { sku: safeSku },
                     success: function (res) {
-                    
-                        let html = `<strong>History for SKU: ${sku}</strong><hr>`;
+                        let html = `<p class="mb-2"><strong>Activity log for SKU: ${safeSku}</strong> <span class="text-muted">(newest first)</span></p><hr>`;
                         if (!res.data || !res.data.length) {
-                            html += `<p>No history found.</p>`;
+                            html += `<p class="text-muted">No activity found for this SKU.</p>`;
                         } else {
                             html += `
-                                <table class="table table-bordered table-sm">
-                                    <thead>
+                                <div class="table-responsive">
+                                <table class="table table-bordered table-sm table-hover">
+                                    <thead class="thead-light">
                                         <tr>
-                                            <th>SKU</th>
+                                            <th>#</th>
                                             <th>On Hand</th>
                                             <th>Verified</th>
                                             <th>To Adjust</th>
                                             <th>Reason</th>
                                             <th>Remarks</th>
                                             <th>Approved By</th>
-                                            <th>Approved</th>
+                                            <th>Approved At</th>
+                                            <th>Updated At</th>
                                         </tr>
                                     </thead>
                                     <tbody>`;
-                            res.data.forEach(entry => {
-                                html += `
-                                    <tr>
-                                        <td>${entry.sku}</td>
-                                        <td>${entry.on_hand}</td>
-                                        <td>${entry.verified_stock}</td>
-                                        <td>${entry.to_adjust}</td>
-                                        <td>${entry.reason}</td>
-                                        <td>${entry.remarks || '-'}</td>
-                                        <td>${entry.approved_by}</td>
-                                        <td>${entry.approved_at}</td>
-                                    </tr>`;
+                            res.data.forEach((entry, idx) => {
+                                html += `<tr>
+                                    <td>${idx + 1}</td>
+                                    <td>${escapeHtml(entry.on_hand ?? '-')}</td>
+                                    <td>${escapeHtml(entry.verified_stock ?? '-')}</td>
+                                    <td>${escapeHtml(entry.to_adjust ?? '-')}</td>
+                                    <td>${escapeHtml(entry.reason ?? '-')}</td>
+                                    <td>${escapeHtml(entry.remarks ?? '-')}</td>
+                                    <td>${escapeHtml(entry.approved_by ?? '-')}</td>
+                                    <td>${escapeHtml(entry.approved_at ?? '-')}</td>
+                                    <td>${escapeHtml(entry.updated_at ?? '-')}</td>
+                                </tr>`;
                             });
-                            html += `</tbody></table>`;
+                            html += `</tbody></table></div>`;
                         }
 
                         $('#sku-history-content').html(html);
                         
                         // Update modal title
-                        $('#skuHistoryModalLabel').text(`Adjustment History - SKU: ${sku}`);
+                        $('#skuHistoryModalLabel').text(`Activity Log — SKU: ${sku}`);
                         
                         // Update Shopify link
                         const shopifyDomain = '{{ config("services.shopify.store_url") }}';
@@ -4136,159 +4097,11 @@
                 return row ? parseFloat(row.raw_data?.LP || 0) : 0;
             }
 
-             // load data on Activity modal
-            // Store activity log data globally for filtering
-            let activityLogData = [];
-
-            $('#activity-log-btn').on('click', function () {
-                $.ajax({
-                    url: '/verified-stock-activity-log',
-                    method: 'GET',
-                    success: function (res) {
-                        activityLogData = res.data || [];
-                        renderActivityLogTable(activityLogData);
-                        $('#activityLogModal').modal('show');
-                    },
-                    error: function () {
-                        alert('Failed to load activity log.');
-                    }
-                });
+            // Activity Logs column: open SKU-wise history modal
+            $(document).on('click', '.view-activity-logs-btn', function () {
+                const sku = $(this).data('sku');
+                if (sku) showSkuHistory(sku);
             });
-
-            // Function to render activity log table
-            function renderActivityLogTable(data) {
-                const tableBody = $('#activityLogTable tbody');
-                tableBody.empty();
-
-                let totalLossGain = 0;
-
-                if (!data || data.length === 0) {
-                    tableBody.append('<tr><td colspan="9" class="text-center">No activity found.</td></tr>');
-                } else {
-                    data.forEach(item => {
-                        const parentTitle = getParentBySku(item.sku);
-                        const toAdjust = parseFloat(item.to_adjust) || 0;
-                        const lp = getLPBySku(item.sku);
-
-                        let lossGainValue;
-
-                        if (item.loss_gain !== null && item.loss_gain !== undefined) {
-                            lossGainValue = parseFloat(item.loss_gain);
-                        } else {
-                            lossGainValue = lp ? toAdjust * lp : 0;
-                        }
-
-                        totalLossGain += lossGainValue;
-
-                        const formattedLossGain = lossGainValue !== 0 ? `${lossGainValue.toFixed(2)}` : '-';
-
-                        const copyButton = `<i class="fas fa-copy text-secondary copy-sku-icon-activity" 
-                            data-sku="${item.sku || ''}" 
-                            title="Copy SKU to clipboard" 
-                            style="cursor: pointer; margin-left: 5px; font-size: 12px; opacity: 0.7;" 
-                            onmouseover="this.style.opacity='1'" 
-                            onmouseout="this.style.opacity='0.7'"></i>`;
-                        
-                        // Normalize parent title for filtering - handle "(No Parent)" case
-                        const normalizedParent = (parentTitle || '').toString().toLowerCase().trim();
-                        tableBody.append(`
-                            <tr data-parent="${normalizedParent}" 
-                                data-sku="${(item.sku || '').toString().toLowerCase().trim()}" 
-                                data-reason="${(item.reason || '').toString().toLowerCase().trim()}" 
-                                data-person="${(item.approved_by || '').toString().toLowerCase().trim()}">
-                                <td>${parentTitle}</td>
-                                <td>${item.sku} ${copyButton}</td>
-                                <td>${item.verified_stock ?? '-'}</td>
-                                <td>${item.to_adjust ?? '-'}</td>
-                                <td>${formattedLossGain}</td>
-                                <td>${item.reason ?? '-'}</td>
-                                <td>${item.approved_by ?? '-'}</td>
-                                <td>${item.approved_at ?? '-'}</td>
-                                <td>${item.remarks ?? '-'}</td>
-                            </tr>
-                        `);
-                    });
-                }
-
-                // Set total Loss/Gain in header badge
-                $('#activityLossGainTotal').text(`${Math.trunc(totalLossGain)}`);
-            }
-
-            // Function to filter activity log table
-            function filterActivityLogTable() {
-                const parentFilter = $('#activityLogFilterParent').val().toLowerCase().trim();
-                const skuFilter = $('#activityLogFilterSku').val().toLowerCase().trim();
-                const reasonFilter = $('#activityLogFilterReason').val().toLowerCase().trim();
-                const personFilter = $('#activityLogFilterPerson').val().toLowerCase().trim();
-
-                let visibleLossGainTotal = 0;
-                let visibleCount = 0;
-
-                // Remove any existing "no results" message
-                $('#activityLogTable tbody tr').filter(function() {
-                    return $(this).find('td').length === 1 && $(this).text().includes('No matching records');
-                }).remove();
-
-                $('#activityLogTable tbody tr').each(function() {
-                    const $row = $(this);
-                    // Skip "no results" message rows
-                    if ($row.find('td').length === 1 && $row.text().includes('No activity found')) {
-                        return;
-                    }
-                    
-                    const parent = ($row.data('parent') || '').toString();
-                    const sku = ($row.data('sku') || '').toString();
-                    const reason = ($row.data('reason') || '').toString();
-                    const person = ($row.data('person') || '').toString();
-
-                    const matchesParent = !parentFilter || parent.indexOf(parentFilter) > -1;
-                    const matchesSku = !skuFilter || sku.indexOf(skuFilter) > -1;
-                    const matchesReason = !reasonFilter || reason.indexOf(reasonFilter) > -1;
-                    const matchesPerson = !personFilter || person.indexOf(personFilter) > -1;
-
-                    const isVisible = matchesParent && matchesSku && matchesReason && matchesPerson;
-                    $row.toggle(isVisible);
-
-                    if (isVisible) {
-                        visibleCount++;
-                        const lossGainText = $row.find('td:eq(4)').text().trim();
-                        const lossGainValue = parseFloat(lossGainText);
-                        if (!isNaN(lossGainValue)) {
-                            visibleLossGainTotal += lossGainValue;
-                        }
-                    }
-                });
-
-                // Update total for visible rows
-                $('#activityLossGainTotal').text(`${Math.trunc(visibleLossGainTotal)}`);
-
-                // Show message if no results
-                if (visibleCount === 0 && (parentFilter || skuFilter || reasonFilter || personFilter)) {
-                    $('#activityLogTable tbody').append('<tr><td colspan="9" class="text-center text-muted">No matching records found.</td></tr>');
-                }
-            }
-
-            // Filter event handlers
-            $('#activityLogFilterParent, #activityLogFilterSku, #activityLogFilterReason, #activityLogFilterPerson').on('keyup', function() {
-                filterActivityLogTable();
-            });
-
-            // Clear all filters
-            $('#activityLogClearFilters').on('click', function() {
-                $('#activityLogFilterParent').val('');
-                $('#activityLogFilterSku').val('');
-                $('#activityLogFilterReason').val('');
-                $('#activityLogFilterPerson').val('');
-                filterActivityLogTable();
-            });
-
-
-
-            // Close modal
-            $('.close').on('click', function () {
-                $('#activityLogModal').modal('hide');
-            });
-
 
             //call after checked the appr-IH checkbox
             $('#ebay-table').on('change', '.ih-approve-checkbox', function () {
@@ -5262,12 +5075,22 @@
                 $('#next-page, #last-page').prop('disabled', currentPage >= totalPages || totalPages === 0);
             }
 
-            // Initialize search functionality
+            // Debounce helper: reduces API/CPU cost on repeated keyup
+            function debounce(fn, ms) {
+                let t = null;
+                return function() {
+                    const args = arguments;
+                    if (t) clearTimeout(t);
+                    t = setTimeout(function() { fn.apply(this, args); }, ms);
+                };
+            }
+
+            // Initialize search functionality (debounced for performance)
             function initSearch() {
-                $('#search-input').on('keyup', function() {
-                    currentPage = 1; // Reset to first page when search changes
-                    applyAllFilters(); // Apply all filters including search
-                });
+                $('#search-input').on('keyup', debounce(function() {
+                    currentPage = 1;
+                    applyAllFilters();
+                }, 280));
             }
 
             // Initialize column toggle functionality
@@ -5506,22 +5329,7 @@
 
                     const divisor = metrics.rowCount || 1;
 
-                    // Update metric displays with correct calculations
-                    $('#inv-total').text(metrics.invTotal.toLocaleString());
-                    $('#ovl30-total').text(metrics.ovL30Total.toLocaleString());
-                    $('#ovdil-total').text(Math.round(metrics.ovDilTotal) + '%');
-                    $('#el30-total').text(metrics.el30Total.toLocaleString());
-                    $('#eDil-total').text(Math.round(metrics.eDilTotal) + '%');
-                    $('#views-total').text(metrics.viewsTotal.toLocaleString());
-                    $('#onhand-total').text(metrics.onHand.toLocaleString());
-                    $('#committed-total').text(metrics.committed.toLocaleString());
-                    $('#avltosell-total').text(metrics.avlToSell.toLocaleString());
-
-                    // Calculate and display averages
-                    $('#pft-total').text(Math.round((metrics.pftSum / divisor) * 100) + '%');
-                    $('#roi-total').text(Math.round((metrics.roiSum / divisor) * 100) + '%');
-                    $('#tacos-total').text(Math.round((metrics.tacosTotal / divisor) * 100) + '%');
-                    $('#cvr-total').text(Math.round((metrics.scvrSum / divisor) * 100) + '%');
+                    // Summary row removed from table header; metric calculations kept for any future use
 
                 } catch (error) {
                     console.error('Error in calculateTotals:', error);
@@ -5530,16 +5338,7 @@
             }
 
             function resetMetricsToZero() {
-                $('#inv-total').text('0');
-                $('#ovl30-total').text('0');
-                $('#ovdil-total').text('0%');
-                $('#al30-total').text('0');
-                $('#eDil-total').text('0%');
-                $('#views-total').text('0');
-                $('#pft-total').text('0%');
-                $('#roi-total').text('0%');
-                $('#tacos-total').text('0%');
-                $('#cvr-total').text('0%');
+                // Summary row removed; no DOM elements to reset
             }
 
             // Initialize enhanced dropdowns
@@ -5918,17 +5717,34 @@
                 });
             }
 
-            // Show notification
+            // Show notification - centered on page; Success = green + tick, Danger = red + cross + "Try Again"
             function showNotification(type, message) {
+                const isSuccess = type === 'success';
                 const isDanger = type === 'danger' || type === 'error';
-                const fontSize = isDanger ? 'font-size: 20px; font-weight: bold;' : 'font-size: 14px;';
-                const padding = isDanger ? 'padding: 20px 25px;' : '';
-                
+                let alertClass = 'alert-' + type;
+                let iconHtml = '';
+                let displayText = message;
+                let inlineStyle = 'box-shadow: 0 0.5rem 1rem rgba(0,0,0,0.15); min-width: 280px;';
+                if (isSuccess) {
+                    alertClass = 'alert-success';
+                    iconHtml = '<i class="fas fa-check-circle me-2" style="color: #0f5132; font-size: 1.25rem;"></i>';
+                    displayText = message || 'Success';
+                    inlineStyle += ' font-size: 14px; padding: 16px 20px; color: #0f5132;';
+                } else if (isDanger) {
+                    alertClass = 'alert-danger';
+                    iconHtml = '<i class="fas fa-times-circle me-2" style="color: #842029; font-size: 1.25rem;"></i>';
+                    displayText = 'Try Again';
+                    inlineStyle += ' font-size: 16px; font-weight: 600; padding: 18px 22px; color: #842029;';
+                } else {
+                    inlineStyle += ' font-size: 14px; padding: 16px 20px;';
+                }
                 const notification = $(`
-                    <div class="position-fixed bottom-0 end-0 p-3" style="z-index: 11">
-                        <div class="alert alert-${type} alert-dismissible fade show" role="alert" style="${fontSize} ${padding}">
-                            ${message}
-                            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                    <div class="notification-toast-wrapper" style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 9999; pointer-events: none;">
+                        <div style="pointer-events: auto;">
+                            <div class="alert ${alertClass} alert-dismissible fade show d-flex align-items-center" role="alert" style="${inlineStyle}">
+                                ${iconHtml}<span>${displayText}</span>
+                                <button type="button" class="btn-close ms-2" data-bs-dismiss="alert" aria-label="Close"></button>
+                            </div>
                         </div>
                     </div>
                 `);

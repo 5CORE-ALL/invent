@@ -16,6 +16,7 @@ use Illuminate\Support\Facades\Auth;
 use Carbon\Carbon;
 use App\Models\ShopifyInventory;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Cache;
 use App\Models\ShopifyInventoryLog;
 use App\Jobs\UpdateShopifyInventoryJob;
 
@@ -214,36 +215,35 @@ class VerificationAdjustmentController extends Controller
     //     ]);
     // }
 
+    /**
+     * Returns merged verification-adjustment data: product master + Shopify + inventory.
+     * Optimized: single queries per source, eager loading, cached product master.
+     */
     public function getViewVerificationAdjustmentData(Request $request)
     {
-        // $normalizeSku = fn($sku) => strtoupper(trim(preg_replace('/\s+/', ' ', $sku)));
         $normalizeSku = function ($sku) {
-            $sku = strtoupper(trim($sku));
-            $sku = preg_replace('/\s+/u', ' ', $sku);         // collapse spaces
-            $sku = preg_replace('/[^\S\r\n]+/u', ' ', $sku);  // remove hidden whitespace
+            $sku = strtoupper(trim((string) $sku));
+            $sku = preg_replace('/\s+/u', ' ', $sku);
+            $sku = preg_replace('/[^\S\r\n]+/u', ' ', $sku);
             return $sku;
         };
 
-        // OVERRIDE: Fetch ALL product master data - NO FILTERING
-        // This ensures ALL SKUs from product_master are returned regardless of any other conditions
-        $productMasterData = ProductMaster::all();
+        // Cache product master 5 min to reduce DB load on repeated page loads
+        $productMasterData = Cache::remember('verification_adjustment_product_master', 300, function () {
+            return ProductMaster::all();
+        });
 
-        // Get SKUs from product master
-        $originalSkus = $productMasterData->pluck('sku')
-            ->filter()
-            ->unique()
-            ->toArray();
-        
-        // Normalized SKUs for matching
-        $normalizedSkus = array_map(fn($sku) => $normalizeSku($sku), $originalSkus);
+        $originalSkus = $productMasterData->pluck('sku')->filter()->unique()->values()->toArray();
+        if (empty($originalSkus)) {
+            return response()->json(['message' => 'Data fetched successfully', 'data' => [], 'status' => 200]);
+        }
 
-        // Fetch Shopify data from local DB (shopify_skus)
+        // Single query: Shopify data keyed by normalized SKU
         $shopifyData = ShopifySku::whereIn('sku', $originalSkus)
             ->get()
             ->keyBy(fn($item) => $normalizeSku($item->sku));
 
-        // OVERRIDE: Fetch verified inventory for ALL SKUs - NO FILTERING BY is_hide
-        // Get latest record per SKU for ALL SKUs in product master, regardless of is_hide status
+        // Latest inventory per SKU (one query for ids, one with eager load - avoids N+1)
         $latestInventoryIds = Inventory::whereIn('sku', $originalSkus)
             ->select(DB::raw('MAX(id) as latest_id'))
             ->groupBy('sku')
@@ -254,19 +254,15 @@ class VerificationAdjustmentController extends Controller
             ->get()
             ->keyBy(fn($inv) => $normalizeSku($inv->sku));
 
-        // Fetch the latest approved date from Adjustment History for HISTORY column
+        // Latest approved date per SKU: single query, group in PHP (no N+1)
         $latestApprovedHistory = Inventory::whereIn('sku', $originalSkus)
             ->where('is_approved', true)
             ->whereNotNull('approved_at')
             ->select('sku', 'approved_at', 'approved_by')
-            ->orderBy('approved_at', 'desc')
+            ->orderByDesc('approved_at')
             ->get()
-            ->groupBy(function($item) use ($normalizeSku) {
-                return $normalizeSku($item->sku);
-            })
-            ->map(function($group) {
-                return $group->first(); // Get the most recent approved record
-            });
+            ->groupBy(fn($item) => $normalizeSku($item->sku))
+            ->map(fn($group) => $group->first());
 
         // OVERRIDE: Merge everything - return ALL SKUs from product_master without any filtering
         $data = $productMasterData->map(function ($item) use ($shopifyData, $verifiedInventory, $latestApprovedHistory, $normalizeSku) {
@@ -573,6 +569,8 @@ class VerificationAdjustmentController extends Controller
             $record->to_adjust = $toAdjust;
             $record->loss_gain = $lossGain;
             $record->is_hide = 0;
+            $record->is_verified = true;  // Auto-verify when any row value is updated
+            $record->verified_by = Auth::id();
             $record->save();
 
             DB::commit();
@@ -1335,13 +1333,38 @@ class VerificationAdjustmentController extends Controller
         try {
             DB::beginTransaction();
 
-            // Create a new inventory record with the remark and current timestamp
-            $record = new Inventory();
-            $record->sku = $normalizedSku;
-            $record->remarks = $remark;
-            $record->created_at = Carbon::now('America/New_York');
-            $record->updated_at = Carbon::now('America/New_York');
-            $record->save();
+            // Update the record that appears in Activity Log (latest approved for this SKU)
+            // so the remark shows in the same entry the user sees when they click "View"
+            $record = Inventory::whereRaw('UPPER(TRIM(sku)) = ?', [$normalizedSku])
+                ->where('is_approved', true)
+                ->orderByDesc('updated_at')
+                ->orderByDesc('id')
+                ->first();
+
+            if (!$record) {
+                // No approved record: use latest record by id (e.g. for grid display)
+                $record = Inventory::whereRaw('UPPER(TRIM(sku)) = ?', [$normalizedSku])
+                    ->orderByDesc('id')
+                    ->first();
+            }
+
+            if ($record) {
+                $record->remarks = $remark;
+                $record->updated_at = Carbon::now('America/New_York');
+                $record->is_verified = true;
+                $record->verified_by = Auth::id();
+                $record->save();
+            } else {
+                // No existing record: create one so remark is stored
+                $record = new Inventory();
+                $record->sku = $normalizedSku;
+                $record->remarks = $remark;
+                $record->created_at = Carbon::now('America/New_York');
+                $record->updated_at = Carbon::now('America/New_York');
+                $record->is_verified = true;
+                $record->verified_by = Auth::id();
+                $record->save();
+            }
 
             DB::commit();
 
@@ -1351,7 +1374,7 @@ class VerificationAdjustmentController extends Controller
                 'data' => [
                     'sku' => $record->sku,
                     'remarks' => $record->remarks,
-                    'created_at' => $record->created_at->format('Y-m-d H:i:s'),
+                    'updated_at' => $record->updated_at->format('Y-m-d H:i:s'),
                 ]
             ]);
 
@@ -1435,7 +1458,9 @@ class VerificationAdjustmentController extends Controller
             }
         }
         
-        $activityLogs = $query->orderByDesc('created_at')
+        // Order by updated_at so recently updated rows (e.g. remark changes) appear at top
+        $activityLogs = $query->orderByDesc('updated_at')
+            ->orderByDesc('created_at')
             ->get()
             ->map(function ($item) {
                 return [
@@ -1446,13 +1471,16 @@ class VerificationAdjustmentController extends Controller
                     'reason' => $item->reason,
                     'remarks' => $item->remarks,
                     'approved_by' => $item->approved_by,
-                    'approved_at' => $item->approved_at 
+                    'approved_at' => $item->approved_at
                         ? Carbon::parse($item->approved_at)->timezone('America/New_York')->format('d M Y, h:i A')
+                        : '-',
+                    'updated_at' => $item->updated_at
+                        ? Carbon::parse($item->updated_at)->timezone('America/New_York')->format('d M Y, h:i A')
                         : '-',
                     'is_ia' => (bool) $item->is_ia,
                 ];
             });
-            
+
         return response()->json(['data' => $activityLogs]);
     }
 
@@ -1581,6 +1609,10 @@ class VerificationAdjustmentController extends Controller
         return view('inventory-management.view-inventory');
     }
 
+    /**
+     * SKU-wise activity log: returns all approved inventory records for a SKU,
+     * ordered by most recent activity (updated_at) for easy-to-understand history.
+     */
     public function getSkuWiseHistory(Request $request)
     {
         $sku = $request->input('sku');
@@ -1588,10 +1620,13 @@ class VerificationAdjustmentController extends Controller
         $query = Inventory::where('is_approved', true);
 
         if ($sku) {
-            $query->where('sku', $sku);
+            $normalizedSku = strtoupper(trim((string) $sku));
+            $query->whereRaw('UPPER(TRIM(sku)) = ?', [$normalizedSku]);
         }
 
-        $activityLogs = $query->orderByDesc('created_at')
+        $activityLogs = $query
+            ->orderByDesc('updated_at')
+            ->orderByDesc('created_at')
             ->get()
             ->map(function ($item) {
                 return [
@@ -1600,10 +1635,13 @@ class VerificationAdjustmentController extends Controller
                     'to_adjust' => $item->to_adjust,
                     'on_hand' => $item->on_hand,
                     'reason' => $item->reason,
-                    'remarks' => $item->remarks,
+                    'remarks' => $item->remarks ?? '-',
                     'approved_by' => $item->approved_by,
-                    'approved_at' => $item->approved_at 
+                    'approved_at' => $item->approved_at
                         ? Carbon::parse($item->approved_at)->timezone('America/New_York')->format('d M Y, h:i A')
+                        : '-',
+                    'updated_at' => $item->updated_at
+                        ? Carbon::parse($item->updated_at)->timezone('America/New_York')->format('d M Y, h:i A')
                         : '-',
                 ];
             });

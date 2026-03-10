@@ -1,0 +1,208 @@
+/**
+ * Verification Adjustment – critical layout & component styles
+ * Optimized: extracted from blade for caching, smaller HTML, maintainability.
+ * Loaded with blade @section('css').
+ */
+
+/* ---- Control bar structure ---- */
+.va-controls-top {
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid #e9ecef;
+}
+
+.va-controls-filters {
+    border: 1px solid #dee2e6;
+    background-color: #f8f9fa;
+    flex-wrap: nowrap;
+    gap: 0.5rem;
+    overflow-x: auto;
+    min-height: 38px;
+}
+
+.va-controls-filters .va-label {
+    font-weight: 600;
+    color: #495057;
+    white-space: nowrap;
+}
+
+.va-controls-filters .va-controls-inner {
+    gap: 0.25rem;
+}
+
+/* Compact inputs so all fit in one line */
+.va-controls-filters .va-input-sm {
+    width: 100px;
+    min-width: 100px;
+}
+
+.va-controls-filters #row-data-type.va-input-sm {
+    width: 100px;
+}
+
+.va-controls-filters .parent-search.va-input-sm,
+.va-controls-filters .sku-search.va-input-sm {
+    width: 100px;
+}
+
+.va-controls-filters #search-input.va-input-sm {
+    width: 120px;
+}
+
+.va-controls-filters #bulk-action-select.va-input-sm {
+    width: 130px;
+}
+
+.va-controls-filters .va-controls-status .btn {
+    white-space: nowrap;
+}
+
+.va-controls-filters .va-btn-text {
+    white-space: nowrap;
+}
+
+@media (max-width: 1200px) {
+    .va-controls-filters {
+        flex-wrap: wrap;
+    }
+}
+
+@media (max-width: 992px) {
+    .va-controls-top {
+        flex-direction: column;
+        align-items: flex-start !important;
+    }
+    .va-controls-filters {
+        flex-direction: column;
+        align-items: flex-start !important;
+        flex-wrap: wrap;
+    }
+    .va-controls-filters .va-input-sm {
+        max-width: none;
+    }
+    .va-controls-actions,
+    .va-controls-status {
+        width: 100%;
+    }
+}
+
+/* ---- Table & container ---- */
+.va-table-container {
+    overflow-x: auto;
+    overflow-y: visible;
+    position: relative;
+    max-height: 600px;
+}
+
+.va-table {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: auto;
+}
+
+.va-table th,
+.va-table td {
+    padding: 12px 15px;
+    text-align: left;
+    border-bottom: 1px solid #e9ecef;
+    box-sizing: border-box;
+}
+
+.va-table th {
+    background-color: #f8f9fa;
+    font-weight: 600;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+}
+
+/* ---- Loader ---- */
+.va-loader-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(255, 255, 255, 0.9);
+    z-index: 100;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 0.25rem;
+}
+
+.va-loader-content {
+    text-align: center;
+    padding: 24px;
+    background: #fff;
+    border-radius: 8px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+}
+
+.va-loader-text {
+    margin-top: 12px;
+    font-weight: 500;
+    color: #495057;
+}
+
+/* ---- Empty / no data state ---- */
+.va-empty-state {
+    padding: 2rem;
+    text-align: center;
+    color: #6c757d;
+    background: #f8f9fa;
+    border-radius: 8px;
+    margin: 1rem 0;
+}
+
+.va-empty-state-icon {
+    font-size: 2.5rem;
+    margin-bottom: 0.5rem;
+    opacity: 0.6;
+}
+
+/* ---- Pagination ---- */
+.va-pagination {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 1rem 0;
+    margin-top: 1rem;
+    border-top: 1px solid #dee2e6;
+    flex-wrap: wrap;
+}
+
+.va-pagination button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* ---- Verified filter buttons (keep in sync with blade) ---- */
+.va-filter-verified.active {
+    box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.4);
+}
+
+/* ---- Verification table (when using .custom-resizable-table) ---- */
+.table-container {
+    border-radius: 8px;
+    border: 1px solid #e9ecef;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.custom-resizable-table {
+    border-radius: 8px;
+}
+
+/* ---- Responsive ---- */
+@media (max-width: 768px) {
+    .va-table-container {
+        max-height: 400px;
+    }
+    .va-table th,
+    .va-table td {
+        padding: 8px 10px;
+        font-size: 0.9rem;
+    }
+    #ebay-table th,
+    #ebay-table td {
+        padding: 8px 10px !important;
+        font-size: 12px;
+    }
+}
