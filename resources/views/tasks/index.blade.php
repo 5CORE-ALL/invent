@@ -583,6 +583,15 @@
             flex: 1;
         }
 
+        /* Keep all 6 stat cards in one line; scroll horizontally if needed */
+        .stats-row.flex-nowrap {
+            overflow-x: auto;
+            overflow-y: hidden;
+        }
+        .stats-row.flex-nowrap > .col {
+            min-width: 140px;
+        }
+
         .stat-label {
             font-size: 11px;
             font-weight: 600;
@@ -644,6 +653,53 @@
             background: linear-gradient(135deg, #f7b733 0%, #fc4a1a 100%);
         }
 
+        /* Select user - icon before TOTAL */
+        .stat-card-user-select {
+            border-left-color: #6c757d;
+        }
+        .stat-card-user-select .stat-icon-user {
+            background: linear-gradient(135deg, #6c757d 0%, #495057 100%);
+            color: #fff;
+        }
+        .stat-card-user-select .stat-content {
+            min-width: 0;
+        }
+        .stat-card-user-select select:focus {
+            box-shadow: none;
+            outline: none;
+        }
+
+        /* R&R - Roles & Responsibilities (separate badge card, custom icon - larger icon) */
+        .stat-card-rr {
+            border-left-color: #0d9488;
+        }
+        .stat-card-rr .stat-icon {
+            background: transparent;
+        }
+        .stat-card-rr .stat-icon.stat-icon-img {
+            width: 56px;
+            height: 56px;
+            min-width: 56px;
+            min-height: 56px;
+            padding: 4px;
+        }
+        .stat-card-rr .stat-icon-image {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+        .stat-icon-img {
+            padding: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .stat-icon-image {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+
         /* Teal - ATC */
         .stat-card-teal {
             border-left-color: #20c997;
@@ -682,6 +738,12 @@
                 width: 50px;
                 height: 50px;
                 font-size: 24px;
+            }
+            .stat-card-rr .stat-icon.stat-icon-img {
+                width: 48px;
+                height: 48px;
+                min-width: 48px;
+                min-height: 48px;
             }
         }
         
@@ -1062,10 +1124,26 @@
         </div>     
         <!-- end page title --> 
 
-        <!-- Statistics Cards (Hidden on mobile) -->
-        <div class="row mb-4 stats-row d-none d-md-flex">
+        <!-- Statistics Cards (Hidden on mobile) - all 6 in one line -->
+        <div class="row mb-4 stats-row d-none d-md-flex align-items-stretch flex-nowrap" style="flex-wrap: nowrap !important;">
+            <!-- Select user (icon-style before TOTAL) -->
+            <div class="col d-flex align-items-center" style="min-width: 0; flex: 1 1 0;">
+                <div class="stat-card stat-card-user-select flex-grow-1 d-flex align-items-center">
+                    <div class="stat-icon stat-icon-user">
+                        <i class="mdi mdi-account-search"></i>
+                    </div>
+                    <div class="stat-content flex-grow-1">
+                        <select id="user-overdue-graph-select" class="form-select form-select-sm border-0 shadow-none bg-transparent p-0 fw-bold" style="font-size: 0.85rem; cursor: pointer;">
+                            <option value="">-- Select user --</option>
+                            @foreach($users ?? [] as $u)
+                                <option value="{{ $u->name }}">{{ $u->name }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                </div>
+            </div>
             <!-- Total Tasks -->
-            <div class="col-xl-3 col-md-6">
+            <div class="col" style="min-width: 0; flex: 1 1 0;">
                 <div class="stat-card stat-card-blue">
                     <div class="stat-icon">
                         <i class="mdi mdi-format-list-bulleted"></i>
@@ -1078,7 +1156,7 @@
             </div>
 
             <!-- Overdue Tasks -->
-            <div class="col-xl-3 col-md-6">
+            <div class="col" style="min-width: 0; flex: 1 1 0;">
                 <div class="stat-card stat-card-red">
                     <div class="stat-icon">
                         <i class="mdi mdi-alert-circle"></i>
@@ -1091,7 +1169,7 @@
             </div>
 
             <!-- Total ETC -->
-            <div class="col-xl-3 col-md-6">
+            <div class="col" style="min-width: 0; flex: 1 1 0;">
                 <div class="stat-card stat-card-yellow">
                     <div class="stat-icon">
                         <i class="mdi mdi-briefcase-clock"></i>
@@ -1104,8 +1182,22 @@
                 </div>
             </div>
 
+            <!-- R&R (Roles & Responsibilities) - separate badge card -->
+            <div class="col" style="min-width: 0; flex: 1 1 0;">
+                <div class="stat-card stat-card-rr">
+                    <div class="stat-icon stat-icon-img">
+                        <img src="{{ asset('images/roles-rr-icon.png') }}" alt="R&amp;R" class="stat-icon-image">
+                    </div>
+                    <div class="stat-content">
+                        <div class="stat-label">R&amp;R</div>
+                        <div class="stat-value">{{ isset($stats['rr']) ? number_format($stats['rr'] / 60, 1) : (isset($stats['etc_rr']) ? number_format($stats['etc_rr'] / 60, 1) : '-') }}</div>
+                        <div class="stat-unit">hours</div>
+                    </div>
+                </div>
+            </div>
+
             <!-- Total ATC -->
-            <div class="col-xl-3 col-md-6">
+            <div class="col" style="min-width: 0; flex: 1 1 0;">
                 <div class="stat-card stat-card-teal">
                     <div class="stat-icon">
                         <i class="mdi mdi-timer"></i>
@@ -1291,15 +1383,7 @@
                                     <div class="card-header py-2 bg-light d-flex flex-wrap align-items-center gap-2">
                                         <i class="mdi mdi-chart-line text-danger me-1"></i>
                                         <span class="fw-semibold">User-wise overdue (date-wise)</span>
-                                        <div class="d-flex flex-wrap align-items-center gap-2 ms-auto">
-                                            <label class="form-label mb-0 small fw-bold">Select user:</label>
-                                            <select id="user-overdue-graph-select" class="form-select form-select-sm" style="width: auto; min-width: 180px;">
-                                                <option value="">-- Select user --</option>
-                                                @foreach($users ?? [] as $u)
-                                                    <option value="{{ $u->name }}">{{ $u->name }}</option>
-                                                @endforeach
-                                            </select>
-                                        </div>
+                                        <span class="ms-auto text-muted small">Use &quot;Select user&quot; above the stats to pick a user.</span>
                                     </div>
                                     <div class="card-body py-2" id="user-overdue-graph-card-body">
                                         <div id="user-overdue-graph-empty" class="text-muted small text-center py-1 mb-0">Select a user to see date-wise overdue graph.</div>
@@ -2501,6 +2585,9 @@
                             break;
                         case 'ETC':
                             valueEl.text(Math.round(stats.etc_total / 60));
+                            break;
+                        case 'R&R':
+                            valueEl.text(stats.rr != null ? Math.round(stats.rr / 60) : (stats.etc_rr != null ? Math.round(stats.etc_rr / 60) : '-'));
                             break;
                         case 'ATC':
                             valueEl.text(Math.round(stats.atc_total / 60));
