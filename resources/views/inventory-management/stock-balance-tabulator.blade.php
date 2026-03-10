@@ -259,9 +259,13 @@
                 </div>
                 
                 <div id="stock-balance-table-wrapper" style="height: calc(100vh - 250px); display: flex; flex-direction: column;">
-                    <!-- SKU Search -->
-                    <div class="p-2 bg-light border-bottom">
-                        <input type="text" id="sku-search" class="form-control" placeholder="Search SKU...">
+                    <!-- SKU Search + Inventory note & Refresh -->
+                    <div class="p-2 bg-light border-bottom d-flex align-items-center gap-3 flex-wrap">
+                        <input type="text" id="sku-search" class="form-control" placeholder="Search SKU..." style="max-width: 220px;">
+                        <span class="text-muted small">INV and Sold are from last sync. If numbers look wrong, click Refresh.</span>
+                        <button type="button" id="refresh-inventory-data-btn" class="btn btn-sm btn-outline-primary" title="Reload table data from server">
+                            <i class="fas fa-sync-alt"></i> Refresh
+                        </button>
                     </div>
                     <!-- Table -->
                     <div id="stock-balance-table" style="flex: 1;"></div>
@@ -278,8 +282,8 @@
     let selectedSkus = new Set();
     let allTableData = [];
     
-    // Toast notification
-    function showToast(message, type = 'info') {
+    // Toast notification (optional delay in ms; default 5000)
+    function showToast(message, type = 'info', delayMs = 5000) {
         const toastContainer = document.querySelector('.toast-container');
         if (!toastContainer) return;
         
@@ -298,7 +302,7 @@
         toast.setAttribute('role', 'alert');
         toast.innerHTML = '<div class="d-flex"><div class="toast-body">' + message + '</div><button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button></div>';
         toastContainer.appendChild(toast);
-        const bsToast = new bootstrap.Toast(toast, { delay: 5000 });
+        const bsToast = new bootstrap.Toast(toast, { delay: typeof delayMs === 'number' ? delayMs : 5000 });
         bsToast.show();
         toast.addEventListener('hidden.bs.toast', function() { toast.remove(); });
     }
@@ -839,9 +843,14 @@
                 },
                 error: function(xhr) {
                     $btn.prop('disabled', false).html('<i class="fas fa-check"></i>');
-                    const errorMsg = xhr.responseJSON?.error || 'Transfer failed';
-                    const details = xhr.responseJSON?.details || '';
-                    showToast(errorMsg + (details ? '<br>' + details : ''), 'error');
+                    const resp = xhr.responseJSON || {};
+                    const errorMsg = resp.error || 'Transfer failed';
+                    const details = resp.details || '';
+                    const isRateLimit = (xhr.status === 429) || (resp.is_rate_limit === true);
+                    const fullMsg = isRateLimit
+                        ? (errorMsg + (details ? '<br><br>' + details : '') + '<br><br><em>Wait 1–2 minutes then click Submit again.</em>')
+                        : (errorMsg + (details ? '<br>' + details : ''));
+                    showToast(fullMsg, 'error', isRateLimit ? 12000 : 5000);
                 }
             });
         });
@@ -1125,6 +1134,19 @@
         // SKU Search
         $('#sku-search').on('keyup', function() {
             table.setFilter("SKU", "like", $(this).val());
+        });
+
+        // Refresh inventory data (reload from server so INV/Sold are up to date)
+        $('#refresh-inventory-data-btn').on('click', function() {
+            const $btn = $(this);
+            $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i>');
+            table.setData().then(function() {
+                $btn.prop('disabled', false).html('<i class="fas fa-sync-alt"></i> Refresh');
+                showToast('Table data refreshed', 'success', 3000);
+            }).catch(function() {
+                $btn.prop('disabled', false).html('<i class="fas fa-sync-alt"></i> Refresh');
+                showToast('Failed to refresh data', 'error');
+            });
         });
         
         // Filters

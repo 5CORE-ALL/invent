@@ -183,12 +183,16 @@
             <div class="card-body" style="padding: 0;">
                 <!-- Discount Input Box (shown when SKUs are selected) -->
                 <div id="discount-input-container" class="p-2 bg-light border-bottom" style="display: none;">
-                    <div class="d-flex align-items-center gap-2">
+                    <div class="d-flex align-items-center gap-2 flex-wrap">
                         <label class="mb-0 fw-bold" id="discount-label">Discount %:</label>
                         <input type="number" id="discount-percentage-input" class="form-control form-control-sm" 
-                            placeholder="Enter percentage %" step="0.1" min="0" max="100" 
-                            style="width: 150px; display: inline-block;">
-                        <button id="apply-discount-btn" class="btn btn-sm btn-primary">
+                            placeholder="%" step="0.1" min="0" max="100" 
+                            style="width: 90px; display: inline-block;">
+                        <label class="mb-0 fw-bold ms-2">Value ($):</label>
+                        <input type="number" id="discount-value-input" class="form-control form-control-sm" 
+                            placeholder="0.00" step="0.01" min="0" 
+                            style="width: 100px; display: inline-block;" title="Fixed amount to add (increase) or subtract (decrease)">
+                        <button id="apply-discount-btn" class="btn btn-sm btn-primary ms-1">
                             <i class="fas fa-check"></i> Apply
                         </button>
                         <span id="selected-skus-count" class="text-muted ms-2"></span>
@@ -1027,11 +1031,14 @@
                 $('#select-all-checkbox').prop('checked', allSelected);
             }
 
-            // Apply discount/increase to selected SKUs
+            // Apply discount/increase to selected SKUs (supports both percentage and fixed value)
             function applyDiscount() {
-                const percent = parseFloat($('#discount-percentage-input').val());
-                
-                if (isNaN(percent) || percent < 0 || percent > 100) {
+                const percentRaw = $('#discount-percentage-input').val();
+                const valueRaw = $('#discount-value-input').val();
+                const percent = (percentRaw !== '' && !isNaN(parseFloat(percentRaw))) ? parseFloat(percentRaw) : 0;
+                const value = (valueRaw !== '' && !isNaN(parseFloat(valueRaw))) ? parseFloat(valueRaw) : 0;
+
+                if (percent < 0 || percent > 100) {
                     showToast('error', 'Please enter a valid percentage (0-100)');
                     return;
                 }
@@ -1043,6 +1050,11 @@
 
                 if (!decreaseModeActive && !increaseModeActive) {
                     showToast('error', 'Please activate Decrease or Increase mode first');
+                    return;
+                }
+
+                if (percent === 0 && value === 0) {
+                    showToast('error', 'Please enter a percentage and/or a value');
                     return;
                 }
 
@@ -1058,11 +1070,11 @@
                         if (currentPrice > 0) {
                             let newSPrice;
                             if (increaseModeActive) {
-                                // Increase: multiply by (1 + percent/100)
-                                newSPrice = currentPrice * (1 + percent / 100);
+                                // Increase: (current * (1 + percent/100)) + value
+                                newSPrice = currentPrice * (1 + percent / 100) + value;
                             } else {
-                                // Decrease: multiply by (1 - percent/100)
-                                newSPrice = currentPrice * (1 - percent / 100);
+                                // Decrease: (current * (1 - percent/100)) - value
+                                newSPrice = currentPrice * (1 - percent / 100) - value;
                             }
                             newSPrice = Math.max(0.01, newSPrice);
                             

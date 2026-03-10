@@ -37,38 +37,49 @@ class StockBalanceController extends Controller
 
 
     /**
-     * Make Shopify API call with automatic retry on rate limit
+     * Make Shopify API call with automatic retry on rate limit (429).
+     * Uses Retry-After header when present, otherwise exponential backoff.
      */
-    private function shopifyApiCall($method, $url, $data = [], $maxRetries = 3)
+    private function shopifyApiCall($method, $url, $data = [], $maxRetries = 5)
     {
         $attempt = 0;
-        
+        $response = null;
+
         while ($attempt < $maxRetries) {
             $attempt++;
-            
+
             $request = Http::withBasicAuth($this->shopifyApiKey, $this->shopifyPassword)
                 ->timeout(30);
-            
+
             if ($method === 'GET') {
                 $response = $request->get($url, $data);
             } else {
                 $response = $request->post($url, $data);
             }
-            
-            // If rate limited, wait and retry
-            if ($response->status() === 429 && $attempt < $maxRetries) {
-                $waitTime = $attempt * 2; // 2, 4, 6 seconds
-                Log::info("Rate limited, waiting {$waitTime}s before retry", [
-                    'attempt' => $attempt,
-                    'url' => $url
-                ]);
-                sleep($waitTime);
-                continue;
+
+            if ($response->status() !== 429) {
+                return $response;
             }
-            
-            return $response;
+
+            if ($attempt >= $maxRetries) {
+                break;
+            }
+
+            // Prefer Shopify's Retry-After (seconds), otherwise exponential backoff
+            $retryAfter = $response->header('Retry-After');
+            $waitTime = is_numeric($retryAfter) ? (int) $retryAfter : min(2 ** $attempt, 60);
+            if ($waitTime < 2) {
+                $waitTime = 2;
+            }
+
+            Log::info('Shopify rate limit (429), waiting before retry', [
+                'attempt' => $attempt,
+                'wait_seconds' => $waitTime,
+                'url' => $url,
+            ]);
+            sleep($waitTime);
         }
-        
+
         return $response;
     }
 
@@ -285,16 +296,27 @@ class StockBalanceController extends Controller
                 );
 
                 if (!$levelsResponse->successful()) {
+                    $status = $levelsResponse->status();
                     Log::error("Failed to fetch inventory levels for SKU", [
                         'sku' => $sku,
                         'inventory_item_id' => $inventoryItemId,
-                        'status' => $levelsResponse->status()
+                        'status' => $status,
                     ]);
-                    
+
+                    $isRateLimit = ($status === 429);
+                    $errorTitle = $isRateLimit
+                        ? 'Shopify rate limit'
+                        : 'Failed to get current inventory level';
+                    $errorDetails = $isRateLimit
+                        ? "Too many requests to Shopify. Please wait a minute and try again (SKU: {$sku})."
+                        : "Error {$status} - Could not fetch inventory levels for SKU: {$sku}";
+
                     return [
                         'success' => false,
-                        'error' => 'Failed to get current inventory level',
-                        'details' => "Error " . $levelsResponse->status() . " - Could not fetch inventory levels for SKU: {$sku}"
+                        'error' => $errorTitle,
+                        'details' => $errorDetails,
+                        'is_rate_limit' => $isRateLimit,
+                        'status' => $status,
                     ];
                 }
 
@@ -332,8 +354,9 @@ class StockBalanceController extends Controller
             if (!$fromInfo['success']) {
                 return response()->json([
                     'error' => $fromInfo['error'],
-                    'details' => $fromInfo['details']
-                ], 404);
+                    'details' => $fromInfo['details'],
+                    'is_rate_limit' => $fromInfo['is_rate_limit'] ?? false,
+                ], $fromInfo['is_rate_limit'] ?? false ? 429 : 404);
             }
 
             // Validate that there's enough inventory available (Shopify live, not table cache)
@@ -403,8 +426,9 @@ class StockBalanceController extends Controller
             if (!$toInfo['success']) {
                 return response()->json([
                     'error' => $toInfo['error'],
-                    'details' => $toInfo['details']
-                ], 404);
+                    'details' => $toInfo['details'],
+                    'is_rate_limit' => $toInfo['is_rate_limit'] ?? false,
+                ], $toInfo['is_rate_limit'] ?? false ? 429 : 404);
             }
 
             usleep(500000); // Rate limit protection - 0.5s delay (allows 2 calls/second)
