@@ -31,7 +31,9 @@ class FetchShopifyB2BMetrics extends Command
     protected $description = 'Fetch Shopify B2B order data (wsaio-app tagged orders only)';
 
     private $shopifyStoreUrl;
+    private $shopifyApiKey;
     private $shopifyAccessToken;
+    private $useBasicAuth = false;
     private $totalFetched = 0;
     private $totalInserted = 0;
     private $totalUpdated = 0;
@@ -45,18 +47,24 @@ class FetchShopifyB2BMetrics extends Command
         Log::info('Starting FetchShopifyB2BMetrics command');
         $this->info('Starting FetchShopifyB2BMetrics command');
 
-        // Initialize Shopify credentials
-        $this->shopifyStoreUrl = config('services.shopify.store_url');
-        $this->shopifyAccessToken = config('services.shopify.access_token');
+        // Initialize Shopify B2B credentials (Business 5Core store)
+        $this->shopifyStoreUrl = $this->normalizeStoreUrl(config('services.shopify_b5c.domain'));
+        $this->shopifyApiKey = config('services.shopify_b5c.api_key');
+        $this->shopifyAccessToken = config('services.shopify_b5c.access_token');
 
         if (empty($this->shopifyStoreUrl) || empty($this->shopifyAccessToken)) {
-            $this->error('Missing Shopify API credentials in .env file');
-            $this->line('Required: SHOPIFY_STORE_URL, SHOPIFY_ACCESS_TOKEN');
+            $this->error('Missing Shopify B2B API credentials in .env file');
+            $this->line('Required: BUSINESS_5CORE_SHOPIFY_DOMAIN, BUSINESS_5CORE_SHOPIFY_ACCESS_TOKEN');
+            $this->line('Optional for Basic auth: BUSINESS_5CORE_SHOPIFY_API_KEY');
             return 1;
         }
 
+        $this->useBasicAuth = !empty($this->shopifyApiKey);
         $this->info("Store URL: {$this->shopifyStoreUrl}");
-        $this->info("Access Token: " . substr($this->shopifyAccessToken, 0, 15) . "...");
+        $this->info("Auth: " . ($this->useBasicAuth ? 'Basic (API key + token)' : 'Access token'));
+        if (!$this->useBasicAuth) {
+            $this->info("Access Token: " . substr($this->shopifyAccessToken, 0, 15) . "...");
+        }
 
         // Verify API connection
         if (!$this->verifyCredentials()) {
@@ -112,15 +120,32 @@ class FetchShopifyB2BMetrics extends Command
         }
     }
 
+    private function normalizeStoreUrl(?string $url): string
+    {
+        if (empty($url)) {
+            return '';
+        }
+        $url = trim($url);
+        $url = preg_replace('#^https?://#i', '', $url);
+        $url = rtrim($url, '/');
+        return $url;
+    }
+
+    private function newShopifyRequest(): \Illuminate\Http\Client\PendingRequest
+    {
+        $client = Http::withHeaders(['Content-Type' => 'application/json'])->timeout(30);
+        if ($this->useBasicAuth) {
+            return $client->withBasicAuth($this->shopifyApiKey, $this->shopifyAccessToken);
+        }
+        return $client->withHeaders(['X-Shopify-Access-Token' => $this->shopifyAccessToken]);
+    }
+
     private function verifyCredentials()
     {
         $this->info("Testing Shopify API connection...");
         
         try {
-            $response = Http::withHeaders([
-                'X-Shopify-Access-Token' => $this->shopifyAccessToken,
-                'Content-Type' => 'application/json',
-            ])->timeout(30)->get(
+            $response = $this->newShopifyRequest()->get(
                 "https://{$this->shopifyStoreUrl}/admin/api/2024-10/orders.json",
                 ['limit' => 1, 'status' => 'any']
             );
@@ -166,10 +191,7 @@ class FetchShopifyB2BMetrics extends Command
             }
 
             try {
-                $response = Http::withHeaders([
-                    'X-Shopify-Access-Token' => $this->shopifyAccessToken,
-                    'Content-Type' => 'application/json',
-                ])->timeout(120)->retry(3, 1000)->get(
+                $response = $this->newShopifyRequest()->timeout(120)->retry(3, 1000)->get(
                     "https://{$this->shopifyStoreUrl}/admin/api/2024-10/orders.json",
                     $queryParams
                 );
