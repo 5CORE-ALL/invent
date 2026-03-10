@@ -1647,14 +1647,16 @@ class OverallAmazonController extends Controller
 
         // Fetch Amazon SP Campaign Reports for L30 (KW campaigns - NOT PT)
         // Use EXACT same logic as AmazonSpBudgetController::amazonSpBudgetTable() line 2073-2080
-        // Get individual campaign records without grouping (same as KW page)
+        // Include NULL campaignStatus so all PARENT X KW campaigns appear (SQL: NULL != 'ARCHIVED' excludes NULL)
         $amazonSpCampaignReportsL30 = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
             ->where('report_date_range', 'L30')
             ->where('campaignName', 'NOT LIKE', '% PT')
             ->where('campaignName', 'NOT LIKE', '% PT.')
             ->where('campaignName', 'NOT LIKE', '%FBA')
             ->where('campaignName', 'NOT LIKE', '%FBA.')
-            ->where('campaignStatus', '!=', 'ARCHIVED')
+            ->where(function ($q) {
+                $q->whereNull('campaignStatus')->orWhere('campaignStatus', '!=', 'ARCHIVED');
+            })
             ->get();
 
         // Fetch Amazon SP Campaign Reports for L30 (PT campaigns)
@@ -2954,6 +2956,7 @@ class OverallAmazonController extends Controller
             $sumRow = [
                 '(Child) sku' => 'PARENT ' . $parent,
                 'Parent' => $parent,
+                'parent' => $parent,
                 'INV' => $rows->sum('INV'),
                 'INV_AMZ' => $rows->sum(function($row) {
                     $val = $row->INV_AMZ ?? 0;
@@ -3109,13 +3112,13 @@ class OverallAmazonController extends Controller
             }
             $sumRow['l1_spend'] = $l1SpendVal;
             
-            $sumRow['l7_cpc'] = $parentCampaignL7->costPerClick ?? 0;
-            $sumRow['l1_cpc'] = $parentCampaignL1->costPerClick ?? 0;
+            $sumRow['l7_cpc'] = $parentCampaignL7 ? ($parentCampaignL7->costPerClick ?? 0) : 0;
+            $sumRow['l1_cpc'] = $parentCampaignL1 ? ($parentCampaignL1->costPerClick ?? 0) : 0;
             // AVG CPC from lifetime average (same as KW page)
             $sumRow['avg_cpc'] = $sumRow['campaign_id'] ? $avgCpcData->get($sumRow['campaign_id'], 0) : 0;
-            $sumRow['l7_clicks'] = $parentCampaignL7->clicks ?? 0;
-            $sumRow['l7_sales'] = $parentCampaignL7->sales30d ?? 0;
-            $sumRow['l7_purchases'] = $parentCampaignL7->unitsSoldClicks7d ?? 0;
+            $sumRow['l7_clicks'] = $parentCampaignL7 ? ($parentCampaignL7->clicks ?? 0) : 0;
+            $sumRow['l7_sales'] = $parentCampaignL7 ? ($parentCampaignL7->sales30d ?? 0) : 0;
+            $sumRow['l7_purchases'] = $parentCampaignL7 ? ($parentCampaignL7->unitsSoldClicks7d ?? 0) : 0;
             $sumRow['spend_l7_col'] = $sumRow['l7_spend'];
             
             // L30 data for parent
@@ -3313,8 +3316,8 @@ class OverallAmazonController extends Controller
             $sumRow['sbid_approved'] = false;
             $sumRow['utilization_budget'] = $sumRow['campaignBudgetAmount'];
             
-            // KW campaign status for parent
-            $kwParentStatus = $parentCampaignL7->campaignStatus ?? ($parentCampaignL1->campaignStatus ?? null);
+            // KW campaign status for parent: use L30 first (so all PARENT X KW campaigns show when L7/L1 have no row), then L7, then L1
+            $kwParentStatus = ($firstParentL30 ? $firstParentL30->campaignStatus : null) ?? ($parentCampaignL7 ? $parentCampaignL7->campaignStatus : null) ?? ($parentCampaignL1 ? $parentCampaignL1->campaignStatus : null);
             $kwParentEnabled = $kwParentStatus && strtoupper($kwParentStatus) === 'ENABLED';
             $sumRow['kw_campaign_status'] = $kwParentEnabled ? 'ENABLED' : ($kwParentStatus ? 'PAUSED' : '');
             
@@ -3459,28 +3462,40 @@ class OverallAmazonController extends Controller
             $finalResult[] = (object) $sumRow;
         }
 
-        // Ensure all KW/KW. suffix campaigns from DB are represented in the view (597 total)
+        // Ensure all KW/KW. suffix campaigns from DB are represented in the view (e.g. 113 PARENT X KW)
+        // Normalize so "PARENT 15 FR KW" and "PARENT 15 FR KW." count as same campaign (no duplicate rows)
+        $normalizeKwCampaignKey = function ($name) {
+            $n = strtoupper(trim((string) $name));
+            return $n !== '' ? rtrim($n, '.') : '';
+        };
         $kwSuffixCampaignsL30 = $amazonSpCampaignReportsL30->filter(function ($r) {
             $n = trim($r->campaignName ?? '');
             return str_ends_with($n, ' KW') || str_ends_with($n, ' KW.');
-        })->keyBy('campaignName');
+        });
         $representedKwCampaigns = [];
         foreach ($finalResult as $r) {
             $cn = trim($r->campaignName ?? '');
             if ($cn !== '' && (str_ends_with($cn, ' KW') || str_ends_with($cn, ' KW.'))) {
-                $representedKwCampaigns[strtoupper($cn)] = true;
+                $representedKwCampaigns[$normalizeKwCampaignKey($cn)] = true;
             }
         }
-        foreach ($kwSuffixCampaignsL30 as $campaignName => $rec) {
-            $cnUpper = strtoupper(trim($rec->campaignName ?? ''));
-            if (isset($representedKwCampaigns[$cnUpper])) {
+        $addedNormalizedKw = [];
+        foreach ($kwSuffixCampaignsL30 as $rec) {
+            $cn = trim($rec->campaignName ?? '');
+            $cnNorm = $normalizeKwCampaignKey($cn);
+            if ($cnNorm === '' || isset($representedKwCampaigns[$cnNorm]) || isset($addedNormalizedKw[$cnNorm])) {
                 continue;
             }
-            $baseSku = trim(preg_replace('/\s+KW\.?\s*$/i', '', $rec->campaignName ?? ''));
+            $addedNormalizedKw[$cnNorm] = true;
+            $baseSku = trim(preg_replace('/\s+KW\.?\s*$/i', '', $cn));
+            // PARENT X KW campaigns: show as parent summary row (one row per campaign)
+            $isParentKw = str_starts_with(strtoupper($baseSku), 'PARENT ') && strlen($baseSku) > 7;
+            $parentLabel = $isParentKw ? trim(substr($baseSku, 7)) : $baseSku; // "15 FR" from "PARENT 15 FR"
             $orphanRow = [
-                '(Child) sku' => $baseSku,
-                'Parent' => $baseSku,
-                'is_parent_summary' => false,
+                '(Child) sku' => $isParentKw ? ('PARENT ' . $parentLabel) : $baseSku,
+                'Parent' => $parentLabel,
+                'parent' => $parentLabel,
+                'is_parent_summary' => $isParentKw,
                 'rating' => null,
                 'reviews' => null,
                 'A_L30' => 0,
@@ -3506,8 +3521,9 @@ class OverallAmazonController extends Controller
                 'percentage' => $percentage,
                 'LP_productmaster' => 0,
                 'Ship_productmaster' => 0,
-                'NRL' => '',
-                'NRA' => null,
+                'NRL' => 'REQ',
+                'NRA' => 'RA',
+                'NR' => 'REQ',
                 'FBA' => null,
                 'SPRICE' => null,
                 'Spft' => null,
@@ -3524,8 +3540,8 @@ class OverallAmazonController extends Controller
                 'lmp_entries_total' => 0,
                 'kw_spend_L30' => (float) ($rec->spend ?? 0),
                 'pmt_spend_L30' => 0,
-                'ad_pause' => strtoupper($rec->campaignStatus ?? '') !== 'ENABLED',
-                'kw_campaign_status' => $rec->campaignStatus ?? 'PAUSED',
+                'kw_campaign_status' => $rec->campaignStatus && trim((string)$rec->campaignStatus) !== '' ? $rec->campaignStatus : 'ENABLED',
+                'ad_pause' => ($rec->campaignStatus && trim((string)$rec->campaignStatus) !== '') ? (strtoupper($rec->campaignStatus) !== 'ENABLED') : false,
                 'pt_campaign_status' => null,
                 'has_campaigns' => true,
                 'hasCampaign' => true,
@@ -3534,7 +3550,7 @@ class OverallAmazonController extends Controller
                 'utilization_budget' => $rec->campaignBudgetAmount ?? 0,
                 'campaign_id' => $rec->campaign_id ?? null,
                 'campaignName' => $rec->campaignName ?? '',
-                'campaignStatus' => $rec->campaignStatus ?? 'PAUSED',
+                'campaignStatus' => $rec->campaignStatus && trim((string)$rec->campaignStatus) !== '' ? $rec->campaignStatus : 'ENABLED',
                 'l7_spend' => 0,
                 'l1_spend' => 0,
                 'l7_cpc' => 0,
@@ -3577,7 +3593,6 @@ class OverallAmazonController extends Controller
                 'GROI%' => 0,
                 'PFT%' => 0,
                 'NROI%' => 0,
-                'NR' => null,
                 'buyer_link' => null,
                 'seller_link' => null,
                 'shopify_id' => null,

@@ -976,6 +976,13 @@
         const amzPctMetrics = ['gprofit', 'groi', 'ads_pct', 'npft', 'nroi', 'acos', 'gpft_pct', 'npft_pct', 'groi_pct', 'nroi_pct', 'tcos_pct'];
         const amzDollarMetrics = ['l30_sales', 'ad_spend', 'kw_spend', 'hl_spend', 'pt_spend', 'total_pft', 'total_sales', 'total_spend'];
 
+        // Section column lists (defined once for faster section switching)
+        const SECTION_KW_ADS_COLUMNS = ['(Child) sku', 'acos', 'l30_spend', 'l30_clicks', 'ad_cvr', 'rating', 'campaignBudgetAmount', 'sbgt', 'NRA', 'active_toggle', 'missing_ad', 'l30_sales', 'l30_purchases', 'INV', 'L30', 'E Dil%', 'A_L30', 'A DIL %', 'NRL', 'price', 'campaign_info_icon', 'GPFT%', 'GROI%', 'l7_spend', 'l1_spend', 'avg_cpc', 'l7_cpc', 'l1_cpc', 'last_sbid', 'sbid', 'sbid_m', 'apr_bid', 'TPFT', 'campaignName'];
+        const SECTION_PRICING_COLUMNS = ['(Child) sku', 'price', 'campaign_info_icon', 'c_price', 'actual_cost', 'buy_box_price', 'GPFT%', 'PFT%', 'ROI_percentage', 'cost', 'margin', 'INV', 'A_L30'];
+        const SECTION_MISSING_COLUMNS = ['image_path', '(Child) sku', 'NR', 'is_missing', 'inv_map', 'variation_dot'];
+        const SECTION_PT_ADS_COLUMNS = ['(Child) sku', 'pt_acos', 'pt_spend_L30', 'pt_clicks_L30', 'pt_ad_cvr', 'rating', 'INV', 'L30', 'E Dil%', 'A_L30', 'A DIL %', 'NRL', 'NRA', 'active_toggle', 'missing_ad', 'price', 'campaign_info_icon', 'GPFT%', 'GROI%', 'pt_campaignBudgetAmount', 'pt_sbgt', 'pt_sales_L30', 'pt_sold_L30', 'pt_7ub', 'pt_1ub', 'pt_avg_cpc', 'pt_l7_cpc', 'pt_l1_cpc', 'pt_last_sbid', 'pt_sbid', 'pt_sbid_m', 'pt_apr_bid', 'pt_campaignName', 'TPFT'];
+        const SECTION_HL_ADS_COLUMNS = ['(Child) sku', 'hl_acos', 'hl_spend_L30', 'hl_clicks_L30', 'hl_ad_cvr', 'rating', 'INV', 'L30', 'E Dil%', 'A_L30', 'A DIL %', 'NRL', 'NRA', 'active_toggle', 'missing_ad', 'price', 'campaign_info_icon', 'GPFT%', 'GROI%', 'hl_campaignBudgetAmount', 'hl_sbgt', 'hl_sales_L30', 'hl_sold_L30', 'hl_7ub', 'hl_1ub', 'hl_avg_cpc', 'hl_l7_cpc', 'hl_l1_cpc', 'hl_last_sbid', 'hl_sbid', 'hl_sbid_m', 'hl_apr_bid', 'hl_campaignName', 'TPFT'];
+
         function amzFmtVal(v) {
             if (amzDollarMetrics.includes(amzChartMetricKey)) return '$' + Math.round(v).toLocaleString('en-US');
             if (amzPctMetrics.includes(amzChartMetricKey)) return v.toFixed(1) + '%';
@@ -2428,9 +2435,12 @@
                         visible: true,
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
-                            if (row.is_parent_summary === true) return '—';
                             var val = row['Parent'] != null ? row['Parent'] : (row['parent'] != null ? row['parent'] : '');
                             var s = (val != null && val !== '') ? String(val).trim() : '';
+                            if (!s && row['(Child) sku']) {
+                                var sku = String(row['(Child) sku']).trim();
+                                if (sku.toUpperCase().indexOf('PARENT ') === 0) s = sku.slice(7).trim();
+                            }
                             return s || '—';
                         }
                     },
@@ -5400,10 +5410,12 @@
 
                 if (inventoryFilter === 'zero') {
                     table.addFilter(function(data) {
+                        if (data.is_parent_summary) return true;
                         return parseFloat(data.INV) === 0 || !data.INV;
                     });
                 } else if (inventoryFilter === 'more') {
                     table.addFilter(function(data) {
+                        if (data.is_parent_summary) return true;
                         return parseFloat(data.INV) > 0;
                     });
                 }
@@ -5412,6 +5424,7 @@
                     if (nrlFilter === 'req') {
                         // Show only RL (REQ) - exclude NRL; use NR or derive from NRL for parent rows
                         table.addFilter(function(data) {
+                            if (data.is_parent_summary) return true;
                             var nr = (data.NR || '').toString().trim();
                             if (!nr) {
                                 var nrl = (data.NRL || 'REQ').toString().trim();
@@ -5422,6 +5435,7 @@
                     } else if (nrlFilter === 'nr') {
                         // Show only NRL (red dot)
                         table.addFilter(function(data) {
+                            if (data.is_parent_summary) return true;
                             var nr = (data.NR || '').toString().trim();
                             if (!nr) {
                                 var nrl = (data.NRL || 'REQ').toString().trim();
@@ -5434,6 +5448,7 @@
 
                 if (gpftFilter !== 'all') {
                     table.addFilter(function(data) {
+                        if (data.is_parent_summary) return true;
                         const gpft = parseFloat(data['GPFT%']) || 0;
                         
                         if (gpftFilter === 'negative') return gpft < 0;
@@ -5449,6 +5464,7 @@
 
                 if (cvrFilter !== 'all') {
                     table.addFilter(function(data) {
+                        if (data.is_parent_summary) return true;
                         const aL30 = parseFloat(data['A_L30']) || 0;
                         const sess30 = parseFloat(data['Sess30']) || 0;
                         const cvr = sess30 === 0 ? 0 : (aL30 / sess30) * 100;
@@ -5468,6 +5484,7 @@
                 // DIL filter (sales velocity = L30 / INV * 100)
                 if (dilFilter !== 'all') {
                     table.addFilter(function(data) {
+                        if (data.is_parent_summary) return true;
                         const inv = parseFloat(data['INV']) || 0;
                         const l30 = parseFloat(data['L30']) || 0;
                         const dil = inv === 0 ? 0 : (l30 / inv) * 100;
@@ -5483,8 +5500,9 @@
                 // Rating filter
                 if (ratingFilter !== 'all') {
                     table.addFilter(function(data) {
+                        if (data.is_parent_summary) return true;
                         const rating = parseFloat(data['rating']) || 0;
-                        
+
                         if (ratingFilter === 'red') return rating < 3;
                         if (ratingFilter === 'yellow') return rating >= 3 && rating <= 3.5;
                         if (ratingFilter === 'blue') return rating >= 3.51 && rating <= 3.99;
@@ -5518,7 +5536,7 @@
                 var searchVal = ($('#sku-search').val() || '').trim().toLowerCase();
                 if (searchVal) {
                     table.addFilter(function(data) {
-                        if (data.is_parent_summary) return isProductNavigationActive;
+                        if (data.is_parent_summary) return true;
                         var sku = ((data['(Child) sku'] || data.sku || '') + '').toLowerCase();
                         var campName = (sectionFilter === 'hl-ads' ? (data.hl_campaignName || '') : sectionFilter === 'pt-ads' ? (data.pt_campaignName || '') : (data.campaignName || '')).toString().toLowerCase();
                         return sku.indexOf(searchVal) !== -1 || campName.indexOf(searchVal) !== -1;
@@ -5527,7 +5545,7 @@
 
                 if (statusFilter !== 'all') {
                     table.addFilter(function(data) {
-                        if (data.is_parent_summary) return isProductNavigationActive;
+                        if (data.is_parent_summary) return true;
                         
                         const status = data.SPRICE_STATUS || null;
                         
@@ -5548,7 +5566,7 @@
                 // Sold filter (based on A_L30)
                 if (soldFilter !== 'all') {
                     table.addFilter(function(data) {
-                        if (data.is_parent_summary) return isProductNavigationActive;
+                        if (data.is_parent_summary) return true;
                         
                         const aL30 = parseFloat(data.A_L30) || 0;
                         
@@ -5564,7 +5582,7 @@
                 // Unified Range Filter (Views L30/L7, Sold L30/L7)
                 if (rangeColumn && (rangeMin !== null || rangeMax !== null)) {
                     table.addFilter(function(data) {
-                        if (data.is_parent_summary) return isProductNavigationActive;
+                        if (data.is_parent_summary) return true;
                         
                         const value = parseFloat(data[rangeColumn]) || 0;
                         
@@ -5588,7 +5606,7 @@
                 // Price filter (Prc > LMP)
                 if (priceFilterActive) {
                     table.addFilter(function(data) {
-                        if (data.is_parent_summary) return isProductNavigationActive;
+                        if (data.is_parent_summary) return true;
                         
                         const price = parseFloat(data.price) || 0;
                         const lmpPrice = parseFloat(data.lmp_price) || 0;
@@ -5600,7 +5618,7 @@
                 // Map filter (INV vs INV_AMZ) - for inventory sync
                 if (mapFilterActive !== 'all') {
                     table.addFilter(function(data) {
-                        if (data.is_parent_summary) return isProductNavigationActive;
+                        if (data.is_parent_summary) return true;
                         
                         const inv = parseFloat(data.INV) || 0;
                         const nrValue = data.NR || '';
@@ -5659,14 +5677,14 @@
                     });
                 }
 
-                // Campaign Status filter (Active Filter) - section-aware, same logic as badge count and Active toggle column
+                // Campaign Status filter (Active Filter) - section-aware; apply to ALL rows including parent rows
+                // Active = only rows with a campaign that is ENABLED; rows with no campaign must be hidden
                 if (campaignStatusFilter && campaignStatusFilter !== '' && campaignStatusFilter !== 'ALL') {
                     table.addFilter(function(data) {
-                        if (data.is_parent_summary) return isProductNavigationActive;
                         var currentSection = $('#section-filter').val();
                         var isEnabled = false;
                         var hasCampaignInSection = false;
-                        
+
                         if (currentSection === 'hl-ads') {
                             hasCampaignInSection = !!(data.has_own_hl_campaign && (data.hl_campaign_id || data.hl_campaignName));
                             isEnabled = (data.hl_campaign_status || '').toUpperCase() === 'ENABLED' && hasCampaignInSection;
@@ -5674,7 +5692,7 @@
                             hasCampaignInSection = !!(data.has_own_pt_campaign && (data.pt_campaign_id || data.pt_campaignName));
                             isEnabled = (data.pt_campaign_status || '').toUpperCase() === 'ENABLED' && hasCampaignInSection;
                         } else {
-                            // KW Ads: treat any row with KW campaign (campaign_id/name + kw_campaign_status) as having a campaign in this section
+                            // KW Ads or default: row must have campaign (campaign_id/name + status) to count as having campaign
                             if (currentSection === 'kw-ads') {
                                 hasCampaignInSection = !!((data.campaign_id || data.campaignName) && (data.kw_campaign_status || '').toUpperCase() !== '');
                                 isEnabled = (data.kw_campaign_status || '').toUpperCase() === 'ENABLED' && hasCampaignInSection;
@@ -5682,18 +5700,18 @@
                                 var campaignName = (data.campaignName || '').trim();
                                 hasCampaignInSection = data.hasCampaign !== undefined ? !!data.hasCampaign : !!(data.campaign_id && campaignName);
                                 var kwStatus = (data.kw_campaign_status || data.campaignStatus || '').toUpperCase();
-                                isEnabled = kwStatus === 'ENABLED';
+                                isEnabled = hasCampaignInSection && kwStatus === 'ENABLED';
                             }
                         }
-                        
+
                         if (campaignStatusFilter === 'ENABLED') {
-                            return isEnabled;
+                            return isEnabled; // Only show rows that have a campaign and it is ENABLED
                         } else if (campaignStatusFilter === 'PAUSED') {
-                            return hasCampaignInSection && !isEnabled; // Has campaign in this section but not enabled
+                            return hasCampaignInSection && !isEnabled;
                         } else if (campaignStatusFilter === 'MISSING') {
-                            return !hasCampaignInSection; // No campaign in this section (matches Missing A badge count)
+                            return !hasCampaignInSection;
                         }
-                        
+
                         return true;
                     });
                 }
@@ -5701,7 +5719,7 @@
                 // NRA filter - when "All" or empty, show all rows; when RA/NRA/LATER, filter to that value
                 if (nraFilter && nraFilter !== '' && nraFilter !== 'all') {
                     table.addFilter(function(data) {
-                        if (data.is_parent_summary) return isProductNavigationActive;
+                        if (data.is_parent_summary) return true;
                         var nraValue = (data.NRA || '').toString().trim();
                         if (!nraValue) {
                             var nrlValue = (data.NRL || 'REQ').toString().trim();
@@ -5714,7 +5732,7 @@
                 // Price Slab filter
                 if (priceSlabFilter && priceSlabFilter !== '') {
                     table.addFilter(function(data) {
-                        if (data.is_parent_summary) return isProductNavigationActive;
+                        if (data.is_parent_summary) return true;
                         const price = parseFloat(data.price) || 0;
                         
                         if (priceSlabFilter === 'lt10') return price < 10;
@@ -5730,7 +5748,7 @@
                 // ACOS Slab filter - section-aware
                 if (acosSlabFilter && acosSlabFilter !== '') {
                     table.addFilter(function(data) {
-                        if (data.is_parent_summary) return isProductNavigationActive;
+                        if (data.is_parent_summary) return true;
                         var currentSection = $('#section-filter').val();
                         var acos = 0;
                         var spend = 0;
@@ -5765,7 +5783,7 @@
                 // 7UB Range filter - section-aware
                 if (ub7Min !== null || ub7Max !== null) {
                     table.addFilter(function(data) {
-                        if (data.is_parent_summary) return isProductNavigationActive;
+                        if (data.is_parent_summary) return true;
                         var currentSection = $('#section-filter').val();
                         var l7_spend, budget;
                         if (currentSection === 'hl-ads') {
@@ -5789,7 +5807,7 @@
                 // 1UB Range filter - section-aware
                 if (ub1Min !== null || ub1Max !== null) {
                     table.addFilter(function(data) {
-                        if (data.is_parent_summary) return isProductNavigationActive;
+                        if (data.is_parent_summary) return true;
                         var currentSection = $('#section-filter').val();
                         var l1_spend, budget;
                         if (currentSection === 'hl-ads') {
@@ -5813,7 +5831,7 @@
                 // ACOS Range filter - section-aware
                 if (acosRangeMin !== null || acosRangeMax !== null) {
                     table.addFilter(function(data) {
-                        if (data.is_parent_summary) return isProductNavigationActive;
+                        if (data.is_parent_summary) return true;
                         var currentSection = $('#section-filter').val();
                         var acos = 0;
                         if (currentSection === 'hl-ads') {
@@ -5842,7 +5860,7 @@
                 // When NRA = "All" or empty, show all rows including NRA so KW Ads section shows full 198 count
                 if ((sectionFilter === 'kw-ads' || sectionFilter === 'pt-ads' || sectionFilter === 'hl-ads') && nraFilter === 'RA' && (!utilizationTypeFilter || utilizationTypeFilter === 'all')) {
                     table.addFilter(function(data) {
-                        if (data.is_parent_summary) return isProductNavigationActive;
+                        if (data.is_parent_summary) return true;
                         var nraValue = (data.NRA || '').toString().trim();
                         if (!nraValue) {
                             var nrlValue = (data.NRL || 'REQ').toString().trim();
@@ -5856,7 +5874,7 @@
                 // Applied LAST so counts reflect the correct numbers
                 if (utilizationTypeFilter && utilizationTypeFilter !== 'all') {
                     table.addFilter(function(data) {
-                        if (data.is_parent_summary) return isProductNavigationActive;
+                        if (data.is_parent_summary) return true;
                         var currentSection = $('#section-filter').val();
                         var hasCampaign, l7_spend, l1_spend, budget, campaignStatus;
                         
@@ -6047,133 +6065,18 @@
                 try {
                 if (typeof table.blockRedraw === 'function') table.blockRedraw();
                 
-                // Define column groups for each section
-                // KW Ads columns as specified by user:
-                // Active, SKU, Ratings, Missing, INV, OV L30, DIL %, AL 30, A DIL %, NRL, NRA, Price, 
-                // BGT, SBGT, ACOS, Clicks L30, Spend L30, Sales L30, Ad Sold L30, AD CVR,
-                // 7 UB%, 1 UB%, AVG CPC, L7 CPC, L1 CPC, Last SBID, SBID, SBID M, APR BID, TPFT%, Status, CAMPAIGN
-                var kwAdsColumns = [
-                    '(Child) sku',      // SKU
-                    'acos',             // KW ACOS (first after SKU)
-                    'l30_spend',        // KW Spend (after ACOS)
-                    'l30_clicks',       // KW Clicks (after Spend)
-                    'ad_cvr',           // KW CVR (after Clicks)
-                    'rating',           // Reviews (after CVR)
-                    'campaignBudgetAmount', // KW BGT
-                    'sbgt',             // SBGT
-                    'NRA',              // KW NRA
-                    'active_toggle',    // Active toggle (after NRA)
-                    'missing_ad',       // Missing AD
-                    'l30_sales',        // Sales L30
-                    'l30_purchases',    // Ad Sold L30
-                    'INV',              // INV
-                    'L30',              // OV L30
-                    'E Dil%',           // DIL %
-                    'A_L30',            // AL 30
-                    'A DIL %',          // A DIL %
-                    'NRL',              // NRL
-                    'price',            // Price
-                    'campaign_info_icon', // Info Icon
-                    'GPFT%',            // GPFT%
-                    'GROI%',            // GROI%
-                    'l7_spend',         // 7 UB%
-                    'l1_spend',         // 1 UB%
-                    'avg_cpc',          // AVG CPC
-                    'l7_cpc',           // L7 CPC
-                    'l1_cpc',           // L1 CPC
-                    'last_sbid',        // Last SBID
-                    'sbid',             // SBID
-                    'sbid_m',           // SBID M
-                    'apr_bid',          // APR BID
-                    'TPFT',             // TPFT%
-                    'campaignName'      // CAMPAIGN
-                ];
-                
-                var pricingColumns = [
-                    '(Child) sku', 'price', 'campaign_info_icon', 'c_price', 'actual_cost', 'buy_box_price', 
-                    'GPFT%', 'PFT%', 'ROI_percentage', 'cost', 'margin', 'INV', 'A_L30'
-                ];
-                var missingColumns = [
-                    'image_path',      // Image
-                    '(Child) sku',    // SKU
-                    'NR',              // NR/RL
-                    'is_missing',     // Missing L
-                    'inv_map',        // Missing M
-                    'variation_dot'   // Variation
-                ];
-                // PT Ads columns - PT campaign specific (SAME sequence as KW Ads)
-                var ptAdsColumns = [
-                    '(Child) sku',          // 1. SKU
-                    'pt_acos',              // 2. PT ACOS
-                    'pt_spend_L30',         // 3. PT Spend L30
-                    'pt_clicks_L30',        // 4. PT Clicks L30
-                    'pt_ad_cvr',            // 5. PT CVR
-                    'rating',               // 6. Rating
-                    'INV',                  // 7. INV
-                    'L30',                  // 8. OV L30
-                    'E Dil%',               // 9. DIL %
-                    'A_L30',                // 10. A L30
-                    'A DIL %',              // 11. A DIL %
-                    'NRL',                  // 12. NRL
-                    'NRA',                  // 13. NRA
-                    'active_toggle',        // 14. Active
-                    'missing_ad',           // 15. Missing AD
-                    'price',                // 16. Price
-                    'campaign_info_icon',   // 17. Info Icon
-                    'GPFT%',                // 18. GPFT%
-                    'GROI%',                // 19. GROI%
-                    'pt_campaignBudgetAmount', // 19. PT BGT
-                    'pt_sbgt',              // 18. PT SBGT
-                    'pt_sales_L30',         // 23. PT Sales L30
-                    'pt_sold_L30',          // 24. PT Ad Sold L30
-                    'pt_7ub',               // 25. PT 7 UB%
-                    'pt_1ub',               // 26. PT 1 UB%
-                    'pt_avg_cpc',           // 27. PT AVG CPC
-                    'pt_l7_cpc',            // 28. PT L7 CPC
-                    'pt_l1_cpc',            // 29. PT L1 CPC
-                    'pt_last_sbid',         // 30. PT Last SBID
-                    'pt_sbid',              // 31. PT SBID
-                    'pt_sbid_m',            // 32. PT SBID M
-                    'pt_apr_bid',           // 33. PT APR BID
-                    'pt_campaignName',      // 34. PT CAMPAIGN
-                    'TPFT'                  // 35. TPFT%
-                ];
-                var hlAdsColumns = [
-                    '(Child) sku',              // 1. SKU
-                    'hl_acos',                  // 2. HL ACOS
-                    'hl_spend_L30',             // 3. HL Spend L30
-                    'hl_clicks_L30',            // 4. HL Clicks L30
-                    'hl_ad_cvr',                // 5. HL AD CVR
-                    'rating',                   // 6. Rating
-                    'INV',                      // 7. INV
-                    'L30',                      // 8. OV L30
-                    'E Dil%',                   // 9. DIL %
-                    'A_L30',                    // 10. A L30
-                    'A DIL %',                  // 11. A DIL %
-                    'NRL',                      // 12. NRL
-                    'NRA',                      // 13. NRA
-                    'active_toggle',            // 14. Active
-                    'missing_ad',               // 15. Missing AD
-                    'price',                    // 16. Price
-                    'campaign_info_icon',       // 17. Info Icon
-                    'GPFT%',                    // 18. GPFT%
-                    'GROI%',                    // 19. GROI%
-                    'hl_campaignBudgetAmount',  // 19. HL BGT
-                    'hl_sbgt',                  // 18. HL SBGT
-                    'hl_sales_L30',             // 23. HL Sales L30
-                    'hl_sold_L30',              // 24. HL Ad Sold L30
-                    'hl_7ub',                   // 25. HL 7 UB%
-                    'hl_1ub',                   // 26. HL 1 UB%
-                    'hl_avg_cpc',               // 27. HL LIFE CPC
-                    'hl_l7_cpc',                // 28. HL L7 CPC
-                    'hl_l1_cpc',                // 29. HL L1 CPC
-                    'hl_last_sbid',             // 30. HL Last SBID
-                    'hl_sbid',                  // 31. HL SBID
-                    'hl_sbid_m',                // 32. HL SBID M
-                    'hl_apr_bid',               // 33. HL APR BID
-                    'hl_campaignName',          // 34. HL CAMPAIGN
-                    'TPFT'                      // 35. TPFT%
-                ];
+                var columnsToShow;
+                if (section === 'pricing') {
+                    columnsToShow = SECTION_PRICING_COLUMNS;
+                } else if (section === 'missing') {
+                    columnsToShow = SECTION_MISSING_COLUMNS;
+                } else if (section === 'kw-ads') {
+                    columnsToShow = SECTION_KW_ADS_COLUMNS;
+                } else if (section === 'pt-ads') {
+                    columnsToShow = SECTION_PT_ADS_COLUMNS;
+                } else if (section === 'hl-ads') {
+                    columnsToShow = SECTION_HL_ADS_COLUMNS;
+                }
                 
                 if (section === 'all') {
                     // Reset to default visibility based on column definitions
@@ -6203,35 +6106,20 @@
                     table.clearFilter();
                     applyFilters();
                     if (typeof table.restoreRedraw === 'function') table.restoreRedraw();
-                    // Remove loading overlay
-                    setTimeout(function() {
+                    requestAnimationFrame(function() {
                         var $overlay = $('#section-loading-overlay');
-                        $overlay.css({transition: 'opacity .25s ease', opacity: 0});
-                        setTimeout(function() { $overlay.remove(); }, 260);
-                    }, 50);
+                        if ($overlay.length) {
+                            $overlay.css({transition: 'opacity .2s ease', opacity: 0});
+                            setTimeout(function() { $overlay.remove(); }, 220);
+                        }
+                    });
                     return;
                 }
                 
-                // Get all column field names
+                // Get all column field names (columnsToShow already set above for this section)
                 var allColumns = table.getColumns().map(function(col) {
                     return col.getField();
-                }).filter(function(field) {
-                    return field; // Filter out undefined/null
-                });
-                
-                // Determine which columns to show based on section
-                var columnsToShow = [];
-                if (section === 'pricing') {
-                    columnsToShow = pricingColumns;
-                } else if (section === 'missing') {
-                    columnsToShow = missingColumns;
-                } else if (section === 'kw-ads') {
-                    columnsToShow = kwAdsColumns;
-                } else if (section === 'pt-ads') {
-                    columnsToShow = ptAdsColumns;
-                } else if (section === 'hl-ads') {
-                    columnsToShow = hlAdsColumns;
-                }
+                }).filter(Boolean);
                 
                 // Hide all columns first (except row_select checkbox column)
                 allColumns.forEach(function(col) {
@@ -6411,13 +6299,14 @@
                 } finally {
                 if (typeof table.restoreRedraw === 'function') table.restoreRedraw();
                 }
-                // Remove loading overlay after operations complete
-                setTimeout(function() {
+                requestAnimationFrame(function() {
                     var $overlay = $('#section-loading-overlay');
-                    $overlay.css({transition: 'opacity .25s ease', opacity: 0});
-                    setTimeout(function() { $overlay.remove(); }, 260);
-                }, 50);
-                
+                    if ($overlay.length) {
+                        $overlay.css({transition: 'opacity .2s ease', opacity: 0});
+                        setTimeout(function() { $overlay.remove(); }, 220);
+                    }
+                });
+
                 }, 0); // End of setTimeout for loading overlay
             });
 
@@ -7187,12 +7076,14 @@ $('#nmap-count').text(missingCount.toLocaleString());
                     .catch(err => console.error('Error applying column visibility:', err));
             }
 
-            // Wait for table to be built
+            // Wait for table to be built - applyFilters first for fast visible result, then defer heavy work
             table.on('tableBuilt', function() {
-                applyColumnVisibilityFromServer();
-                buildColumnDropdown();
                 applyFilters();
-                updateApplyAllButton();
+                requestAnimationFrame(function() {
+                    applyColumnVisibilityFromServer();
+                    buildColumnDropdown();
+                    updateApplyAllButton();
+                });
             });
 
             table.on('dataLoaded', function() {
@@ -7212,7 +7103,7 @@ $('#nmap-count').text(missingCount.toLocaleString());
                 updateCalcValues();
                 updateSummary();
                 updateSeoCount();
-                setTimeout(function() {
+                requestAnimationFrame(function() {
                     $('[data-bs-toggle="tooltip"]').tooltip();
                     $('.sku-select-checkbox').each(function() {
                         const sku = $(this).data('sku');
@@ -7220,7 +7111,7 @@ $('#nmap-count').text(missingCount.toLocaleString());
                     });
                     updateSelectAllCheckbox();
                     updateApplyAllButton();
-                }, 100);
+                });
 
             });
 
