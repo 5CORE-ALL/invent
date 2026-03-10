@@ -664,6 +664,15 @@
         .stat-card-user-select .stat-content {
             min-width: 0;
         }
+        .stat-card-user-select .stat-icon-user .user-select-avatar-img {
+            border-radius: 12px;
+        }
+        .stat-card-user-select .stat-icon-user .mdi {
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%);
+        }
         .stat-card-user-select select:focus {
             box-shadow: none;
             outline: none;
@@ -1129,14 +1138,15 @@
             <!-- Select user (icon-style before TOTAL) -->
             <div class="col d-flex align-items-center" style="min-width: 0; flex: 1 1 0;">
                 <div class="stat-card stat-card-user-select flex-grow-1 d-flex align-items-center">
-                    <div class="stat-icon stat-icon-user">
-                        <i class="mdi mdi-account-search"></i>
+                    <div class="stat-icon stat-icon-user position-relative">
+                        <img id="user-select-avatar" src="" alt="" class="user-select-avatar-img" style="display: none; width: 100%; height: 100%; object-fit: cover; border-radius: inherit;">
+                        <i id="user-select-icon" class="mdi mdi-account-search"></i>
                     </div>
                     <div class="stat-content flex-grow-1">
                         <select id="user-overdue-graph-select" class="form-select form-select-sm border-0 shadow-none bg-transparent p-0 fw-bold" style="font-size: 0.85rem; cursor: pointer;">
                             <option value="">-- Select user --</option>
                             @foreach($users ?? [] as $u)
-                                <option value="{{ $u->name }}">{{ $u->name }}</option>
+                                <option value="{{ $u->name }}" data-avatar="{{ $u->avatar ? asset('storage/' . $u->avatar) : '' }}">{{ $u->name }}</option>
                             @endforeach
                         </select>
                     </div>
@@ -2733,7 +2743,15 @@
             $('#filter-group').on('keyup', applyFilters);
             $('#filter-task').on('keyup', applyFilters);
             $('#filter-assignor').on('change', applyFilters);
-            $('#filter-assignee').on('change', applyFilters);
+            $('#filter-assignee').on('change', function() {
+                var v = $(this).val() || '';
+                if (v !== '__NULL__') {
+                    $('#user-overdue-graph-select').val(v);
+                } else {
+                    $('#user-overdue-graph-select').val('');
+                }
+                applyFilters();
+            });
             $('#filter-status').on('change', applyFilters);
             $('#filter-priority').on('change', applyFilters);
             
@@ -3023,7 +3041,28 @@
                     }
                 });
             }
-            $('#user-overdue-graph-select').on('change', renderUserOverdueGraph);
+            function updateUserSelectIcon() {
+                var sel = $('#user-overdue-graph-select');
+                var opt = sel.find('option:selected');
+                var avatarUrl = opt.data('avatar') || '';
+                var $img = $('#user-select-avatar');
+                var $icon = $('#user-select-icon');
+                if (avatarUrl && avatarUrl.length > 0) {
+                    $img.attr('src', avatarUrl).attr('alt', opt.text()).show();
+                    $icon.hide();
+                } else {
+                    $img.attr('src', '').hide();
+                    $icon.show();
+                }
+            }
+            $('#user-overdue-graph-select').on('change', function() {
+                var selectedUser = $(this).val() || '';
+                $('#filter-assignee').val(selectedUser);
+                updateUserSelectIcon();
+                applyFilters();
+                renderUserOverdueGraph();
+            });
+            updateUserSelectIcon();
 
             // Show CSV Upload Modal
             $('#upload-csv-btn').on('click', function() {

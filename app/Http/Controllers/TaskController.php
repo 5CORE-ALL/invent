@@ -48,8 +48,8 @@ class TaskController extends Controller
             'done_atc' => (clone $tasksQuery)->where('status', 'Done')->sum('etc_done') ?? 0,
         ];
 
-        // Get all users for filter dropdowns (include email for bulk assign!)
-        $users = User::select('id', 'name', 'email')->orderBy('name')->get();
+        // Get all users for filter dropdowns (include email, avatar for user-select card)
+        $users = User::select('id', 'name', 'email', 'avatar')->orderBy('name')->get();
 
         // Special permission: Jasmine, Ritu mam, Joy sir can delete/modify any task
         $canDeleteAnyTask = TaskPolicy::userHasSpecialTaskPermission($user);
