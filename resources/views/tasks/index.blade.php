@@ -2323,13 +2323,9 @@
                                 var now = new Date();
                                 now.setHours(0, 0, 0, 0);
                                 var textColor = '#0d6efd'; // Default blue
-                                // Red only when task is overdue (TID + 10 days past and not Done/Archived)
-                                if (rowData.status !== 'Done' && rowData.status !== 'Archived') {
-                                    var overdueDate = new Date(tidDate);
-                                    overdueDate.setDate(overdueDate.getDate() + 10);
-                                    if (now > overdueDate) {
-                                        textColor = '#dc3545'; // Red when overdue
-                                    }
+                                // Always red when overdue (past TID date), whether Done or not
+                                if (now > tidDate) {
+                                    textColor = '#dc3545'; // Red when overdue
                                 }
                                 return '<span style="color: ' + textColor + '; font-weight: 600; font-size: 11px;" title="' + dayStr + '/' + monthStr + '/' + year + '">' + dayStr + '/' + monthStr + '</span>';
                             }
@@ -2881,21 +2877,19 @@
                 }
             });
 
-            // User-wise overdue: date-wise line graph (TID + 10 days = overdue, same as stats)
+            // User-wise overdue: date-wise line graph (overdue = past TID date, same as TID column and stats)
             var userOverdueLineChart = null;
             function isTaskOverdueForGraph(t) {
-                if (!t.start_date || ['Done', 'Archived'].includes(t.status)) return false;
+                if (!t.start_date) return false;
                 var parts = (t.start_date + '').split(/[- :/]/);
                 if (parts.length < 3) return false;
                 var y = parseInt(parts[0], 10), m = parseInt(parts[1], 10), d = parseInt(parts[2], 10);
-                if (parts[0].length === 4 && y > 2000) { /* YYYY-MM-DD */ } else { d = parseInt(parts[0],10); m = parseInt(parts[1],10); y = parseInt(parts[2],10); }
+                if (parts[0].length !== 4) { d = parseInt(parts[0], 10); m = parseInt(parts[1], 10); y = parseInt(parts[2], 10); }
                 var tidDate = new Date(y, m - 1, d);
                 tidDate.setHours(0, 0, 0, 0);
-                var overdueDate = new Date(tidDate);
-                overdueDate.setDate(overdueDate.getDate() + 10);
                 var now = new Date();
                 now.setHours(0, 0, 0, 0);
-                return now > overdueDate;
+                return now > tidDate;
             }
             function getDateKey(startDate) {
                 if (!startDate) return null;
@@ -2921,7 +2915,7 @@
                     if (userOverdueLineChart) { userOverdueLineChart.destroy(); userOverdueLineChart = null; }
                     return;
                 }
-                var allData = table.getData();
+                var allData = table.getData('active').length ? table.getData('active') : table.getData();
                 var userTasks = allData.filter(function(t) {
                     var an = (t.assignee_name || '').trim();
                     if (!an) return false;
@@ -2952,7 +2946,15 @@
                 Object.keys(byDateDone).forEach(function(k) { allDates[k] = true; });
                 var sortedDates = Object.keys(allDates).sort();
                 var labels = sortedDates.map(formatDateLabel);
-                var overdueData = sortedDates.map(function(d) { return byDateOverdue[d] || 0; });
+                var totalOverdueCount = overdueTasks.length;
+                var overdueData = sortedDates.map(function(d) {
+                    var cumulative = 0;
+                    for (var i = 0; i < sortedDates.length; i++) {
+                        cumulative += byDateOverdue[sortedDates[i]] || 0;
+                        if (sortedDates[i] === d) break;
+                    }
+                    return cumulative;
+                });
                 var etcData = sortedDates.map(function(d) { return Math.round((byDateEtc[d] || 0) / 60 * 10) / 10; });
                 var atcData = sortedDates.map(function(d) { return Math.round((byDateAtc[d] || 0) / 60 * 10) / 10; });
                 var doneData = sortedDates.map(function(d) { return byDateDone[d] || 0; });
