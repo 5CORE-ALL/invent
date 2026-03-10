@@ -109,6 +109,12 @@ class EbayThreeController extends Controller
                 return !empty($value) && isset($value['nr_req']);
             })
             ->keyBy('sku');
+
+        // Fetch buyer_link and seller_link from EbayThreeListingStatus (same source as pricing-master-cvr)
+        $ebay3ListingLinksMap = EbayThreeListingStatus::whereIn('sku', $skus)
+            ->orderBy('updated_at', 'desc')
+            ->get()
+            ->keyBy('sku');
         
         $nrValues = [];
         $listedValues = [];
@@ -642,7 +648,9 @@ class EbayThreeController extends Controller
                 }
                 $row['pmt_own_clicks_l7'] = $parentOwnPmtL7['Clk'] ?? 0;
                 $row['lmp_entries'] = [];
-                
+                $row['buyer_link'] = null;
+                $row['seller_link'] = null;
+
                 // Amazon Price - set to 0 for parent rows
                 $row['A Price'] = 0;
                 
@@ -717,6 +725,12 @@ class EbayThreeController extends Controller
                 $row['Live'] = $liveValues[$sku] ?? false;
                 $row['Hide'] = $hideValues[$sku] ?? false;
                 $row['l7_views'] = $ebayMetric->l7_views ?? 0;
+
+                // Buyer/Seller links from EbayThreeListingStatus (same source as pricing-master-cvr)
+                $linkRecord = $ebay3ListingLinksMap->get($sku);
+                $linkVal = $linkRecord ? (is_array($linkRecord->value) ? $linkRecord->value : (json_decode($linkRecord->value ?? '{}', true) ?? [])) : [];
+                $row['buyer_link'] = ! empty($linkVal['buyer_link']) ? $linkVal['buyer_link'] : null;
+                $row['seller_link'] = ! empty($linkVal['seller_link']) ? $linkVal['seller_link'] : null;
 
                 // Calculate AD% and other metrics
                 $price = floatval($row['eBay Price'] ?? 0);

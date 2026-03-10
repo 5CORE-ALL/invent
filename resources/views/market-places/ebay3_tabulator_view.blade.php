@@ -2188,6 +2188,27 @@
                     }
                 },
                 {
+                    title: "B/S",
+                    field: "buyer_link",
+                    hozAlign: "center",
+                    width: 70,
+                    headerTooltip: "eBay Buyer / Seller links (same source as pricing-master-cvr)",
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        const buyerLink = rowData.buyer_link || '';
+                        const sellerLink = rowData.seller_link || '';
+                        if (!buyerLink && !sellerLink) return '-';
+                        let html = '';
+                        if (buyerLink) {
+                            html += '<a href="' + buyerLink.replace(/"/g, '&quot;') + '" target="_blank" rel="noopener" class="btn btn-sm btn-outline-primary me-1" title="Buyer link">B</a>';
+                        }
+                        if (sellerLink) {
+                            html += '<a href="' + sellerLink.replace(/"/g, '&quot;') + '" target="_blank" rel="noopener" class="btn btn-sm btn-outline-secondary" title="Seller link">S</a>';
+                        }
+                        return html;
+                    }
+                },
+                {
                     title: "MAP",
                     field: "MAP",
                     hozAlign: "center",
