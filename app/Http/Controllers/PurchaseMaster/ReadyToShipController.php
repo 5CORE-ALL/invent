@@ -85,6 +85,7 @@ class ReadyToShipController extends Controller
 
             $image = null;
             $cbm = null;
+            $cp = null;
 
             // Try to get image from shopify_skus first
             if (isset($shopifyImages[$sku]) && !empty($shopifyImages[$sku]->image_src)) {
@@ -177,6 +178,10 @@ class ReadyToShipController extends Controller
                         } else {
                             Log::warning("CBM missing in values for SKU: $sku");
                         }
+
+                        if (isset($values['cp'])) {
+                            $cp = (float) $values['cp'];
+                        }
                     } else {
                         Log::warning("Values decode failed for SKU: $sku");
                     }
@@ -194,6 +199,10 @@ class ReadyToShipController extends Controller
                             $cbm = (float) $values['cbm'];
                         } else {
                             Log::warning("CBM missing in values for SKU: $sku");
+                        }
+
+                        if (isset($values['cp'])) {
+                            $cp = (float) $values['cp'];
                         }
                     }
                 }
@@ -217,6 +226,7 @@ class ReadyToShipController extends Controller
 
             $item->Image = $image;
             $item->CBM = $cbm;
+            $item->CP = $cp;
             return $item;
         });
 
@@ -256,6 +266,7 @@ class ReadyToShipController extends Controller
             'area',
             'pay_term',
             'payment_confirmation',
+            'payment',
             'supplier',
             'supplier_sku',
         ])) {

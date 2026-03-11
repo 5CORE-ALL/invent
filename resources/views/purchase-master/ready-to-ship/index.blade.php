@@ -343,23 +343,23 @@
                                 <th data-column="22" data-column-name="nr" class="text-center">NRP<div class="resizer"></div></th>
                                 <th data-column="4" data-column-name="qty" class="text-center">Or. QTY<div class="resizer"></div></th>
                                 <th data-column="20" data-column-name="rec_qty" class="text-center">Rec. QTY<div class="resizer"></div></th>
-                                <th data-column="18" data-column-name="qty" class="text-center" hidden>Rate<div class="resizer"></div></th>
                                 <th data-column="5" data-column-name="supplier">Supplier<div class="resizer"></div>
                                 </th>
-                                <th data-column="23" data-column-name="supplier_sku" class="text-center">Supplier<br/>SKU<div class="resizer"></div>
-                                </th>
+                                <th data-column="18" data-column-name="qty" class="text-center" hidden>Rate<div class="resizer"></div></th>
                                 <th data-column="6" data-column-name="cbm" hidden>CBM<div class="resizer"></div>
                                 </th>
                                 <th data-column="19" data-column-name="total_cbm">Total CBM<div class="resizer"></div>
                                 </th>
+                                <th data-column="24" data-column-name="amount">Amount<div class="resizer"></div>
+                                </th>
                                 <th data-column="8" data-column-name="shipped_cbm_in_container" hidden>Balance<div
                                         class="resizer"></div>
                                 </th>
-                                <th data-column="9" data-column-name="payment" hidden>Payment<div class="resizer"></div>
+                                <th data-column="9" data-column-name="payment">PMT<br/>Confirm<div class="resizer"></div>
                                 </th>
                                 <th data-column="10" data-column-name="pay_term">Pay<br/>Term<div class="resizer"></div>
                                 </th>
-                                <th data-column="11" data-column-name="payment_confirmation">Payment<br/>Confirmation<div
+                                <th data-column="11" data-column-name="payment_confirmation" hidden>ADV<br/>CONFIRM<div
                                         class="resizer"></div>
                                 </th>
                                 <th data-column="12" data-column-name="model_number" hidden>Model<br/>Number<div class="resizer">
@@ -521,20 +521,26 @@
                                         @endforeach
                                     </select>
                                 </td>
-                                <td data-column="23" class="text-center">
-                                    <input type="text" 
-                                        data-sku="{{ $item->sku }}" 
-                                        data-column="supplier_sku" 
-                                        class="form-control form-control-sm auto-save" 
-                                        value="{{ $item->supplier_sku ?? '' }}" 
-                                        placeholder="Supplier SKU"
-                                        style="min-width: 120px; font-size: 13px; text-align: center;">
-                                </td>
                                 <td data-column="6" hidden>{{ isset($item->CBM) && $item->CBM !== null ? number_format((float)$item->CBM, 4) : 'N/A' }}</td>
                                 <td data-column="19">{{ is_numeric($item->qty ?? null) && is_numeric($item->CBM ?? null) ? number_format($item->qty * $item->CBM, 2, '.', '') : '' }}</td>
-                                
+                                <td data-column="24" class="text-center">
+                                    @php $cpValue = $item->CP ?? null; @endphp
+                                    {{ is_numeric($item->qty ?? null) && is_numeric($cpValue) ? number_format($item->qty * $cpValue, 0, '.', '') : '' }}
+                                </td>
                                 <td data-column="8" hidden>{{ $item->shipped_cbm_in_container }}</td>
-                                <td data-column="9" hidden>{{ $item->payment }}</td>
+                                <td data-column="9" class="text-center">
+                                    @php
+                                        $pmt = $item->payment ?? 'No';
+                                        $isYes = strtoupper(trim($pmt)) === 'YES';
+                                    @endphp
+                                    <span
+                                        class="pmt-toggle"
+                                        data-sku="{{ $item->sku }}"
+                                        data-column="payment"
+                                        data-value="{{ $isYes ? 'Yes' : 'No' }}"
+                                        style="display:inline-block;width:14px;height:14px;border-radius:50%;cursor:pointer;background-color: {{ $isYes ? '#28a745' : '#dc3545' }};">
+                                    </span>
+                                </td>
                                 <td data-column="10">
                                     <select data-sku="{{ $item->sku }}" data-column="pay_term"
                                         class="form-select form-select-sm auto-save"
@@ -545,7 +551,7 @@
                                         </option>
                                     </select>
                                 </td>
-                                <td data-column="11">
+                                <td data-column="11" hidden>
                                     <select data-sku="{{ $item->sku }}" data-column="payment_confirmation"
                                         class="form-select form-select-sm auto-save"
                                         style="min-width: 90px; font-size: 13px;">
@@ -562,7 +568,8 @@
                                 <td data-column="16" hidden>{{ $item->container_rfq }}</td>
                                 <td data-column="17" hidden>{{ $item->quote_result }}</td>
                                  <td class="total-value d-none">
-                                    {{ is_numeric($item->qty ?? null) && is_numeric($item->rate ?? null) ? ($item->qty * $item->rate) : '' }}
+                                    @php $cpValue = $item->CP ?? null; @endphp
+                                    {{ is_numeric($item->qty ?? null) && is_numeric($cpValue) ? round($item->qty * $cpValue) : '' }}
                                 </td>
                             </tr>
                             @endforeach
@@ -1056,6 +1063,37 @@
                 })
                 .catch(() => {
                     this.style.border = '2px solid red';
+                    alert('AJAX error occurred.');
+                });
+            });
+        });
+
+        // PMT Confirm toggle (red/green dot) using ready_to_ship.payment (Yes/No)
+        document.querySelectorAll('.pmt-toggle').forEach(dot => {
+            dot.addEventListener('click', function () {
+                const sku = this.dataset.sku;
+                const column = this.dataset.column || 'payment';
+                const current = (this.dataset.value || 'No').toLowerCase() === 'yes' ? 'Yes' : 'No';
+                const next = current === 'Yes' ? 'No' : 'Yes';
+
+                fetch('/ready-to-ship/inline-update-by-sku', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                    },
+                    body: JSON.stringify({ sku, column, value: next })
+                })
+                .then(res => res.json())
+                .then(res => {
+                    if (!res.success) {
+                        alert('Error: ' + res.message);
+                        return;
+                    }
+                    this.dataset.value = next;
+                    this.style.backgroundColor = next === 'Yes' ? '#28a745' : '#dc3545';
+                })
+                .catch(() => {
                     alert('AJAX error occurred.');
                 });
             });

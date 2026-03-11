@@ -92,7 +92,7 @@
             <td>
                 <select class="form-select stage-select" data-sku="{{ $row->SKU }}" data-column="Supplier"
                     style="width: 120px;">
-                    @foreach ($uniqueSuppliers as $supplier)
+                    @foreach ($suppliers as $supplier)
                         <option value="{{ $supplier }}" {{ $row->Supplier == $supplier ? 'selected' : '' }}>
                             {{ $supplier }}
                         </option>

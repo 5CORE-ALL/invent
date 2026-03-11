@@ -259,8 +259,8 @@ class ToOrderAnalysisController extends Controller
             $groupedSupplierJson = $groupedDataBySupplier->toJson();
 
             $totalCBM = $filteredChildren->sum('total_cbm');
-            $uniqueSuppliers = $filteredChildren->pluck('Supplier')->filter()->unique()->values();
-
+            // Single canonical supplier source: Supplier model (same as MIP / Ready-to-Ship)
+            $suppliers = Supplier::where('type', 'Supplier')->orderBy('name')->pluck('name');
 
             $viewData = [
                 'data' => $paginator,
@@ -268,7 +268,7 @@ class ToOrderAnalysisController extends Controller
                 'totalCBM' => $totalCBM,
                 'allProcessedData' => $processedData,
                 'groupedSupplierJson' => $groupedSupplierJson,
-                'uniqueSuppliers' => $uniqueSuppliers,
+                'suppliers' => $suppliers,
             ];
 
             return $request->ajax()
