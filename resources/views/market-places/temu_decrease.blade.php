@@ -251,39 +251,32 @@
                             style="max-height: 400px; overflow-y: auto;">
                         </ul>
                     </div>
-                    <button id="show-all-columns-btn" class="btn btn-sm btn-outline-secondary">
-                        <i class="fa fa-eye"></i> Show All
-                    </button>
 
                     <button type="button" class="btn btn-sm btn-success" id="export-btn">
-                        <i class="fa fa-download"></i> Export CSV
+                        <i class="fa fa-download"></i> Export
                     </button>
                     <a href="{{ route('temu.tabulator') }}" class="btn btn-sm btn-outline-primary" title="View order-level sales data (Order ID, status, line items)">
                         <i class="fa fa-list-alt"></i> Order Data
                     </a>
 
-                    <button id="decrease-btn" class="btn btn-sm btn-warning">
-                        <i class="fas fa-arrow-down"></i> Decrease Mode
-                    </button>
-                    
-                    <button id="increase-btn" class="btn btn-sm btn-success">
-                        <i class="fas fa-arrow-up"></i> Increase Mode
+                    <button id="inc-dec-btn" class="btn btn-sm btn-secondary" title="Cycle: INC / DEC → Decrease → Increase → INC / DEC">
+                        INC / DEC
                     </button>
                     
                     <button type="button" class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#uploadViewDataModal">
-                        <i class="fa fa-eye"></i> Upload View Data
+                        <i class="fa fa-eye"></i> Up View Data
                     </button>
                     <button type="button" class="btn btn-sm btn-warning" data-bs-toggle="modal" data-bs-target="#uploadAdDataModal">
-                        <i class="fa fa-chart-line"></i> Upload Ad Data
+                        <i class="fa fa-chart-line"></i> Up Ad Data
                     </button>
                     <button type="button" class="btn btn-sm btn-danger" data-bs-toggle="modal" data-bs-target="#uploadRPricingModal">
-                        <i class="fa fa-tags"></i> Upload R Pricing
+                        <i class="fa fa-tags"></i> Up R Pricing
                     </button>
                     <button type="button" class="btn btn-sm btn-info" data-bs-toggle="modal" data-bs-target="#uploadPricingModal">
-                        <i class="fa fa-dollar-sign"></i> Upload Pricing
+                        <i class="fa fa-dollar-sign"></i> Up Pricing
                     </button>
                     <button type="button" id="toggle-ads-columns-btn" class="btn btn-sm btn-secondary">
-                        <i class="fa fa-filter"></i> Show Ads Columns
+                        <i class="fa fa-filter"></i> Ads Section
                     </button>
                 </div>
 
@@ -299,7 +292,7 @@
                         <span class="badge fs-6 p-2 temu-ads-badge" id="temu-zero-inv-count" data-ads-filter="zero-inv" style="color: black; font-weight: bold; background-color: #ffda6a; cursor: pointer;" title="Click to filter: zero inventory">Zero INV: 0</span>
                         <span class="badge fs-6 p-2 temu-ads-badge" id="temu-nra-count" data-ads-filter="nra" style="color: black; font-weight: bold; background-color: #f1aeb5; cursor: pointer;" title="Click to filter: NRA (NRL/NR)">NRA: 0</span>
                         <span class="badge fs-6 p-2 temu-ads-badge" id="temu-ra-count" data-ads-filter="ra" style="color: black; font-weight: bold; background-color: #a3cfbb; cursor: pointer;" title="Click to filter: RA (REQ)">RA: 0</span>
-                        <span class="badge fs-6 p-2 temu-ads-badge" id="temu-total-spend-badge" data-ads-filter="total-spend" style="color: black; font-weight: bold; background-color: #9ec5fe; cursor: pointer;" title="Click to filter: has spend">Total Spend: $0</span>
+                        <span class="badge fs-6 p-2 temu-ads-badge" id="temu-total-spend-badge" data-ads-filter="total-spend" style="color: black; font-weight: bold; background-color: #9ec5fe; cursor: pointer;" title="Click to filter: has spend">Total Ads Spend: $0</span>
                         <span class="badge fs-6 p-2 temu-ads-badge" id="temu-total-budget-badge" data-ads-filter="budget" style="color: black; font-weight: bold; background-color: #ced4da; cursor: pointer;" title="Click to filter: has target/budget">Budget: $0</span>
                         <span class="badge fs-6 p-2 temu-ads-badge" id="temu-total-ad-sales-badge" data-ads-filter="ad-sales" style="color: black; font-weight: bold; background-color: #9eeaf9; cursor: pointer;" title="Click to filter: has ad sales">Ad Sales: $0</span>
                         <span class="badge fs-6 p-2" id="temu-total-ad-sold-badge" style="color: black; font-weight: bold; background-color: #f8b4d9;" title="Total L30 Ad Sold">Total L30 Ad Sold: 0</span>
@@ -332,43 +325,37 @@
                     <small class="text-muted d-block mb-2">Sums from full table (all rows, no filter)</small>
                     <div class="d-flex flex-wrap gap-2">
                         <!-- Basic Counts (sales summary = same as tabulator sales page) -->
-                        <span class="badge bg-primary fs-6 p-2" id="total-orders-badge" style="color: white; font-weight: bold;">Total Orders: 0</span>
-                        <span class="badge bg-primary fs-6 p-2" id="total-products-badge" style="color: black; font-weight: bold;">Total Products: 0</span>
-                        <span class="badge bg-success fs-6 p-2" id="total-quantity-badge" style="color: black; font-weight: bold;">Total Quantity: 0</span>
+                        <span class="badge bg-success fs-6 p-2" id="total-revenue-badge" style="color: black; font-weight: bold;">Sales: $0</span>
+                        <span class="badge bg-primary fs-6 p-2" id="total-orders-badge" style="color: white; font-weight: bold;">Orders: 0</span>
+                        <span class="badge bg-primary fs-6 p-2" id="total-products-badge" style="color: black; font-weight: bold;">SKU: 0</span>
+                        <span class="badge bg-success fs-6 p-2" id="total-quantity-badge" style="color: black; font-weight: bold;">QTY: 0</span>
                         <span class="badge bg-danger fs-6 p-2" id="zero-sold-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter 0 sold items (INV>0)">0 Sold: 0</span>
-                        <span class="badge bg-warning fs-6 p-2" id="missing-count-badge" style="color: black; font-weight: bold; cursor: pointer;" title="Click to filter missing SKUs (INV>0)">Missing: 0</span>
-                        <span class="badge bg-success fs-6 p-2" id="mapped-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter mapped SKUs (INV>0)">MP: 0</span>
-                        <span class="badge bg-warning fs-6 p-2" id="not-mapped-count-badge" style="color: black; font-weight: bold; cursor: pointer;" title="Click to filter not mapped SKUs (INV>0)">N MP: 0</span>
-                        <span class="badge bg-danger fs-6 p-2" id="less-amz-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter prices less than Amazon (INV>0)">< Amz: 0</span>
-                        <span class="badge fs-6 p-2" id="more-amz-badge" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="Click to filter prices greater than Amazon (INV>0)">> Amz: 0</span>
+                        <span class="badge fs-6 p-2" id="missing-count-badge" style="color: white; font-weight: bold; background-color: #dc3545; cursor: pointer;" title="Click to filter missing SKUs (INV>0)">Missing L: 0</span>
+                        <span class="badge fs-6 p-2" id="not-mapped-count-badge" style="color: white; font-weight: bold; background-color: #dc3545; cursor: pointer;" title="Click to filter not mapped SKUs (INV>0)">Missing M: 0</span>
                         
                         <!-- Pricing & Performance -->
-                        <span class="badge bg-info fs-6 p-2" id="avg-price-badge" style="color: black; font-weight: bold;">Avg Price: $0.00</span>
-                        <span class="badge bg-warning fs-6 p-2" id="avg-cvr-badge" style="color: black; font-weight: bold;">Avg CVR: 0.0%</span>
+                        <span class="badge bg-info fs-6 p-2" id="avg-price-badge" style="color: black; font-weight: bold;">AVG: $0.00</span>
+                        <span class="badge bg-warning fs-6 p-2" id="avg-cvr-badge" style="color: black; font-weight: bold;">CVR: 0.0%</span>
                         
                         <!-- Financial Totals -->
-                        <span class="badge bg-success fs-6 p-2" id="total-revenue-badge" style="color: black; font-weight: bold;">Total Revenue: $0</span>
-                        <span class="badge bg-primary fs-6 p-2" id="total-profit-badge" style="color: black; font-weight: bold;">Total Profit: $0</span>
-                        <span class="badge bg-info fs-6 p-2" id="total-lp-badge" style="color: black; font-weight: bold;">Total LP: $0</span>
+                        <span class="badge bg-primary fs-6 p-2" id="total-profit-badge" style="color: black; font-weight: bold; display: none;">PFT: $0</span>
+                        <span class="badge bg-info fs-6 p-2" id="total-lp-badge" style="color: black; font-weight: bold; display: none;">Total LP: $0</span>
                         
                         <!-- Percentages (Gross) -->
-                        <span class="badge bg-success fs-6 p-2" id="avg-gprft-badge" style="color: black; font-weight: bold;">Avg GPRFT%: 0%</span>
-                        <span class="badge bg-primary fs-6 p-2" id="avg-groi-badge" style="color: black; font-weight: bold;">Avg GROI%: 0%</span>
+                        <span class="badge bg-success fs-6 p-2" id="avg-gprft-badge" style="color: black; font-weight: bold;">GPFT: 0%</span>
+                        <span class="badge bg-primary fs-6 p-2" id="avg-groi-badge" style="color: black; font-weight: bold;">GROI: 0%</span>
                         
                         <!-- Advertising Metrics -->
-                        <span class="badge bg-danger fs-6 p-2" id="total-spend-badge" style="color: black; font-weight: bold;">Total Spend: $0.00</span>
-                        <span class="badge bg-warning fs-6 p-2" id="avg-ads-badge" style="color: black; font-weight: bold;">Ads %: 0%</span>
-                        <span class="badge bg-danger fs-6 p-2" id="total-tcos-badge" style="color: black; font-weight: bold;">Total TCOS: 0%</span>
+                        <span class="badge fs-6 p-2" id="total-spend-badge" style="color: black; font-weight: bold; background-color: #87CEEB;">Spend: $0.00</span>
+                        <span class="badge bg-warning fs-6 p-2" id="avg-ads-badge" style="color: black; font-weight: bold;">Ads: 0%</span>
                         
                         <!-- Percentages (Net) -->
-                        <span class="badge bg-success fs-6 p-2" id="avg-npft-badge" style="color: black; font-weight: bold;">Avg NPFT%: 0%</span>
-                        <span class="badge bg-primary fs-6 p-2" id="avg-nroi-badge" style="color: black; font-weight: bold;">Avg NROI%: 0%</span>
+                        <span class="badge bg-success fs-6 p-2" id="avg-npft-badge" style="color: black; font-weight: bold;">NPFT: 0%</span>
+                        <span class="badge bg-primary fs-6 p-2" id="avg-nroi-badge" style="color: black; font-weight: bold;">NROI: 0%</span>
                         
                         <!-- Engagement -->
-                        <span class="badge bg-info fs-6 p-2" id="total-views-badge" style="color: black; font-weight: bold;">Total Views: 0</span>
-                        <span class="badge bg-info fs-6 p-2" id="avg-views-badge" style="color: black; font-weight: bold;">Avg Views: 0</span>
-                        <span class="badge bg-secondary fs-6 p-2" id="total-temu-l30-badge" style="color: black; font-weight: bold;">Total Temu L30: 0</span>
-                        <span class="badge bg-primary fs-6 p-2" id="total-inv-badge" style="color: black; font-weight: bold;">Total INV: 0</span>
+                        <span class="badge bg-info fs-6 p-2" id="total-views-badge" style="color: black; font-weight: bold;">Views: 0</span>
+                        <span class="badge bg-info fs-6 p-2" id="avg-views-badge" style="color: black; font-weight: bold;">AVG views: 0</span>
                     </div>
                 </div>
             </div>
@@ -458,7 +445,7 @@
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
                     <button type="submit" form="uploadViewDataForm" class="btn btn-success">
-                        <i class="fa fa-upload me-1"></i>Upload View Data
+                        <i class="fa fa-upload me-1"></i>Up View Data
                     </button>
                 </div>
             </div>
@@ -514,7 +501,7 @@
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
                     <button type="submit" form="uploadAdDataForm" class="btn btn-warning">
-                        <i class="fa fa-upload me-1"></i>Upload Ad Data
+                        <i class="fa fa-upload me-1"></i>Up Ad Data
                     </button>
                 </div>
             </div>
@@ -570,7 +557,7 @@
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
                     <button type="submit" form="uploadRPricingForm" class="btn btn-danger">
-                        <i class="fa fa-upload me-1"></i>Upload R Pricing
+                        <i class="fa fa-upload me-1"></i>Up R Pricing
                     </button>
                 </div>
             </div>
@@ -626,7 +613,7 @@
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
                     <button type="submit" form="uploadPricingForm" class="btn btn-info">
-                        <i class="fa fa-upload me-1"></i>Upload Pricing
+                        <i class="fa fa-upload me-1"></i>Up Pricing
                     </button>
                 </div>
             </div>
@@ -1378,48 +1365,28 @@
             }
         });
 
-        $('#decrease-btn').on('click', function() {
-            decreaseModeActive = !decreaseModeActive;
-            increaseModeActive = false;
+        // INC / DEC: one button, cycle neutral → decrease → increase → neutral
+        $('#inc-dec-btn').on('click', function() {
             const selectColumn = table.getColumn('_select');
-            
-            if (decreaseModeActive) {
+            const $btn = $(this);
+
+            if (!decreaseModeActive && !increaseModeActive) {
+                decreaseModeActive = true;
                 selectColumn.show();
-                $(this).removeClass('btn-warning').addClass('btn-danger');
-                $(this).html('<i class="fas fa-times"></i> Cancel Decrease');
-                $('#increase-btn').removeClass('btn-danger').addClass('btn-success').html('<i class="fas fa-arrow-up"></i> Increase Mode');
+                $btn.removeClass('btn-secondary').addClass('btn-danger').html('<i class="fas fa-arrow-down"></i> DEC <i class="fas fa-times ms-1" title="Click again for INC"></i>');
+            } else if (decreaseModeActive) {
+                decreaseModeActive = false;
+                increaseModeActive = true;
+                $btn.removeClass('btn-danger').addClass('btn-success').html('<i class="fas fa-arrow-up"></i> INC <i class="fas fa-times ms-1" title="Click again to reset"></i>');
             } else {
+                increaseModeActive = false;
                 selectColumn.hide();
-                $(this).removeClass('btn-danger').addClass('btn-warning');
-                $(this).html('<i class="fas fa-arrow-down"></i> Decrease Mode');
                 selectedSkus.clear();
                 soldSpriceBlankFilterActive = false;
                 updateSelectedCount();
                 updateSelectAllCheckbox();
                 applyFilters();
-            }
-        });
-        
-        // Increase Mode Toggle
-        $('#increase-btn').on('click', function() {
-            increaseModeActive = !increaseModeActive;
-            decreaseModeActive = false;
-            const selectColumn = table.getColumn('_select');
-            
-            if (increaseModeActive) {
-                selectColumn.show();
-                $(this).removeClass('btn-success').addClass('btn-danger');
-                $(this).html('<i class="fas fa-times"></i> Cancel Increase');
-                $('#decrease-btn').removeClass('btn-danger').addClass('btn-warning').html('<i class="fas fa-arrow-down"></i> Decrease Mode');
-            } else {
-                selectColumn.hide();
-                selectedSkus.clear();
-                $(this).removeClass('btn-danger').addClass('btn-success');
-                $(this).html('<i class="fas fa-arrow-up"></i> Increase Mode');
-                soldSpriceBlankFilterActive = false;
-                updateSelectedCount();
-                updateSelectAllCheckbox();
-                applyFilters();
+                $btn.removeClass('btn-danger btn-success').addClass('btn-secondary').html('INC / DEC');
             }
         });
 
@@ -1499,33 +1466,23 @@
             applyFilters();
         });
 
-        $('#less-amz-badge').on('click', function() {
-            lessAmzFilterActive = !lessAmzFilterActive;
-            moreAmzFilterActive = false;
-            applyFilters();
-        });
-
-        $('#more-amz-badge').on('click', function() {
-            moreAmzFilterActive = !moreAmzFilterActive;
-            lessAmzFilterActive = false;
-            applyFilters();
-        });
-
         $('#missing-count-badge').on('click', function() {
             missingBadgeFilterActive = !missingBadgeFilterActive;
             applyFilters();
-        });
-
-        $('#mapped-count-badge').on('click', function() {
-            mapBadgeFilterActive = !mapBadgeFilterActive;
-            notMapBadgeFilterActive = false;
-            applyFilters();
+            if (table) {
+                if (missingBadgeFilterActive) table.getColumn('lmp').show();
+                else table.getColumn('lmp').hide();
+            }
         });
 
         $('#not-mapped-count-badge').on('click', function() {
             notMapBadgeFilterActive = !notMapBadgeFilterActive;
             mapBadgeFilterActive = false;
             applyFilters();
+            if (table) {
+                if (notMapBadgeFilterActive) table.getColumn('MAP').show();
+                else table.getColumn('MAP').hide();
+            }
         });
 
         function updateSelectedCount() {
@@ -1950,8 +1907,7 @@
                 
                 if (!decreaseModeActive && !increaseModeActive) {
                     decreaseModeActive = true;
-                    $('#decrease-btn').removeClass('btn-warning').addClass('btn-danger');
-                    $('#decrease-btn').html('<i class="fas fa-times"></i> Cancel Decrease');
+                    $('#inc-dec-btn').removeClass('btn-secondary').addClass('btn-danger').html('<i class="fas fa-arrow-down"></i> DEC <i class="fas fa-times ms-1" title="Click again for INC"></i>');
                 }
                 
                 if (newlySelectedCount > 0) {
@@ -2138,11 +2094,14 @@
             // Weighted GROI% = (Total Profit / Total LP/COGS) × 100
             const avgGroi = totalLp > 0 ? (totalProfit / totalLp) * 100 : (totalProducts > 0 ? totalGroi / totalProducts : 0);
             const avgAds = totalProducts > 0 ? totalAds / totalProducts : 0;
+            badgeAvgAds = avgAds; // use in ADS% column for all rows
             // Weighted NPFT% and NROI% using Total Net Profit (Profit - Spend)
             const totalNetProfit = totalProfit - totalSpend;
             const avgNpft = totalRevenue > 0 ? (totalNetProfit / totalRevenue) * 100 : (totalProducts > 0 ? totalNpft / totalProducts : 0);
             const avgNroi = totalLp > 0 ? (totalNetProfit / totalLp) * 100 : (totalProducts > 0 ? totalNroi / totalProducts : 0);
             const avgCvr = cvrCount > 0 ? totalCvr / cvrCount : 0;
+            // QTY/Views = (Total QTY / Total Views) × 100
+            const qtyPerViews = totalViews > 0 ? (totalQuantity / totalViews) * 100 : 0;
             const avgDil = dilCount > 0 ? totalDil / dilCount : 0;
 
             // Calculate TCOS: (Total Ad Spend / Total Revenue) × 100
@@ -2153,38 +2112,32 @@
             
             // Update badges (Total Orders, Quantity, Revenue from API = same as sales page when available)
             if (salesSummaryFromBackend) {
-                $('#total-orders-badge').text('Total Orders: ' + (salesSummaryFromBackend.total_orders || 0).toLocaleString());
-                $('#total-quantity-badge').text('Total Quantity: ' + (salesSummaryFromBackend.total_quantity || 0).toLocaleString());
-                $('#total-revenue-badge').text('Total Revenue: $' + (salesSummaryFromBackend.total_revenue != null ? Number(salesSummaryFromBackend.total_revenue).toFixed(2) : '0.00'));
+                $('#total-orders-badge').text('Orders: ' + (salesSummaryFromBackend.total_orders || 0).toLocaleString());
+                $('#total-quantity-badge').text('QTY: ' + (salesSummaryFromBackend.total_quantity || 0).toLocaleString());
+                $('#total-revenue-badge').text('Sales: $' + (salesSummaryFromBackend.total_revenue != null ? Math.round(Number(salesSummaryFromBackend.total_revenue)).toLocaleString() : '0'));
             } else {
-                $('#total-orders-badge').text('Total Orders: 0');
-                $('#total-quantity-badge').text('Total Quantity: ' + totalQuantity.toLocaleString());
-                $('#total-revenue-badge').text('Total Revenue: $' + totalRevenue.toFixed(2));
+                $('#total-orders-badge').text('Orders: 0');
+                $('#total-quantity-badge').text('QTY: ' + totalQuantity.toLocaleString());
+                $('#total-revenue-badge').text('Sales: $' + Math.round(totalRevenue).toLocaleString());
             }
-            $('#total-products-badge').text('Total Products: ' + totalProducts.toLocaleString());
-            $('#zero-sold-count-badge').text('0 Sold Count: ' + zeroSoldCount.toLocaleString());
-            $('#missing-count-badge').text('Missing: ' + missingCount.toLocaleString());
-            $('#mapped-count-badge').text('MP: ' + mappedCount.toLocaleString());
-            $('#not-mapped-count-badge').text('N MP: ' + notMappedCount.toLocaleString());
-            $('#less-amz-badge').text('< Amz: ' + lessAmzCount.toLocaleString());
-            $('#more-amz-badge').text('> Amz: ' + moreAmzCount.toLocaleString());
-            $('#avg-price-badge').text('Avg Price: $' + avgPrice.toFixed(2));
-            $('#avg-cvr-badge').text('Avg CVR: ' + avgCvr.toFixed(1) + '%');
+            $('#total-products-badge').text('SKU: ' + totalProducts.toLocaleString());
+            $('#zero-sold-count-badge').text('0 Sold: ' + zeroSoldCount.toLocaleString());
+            $('#missing-count-badge').text('Missing L: ' + missingCount.toLocaleString());
+            $('#not-mapped-count-badge').text('Missing M: ' + notMappedCount.toLocaleString());
+            $('#avg-price-badge').text('AVG: $' + avgPrice.toFixed(2));
+            $('#avg-cvr-badge').text('CVR: ' + qtyPerViews.toFixed(1) + '%');
             $('#avg-dil-badge').text('Avg DIL: ' + Math.round(avgDil) + '%');
             // Total Revenue badge set above from sales_summary or table
-            $('#total-profit-badge').text('Total Profit: $' + Math.round(totalProfit).toLocaleString());
+            $('#total-profit-badge').text('PFT: $' + Math.round(totalProfit).toLocaleString());
             $('#total-lp-badge').text('Total LP: $' + Math.round(totalLp).toLocaleString());
-            $('#avg-gprft-badge').text('Avg GPRFT%: ' + avgGprft.toFixed(1) + '%');
-            $('#avg-groi-badge').text('Avg GROI%: ' + avgGroi.toFixed(1) + '%');
-            $('#total-spend-badge').text('Total Spend: $' + totalSpend.toFixed(2));
-            $('#avg-ads-badge').text('Ads %: ' + Math.round(avgAds) + '%');
-            $('#total-tcos-badge').text('Total TCOS: ' + Math.round(totalTcos) + '%');
-            $('#avg-npft-badge').text('Avg NPFT%: ' + avgNpft.toFixed(1) + '%');
-            $('#avg-nroi-badge').text('Avg NROI%: ' + avgNroi.toFixed(1) + '%');
-            $('#total-views-badge').text('Total Views: ' + totalViews.toLocaleString());
-            $('#avg-views-badge').text('Avg Views: ' + Math.round(avgViews));
-            $('#total-temu-l30-badge').text('Total Temu L30: ' + totalTemuL30.toLocaleString());
-            $('#total-inv-badge').text('Total INV: ' + totalInv.toLocaleString());
+            $('#avg-gprft-badge').text('GPFT: ' + avgGprft.toFixed(1) + '%');
+            $('#avg-groi-badge').text('GROI: ' + Math.round(avgGroi) + '%');
+            $('#total-spend-badge').text('Spend: $' + totalSpend.toFixed(2));
+            $('#avg-ads-badge').text('Ads: ' + Math.round(avgAds) + '%');
+            $('#avg-npft-badge').text('NPFT: ' + avgNpft.toFixed(1) + '%');
+            $('#avg-nroi-badge').text('NROI: ' + avgNroi.toFixed(1) + '%');
+            $('#total-views-badge').text('Views: ' + totalViews.toLocaleString());
+            $('#avg-views-badge').text('AVG views: ' + Math.round(avgViews));
         }
 
         // Update Ads/Utilized count section (when Show Ads Columns is on) - like TikTok
@@ -2260,7 +2213,7 @@
             $('#temu-zero-inv-count').text('Zero INV: ' + zeroInvCount);
             $('#temu-nra-count').text('NRA: ' + nraCount);
             $('#temu-ra-count').text('RA: ' + raCount);
-            $('#temu-total-spend-badge').text('Total Spend: $' + Math.round(totalSpend).toLocaleString());
+            $('#temu-total-spend-badge').text('Total Ads Spend: $' + Math.round(totalSpend).toLocaleString());
             $('#temu-total-budget-badge').text('Budget: $' + totalBudget.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
             $('#temu-total-ad-sales-badge').text('Ad Sales: $' + Math.round(totalAdSales).toLocaleString());
             $('#temu-total-ad-sold-badge').text('Total L30 Ad Sold: ' + totalAdSold.toLocaleString());
@@ -2291,6 +2244,7 @@
 
         let totalCampaignCountFromBackend = 0;
         let salesSummaryFromBackend = null;
+        let badgeAvgAds = null; // Ads % from badge — shown in ADS% column for all rows
 
         table = new Tabulator("#temu-table", {
             ajaxURL: "/temu-decrease-data",
@@ -2431,6 +2385,7 @@
                     hozAlign: "center",
                     width: 90,
                     sorter: "string",
+                    visible: false,
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         const missing = rowData['missing'];
@@ -2561,6 +2516,7 @@
                         const basePrice = parseFloat(cell.getRow().getData()['base_price']) || 0;
                         const rowData = cell.getRow().getData();
                         const amazonPrice = parseFloat(rowData['a_price']) || 0;
+                        const ePrice = parseFloat(rowData['e_price']) || 0;
                         
                         // Only calculate Temu Price if base_price > 0 (item exists in Temu)
                         if (basePrice === 0) {
@@ -2568,13 +2524,13 @@
                         }
                         const temuPrice = basePrice <= 26.99 ? basePrice + 2.99 : basePrice;
                         
-                        // Color code based on Amazon price comparison
-                        if (amazonPrice > 0 && temuPrice > 0) {
-                            if (temuPrice < amazonPrice) {
-                                return `<span style="color: #a00211; font-weight: 600;">$${temuPrice.toFixed(2)}</span>`;
-                            } else if (temuPrice > amazonPrice) {
-                                return `<span style="color: #28a745; font-weight: 600;">$${temuPrice.toFixed(2)}</span>`;
-                            }
+                        // Red only when Temu price exceeds (Amz price × 0.85) OR (E price × 0.90)
+                        const amzThreshold = amazonPrice * 0.85;
+                        const eThreshold = ePrice * 0.90;
+                        const overAmz = amazonPrice > 0 && temuPrice > amzThreshold;
+                        const overE = ePrice > 0 && temuPrice > eThreshold;
+                        if (overAmz || overE) {
+                            return `<span style="color: #a00211; font-weight: 600;">$${temuPrice.toFixed(2)}</span>`;
                         }
                         
                         return '$' + temuPrice.toFixed(2);
@@ -2669,7 +2625,8 @@
                         return aVal - bVal;
                     },
                     formatter: function(cell) {
-                        const value = parseFloat(cell.getValue()) || 0;
+                        // Use badge Ads % for all rows when available
+                        const displayVal = (badgeAvgAds != null ? badgeAvgAds : (parseFloat(cell.getValue()) || 0));
                         const rowData = cell.getRow().getData();
                         const spend = parseFloat(rowData['spend'] || 0);
                         const temuL30 = parseFloat(rowData['temu_l30'] || 0);
@@ -2680,14 +2637,14 @@
                             return `<span style="color: #a00211; font-weight: 600;">100%</span>`;
                         }
                         
-                        // eBay ACOS color logic (includes 0 and 100 conditions)
-                        if (value == 0 || value == 100) color = '#a00211'; // red
-                        else if (value > 0 && value <= 7) color = '#ff1493'; // pink
-                        else if (value > 7 && value <= 14) color = '#28a745'; // green
-                        else if (value > 14 && value <= 21) color = '#ffc107'; // yellow
-                        else if (value > 21) color = '#a00211'; // red
+                        // eBay ACOS color logic applied to displayed value
+                        if (displayVal == 0 || displayVal == 100) color = '#a00211'; // red
+                        else if (displayVal > 0 && displayVal <= 7) color = '#ff1493'; // pink
+                        else if (displayVal > 7 && displayVal <= 14) color = '#28a745'; // green
+                        else if (displayVal > 14 && displayVal <= 21) color = '#ffc107'; // yellow
+                        else if (displayVal > 21) color = '#a00211'; // red
                         
-                        return `<span style="color: ${color}; font-weight: 600;">${value.toFixed(1)}%</span>`;
+                        return `<span style="color: ${color}; font-weight: 600;">${displayVal.toFixed(1)}%</span>`;
                     }
                 },
                 {
@@ -2724,6 +2681,20 @@
                         const value = parseFloat(cell.getValue()) || 0;
                         const colorClass = getRoiColor(value);
                         return `<span class="dil-percent-value ${colorClass}">${Math.round(value)}%</span>`;
+                    }
+                },
+                {
+                    title: "LMP",
+                    field: "lmp",
+                    hozAlign: "center",
+                    sorter: "number",
+                    visible: false,
+                    formatter: function(cell) {
+                        const value = cell.getValue();
+                        if (value === null || value === undefined || value === '') return '<span style="color: #999;">-</span>';
+                        const num = parseFloat(value);
+                        if (Number.isNaN(num)) return value;
+                        return (num % 1 === 0) ? num.toLocaleString() : num.toFixed(2);
                     }
                 },
                      {
@@ -2824,7 +2795,7 @@
                         const lp = parseFloat(rowData['lp']) || 0;
                         const temuShip = parseFloat(rowData['temu_ship']) || 0;
                         const adsPercent = parseFloat(rowData['ads_percent']) || 0;
-                        const percentage = 0.96; // Temu marketplace percentage (margin 96)
+                        const percentage = 0.96;
                         
                         if (sprice === 0) return '';
                         
@@ -2842,6 +2813,27 @@
                     }
                 },
                 {
+                    title: "SROI%",
+                    field: "sroi_percent",
+                    hozAlign: "center",
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        let sroi = parseFloat(rowData['sroi_percent']);
+                        if (Number.isNaN(sroi)) {
+                            // Same formula as GROI%: ((price * 0.96 - lp - temuShip) / lp) * 100, with price = suggested Temu price
+                            const sprice = parseFloat(rowData['sprice']) || 0;
+                            const lp = parseFloat(rowData['lp']) || 0;
+                            const temuShip = parseFloat(rowData['temu_ship']) || 0;
+                            if (sprice === 0 || lp === 0) return '';
+                            const stemuPrice = sprice <= 26.99 ? sprice + 2.99 : sprice;
+                            sroi = ((stemuPrice * 0.96 - lp - temuShip) / lp) * 100;
+                        }
+                        const colorClass = getRoiColor(sroi);
+                        return `<span class="dil-percent-value ${colorClass}">${Math.round(sroi)}%</span>`;
+                    }
+                },
+                {
                     title: "Spend",
                     field: "spend",
                     hozAlign: "right",
@@ -2853,7 +2845,7 @@
                             <i class="fa-solid fa-info-circle" style="cursor: pointer; font-size: 12px; color: #3b82f6;" title="Spend"></i>
                         </div>`;
                     },
-                    visible: false,
+                    visible: false, 
                     width: 100
                 },
                 {
@@ -3101,48 +3093,6 @@
                     }
                 },
                 {
-                    title: "S Target",
-                    field: "starget",
-                    hozAlign: "center",
-                    sorter: "number",
-                    editor: "input",
-                    editorParams: {
-                        min: 0,
-                        step: 0.01
-                    },
-                    formatter: function(cell) {
-                        const value = parseFloat(cell.getValue());
-                        if (!value || value <= 0) {
-                            return '<span style="color: #999;">-</span>';
-                        }
-                        return '$' + value.toFixed(2);
-                    },
-                    cellEdited: function(cell) {
-                        const sku = cell.getRow().getData().sku;
-                        const starget = parseFloat(cell.getValue()) || 0;
-                        
-                        $.ajax({
-                            url: '/temu-pricing/save-starget',
-                            method: 'POST',
-                            data: {
-                                _token: '{{ csrf_token() }}',
-                                sku: sku,
-                                starget: starget
-                            },
-                            success: function(response) {
-                                if (response.success) {
-                                    showToast('S Target saved successfully', 'success');
-                                } else {
-                                    showToast('Failed to save S Target', 'error');
-                                }
-                            },
-                            error: function(xhr) {
-                                showToast('Failed to save S Target', 'error');
-                            }
-                        });
-                    }
-                },
-                {
                     title: "LP",
                     field: "lp",
                     hozAlign: "center",
@@ -3227,7 +3177,7 @@
                     table.getColumns().filter(c => c.getField() && l60ColumnFields.includes(c.getField())).forEach(c => c.show());
                 }
                 
-                $(this).html('<i class="fa fa-filter"></i> Show Ads Columns');
+                $(this).html('<i class="fa fa-filter"></i> Ads Section');
                 $(this).removeClass('btn-danger btn-primary').addClass('btn-secondary');
                 $('#temu-ads-count-section').addClass('d-none');
                 $('#summary-stats').removeClass('d-none');
@@ -3485,26 +3435,6 @@
                 });
             }
 
-            // < Amz badge filter (only INV > 0)
-            if (lessAmzFilterActive) {
-                table.addFilter(function(data) {
-                    const inv = parseFloat(data['inventory']) || 0;
-                    const temuPrice = parseFloat(data['temu_price']) || 0;
-                    const amazonPrice = parseFloat(data['a_price']) || 0;
-                    return inv > 0 && amazonPrice > 0 && temuPrice > 0 && temuPrice < amazonPrice;
-                });
-            }
-
-            // > Amz badge filter (only INV > 0)
-            if (moreAmzFilterActive) {
-                table.addFilter(function(data) {
-                    const inv = parseFloat(data['inventory']) || 0;
-                    const temuPrice = parseFloat(data['temu_price']) || 0;
-                    const amazonPrice = parseFloat(data['a_price']) || 0;
-                    return inv > 0 && amazonPrice > 0 && temuPrice > 0 && temuPrice > amazonPrice;
-                });
-            }
-
             // Missing badge filter (only INV > 0)
             if (missingBadgeFilterActive) {
                 table.addFilter(function(data) {
@@ -3658,6 +3588,17 @@
             } else {
                 $('#search-result-info').hide();
             }
+
+            // LMP column: visible only when Missing L badge is active
+            try {
+                if (missingBadgeFilterActive) table.getColumn('lmp').show();
+                else table.getColumn('lmp').hide();
+            } catch (e) {}
+            // MAP column: visible only when Missing M badge is active
+            try {
+                if (notMapBadgeFilterActive) table.getColumn('MAP').show();
+                else table.getColumn('MAP').hide();
+            } catch (e) {}
         }
 
         $('#inventory-filter, #gpft-filter, #cvr-filter, #ads-filter, #sprice-filter, #ads-req-filter, #ads-running-filter, #nr-req-filter').on('change', function() {
@@ -3973,14 +3914,6 @@
                 }
                 saveColumnVisibilityToServer();
             }
-        });
-
-        document.getElementById("show-all-columns-btn").addEventListener("click", function() {
-            table.getColumns().forEach(col => {
-                col.show();
-            });
-            buildColumnDropdown();
-            saveColumnVisibilityToServer();
         });
 
         // Export functionality
