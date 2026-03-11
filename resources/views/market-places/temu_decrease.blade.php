@@ -122,7 +122,6 @@
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
 @endsection
 
 @section('content')
@@ -688,35 +687,46 @@
         </div>
     </div>
 
-    <!-- SKU Metrics Chart Modal -->
+    <!-- SKU Metrics Chart Modal (UI matches Amazon: teal header, ref panel High/Med/Low, median line, value labels on points) -->
     <div class="modal fade" id="skuMetricsModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-xl">
-            <div class="modal-content">
-                <div class="modal-header bg-primary text-white">
-                    <h5 class="modal-title"><i class="fa fa-chart-line me-2"></i>Metrics Chart for <span id="modalSkuName" class="fw-bold"></span></h5>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+        <div class="modal-dialog shadow-none" style="max-width: 98vw; width: 98vw; margin: 10px auto 0;">
+            <div class="modal-content" style="border-radius: 8px; overflow: hidden;">
+                <div class="modal-header bg-info text-white py-1 px-3">
+                    <h6 class="modal-title mb-0" style="font-size: 13px;">
+                        <i class="fas fa-chart-area me-1"></i>
+                        <span>Temu - <span id="modalSkuName"></span> - <span id="temuChartRefLabel">Price</span> <span id="temuChartModalSuffix">(Rolling L30)</span></span>
+                    </h6>
+                    <div class="d-flex align-items-center gap-2">
+                        <select id="sku-chart-days-filter" class="form-select form-select-sm bg-white" style="width: 110px; height: 26px; font-size: 11px; padding: 1px 8px;">
+                            <option value="7">7 Days</option>
+                            <option value="14">14 Days</option>
+                            <option value="30" selected>30 Days</option>
+                            <option value="60">60 Days</option>
+                        </select>
+                        <button type="button" class="btn-close btn-close-white" style="font-size: 10px;" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
                 </div>
-                <div class="modal-body">
-                    <div class="mb-3 d-flex justify-content-between align-items-center">
-                        <div>
-                            <label class="form-label fw-bold mb-0 me-2">Date Range:</label>
-                            <select id="sku-chart-days-filter" class="form-select form-select-sm d-inline-block" style="width: auto;">
-                                <option value="7" selected>Last 7 Days</option>
-                                <option value="14">Last 14 Days</option>
-                                <option value="30">Last 30 Days</option>
-                                <option value="60">Last 60 Days</option>
-                            </select>
+                <div class="modal-body p-2">
+                    <div id="temuChartContainer" style="height: 20vh; display: flex; align-items: stretch;">
+                        <div style="flex: 1; min-width: 0; position: relative;">
+                            <canvas id="skuMetricsChart"></canvas>
                         </div>
-                        <div class="text-muted">
-                            <small><i class="fa fa-info-circle"></i> Hover over data points for detailed information</small>
+                        <div id="temuChartRefPanel" style="display: flex; gap: 6px; padding: 6px 8px; border-left: 1px solid #e9ecef; background: #f8f9fa; border-radius: 0 4px 4px 0; min-width: 0; flex-wrap: nowrap; overflow-x: auto;">
+                            <div class="temu-ref-col" data-metric="0" style="min-width: 62px; text-align: center; padding: 4px 4px;">
+                                <div style="font-size: 7px; font-weight: 700; margin-bottom: 4px; display: flex; align-items: center; justify-content: center; gap: 3px;"><span id="temuChartRefDot" style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #adb5bd; flex-shrink: 0;"></span><span id="temuChartRefLabelOnly">Price</span></div>
+                                <div style="font-size: 6px; font-weight: 700; color: #dc3545;">High</div><div id="temuCol0High" style="font-size: 10px; font-weight: 700; color: #dc3545;">-</div>
+                                <div style="font-size: 6px; font-weight: 700; color: #6c757d;">Med</div><div id="temuCol0Med" style="font-size: 10px; font-weight: 700; color: #6c757d;">-</div>
+                                <div style="font-size: 6px; font-weight: 700; color: #198754;">Low</div><div id="temuCol0Low" style="font-size: 10px; font-weight: 700; color: #198754;">-</div>
+                            </div>
                         </div>
                     </div>
-                    <div id="chart-no-data-message" class="alert alert-warning" style="display: none;">
-                        <i class="fa fa-exclamation-triangle me-2"></i>
-                        <strong>No Data Available:</strong> No historical data available for this SKU. Data will appear after running the metrics collection command.
+                    <div id="temuChartLoading" class="text-center py-3" style="display: none;">
+                        <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+                        <p class="mt-1 text-muted small mb-0">Loading chart data...</p>
                     </div>
-                    <div style="height: 500px; position: relative;">
-                        <canvas id="skuMetricsChart"></canvas>
+                    <div id="chart-no-data-message" class="text-center py-3" style="display: none;">
+                        <i class="fas fa-exclamation-circle text-warning fa-2x mb-2"></i>
+                        <p class="text-muted small mb-0">No historical data available for this SKU. Data will appear after running the metrics collection command.</p>
                     </div>
                 </div>
             </div>
@@ -770,269 +780,136 @@
     let adsReqFilter = 'all';
     let adsRunningFilter = 'all';
     
-    // SKU-specific chart
+    // SKU-specific chart (UI matches Amazon: ref panel High/Med/Low, median line, value labels on points, green/red/grey dots)
     let skuMetricsChart = null;
     let currentSku = null;
+    let currentSkuChartMetric = 'price';
+    let temuChartFirstSeriesStats = null; // { values, median, dataMin, dataMax, dotColors, labelColors, valueFmt }
 
     // Average Views chart
     let avgViewsChart = null;
 
+    function temuChartFmtVal(v) {
+        if (currentSkuChartMetric === 'price') return '$' + (Number(v) === v && v % 1 !== 0 ? v.toFixed(2) : Math.round(v).toLocaleString('en-US'));
+        if (currentSkuChartMetric === 'cvr') return (Number(v) === v ? v.toFixed(1) : v) + '%';
+        return Math.round(Number(v) || 0).toLocaleString('en-US');
+    }
+
     function initSkuMetricsChart() {
         const ctx = document.getElementById('skuMetricsChart').getContext('2d');
-        
-        // Register datalabels plugin
-        Chart.register(ChartDataLabels);
-        
+
+        const medianLinePlugin = {
+            id: 'temuMedianLine',
+            afterDraw(chart) {
+                if (!temuChartFirstSeriesStats || temuChartFirstSeriesStats.median === undefined) return;
+                const yScale = chart.scales.y;
+                const xScale = chart.scales.x;
+                const cctx = chart.ctx;
+                const yPixel = yScale.getPixelForValue(temuChartFirstSeriesStats.median);
+                cctx.save();
+                cctx.setLineDash([6, 4]);
+                cctx.strokeStyle = '#6c757d';
+                cctx.lineWidth = 1.2;
+                cctx.beginPath();
+                cctx.moveTo(xScale.left, yPixel);
+                cctx.lineTo(xScale.right, yPixel);
+                cctx.stroke();
+                cctx.restore();
+            }
+        };
+
+        const valueLabelsPlugin = {
+            id: 'temuValueLabels',
+            afterDatasetsDraw(chart) {
+                if (!chart.data.datasets.length) return;
+                const dataset = chart.data.datasets[0];
+                const meta = chart.getDatasetMeta(0);
+                const cctx = chart.ctx;
+                cctx.save();
+                cctx.font = 'bold 7px Inter, system-ui, sans-serif';
+                cctx.textAlign = 'center';
+                cctx.textBaseline = 'bottom';
+                const valueFmt = (temuChartFirstSeriesStats && temuChartFirstSeriesStats.valueFmt) ? temuChartFirstSeriesStats.valueFmt : temuChartFmtVal;
+                const labelColors = temuChartFirstSeriesStats && temuChartFirstSeriesStats.labelColors ? temuChartFirstSeriesStats.labelColors : [];
+                meta.data.forEach((point, i) => {
+                    const val = dataset.data[i];
+                    if (val == null) return;
+                    const offsetY = (i % 2 === 0) ? -7 : -14;
+                    cctx.fillStyle = labelColors[i] || '#6c757d';
+                    cctx.fillText(valueFmt(val), point.x, point.y + offsetY);
+                });
+                cctx.restore();
+            }
+        };
+
         skuMetricsChart = new Chart(ctx, {
             type: 'line',
-            plugins: [ChartDataLabels],
             data: {
                 labels: [],
-                datasets: [
-                    {
-                        label: 'Price (USD)',
-                        data: [],
-                        borderColor: '#FF0000',
-                        backgroundColor: 'rgba(255, 0, 0, 0.2)',
-                        borderWidth: 3,
-                        pointRadius: 4,
-                        pointHoverRadius: 6,
-                        pointBackgroundColor: '#FF0000',
-                        pointBorderColor: '#fff',
-                        pointBorderWidth: 2,
-                        yAxisID: 'y',
-                        tension: 0.1,
-                        fill: false,
-                        spanGaps: true,
-                        datalabels: {
-                            display: true,
-                            align: function(context) {
-                                const index = context.dataIndex;
-                                return index % 2 === 0 ? 'top' : 'bottom';
-                            },
-                            anchor: 'center',
-                            offset: 10,
-                            clamp: true,
-                            color: '#FFFFFF',
-                            backgroundColor: '#FF0000',
-                            borderRadius: 3,
-                            padding: { top: 1, bottom: 1, left: 3, right: 3 },
-                            font: {
-                                weight: 'bold',
-                                size: 8
-                            },
-                            formatter: function(value) {
-                                return value ? '$' + value.toFixed(2) : '';
-                            }
-                        }
-                    },
-                    {
-                        label: 'Views',
-                        data: [],
-                        borderColor: '#0000FF',
-                        backgroundColor: 'rgba(0, 0, 255, 0.2)',
-                        borderWidth: 3,
-                        pointRadius: 4,
-                        pointHoverRadius: 6,
-                        pointBackgroundColor: '#0000FF',
-                        pointBorderColor: '#fff',
-                        pointBorderWidth: 2,
-                        yAxisID: 'y2',
-                        tension: 0.1,
-                        fill: false,
-                        spanGaps: true,
-                        datalabels: {
-                            display: true,
-                            align: function(context) {
-                                const index = context.dataIndex;
-                                return index % 2 === 0 ? 'left' : 'right';
-                            },
-                            anchor: 'center',
-                            offset: 10,
-                            clamp: true,
-                            color: '#FFFFFF',
-                            backgroundColor: '#0000FF',
-                            borderRadius: 3,
-                            padding: { top: 1, bottom: 1, left: 3, right: 3 },
-                            font: {
-                                weight: 'bold',
-                                size: 8
-                            },
-                            formatter: function(value) {
-                                return value ? value.toFixed(0) : '';
-                            }
-                        }
-                    },
-                    {
-                        label: 'CVR%',
-                        data: [],
-                        borderColor: '#00FF00',
-                        backgroundColor: 'rgba(0, 255, 0, 0.2)',
-                        borderWidth: 3,
-                        pointRadius: 4,
-                        pointHoverRadius: 6,
-                        pointBackgroundColor: '#00FF00',
-                        pointBorderColor: '#fff',
-                        pointBorderWidth: 2,
-                        yAxisID: 'y1',
-                        tension: 0.1,
-                        fill: false,
-                        spanGaps: true,
-                        datalabels: {
-                            display: true,
-                            align: function(context) {
-                                const index = context.dataIndex;
-                                const total = context.dataset.data.length;
-                                if (index === total - 1) return 'left';
-                                return index % 2 === 0 ? 'bottom' : 'top';
-                            },
-                            anchor: 'center',
-                            offset: 10,
-                            clamp: true,
-                            color: '#FFFFFF',
-                            backgroundColor: '#00FF00',
-                            borderRadius: 3,
-                            padding: { top: 1, bottom: 1, left: 3, right: 3 },
-                            font: {
-                                weight: 'bold',
-                                size: 8
-                            },
-                            formatter: function(value) {
-                                return value ? value.toFixed(1) + '%' : '';
-                            }
-                        }
-                    }
-                ]
+                datasets: [{
+                    label: 'Price',
+                    data: [],
+                    borderColor: '#008000',
+                    backgroundColor: 'rgba(0, 128, 0, 0.1)',
+                    borderWidth: 1.5,
+                    pointRadius: 3,
+                    pointHoverRadius: 5,
+                    tension: 0.3,
+                    fill: true,
+                    spanGaps: true
+                }]
             },
+            plugins: [medianLinePlugin, valueLabelsPlugin],
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
-                layout: {
-                    padding: {
-                        left: 20,
-                        right: 40,
-                        top: 30,
-                        bottom: 20
-                    }
-                },
-                interaction: {
-                    mode: 'index',
-                    intersect: false
-                },
+                layout: { padding: { top: 18, left: 2, right: 2, bottom: 2 } },
+                interaction: { mode: 'index', intersect: false },
                 plugins: {
-                    title: {
-                        display: true,
-                        text: 'Temu SKU Metrics',
-                        font: {
-                            size: 16,
-                            weight: 'bold'
-                        }
-                    },
-                    subtitle: {
-                        display: true,
-                        text: 'Price (Left) | CVR% (Right) | Views (Labels Only)',
-                        font: {
-                            size: 12
-                        },
-                        color: '#666'
-                    },
-                    legend: {
-                        display: true,
-                        position: 'bottom'
-                    },
+                    legend: { display: false },
+                    title: { display: false },
                     tooltip: {
+                        enabled: true,
+                        mode: 'index',
+                        intersect: false,
+                        titleFont: { size: 10 },
+                        bodyFont: { size: 10 },
+                        padding: 6,
                         callbacks: {
                             label: function(context) {
-                                let label = context.dataset.label || '';
-                                if (label) {
-                                    label += ': ';
-                                }
-                                if (context.parsed.y !== null) {
-                                    if (context.dataset.label === 'Price (USD)') {
-                                        label += '$' + context.parsed.y.toFixed(2);
-                                    } else if (context.dataset.label === 'CVR%') {
-                                        label += context.parsed.y.toFixed(1) + '%';
-                                    } else {
-                                        label += context.parsed.y.toFixed(0);
-                                    }
-                                }
-                                return label;
+                                const v = context.parsed.y;
+                                if (v == null) return '';
+                                if (currentSkuChartMetric === 'price') return 'Price: $' + Number(v).toFixed(2);
+                                if (currentSkuChartMetric === 'cvr') return 'CVR%: ' + Number(v).toFixed(1) + '%';
+                                return (currentSkuChartMetric === 'views' || currentSkuChartMetric === 'temu_l30') ? (context.dataset.label + ': ' + Math.round(v)) : (context.dataset.label + ': ' + v);
                             }
                         }
                     }
                 },
                 scales: {
+                    x: {
+                        ticks: { maxRotation: 45, minRotation: 45, autoSkip: true, maxTicksLimit: 30, font: { size: 8 } }
+                    },
                     y: {
                         type: 'linear',
                         display: true,
                         position: 'left',
-                        beginAtZero: false,
-                        title: {
-                            display: true,
-                            text: 'Price (USD)',
-                            font: {
-                                size: 12,
-                                weight: 'bold'
-                            },
-                            color: '#FF0000'
-                        },
-                        ticks: {
-                            callback: function(value) {
-                                return '$' + value.toFixed(2);
-                            },
-                            color: '#FF0000',
-                            font: {
-                                size: 10,
-                                weight: 'bold'
-                            }
-                        },
-                        grid: {
-                            color: 'rgba(255, 0, 0, 0.1)'
-                        }
-                    },
-                    y1: {
-                        type: 'linear',
-                        display: true,
-                        position: 'right',
-                        beginAtZero: false,
-                        title: {
-                            display: true,
-                            text: 'CVR %',
-                            font: {
-                                size: 12,
-                                weight: 'bold'
-                            },
-                            color: '#00FF00'
-                        },
-                        ticks: {
-                            callback: function(value) {
-                                return value.toFixed(1) + '%';
-                            },
-                            color: '#00FF00',
-                            font: {
-                                size: 10,
-                                weight: 'bold'
-                            }
-                        },
-                        grid: {
-                            drawOnChartArea: false
-                        }
-                    },
-                    y2: {
-                        type: 'linear',
-                        display: false,
-                        position: 'right',
-                        beginAtZero: false,
-                        grid: {
-                            drawOnChartArea: false
-                        }
+                        beginAtZero: true,
+                        ticks: { font: { size: 9 }, callback: function(v) {
+                            if (currentSkuChartMetric === 'price') return '$' + (Number(v) === v && v % 1 !== 0 ? v.toFixed(2) : Math.round(v));
+                            if (currentSkuChartMetric === 'cvr') return v.toFixed(0) + '%';
+                            return Math.round(v);
+                        } }
                     }
                 }
             }
         });
     }
 
-    function loadSkuMetricsData(sku, days = 7) {
+    function loadSkuMetricsData(sku, days = 30) {
+        $('#temuChartLoading').show();
+        $('#temuChartContainer').hide();
+        $('#chart-no-data-message').hide();
         fetch(`/temu-metrics-history?days=${days}&sku=${encodeURIComponent(sku)}`)
             .then(response => {
                 if (!response.ok) {
@@ -1041,61 +918,104 @@
                 return response.json();
             })
             .then(data => {
-                if (skuMetricsChart) {
-                    if (!data || data.length === 0) {
-                        $('#chart-no-data-message').show();
-                        skuMetricsChart.data.labels = [];
-                        skuMetricsChart.data.datasets.forEach(dataset => {
-                            dataset.data = [];
-                        });
-                        skuMetricsChart.options.plugins.title.text = 'Temu SKU Metrics';
-                        skuMetricsChart.update();
-                        return;
-                    }
-                    
-                    $('#chart-no-data-message').hide();
-                    
-                    skuMetricsChart.options.plugins.title.text = `Temu Metrics (${days} Days)`;
-                    
-                    skuMetricsChart.data.labels = data.map(d => d.date_formatted || d.date || '');
-                    
-                    const priceData = data.map(d => d.price || null);
-                    const viewsData = data.map(d => d.views || null);
-                    const cvrData = data.map(d => {
-                        const cvr = d.cvr_percent;
-                        return (cvr && cvr > 0) ? cvr : null;
-                    });
-                    
-                    skuMetricsChart.data.datasets[0].data = priceData;
-                    skuMetricsChart.data.datasets[1].data = viewsData;
-                    skuMetricsChart.data.datasets[2].data = cvrData;
-                    
-                    const priceMin = Math.min(...priceData.filter(p => p != null && p > 0));
-                    const priceMax = Math.max(...priceData.filter(p => p != null));
-                    const viewsMin = Math.min(...viewsData.filter(v => v != null && v > 0));
-                    const viewsMax = Math.max(...viewsData.filter(v => v != null));
-                    const cvrMin = Math.min(...cvrData.filter(c => c != null && c > 0));
-                    const cvrMax = Math.max(...cvrData.filter(c => c != null && c > 0));
-                    
-                    const yMin = priceMin * 0.97;
-                    const yMax = priceMax * 1.03;
-                    const y2Min = viewsMin * 0.97;
-                    const y2Max = viewsMax * 1.03;
-                    const y1Min = cvrMin > 0 ? cvrMin * 0.95 : 0;
-                    const y1Max = cvrMax * 1.05;
-                    
-                    skuMetricsChart.options.scales.y.min = yMin;
-                    skuMetricsChart.options.scales.y.max = yMax;
-                    skuMetricsChart.options.scales.y2.min = y2Min;
-                    skuMetricsChart.options.scales.y2.max = y2Max;
-                    skuMetricsChart.options.scales.y1.min = y1Min;
-                    skuMetricsChart.options.scales.y1.max = y1Max;
-                    
-                    skuMetricsChart.update('active');
+                $('#temuChartLoading').hide();
+                if (!skuMetricsChart) return;
+                function setTemuRefCol(high, med, low, fmt) {
+                    const refRed = '#dc3545', refGray = '#6c757d', refGreen = '#198754';
+                    const hEl = document.getElementById('temuCol0High');
+                    const mEl = document.getElementById('temuCol0Med');
+                    const lEl = document.getElementById('temuCol0Low');
+                    if (hEl) { hEl.textContent = fmt(high); hEl.style.color = high === 0 ? refGreen : high > 0 ? refRed : refGray; }
+                    if (mEl) { mEl.textContent = fmt(med); mEl.style.color = med === 0 ? refGreen : med > 0 ? refRed : refGray; }
+                    if (lEl) { lEl.textContent = fmt(low); lEl.style.color = low === 0 ? refGreen : low > 0 ? refRed : refGray; }
                 }
+                function statsForArr(arr) {
+                    const valid = arr.filter(v => v != null && !isNaN(v));
+                    if (valid.length === 0) return { min: 0, max: 0, median: 0 };
+                    const min = Math.min(...valid);
+                    const max = Math.max(...valid);
+                    const sorted = [...valid].sort((a, b) => a - b);
+                    const mid = Math.floor(sorted.length / 2);
+                    const median = sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+                    return { min, max, median };
+                }
+                if (!data || data.length === 0) {
+                    temuChartFirstSeriesStats = null;
+                    const h = document.getElementById('temuCol0High');
+                    const m = document.getElementById('temuCol0Med');
+                    const l = document.getElementById('temuCol0Low');
+                    if (h) h.textContent = '-';
+                    if (m) m.textContent = '-';
+                    if (l) l.textContent = '-';
+                    skuMetricsChart.data.labels = [];
+                    skuMetricsChart.data.datasets[0].data = [];
+                    skuMetricsChart.update('active');
+                    $('#temuChartContainer').hide();
+                    $('#chart-no-data-message').show();
+                    return;
+                }
+                $('#chart-no-data-message').hide();
+                $('#temuChartContainer').show();
+                const labels = data.map(d => d.date_formatted || d.date || '');
+                const metric = currentSkuChartMetric || 'price';
+                const isCvr = metric === 'cvr';
+                const isViews = metric === 'views';
+                const isTemuL30 = metric === 'temu_l30';
+                const values = isCvr ? data.map(d => Number(d.cvr_percent) || 0) : isViews ? data.map(d => Number(d.views) || 0) : isTemuL30 ? data.map(d => Number(d.temu_l30) || 0) : data.map(d => Number(d.price) || 0);
+                const temuChartMetricLabels = { price: 'Price', views: 'Views', cvr: 'CVR%', temu_l30: 'Temu L30' };
+                const temuChartMetricColors = { price: '#adb5bd', views: '#0000FF', cvr: '#008000', temu_l30: '#fd7e14' };
+                const bgColors = { price: 'rgba(108,117,125,0.08)', views: 'rgba(0,0,255,0.1)', cvr: 'rgba(0,128,0,0.1)', temu_l30: 'rgba(253,126,20,0.1)' };
+                const labelText = temuChartMetricLabels[metric] || 'Price';
+                const color = temuChartMetricColors[metric] || '#adb5bd';
+                const refLabelEl = document.getElementById('temuChartRefLabel');
+                const refLabelOnlyEl = document.getElementById('temuChartRefLabelOnly');
+                const refDotEl = document.getElementById('temuChartRefDot');
+                if (refLabelEl) refLabelEl.textContent = labelText;
+                if (refLabelOnlyEl) refLabelOnlyEl.textContent = labelText;
+                if (refDotEl) refDotEl.style.background = color;
+                const cvrFmt = v => (Number(v) === v ? v.toFixed(1) : v) + '%';
+                const intFmt = v => Math.round(Number(v) || 0).toLocaleString('en-US');
+                const refFmt = isCvr ? cvrFmt : (isViews || isTemuL30) ? intFmt : temuChartFmtVal;
+                skuMetricsChart.data.labels = labels;
+                skuMetricsChart.data.datasets[0].data = values;
+                skuMetricsChart.data.datasets[0].label = labelText + (metric === 'price' ? ' (USD)' : '');
+                skuMetricsChart.data.datasets[0].borderColor = color;
+                skuMetricsChart.data.datasets[0].backgroundColor = bgColors[metric] || 'rgba(108,117,125,0.08)';
+                if (skuMetricsChart.options.scales && skuMetricsChart.options.scales.y && skuMetricsChart.options.scales.y.ticks) {
+                    skuMetricsChart.options.scales.y.ticks.callback = function(v) {
+                        if (metric === 'price') return '$' + (Number(v) === v && v % 1 !== 0 ? v.toFixed(2) : Math.round(v));
+                        if (metric === 'cvr') return v.toFixed(0) + '%';
+                        return Math.round(v);
+                    };
+                }
+                const s0 = statsForArr(values);
+                setTemuRefCol(s0.max, s0.median, s0.min, refFmt);
+                const refRed = '#dc3545';
+                const refGray = '#6c757d';
+                const refGreen = '#198754';
+                const dotColors = values.map((v, i) => {
+                    if (i === 0) return refGray;
+                    return v > values[i - 1] ? '#28a745' : v < values[i - 1] ? refRed : refGray;
+                });
+                const labelColors = values.map(v => v === 0 ? refGreen : v > 0 ? refRed : refGray);
+                temuChartFirstSeriesStats = { values, median: s0.median, dataMin: s0.min, dataMax: s0.max, dotColors, labelColors, valueFmt: refFmt };
+                skuMetricsChart.data.datasets[0].pointBackgroundColor = dotColors;
+                skuMetricsChart.data.datasets[0].pointBorderColor = dotColors;
+                skuMetricsChart.data.datasets[0].pointBorderWidth = 1.5;
+                skuMetricsChart.update('active');
             })
             .catch(error => {
-                alert('Error loading metrics data. Please check console for details.');
+                $('#temuChartLoading').hide();
+                temuChartFirstSeriesStats = null;
+                const h = document.getElementById('temuCol0High');
+                const m = document.getElementById('temuCol0Med');
+                const l = document.getElementById('temuCol0Low');
+                if (h) h.textContent = '-';
+                if (m) m.textContent = '-';
+                if (l) l.textContent = '-';
+                $('#temuChartContainer').hide();
+                $('#chart-no-data-message').show();
+                console.error('Error loading Temu SKU metrics:', error);
             });
     }
     
@@ -1122,15 +1042,30 @@
 
     function initAvgViewsChart() {
         const ctx = document.getElementById('avgViewsChart').getContext('2d');
-        
-        // Register datalabels plugin if not already registered
-        if (!Chart.registry.getPlugin('datalabels')) {
-            Chart.register(ChartDataLabels);
-        }
-        
+
+        const avgViewsValueLabelsPlugin = {
+            id: 'avgViewsValueLabels',
+            afterDatasetsDraw(chart) {
+                if (!chart.data.datasets.length) return;
+                const dataset = chart.data.datasets[0];
+                const meta = chart.getDatasetMeta(0);
+                const cctx = chart.ctx;
+                cctx.save();
+                cctx.font = 'bold 11px Inter, system-ui, sans-serif';
+                cctx.textAlign = 'center';
+                cctx.textBaseline = 'bottom';
+                cctx.fillStyle = '#28a745';
+                meta.data.forEach((point, i) => {
+                    const val = dataset.data[i];
+                    if (val != null && val !== '') cctx.fillText(Math.round(val), point.x, point.y - 8);
+                });
+                cctx.restore();
+            }
+        };
+
         avgViewsChart = new Chart(ctx, {
             type: 'line',
-            plugins: [ChartDataLabels],
+            plugins: [avgViewsValueLabelsPlugin],
             data: {
                 labels: [],
                 datasets: [
@@ -1146,20 +1081,7 @@
                         pointBorderColor: '#fff',
                         pointBorderWidth: 2,
                         tension: 0.3,
-                        fill: true,
-                        datalabels: {
-                            display: true,
-                            align: 'top',
-                            offset: 8,
-                            color: '#28a745',
-                            font: {
-                                weight: 'bold',
-                                size: 11
-                            },
-                            formatter: function(value) {
-                                return value ? Math.round(value) : '';
-                            }
-                        }
+                        fill: true
                     }
                 ]
             },
@@ -1393,13 +1315,10 @@
         // SKU chart days filter
         $('#sku-chart-days-filter').on('change', function() {
             const days = $(this).val();
-            if (currentSku) {
-                if (skuMetricsChart) {
-                    skuMetricsChart.options.plugins.title.text = `Temu Metrics (${days} Days)`;
-                    skuMetricsChart.update();
-                }
-                loadSkuMetricsData(currentSku, days);
-            }
+            const daysNum = parseInt(days, 10);
+            const rangeLabel = daysNum === 60 ? 'L60' : daysNum === 14 ? 'L14' : daysNum === 7 ? 'L7' : 'L30';
+            $('#temuChartModalSuffix').text('(Rolling ' + rangeLabel + ')');
+            if (currentSku) loadSkuMetricsData(currentSku, daysNum || 30);
         });
 
         // Average Views chart days filter
@@ -1408,16 +1327,21 @@
             loadAvgViewsHistory(days);
         });
 
-        // Event delegation for chart button clicks
+        // Event delegation for chart button clicks (column-wise metric, same as Amazon)
         $(document).on('click', '.view-sku-chart', function(e) {
             e.preventDefault();
             e.stopPropagation();
-            const sku = $(this).data('sku');
+            const el = e.target.closest ? e.target.closest('.view-sku-chart') : $(this)[0];
+            const sku = $(el).data('sku');
+            currentSkuChartMetric = (el.getAttribute ? el.getAttribute('data-metric') : $(el).data('metric')) || 'price';
             currentSku = sku;
             $('#modalSkuName').text(sku);
-            $('#sku-chart-days-filter').val('7');
+            const metricLabels = { price: 'Price', views: 'Views', cvr: 'CVR%', temu_l30: 'Temu L30' };
+            $('#temuChartRefLabel').text(metricLabels[currentSkuChartMetric] || 'Price');
+            $('#temuChartModalSuffix').text('(Rolling L30)');
+            $('#sku-chart-days-filter').val('30');
             $('#chart-no-data-message').hide();
-            loadSkuMetricsData(sku, 7);
+            loadSkuMetricsData(sku, 30);
             $('#skuMetricsModal').modal('show');
         });
 
@@ -2365,7 +2289,7 @@
                         const sku = cell.getValue();
                         if (!sku) return '';
                         
-                        return `${sku} <button class="btn btn-sm ms-1 view-sku-chart" data-sku="${sku}" title="View Metrics Chart" style="border: none; background: none; color: #87CEEB; padding: 2px 6px;"><i class="fa fa-info-circle"></i></button>`;
+                        return `${sku} <button type="button" class="btn btn-sm ms-1 view-sku-chart" data-sku="${sku}" data-metric="price" title="View Price trend" style="border: none; background: none; color: #87CEEB; padding: 2px 6px;"><i class="fa fa-info-circle"></i></button>`;
                     }
                 },
               
@@ -2409,7 +2333,14 @@
                     title: "Temu L30",
                     field: "temu_l30",
                     hozAlign: "center",
-                    sorter: "number"
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const row = cell.getRow().getData();
+                        const sku = row.sku || '';
+                        const value = parseInt(cell.getValue()) || 0;
+                        const dotBtn = sku ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${sku}" data-metric="temu_l30" title="View Temu L30 chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #fd7e14;"></span></button>` : '';
+                        return `${value.toLocaleString()} ${dotBtn}`.trim();
+                    }
                 },
                 {
                     title: "Missing",
@@ -2533,16 +2464,16 @@
                     hozAlign: "center",
                     sorter: "number",
                     formatter: function(cell) {
+                        const row = cell.getRow().getData();
+                        const sku = row.sku || '';
                         const value = parseFloat(cell.getValue()) || 0;
                         let color = '#000';
-                        
-                        // eBay CVR color logic
-                        if (value <= 4) color = '#a00211'; // red
-                        else if (value > 4 && value <= 7) color = '#ffc107'; // yellow
-                        else if (value > 7 && value <= 10) color = '#28a745'; // green
-                        else color = '#ff1493'; // pink for > 10
-                        
-                        return `<span style="color: ${color}; font-weight: 600;">${value.toFixed(1)}%</span>`;
+                        if (value <= 4) color = '#a00211';
+                        else if (value > 4 && value <= 7) color = '#ffc107';
+                        else if (value > 7 && value <= 10) color = '#28a745';
+                        else color = '#ff1493';
+                        const dotBtn = sku ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${sku}" data-metric="cvr" title="View CVR% chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #008000;"></span></button>` : '';
+                        return `<span style="color: ${color}; font-weight: 600;">${value.toFixed(1)}%</span> ${dotBtn}`.trim();
                     }
                 },
                  {
@@ -2551,8 +2482,11 @@
                     hozAlign: "center",
                     sorter: "number",
                     formatter: function(cell) {
+                        const row = cell.getRow().getData();
+                        const sku = row.sku || '';
                         const value = parseInt(cell.getValue()) || 0;
-                        return value.toLocaleString();
+                        const dotBtn = sku ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${sku}" data-metric="views" title="View Views chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #0000FF;"></span></button>` : '';
+                        return `${value.toLocaleString()} ${dotBtn}`.trim();
                     }
                 },
                
@@ -2572,12 +2506,13 @@
                     field: "base_price",
                     hozAlign: "center",
                     sorter: "number",
-                    formatter: "money",
-                    formatterParams: {
-                        decimal: ".",
-                        thousand: ",",
-                        symbol: "$",
-                        precision: 2
+                    formatter: function(cell) {
+                        const row = cell.getRow().getData();
+                        const sku = row.sku || '';
+                        const value = parseFloat(cell.getValue());
+                        const str = (value === null || value === undefined || isNaN(value)) ? '' : '$' + Number(value).toFixed(2);
+                        const dotBtn = sku ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${sku}" data-metric="price" title="View Price chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #adb5bd;"></span></button>` : '';
+                        return `${str} ${dotBtn}`.trim();
                     },
                     editorParams: {
                         min: 0,

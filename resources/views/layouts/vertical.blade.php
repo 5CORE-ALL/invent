@@ -9,7 +9,7 @@
     <script src="https://cdn.jsdelivr.net/npm/highcharts@11/modules/exporting.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/highcharts@11/modules/export-data.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/highcharts@11/modules/accessibility.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/highcharts@11/themes/adaptive.js"></script>
+    <!-- Highcharts default theme used; optional: https://code.highcharts.com/themes/adaptive.js -->
     @include('layouts.shared/title-meta', ['title' => $title])
     @yield('css')
     @include('layouts.shared/head-css', ['mode' => $mode ?? '', 'demo' => $demo ?? ''])

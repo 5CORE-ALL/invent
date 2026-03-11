@@ -953,6 +953,14 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
+        // Populate temu_sku_daily_data for chart history (Price, Views, CVR%, Temu L30)
+        $schedule->command('temu:collect-metrics')
+            ->dailyAt('03:30')
+            ->timezone('America/Los_Angeles')
+            ->name('temu-collect-metrics')
+            ->withoutOverlapping()
+            ->appendOutputTo($log);
+
         $schedule->command('temu:fetch-ads-data --period=L30')
             ->dailyAt('04:00')
             ->timezone('America/Los_Angeles')
