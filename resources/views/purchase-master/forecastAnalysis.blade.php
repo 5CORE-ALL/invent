@@ -1299,18 +1299,53 @@
                     return processedItem;
                 });
 
-                // update parent rows
+                // Update parent rows with sum of all child SKUs (INV, L30, etc.)
                 processed.forEach(row => {
                     if (row.isParent) {
                         const parentKey = row.parentKey;
-                        const children = groupedSkuData[parentKey] || [];
+                        const children = (groupedSkuData[parentKey] || []).filter(c => !c.is_parent && !c.isParent);
+                        const sumInv = children.reduce((s, c) => s + (parseFloat(c.INV) || parseFloat(c.raw_data && c.raw_data["INV"]) || 0), 0);
+                        const sumL30 = children.reduce((s, c) => s + (parseFloat(c["L30"]) || parseFloat(c.raw_data && c.raw_data["L30"]) || 0), 0);
+                        const sumOrderGiven = children.reduce((s, c) => s + (parseFloat(c.order_given) || parseFloat(c.raw_data && c.raw_data["order_given"]) || 0), 0);
+                        const sumTransit = children.reduce((s, c) => s + (parseFloat(c.transit) || parseFloat(c.raw_data && c.raw_data["transit"]) || 0), 0);
+                        const sumToOrder = children.reduce((s, c) => s + (parseFloat(c.to_order) || 0), 0);
+                        const sumMOQ = children.reduce((s, c) => s + (parseFloat(c.MOQ) || parseFloat(c.raw_data && c.raw_data["MOQ"]) || 0), 0);
+                        row.INV = sumInv;
+                        row["L30"] = sumL30;
+                        row.order_given = sumOrderGiven;
+                        row.transit = sumTransit;
+                        row.to_order = sumToOrder;
+                        row.MOQ = sumMOQ;
+                        if (row.raw_data) {
+                            row.raw_data["INV"] = sumInv;
+                            row.raw_data["L30"] = sumL30;
+                            row.raw_data["order_given"] = sumOrderGiven;
+                            row.raw_data["transit"] = sumTransit;
+                            row.raw_data["to_order"] = sumToOrder;
+                            row.raw_data["MOQ"] = sumMOQ;
+                        }
                     }
+                });
+
+                // Sort so parent row is last within each Parent group (bottom of filtered rows)
+                const groupOrder = [];
+                const groups = {};
+                processed.forEach(function(row) {
+                    const p = row.Parent || '';
+                    if (!groups[p]) { groups[p] = []; groupOrder.push(p); }
+                    groups[p].push(row);
+                });
+                const sorted = [];
+                groupOrder.forEach(function(p) {
+                    const g = groups[p];
+                    g.sort(function(a, b) { return (a.is_parent ? 1 : 0) - (b.is_parent ? 1 : 0); });
+                    sorted.push.apply(sorted, g);
                 });
 
                 setTimeout(() => {
                     setCombinedFilters();
                 }, 0);
-                return processed;
+                return sorted;
             },
 
             ajaxError: function(xhr, textStatus, errorThrown) {
@@ -2379,6 +2414,21 @@
                 if (!groupedSkuData[parentKey]) return;
                 currentParentFilter = parentKey;
                 setCombinedFilters();
+                // When play is active, move the parent row (SKU containing "Parent") to the bottom of the filtered rows
+                setTimeout(function() {
+                    if (!currentParentFilter) return;
+                    const visibleRows = table.getRows(true);
+                    const parentRow = visibleRows.find(function(r) {
+                        const d = r.getData();
+                        return d && (d.is_parent === true || (d.SKU && String(d.SKU).toUpperCase().indexOf('PARENT') !== -1));
+                    });
+                    if (parentRow && visibleRows.length > 1) {
+                        const lastRow = visibleRows[visibleRows.length - 1];
+                        if (parentRow !== lastRow) {
+                            table.moveRow(parentRow, lastRow, false);
+                        }
+                    }
+                }, 50);
             }
 
             document.getElementById('play-auto').addEventListener('click', () => {
