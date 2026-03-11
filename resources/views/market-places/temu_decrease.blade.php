@@ -2695,7 +2695,7 @@
                     field: "lmp",
                     hozAlign: "center",
                     sorter: "number",
-                  
+                    editor: "input",
                     formatter: function(cell) {
                         const value = cell.getValue();
                         if (value === null || value === undefined || value === '') return '<span style="color: #999;">-</span>';
@@ -3755,6 +3755,36 @@
                     },
                     error: function(xhr) {
                         showToast('Failed to save SPRICE', 'error');
+                    }
+                });
+            }
+
+            // Handle LMP edit - save to temu_lmp table
+            if (field === 'lmp') {
+                const raw = cell.getValue();
+                const newLmp = (raw === null || raw === undefined || raw === '') ? null : parseFloat(raw);
+                if (newLmp !== null && (Number.isNaN(newLmp) || newLmp < 0)) {
+                    showToast('LMP must be a non-negative number', 'error');
+                    cell.restoreOldValue();
+                    return;
+                }
+                row.update({ lmp: newLmp });
+                row.reformat();
+                $.ajax({
+                    url: '{{ route("temu.lmp.save") }}',
+                    method: 'POST',
+                    data: {
+                        _token: '{{ csrf_token() }}',
+                        sku: data['sku'],
+                        lmp: newLmp
+                    },
+                    success: function(response) {
+                        showToast('LMP saved successfully', 'success');
+                    },
+                    error: function(xhr) {
+                        showToast('Failed to save LMP', 'error');
+                        cell.restoreOldValue();
+                        row.reformat();
                     }
                 });
             }

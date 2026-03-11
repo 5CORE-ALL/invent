@@ -2624,6 +2624,43 @@ class TemuController extends Controller
     }
 
     /**
+     * Save LMP from Temu Decrease page into temu_lmp table (match by normalized SKU, or create).
+     */
+    public function saveTemuLmp(Request $request)
+    {
+        $request->validate([
+            'sku' => 'required|string|max:255',
+            'lmp' => 'nullable|numeric|min:0',
+        ]);
+
+        $sku = trim($request->sku);
+        $lmp = $request->has('lmp') && $request->lmp !== '' && $request->lmp !== null
+            ? $this->sanitizePrice($request->lmp)
+            : null;
+
+        $normalizeSku = function ($s) {
+            $s = strtoupper(trim($s));
+            $s = preg_replace('/(\d+)\s*(PCS?|PIECES?)$/i', '$1PC', $s);
+            $s = preg_replace('/\s+/', ' ', $s);
+            return $s;
+        };
+
+        $targetNormalized = $normalizeSku($sku);
+        $existing = TemuLmp::all()->first(function ($row) use ($normalizeSku, $targetNormalized) {
+            return $normalizeSku($row->sku) === $targetNormalized;
+        });
+
+        if ($existing) {
+            $existing->lmp = $lmp;
+            $existing->save();
+        } else {
+            TemuLmp::create(['sku' => $sku, 'lmp' => $lmp]);
+        }
+
+        return response()->json(['success' => true, 'message' => 'LMP saved successfully']);
+    }
+
+    /**
      * Download Temu R Pricing Sample File
      */
     public function downloadTemuRPricingSample()

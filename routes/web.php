@@ -1472,6 +1472,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     // Temu LMP (table + upload)
     Route::get('/temu-lmp', [TemuController::class, 'temuLmpPage'])->name('temu.lmp');
     Route::post('/temu-lmp/upload', [TemuController::class, 'uploadTemuLmp'])->name('temu.lmp.upload');
+    Route::post('/temu-lmp/save', [TemuController::class, 'saveTemuLmp'])->name('temu.lmp.save');
 
     // Temu Metrics and Cell Update
     Route::get('/temu-metrics-history', [TemuController::class, 'getTemuMetricsHistory'])->name('temu.metrics.history');
