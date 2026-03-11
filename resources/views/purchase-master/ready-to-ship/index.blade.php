@@ -343,9 +343,9 @@
                                 <th data-column="22" data-column-name="nr" class="text-center">NRP<div class="resizer"></div></th>
                                 <th data-column="4" data-column-name="qty" class="text-center">Or. QTY<div class="resizer"></div></th>
                                 <th data-column="20" data-column-name="rec_qty" class="text-center">Rec. QTY<div class="resizer"></div></th>
-                                <th data-column="18" data-column-name="qty" class="text-center" hidden>Rate<div class="resizer"></div></th>
                                 <th data-column="5" data-column-name="supplier">Supplier<div class="resizer"></div>
                                 </th>
+                                <th data-column="18" data-column-name="qty" class="text-center" hidden>Rate<div class="resizer"></div></th>
                                 <th data-column="6" data-column-name="cbm" hidden>CBM<div class="resizer"></div>
                                 </th>
                                 <th data-column="19" data-column-name="total_cbm">Total CBM<div class="resizer"></div>
