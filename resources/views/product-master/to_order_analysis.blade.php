@@ -217,6 +217,21 @@
                                 </div>
                             </div>
 
+                            {{-- 💰 Amount (Or.QTY * CP) --}}
+                            <div class="col-auto">
+                                <label class="form-label fw-semibold mb-1 d-block">💰 Amount</label>
+                                <div class="fw-bold text-danger" style="font-size: 1.1rem;">
+                                    @php
+                                        $totalAmount = collect($allProcessedData ?? [])->sum(function ($row) {
+                                            $orderQty = (int) ($row->{'Or.QTY'} ?? $row->order_qty ?? 0);
+                                            $cp = (float) ($row->CP ?? ($row->{'CP'} ?? 0));
+                                            return $orderQty * $cp;
+                                        });
+                                    @endphp
+                                    {{ number_format($totalAmount, 2) }}
+                                </div>
+                            </div>
+
                             {{-- 🎯 Stage Filter --}}
                             <div class="col-auto">
                                 <label class="form-label fw-semibold mb-1 d-block">🎯 Stage</label>
