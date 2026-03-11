@@ -931,6 +931,12 @@
         let missingAmazonNonFbaFilterActive = false; // Track Missing L (Non-FBA only) filter
         let seoModeActive = false; // Track SEO mode state
 
+        // Escape string for safe use in HTML attribute (fixes SKUs with " e.g. WF 8"-890 1PC)
+        function escAttr(s) {
+            if (s == null) return '';
+            return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        }
+
         // Play / Pause parent navigation (same as product-master / eBay)
         let productUniqueParents = [];
         let isProductNavigationActive = false;
@@ -2476,16 +2482,47 @@
                             }
 
                             const isListed = !rowData.is_missing_amazon;
-                            const chartBtn = (sku && isListed) ? `<button class="btn btn-sm ms-1 view-sku-chart" data-sku="${sku}" title="View Metrics Chart" style="border: none; background: none; color: #87CEEB; padding: 2px 6px;"><i class="fa fa-info-circle"></i></button>` : '';
+                            const chartBtn = (sku && isListed) ? `<button class="btn btn-sm ms-1 view-sku-chart" data-sku="${escAttr(sku)}" title="View Metrics Chart" style="border: none; background: none; color: #87CEEB; padding: 2px 6px;"><i class="fa fa-info-circle"></i></button>` : '';
                             return `<div style="display: flex; align-items: center; gap: 5px;">
                                 <span>${sku}</span>
-                                <button class="btn btn-sm btn-link copy-sku-btn p-0" data-sku="${sku}" title="Copy SKU">
+                                <button class="btn btn-sm btn-link copy-sku-btn p-0" data-sku="${escAttr(sku)}" title="Copy SKU">
                                     <i class="fas fa-copy"></i>
                                 </button>
                                 ${chartBtn}
                             </div>`;
                         },
                      
+                    },
+                    {
+                        title: "CVR L60",
+                        field: "CVR_L60",
+                        hozAlign: "center",
+                        formatter: function(cell) {
+                            const row = cell.getRow().getData();
+                            const aL60 = parseFloat(row['units_ordered_l60']) || 0;
+                            const sess60 = parseFloat(row['sessions_l60']) || 0;
+
+                            if (sess60 === 0) return '<span style="color: #a00211; font-weight: 600;">0.0%</span>';
+
+                            const cvr = (aL60 / sess60) * 100;
+                            let color = '';
+                            
+                            if (cvr <= 4) color = '#a00211'; // red
+                            else if (cvr > 4 && cvr <= 7) color = '#ffc107'; // yellow
+                            else if (cvr > 7 && cvr <= 10) color = '#28a745'; // green
+                            else color = '#e83e8c'; // pink
+                            
+                            return `<span style="color: ${color}; font-weight: 600;">${cvr.toFixed(1)}%</span>`;
+                        },
+                        sorter: function(a, b, aRow, bRow) {
+                            const calcCVR = (row) => {
+                                const aL60 = parseFloat(row['units_ordered_l60']) || 0;
+                                const sess60 = parseFloat(row['sessions_l60']) || 0;
+                                return sess60 === 0 ? 0 : (aL60 / sess60) * 100;
+                            };
+                            return calcCVR(aRow.getData()) - calcCVR(bRow.getData());
+                        },
+                        width: 65
                     },
                     {
                         title: "CVR L30",
@@ -2499,7 +2536,7 @@
                             const sess30 = parseFloat(row['Sess30']) || 0;
 
                             if (sess30 === 0) {
-                                const dotBtn = (sku && isListed) ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${sku}" data-metric="cvr" title="View CVR% chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #008000;"></span></button>` : '';
+                                const dotBtn = (sku && isListed) ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${escAttr(sku)}" data-metric="cvr" title="View CVR% chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #008000;"></span></button>` : '';
                                 return `<span style="color: #a00211; font-weight: 600;">0.0%</span> ${dotBtn}`.trim();
                             }
 
@@ -2509,7 +2546,7 @@
                             else if (cvr > 4 && cvr <= 7) color = '#ffc107';
                             else if (cvr > 7 && cvr <= 10) color = '#28a745';
                             else color = '#e83e8c';
-                            const dotBtn = (sku && isListed) ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${sku}" data-metric="cvr" title="View CVR% chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #008000;"></span></button>` : '';
+                            const dotBtn = (sku && isListed) ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${escAttr(sku)}" data-metric="cvr" title="View CVR% chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #008000;"></span></button>` : '';
                             return `<span style="color: ${color}; font-weight: 600;">${cvr.toFixed(1)}%</span> ${dotBtn}`.trim();
                         },
                         sorter: function(a, b, aRow, bRow) {
@@ -2554,37 +2591,6 @@
                         width: 60
                     },
                     {
-                        title: "CVR L60",
-                        field: "CVR_L60",
-                        hozAlign: "center",
-                        formatter: function(cell) {
-                            const row = cell.getRow().getData();
-                            const aL60 = parseFloat(row['units_ordered_l60']) || 0;
-                            const sess60 = parseFloat(row['sessions_l60']) || 0;
-
-                            if (sess60 === 0) return '<span style="color: #a00211; font-weight: 600;">0.0%</span>';
-
-                            const cvr = (aL60 / sess60) * 100;
-                            let color = '';
-                            
-                            if (cvr <= 4) color = '#a00211'; // red
-                            else if (cvr > 4 && cvr <= 7) color = '#ffc107'; // yellow
-                            else if (cvr > 7 && cvr <= 10) color = '#28a745'; // green
-                            else color = '#e83e8c'; // pink
-                            
-                            return `<span style="color: ${color}; font-weight: 600;">${cvr.toFixed(1)}%</span>`;
-                        },
-                        sorter: function(a, b, aRow, bRow) {
-                            const calcCVR = (row) => {
-                                const aL60 = parseFloat(row['units_ordered_l60']) || 0;
-                                const sess60 = parseFloat(row['sessions_l60']) || 0;
-                                return sess60 === 0 ? 0 : (aL60 / sess60) * 100;
-                            };
-                            return calcCVR(aRow.getData()) - calcCVR(bRow.getData());
-                        },
-                        width: 65
-                    },
-                    {
                         title: "NR/RL <span class='nr-header-red-dot' style='display:inline-block;width:8px;height:8px;border-radius:50%;background:#dc3545;cursor:pointer;margin-left:3px;vertical-align:middle;' title='Show only red (NRL) rows'></span>",
                         field: "NR",
                         hozAlign: "center",
@@ -2601,7 +2607,7 @@
                             // Backend stores REQ or NRL; display NR = NRL
                             const value = (nrl === 'NR') ? 'NRL' : 'REQ';
 
-                            return `<select class="form-select form-select-sm editable-select" data-sku="${sku}" data-field="NRL"
+                            return `<select class="form-select form-select-sm editable-select" data-sku="${escAttr(sku)}" data-field="NRL"
                                 style="border: 1px solid #ddd; text-align: center; cursor: pointer; padding: 2px 4px; font-size: 16px; width: 50px; height: 28px; color: black; font-weight: bold;">
                                 <option value="REQ" ${value === 'REQ' ? 'selected' : ''} style="color: black;">🟢</option>
                                 <option value="NRL" ${value === 'NRL' ? 'selected' : ''} style="color: black;">🔴</option>
@@ -2686,7 +2692,7 @@
                             const color = isRed ? '#dc3545' : '#28a745';
                             const nextVal = isRed ? 'green' : 'red';
                             const sku = row['is_parent_summary'] ? (row['Parent'] || '') : (row['(Child) sku'] || '');
-                            return `<span class="variation-dot-click" data-sku="${sku}" data-next="${nextVal}" style="font-size: 16px; color: ${color}; cursor: pointer;" title="Click to toggle (${nextVal})">${isRed ? '🔴' : '🟢'}</span>`;
+                            return `<span class="variation-dot-click" data-sku="${escAttr(sku)}" data-next="${nextVal}" style="font-size: 16px; color: ${color}; cursor: pointer;" title="Click to toggle (${nextVal})">${isRed ? '🔴' : '🟢'}</span>`;
                         },
                         cellClick: function(e, cell) {
                             if (!e.target.classList.contains('variation-dot-click')) return;
@@ -2790,7 +2796,7 @@
                             const isListed = !row.is_missing_amazon;
                             const value = cell.getValue();
                             const num = Math.round(parseFloat(value) || 0);
-                            const dotBtn = (sku && isListed) ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${sku}" data-metric="inv" title="View INV chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #6c757d;"></span></button>` : '';
+                            const dotBtn = (sku && isListed) ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${escAttr(sku)}" data-metric="inv" title="View INV chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #6c757d;"></span></button>` : '';
                             return `${num} ${dotBtn}`.trim();
                         }
                     },
@@ -2812,7 +2818,7 @@
                             if (difference === 0) color = '#28a745';
                             else if (difference <= 3) color = '#ffc107';
                             else color = '#dc3545';
-                            const dotBtn = (sku && isListed) ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${sku}" data-metric="inv_amz" title="View INV AMZ chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #17a2b8;"></span></button>` : '';
+                            const dotBtn = (sku && isListed) ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${escAttr(sku)}" data-metric="inv_amz" title="View INV AMZ chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #17a2b8;"></span></button>` : '';
                             return `<span style="color: ${color}; font-weight: 600;">${Math.round(value)}</span> ${dotBtn}`.trim();
                         }
                     },
@@ -2829,7 +2835,7 @@
                             const isListed = !row.is_missing_amazon;
                             const value = cell.getValue();
                             const num = Math.round(parseFloat(value) || 0);
-                            const dotBtn = (sku && isListed) ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${sku}" data-metric="ovl30" title="View OV L30 chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #fd7e14;"></span></button>` : '';
+                            const dotBtn = (sku && isListed) ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${escAttr(sku)}" data-metric="ovl30" title="View OV L30 chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #fd7e14;"></span></button>` : '';
                             return `${num} ${dotBtn}`.trim();
                         }
                     },
@@ -2873,7 +2879,7 @@
                             const isListed = !row.is_missing_amazon;
                             const value = cell.getValue();
                             const num = Math.round(value || 0);
-                            const dotBtn = (sku && isListed) ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${sku}" data-metric="al30" title="View A L30 chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #e83e8c;"></span></button>` : '';
+                            const dotBtn = (sku && isListed) ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${escAttr(sku)}" data-metric="al30" title="View A L30 chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #e83e8c;"></span></button>` : '';
                             return `${num} ${dotBtn}`.trim();
                         }
                     },
@@ -2911,7 +2917,7 @@
 
                             return `
                                 <select class="form-select form-select-sm editable-select" 
-                                        data-sku="${sku}" 
+                                        data-sku="${escAttr(sku)}" 
                                         data-field="NRL"
                                         style="width: 50px; border: 1px solid gray; padding: 2px; font-size: 20px; text-align: center;">
                                     <option value="REQ" ${value === 'REQ' ? 'selected' : ''}>🟢</option>
@@ -2936,7 +2942,7 @@
 
                             return `
                                 <select class="form-select form-select-sm editable-select" 
-                                        data-sku="${sku}" 
+                                        data-sku="${escAttr(sku)}" 
                                         data-field="NRA"
                                         style="width: 50px; border: 1px solid gray; padding: 2px; font-size: 20px; text-align: center;">
                                     <option value="RA" ${value === 'RA' ? 'selected' : ''}>🟢</option>
@@ -2959,7 +2965,7 @@
                             const isListed = !row.is_missing_amazon;
                             const value = cell.getValue();
                             const num = Math.round(value || 0);
-                            const dotBtn = (sku && isListed) ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${sku}" data-metric="views" title="View View L30 chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #0000FF;"></span></button>` : '';
+                            const dotBtn = (sku && isListed) ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${escAttr(sku)}" data-metric="views" title="View View L30 chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #0000FF;"></span></button>` : '';
                             return `${num.toLocaleString('en-US')} ${dotBtn}`.trim();
                         }
                     },
@@ -2982,7 +2988,7 @@
                             const isListed = !rowData.is_missing_amazon;
 
                             // Dot icon: only for listed SKUs — opens SKU metrics chart (Price, Views, CVR%, AD%, Sold)
-                            const dotBtn = (sku && isListed) ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${sku}" title="View metrics chart (Price, Views, CVR%, AD%, Sold)" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #adb5bd;"></span></button>` : '';
+                            const dotBtn = (sku && isListed) ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${escAttr(sku)}" title="View metrics chart (Price, Views, CVR%, AD%, Sold)" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #adb5bd;"></span></button>` : '';
 
                             // If no listing, show nothing (no price, no dot)
                             if (!isListed) return '';
@@ -3018,7 +3024,7 @@
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             const sku = rowData['(Child) sku'] || '';
-                            return `<i class="fas fa-info-circle campaign-info-btn" data-sku="${sku}" style="color: #ffc107; cursor: pointer; font-size: 16px;" title="Click to view KW, PT, HL details"></i>`;
+                            return `<i class="fas fa-info-circle campaign-info-btn" data-sku="${escAttr(sku)}" style="color: #ffc107; cursor: pointer; font-size: 16px;" title="Click to view KW, PT, HL details"></i>`;
                         }
                     },
 
@@ -3117,7 +3123,7 @@
                             const isListed = !rowData.is_missing_amazon;
                             const adSpend = parseFloat(rowData.AD_Spend_L30) || 0;
                             const sales = parseFloat(rowData['A_L30']) || 0;
-                            const dotBtn = (sku && isListed) ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${sku}" data-metric="tacos" title="View TACOS% chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #FFD700;"></span></button>` : '';
+                            const dotBtn = (sku && isListed) ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${escAttr(sku)}" data-metric="tacos" title="View TACOS% chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #FFD700;"></span></button>` : '';
 
                             // If there is ad spend but no sales, show 100%
                             if (adSpend > 0 && sales === 0) {
@@ -4092,7 +4098,7 @@
                             
                             // Show link to open modal with all competitors
                             if (totalCompetitors > 0) {
-                                html += `<a href="#" class="view-lmp-competitors" data-sku="${sku}" 
+                                html += `<a href="#" class="view-lmp-competitors" data-sku="${escAttr(sku)}" 
                                     style="color: #007bff; text-decoration: none; cursor: pointer; font-size: 11px;">
                                     <i class="fa fa-eye"></i> View ${totalCompetitors}
                                 </a>`;
@@ -4123,7 +4129,7 @@
                             
                             const sku = rowData['(Child) sku'];
                             const isChecked = selectedSkus.has(sku) ? 'checked' : '';
-                            return `<input type="checkbox" class="sku-select-checkbox" data-sku="${sku}" ${isChecked} style="cursor: pointer;">`;
+                            return `<input type="checkbox" class="sku-select-checkbox" data-sku="${escAttr(sku)}" ${isChecked} style="cursor: pointer;">`;
                         },
                         width: 60
                     },
@@ -4216,7 +4222,7 @@
                             }
                             
                             // Show only icon with color, no background
-                            return `<button type="button" class="btn btn-sm apply-price-btn btn-circle" data-sku="${sku}" data-price="${sprice}" data-status="${status || ''}" title="${titleText}" style="border: none; background: none; color: ${iconColor}; padding: 0;">
+                            return `<button type="button" class="btn btn-sm apply-price-btn btn-circle" data-sku="${escAttr(sku)}" data-price="${sprice}" data-status="${status || ''}" title="${titleText}" style="border: none; background: none; color: ${iconColor}; padding: 0;">
                                 ${icon}
                             </button>`;
                         },
@@ -4692,7 +4698,7 @@
                                     <input class="form-check-input campaign-status-toggle" 
                                            type="checkbox" 
                                            role="switch" 
-                                           data-sku="${sku}"
+                                           data-sku="${escAttr(sku)}"
                                            data-campaign-id="${campaignId}"
                                            data-section="${sectionKey}"
                                            ${isEnabled ? 'checked' : ''}
