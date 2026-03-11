@@ -294,6 +294,14 @@
                         <option value="10plus">10%+</option>
                     </select>
 
+                    <select id="cvr-trend-filter" class="form-select form-select-sm"
+                        style="width: auto; display: inline-block;">
+                        <option value="all">CVR trend</option>
+                        <option value="l60_gt_l30">CVR L60 &gt; CVR L30</option>
+                        <option value="l30_gt_l60">CVR L30 &gt; CVR L60</option>
+                        <option value="equal">CVR L60 = CVR L30</option>
+                    </select>
+
                     <select id="dil-filter" class="form-select form-select-sm" style="width: auto; display: inline-block;">
                         <option value="all">DIL%</option>
                         <option value="red">Red &lt;16.7%</option>
@@ -4979,10 +4987,9 @@
                 });
             });
 
-            // SKU Search functionality
+            // SKU Search: use applyFilters() so it stacks with Sold, A L30 range, and all other filters
             $('#sku-search').on('keyup', function() {
-                const value = $(this).val();
-                table.setFilter("(Child) sku", "like", value);
+                applyFilters();
             });
 
             table.on('cellEdited', function(cell) {
@@ -5383,6 +5390,7 @@
                 const nrlFilter = $('#nrl-filter').val();
                 const gpftFilter = $('#gpft-filter').val();
                 const cvrFilter = $('#cvr-filter').val();
+                const cvrTrendFilter = $('#cvr-trend-filter').val();
                 const dilFilter = $('#dil-filter').val();
                 const ratingFilter = $('#rating-filter').val();
                 const parentFilter = $('#parent-filter').val();
@@ -5506,6 +5514,24 @@
                         if (cvrFilter === '4-7') return cvr > 4 && cvr <= 7;
                         if (cvrFilter === '7-10') return cvr > 7 && cvr <= 10;
                         if (cvrFilter === '10plus') return cvr > 10;
+                        return true;
+                    });
+                }
+
+                // CVR trend filter: CVR L60 vs CVR L30
+                if (cvrTrendFilter !== 'all') {
+                    const cvrTrendTol = 0.1; // treat as equal within 0.1%
+                    table.addFilter(function(data) {
+                        if (data.is_parent_summary) return true;
+                        const aL30 = parseFloat(data['A_L30']) || 0;
+                        const sess30 = parseFloat(data['Sess30']) || 0;
+                        const aL60 = parseFloat(data['units_ordered_l60']) || 0;
+                        const sess60 = parseFloat(data['sessions_l60']) || 0;
+                        const cvrL30 = sess30 === 0 ? 0 : (aL30 / sess30) * 100;
+                        const cvrL60 = sess60 === 0 ? 0 : (aL60 / sess60) * 100;
+                        if (cvrTrendFilter === 'l60_gt_l30') return cvrL60 > cvrL30 + cvrTrendTol;
+                        if (cvrTrendFilter === 'l30_gt_l60') return cvrL30 > cvrL60 + cvrTrendTol;
+                        if (cvrTrendFilter === 'equal') return Math.abs(cvrL60 - cvrL30) <= cvrTrendTol;
                         return true;
                     });
                 }
@@ -5967,7 +5993,7 @@
                 }, 100);
             }
 
-            $('#inventory-filter, #nrl-filter, #gpft-filter, #cvr-filter, #dil-filter, #rating-filter, #parent-filter, #status-filter, #sold-filter, #utilization-type-filter, #campaign-status-filter, #nra-filter, #price-slab-filter, #acos-slab-filter').on('change', function() {
+            $('#inventory-filter, #nrl-filter, #gpft-filter, #cvr-filter, #cvr-trend-filter, #dil-filter, #rating-filter, #parent-filter, #status-filter, #sold-filter, #utilization-type-filter, #campaign-status-filter, #nra-filter, #price-slab-filter, #acos-slab-filter').on('change', function() {
                 applyFilters();
             });
 
