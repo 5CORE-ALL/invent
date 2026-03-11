@@ -52,10 +52,23 @@ class AmazonSalesController extends Controller
         
         $hlSpent = $hlSpentData->sum('max_cost') ?? 0;
 
+        // 32 days total sales from amazon_orders + amazon_order_items (non-cancelled)
+        $endDate32 = now()->subDay()->endOfDay();
+        $startDate32 = now()->subDays(31)->startOfDay();
+        $sales32Days = (float) DB::table('amazon_orders as o')
+            ->join('amazon_order_items as i', 'o.id', '=', 'i.amazon_order_id')
+            ->where('o.order_date', '>=', $startDate32)
+            ->where('o.order_date', '<=', $endDate32)
+            ->where(function ($q) {
+                $q->whereNull('o.status')->orWhere('o.status', '!=', 'Canceled');
+            })
+            ->sum('i.price');
+
         return view('sales.amazon_daily_sales_data', [
             'kwSpent' => (float) $kwSpent,
             'ptSpent' => (float) $ptSpent,
-            'hlSpent' => (float) $hlSpent
+            'hlSpent' => (float) $hlSpent,
+            'sales32Days' => $sales32Days,
         ]);
     }
 

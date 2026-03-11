@@ -18,6 +18,7 @@ use App\Models\TemuPricing;
 use App\Models\TemuViewData;
 use App\Models\TemuAdData;
 use App\Models\TemuRPricing;
+use App\Models\TemuLmp;
 use App\Models\TemuListingStatus;
 use App\Models\TemuCampaignReport;
 use App\Models\EbayMetric;
@@ -1669,8 +1670,18 @@ class TemuController extends Controller
             // Fetch Temu Listing Status data (nr_req and listed)
             $statusData = TemuListingStatus::whereIn('sku', $skus)->get()->keyBy('sku');
 
+            // Fetch Temu LMP data (lmp, lmp_link from temu_lmp table) - match by normalized SKU
+            $allTemuLmp = TemuLmp::all();
+            $temuLmpByNormalizedSku = [];
+            foreach ($allTemuLmp as $row) {
+                $nk = $normalizeSku($row->sku);
+                if (!isset($temuLmpByNormalizedSku[$nk])) {
+                    $temuLmpByNormalizedSku[$nk] = $row;
+                }
+            }
+
             // 4. Process data - iterate through ALL product masters
-            $processedData = $productMasters->map(function($productMaster) use ($pricingData, $shopifyData, $temuSalesData, $viewData, $adData, $temuDataViewData, $amazonData, $ebayData, $rPricingData, $percentage, $temuPricingSkusNormalized, $normalizeSku, $statusData, $campaignReportL30, $campaignReportL60) {
+            $processedData = $productMasters->map(function($productMaster) use ($pricingData, $shopifyData, $temuSalesData, $viewData, $adData, $temuDataViewData, $amazonData, $ebayData, $rPricingData, $percentage, $temuPricingSkusNormalized, $normalizeSku, $statusData, $campaignReportL30, $campaignReportL60, $temuLmpByNormalizedSku) {
                 $sku = $productMaster->sku;
                 
                 // Get related data (may be null if not in Temu)
@@ -1844,6 +1855,11 @@ class TemuController extends Controller
                 $listed = $statusValue['listed'] ?? ($inventory > 0 ? 'Pending' : 'Listed');
                 $buyer_link = $statusValue['buyer_link'] ?? null;
                 $seller_link = $statusValue['seller_link'] ?? null;
+
+                // LMP and LMP Link from Temu LMP table (uploaded data)
+                $temuLmpRow = $temuLmpByNormalizedSku[$normalizeSku($sku)] ?? null;
+                $lmp = $temuLmpRow ? $temuLmpRow->lmp : null;
+                $lmp_link = $temuLmpRow ? $temuLmpRow->lmp_link : null;
                 
                 return [
                     'sku' => $sku,
@@ -1902,7 +1918,9 @@ class TemuController extends Controller
                     'spend_l60' => $spendL60,
                     'ad_sold_l60' => $adSoldL60,
                     'ad_sales_l60' => $adSalesL60,
-                    'l60_vs_l30' => $l60VsL30
+                    'l60_vs_l30' => $l60VsL30,
+                    'lmp' => $lmp,
+                    'lmp_link' => $lmp_link,
                 ];
             });
 
@@ -2520,6 +2538,126 @@ class TemuController extends Controller
             Log::error('Temu R Pricing upload error: ' . $e->getMessage());
             return back()->with('error', 'Error uploading file: ' . $e->getMessage());
         }
+    }
+
+    /**
+     * Temu LMP page: table + upload section
+     */
+    public function temuLmpPage()
+    {
+        $records = TemuLmp::orderBy('sku')->paginate(100);
+        return view('market-places.temu_lmp', compact('records'));
+    }
+
+    /**
+     * Upload Temu LMP data (Excel/CSV/TSV: SKU, LMP, LMP Link, LMP, LMP Link)
+     * Truncate then insert.
+     */
+    public function uploadTemuLmp(Request $request)
+    {
+        $request->validate([
+            'lmp_file' => 'required|file|mimes:xlsx,xls,csv,txt|max:20480'
+        ]);
+
+        try {
+            $file = $request->file('lmp_file');
+            $path = $file->getPathname();
+            $ext = strtolower($file->getClientOriginalExtension());
+
+            $rows = [];
+            if (in_array($ext, ['xlsx', 'xls'])) {
+                $spreadsheet = IOFactory::load($path);
+                $sheet = $spreadsheet->getActiveSheet();
+                $rows = $sheet->toArray();
+            } else {
+                // CSV or TXT (tab-delimited)
+                $lines = file($path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+                $delimiter = (strpos($lines[0] ?? '', "\t") !== false) ? "\t" : ',';
+                foreach ($lines as $line) {
+                    $rows[] = str_getcsv($line, $delimiter);
+                }
+            }
+
+            if (count($rows) < 2) {
+                return back()->with('error', 'File is empty or has no data rows.');
+            }
+
+            // Skip header row; data columns by index: 0=SKU, 1=LMP, 2=LMP Link, 3=LMP2, 4=LMP Link2
+            TemuLmp::truncate();
+            $imported = 0;
+            $errors = [];
+
+            for ($i = 1; $i < count($rows); $i++) {
+                $row = $rows[$i];
+                $sku = isset($row[0]) ? trim((string) $row[0]) : '';
+                if ($sku === '') {
+                    continue;
+                }
+                $lmp = isset($row[1]) && $row[1] !== '' ? $this->sanitizePrice($row[1]) : null;
+                $lmpLink = isset($row[2]) && trim((string) $row[2]) !== '' ? trim((string) $row[2]) : null;
+                $lmp2 = isset($row[3]) && $row[3] !== '' ? $this->sanitizePrice($row[3]) : null;
+                $lmpLink2 = isset($row[4]) && trim((string) $row[4]) !== '' ? trim((string) $row[4]) : null;
+
+                try {
+                    TemuLmp::create([
+                        'sku' => $sku,
+                        'lmp' => $lmp,
+                        'lmp_link' => $lmpLink,
+                        'lmp_2' => $lmp2,
+                        'lmp_link_2' => $lmpLink2,
+                    ]);
+                    $imported++;
+                } catch (\Exception $e) {
+                    $errors[] = 'Row ' . ($i + 1) . ': ' . $e->getMessage();
+                }
+            }
+
+            $msg = "Successfully imported $imported Temu LMP records.";
+            if (!empty($errors)) {
+                $msg .= ' ' . count($errors) . ' row(s) had errors.';
+            }
+            return back()->with('success', $msg)->with('upload_errors', $errors);
+        } catch (\Exception $e) {
+            Log::error('Temu LMP upload error: ' . $e->getMessage());
+            return back()->with('error', 'Error uploading file: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Save LMP from Temu Decrease page into temu_lmp table (match by normalized SKU, or create).
+     */
+    public function saveTemuLmp(Request $request)
+    {
+        $request->validate([
+            'sku' => 'required|string|max:255',
+            'lmp' => 'nullable|numeric|min:0',
+        ]);
+
+        $sku = trim($request->sku);
+        $lmp = $request->has('lmp') && $request->lmp !== '' && $request->lmp !== null
+            ? $this->sanitizePrice($request->lmp)
+            : null;
+
+        $normalizeSku = function ($s) {
+            $s = strtoupper(trim($s));
+            $s = preg_replace('/(\d+)\s*(PCS?|PIECES?)$/i', '$1PC', $s);
+            $s = preg_replace('/\s+/', ' ', $s);
+            return $s;
+        };
+
+        $targetNormalized = $normalizeSku($sku);
+        $existing = TemuLmp::all()->first(function ($row) use ($normalizeSku, $targetNormalized) {
+            return $normalizeSku($row->sku) === $targetNormalized;
+        });
+
+        if ($existing) {
+            $existing->lmp = $lmp;
+            $existing->save();
+        } else {
+            TemuLmp::create(['sku' => $sku, 'lmp' => $lmp]);
+        }
+
+        return response()->json(['success' => true, 'message' => 'LMP saved successfully']);
     }
 
     /**
