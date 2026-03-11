@@ -139,6 +139,19 @@ return [
             'level' => 'error',
             'days' => 14,
         ],
+
+        'reverb_daily' => [
+            'driver' => 'daily',
+            'path' => storage_path('logs/reverb/reverb-' . php_sapi_name() . '.log'),
+            'level' => 'debug',
+            'days' => 14,
+        ],
+        'reverb_sync' => [
+            'driver' => 'daily',
+            'path' => storage_path('logs/reverb/sync-' . php_sapi_name() . '.log'),
+            'level' => 'debug',
+            'days' => 30,
+        ],
     ],
 
 ];

@@ -8,7 +8,10 @@ use App\Console\Commands\AmazonSpCampaignReports;
 use App\Console\Commands\FetchGoogleAdsCampaigns;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Foundation\Console\Kernel as ConsoleKernel;
+use App\Console\Commands\CheckReverbListings;
 use App\Console\Commands\FetchReverbData;
+use App\Console\Commands\RelistReverbProducts;
+use App\Console\Commands\SyncReverbListingStatuses;
 use App\Console\Commands\FetchTopDawgData;
 use App\Console\Commands\SyncTopDawgAll;
 use App\Console\Commands\FetchMacyProducts;
@@ -29,7 +32,10 @@ use App\Console\Commands\FetchShopifyB2CMetrics;
 class Kernel extends ConsoleKernel
 {
     protected $commands = [
+        CheckReverbListings::class,
         FetchReverbData::class,
+        RelistReverbProducts::class,
+        SyncReverbListingStatuses::class,
         FetchTopDawgData::class,
         SyncTopDawgAll::class,
         \App\Console\Commands\ProcessPendingReverbOrders::class,
@@ -175,11 +181,11 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
         // Reverb: full sync (orders + Shopify→Reverb inventory) every 5 minutes
-        $schedule->command('reverb:sync-all')
-            ->everyThirtyMinutes()
-            ->timezone('UTC')
-            ->name('reverb-sync-all')
-            ->withoutOverlapping(15);
+        // $schedule->command('reverb:sync-all')
+        //     ->everyThirtyMinutes()
+        //     ->timezone('UTC')
+        //     ->name('reverb-sync-all')
+        //     ->withoutOverlapping(15);
         $schedule->command('app:fetch-ebay-reports')
             ->hourly()
             ->timezone('UTC');
@@ -863,29 +869,37 @@ class Kernel extends ConsoleKernel
         | REVERB
         |--------------------------------------------------------------------------
         */
-        $schedule->command('reverb:fetch')
-            ->everyFiveMinutes()
-            ->timezone('UTC')
-            ->name('reverb-fetch')
-            ->withoutOverlapping()
-            ->runInBackground()
-            ->appendOutputTo($log);
+        // $schedule->command('reverb:fetch')
+        //     ->everyFiveMinutes()
+        //     ->timezone('UTC')
+        //     ->name('reverb-fetch')
+        //     ->withoutOverlapping()
+        //     ->runInBackground()
+        //     ->appendOutputTo($log);
 
-        $schedule->command('reverb:daily --days=60')
-            ->dailyAt('01:10')
-            ->timezone('Asia/Kolkata')
-            ->name('reverb-daily')
-            ->withoutOverlapping()
-            ->runInBackground()
-            ->appendOutputTo($log);
+        // $schedule->command('reverb:daily --days=60')
+        //     ->dailyAt('01:10')
+        //     ->timezone('Asia/Kolkata')
+        //     ->name('reverb-daily')
+        //     ->withoutOverlapping()
+        //     ->runInBackground()
+        //     ->appendOutputTo($log);
 
-        $schedule->command('shopify:retry-pending-orders')
-            ->hourly()
-            ->timezone('UTC')
-            ->name('shopify-retry-pending-orders')
-            ->withoutOverlapping(30)
-            ->runInBackground()
-            ->appendOutputTo($log);
+        // $schedule->command('reverb:sync-listing-statuses')
+        //     ->everySixHours()
+        //     ->timezone('UTC')
+        //     ->name('reverb-sync-listing-statuses')
+        //     ->withoutOverlapping(60)
+        //     ->runInBackground()
+        //     ->appendOutputTo($log);
+
+        // $schedule->command('shopify:retry-pending-orders')
+        //     ->hourly()
+        //     ->timezone('UTC')
+        //     ->name('shopify-retry-pending-orders')
+        //     ->withoutOverlapping(30)
+        //     ->runInBackground()
+        //     ->appendOutputTo($log);
 
         /*
         |--------------------------------------------------------------------------

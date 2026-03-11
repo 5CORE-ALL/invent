@@ -6,10 +6,12 @@ use GuzzleHttp\Client;
 use GuzzleHttp\Psr7\Request;
 use Aws\Signature\SignatureV4;
 use Aws\Credentials\Credentials;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use App\Models\ProductStockMapping;
 use App\Models\ReverbProduct;
+use App\Models\ReverbListingStatus;
 
 class ReverbApiService
 {
@@ -35,75 +37,187 @@ class ReverbApiService
     }
     
 
- public function getInventory()
-{
-    $inventory = [];
-    $url = 'https://api.reverb.com/api/my/listings'; // Start URL
+    /**
+     * Normalize listing state/status from API response.
+     *
+     * @param array<string, mixed> $item
+     */
+    public function normalizeListingState(array $item): string
+    {
+        $state = $item['state'] ?? $item['status'] ?? null;
+        if (is_array($state)) {
+            $state = $state['slug'] ?? $state['name'] ?? $state['title'] ?? 'unknown';
+        }
+        if ($state === null && isset($item['_embedded']['state'])) {
+            $emb = $item['_embedded']['state'];
+            $state = is_array($emb) ? ($emb['slug'] ?? $emb['name'] ?? 'unknown') : (string) $emb;
+        }
+        return $state ? strtolower(trim((string) $state)) : 'unknown';
+    }
 
-    try {
-        while ($url) {
-            $response = Http::withoutVerifying()->withHeaders([
-                'Authorization' => 'Bearer ' . config('services.reverb.token'),
-                'Accept' => 'application/json',
-                'Accept-Version' => '3.0',
-            ])->get($url);
+    /**
+     * Fetch ALL Reverb listings (including ended) and update ProductStockMapping + ReverbListingStatus.
+     * Uses state=all&per_page=100. Ended/out_of_stock/suspended => inventory_reverb=0; live => actual quantity.
+     * SKUs not in API response get inventory_reverb=0 (cleanup).
+     */
+    public function getInventory()
+    {
+        $log = Log::channel('reverb_sync');
+        $inventory = [];
+        $url = 'https://api.reverb.com/api/my/listings?state=all&per_page=100';
+        $pageNumber = 0;
+        $startedAt = now()->toIso8601String();
 
-            if ($response->failed()) {
-                Log::error('Failed to fetch inventory page.', [
-                    'url' => $url,
-                    'status' => $response->status(),
-                    'body' => $response->body()
-                ]);
-                return []; // or break; depending on whether you want partial data
+        try {
+            if (!File::isDirectory(storage_path('logs/reverb'))) {
+                File::ensureDirectoryExists(storage_path('logs/reverb'));
             }
+            $log->info('Reverb getInventory started', [
+                'timestamp' => $startedAt,
+                'initial_url' => $url,
+            ]);
 
-            $data = $response->json();
+            while ($url) {
+                $pageNumber++;
+                $log->debug('Reverb getInventory page request', [
+                    'page' => $pageNumber,
+                    'url' => $url,
+                ]);
 
-            // Process listings
-            if (isset($data['listings']) && is_array($data['listings'])) {
-                foreach ($data['listings'] as $item) {
-                    if (isset($item['sku'], $item['inventory'])) {
-                        $inventory[] = [
-                            'sku' => $item['sku'],
-                            'quantity' => $item['inventory'],
-                        ];
+                $response = Http::withoutVerifying()
+                    ->timeout(60)
+                    ->withHeaders([
+                        'Authorization' => 'Bearer ' . config('services.reverb.token'),
+                        'Accept' => 'application/hal+json',
+                        'Accept-Version' => '3.0',
+                    ])->get($url);
+
+                if ($response->failed()) {
+                    $log->error('Reverb getInventory API error', [
+                        'page' => $pageNumber,
+                        'url' => $url,
+                        'status' => $response->status(),
+                        'body' => $response->body(),
+                    ]);
+                    Log::channel('reverb_daily')->error('Reverb getInventory API error', [
+                        'page' => $pageNumber,
+                        'status' => $response->status(),
+                        'body' => substr($response->body(), 0, 500),
+                    ]);
+                    return [];
+                }
+
+                $data = $response->json();
+                $listings = $data['listings'] ?? [];
+                $pageCount = is_array($listings) ? count($listings) : 0;
+                $cumulativeTotal = count($inventory) + $pageCount;
+
+                $log->info('Reverb getInventory page result', [
+                    'page' => $pageNumber,
+                    'listings_on_page' => $pageCount,
+                    'cumulative_total' => $cumulativeTotal,
+                ]);
+
+                if (is_array($listings)) {
+                    foreach ($listings as $item) {
+                        $state = $this->normalizeListingState($item);
+                        $sku = isset($item['sku']) ? trim((string) $item['sku']) : null;
+                        $qty = isset($item['inventory']) ? (int) $item['inventory'] : 0;
+                        $listingId = $item['id'] ?? null;
+                        $log->debug('Reverb getInventory listing', [
+                            'sku' => $sku,
+                            'quantity' => $qty,
+                            'state' => $state,
+                            'listing_id' => $listingId,
+                        ]);
+                        if ($sku !== null && $sku !== '') {
+                            $inventory[] = [
+                                'sku' => $sku,
+                                'quantity' => $qty,
+                                'state' => $state,
+                                'listing_id' => $listingId,
+                                'title' => $item['title'] ?? null,
+                            ];
+                        }
                     }
                 }
-            }
 
-            // Check for next page
-            if (isset($data['_links']['next']['href'])) {
-                $url = $data['_links']['next']['href'];
-                // Clean URL: Reverb sometimes adds trailing spaces in href
-                $url = trim($url);
-            } else {
-                $url = null; // No more pages
-            }
-        }
-       
-        foreach ($inventory as $sku => $data) {
-            $sku = $data['sku'] ?? null;
-                    $quantity = $data['quantity'];
-                if (!$sku) {
-                    Log::warning('Missing SKU in parsed Amazon data', $item);
-                    continue;
+                $nextHref = $data['_links']['next']['href'] ?? null;
+                $url = $nextHref ? trim($nextHref) : null;
+                if ($url) {
+                    usleep(200000);
                 }
-                
-            ProductStockMapping::where('sku', $sku)->update(['inventory_reverb' => (int) $quantity]);
-            // ProductStockMapping::updateOrCreate(
-            //     ['sku' => $sku],
-            //     ['inventory_reverb'=>$quantity,]
-            // );
-        }
-        return $inventory;
+            }
 
-    } catch (\Throwable $e) {
-        Log::error('Exception during paginated inventory fetch: ' . $e->getMessage(), [
-            'trace' => $e->getTraceAsString()
-        ]);
-        return [];
+            $totalListings = count($inventory);
+            $log->info('Reverb getInventory fetch summary', [
+                'total_listings_found' => $totalListings,
+                'pages_fetched' => $pageNumber,
+                'timestamp' => now()->toIso8601String(),
+            ]);
+
+            $apiSkus = [];
+            $zeroStates = ['ended', 'out_of_stock', 'suspended'];
+
+            foreach ($inventory as $entry) {
+                $sku = $entry['sku'];
+                $state = $entry['state'];
+                $listingId = $entry['listing_id'];
+                $qty = $entry['quantity'];
+                $effectiveQty = in_array($state, $zeroStates, true) ? 0 : $qty;
+                $apiSkus[$sku] = true;
+
+                ReverbListingStatus::updateOrCreate(
+                    ['sku' => $sku],
+                    [
+                        'value' => [
+                            'state' => $state,
+                            'listing_id' => $listingId,
+                            'inventory' => $qty,
+                            'title' => $entry['title'] ?? null,
+                            'updated_at' => now()->toIso8601String(),
+                        ],
+                    ]
+                );
+
+                $affected = ProductStockMapping::where('sku', $sku)->update(['inventory_reverb' => $effectiveQty]);
+                if ($affected > 0) {
+                    $log->debug('Reverb getInventory updated stock', ['sku' => $sku, 'inventory_reverb' => $effectiveQty, 'state' => $state]);
+                }
+            }
+
+            $updatedCount = count($apiSkus);
+            $dbTotalSkus = ProductStockMapping::count();
+            $skusToZero = ProductStockMapping::whereNotIn('sku', array_keys($apiSkus))->pluck('sku')->all();
+            $cleanupCount = 0;
+            if (count($skusToZero) > 0) {
+                $cleanupCount = ProductStockMapping::whereIn('sku', $skusToZero)->update(['inventory_reverb' => 0]);
+                $log->info('Reverb getInventory cleanup: set inventory_reverb=0 for SKUs not in API', [
+                    'skus_affected' => $cleanupCount,
+                    'sample' => array_slice($skusToZero, 0, 20),
+                ]);
+            }
+
+            $log->info('Reverb getInventory DB update comparison', [
+                'total_listings_from_api' => $totalListings,
+                'skus_updated_in_db' => $updatedCount,
+                'cleanup_zeroed' => $cleanupCount,
+                'product_stock_mapping_total_rows' => $dbTotalSkus,
+            ]);
+
+            return $inventory;
+        } catch (\Throwable $e) {
+            $log->error('Reverb getInventory exception', [
+                'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            Log::channel('reverb_daily')->error('Reverb getInventory exception', [
+                'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            return [];
+        }
     }
-}
 
     /**
      * Get Reverb listing ID for a SKU.
@@ -263,6 +377,94 @@ class ReverbApiService
             Log::error('Reverb updatePrice exception: ' . $e->getMessage(), [
                 'sku' => $sku,
                 'listing_id' => $listingId,
+                'trace' => $e->getTraceAsString(),
+            ]);
+            return [
+                'success' => false,
+                'message' => 'Exception: ' . $e->getMessage(),
+                'listing_id' => $listingId,
+            ];
+        }
+    }
+
+    /**
+     * Update product title on Reverb by SKU.
+     * Uses getListingIdBySku then PUT to /api/listings/{id} with title.
+     *
+     * @param string $sku
+     * @param string $title
+     * @return array{success: bool, message: string, listing_id?: string}
+     */
+    public function updateTitle(string $sku, string $title): array
+    {
+        $token = config('services.reverb.token');
+        if (!$token) {
+            return [
+                'success' => false,
+                'message' => 'Reverb API token not configured (services.reverb.token).',
+            ];
+        }
+
+        $title = trim($title);
+        if ($title === '') {
+            return [
+                'success' => false,
+                'message' => 'Title cannot be empty.',
+            ];
+        }
+
+        $listingId = $this->getListingIdBySku($sku);
+        if ($listingId === null) {
+            return [
+                'success' => false,
+                'message' => "No Reverb listing found for SKU: {$sku}.",
+            ];
+        }
+
+        $updateUrl = 'https://api.reverb.com/api/listings/' . $listingId;
+        $payload = ['title' => $title];
+
+        try {
+            $response = Http::withoutVerifying()
+                ->timeout(30)
+                ->withHeaders([
+                    'Authorization' => 'Bearer ' . $token,
+                    'Accept' => 'application/hal+json',
+                    'Accept-Version' => '3.0',
+                    'Content-Type' => 'application/hal+json',
+                ])
+                ->put($updateUrl, $payload);
+
+            if ($response->successful()) {
+                $titlePreview = strlen($title) > 80 ? substr($title, 0, 80) . '...' : $title;
+                Log::info('Reverb title updated successfully', [
+                    'sku' => $sku,
+                    'listing_id' => $listingId,
+                    'title_preview' => $titlePreview,
+                ]);
+                return [
+                    'success' => true,
+                    'message' => "Title updated for SKU: {$sku} (listing ID: {$listingId}).",
+                    'listing_id' => $listingId,
+                ];
+            }
+
+            $body = $response->body();
+            $status = $response->status();
+            Log::error('Reverb title update failed', [
+                'sku' => $sku,
+                'listing_id' => $listingId,
+                'status' => $status,
+                'body' => $body,
+            ]);
+            return [
+                'success' => false,
+                'message' => "Reverb API error (HTTP {$status}): " . $body,
+                'listing_id' => $listingId,
+            ];
+        } catch (\Throwable $e) {
+            Log::error('Reverb updateTitle exception: ' . $e->getMessage(), [
+                'sku' => $sku,
                 'trace' => $e->getTraceAsString(),
             ]);
             return [
