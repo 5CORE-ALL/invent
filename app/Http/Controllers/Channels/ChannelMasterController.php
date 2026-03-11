@@ -1127,7 +1127,24 @@ class ChannelMasterController extends Controller
     {
         $result = [];
 
-        // Get metrics from marketplace_daily_metrics table (pre-calculated, 31 days of L30 data to match Amazon Seller Central)
+        // 32 days sales/orders from actual orders (California Pacific, ending today) — same as amazon/daily-sales page
+        $todayPacific = Carbon::now('America/Los_Angeles');
+        $endToday = $todayPacific->copy()->endOfDay();
+        $start32 = $todayPacific->copy()->subDays(31)->startOfDay();
+        $orderAgg = DB::table('amazon_orders as o')
+            ->join('amazon_order_items as i', 'o.id', '=', 'i.amazon_order_id')
+            ->where('o.order_date', '>=', $start32)
+            ->where('o.order_date', '<=', $endToday)
+            ->where(function ($q) {
+                $q->whereNull('o.status')->orWhere('o.status', '!=', 'Canceled');
+            })
+            ->selectRaw('COUNT(DISTINCT o.amazon_order_id) as order_count, COALESCE(SUM(i.quantity), 0) as total_qty, COALESCE(SUM(i.price), 0) as total_sales')
+            ->first();
+        $l30SalesFromOrders = (float) ($orderAgg->total_sales ?? 0);
+        $l30OrdersFromOrders = (int) ($orderAgg->order_count ?? 0);
+        $totalQuantityFromOrders = (int) ($orderAgg->total_qty ?? 0);
+
+        // Get other metrics from marketplace_daily_metrics (PFT%, ROI, TACOS, ad spend, etc.)
         $metrics = MarketplaceDailyMetric::where('channel', 'Amazon')->latest('date')->first();
         
         // Amazon shows 31 days of L30 data - L60 data disabled
@@ -1182,9 +1199,10 @@ class ChannelMasterController extends Controller
         }
         */
 
-        $l30Sales = $metrics?->total_sales ?? 0;
-        $l30Orders = $metrics?->total_orders ?? 0;
-        $totalQuantity = $metrics?->total_quantity ?? 0;
+        // Prefer order-based L30 (from amazon_orders); fallback to metrics when no orders
+        $l30Sales = $l30OrdersFromOrders > 0 ? $l30SalesFromOrders : ($metrics?->total_sales ?? 0);
+        $l30Orders = $l30OrdersFromOrders > 0 ? $l30OrdersFromOrders : ($metrics?->total_orders ?? 0);
+        $totalQuantity = $totalQuantityFromOrders > 0 ? $totalQuantityFromOrders : ($metrics?->total_quantity ?? 0);
         $totalProfit = $metrics?->total_pft ?? 0;
         $totalCogs = $metrics?->total_cogs ?? 0;
         $gProfitPct = $metrics?->pft_percentage ?? 0;

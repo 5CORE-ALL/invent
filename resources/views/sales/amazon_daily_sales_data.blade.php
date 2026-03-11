@@ -71,13 +71,13 @@
 @section('content')
     @include('layouts.shared.page-title', [
         'page_title' => 'Amazon Daily Sales Data',
-        'sub_title' => 'Amazon Daily Sales Data Analysis (L31)',
+        'sub_title' => 'Amazon Daily Sales Data (Last 32 Days, California)',
     ])
     <div class="toast-container"></div>
     <div class="row">
         <div class="card shadow-sm">
             <div class="card-body py-3">
-                <h4>Amazon Daily Sales Data (L30 - Last 30 Days)</h4>
+                <h4>Amazon Daily Sales Data </h4>
                 <p class="text-muted small mb-2" id="date-range-info">Date Range: Loading...</p>
                 <div class="d-flex align-items-center flex-wrap gap-2 mb-3">
                     <!-- Column Visibility Dropdown -->
@@ -106,13 +106,11 @@
                         <span class="badge bg-primary fs-6 p-2" id="total-orders-badge" style="color: white; font-weight: bold;">Total Orders: 0</span>
                         <span class="badge bg-success fs-6 p-2" id="total-quantity-badge" style="color: white; font-weight: bold;">Total Quantity: 0</span>
                         <span class="badge fs-6 p-2" id="total-sales-badge" style="background-color: #17a2b8; color: white; font-weight: bold;">Total Sales: $0.00</span>
-                        <span class="badge bg-info fs-6 p-2" id="total-revenue-badge" style="color: white; font-weight: bold;">Total Revenue: $0.00</span>
                         <span class="badge bg-danger fs-6 p-2" id="pft-percentage-badge" style="color: white; font-weight: bold;">GPFT %: 0%</span>
                         <span class="badge fs-6 p-2" id="roi-percentage-badge" style="background-color: purple; color: white; font-weight: bold;">ROI %: 0%</span>
                         <span class="badge bg-warning fs-6 p-2" id="avg-price-badge" style="color: black; font-weight: bold;">Avg Price: $0.00</span>
                         <span class="badge bg-dark fs-6 p-2" id="pft-total-badge" style="color: white; font-weight: bold;">GPFT Total: $0.00</span>
-                        <span class="badge bg-secondary fs-6 p-2" id="l30-sales-badge" style="color: white; font-weight: bold;">L30 Sales: $0.00</span>
-                        <span class="badge fs-6 p-2" id="sales-32-days-badge" style="background-color: #0d6efd; color: white; font-weight: bold;">32 Days Sales (Orders): ${{ number_format($sales32Days ?? 0, 2) }}</span>
+                        <span class="badge fs-6 p-2" id="sales-32-days-badge" style="background-color: #0d6efd; color: white; font-weight: bold;">Sales: ${{ number_format($sales32Days ?? 0, 2) }}</span>
                         <span class="badge bg-primary fs-6 p-2" id="total-cogs-badge" style="color: white; font-weight: bold;">Total COGS: $0.00</span>
                         <span class="badge fs-6 p-2" id="pt-spent-badge" style="background-color: #28a745; color: white; font-weight: bold;">PT Spent: ${{ number_format($ptSpent ?? 0, 0) }}</span>
                         <span class="badge fs-6 p-2" id="kw-spent-badge" style="background-color: #ffc107; color: black; font-weight: bold;">KW Spent: ${{ number_format($kwSpent ?? 0, 0) }}</span>
@@ -203,7 +201,6 @@
                             dates.sort();
                             const startDate = new Date(dates[0]).toLocaleDateString();
                             const endDate = new Date(dates[dates.length - 1]).toLocaleDateString();
-                            $('#date-range-info').text(`Date Range: ${startDate} to ${endDate} (Pacific Time)`);
                         }
                     }
                 }
@@ -614,7 +611,6 @@
                 pftBadge.removeClass('bg-dark').addClass('bg-danger');
             }
             
-            $('#l30-sales-badge').text('L30 Sales: $' + totalL30Sales.toFixed(2));
             $('#total-cogs-badge').text('Total COGS: $' + totalCogs.toFixed(2));
             $('#tacos-percentage-badge').text('TACOS %: ' + tacosPercentage.toFixed(1) + '%');
             $('#m-pft-badge').text('N PFT: ' + mPft.toFixed(1) + '%');
