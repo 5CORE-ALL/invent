@@ -1429,6 +1429,9 @@
             const groupedChildrenMap = {};
             const visibleParentKeys = new Set();
 
+            // Use NRP column header filter value so "All" / REQ / 2BDC / LATER work from column dropdown
+            const nrpFilterValue = (typeof table.getHeaderFilterValue === 'function' ? table.getHeaderFilterValue("nr") : undefined) ?? currentNRPFilter ?? '';
+
             // Calculate total restock count
             const restockCount = allData.filter(item => {
                 const invValue = item.raw_data ? item.raw_data["INV"] : item["INV"];
@@ -1452,16 +1455,16 @@
                 const children = groupedChildrenMap[parentKey];
 
                 const matchingChildren = children.filter(child => {
-                    // NRP filter - treat empty/null as REQ (matching formatter logic)
+                    // NRP filter - use column header value: "" = All (show all), REQ/NR/LATER = filter to that value
                     const childNR = child.nr || '';
-                    const effectiveChildNR = childNR === '' ? 'REQ' : childNR;
-                    const nrpMatch = !currentNRPFilter || effectiveChildNR === currentNRPFilter;
+                    const effectiveChildNR = (childNR === '' ? 'REQ' : childNR).trim().toUpperCase();
+                    const nrpMatch = !nrpFilterValue || effectiveChildNR === nrpFilterValue;
                     
-                    // NR match - if NRP filter is set to NR, show NR rows even if hideNRYes is true
-                    const nrMatch = !hideNRYes || child.nr !== 'NR' || (currentNRPFilter === 'NR');
+                    // NR match - when NRP filter is All or NR, show NR rows; else respect hideNRYes
+                    const nrMatch = (nrpFilterValue === '' || nrpFilterValue === 'NR') || !hideNRYes || child.nr !== 'NR';
                     
-                    // LATER match - if NRP filter is set to LATER, show LATER rows even if hideLATERYes is true
-                    const laterMatch = !hideLATERYes || child.nr !== 'LATER' || (currentNRPFilter === 'LATER');
+                    // LATER match - when NRP filter is All or LATER, show LATER rows; else respect hideLATERYes
+                    const laterMatch = (nrpFilterValue === '' || nrpFilterValue === 'LATER') || !hideLATERYes || child.nr !== 'LATER';
                     
                     // Stage filter - check stage field or transit field
                     // If filter is "__blank__", match empty/null/undefined stage
@@ -1526,16 +1529,17 @@
                         true;
                 }
 
-                // NRP filter - treat empty/null as REQ (matching formatter logic)
+                // NRP filter - use column header value so "All" shows REQ+2BDC+LATER; REQ/NR/LATER filter to that value
+                const rowNrpFilterValue = (typeof table.getHeaderFilterValue === 'function' ? table.getHeaderFilterValue("nr") : undefined) ?? currentNRPFilter ?? '';
                 const dataNR = data.nr || '';
-                const effectiveNR = dataNR === '' ? 'REQ' : dataNR;
-                const nrpMatch = !currentNRPFilter || effectiveNR === currentNRPFilter;
+                const effectiveNR = (dataNR === '' ? 'REQ' : String(dataNR).trim().toUpperCase());
+                const nrpMatch = !rowNrpFilterValue || effectiveNR === rowNrpFilterValue;
                 
-                // NR match - if NRP filter is set to NR, show NR rows even if hideNRYes is true
-                const matchesNR = hideNRYes ? (data.nr !== 'NR' || currentNRPFilter === 'NR') : true;
+                // When NRP filter is All or NR, show NR rows; else hide NR if hideNRYes
+                const matchesNR = (rowNrpFilterValue === '' || rowNrpFilterValue === 'NR') || !hideNRYes || data.nr !== 'NR';
                 
-                // LATER match - if NRP filter is set to LATER, show LATER rows even if hideLATERYes is true
-                const matchesLATER = hideLATERYes ? (data.nr !== 'LATER' || currentNRPFilter === 'LATER') : true;
+                // When NRP filter is All or LATER, show LATER rows; else hide LATER if hideLATERYes
+                const matchesLATER = (rowNrpFilterValue === '' || rowNrpFilterValue === 'LATER') || !hideLATERYes || data.nr !== 'LATER';
                 
                 // Stage filter - check stage field or transit field
                 // If filter is "__blank__", match empty/null/undefined stage
@@ -2547,13 +2551,32 @@
                 setCombinedFilters();
             });
 
-            // NRP filter event listener
+            // NRP filter event listener (toolbar) – sync column header filter and recompute
             document.getElementById('nrp-filter').addEventListener('change', function(e) {
                 currentNRPFilter = e.target.value;
+                const tbl = Tabulator.findTable("#forecast-table")[0];
+                if (tbl && typeof tbl.setHeaderFilterValue === 'function') {
+                    tbl.setHeaderFilterValue("nr", currentNRPFilter);
+                }
                 setCombinedFilters();
             });
 
-
+            // When NRP column header filter (All/REQ/2BDC/LATER) changes, sync toolbar and recompute
+            const tableEl = document.getElementById('forecast-table');
+            if (tableEl) {
+                tableEl.addEventListener('change', function(e) {
+                    if (e.target.closest && e.target.closest('.tabulator-col[tabulator-field="nr"]')) {
+                        const tbl = Tabulator.findTable("#forecast-table")[0];
+                        if (tbl && typeof tbl.getHeaderFilterValue === 'function') {
+                            const val = tbl.getHeaderFilterValue("nr");
+                            currentNRPFilter = (val !== undefined && val !== null) ? val : '';
+                            const sel = document.getElementById('nrp-filter');
+                            if (sel) sel.value = currentNRPFilter;
+                        }
+                        setCombinedFilters();
+                    }
+                });
+            }
         });
 
         // Scout products view handler
