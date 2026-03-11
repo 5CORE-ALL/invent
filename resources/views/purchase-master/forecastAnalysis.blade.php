@@ -419,6 +419,8 @@
             layout: "fitDataFill",
             pagination: true,
             paginationSize: 200,
+            initialSort: [{ column: "Parent", dir: "asc" }],
+            initialHeaderFilter: [{ field: "nr", value: "" }],
             paginationCounter: "rows",
             movableColumns: false,
             resizableColumns: true,
@@ -911,6 +913,25 @@
                         return normalized;
                     },
                     headerSort: false,
+                    headerFilter: "list",
+                    headerFilterParams: {
+                        values: { "": "All", "REQ": "REQ", "NR": "2BDC", "LATER": "LATER" },
+                        clearable: false,
+                        listOnEmpty: true
+                    },
+                    headerFilterEmptyCheck: function(value) {
+                        return value === "" || value === null || value === undefined;
+                    },
+                    headerFilterFunc: function(headerValue, rowValue, rowData, filterParams) {
+                        // When "All" is selected (headerValue is ""), show every row
+                        if (headerValue === "" || headerValue === null || headerValue === undefined) {
+                            return true;
+                        }
+                        // Normalize row value: empty/null → REQ (match formatter logic)
+                        const raw = rowValue ?? rowData.nr ?? '';
+                        const normalized = String(raw).trim().toUpperCase() || 'REQ';
+                        return normalized === headerValue;
+                    },
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         let value = cell.getValue();
@@ -1344,6 +1365,8 @@
 
                 setTimeout(() => {
                     setCombinedFilters();
+                    // Default sort by Parent so rows are grouped; all rows visible via filter defaults
+                    table.setSort([{ column: "Parent", dir: "asc" }]);
                 }, 0);
                 return sorted;
             },
