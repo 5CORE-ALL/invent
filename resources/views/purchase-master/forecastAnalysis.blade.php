@@ -37,6 +37,29 @@
         #image-hover-preview {
             transition: opacity 0.2s ease;
         }
+
+        /* Center-align all header text */
+        .tabulator .tabulator-header .tabulator-col,
+        .tabulator .tabulator-header .tabulator-col .tabulator-col-content {
+            text-align: center;
+        }
+        /* Hide sort arrows in header */
+        .tabulator .tabulator-header .tabulator-col .tabulator-arrow {
+            display: none !important;
+        }
+        .tabulator .tabulator-header .tabulator-header-filter {
+            display: flex;
+            justify-content: center;
+        }
+
+        /* Supplier column: ensure column and filter don't truncate text */
+        .tabulator .tabulator-header .tabulator-col[tabulator-field="Supplier Tag"] .tabulator-header-filter input,
+        .tabulator .tabulator-header-filter input.supplier-header-filter {
+            max-width: 50% !important;
+            width: 50% !important;
+            min-width: 90px !important;
+            box-sizing: border-box;
+        }
     </style>
 @endsection
 
@@ -149,9 +172,9 @@
                                 <option value="transit">Transit</option>
                             </select>
 
-                            <!-- NRP Filter -->
+                            <!-- NRP Filter (ALL Items = show all) -->
                             <select id="nrp-filter" class="form-select-sm border border-primary" style="width: 150px;">
-                                <option value="">All NRP</option>
+                                <option value="" selected>ALL Items</option>
                                 <option value="NR">2BDC</option>
                                 <option value="REQ">REQ</option>
                                 <option value="LATER">LATER</option>
@@ -846,21 +869,26 @@
                     title: "Supplier",
                     field: "Supplier Tag",
                     accessor: row => row["Supplier Tag"],
+                    minWidth: 200,
                     headerSort: false,
+                    headerFilter: "input",
+                    headerFilterPlaceholder: "Search supplier...",
+                    headerFilterFunc: "like",
+                    headerFilterParams: { attributes: { class: "supplier-header-filter", style: "width:50%; max-width:50%; min-width:90px; box-sizing:border-box;" } },
                     formatter: function(cell) {
                         const tag = cell.getValue() || '';
                         const rowData = cell.getRow().getData();
                         const parent = (rowData["Parent"] || '').replace(/'/g, "\\'");
                         const sku = (rowData["SKU"] || '').replace(/'/g, "\\'");
                         const list = window.forecastSuppliersList || [];
-                        let opts = '<option value="">Select supplier...</option>';
+                        let opts = '<option value="">Select...</option>';
                         list.forEach(function(s) {
                             opts += '<option value="' + s.id + '">' + (s.name || '').replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</option>';
                         });
                         return `
-                            <div class="d-flex flex-column gap-1 supplier-cell">
-                                <small class="text-muted supplier-tag-text" style="min-height:1.2em;">${(tag || '-').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</small>
-                                <select class="form-select form-select-sm forecast-supplier-select" data-parent="${parent.replace(/"/g, '&quot;')}" data-sku="${sku.replace(/"/g, '&quot;')}" style="min-width:120px;">
+                            <div class="d-flex align-items-center gap-2 supplier-cell flex-nowrap">
+                                <span class="text-muted supplier-tag-text text-truncate" style="min-width:0; max-width:110px;">${(tag || '-').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</span>
+                                <select class="form-select form-select-sm forecast-supplier-select flex-shrink-0" data-parent="${parent.replace(/"/g, '&quot;')}" data-sku="${sku.replace(/"/g, '&quot;')}" style="width:95px; min-width:95px; font-size:0.8rem;">
                                     ${opts}
                                 </select>
                             </div>`;
@@ -948,31 +976,6 @@
                             </select>
                         `;
 
-                    }
-                },
-                {
-                    title: "Hide",
-                    field: "hide",
-                    accessor: row => row?.["hide"] ?? null,
-                    headerSort: false,
-                    formatter: function(cell) {
-                        const value = cell.getValue() ?? '';
-                        const rowData = cell.getRow().getData();
-
-                        return `
-                        <select class="form-select form-select-sm editable-select"
-                            data-type="Hide"
-                            data-sku='${rowData["SKU"]}'
-                            data-parent='${rowData["Parent"]}'
-                            style="width: auto; min-width: 100px; padding: 4px 24px 4px 8px;
-                                font-size: 0.875rem; border-radius: 4px; border: 1px solid #dee2e6;
-                                background-color: #fff;">
-                            <option value="">Select</option>
-                            <option value="@Need" ${value === '@Need' ? 'selected' : ''}>@Need</option>
-                            <option value="@Taken" ${value === '@Taken' ? 'selected' : ''}>@Taken</option>
-                            <option value="@Senior" ${value === '@Senior' ? 'selected' : ''}>@Senior</option>
-                        </select>
-                    `;
                     }
                 },
                  {

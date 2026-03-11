@@ -170,7 +170,7 @@
                                     <label for="supplier-remark-input" class="form-label fw-bold">Add New Remark/Update:</label>
                                     <textarea class="form-control" id="supplier-remark-input" rows="3" placeholder="Enter your remark or update here..."></textarea>
                                 </div>
-                                <div class="mb-3">
+                                <div class="mb-3 text-end">
                                     <button type="button" class="btn btn-success" id="save-remark-btn">
                                         <i class="fas fa-save"></i> Save Remark
                                     </button>
@@ -182,9 +182,6 @@
                                         <p class="text-muted">No remarks saved yet.</p>
                                     </div>
                                 </div>
-                            </div>
-                            <div class="modal-footer">
-                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
                             </div>
                         </div>
                     </div>
@@ -228,7 +225,10 @@
                                 {{-- <th data-column="15">photo<br/>packing<div class="resizer"></div></th> --}}
                                 {{-- <th data-column="16">photo int.<br/>sale<div class="resizer"></div></th> --}}
                                 <th data-column="14">CBM<div class="resizer"></div></th>
-                                <th data-column="15" hidden>total<br/>cbm<div class="resizer"></div></th>
+                                <th data-column="15">Total CBM<div class="resizer"></div></th>
+                                <th data-column="23" class="text-center">Pkg Inst<div class="resizer"></div></th>
+                                <th data-column="24" class="text-center">U-Manual<div class="resizer"></div></th>
+                                <th data-column="25" class="text-center">Compliance<div class="resizer"></div></th>
                                 <th data-column="20" class="text-center">CTN CBM E<div class="resizer"></div></th>
                                 <th data-column="17" class="text-center">Stage<div class="resizer"></div></th>
                                 {{-- <th data-column="19" class="text-center">BARCODE<br/>&<br/>SKU<div class="resizer"></div></th> --}}
@@ -490,7 +490,56 @@
                                     <td data-column="14">
                                         {{ isset($item->CBM) ? number_format($item->CBM, 4) : 'N/A' }}
                                     </td>
-
+                                    <td data-column="15">
+                                        <input type="number"
+                                            data-sku="{{ $item->sku }}"
+                                            data-column="total_cbm"
+                                            step="0.000000001"
+                                            value="{{ is_numeric($item->qty ?? null) && is_numeric($item->CBM ?? null) ? number_format($item->qty * $item->CBM, 2, '.', '') : '' }}"
+                                            class="form-control form-control-sm auto-save"
+                                            style="min-width: 90px; width: 100px; font-size: 13px;"
+                                            placeholder="Total CBM"
+                                            readonly>
+                                    </td>
+                                    <td data-column="23" class="text-center">
+                                        @php
+                                            $pkgInst = $item->pkg_inst ?? 'No';
+                                            $pkgInstYes = strtoupper(trim($pkgInst)) === 'YES';
+                                        @endphp
+                                        <span
+                                            class="pkg-inst-toggle"
+                                            data-sku="{{ $item->sku }}"
+                                            data-column="pkg_inst"
+                                            data-value="{{ $pkgInstYes ? 'Yes' : 'No' }}"
+                                            style="display:inline-block;width:14px;height:14px;border-radius:50%;cursor:pointer;background-color: {{ $pkgInstYes ? '#28a745' : '#dc3545' }};">
+                                        </span>
+                                    </td>
+                                    <td data-column="24" class="text-center">
+                                        @php
+                                            $uManual = $item->u_manual ?? 'No';
+                                            $uManualYes = strtoupper(trim($uManual)) === 'YES';
+                                        @endphp
+                                        <span
+                                            class="u-manual-toggle"
+                                            data-sku="{{ $item->sku }}"
+                                            data-column="u_manual"
+                                            data-value="{{ $uManualYes ? 'Yes' : 'No' }}"
+                                            style="display:inline-block;width:14px;height:14px;border-radius:50%;cursor:pointer;background-color: {{ $uManualYes ? '#28a745' : '#dc3545' }};">
+                                        </span>
+                                    </td>
+                                    <td data-column="25" class="text-center">
+                                        @php
+                                            $compliance = $item->compliance ?? 'No';
+                                            $complianceYes = strtoupper(trim($compliance)) === 'YES';
+                                        @endphp
+                                        <span
+                                            class="compliance-toggle"
+                                            data-sku="{{ $item->sku }}"
+                                            data-column="compliance"
+                                            data-value="{{ $complianceYes ? 'Yes' : 'No' }}"
+                                            style="display:inline-block;width:14px;height:14px;border-radius:50%;cursor:pointer;background-color: {{ $complianceYes ? '#28a745' : '#dc3545' }};">
+                                        </span>
+                                    </td>
                                     <td data-column="20" class="text-center">
                                         {{ isset($item->ctn_cbm_e) && $item->ctn_cbm_e !== null ? number_format($item->ctn_cbm_e, 4) : 'N/A' }}
                                     </td>
@@ -521,17 +570,6 @@
                                             <option value="all_good" {{ $stageValue === 'all_good' ? 'selected' : '' }}>😊 All Good</option>
                                             <option value="to_order_analysis" {{ $stageValue === 'to_order_analysis' ? 'selected' : '' }}>2 Order</option>
                                         </select>
-                                    </td>
-                                    <td data-column="15" hidden>
-                                        <input type="number"
-                                            data-sku="{{ $item->sku }}"
-                                            data-column="total_cbm"
-                                            step="0.000000001"
-                                            value="{{ is_numeric($item->qty ?? null) && is_numeric($item->CBM ?? null) ? number_format($item->qty * $item->CBM, 2, '.', '') : '' }}"
-                                            class="form-control form-control-sm auto-save"
-                                            style="min-width: 90px; width: 100px; font-size: 13px;"
-                                            placeholder="Total CBM"
-                                            readonly>
                                     </td>
 
                                     {{-- <td data-column="19">
@@ -666,6 +704,99 @@
 
         //total CTN CBM
         calculateTotalCTNCBM();
+
+        // Package Instruction toggle (red/green dot) using mfrg_progresses.pkg_inst (Yes/No)
+        document.querySelectorAll('.pkg-inst-toggle').forEach(dot => {
+            dot.addEventListener('click', function () {
+                const sku = this.dataset.sku;
+                const column = this.dataset.column || 'pkg_inst';
+                const current = (this.dataset.value || 'No').toLowerCase() === 'yes' ? 'Yes' : 'No';
+                const next = current === 'Yes' ? 'No' : 'Yes';
+
+                fetch('/mfrg-progresses/inline-update-by-sku', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                    },
+                    body: JSON.stringify({ sku, column, value: next })
+                })
+                .then(res => res.json())
+                .then(res => {
+                    if (!res.success) {
+                        alert('Error: ' + (res.message || 'Failed to update Pkg Inst.'));
+                        return;
+                    }
+                    this.dataset.value = next;
+                    this.style.backgroundColor = next === 'Yes' ? '#28a745' : '#dc3545';
+                })
+                .catch(() => {
+                    alert('AJAX error occurred.');
+                });
+            });
+        });
+
+        // U-Manual toggle (red/green dot) using mfrg_progresses.u_manual (Yes/No)
+        document.querySelectorAll('.u-manual-toggle').forEach(dot => {
+            dot.addEventListener('click', function () {
+                const sku = this.dataset.sku;
+                const column = this.dataset.column || 'u_manual';
+                const current = (this.dataset.value || 'No').toLowerCase() === 'yes' ? 'Yes' : 'No';
+                const next = current === 'Yes' ? 'No' : 'Yes';
+
+                fetch('/mfrg-progresses/inline-update-by-sku', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                    },
+                    body: JSON.stringify({ sku, column, value: next })
+                })
+                .then(res => res.json())
+                .then(res => {
+                    if (!res.success) {
+                        alert('Error: ' + (res.message || 'Failed to update U-Manual.'));
+                        return;
+                    }
+                    this.dataset.value = next;
+                    this.style.backgroundColor = next === 'Yes' ? '#28a745' : '#dc3545';
+                })
+                .catch(() => {
+                    alert('AJAX error occurred.');
+                });
+            });
+        });
+
+        // Compliance toggle (red/green dot) using mfrg_progresses.compliance (Yes/No)
+        document.querySelectorAll('.compliance-toggle').forEach(dot => {
+            dot.addEventListener('click', function () {
+                const sku = this.dataset.sku;
+                const column = this.dataset.column || 'compliance';
+                const current = (this.dataset.value || 'No').toLowerCase() === 'yes' ? 'Yes' : 'No';
+                const next = current === 'Yes' ? 'No' : 'Yes';
+
+                fetch('/mfrg-progresses/inline-update-by-sku', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                    },
+                    body: JSON.stringify({ sku, column, value: next })
+                })
+                .then(res => res.json())
+                .then(res => {
+                    if (!res.success) {
+                        alert('Error: ' + (res.message || 'Failed to update Compliance.'));
+                        return;
+                    }
+                    this.dataset.value = next;
+                    this.style.backgroundColor = next === 'Yes' ? '#28a745' : '#dc3545';
+                })
+                .catch(() => {
+                    alert('AJAX error occurred.');
+                });
+            });
+        });
 
         // Delete with checkbox functionality
         setupDeleteWithCheckbox();

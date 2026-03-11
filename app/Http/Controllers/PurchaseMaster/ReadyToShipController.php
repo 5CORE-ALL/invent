@@ -267,6 +267,8 @@ class ReadyToShipController extends Controller
             'pay_term',
             'payment_confirmation',
             'payment',
+            'packing_list',
+            'photo_mail_send',
             'supplier',
             'supplier_sku',
         ])) {

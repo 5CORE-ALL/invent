@@ -29,7 +29,10 @@ class MfrgProgress extends Model
         'barcode_sku',
         'artwork_manual_book',
         'notes',
-        'ready_to_ship'
+        'ready_to_ship',
+        'pkg_inst',
+        'u_manual',
+        'compliance'
     ];
 
     protected $casts = [

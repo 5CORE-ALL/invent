@@ -141,11 +141,11 @@
                                 <option value="to_order_analysis">2Order (0)</option>
                             </select>
 
-                            <!-- NRP Filter -->
+                            <!-- NRP Filter (ALL Items = show all) -->
                             <select id="nrp-filter" class="form-select-sm border border-primary" style="width: 150px;">
-                                <option value="">All NRP</option>
+                                <option value="" selected>ALL Items</option>
                                 <option value="NR">2BDC</option>
-                                <option value="REQ" selected>REQ</option>
+                                <option value="REQ">REQ</option>
                                 <option value="LATER">LATER</option>
                             </select>
 

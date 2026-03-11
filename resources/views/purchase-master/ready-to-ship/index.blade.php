@@ -89,18 +89,10 @@
                                 <button id="play-forward" class="btn btn-light rounded-circle shadow-sm me-2" title="Next supplier">
                                     <i class="fas fa-step-forward"></i>
                                 </button>
-                                <button id="supplier-remarks-btn" class="btn btn-success shadow-sm" style="border-radius: 6px; margin-left: 8px;" title="Supplier Remarks/Updates">
-                                    <i class="fas fa-comment-alt"></i> Remarks
+                                <button id="supplier-remarks-btn" class="btn btn-success shadow-sm" style="border-radius: 6px; margin-left: 8px;" title="Follow-up History">
+                                    <i class="fas fa-comment-alt"></i> Follow-up History
                                 </button>
                             </div>
-                        </div>
-
-                        <!-- Search Table -->
-                        <div class="col-auto">
-                            <label class="form-label fw-semibold mb-1 d-block" style="visibility: hidden;">Search</label>
-                            <input type="text" class="form-control" id="wholeSearchInput"
-                                placeholder="🔍 Search entire table..."
-                                style="width: 200px; font-size: 0.97rem; height: 36px; border-radius: 6px;">
                         </div>
 
                         <!-- Toggle Columns Dropdown -->
@@ -117,49 +109,16 @@
                             </div>
                         </div>
 
-                        <!-- Show All Columns -->
-                        <div class="col-auto">
-                            <label class="form-label fw-semibold mb-1 d-block" style="visibility: hidden;">Show All</label>
-                            <button class="btn text-white show-all-columns d-flex align-items-center gap-1" id="showAllColumns" style="border-radius: 6px;">
-                                <i class="mdi mdi-eye-check-outline"></i> Show All
-                            </button>
-                        </div>
-
                         <!-- Zone Filter -->
                         <div class="col-auto">
                             <label class="form-label fw-semibold mb-1 d-block" style="visibility: hidden;">Zone</label>
                             <select id="zoneFilter" class="form-select border-2 rounded-2 fw-bold" style="min-width: 120px;">
-                                <option value="">select zone</option>
+                                <option value="">All Zones</option>
+                                <option value="__select_zone__">Select zone</option>
                                 <option value="GHZ">GHZ</option>
                                 <option value="Ningbo">Ningbo</option>
                                 <option value="Tianjin">Tianjin</option>
                             </select>
-                        </div>
-
-                        <!-- Supplier Dropdown -->
-                        <div class="col-auto">
-                            <label class="form-label fw-semibold mb-1 d-block" style="visibility: hidden;">Supplier</label>
-                            <div class="custom-select-wrapper" style="min-width: 150px; position: relative;">
-                                <div class="custom-select-box d-flex align-items-center justify-content-between" id="customSelectBox"
-                                    style="border: 1.5px solid #e0e6ed; border-radius: 7px; background: #fff; height: 38px; padding: 0 14px; cursor: pointer; box-shadow: 0 1px 4px rgba(60,192,195,0.07); transition: border-color 0.2s;">
-                                    <span id="customSelectSelectedText" class="flex-grow-1 text-truncate" style="font-size: 1rem; color: #222;">All supplier</span>
-                                    <i class="mdi mdi-menu-down" style="font-size: 1.3rem; color: #3bc0c3;"></i>
-                                </div>
-                                <div class="custom-select-dropdown shadow" id="customSelectDropdown"
-                                    style="display: none; position: absolute; z-index: 30; background: #fff; min-width: 220px; max-width: 320px; border-radius: 10px; border: 1.5px solid #e0e6ed; margin-top: 4px;">
-                                    <div class="p-2 border-bottom" style="background: #f8f9fa; border-radius: 10px 10px 0 0;">
-                                        <input type="text" class="form-control border-0 shadow-none" id="customSelectSearchInput"
-                                            placeholder="🔍 Search supplier..." style="font-size: 0.97rem; height: 32px; border-radius: 6px; background: #f4f6fa;">
-                                    </div>
-                                    <div id="customSelectOptions" style="max-height: 160px; overflow-y: auto; padding: 2px 0;">
-                                        <div class="custom-select-option px-3 py-2 rounded" data-value="">All supplier</div>
-                                        <div class="custom-select-option px-3 py-2 rounded" data-value="__all_suppliers__" style="font-weight: 600; border-bottom: 1px solid #e0e6ed; margin-bottom: 4px;">Supplier</div>
-                                        @foreach ($suppliers as $item)
-                                            <div class="custom-select-option px-3 py-2 rounded" data-value="">{{ $item }}</div>
-                                        @endforeach
-                                    </div>
-                                </div>
-                            </div>
                         </div>
 
                         <!-- 💰 Advance + Pending Summary -->
@@ -278,7 +237,7 @@
                         <div class="modal-content">
                             <div class="modal-header bg-success text-white">
                                 <h5 class="modal-title" id="supplierRemarksModalLabel">
-                                    <i class="fas fa-comment-alt"></i> Supplier Remarks/Updates
+                                    <i class="fas fa-comment-alt"></i> Follow-up History
                                 </h5>
                                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
                             </div>
@@ -290,13 +249,13 @@
                                     </div>
                                 </div>
                                 <div class="mb-3">
-                                    <label for="supplier-remark-input" class="form-label fw-bold">Add New Remark/Update:</label>
-                                    <textarea class="form-control" id="supplier-remark-input" rows="3" placeholder="Enter your remark or update here..."></textarea>
+                                    <label for="supplier-remark-input" class="form-label fw-bold">Add to Follow-up History:</label>
+                                    <textarea class="form-control" id="supplier-remark-input" rows="3" placeholder="Enter follow-up note here..."></textarea>
                                 </div>
                                 <div class="mb-3">
-                                    <label class="form-label fw-bold">Saved Remarks/Updates:</label>
+                                    <label class="form-label fw-bold">Follow-up History:</label>
                                     <div id="remarksList" class="border rounded p-3" style="max-height: 300px; overflow-y: auto; background: #f8f9fa;">
-                                        <p class="text-muted mb-0">No remarks yet.</p>
+                                        <p class="text-muted mb-0">No follow-up history yet.</p>
                                     </div>
                                 </div>
                             </div>
@@ -340,24 +299,34 @@
                                         style="position:relative; z-index:10;"></div>
                                 </th>
                                 <th data-column="21" data-column-name="stage" class="text-center">Stage<div class="resizer"></div></th>
-                                <th data-column="22" data-column-name="nr" class="text-center">NRP<div class="resizer"></div></th>
+                                <th data-column="22" data-column-name="nr" class="text-center" hidden>NRP<div class="resizer"></div></th>
                                 <th data-column="4" data-column-name="qty" class="text-center">Or. QTY<div class="resizer"></div></th>
                                 <th data-column="20" data-column-name="rec_qty" class="text-center">Rec. QTY<div class="resizer"></div></th>
-                                <th data-column="5" data-column-name="supplier">Supplier<div class="resizer"></div>
+                                <th data-column="5" data-column-name="supplier">
+                                    Supplier
+                                    <div class="resizer"></div>
+                                    <input type="text" class="form-control column-search" data-search-column="5"
+                                        placeholder="Search Supplier..."
+                                        style="margin-top:4px; font-size:12px; height:28px; width: 120px;">
                                 </th>
                                 <th data-column="18" data-column-name="qty" class="text-center" hidden>Rate<div class="resizer"></div></th>
                                 <th data-column="6" data-column-name="cbm" hidden>CBM<div class="resizer"></div>
                                 </th>
                                 <th data-column="19" data-column-name="total_cbm">Total CBM<div class="resizer"></div>
                                 </th>
+                                <th data-column="25" data-column-name="cp">CP<div class="resizer"></div>
+                                </th>
                                 <th data-column="24" data-column-name="amount">Amount<div class="resizer"></div>
                                 </th>
                                 <th data-column="8" data-column-name="shipped_cbm_in_container" hidden>Balance<div
                                         class="resizer"></div>
                                 </th>
+                                <th data-column="15" data-column-name="packing_list">Packing<br/>List<div class="resizer">
+                                    </div>
+                                </th>
                                 <th data-column="9" data-column-name="payment">PMT<br/>Confirm<div class="resizer"></div>
                                 </th>
-                                <th data-column="10" data-column-name="pay_term">Pay<br/>Term<div class="resizer"></div>
+                                <th data-column="10" data-column-name="pay_term">Terms<div class="resizer"></div>
                                 </th>
                                 <th data-column="11" data-column-name="payment_confirmation" hidden>ADV<br/>CONFIRM<div
                                         class="resizer"></div>
@@ -365,14 +334,11 @@
                                 <th data-column="12" data-column-name="model_number" hidden>Model<br/>Number<div class="resizer">
                                     </div>
                                 </th>
-                                <th data-column="13" data-column-name="photo_mail_send">Photo Mail<br/>Send<div
+                                <th data-column="13" data-column-name="photo_mail_send">New<br/>Photo<div
                                         class="resizer"></div>
                                 </th>
-                                <th data-column="14" data-column-name="followup_delivery">Followup<br/>Delivery<div
+                                <th data-column="14" data-column-name="followup_delivery" hidden>Followup<br/>Delivery<div
                                         class="resizer"></div>
-                                </th>
-                                <th data-column="15" data-column-name="packing_list">Packing<br/>List<div class="resizer">
-                                    </div>
                                 </th>
                                 <th data-column="16" data-column-name="container_rfq" hidden>Container<br/>RFQ<div class="resizer">
                                     </div>
@@ -449,7 +415,7 @@
                                         <option value="to_order_analysis" {{ $stageValue === 'to_order_analysis' ? 'selected' : '' }}>2 Order</option>
                                     </select>
                                 </td>
-                                <td data-column="22" class="text-center">
+                                <td data-column="22" class="text-center" hidden>
                                     @php
                                         $nrValue = strtoupper(trim($item->nr ?? ''));
                                         $bgColor = '#ffffff';
@@ -523,6 +489,10 @@
                                 </td>
                                 <td data-column="6" hidden>{{ isset($item->CBM) && $item->CBM !== null ? number_format((float)$item->CBM, 4) : 'N/A' }}</td>
                                 <td data-column="19">{{ is_numeric($item->qty ?? null) && is_numeric($item->CBM ?? null) ? number_format($item->qty * $item->CBM, 2, '.', '') : '' }}</td>
+                                <td data-column="25" class="text-center">
+                                    @php $cpValue = $item->CP ?? null; @endphp
+                                    {{ is_numeric($cpValue) ? number_format($cpValue, 2, '.', '') : '' }}
+                                </td>
                                 <td data-column="24" class="text-center">
                                     @php $cpValue = $item->CP ?? null; @endphp
                                     {{ is_numeric($item->qty ?? null) && is_numeric($cpValue) ? number_format($item->qty * $cpValue, 0, '.', '') : '' }}
@@ -562,9 +532,33 @@
                                     </select>
                                 </td>
                                 <td data-column="12" hidden>{{ $item->model_number }}</td>
-                                <td data-column="13">{{ $item->photo_mail_send }}</td>
-                                <td data-column="14">{{ $item->followup_delivery }}</td>
-                                <td data-column="15">{{ $item->packing_list }}</td>
+                                <td data-column="13" class="text-center">
+                                    @php
+                                        $newPhoto = $item->photo_mail_send ?? 'No';
+                                        $newPhotoYes = strtoupper(trim($newPhoto)) === 'YES';
+                                    @endphp
+                                    <span
+                                        class="new-photo-toggle"
+                                        data-sku="{{ $item->sku }}"
+                                        data-column="photo_mail_send"
+                                        data-value="{{ $newPhotoYes ? 'Yes' : 'No' }}"
+                                        style="display:inline-block;width:14px;height:14px;border-radius:50%;cursor:pointer;background-color: {{ $newPhotoYes ? '#28a745' : '#dc3545' }};">
+                                    </span>
+                                </td>
+                                <td data-column="14" hidden>{{ $item->followup_delivery }}</td>
+                                <td data-column="15" class="text-center">
+                                    @php
+                                        $packing = $item->packing_list ?? 'No';
+                                        $packingYes = strtoupper(trim($packing)) === 'YES';
+                                    @endphp
+                                    <span
+                                        class="packing-toggle"
+                                        data-sku="{{ $item->sku }}"
+                                        data-column="packing_list"
+                                        data-value="{{ $packingYes ? 'Yes' : 'No' }}"
+                                        style="display:inline-block;width:14px;height:14px;border-radius:50%;cursor:pointer;background-color: {{ $packingYes ? '#28a745' : '#dc3545' }};">
+                                    </span>
+                                </td>
                                 <td data-column="16" hidden>{{ $item->container_rfq }}</td>
                                 <td data-column="17" hidden>{{ $item->quote_result }}</td>
                                  <td class="total-value d-none">
@@ -613,6 +607,59 @@
             });
         }
 
+        // Simple header sort (click column header to sort)
+        function setupHeaderSorting() {
+            const table = document.querySelector('table.wide-table');
+            if (!table) return;
+            const tbody = table.querySelector('tbody');
+            if (!tbody) return;
+
+            const numericColumns = new Set(['4', '18', '19', '20', '24', '25']); // qty, rate, cbm, rec qty, amount, cp
+
+            table.querySelectorAll('thead th[data-column]').forEach(th => {
+                th.style.cursor = 'pointer';
+                th.addEventListener('click', function (e) {
+                    // Ignore direct clicks on the resizer handle
+                    if (e.target.classList.contains('resizer')) return;
+
+                    const col = this.getAttribute('data-column');
+                    if (!col) return;
+
+                    const currentDir = this.dataset.sortDir === 'asc' ? 'asc' : (this.dataset.sortDir === 'desc' ? 'desc' : null);
+                    const nextDir = currentDir === 'asc' ? 'desc' : 'asc';
+                    this.dataset.sortDir = nextDir;
+
+                    const rows = Array.from(tbody.querySelectorAll('tr.stage-row'));
+
+                    rows.sort((a, b) => {
+                        const aCell = a.querySelector(`td[data-column="${col}"]`);
+                        const bCell = b.querySelector(`td[data-column="${col}"]`);
+                        const aText = aCell ? aCell.textContent.trim() : '';
+                        const bText = bCell ? bCell.textContent.trim() : '';
+
+                        let cmp = 0;
+                        if (numericColumns.has(col)) {
+                            const aNum = parseFloat(aText.replace(/,/g, '')) || 0;
+                            const bNum = parseFloat(bText.replace(/,/g, '')) || 0;
+                            cmp = aNum - bNum;
+                        } else {
+                            cmp = aText.localeCompare(bText, undefined, { sensitivity: 'base' });
+                        }
+
+                        return nextDir === 'asc' ? cmp : -cmp;
+                    });
+
+                    // Re-append rows in new order
+                    rows.forEach(row => tbody.appendChild(row));
+
+                    // Reapply existing filters after sort (R2S + zone)
+                    if (typeof filterByR2SStage === 'function') {
+                        filterByR2SStage();
+                    }
+                });
+            });
+        }
+
         function initResize(e) {
             e.preventDefault();
             const th = e.target.parentElement;
@@ -635,6 +682,9 @@
                 e.target.classList.remove('resizing');
                 saveColumnWidths();
             };
+
+        // Initialize header sorting
+        setupHeaderSorting();
 
             document.addEventListener('mousemove', resize);
             document.addEventListener('mouseup', stopResize);
@@ -741,36 +791,6 @@
             saveHiddenColumns([]);
         }
 
-        // Search functionality for the entire table
-        const wholeSearchInput = document.getElementById('wholeSearchInput');
-        const rows = document.querySelectorAll('.wide-table tbody tr');
-
-        wholeSearchInput.addEventListener('input', filterRows);
-        wholeSearchInput.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') filterRows();
-        });
-
-        function filterRows() {
-            const search = wholeSearchInput.value.trim().toLowerCase();
-            rows.forEach(row => {
-                // Check if stage is R2S
-                const stageSelect = row.querySelector('.editable-select-stage');
-                const rowStage = stageSelect ? stageSelect.value.toLowerCase().trim() : '';
-                const isR2S = rowStage === 'r2s';
-                
-                // Only show R2S stage rows
-                if (!isR2S) {
-                    row.style.display = 'none';
-                    return;
-                }
-                
-                const found = Array.from(row.querySelectorAll('td')).some(td => td.textContent.toLowerCase().includes(search));
-                row.style.display = found || search === '' ? '' : 'none';
-            });
-        }
-
-        // Column-specific search functionality
-        document.querySelectorAll('.column-search').forEach(input => {
             input.addEventListener('input', function() {
                 const col = this.getAttribute('data-search-column');
                 const searchValue = this.value.trim().toLowerCase();
@@ -953,7 +973,8 @@
         // Filter to show only R2S stage rows
         function filterByR2SStage() {
             const zoneFilter = document.getElementById('zoneFilter');
-            const selectedZone = zoneFilter ? zoneFilter.value.trim().toLowerCase() : '';
+            const rawZone = zoneFilter ? zoneFilter.value.trim() : '';
+            const selectedZone = rawZone.toLowerCase();
             const rows = document.querySelectorAll('.wide-table tbody tr');
             const visibleRows = [];
 
@@ -973,8 +994,18 @@
 
                 // Check zone filter
                 const selectInRow = row.querySelector('select[data-column="area"]');
-                const rowZone = selectInRow ? selectInRow.value.trim().toLowerCase() : '';
-                const zoneMatch = !selectedZone || rowZone === selectedZone;
+                const rowZoneRaw = selectInRow ? selectInRow.value.trim() : '';
+                const rowZone = rowZoneRaw.toLowerCase();
+
+                let zoneMatch = true;
+                if (!selectedZone) {
+                    zoneMatch = true; // All zones
+                } else if (rawZone === '__select_zone__') {
+                    // Only rows where zone dropdown is still at its default (empty / "select zone")
+                    zoneMatch = rowZone === '';
+                } else {
+                    zoneMatch = rowZone === selectedZone;
+                }
 
                 if (isR2S && zoneMatch) {
                     row.style.display = '';
@@ -1073,6 +1104,68 @@
             dot.addEventListener('click', function () {
                 const sku = this.dataset.sku;
                 const column = this.dataset.column || 'payment';
+                const current = (this.dataset.value || 'No').toLowerCase() === 'yes' ? 'Yes' : 'No';
+                const next = current === 'Yes' ? 'No' : 'Yes';
+
+                fetch('/ready-to-ship/inline-update-by-sku', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                    },
+                    body: JSON.stringify({ sku, column, value: next })
+                })
+                .then(res => res.json())
+                .then(res => {
+                    if (!res.success) {
+                        alert('Error: ' + res.message);
+                        return;
+                    }
+                    this.dataset.value = next;
+                    this.style.backgroundColor = next === 'Yes' ? '#28a745' : '#dc3545';
+                })
+                .catch(() => {
+                    alert('AJAX error occurred.');
+                });
+            });
+        });
+
+        // New Photo toggle (red/green dot) using ready_to_ship.photo_mail_send (Yes/No)
+        document.querySelectorAll('.new-photo-toggle').forEach(dot => {
+            dot.addEventListener('click', function () {
+                const sku = this.dataset.sku;
+                const column = this.dataset.column || 'photo_mail_send';
+                const current = (this.dataset.value || 'No').toLowerCase() === 'yes' ? 'Yes' : 'No';
+                const next = current === 'Yes' ? 'No' : 'Yes';
+
+                fetch('/ready-to-ship/inline-update-by-sku', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                    },
+                    body: JSON.stringify({ sku, column, value: next })
+                })
+                .then(res => res.json())
+                .then(res => {
+                    if (!res.success) {
+                        alert('Error: ' + res.message);
+                        return;
+                    }
+                    this.dataset.value = next;
+                    this.style.backgroundColor = next === 'Yes' ? '#28a745' : '#dc3545';
+                })
+                .catch(() => {
+                    alert('AJAX error occurred.');
+                });
+            });
+        });
+
+        // Packing List toggle (red/green dot) using ready_to_ship.packing_list (Yes/No)
+        document.querySelectorAll('.packing-toggle').forEach(dot => {
+            dot.addEventListener('click', function () {
+                const sku = this.dataset.sku;
+                const column = this.dataset.column || 'packing_list';
                 const current = (this.dataset.value || 'No').toLowerCase() === 'yes' ? 'Yes' : 'No';
                 const next = current === 'Yes' ? 'No' : 'Yes';
 
@@ -1272,6 +1365,8 @@
         function setupSupplierSelect() {
             const selectBox = document.getElementById('customSelectBox');
             const dropdown = document.getElementById('customSelectDropdown');
+            if (!selectBox || !dropdown) return;
+
             const selectedText = document.getElementById('customSelectSelectedText');
             const searchInput = document.getElementById('customSelectSearchInput');
             const optionsContainer = document.getElementById('customSelectOptions');
@@ -1667,7 +1762,7 @@
             }
         });
         const totalCTNCBMEl = document.getElementById('total-ctn-cbm');
-        if (totalCTNCBMEl) totalCTNCBMEl.textContent = totalCTNCBM.toFixed(2);
+        if (totalCTNCBMEl) totalCTNCBMEl.textContent = totalCTNCBM.toFixed(0);
     }
 
     function updateFollowSupplierCount() {
@@ -1751,7 +1846,7 @@
 
     function saveSupplierRemark(supplier, remark) {
         if (!supplier || !remark.trim()) {
-            alert('Please enter a remark.');
+            alert('Please enter a follow-up note.');
             return;
         }
         const remarksKey = `supplier_remarks_r2s_${supplier}`;
@@ -1773,7 +1868,7 @@
         if (!remarksList) return;
         const remarks = getSupplierRemarks(supplier);
         if (remarks.length === 0) {
-            remarksList.innerHTML = '<p class="text-muted mb-0">No remarks yet.</p>';
+            remarksList.innerHTML = '<p class="text-muted mb-0">No follow-up history yet.</p>';
             return;
         }
         let html = '<div class="list-group">';
