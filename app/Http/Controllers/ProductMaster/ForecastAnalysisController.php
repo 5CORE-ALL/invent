@@ -332,8 +332,10 @@ class ForecastAnalysisController extends Controller
             $order_given = 0;
             $mipRate = 0;
             $mfrgReadyToShip = 'No'; // Default to 'No'
+            $mfrgSupplier = '';
             if($mfrg->has($sheetSku)){
                 $mfrgData = $mfrg->get($sheetSku);
+                $mfrgSupplier = trim($mfrgData->supplier ?? '') ?: '';
                 $mfrgReadyToShip = $mfrgData->ready_to_ship ?? 'No';
                 if($mfrgReadyToShip === 'No' || $mfrgReadyToShip === ''){
                     $order_given = (float) ($mfrgData->qty ?? 0);
@@ -344,6 +346,7 @@ class ForecastAnalysisController extends Controller
             $item->order_given = $order_given;
             $item->mip_rate = $mipRate; // Store rate for MIP Value calculation
             $item->mfrg_ready_to_ship = $mfrgReadyToShip; // Store ready_to_ship status from mfrg_progress table
+            $item->mfrg_supplier = $mfrgSupplier; // Supplier from mfrg_progress (same as MIP blade)
 
             if ($movementMap->has($sheetSku)) {
                 $months = json_decode($movementMap->get($sheetSku)->months ?? '{}', true);
@@ -570,6 +573,20 @@ class ForecastAnalysisController extends Controller
             }
 
             return response()->json(['success' => true, 'message' => 'MOQ updated successfully']);
+        }
+
+        // Handle CP updates: save to product_master Values->cp
+        if (strtoupper($column) === 'CP') {
+            $valueNum = is_numeric($value) ? (float) $value : null;
+            $product = ProductMaster::whereRaw('TRIM(LOWER(sku)) = ?', [strtolower($sku)])->first();
+            if ($product) {
+                $values = is_array($product->Values) ? $product->Values : (json_decode($product->Values ?? '{}', true) ?? []);
+                $values['cp'] = $valueNum !== null ? $valueNum : '';
+                $product->Values = $values;
+                $product->save();
+                return response()->json(['success' => true, 'message' => 'CP updated successfully']);
+            }
+            return response()->json(['success' => false, 'message' => 'Product not found']);
         }
 
         $columnMap = [

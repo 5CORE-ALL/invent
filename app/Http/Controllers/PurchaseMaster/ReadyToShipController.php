@@ -243,6 +243,83 @@ class ReadyToShipController extends Controller
         ]);
     }
 
+    /**
+     * Return current R2S total (same logic as Ready to Ship blade: sum of qty*CP for stage r2s, nr != NR).
+     * Ready to Ship uses CP from product_master Values->cp, not rate. Used by Forecast Analysis etc.
+     */
+    public function r2sTotal(Request $request)
+    {
+        $normalizeSku = function ($sku) {
+            if (empty($sku)) return '';
+            $sku = strtoupper(trim($sku));
+            $sku = preg_replace('/\s+/u', ' ', $sku);
+            $sku = preg_replace('/[^\S\r\n]+/u', ' ', $sku);
+            return trim($sku);
+        };
+
+        $forecastData = DB::table('forecast_analysis')
+            ->get()
+            ->groupBy(function ($item) use ($normalizeSku) {
+                return $normalizeSku($item->sku);
+            })
+            ->map(function ($group) {
+                $withStage = $group->firstWhere('stage', '!=', null);
+                if ($withStage && !empty(trim($withStage->stage ?? ''))) {
+                    return $withStage;
+                }
+                return $group->first();
+            });
+
+        $productMaster = DB::table('product_master')->get()->keyBy(fn($row) => strtoupper(trim($row->sku ?? '')));
+
+        $readyToShipRows = ReadyToShip::where('transit_inv_status', 0)->whereNull('deleted_at')->get();
+        $total = 0;
+
+        foreach ($readyToShipRows as $item) {
+            $sku = $normalizeSku($item->sku);
+            if (!$forecastData->has($sku)) {
+                continue;
+            }
+            $forecast = $forecastData->get($sku);
+            $stage = strtolower(trim($forecast->stage ?? ''));
+            if ($stage !== 'r2s') {
+                continue;
+            }
+            $nr = strtoupper(trim($forecast->nr ?? ''));
+            if ($nr === 'NR') {
+                continue;
+            }
+
+            $cp = null;
+            $productRow = $productMaster[$sku] ?? null;
+            if (!$productRow) {
+                foreach ([$sku, str_replace(' ', '', $sku)] as $skuVar) {
+                    if (isset($productMaster[$skuVar])) {
+                        $productRow = $productMaster[$skuVar];
+                        break;
+                    }
+                }
+            }
+            if (!$productRow && !empty($item->sku)) {
+                $productRow = DB::table('product_master')
+                    ->whereRaw('UPPER(TRIM(sku)) = ?', [$sku])
+                    ->orWhereRaw('UPPER(TRIM(sku)) LIKE ?', ['%' . str_replace(' ', '%', $sku) . '%'])
+                    ->first();
+            }
+            if ($productRow) {
+                $values = json_decode($productRow->Values ?? '{}', true);
+                if (is_array($values) && isset($values['cp'])) {
+                    $cp = (float) $values['cp'];
+                }
+            }
+            $qty = is_numeric($item->qty) ? (float) $item->qty : 0;
+            if ($qty > 0 && $cp !== null && $cp > 0) {
+                $total += $qty * $cp;
+            }
+        }
+
+        return response()->json(['value' => round($total)]);
+    }
 
     public function inlineUpdateBySku(Request $request)
     {

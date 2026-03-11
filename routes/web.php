@@ -1661,6 +1661,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
     //Ready To Ship
     Route::get('/ready-to-ship', [ReadyToShipController::class, 'index'])->name('ready.to.ship');
+    Route::get('/ready-to-ship/r2s-total', [ReadyToShipController::class, 'r2sTotal'])->name('ready.to.ship.r2s.total');
     Route::post('/ready-to-ship/inline-update-by-sku', [ReadyToShipController::class, 'inlineUpdateBySku']);
     Route::post('/ready-to-ship/revert-back-mfrg', [ReadyToShipController::class, 'revertBackMfrg']);
     Route::post('/ready-to-ship/move-to-transit', [ReadyToShipController::class, 'moveToTransit']);

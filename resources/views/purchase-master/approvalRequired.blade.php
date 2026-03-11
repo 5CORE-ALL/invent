@@ -2455,7 +2455,24 @@
                 setCombinedFilters();
             });
 
-
+            // Keep R2S Val badge in sync with Ready to Ship blade (refresh on load, every 60s, and when tab becomes visible)
+            function refreshR2sVal() {
+                const el = document.getElementById('total_r2s_value_display');
+                if (!el) return;
+                fetch("{{ route('ready.to.ship.r2s.total') }}", { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+                    .then(function(r) { return r.json(); })
+                    .then(function(data) {
+                        if (typeof data.value === 'number') {
+                            el.textContent = data.value.toLocaleString('en-US');
+                        }
+                    })
+                    .catch(function() {});
+            }
+            refreshR2sVal();
+            setInterval(refreshR2sVal, 60000);
+            document.addEventListener('visibilitychange', function() {
+                if (document.visibilityState === 'visible') refreshR2sVal();
+            });
         });
 
         // Scout products view handler
