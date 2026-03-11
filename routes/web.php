@@ -1463,6 +1463,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     // Temu Decrease Page
     Route::get('/temu-decrease', [TemuController::class, 'temuDecreaseView'])->name('temu.decrease');
     Route::get('/temu-decrease-data', [TemuController::class, 'getTemuDecreaseData']);
+    Route::get('/temu-badge-history', [TemuController::class, 'getTemuBadgeHistory']);
     Route::post('/temu-pricing/update-price', [TemuController::class, 'updateTemuPrice']);
     Route::post('/temu-pricing/save-sprice', [TemuController::class, 'saveTemuSprice']);
     Route::post('/temu-decrease-column-visibility', [TemuController::class, 'saveTemuDecreaseColumnVisibility']);

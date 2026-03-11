@@ -21,6 +21,7 @@ use App\Models\TemuRPricing;
 use App\Models\TemuLmp;
 use App\Models\TemuListingStatus;
 use App\Models\TemuCampaignReport;
+use App\Models\TemuBadgeDailyData;
 use App\Models\EbayMetric;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
@@ -1460,6 +1461,110 @@ class TemuController extends Controller
     public function temuDecreaseView()
     {
         return view('market-places.temu_decrease');
+    }
+
+    /**
+     * Get Temu badge daily history for the history table (JSON).
+     * For "today" we use live sales summary (same as badge) so chart and badge match.
+     */
+    public function getTemuBadgeHistory(Request $request)
+    {
+        $days = (int) $request->input('days', 60);
+        $days = max(7, min(365, $days));
+        $rows = TemuBadgeDailyData::lastDays($days)->get();
+        $todayStr = \Carbon\Carbon::today()->toDateString();
+        $liveToday = $this->getTemuSalesSummaryForBadge();
+
+        $data = $rows->map(function ($row) use ($todayStr, $liveToday) {
+            $dateStr = $row->record_date->format('Y-m-d');
+            $isToday = ($dateStr === $todayStr);
+            return [
+                'record_date' => $dateStr,
+                'total_sales' => $isToday && $liveToday ? round((float) $liveToday['total_revenue'], 2) : round((float) $row->total_sales, 2),
+                'total_orders' => $isToday && $liveToday ? (int) $liveToday['total_orders'] : (int) $row->total_orders,
+                'total_quantity' => $isToday && $liveToday ? (int) $liveToday['total_quantity'] : (int) $row->total_quantity,
+                'sku_count' => (int) $row->sku_count,
+                'total_views' => (int) $row->total_views,
+                'avg_views' => round((float) $row->avg_views, 2),
+                'total_spend' => round((float) $row->total_spend, 2),
+                'avg_cvr_pct' => round((float) $row->avg_cvr_pct, 2),
+            ];
+        })->values()->all();
+
+        // If today is in range but not in DB, add one row with live data so chart matches badge
+        if ($liveToday && !collect($data)->contains('record_date', $todayStr)) {
+            $data[] = [
+                'record_date' => $todayStr,
+                'total_sales' => round((float) $liveToday['total_revenue'], 2),
+                'total_orders' => (int) $liveToday['total_orders'],
+                'total_quantity' => (int) $liveToday['total_quantity'],
+                'sku_count' => 0,
+                'total_views' => 0,
+                'avg_views' => 0,
+                'total_spend' => 0,
+                'avg_cvr_pct' => 0,
+            ];
+        }
+
+        // Serial order: oldest date first (left), newest last (right) for chart
+        $data = collect($data)->sortBy('record_date')->values()->all();
+
+        return response()->json(['data' => $data]);
+    }
+
+    /**
+     * Same sales summary as badge on Temu decrease page (ProductMaster skus, all matching orders).
+     */
+    private function getTemuSalesSummaryForBadge(): ?array
+    {
+        $productMasters = ProductMaster::orderBy('parent', 'asc')
+            ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
+            ->orderBy('sku', 'asc')
+            ->get();
+        $productMasters = $productMasters->filter(function ($item) {
+            return stripos($item->sku, 'PARENT') === false;
+        })->values();
+        $skus = $productMasters->pluck('sku')->filter()->unique()->values()->all();
+        if (empty($skus)) {
+            return null;
+        }
+        $normalizeSku = function ($sku) {
+            $sku = strtoupper(trim($sku));
+            $sku = preg_replace('/(\d+)\s*(PCS?|PIECES?)$/i', '$1PC', $sku);
+            $sku = preg_replace('/\s+/', ' ', $sku);
+            return $sku;
+        };
+        $normalizedPmSet = collect($skus)->mapWithKeys(function ($s) use ($normalizeSku) {
+            return [$normalizeSku($s) => true];
+        })->all();
+        $allowedRawSkus = TemuDailyData::select('contribution_sku')->distinct()->get()
+            ->filter(function ($r) use ($normalizeSku, $normalizedPmSet) {
+                return isset($normalizedPmSet[$normalizeSku($r->contribution_sku ?? '')]);
+            })
+            ->pluck('contribution_sku')
+            ->unique()
+            ->values()
+            ->all();
+        $salesOrderRows = TemuDailyData::whereIn('contribution_sku', $allowedRawSkus)
+            ->get(['contribution_sku', 'order_id', 'quantity_purchased', 'base_price_total']);
+        $totalOrders = 0;
+        $totalQuantity = 0;
+        $totalRevenue = 0.0;
+        foreach ($salesOrderRows as $row) {
+            if (trim((string)($row->contribution_sku ?? '')) === '' || trim((string)($row->order_id ?? '')) === '') {
+                continue;
+            }
+            $totalOrders++;
+            $qty = (int)($row->quantity_purchased ?? 0);
+            $base = (float)($row->base_price_total ?? 0);
+            $totalQuantity += $qty;
+            $totalRevenue += $base * $qty;
+        }
+        return [
+            'total_orders' => $totalOrders,
+            'total_quantity' => $totalQuantity,
+            'total_revenue' => round($totalRevenue, 2),
+        ];
     }
 
     /**

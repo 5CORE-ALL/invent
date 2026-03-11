@@ -343,17 +343,17 @@
                     <small class="text-muted d-block mb-2">Sums from full table (all rows, no filter)</small>
                     <div class="d-flex flex-wrap gap-2">
                         <!-- Basic Counts (sales summary = same as tabulator sales page) -->
-                        <span class="badge bg-success fs-6 p-2" id="total-revenue-badge" style="color: black; font-weight: bold;">Sales: $0</span>
-                        <span class="badge bg-primary fs-6 p-2" id="total-orders-badge" style="color: white; font-weight: bold;">Orders: 0</span>
-                        <span class="badge bg-primary fs-6 p-2" id="total-products-badge" style="color: black; font-weight: bold;">SKU: 0</span>
-                        <span class="badge bg-success fs-6 p-2" id="total-quantity-badge" style="color: black; font-weight: bold;">QTY: 0</span>
+                        <span class="badge bg-success fs-6 p-2 temu-badge-history" id="total-revenue-badge" data-badge-metric="total_sales" data-badge-label="Sales" style="color: black; font-weight: bold; cursor: pointer;" title="Click to view history">Sales: $0</span>
+                        <span class="badge bg-primary fs-6 p-2 temu-badge-history" id="total-orders-badge" data-badge-metric="total_orders" data-badge-label="Orders" style="color: white; font-weight: bold; cursor: pointer;" title="Click to view history">Orders: 0</span>
+                        <span class="badge bg-primary fs-6 p-2 temu-badge-history" id="total-products-badge" data-badge-metric="sku_count" data-badge-label="SKU" style="color: black; font-weight: bold; cursor: pointer;" title="Click to view history">SKU: 0</span>
+                        <span class="badge bg-success fs-6 p-2 temu-badge-history" id="total-quantity-badge" data-badge-metric="total_quantity" data-badge-label="QTY" style="color: black; font-weight: bold; cursor: pointer;" title="Click to view history">QTY: 0</span>
                         <span class="badge bg-danger fs-6 p-2" id="zero-sold-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter 0 sold items (INV>0)">0 Sold: 0</span>
                         <span class="badge fs-6 p-2" id="missing-count-badge" style="color: white; font-weight: bold; background-color: #dc3545; cursor: pointer;" title="Click to filter missing SKUs (INV>0)">Missing L: 0</span>
                         <span class="badge fs-6 p-2" id="not-mapped-count-badge" style="color: white; font-weight: bold; background-color: #dc3545; cursor: pointer;" title="Click to filter not mapped SKUs (INV>0)">Missing M: 0</span>
                         
                         <!-- Pricing & Performance -->
                         <span class="badge bg-info fs-6 p-2" id="avg-price-badge" style="color: black; font-weight: bold;">AVG: $0.00</span>
-                        <span class="badge bg-warning fs-6 p-2" id="avg-cvr-badge" style="color: black; font-weight: bold;">CVR: 0.0%</span>
+                        <span class="badge bg-warning fs-6 p-2 temu-badge-history" id="avg-cvr-badge" data-badge-metric="avg_cvr_pct" data-badge-label="CVR %" style="color: black; font-weight: bold; cursor: pointer;" title="Click to view history">CVR: 0.0%</span>
                         
                         <!-- Financial Totals -->
                         <span class="badge bg-primary fs-6 p-2" id="total-profit-badge" style="color: black; font-weight: bold; display: none;">PFT: $0</span>
@@ -364,7 +364,7 @@
                         <span class="badge bg-primary fs-6 p-2" id="avg-groi-badge" style="color: black; font-weight: bold;">GROI: 0%</span>
                         
                         <!-- Advertising Metrics -->
-                        <span class="badge fs-6 p-2" id="total-spend-badge" style="color: black; font-weight: bold; background-color: #87CEEB;">Spend: $0.00</span>
+                        <span class="badge fs-6 p-2 temu-badge-history" id="total-spend-badge" data-badge-metric="total_spend" data-badge-label="Spend" style="color: black; font-weight: bold; background-color: #87CEEB; cursor: pointer;" title="Click to view history">Spend: $0.00</span>
                         <span class="badge bg-warning fs-6 p-2" id="avg-ads-badge" style="color: black; font-weight: bold;">Ads: 0%</span>
                         
                         <!-- Percentages (Net) -->
@@ -372,8 +372,45 @@
                         <span class="badge bg-primary fs-6 p-2" id="avg-nroi-badge" style="color: black; font-weight: bold;">NROI: 0%</span>
                         
                         <!-- Engagement -->
-                        <span class="badge bg-info fs-6 p-2" id="total-views-badge" style="color: black; font-weight: bold;">Views: 0</span>
-                        <span class="badge bg-info fs-6 p-2" id="avg-views-badge" style="color: black; font-weight: bold;">AVG views: 0</span>
+                        <span class="badge bg-info fs-6 p-2 temu-badge-history" id="total-views-badge" data-badge-metric="total_views" data-badge-label="Views" style="color: black; font-weight: bold; cursor: pointer;" title="Click to view history">Views: 0</span>
+                        <span class="badge bg-info fs-6 p-2 temu-badge-history" id="avg-views-badge" data-badge-metric="avg_views" data-badge-label="AVG views" style="color: black; font-weight: bold; cursor: pointer;" title="Click to view history">AVG views: 0</span>
+                    </div>
+                </div>
+
+                <div id="badge-history-section" class="mt-2 p-3 bg-light rounded">
+                    <h6 class="mb-2 d-flex align-items-center">
+                        <a class="text-dark text-decoration-none collapsed" data-bs-toggle="collapse" href="#badge-history-collapse" id="badge-history-toggle" aria-expanded="false">
+                            <i class="fas fa-history me-2"></i>Badge data history
+                        </a>
+                        <select id="badge-history-days" class="form-select form-select-sm ms-2" style="width: 90px;">
+                            <option value="30">L30</option>
+                            <option value="60" selected>L60</option>
+                            <option value="90">L90</option>
+                        </select>
+                        <button type="button" id="badge-history-refresh" class="btn btn-sm btn-outline-secondary ms-2" title="Refresh"><i class="fas fa-sync-alt"></i></button>
+                    </h6>
+                    <div class="collapse" id="badge-history-collapse">
+                        <div class="table-responsive" style="max-height: 280px; overflow-y: auto;">
+                            <table class="table table-sm table-bordered mb-0" id="badge-history-table">
+                                <thead class="table-light sticky-top">
+                                    <tr>
+                                        <th>Date</th>
+                                        <th>Sales</th>
+                                        <th>Orders</th>
+                                        <th>QTY</th>
+                                        <th>SKU</th>
+                                        <th>Views</th>
+                                        <th>AVG views</th>
+                                        <th>Spend</th>
+                                        <th>CVR %</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="badge-history-tbody">
+                                    <tr><td colspan="9" class="text-center text-muted">Load history to see data.</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <small class="text-muted d-block mt-1">Daily snapshots from <code>temu_badge_daily_data</code> (populated by <code>temu:collect-metrics</code>).</small>
                     </div>
                 </div>
             </div>
@@ -459,6 +496,39 @@
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                     <button type="button" class="btn btn-primary" id="lmpModalSaveBtn"><i class="fas fa-save me-1"></i> Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Badge History Modal: click on a badge to see that metric's history -->
+    <div class="modal fade" id="badgeHistoryModal" tabindex="-1" aria-labelledby="badgeHistoryModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header bg-info text-white">
+                    <h5 class="modal-title" id="badgeHistoryModalLabel"><i class="fas fa-history me-2"></i>History: <span id="badgeHistoryModalMetricName"></span></h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="d-flex align-items-center gap-2 mb-2">
+                        <label class="text-nowrap">Days:</label>
+                        <select id="badgeHistoryModalDays" class="form-select form-select-sm" style="width: 90px;">
+                            <option value="30">L30</option>
+                            <option value="60" selected>L60</option>
+                            <option value="90">L90</option>
+                        </select>
+                        <button type="button" id="badgeHistoryModalRefresh" class="btn btn-sm btn-outline-secondary"><i class="fas fa-sync-alt"></i></button>
+                    </div>
+                    <div class="table-responsive" style="max-height: 360px;">
+                        <table class="table table-sm table-bordered mb-0">
+                            <thead class="table-light sticky-top">
+                                <tr><th>Date</th><th id="badgeHistoryModalValueTh">Value</th></tr>
+                            </thead>
+                            <tbody id="badgeHistoryModalTbody">
+                                <tr><td colspan="2" class="text-center text-muted">Loading...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
         </div>
@@ -733,6 +803,52 @@
         </div>
     </div>
 
+    <!-- Badge Trend Chart Modal (same graph as first image: teal header, line chart, median line, value labels, High/Med/Low) -->
+    <div class="modal fade" id="badgeTrendChartModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog shadow-none" style="max-width: 98vw; width: 98vw; margin: 10px auto 0;">
+            <div class="modal-content" style="border-radius: 8px; overflow: hidden;">
+                <div class="modal-header bg-info text-white py-1 px-3">
+                    <h6 class="modal-title mb-0" style="font-size: 13px;">
+                        <i class="fas fa-chart-area me-1"></i>
+                        <span>Temu - <span id="badgeTrendChartTitle">Sales</span> <span id="badgeTrendChartSuffix">(Rolling L30)</span></span>
+                    </h6>
+                    <div class="d-flex align-items-center gap-2">
+                        <select id="badgeTrendChartDays" class="form-select form-select-sm bg-white" style="width: 110px; height: 26px; font-size: 11px; padding: 1px 8px;">
+                            <option value="7">7 Days</option>
+                            <option value="14">14 Days</option>
+                            <option value="30" selected>30 Days</option>
+                            <option value="60">60 Days</option>
+                        </select>
+                        <button type="button" class="btn-close btn-close-white" style="font-size: 10px;" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                </div>
+                <div class="modal-body p-2">
+                    <div id="badgeTrendChartContainer" style="height: 20vh; display: flex; align-items: stretch;">
+                        <div style="flex: 1; min-width: 0; position: relative;">
+                            <canvas id="badgeTrendChartCanvas"></canvas>
+                        </div>
+                        <div id="badgeTrendChartRefPanel" style="display: flex; gap: 6px; padding: 6px 8px; border-left: 1px solid #e9ecef; background: #f8f9fa; border-radius: 0 4px 4px 0; min-width: 0;">
+                            <div style="min-width: 62px; text-align: center; padding: 4px;">
+                                <div style="font-size: 7px; font-weight: 700; margin-bottom: 4px; display: flex; align-items: center; justify-content: center; gap: 3px;"><span id="badgeTrendChartRefDot" style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #0dcaf0;"></span><span id="badgeTrendChartRefLabel">Sales</span></div>
+                                <div style="font-size: 6px; font-weight: 700; color: #dc3545;">High</div><div id="badgeTrendChartHigh" style="font-size: 10px; font-weight: 700; color: #dc3545;">-</div>
+                                <div style="font-size: 6px; font-weight: 700; color: #6c757d;">Med</div><div id="badgeTrendChartMed" style="font-size: 10px; font-weight: 700; color: #6c757d;">-</div>
+                                <div style="font-size: 6px; font-weight: 700; color: #198754;">Low</div><div id="badgeTrendChartLow" style="font-size: 10px; font-weight: 700; color: #198754;">-</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="badgeTrendChartLoading" class="text-center py-3" style="display: none;">
+                        <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+                        <p class="mt-1 text-muted small mb-0">Loading chart data...</p>
+                    </div>
+                    <div id="badgeTrendChartNoData" class="text-center py-3" style="display: none;">
+                        <i class="fas fa-exclamation-circle text-warning fa-2x mb-2"></i>
+                        <p class="text-muted small mb-0">No history. Run <code>php artisan temu:collect-metrics</code> to populate.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Average Views History Modal -->
     <div class="modal fade" id="avgViewsChartModal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog modal-xl">
@@ -785,6 +901,12 @@
     let currentSku = null;
     let currentSkuChartMetric = 'price';
     let temuChartFirstSeriesStats = null; // { values, median, dataMin, dataMax, dotColors, labelColors, valueFmt }
+
+    // Badge trend chart (same graph as first image)
+    let badgeTrendChart = null;
+    let badgeChartFirstSeriesStats = null;
+    let currentBadgeChartMetricKey = '';
+    let currentBadgeChartLabel = '';
 
     // Average Views chart
     let avgViewsChart = null;
@@ -904,6 +1026,190 @@
                 }
             }
         });
+    }
+
+    function badgeChartValueFmt(metricKey, v) {
+        var n = Number(v);
+        if (metricKey === 'total_sales' || metricKey === 'total_spend') return '$' + (n % 1 !== 0 ? n.toFixed(2) : Math.round(n).toLocaleString('en-US'));
+        if (metricKey === 'avg_cvr_pct') return n.toFixed(2) + '%';
+        if (metricKey === 'avg_views') return n.toLocaleString(undefined, { maximumFractionDigits: 2 });
+        return Math.round(n).toLocaleString('en-US');
+    }
+
+    function initBadgeTrendChart() {
+        const ctx = document.getElementById('badgeTrendChartCanvas').getContext('2d');
+        const medianLinePlugin = {
+            id: 'badgeMedianLine',
+            afterDraw(chart) {
+                if (!badgeChartFirstSeriesStats || badgeChartFirstSeriesStats.median === undefined) return;
+                const yScale = chart.scales.y;
+                const xScale = chart.scales.x;
+                const cctx = chart.ctx;
+                const yPixel = yScale.getPixelForValue(badgeChartFirstSeriesStats.median);
+                cctx.save();
+                cctx.setLineDash([6, 4]);
+                cctx.strokeStyle = '#6c757d';
+                cctx.lineWidth = 1.2;
+                cctx.beginPath();
+                cctx.moveTo(xScale.left, yPixel);
+                cctx.lineTo(xScale.right, yPixel);
+                cctx.stroke();
+                cctx.restore();
+            }
+        };
+        const valueLabelsPlugin = {
+            id: 'badgeValueLabels',
+            afterDatasetsDraw(chart) {
+                if (!chart.data.datasets.length) return;
+                const dataset = chart.data.datasets[0];
+                const meta = chart.getDatasetMeta(0);
+                const cctx = chart.ctx;
+                cctx.save();
+                cctx.font = 'bold 7px Inter, system-ui, sans-serif';
+                cctx.textAlign = 'center';
+                cctx.textBaseline = 'bottom';
+                const valueFmt = (badgeChartFirstSeriesStats && badgeChartFirstSeriesStats.valueFmt) ? badgeChartFirstSeriesStats.valueFmt : function(v) { return badgeChartValueFmt(currentBadgeChartMetricKey, v); };
+                const labelColors = badgeChartFirstSeriesStats && badgeChartFirstSeriesStats.labelColors ? badgeChartFirstSeriesStats.labelColors : [];
+                meta.data.forEach((point, i) => {
+                    const val = dataset.data[i];
+                    if (val == null) return;
+                    const offsetY = (i % 2 === 0) ? -7 : -14;
+                    cctx.fillStyle = labelColors[i] || '#6c757d';
+                    cctx.fillText(valueFmt(val), point.x, point.y + offsetY);
+                });
+                cctx.restore();
+            }
+        };
+        badgeTrendChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'Value',
+                    data: [],
+                    borderColor: '#0dcaf0',
+                    backgroundColor: 'rgba(13, 202, 240, 0.1)',
+                    borderWidth: 1.5,
+                    pointRadius: 3,
+                    pointHoverRadius: 5,
+                    tension: 0.3,
+                    fill: true,
+                    spanGaps: true
+                }]
+            },
+            plugins: [medianLinePlugin, valueLabelsPlugin],
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                layout: { padding: { top: 18, left: 2, right: 2, bottom: 2 } },
+                interaction: { mode: 'index', intersect: false },
+                plugins: {
+                    legend: { display: false },
+                    title: { display: false },
+                    tooltip: {
+                        enabled: true,
+                        mode: 'index',
+                        intersect: false,
+                        titleFont: { size: 10 },
+                        bodyFont: { size: 10 },
+                        padding: 6,
+                        callbacks: {
+                            label: function(context) {
+                                const v = context.parsed.y;
+                                if (v == null) return '';
+                                return (badgeChartFirstSeriesStats && badgeChartFirstSeriesStats.valueFmt ? badgeChartFirstSeriesStats.valueFmt(v) : badgeChartValueFmt(currentBadgeChartMetricKey, v));
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        ticks: { maxRotation: 45, minRotation: 45, autoSkip: true, maxTicksLimit: 30, font: { size: 8 } }
+                    },
+                    y: {
+                        type: 'linear',
+                        display: true,
+                        position: 'left',
+                        beginAtZero: true,
+                        ticks: { font: { size: 9 }, callback: function(v) {
+                            return badgeChartValueFmt(currentBadgeChartMetricKey, v);
+                        } }
+                    }
+                }
+            }
+        });
+    }
+
+    function loadBadgeChartData(metricKey, metricLabel, days) {
+        currentBadgeChartMetricKey = metricKey || currentBadgeChartMetricKey;
+        currentBadgeChartLabel = metricLabel || currentBadgeChartLabel;
+        days = days || parseInt($('#badgeTrendChartDays').val(), 10) || 30;
+        $('#badgeTrendChartLoading').show();
+        $('#badgeTrendChartContainer').hide();
+        $('#badgeTrendChartNoData').hide();
+        fetch('/temu-badge-history?days=' + encodeURIComponent(days))
+            .then(function(r) { return r.json(); })
+            .then(function(res) {
+                $('#badgeTrendChartLoading').hide();
+                if (!badgeTrendChart) return;
+                var data = res.data || [];
+                var key = currentBadgeChartMetricKey;
+                if (!data.length) {
+                    badgeChartFirstSeriesStats = null;
+                    $('#badgeTrendChartHigh, #badgeTrendChartMed, #badgeTrendChartLow').text('-');
+                    badgeTrendChart.data.labels = [];
+                    badgeTrendChart.data.datasets[0].data = [];
+                    badgeTrendChart.update('active');
+                    $('#badgeTrendChartContainer').hide();
+                    $('#badgeTrendChartNoData').show();
+                    return;
+                }
+                $('#badgeTrendChartNoData').hide();
+                $('#badgeTrendChartContainer').show();
+                var labels = data.map(function(d) { return d.record_date; });
+                var values = data.map(function(d) { return Number(d[key]) || 0; });
+                var refFmt = function(v) { return badgeChartValueFmt(key, v); };
+                function statsForArr(arr) {
+                    var valid = arr.filter(function(v) { return v != null && !isNaN(v); });
+                    if (valid.length === 0) return { min: 0, max: 0, median: 0 };
+                    var min = Math.min.apply(null, valid);
+                    var max = Math.max.apply(null, valid);
+                    var sorted = valid.slice().sort(function(a, b) { return a - b; });
+                    var mid = Math.floor(sorted.length / 2);
+                    var median = sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+                    return { min: min, max: max, median: median };
+                }
+                var s0 = statsForArr(values);
+                var refRed = '#dc3545', refGray = '#6c757d', refGreen = '#198754';
+                $('#badgeTrendChartHigh').text(refFmt(s0.max)).css('color', refRed);
+                $('#badgeTrendChartMed').text(refFmt(s0.median)).css('color', refGray);
+                $('#badgeTrendChartLow').text(refFmt(s0.min)).css('color', refGreen);
+                $('#badgeTrendChartRefLabel').text(currentBadgeChartLabel);
+                var dotColors = values.map(function(v, i) {
+                    if (i === 0) return refGray;
+                    return v > values[i - 1] ? refGreen : v < values[i - 1] ? refRed : refGray;
+                });
+                var labelColors = values.map(function(v) { return v === 0 ? refGreen : v > 0 ? refRed : refGray; });
+                badgeChartFirstSeriesStats = { values: values, median: s0.median, dataMin: s0.min, dataMax: s0.max, dotColors: dotColors, labelColors: labelColors, valueFmt: refFmt };
+                badgeTrendChart.data.labels = labels;
+                badgeTrendChart.data.datasets[0].data = values;
+                badgeTrendChart.data.datasets[0].pointBackgroundColor = dotColors;
+                badgeTrendChart.data.datasets[0].pointBorderColor = dotColors;
+                badgeTrendChart.data.datasets[0].pointBorderWidth = 1.5;
+                var range = (s0.max - s0.min) || Math.max(Math.abs(s0.min) * 0.1, 1);
+                if (badgeTrendChart.options.scales && badgeTrendChart.options.scales.y) {
+                    badgeTrendChart.options.scales.y.min = Math.max(0, s0.min - range * 0.1);
+                    badgeTrendChart.options.scales.y.max = s0.max + range * 0.1;
+                }
+                badgeTrendChart.update('active');
+            })
+            .catch(function() {
+                $('#badgeTrendChartLoading').hide();
+                badgeChartFirstSeriesStats = null;
+                $('#badgeTrendChartHigh, #badgeTrendChartMed, #badgeTrendChartLow').text('-');
+                $('#badgeTrendChartContainer').hide();
+                $('#badgeTrendChartNoData').show();
+            });
     }
 
     function loadSkuMetricsData(sku, days = 30) {
@@ -1305,6 +1611,7 @@
     $(document).ready(function() {
         // Initialize SKU-specific chart
         initSkuMetricsChart();
+        initBadgeTrendChart();
 
         // Initialize Average Views chart
         initAvgViewsChart();
@@ -4172,6 +4479,109 @@
         // Export functionality
         $('#export-btn').on('click', function() {
             table.download("csv", "temu_decrease_data.csv");
+        });
+
+        // Badge data history table
+        function loadBadgeHistory() {
+            const days = $('#badge-history-days').val();
+            const tbody = document.getElementById('badge-history-tbody');
+            tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted">Loading...</td></tr>';
+            fetch('/temu-badge-history?days=' + encodeURIComponent(days))
+                .then(function(r) { return r.json(); })
+                .then(function(res) {
+                    const data = res.data || [];
+                    if (data.length === 0) {
+                        tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted">No history. Run <code>php artisan temu:collect-metrics</code> to populate.</td></tr>';
+                        return;
+                    }
+                    tbody.innerHTML = data.map(function(row) {
+                        return '<tr>' +
+                            '<td>' + row.record_date + '</td>' +
+                            '<td>$' + Number(row.total_sales).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '</td>' +
+                            '<td>' + Number(row.total_orders).toLocaleString() + '</td>' +
+                            '<td>' + Number(row.total_quantity).toLocaleString() + '</td>' +
+                            '<td>' + Number(row.sku_count).toLocaleString() + '</td>' +
+                            '<td>' + Number(row.total_views).toLocaleString() + '</td>' +
+                            '<td>' + Number(row.avg_views).toLocaleString(undefined, { maximumFractionDigits: 2 }) + '</td>' +
+                            '<td>$' + Number(row.total_spend).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '</td>' +
+                            '<td>' + Number(row.avg_cvr_pct).toFixed(2) + '%</td>' +
+                            '</tr>';
+                    }).join('');
+                })
+                .catch(function() {
+                    tbody.innerHTML = '<tr><td colspan="9" class="text-center text-danger">Failed to load history.</td></tr>';
+                });
+        }
+        $('#badge-history-collapse').on('show.bs.collapse', function() {
+            loadBadgeHistory();
+        });
+        $('#badge-history-days').on('change', loadBadgeHistory);
+        $('#badge-history-refresh').on('click', function() {
+            loadBadgeHistory();
+        });
+
+        // Single-badge history modal: click on a badge opens history for that metric
+        var currentBadgeHistoryMetric = null;
+        var currentBadgeHistoryLabel = null;
+
+        function formatBadgeHistoryValue(metric, val) {
+            var n = Number(val);
+            if (metric === 'total_sales' || metric === 'total_spend') {
+                return '$' + n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            }
+            if (metric === 'avg_cvr_pct') {
+                return n.toFixed(2) + '%';
+            }
+            if (metric === 'avg_views') {
+                return n.toLocaleString(undefined, { maximumFractionDigits: 2 });
+            }
+            return n.toLocaleString();
+        }
+
+        function loadBadgeHistoryModal() {
+            if (!currentBadgeHistoryMetric || !currentBadgeHistoryLabel) return;
+            var days = $('#badgeHistoryModalDays').val();
+            var tbody = document.getElementById('badgeHistoryModalTbody');
+            tbody.innerHTML = '<tr><td colspan="2" class="text-center text-muted">Loading...</td></tr>';
+            fetch('/temu-badge-history?days=' + encodeURIComponent(days))
+                .then(function(r) { return r.json(); })
+                .then(function(res) {
+                    var data = res.data || [];
+                    var key = currentBadgeHistoryMetric;
+                    if (data.length === 0) {
+                        tbody.innerHTML = '<tr><td colspan="2" class="text-center text-muted">No history. Run <code>php artisan temu:collect-metrics</code> to populate.</td></tr>';
+                        return;
+                    }
+                    tbody.innerHTML = data.map(function(row) {
+                        var val = row[key];
+                        return '<tr><td>' + row.record_date + '</td><td>' + formatBadgeHistoryValue(key, val) + '</td></tr>';
+                    }).join('');
+                })
+                .catch(function() {
+                    tbody.innerHTML = '<tr><td colspan="2" class="text-center text-danger">Failed to load history.</td></tr>';
+                });
+        }
+
+        $(document).on('click', '.temu-badge-history', function(e) {
+            e.preventDefault();
+            var metric = $(this).data('badge-metric');
+            var label = $(this).data('badge-label');
+            if (!metric || !label) return;
+            currentBadgeChartMetricKey = metric;
+            currentBadgeChartLabel = label;
+            $('#badgeTrendChartTitle').text(label);
+            var days = parseInt($('#badgeTrendChartDays').val(), 10) || 30;
+            $('#badgeTrendChartSuffix').text('(Rolling L' + days + ')');
+            var modalEl = document.getElementById('badgeTrendChartModal');
+            var modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+            modal.show();
+            loadBadgeChartData(metric, label, days);
+        });
+
+        $('#badgeTrendChartDays').on('change', function() {
+            var days = parseInt($(this).val(), 10) || 30;
+            $('#badgeTrendChartSuffix').text('(Rolling L' + days + ')');
+            loadBadgeChartData(currentBadgeChartMetricKey, currentBadgeChartLabel, days);
         });
     });
 </script>
