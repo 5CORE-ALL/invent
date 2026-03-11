@@ -242,6 +242,22 @@
                         </select>
                     </div>
 
+                    <!-- Play / Pause parent navigation (like pricing-master-cvr) -->
+                    <div class="btn-group align-items-center ms-2" role="group">
+                        <button type="button" id="play-backward" class="btn btn-sm btn-light rounded-circle shadow-sm" title="Previous parent" disabled>
+                            <i class="fas fa-step-backward"></i>
+                        </button>
+                        <button type="button" id="play-auto" class="btn btn-sm btn-primary rounded-circle shadow-sm me-1" title="Play">
+                            <i class="fas fa-play"></i>
+                        </button>
+                        <button type="button" id="play-pause" class="btn btn-sm btn-primary rounded-circle shadow-sm me-1" style="display: none;" title="Pause - click to reset Play">
+                            <i class="fas fa-pause"></i>
+                        </button>
+                        <button type="button" id="play-forward" class="btn btn-sm btn-light rounded-circle shadow-sm" title="Next parent" disabled>
+                            <i class="fas fa-step-forward"></i>
+                        </button>
+                    </div>
+
                     <div class="dropdown d-inline-block">
                         <button class="btn btn-sm btn-secondary dropdown-toggle" type="button"
                             id="columnVisibilityDropdown" data-bs-toggle="dropdown" aria-expanded="false">
@@ -395,6 +411,55 @@
                         <small id="search-result-info" class="text-muted" style="display: none;"></small>
                     </div>
                     <div id="temu-table" style="flex: 1;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- LMP Modal: Add New + List (like Competitors), lowest LMP highlighted -->
+    <div class="modal fade" id="lmpModal" tabindex="-1" aria-labelledby="lmpModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title" id="lmpModalLabel"><i class="fas fa-link me-2"></i>LMP for <span id="lmpModalSku"></span></h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="border rounded p-3 mb-3 bg-light">
+                        <h6 class="mb-3"><i class="fas fa-plus text-success me-1"></i> Add New LMP</h6>
+                        <div class="row g-2 align-items-end">
+                            <div class="col-md-3">
+                                <label class="form-label small mb-0">Price <span class="text-danger">*</span></label>
+                                <input type="number" step="0.01" min="0" class="form-control form-control-sm" id="lmpNewPrice" placeholder="e.g. 29.99">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label small mb-0">Product Link</label>
+                                <input type="text" class="form-control form-control-sm" id="lmpNewLink" placeholder="https://...">
+                            </div>
+                            <div class="col-md-3 d-flex gap-1">
+                                <button type="button" class="btn btn-sm btn-primary" id="lmpAddRowBtn"><i class="fas fa-plus me-1"></i> Add LMP</button>
+                                <button type="button" class="btn btn-sm btn-outline-secondary" id="lmpClearFormBtn" title="Clear form"><i class="fas fa-undo"></i></button>
+                            </div>
+                        </div>
+                    </div>
+                    <h6 class="mb-2">LMP List</h6>
+                    <div class="table-responsive">
+                        <table class="table table-sm table-bordered mb-0" id="lmpListTable">
+                            <thead class="table-light">
+                                <tr>
+                                    <th style="width: 50px;">#</th>
+                                    <th>Price</th>
+                                    <th>Link</th>
+                                    <th style="width: 80px;">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="lmpEntriesContainer"></tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="lmpModalSaveBtn"><i class="fas fa-save me-1"></i> Save</button>
                 </div>
             </div>
         </div>
@@ -1475,7 +1540,6 @@
             if (table) {
                 if (missingBadgeFilterActive) {
                     table.getColumn('lmp').show();
-                    table.getColumn('lmp_link').show();
                     table.getColumn('lmp_minus_15').show();
                 }
                 // LMP columns stay visible when Missing L is off (no hide)
@@ -2253,6 +2317,12 @@
         let salesSummaryFromBackend = null;
         let badgeAvgAds = null; // Ads % from badge — shown in ADS% column for all rows
 
+        // Play/Pause parent navigation (like pricing-master-cvr)
+        let fullDataset = [];
+        let isPlayNavigationActive = false;
+        let currentPlayParentIndex = 0;
+        let suppressDataLoadedHandler = false;
+
         table = new Tabulator("#temu-table", {
             ajaxURL: "/temu-decrease-data",
             ajaxSorting: false,
@@ -2695,30 +2765,23 @@
                     field: "lmp",
                     hozAlign: "center",
                     sorter: "number",
-                    editor: "input",
+                    headerSort: true,
                     formatter: function(cell) {
-                        const value = cell.getValue();
-                        if (value === null || value === undefined || value === '') return '<span style="color: #999;">-</span>';
-                        const num = parseFloat(value);
-                        if (Number.isNaN(num)) return value;
-                        return (num % 1 === 0) ? num.toLocaleString() : num.toFixed(2);
-                    }
-                },
-                {
-                    title: "LMP Link",
-                    field: "lmp_link",
-                    hozAlign: "left",
-                    editor: "input",
-                    formatter: function(cell) {
-                        const value = cell.getValue();
-                        const lmp = cell.getRow().getData()['lmp'];
-                        const lmpText = (lmp !== null && lmp !== undefined && lmp !== '') ? String(lmp) : '';
-                        const str = (value !== null && value !== undefined && value !== '') ? String(value).trim() : '';
-                        if (str && (str.startsWith('http://') || str.startsWith('https://'))) {
-                            return '<a href="' + str.replace(/"/g, '&quot;') + '" target="_blank" rel="noopener" class="text-primary" title="Open link"><i class="fas fa-link"></i></a>';
+                        const row = cell.getRow().getData();
+                        const entries = row.lmp_entries || [];
+                        const prices = entries.map(function(e) { const p = e.price; return (p !== null && p !== undefined && p !== '' && !isNaN(parseFloat(p))) ? parseFloat(p) : null; }).filter(function(p) { return p !== null; });
+                        const lowest = prices.length > 0 ? Math.min.apply(null, prices) : null;
+                        const display = lowest !== null ? (lowest % 1 === 0 ? lowest.toLocaleString() : lowest.toFixed(2)) : '-';
+                        const count = entries.length;
+                        const title = count > 0 ? (display + ' (' + count + ' entries) - click eye to edit') : 'Click eye to add LMP';
+                        return '<span class="lmp-display">' + (display !== '-' ? display : '<span style="color: #999;">-</span>') + '</span> <button type="button" class="btn btn-sm btn-link p-0 lmp-eye-btn" data-sku="' + (row.sku || '').replace(/"/g, '&quot;') + '" title="' + title + '"><i class="fas fa-info-circle text-info"></i></button>';
+                    },
+                    cellClick: function(e, cell) {
+                        if (e.target.closest('.lmp-eye-btn')) {
+                            e.stopPropagation();
+                            const row = cell.getRow().getData();
+                            openLmpModal(row.sku, row.lmp_entries || []);
                         }
-                        if (str) return str;
-                        return lmpText || '<span style="color: #999;">-</span>';
                     }
                 },
                 {
@@ -3315,6 +3378,12 @@
 
         // Apply filters
         function applyFilters() {
+            // When Play navigation is active, show only current parent (like pricing-master-cvr)
+            if (isPlayNavigationActive) {
+                if (typeof showCurrentParentPlayView === 'function') showCurrentParentPlayView();
+                return;
+            }
+
             const inventoryFilter = $('#inventory-filter').val();
             const gpftFilter = $('#gpft-filter').val();
             const cvrFilter = $('#cvr-filter').val();
@@ -3632,11 +3701,9 @@
             try {
                 if (missingBadgeFilterActive) {
                     table.getColumn('lmp').show();
-                    table.getColumn('lmp_link').show();
                     table.getColumn('lmp_minus_15').show();
                 } else {
                     table.getColumn('lmp').show();
-                    table.getColumn('lmp_link').show();
                     table.getColumn('lmp_minus_15').show();
                 }
             } catch (e) {}
@@ -3646,6 +3713,206 @@
                 else table.getColumn('MAP').hide();
             } catch (e) {}
         }
+
+        // ==================== Play/Pause parent navigation (same as pricing-master-cvr) ====================
+        // Group key = parent + SKU prefix (WF/FR etc) so FR and WF SKUs don't mix in same play group
+        function getRowGroupKey(row) {
+            const p = (row.parent != null && row.parent !== '') ? row.parent : (row.sku || '');
+            const prefix = (row.sku || '').trim().split(/\s+/)[0] || '';
+            return (p || '') + '|' + prefix;
+        }
+
+        function getParentRows() {
+            if (!fullDataset || fullDataset.length === 0) return [];
+            const seen = new Set();
+            const out = [];
+            fullDataset.forEach(row => {
+                const key = getRowGroupKey(row);
+                if (key !== '|' && !seen.has(key)) {
+                    seen.add(key);
+                    out.push({ parent: key });
+                }
+            });
+            return out;
+        }
+
+        function showCurrentParentPlayView() {
+            if (!fullDataset || fullDataset.length === 0) return;
+            const parentRows = getParentRows();
+            if (parentRows.length === 0) return;
+            const currentGroupKey = parentRows[currentPlayParentIndex].parent;
+            const displayData = fullDataset.filter(row => getRowGroupKey(row) === currentGroupKey);
+            suppressDataLoadedHandler = true;
+            table.clearSort();
+            table.setData(displayData).then(() => {
+                updateSummary();
+                updatePlayButtonStates();
+            });
+        }
+
+        function startPlayNavigation() {
+            const parentRows = getParentRows();
+            if (parentRows.length === 0) return;
+            isPlayNavigationActive = true;
+            currentPlayParentIndex = 0;
+            showCurrentParentPlayView();
+            $('#play-auto').hide();
+            $('#play-pause').show();
+            updatePlayButtonStates();
+        }
+
+        function stopPlayNavigation() {
+            isPlayNavigationActive = false;
+            currentPlayParentIndex = 0;
+            $('#play-pause').hide();
+            $('#play-auto').show();
+            $('#play-backward, #play-forward').prop('disabled', true);
+            if (fullDataset.length > 0) {
+                suppressDataLoadedHandler = true;
+                table.setData(fullDataset).then(applyFilters);
+            } else {
+                applyFilters();
+            }
+        }
+
+        function updatePlayButtonStates() {
+            const parentRows = getParentRows();
+            $('#play-backward').prop('disabled', !isPlayNavigationActive || currentPlayParentIndex <= 0);
+            $('#play-forward').prop('disabled', !isPlayNavigationActive || currentPlayParentIndex >= parentRows.length - 1);
+            $('#play-auto').attr('title', isPlayNavigationActive ? 'Show all' : 'Start parent navigation');
+            $('#play-pause').attr('title', 'Stop navigation and show all');
+        }
+
+        function playNextParent() {
+            if (!isPlayNavigationActive) return;
+            const parentRows = getParentRows();
+            if (currentPlayParentIndex >= parentRows.length - 1) return;
+            currentPlayParentIndex++;
+            showCurrentParentPlayView();
+        }
+
+        function playPreviousParent() {
+            if (!isPlayNavigationActive) return;
+            if (currentPlayParentIndex <= 0) return;
+            currentPlayParentIndex--;
+            showCurrentParentPlayView();
+        }
+
+        $('#play-auto').on('click', startPlayNavigation);
+        $('#play-pause').on('click', stopPlayNavigation);
+        $('#play-forward').on('click', playNextParent);
+        $('#play-backward').on('click', playPreviousParent);
+
+        // LMP Modal: Add New form + table list; lowest row highlighted with LOWEST badge
+        let lmpModalSku = '';
+        function openLmpModal(sku, entries) {
+            lmpModalSku = sku || '';
+            $('#lmpModalSku').text(lmpModalSku);
+            $('#lmpNewPrice').val('');
+            $('#lmpNewLink').val('');
+            const tbody = $('#lmpEntriesContainer');
+            tbody.empty();
+            const list = Array.isArray(entries) && entries.length > 0 ? entries : [];
+            list.forEach(function(entry) {
+                appendLmpTableRow(tbody, entry.price !== undefined && entry.price !== null ? entry.price : '', entry.link || '');
+            });
+            updateLmpLowestHighlight();
+            $('#lmpModal').modal('show');
+        }
+        function appendLmpTableRow(tbody, price, link) {
+            const tr = $('<tr class="lmp-entry-row">' +
+                '<td class="lmp-num text-center align-middle"></td>' +
+                '<td class="align-middle"><input type="number" step="0.01" min="0" class="form-control form-control-sm lmp-price border-0 bg-transparent" style="max-width:100px" placeholder="Price"> <span class="lmp-lowest-badge"></span></td>' +
+                '<td class="align-middle"><input type="text" class="form-control form-control-sm lmp-link d-inline-block me-1" style="max-width:220px" placeholder="https://..."> <a href="#" class="btn btn-sm btn-outline-primary lmp-open-link" target="_blank" rel="noopener" title="Open link"><i class="fas fa-external-link-alt"></i></a></td>' +
+                '<td class="align-middle"><button type="button" class="btn btn-sm btn-outline-danger lmp-remove-row" title="Remove"><i class="fas fa-trash-alt"></i></button></td></tr>');
+            tr.find('.lmp-price').val(price !== '' && price != null ? price : '');
+            tr.find('.lmp-link').val(link || '');
+            tbody.append(tr);
+            tr.find('.lmp-remove-row').on('click', function(e) {
+                e.preventDefault();
+                tr.remove();
+                renumberLmpRows();
+                updateLmpLowestHighlight();
+            });
+            tr.find('.lmp-price, .lmp-link').on('input', function() { updateLmpLowestHighlight(); });
+            tr.find('.lmp-open-link').on('click', function(e) {
+                e.preventDefault();
+                const href = (tr.find('.lmp-link').val() || '').trim();
+                if (href && (href.startsWith('http://') || href.startsWith('https://'))) window.open(href, '_blank');
+            });
+            renumberLmpRows();
+        }
+        function renumberLmpRows() {
+            $('#lmpEntriesContainer .lmp-entry-row').each(function(i) {
+                $(this).find('.lmp-num').text(i + 1);
+            });
+        }
+        function updateLmpLowestHighlight() {
+            let minVal = null;
+            let minTr = null;
+            $('#lmpEntriesContainer .lmp-entry-row').each(function() {
+                const tr = $(this);
+                tr.removeClass('table-dark');
+                tr.find('.lmp-lowest-badge').empty();
+                const val = tr.find('.lmp-price').val();
+                const num = val !== '' && val != null ? parseFloat(val) : null;
+                if (num !== null && !isNaN(num)) {
+                    if (minVal === null || num < minVal) { minVal = num; minTr = tr; }
+                }
+            });
+            if (minTr && minVal !== null) {
+                minTr.addClass('table-dark');
+                minTr.find('.lmp-lowest-badge').html(' <span class="badge bg-info">LOWEST</span>');
+            }
+        }
+        $('#lmpAddRowBtn').on('click', function() {
+            const price = $('#lmpNewPrice').val();
+            const link = $('#lmpNewLink').val();
+            if (!price && !link) {
+                showToast('Enter Price or Link', 'warning');
+                return;
+            }
+            appendLmpTableRow($('#lmpEntriesContainer'), price || '', link || '');
+            $('#lmpNewPrice').val('');
+            $('#lmpNewLink').val('');
+        });
+        $('#lmpClearFormBtn').on('click', function() {
+            $('#lmpNewPrice').val('');
+            $('#lmpNewLink').val('');
+        });
+        $('#lmpModalSaveBtn').on('click', function() {
+            const entries = [];
+            $('#lmpEntriesContainer .lmp-entry-row').each(function() {
+                const price = $(this).find('.lmp-price').val();
+                const link = $(this).find('.lmp-link').val();
+                if (price || link) entries.push({ price: price ? parseFloat(price) : null, link: link ? link.trim() : null });
+            });
+            if (entries.length === 0) {
+                showToast('Add at least one price or link', 'warning');
+                return;
+            }
+            $(this).prop('disabled', true);
+            $.ajax({
+                url: '{{ route("temu.lmp.save") }}',
+                method: 'POST',
+                data: {
+                    _token: '{{ csrf_token() }}',
+                    sku: lmpModalSku,
+                    lmp_entries: entries
+                },
+                success: function(response) {
+                    showToast('LMP saved successfully', 'success');
+                    $('#lmpModal').modal('hide');
+                    if (table) table.replaceData();
+                },
+                error: function() {
+                    showToast('Failed to save LMP', 'error');
+                },
+                complete: function() {
+                    $('#lmpModalSaveBtn').prop('disabled', false);
+                }
+            });
+        });
 
         $('#inventory-filter, #gpft-filter, #cvr-filter, #ads-filter, #sprice-filter, #ads-req-filter, #ads-running-filter, #nr-req-filter').on('change', function() {
             applyFilters();
@@ -3759,35 +4026,6 @@
                 });
             }
 
-            // Handle LMP edit - save to temu_lmp table
-            if (field === 'lmp') {
-                const raw = cell.getValue();
-                const newLmp = (raw === null || raw === undefined || raw === '') ? null : parseFloat(raw);
-                if (newLmp !== null && (Number.isNaN(newLmp) || newLmp < 0)) {
-                    showToast('LMP must be a non-negative number', 'error');
-                    cell.restoreOldValue();
-                    return;
-                }
-                row.update({ lmp: newLmp });
-                row.reformat();
-                $.ajax({
-                    url: '{{ route("temu.lmp.save") }}',
-                    method: 'POST',
-                    data: {
-                        _token: '{{ csrf_token() }}',
-                        sku: data['sku'],
-                        lmp: newLmp
-                    },
-                    success: function(response) {
-                        showToast('LMP saved successfully', 'success');
-                    },
-                    error: function(xhr) {
-                        showToast('Failed to save LMP', 'error');
-                        cell.restoreOldValue();
-                        row.reformat();
-                    }
-                });
-            }
         });
 
         // NR/REQ dropdown change handler (Amazon style)
@@ -3949,8 +4187,12 @@
             buildColumnDropdown();
         });
 
-        table.on('dataLoaded', function() {
-            // Apply default INV > 0 filter on page load
+        table.on('dataLoaded', function(data) {
+            if (suppressDataLoadedHandler) {
+                suppressDataLoadedHandler = false;
+                return;
+            }
+            fullDataset = (data && Array.isArray(data)) ? data : (table.getData ? table.getData("all") : []) || [];
             applyFilters();
             updateSummary();
             if (typeof updateTemuAdsCounts === 'function') updateTemuAdsCounts();
