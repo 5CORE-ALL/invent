@@ -10,6 +10,7 @@ use App\Models\MarketplacePercentage;
 use App\Models\AmazonSpCampaignReport;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Carbon\Carbon;
 
 class AmazonSalesController extends Controller
 {
@@ -52,13 +53,26 @@ class AmazonSalesController extends Controller
         
         $hlSpent = $hlSpentData->sum('max_cost') ?? 0;
 
-        // 32 days total sales from amazon_orders + amazon_order_items (non-cancelled)
-        $endDate32 = now()->subDay()->endOfDay();
-        $startDate32 = now()->subDays(31)->startOfDay();
+        // Last 32 days ending today (California Pacific) — rolling window, e.g. March 11 Pacific = Feb 8 to March 11 = 32 days
+        $todayPacific = Carbon::now('America/Los_Angeles');
+        $endToday = $todayPacific->copy()->endOfDay();
+        $start32 = $todayPacific->copy()->subDays(31)->startOfDay(); // 32 calendar days
         $sales32Days = (float) DB::table('amazon_orders as o')
             ->join('amazon_order_items as i', 'o.id', '=', 'i.amazon_order_id')
-            ->where('o.order_date', '>=', $startDate32)
-            ->where('o.order_date', '<=', $endDate32)
+            ->where('o.order_date', '>=', $start32)
+            ->where('o.order_date', '<=', $endToday)
+            ->where(function ($q) {
+                $q->whereNull('o.status')->orWhere('o.status', '!=', 'Canceled');
+            })
+            ->sum('i.price');
+
+        // 8 Feb to today (separate badge, fixed start)
+        $start8Feb = Carbon::createFromDate(now()->year, 2, 8)->startOfDay();
+        $daysFrom8Feb = $start8Feb->isFuture() ? 0 : $start8Feb->diffInDays($endToday) + 1;
+        $salesFrom8Feb = $start8Feb->isFuture() ? 0.0 : (float) DB::table('amazon_orders as o')
+            ->join('amazon_order_items as i', 'o.id', '=', 'i.amazon_order_id')
+            ->where('o.order_date', '>=', $start8Feb)
+            ->where('o.order_date', '<=', $endToday)
             ->where(function ($q) {
                 $q->whereNull('o.status')->orWhere('o.status', '!=', 'Canceled');
             })
@@ -69,62 +83,66 @@ class AmazonSalesController extends Controller
             'ptSpent' => (float) $ptSpent,
             'hlSpent' => (float) $hlSpent,
             'sales32Days' => $sales32Days,
+            'salesFrom8Feb' => $salesFrom8Feb,
+            'daysFrom8Feb' => $daysFrom8Feb,
         ]);
     }
 
     public function getData(Request $request)
     {
         // ============================================================
-        // SALES FROM AMAZON_DATSHEETS: price * L30 units only
-        // Table already stores L30 data; no timezone/date range needed
+        // Last 32 days ending today (California Pacific) — same as main badge
         // ============================================================
 
-        // Date range for KW/PT spend only (no timezone - use app default)
-        $startDateStr = now()->subDays(29)->format('Y-m-d');
-        $endDateStr   = now()->format('Y-m-d');
+        $todayPacific = Carbon::now('America/Los_Angeles');
+        $endToday = $todayPacific->copy()->endOfDay();
+        $start32 = $todayPacific->copy()->subDays(31)->startOfDay();
+        $startDateStr = $start32->format('Y-m-d');
+        $endDateStr = $endToday->format('Y-m-d');
 
-        // ============================================================
-        // QUERY: amazon_datsheets - sales = price * units_ordered_l30
-        // Only rows with L30 units > 0 (have sales)
-        // ============================================================
-
-        $datasheetRows = DB::table('amazon_datsheets')
-            ->whereNotNull('sku')
-            ->where('sku', '!=', '')
+        $orderRows = DB::table('amazon_orders as o')
+            ->join('amazon_order_items as i', 'o.id', '=', 'i.amazon_order_id')
+            ->where('o.order_date', '>=', $start32)
+            ->where('o.order_date', '<=', $endToday)
             ->where(function ($q) {
-                $q->whereNotNull('units_ordered_l30')
-                    ->where('units_ordered_l30', '>', 0);
+                $q->whereNull('o.status')->orWhere('o.status', '!=', 'Canceled');
             })
             ->select([
-                'sku',
-                'asin',
-                DB::raw('COALESCE(amazon_title, "") as title'),
-                'price',
-                'units_ordered_l30'
+                'o.amazon_order_id as order_id',
+                'o.order_date',
+                'o.status',
+                'o.currency',
+                'i.asin',
+                'i.sku',
+                'i.title',
+                'i.quantity',
+                'i.price as line_price',
             ])
-            ->orderBy('sku')
+            ->orderBy('o.order_date')
+            ->orderBy('o.amazon_order_id')
             ->get();
 
-        if ($datasheetRows->isEmpty()) {
+        if ($orderRows->isEmpty()) {
             return response()->json([]);
         }
 
-        // Build orderItems-like collection: one row per SKU, sales = price * units_ordered_l30
-        $orderItems = $datasheetRows->map(function ($row) {
-            $qty = (int) $row->units_ordered_l30;
-            $price = (float) $row->price;
+        // Build orderItems-like collection: one row per order line (same shape as before)
+        $orderItems = $orderRows->map(function ($row) {
+            $qty = (int) $row->quantity;
+            $linePrice = (float) $row->line_price;
+            $unitPrice = $qty > 0 ? $linePrice / $qty : 0;
             return (object) [
-                'order_id'    => 'L30-' . $row->sku,
-                'order_date'  => null,
-                'status'      => null,
-                'total_amount'=> $price * $qty,
-                'currency'    => 'USD',
-                'period'      => 'L30',
+                'order_id'    => $row->order_id,
+                'order_date'  => $row->order_date,
+                'status'      => $row->status,
+                'total_amount'=> $linePrice,
+                'currency'    => $row->currency ?? 'USD',
+                'period'      => 'L32',
                 'asin'        => $row->asin,
                 'sku'         => $row->sku,
-                'title'       => $row->title,
+                'title'       => $row->title ?? '',
                 'quantity'    => $qty,
-                'price'       => $price * $qty, // total line price for compatibility
+                'price'       => $linePrice, // total line price for compatibility
             ];
         });
 

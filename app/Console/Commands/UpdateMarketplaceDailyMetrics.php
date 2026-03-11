@@ -88,18 +88,27 @@ class UpdateMarketplaceDailyMetrics extends Command
 
     private function calculateAmazonMetrics($date)
     {
-        // Sales from amazon_datsheets: price * units_ordered_l30 (table already has L30 data; no timezone)
-        $datasheetRows = DB::table('amazon_datsheets')
-            ->whereNotNull('sku')
-            ->where('sku', '!=', '')
+        // Last 32 days ending on $date (California Pacific), from actual orders, non-cancelled
+        $datePacific = Carbon::parse($date->format('Y-m-d'), 'America/Los_Angeles');
+        $endOfDay = $datePacific->copy()->endOfDay();
+        $startOfDay = $datePacific->copy()->subDays(31)->startOfDay();
+
+        $orderRows = DB::table('amazon_orders as o')
+            ->join('amazon_order_items as i', 'o.id', '=', 'i.amazon_order_id')
+            ->where('o.order_date', '>=', $startOfDay)
+            ->where('o.order_date', '<=', $endOfDay)
             ->where(function ($q) {
-                $q->whereNotNull('units_ordered_l30')
-                    ->where('units_ordered_l30', '>', 0);
+                $q->whereNull('o.status')->orWhere('o.status', '!=', 'Canceled');
             })
-            ->select(['sku', 'price', 'units_ordered_l30'])
+            ->select([
+                'o.amazon_order_id',
+                'i.sku',
+                'i.quantity',
+                'i.price as line_price',
+            ])
             ->get();
 
-        if ($datasheetRows->isEmpty()) {
+        if ($orderRows->isEmpty()) {
             return null;
         }
 
@@ -107,7 +116,7 @@ class UpdateMarketplaceDailyMetrics extends Command
             return strtoupper($item->sku);
         });
 
-        $totalOrders = 0;
+        $totalOrders = $orderRows->pluck('amazon_order_id')->unique()->count();
         $totalQuantity = 0;
         $totalRevenue = 0;
         $totalCogs = 0;
@@ -121,12 +130,12 @@ class UpdateMarketplaceDailyMetrics extends Command
         $adUpdates = $marketplaceData ? $marketplaceData->ad_updates : 0;
         $margin = ($percentage - $adUpdates) / 100;
 
-        // Process amazon_datsheets: sales = price * units_ordered_l30
-        foreach ($datasheetRows as $row) {
-            $totalOrders++;
-            $quantity = (int) $row->units_ordered_l30;
-            $unitPrice = (float) $row->price;
-            $totalPrice = $unitPrice * $quantity;
+        // Process each order line: sales = line price from amazon_order_items
+        foreach ($orderRows as $row) {
+            $quantity = (int) $row->quantity;
+            $linePrice = (float) $row->line_price;
+            $unitPrice = $quantity > 0 ? $linePrice / $quantity : 0;
+            $totalPrice = $linePrice;
 
             $totalQuantity += $quantity;
             $totalRevenue += $totalPrice;
