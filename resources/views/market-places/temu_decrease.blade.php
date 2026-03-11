@@ -258,6 +258,9 @@
                     <a href="{{ route('temu.tabulator') }}" class="btn btn-sm btn-outline-primary" title="View order-level sales data (Order ID, status, line items)">
                         <i class="fa fa-list-alt"></i> Order Data
                     </a>
+                    <a href="{{ route('temu.lmp') }}" class="btn btn-sm btn-outline-secondary" title="Temu LMP table and upload">
+                        <i class="fa fa-link"></i> Temu LMP
+                    </a>
 
                     <button id="inc-dec-btn" class="btn btn-sm btn-secondary" title="Cycle: INC / DEC → Decrease → Increase → INC / DEC">
                         INC / DEC
@@ -1470,8 +1473,12 @@
             missingBadgeFilterActive = !missingBadgeFilterActive;
             applyFilters();
             if (table) {
-                if (missingBadgeFilterActive) table.getColumn('lmp').show();
-                else table.getColumn('lmp').hide();
+                if (missingBadgeFilterActive) {
+                    table.getColumn('lmp').show();
+                    table.getColumn('lmp_link').show();
+                    table.getColumn('lmp_minus_15').show();
+                }
+                // LMP columns stay visible when Missing L is off (no hide)
             }
         });
 
@@ -2688,13 +2695,45 @@
                     field: "lmp",
                     hozAlign: "center",
                     sorter: "number",
-                    visible: false,
+                  
                     formatter: function(cell) {
                         const value = cell.getValue();
                         if (value === null || value === undefined || value === '') return '<span style="color: #999;">-</span>';
                         const num = parseFloat(value);
                         if (Number.isNaN(num)) return value;
                         return (num % 1 === 0) ? num.toLocaleString() : num.toFixed(2);
+                    }
+                },
+                {
+                    title: "LMP Link",
+                    field: "lmp_link",
+                    hozAlign: "left",
+                    editor: "input",
+                    formatter: function(cell) {
+                        const value = cell.getValue();
+                        const lmp = cell.getRow().getData()['lmp'];
+                        const lmpText = (lmp !== null && lmp !== undefined && lmp !== '') ? String(lmp) : '';
+                        const str = (value !== null && value !== undefined && value !== '') ? String(value).trim() : '';
+                        if (str && (str.startsWith('http://') || str.startsWith('https://'))) {
+                            return '<a href="' + str.replace(/"/g, '&quot;') + '" target="_blank" rel="noopener" class="text-primary" title="Open link"><i class="fas fa-link"></i></a>';
+                        }
+                        if (str) return str;
+                        return lmpText || '<span style="color: #999;">-</span>';
+                    }
+                },
+                {
+                    title: "(LMP - 15%)",
+                    field: "lmp_minus_15",
+                    hozAlign: "center",
+                  
+                    formatter: function(cell) {
+                        const row = cell.getRow().getData();
+                        const lmp = row['lmp'];
+                        if (lmp === null || lmp === undefined || lmp === '') return '<span style="color: #999;">-</span>';
+                        const num = parseFloat(lmp);
+                        if (Number.isNaN(num)) return '-';
+                        const val = num * 0.85;
+                        return (val % 1 === 0) ? val.toLocaleString() : val.toFixed(2);
                     }
                 },
                      {
@@ -3589,10 +3628,17 @@
                 $('#search-result-info').hide();
             }
 
-            // LMP column: visible only when Missing L badge is active
+            // LMP, LMP Link, (LMP - 15%): always visible (show when Missing L active, never hide)
             try {
-                if (missingBadgeFilterActive) table.getColumn('lmp').show();
-                else table.getColumn('lmp').hide();
+                if (missingBadgeFilterActive) {
+                    table.getColumn('lmp').show();
+                    table.getColumn('lmp_link').show();
+                    table.getColumn('lmp_minus_15').show();
+                } else {
+                    table.getColumn('lmp').show();
+                    table.getColumn('lmp_link').show();
+                    table.getColumn('lmp_minus_15').show();
+                }
             } catch (e) {}
             // MAP column: visible only when Missing M badge is active
             try {
