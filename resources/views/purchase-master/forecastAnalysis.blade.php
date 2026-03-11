@@ -1548,9 +1548,10 @@
                 }
 
                 if (isParent) {
+                    // Show All: show both SKU and parent rows; Parent only: show parents; SKU only: hide parents
                     const showParent =
-                        currentRowTypeFilter === 'parent' ?
-                        true :
+                        currentRowTypeFilter === 'parent' ? true :
+                        currentRowTypeFilter === 'all' ? true :
                         visibleParentKeys.has(data.Parent);
                     if (currentRowTypeFilter === 'sku') return false;
                     return showParent;
