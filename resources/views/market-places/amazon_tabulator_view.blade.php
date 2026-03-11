@@ -959,7 +959,7 @@
             'map_count': 'Missing M', 'nmap_count': 'N Map', 'missing_count': 'Missing L',
             'prc_gt_lmp_count': 'Prc > LMP', 'campaign_count': 'Campaign',
             'missing_campaign_count': 'Missing A', 'nra_count': 'NRA',
-            'ra_count': 'RA', 'paused_count': 'Paused',
+            'ra_count': 'RA', 'paused_count': 'Paused',   
             'ub7_count': '7UB', 'ub7_ub1_count': '7UB+1UB',
             'kw_spend': 'KW Ads Spend', 'hl_spend': 'HL Ads Spend', 'pt_spend': 'PT Ads Spend',
             'total_pft': 'PFT', 'total_sales': 'Sales', 'total_spend': 'Ad Spend',
@@ -2525,6 +2525,44 @@
                         width: 65
                     },
                     {
+                        title: "CVR L45",
+                        field: "CVR_L45",
+                        hozAlign: "center",
+                        formatter: function(cell) {
+                            const row = cell.getRow().getData();
+                            // 45-day: use average of L30 and L60 (sold and views) for 45-day approximation
+                            const aL30 = parseFloat(row['A_L30']) || 0;
+                            const sess30 = parseFloat(row['Sess30']) || 0;
+                            const aL60 = parseFloat(row['units_ordered_l60']) || 0;
+                            const sess60 = parseFloat(row['sessions_l60']) || 0;
+                            const aL45 = (aL30 + aL60) / 2;
+                            const sess45 = (sess30 + sess60) / 2;
+
+                            if (sess45 === 0) return '<span style="color: #a00211; font-weight: 600;">0.0%</span>';
+
+                            const cvr = (aL45 / sess45) * 100;
+                            let color = '';
+                            if (cvr <= 4) color = '#a00211'; // red
+                            else if (cvr > 4 && cvr <= 7) color = '#ffc107'; // yellow
+                            else if (cvr > 7 && cvr <= 10) color = '#28a745'; // green
+                            else color = '#e83e8c'; // pink
+                            return `<span style="color: ${color}; font-weight: 600;">${cvr.toFixed(1)}%</span>`;
+                        },
+                        sorter: function(a, b, aRow, bRow) {
+                            const calcCVR = (row) => {
+                                const aL30 = parseFloat(row['A_L30']) || 0;
+                                const sess30 = parseFloat(row['Sess30']) || 0;
+                                const aL60 = parseFloat(row['units_ordered_l60']) || 0;
+                                const sess60 = parseFloat(row['sessions_l60']) || 0;
+                                const aL45 = (aL30 + aL60) / 2;
+                                const sess45 = (sess30 + sess60) / 2;
+                                return sess45 === 0 ? 0 : (aL45 / sess45) * 100;
+                            };
+                            return calcCVR(aRow.getData()) - calcCVR(bRow.getData());
+                        },
+                        width: 65
+                    },
+                    {
                         title: "CVR L30",
                         field: "CVR_L30",
                         hozAlign: "center",
@@ -2534,20 +2572,36 @@
                             const isListed = !row.is_missing_amazon;
                             const aL30 = parseFloat(row['A_L30']) || 0;
                             const sess30 = parseFloat(row['Sess30']) || 0;
-
-                            if (sess30 === 0) {
-                                const dotBtn = (sku && isListed) ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${escAttr(sku)}" data-metric="cvr" title="View CVR% chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #008000;"></span></button>` : '';
-                                return `<span style="color: #a00211; font-weight: 600;">0.0%</span> ${dotBtn}`.trim();
+                            const aL60 = parseFloat(row['units_ordered_l60']) || 0;
+                            const sess60 = parseFloat(row['sessions_l60']) || 0;
+                            const cvrL30 = sess30 === 0 ? 0 : (aL30 / sess30) * 100;
+                            const cvrL60 = sess60 === 0 ? 0 : (aL60 / sess60) * 100;
+                            const tol = 0.1;
+                            let arrowHtml = '';
+                            if (sku && isListed) {
+                                let arrowColor = '#6c757d';
+                                let arrowIcon = 'fa-minus';
+                                if (cvrL30 > cvrL60 + tol) {
+                                    arrowColor = '#28a745';
+                                    arrowIcon = 'fa-arrow-up';
+                                } else if (cvrL30 < cvrL60 - tol) {
+                                    arrowColor = '#a00211';
+                                    arrowIcon = 'fa-arrow-down';
+                                }
+                                arrowHtml = `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${escAttr(sku)}" data-metric="cvr" title="View CVR% chart (vs L60: ${cvrL60.toFixed(1)}%)" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><i class="fas ${arrowIcon}" style="color: ${arrowColor}; font-size: 12px;"></i></button>`;
                             }
 
-                            const cvr = (aL30 / sess30) * 100;
+                            if (sess30 === 0) {
+                                return `<span style="color: #a00211; font-weight: 600;">0.0%</span> ${arrowHtml}`.trim();
+                            }
+
+                            const cvr = cvrL30;
                             let color = '';
                             if (cvr <= 4) color = '#a00211';
                             else if (cvr > 4 && cvr <= 7) color = '#ffc107';
                             else if (cvr > 7 && cvr <= 10) color = '#28a745';
                             else color = '#e83e8c';
-                            const dotBtn = (sku && isListed) ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${escAttr(sku)}" data-metric="cvr" title="View CVR% chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #008000;"></span></button>` : '';
-                            return `<span style="color: ${color}; font-weight: 600;">${cvr.toFixed(1)}%</span> ${dotBtn}`.trim();
+                            return `<span style="color: ${color}; font-weight: 600;">${cvr.toFixed(1)}%</span> ${arrowHtml}`.trim();
                         },
                         sorter: function(a, b, aRow, bRow) {
                             const calcCVR = (row) => {
@@ -2558,37 +2612,6 @@
                             return calcCVR(aRow.getData()) - calcCVR(bRow.getData());
                         },
                         width: 65
-                    },
-                    {
-                        title: "CVR L7",
-                        field: "CVR_L7",
-                        hozAlign: "center",
-                        formatter: function(cell) {
-                            const row = cell.getRow().getData();
-                            const aL7 = parseFloat(row['A_L7']) || 0;
-                            const sess7 = parseFloat(row['Sess7']) || 0;
-
-                            if (sess7 === 0) return '<span style="color: #a00211; font-weight: 600;">0.0%</span>';
-
-                            const cvr = (aL7 / sess7) * 100;
-                            let color = '';
-                            
-                            if (cvr <= 4) color = '#a00211'; // red
-                            else if (cvr > 4 && cvr <= 7) color = '#ffc107'; // yellow
-                            else if (cvr > 7 && cvr <= 10) color = '#28a745'; // green
-                            else color = '#e83e8c'; // pink
-                            
-                            return `<span style="color: ${color}; font-weight: 600;">${cvr.toFixed(1)}%</span>`;
-                        },
-                        sorter: function(a, b, aRow, bRow) {
-                            const calcCVR = (row) => {
-                                const aL7 = parseFloat(row['A_L7']) || 0;
-                                const sess7 = parseFloat(row['Sess7']) || 0;
-                                return sess7 === 0 ? 0 : (aL7 / sess7) * 100;
-                            };
-                            return calcCVR(aRow.getData()) - calcCVR(bRow.getData());
-                        },
-                        width: 60
                     },
                     {
                         title: "NR/RL <span class='nr-header-red-dot' style='display:inline-block;width:8px;height:8px;border-radius:50%;background:#dc3545;cursor:pointer;margin-left:3px;vertical-align:middle;' title='Show only red (NRL) rows'></span>",
