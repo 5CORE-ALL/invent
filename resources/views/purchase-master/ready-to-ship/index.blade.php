@@ -359,7 +359,7 @@
                                 </th>
                                 <th data-column="10" data-column-name="pay_term">Pay<br/>Term<div class="resizer"></div>
                                 </th>
-                                <th data-column="11" data-column-name="payment_confirmation">ADV<br/>CONFIRM<div
+                                <th data-column="11" data-column-name="payment_confirmation" hidden>ADV<br/>CONFIRM<div
                                         class="resizer"></div>
                                 </th>
                                 <th data-column="12" data-column-name="model_number" hidden>Model<br/>Number<div class="resizer">
@@ -551,7 +551,7 @@
                                         </option>
                                     </select>
                                 </td>
-                                <td data-column="11">
+                                <td data-column="11" hidden>
                                     <select data-sku="{{ $item->sku }}" data-column="payment_confirmation"
                                         class="form-select form-select-sm auto-save"
                                         style="min-width: 90px; font-size: 13px;">

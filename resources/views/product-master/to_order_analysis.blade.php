@@ -464,7 +464,7 @@
 
                     if (!rows.length) return;
 
-                    const supplierOptionsHtml = `{!! collect($uniqueSuppliers)->map(function ($supplier) {
+                    const supplierOptionsHtml = `{!! collect($suppliers)->map(function ($supplier) {
                             return '<option value="' . e($supplier) . '">' . e($supplier) . '</option>';
                         })->implode('') !!}`;
 
