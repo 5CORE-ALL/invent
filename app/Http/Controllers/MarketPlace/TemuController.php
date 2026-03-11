@@ -1856,11 +1856,29 @@ class TemuController extends Controller
                 $buyer_link = $statusValue['buyer_link'] ?? null;
                 $seller_link = $statusValue['seller_link'] ?? null;
 
-                // LMP and LMP Link from Temu LMP table (uploaded data)
+                // LMP entries from Temu LMP table (array of {price, link}); first price used for lmp column display
                 $temuLmpRow = $temuLmpByNormalizedSku[$normalizeSku($sku)] ?? null;
-                $lmp = $temuLmpRow ? $temuLmpRow->lmp : null;
-                $lmp_link = $temuLmpRow ? $temuLmpRow->lmp_link : null;
-                
+                $lmpEntries = [];
+                if ($temuLmpRow) {
+                    $entries = $temuLmpRow->lmp_entries;
+                    if (is_array($entries) && count($entries) > 0) {
+                        $lmpEntries = $entries;
+                    } else {
+                        if ($temuLmpRow->lmp !== null || $temuLmpRow->lmp_link) {
+                            $lmpEntries[] = ['price' => $temuLmpRow->lmp, 'link' => $temuLmpRow->lmp_link];
+                        }
+                        if ($temuLmpRow->lmp_2 !== null || $temuLmpRow->lmp_link_2) {
+                            $lmpEntries[] = ['price' => $temuLmpRow->lmp_2, 'link' => $temuLmpRow->lmp_link_2];
+                        }
+                    }
+                }
+                $prices = array_values(array_filter(array_map(function ($e) {
+                    $p = $e['price'] ?? null;
+                    return $p !== null && $p !== '' ? (float) $p : null;
+                }, $lmpEntries)));
+                $lmp = count($prices) > 0 ? min($prices) : ($temuLmpRow ? $temuLmpRow->lmp : null);
+                $lmp_link = $lmpEntries[0]['link'] ?? ($temuLmpRow ? $temuLmpRow->lmp_link : null);
+
                 return [
                     'sku' => $sku,
                     'parent' => $productMaster->parent ?? '',
@@ -1921,6 +1939,7 @@ class TemuController extends Controller
                     'l60_vs_l30' => $l60VsL30,
                     'lmp' => $lmp,
                     'lmp_link' => $lmp_link,
+                    'lmp_entries' => $lmpEntries,
                 ];
             });
 
@@ -2624,19 +2643,35 @@ class TemuController extends Controller
     }
 
     /**
-     * Save LMP from Temu Decrease page into temu_lmp table (match by normalized SKU, or create).
+     * Save LMP entries from Temu Decrease modal (match by normalized SKU, or create).
+     * lmp_entries = array of {price, link}; first entry sets lmp/lmp_link for backward compat.
      */
     public function saveTemuLmp(Request $request)
     {
         $request->validate([
             'sku' => 'required|string|max:255',
-            'lmp' => 'nullable|numeric|min:0',
+            'lmp_entries' => 'nullable|array',
+            'lmp_entries.*.price' => 'nullable|numeric|min:0',
+            'lmp_entries.*.link' => 'nullable|string|max:2000',
         ]);
 
         $sku = trim($request->sku);
-        $lmp = $request->has('lmp') && $request->lmp !== '' && $request->lmp !== null
-            ? $this->sanitizePrice($request->lmp)
-            : null;
+        $rawEntries = $request->input('lmp_entries', []);
+        $lmpEntries = [];
+        foreach ($rawEntries as $e) {
+            $price = isset($e['price']) && $e['price'] !== '' && $e['price'] !== null
+                ? $this->sanitizePrice($e['price'])
+                : null;
+            $link = isset($e['link']) && trim((string) $e['link']) !== '' ? trim($e['link']) : null;
+            if ($price !== null || $link !== null) {
+                $lmpEntries[] = ['price' => $price, 'link' => $link];
+            }
+        }
+        $prices = array_values(array_filter(array_map(function ($e) {
+            return $e['price'] ?? null;
+        }, $lmpEntries)));
+        $firstPrice = count($prices) > 0 ? min($prices) : null;
+        $firstLink = $lmpEntries[0]['link'] ?? null;
 
         $normalizeSku = function ($s) {
             $s = strtoupper(trim($s));
@@ -2650,11 +2685,17 @@ class TemuController extends Controller
             return $normalizeSku($row->sku) === $targetNormalized;
         });
 
+        $payload = [
+            'sku' => $sku,
+            'lmp' => $firstPrice,
+            'lmp_link' => $firstLink,
+            'lmp_entries' => $lmpEntries,
+        ];
+
         if ($existing) {
-            $existing->lmp = $lmp;
-            $existing->save();
+            $existing->update($payload);
         } else {
-            TemuLmp::create(['sku' => $sku, 'lmp' => $lmp]);
+            TemuLmp::create($payload);
         }
 
         return response()->json(['success' => true, 'message' => 'LMP saved successfully']);

@@ -17,10 +17,12 @@ class TemuLmp extends Model
         'lmp_link',
         'lmp_2',
         'lmp_link_2',
+        'lmp_entries',
     ];
 
     protected $casts = [
         'lmp' => 'decimal:2',
         'lmp_2' => 'decimal:2',
+        'lmp_entries' => 'array',
     ];
 }
