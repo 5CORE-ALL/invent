@@ -2790,11 +2790,14 @@ class TemuController extends Controller
             return $normalizeSku($row->sku) === $targetNormalized;
         });
 
+        // Clear legacy columns (lmp_2, lmp_link_2) so deleted entries don't reappear on refresh
         $payload = [
             'sku' => $sku,
             'lmp' => $firstPrice,
             'lmp_link' => $firstLink,
             'lmp_entries' => $lmpEntries,
+            'lmp_2' => null,
+            'lmp_link_2' => null,
         ];
 
         if ($existing) {
@@ -3162,6 +3165,7 @@ class TemuController extends Controller
 
     /**
      * Get Temu SKU Metrics History for Chart
+     * Includes computed profit_percent, ads_percent, roi_percent, npft_percent, nroi_percent for dot columns.
      */
     public function getTemuMetricsHistory(Request $request)
     {
@@ -3179,11 +3183,66 @@ class TemuController extends Controller
                 return response()->json([]); // Return empty array to show "No data" message
             }
 
+            // Get lp and temu_ship for this SKU from ProductMaster (same as decrease page)
+            $normalizeSku = function ($s) {
+                $s = strtoupper(trim((string) $s));
+                $s = preg_replace('/(\d+)\s*(PCS?|PIECES?)$/i', '$1PC', $s);
+                $s = preg_replace('/\s+/', ' ', $s);
+                return $s;
+            };
+            $targetNormalized = $normalizeSku($sku);
+            $productMaster = ProductMaster::whereNull('deleted_at')->get()->first(function ($row) use ($normalizeSku, $targetNormalized) {
+                return $normalizeSku($row->sku ?? '') === $targetNormalized;
+            });
+            $lp = 0;
+            $temuShip = 0;
+            if ($productMaster) {
+                $values = is_array($productMaster->Values) ? $productMaster->Values : (is_string($productMaster->Values) ? json_decode($productMaster->Values, true) : []);
+                $values = $values ?? [];
+                foreach ($values as $k => $v) {
+                    if (strtolower($k) === 'lp') {
+                        $lp = floatval($v);
+                        break;
+                    }
+                }
+                if ($lp === 0 && isset($productMaster->lp)) {
+                    $lp = floatval($productMaster->lp);
+                }
+                if ($lp === 0 && isset($productMaster->LP)) {
+                    $lp = floatval($productMaster->LP);
+                }
+                $temuShip = floatval($values['temu_ship'] ?? 0);
+            }
+
+            // Use 0.96 so chart matches table formatter (table uses 0.96 hardcoded for GPRFT%)
+            $percentage = 0.96;
+
+            // Current base_price from TemuPricing for this SKU so latest chart point matches table
+            $currentBasePrice = null;
+            $temuPricingRow = TemuPricing::whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper(trim($sku))])->first();
+            if (!$temuPricingRow && $targetNormalized !== $sku) {
+                $temuPricingRow = TemuPricing::all()->first(function ($row) use ($normalizeSku, $targetNormalized) {
+                    return $normalizeSku($row->sku ?? '') === $targetNormalized;
+                });
+            }
+            if ($temuPricingRow && $temuPricingRow->base_price !== null) {
+                $currentBasePrice = floatval($temuPricingRow->base_price);
+            }
+
+            // Current spend from TemuAdData (by goods_id) so latest point ADS% and NPFT% match table
+            $currentSpend = null;
+            if ($temuPricingRow && !empty($temuPricingRow->goods_id)) {
+                $adRow = TemuAdData::where('goods_id', $temuPricingRow->goods_id)->first();
+                if ($adRow && $adRow->spend !== null) {
+                    $currentSpend = floatval($adRow->spend);
+                }
+            }
+
             // Use Pacific Time (California timezone)
             $endDate = Carbon::today('America/Los_Angeles');
             $startDate = $endDate->copy()->subDays($days);
 
-            // Fetch historical data from temu_sku_daily_data
+            // Fetch historical data from temu_sku_daily_data (table stores SKU as in TemuPricing - uppercase trim)
             $metricsData = DB::table('temu_sku_daily_data')
                 ->where('sku', $sku)
                 ->where('record_date', '>=', $startDate)
@@ -3191,16 +3250,51 @@ class TemuController extends Controller
                 ->orderBy('record_date', 'asc')
                 ->get();
 
-            // Format data for chart
-            $chartData = $metricsData->map(function($record) {
+            if ($metricsData->isEmpty()) {
+                $metricsData = DB::table('temu_sku_daily_data')
+                    ->where('sku', $targetNormalized)
+                    ->where('record_date', '>=', $startDate)
+                    ->where('record_date', '<=', $endDate)
+                    ->orderBy('record_date', 'asc')
+                    ->get();
+            }
+
+            $latestRecordDate = $metricsData->isEmpty() ? null : $metricsData->last()->record_date;
+
+            // Format data for chart and compute percent metrics (use 0.96; for latest use current base + current spend so GPRFT/ADS/NPFT/NROI match table)
+            $chartData = $metricsData->map(function ($record) use ($lp, $temuShip, $percentage, $currentBasePrice, $currentSpend, $latestRecordDate) {
+                $basePrice = floatval($record->base_price ?? 0);
+                $spend = floatval($record->spend ?? 0);
+                $isLatest = $latestRecordDate !== null && $record->record_date == $latestRecordDate;
+                if ($isLatest && $currentBasePrice !== null) {
+                    $basePrice = $currentBasePrice;
+                }
+                if ($isLatest && $currentSpend !== null) {
+                    $spend = $currentSpend;
+                }
+                $temuL30 = intval($record->temu_l30 ?? 0);
+                $temuPrice = $basePrice > 0 ? ($basePrice <= 26.99 ? $basePrice + 2.99 : $basePrice) : 0;
+                $revenue = $temuPrice * $temuL30;
+
+                $profitPercent = $temuPrice > 0 ? (($temuPrice * $percentage - $lp - $temuShip) / $temuPrice) * 100 : 0;
+                $roiPercent = $lp > 0 ? (($temuPrice * $percentage - $lp - $temuShip) / $lp) * 100 : 0;
+                $adsPercent = ($spend > 0 && $temuL30 == 0) ? 100 : ($revenue > 0 ? ($spend / $revenue) * 100 : 0);
+                $npftPercent = $adsPercent == 100 ? $profitPercent : $profitPercent - $adsPercent;
+                $nroiPercent = $adsPercent == 100 ? $roiPercent : $roiPercent - $adsPercent;
+
                 return [
                     'date' => $record->record_date,
                     'date_formatted' => Carbon::parse($record->record_date)->format('M d'),
-                    'price' => floatval($record->base_price ?? 0),
+                    'price' => $basePrice,
                     'views' => intval($record->product_clicks ?? 0),
                     'cvr_percent' => floatval($record->cvr_percent ?? 0),
-                    'temu_l30' => intval($record->temu_l30 ?? 0),
-                    'spend' => floatval($record->spend ?? 0)
+                    'temu_l30' => $temuL30,
+                    'spend' => $spend,
+                    'profit_percent' => round($profitPercent, 2),
+                    'ads_percent' => round($adsPercent, 2),
+                    'roi_percent' => round($roiPercent, 2),
+                    'npft_percent' => round($npftPercent, 2),
+                    'nroi_percent' => round($nroiPercent, 2),
                 ];
             });
 
