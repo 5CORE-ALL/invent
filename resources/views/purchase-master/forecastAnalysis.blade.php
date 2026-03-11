@@ -251,6 +251,102 @@
                         </div>
                     </div>
 
+                    <!-- Bulk edit badge (shown when rows selected) -->
+                    <div id="bulk-edit-badge" class="d-none mb-2 p-2 rounded border bg-light d-flex align-items-center gap-2 flex-wrap" style="min-height: 40px;">
+                        <span class="fw-semibold text-dark" id="bulk-edit-count">0 selected</span>
+                        <div class="dropdown">
+                            <button class="btn btn-sm btn-primary dropdown-toggle" type="button" id="bulkEditSupplierBtn" data-bs-toggle="dropdown" aria-expanded="false">
+                                Edit Supply All
+                            </button>
+                            <ul class="dropdown-menu" aria-labelledby="bulkEditSupplierBtn">
+                                <li class="px-3 py-2">
+                                    <select id="bulk-supplier-select" class="form-select form-select-sm" style="min-width: 180px;">
+                                        <option value="">Select supplier...</option>
+                                    </select>
+                                </li>
+                                <li><hr class="dropdown-divider"></li>
+                                <li>
+                                    <button class="dropdown-item" type="button" id="bulk-apply-supplier">
+                                        <i class="fas fa-check me-1"></i> Apply
+                                    </button>
+                                </li>
+                            </ul>
+                        </div>
+                        <div class="dropdown">
+                            <button class="btn btn-sm btn-secondary dropdown-toggle" type="button" id="bulkEditCurrentSupplierBtn" data-bs-toggle="dropdown" aria-expanded="false">
+                                Current Supplier
+                            </button>
+                            <ul class="dropdown-menu" aria-labelledby="bulkEditCurrentSupplierBtn">
+                                <li class="px-3 py-2">
+                                    <select id="bulk-current-supplier-select" class="form-select form-select-sm" style="min-width: 180px;">
+                                        <option value="">Select supplier...</option>
+                                    </select>
+                                </li>
+                                <li><hr class="dropdown-divider"></li>
+                                <li>
+                                    <button class="dropdown-item" type="button" id="bulk-apply-current-supplier">
+                                        <i class="fas fa-check me-1"></i> Apply
+                                    </button>
+                                </li>
+                            </ul>
+                        </div>
+                        <div class="dropdown">
+                            <button class="btn btn-sm btn-info dropdown-toggle" type="button" id="bulkEditStageBtn" data-bs-toggle="dropdown" aria-expanded="false">
+                                Stage
+                            </button>
+                            <ul class="dropdown-menu" aria-labelledby="bulkEditStageBtn">
+                                <li class="px-3 py-2">
+                                    <select id="bulk-stage-select" class="form-select form-select-sm" style="min-width: 160px;">
+                                        <option value="">Select stage...</option>
+                                        <option value="appr_req">Appr. Req</option>
+                                        <option value="mip">MIP</option>
+                                        <option value="r2s">R2S</option>
+                                        <option value="transit">Transit</option>
+                                        <option value="all_good">All Good</option>
+                                        <option value="to_order_analysis">2 Order</option>
+                                    </select>
+                                </li>
+                                <li><hr class="dropdown-divider"></li>
+                                <li>
+                                    <button class="dropdown-item" type="button" id="bulk-apply-stage">
+                                        <i class="fas fa-check me-1"></i> Apply
+                                    </button>
+                                </li>
+                            </ul>
+                        </div>
+                        <div class="dropdown">
+                            <button class="btn btn-sm btn-warning dropdown-toggle" type="button" id="bulkEditMoqBtn" data-bs-toggle="dropdown" aria-expanded="false">
+                                MOQ
+                            </button>
+                            <ul class="dropdown-menu" aria-labelledby="bulkEditMoqBtn">
+                                <li class="px-3 py-2">
+                                    <input type="number" id="bulk-moq-input" class="form-control form-control-sm" placeholder="Enter MOQ" style="min-width: 140px;">
+                                </li>
+                                <li><hr class="dropdown-divider"></li>
+                                <li>
+                                    <button class="dropdown-item" type="button" id="bulk-apply-moq">
+                                        <i class="fas fa-check me-1"></i> Apply
+                                    </button>
+                                </li>
+                            </ul>
+                        </div>
+                        <div class="dropdown">
+                            <button class="btn btn-sm btn-success dropdown-toggle" type="button" id="bulkEditCpBtn" data-bs-toggle="dropdown" aria-expanded="false">
+                                CP
+                            </button>
+                            <ul class="dropdown-menu" aria-labelledby="bulkEditCpBtn">
+                                <li class="px-3 py-2">
+                                    <input type="number" step="0.01" id="bulk-cp-input" class="form-control form-control-sm" placeholder="Enter CP" style="min-width: 140px;">
+                                </li>
+                                <li><hr class="dropdown-divider"></li>
+                                <li>
+                                    <button class="dropdown-item" type="button" id="bulk-apply-cp">
+                                        <i class="fas fa-check me-1"></i> Apply
+                                    </button>
+                                </li>
+                            </ul>
+                        </div>
+                    </div>
                     <div id="forecast-table"></div>
                 </div>
             </div>
@@ -426,6 +522,11 @@
             resizableColumns: true,
             height: "650px",
             index: "SKU",
+            selectableRows: true,
+            selectableCheck: function(row) {
+                const sku = (row.getData().SKU || '').toString().toLowerCase();
+                return sku.indexOf('parent') === -1;
+            },
             rowFormatter: function(row) {
                 const data = row.getData();
                 const sku = data["SKU"] || '';
@@ -434,7 +535,16 @@
                     row.getElement().classList.add("parent-row");
                 }
             },
-            columns: [{
+            columns: [
+                {
+                    formatter: "rowSelection",
+                    titleFormatter: "rowSelection",
+                    align: "center",
+                    headerSort: false,
+                    width: 40,
+                    minWidth: 40
+                },
+                {
                     title: "#",
                     field: "Image",
                     headerSort: false,
@@ -562,30 +672,6 @@
                     }
                 },
 
-
-                  
-                {
-                    title: "2 Ord",
-                    field: "to_order",
-                    formatter: function(cell) {
-                        const value = cell.getValue();
-                        const isNegative = value < 0;
-
-                        return `<div style="text-align: center;">
-                        <span style="
-                            background-color: ${isNegative ? '#dc3545' : '#ffc107'};
-                            color: ${isNegative ? 'white' : 'black'};
-                            padding: 2px 6px;
-                            border-radius: 4px;
-                            display: inline-block;
-                            min-width: 30px;
-                            text-align: center;
-                            font-weight: bold;
-                        ">${value}</span>
-                    </div>`;
-                    }
-                },
-
                 {
                     title: "MSL",
                     field: "msl",
@@ -621,6 +707,27 @@
                             };
                             openMonthModal(monthData, sku);
                         }
+                    }
+                },
+                {
+                    title: "2 Ord",
+                    field: "to_order",
+                    formatter: function(cell) {
+                        const value = cell.getValue();
+                        const isNegative = value < 0;
+
+                        return `<div style="text-align: center;">
+                        <span style="
+                            background-color: ${isNegative ? '#dc3545' : '#ffc107'};
+                            color: ${isNegative ? 'white' : 'black'};
+                            padding: 2px 6px;
+                            border-radius: 4px;
+                            display: inline-block;
+                            min-width: 30px;
+                            text-align: center;
+                            font-weight: bold;
+                        ">${value}</span>
+                    </div>`;
                     }
                 },
                 {
@@ -868,7 +975,7 @@
                     }
                 },
                 {
-                    title: "Supplier",
+                    title: "Supply All",
                     field: "Supplier Tag",
                     accessor: row => row["Supplier Tag"],
                     minWidth: 200,
@@ -897,6 +1004,20 @@
                     },
                     cellClick: function(e, cell) {
                         if (e.target.classList.contains('forecast-supplier-select')) return;
+                    }
+                },
+                {
+                    title: "Current Supplier",
+                    field: "mfrg_supplier",
+                    accessor: row => row["mfrg_supplier"] ?? '',
+                    minWidth: 120,
+                    headerSort: false,
+                    headerFilter: "input",
+                    headerFilterPlaceholder: "Search supplier...",
+                    headerFilterFunc: "like",
+                    formatter: function(cell) {
+                        const value = cell.getValue() || '';
+                        return `<span class="text-truncate d-inline-block" style="max-width:140px;">${String(value).replace(/</g, '&lt;').replace(/>/g, '&gt;') || '-'}</span>`;
                     }
                 },
                 {
@@ -1022,6 +1143,9 @@
             ],
             ajaxResponse: function(url, params, response) {
                 groupedSkuData = {}; // clear previous
+
+                // SKU count for column header (exclude rows where SKU contains "parent")
+                const skuCount = (response.data || []).filter(row => !String(row.SKU || '').toLowerCase().includes('parent')).length;
 
                 // Update total MSL_C from server response (connected to MSL data)
                 const totalMslCElement = document.getElementById('total_msl_c_value');
@@ -1367,6 +1491,21 @@
                     setCombinedFilters();
                     // Default sort by Parent so rows are grouped; all rows visible via filter defaults
                     table.setSort([{ column: "Parent", dir: "asc" }]);
+                    // Update SKU column header with count (excluding rows with "parent" in SKU)
+                    table.updateColumnDefinition("SKU", { title: "SKU (" + skuCount + ")" });
+                    // Update column headers with count of rows (excluding parent) where value > 0
+                    const allData = table.getData();
+                    const notParent = row => !String(row.SKU || '').toLowerCase().includes('parent');
+                    const mslCount = allData.filter(row => notParent(row) && (parseFloat(row.msl) || 0) > 0).length;
+                    const toOrderCount = allData.filter(row => notParent(row) && (parseFloat(row.to_order) || 0) > 0).length;
+                    const mipCount = allData.filter(row => notParent(row) && (parseFloat(row.order_given) || 0) > 0).length;
+                    const r2sCount = allData.filter(row => notParent(row) && (parseFloat(row.readyToShipQty) || 0) > 0).length;
+                    const transitCount = allData.filter(row => notParent(row) && (parseFloat(row.transit) || 0) > 0).length;
+                    table.updateColumnDefinition("msl", { title: "MSL (" + mslCount + ")" });
+                    table.updateColumnDefinition("to_order", { title: "2 Ord (" + toOrderCount + ")" });
+                    table.updateColumnDefinition("order_given", { title: "MIP (" + mipCount + ")" });
+                    table.updateColumnDefinition("readyToShipQty", { title: "R2S (" + r2sCount + ")" });
+                    table.updateColumnDefinition("transit", { title: "Transit (" + transitCount + ")" });
                 }, 0);
                 return sorted;
             },
@@ -1387,7 +1526,167 @@
                 })
                 .catch(function() { window.forecastSuppliersList = []; });
         }
-        loadForecastSuppliers();
+        // Bulk edit badge: show when rows selected, update count
+        function updateBulkEditBadge() {
+            const selected = table.getSelectedRows();
+            const badge = document.getElementById('bulk-edit-badge');
+            const countEl = document.getElementById('bulk-edit-count');
+            if (!badge || !countEl) return;
+            const n = selected.length;
+            if (n > 0) {
+                badge.classList.remove('d-none');
+                badge.classList.add('d-flex');
+                countEl.textContent = n + ' selected';
+            } else {
+                badge.classList.add('d-none');
+                badge.classList.remove('d-flex');
+            }
+        }
+        table.on("rowSelectionChanged", updateBulkEditBadge);
+
+        // Populate bulk supplier dropdowns when suppliers load
+        function populateBulkSupplierSelect() {
+            ['bulk-supplier-select', 'bulk-current-supplier-select'].forEach(function(id) {
+                const sel = document.getElementById(id);
+                if (!sel) return;
+                sel.innerHTML = '<option value="">Select supplier...</option>';
+                (window.forecastSuppliersList || []).forEach(function(s) {
+                    const opt = document.createElement('option');
+                    opt.value = id === 'bulk-current-supplier-select' ? (s.name || s.id) : s.id;
+                    opt.textContent = s.name || s.id;
+                    sel.appendChild(opt);
+                });
+            });
+        }
+        loadForecastSuppliers(function() { populateBulkSupplierSelect(); });
+
+        document.getElementById('bulk-apply-supplier')?.addEventListener('click', function(e) {
+            e.preventDefault();
+            const supplierId = (document.getElementById('bulk-supplier-select')?.value || '').trim();
+            if (!supplierId) { alert('Please select a supplier.'); return; }
+            const selected = table.getSelectedRows();
+            const parents = new Set();
+            selected.forEach(function(row) {
+                const d = row.getData();
+                const p = (d.Parent || '').trim();
+                if (p && !(d.SKU || '').toLowerCase().includes('parent')) parents.add(p);
+            });
+            if (parents.size === 0) { alert('No valid parents in selection.'); return; }
+            const btn = this;
+            btn.disabled = true;
+            const token = document.querySelector('input[name="_token"]')?.value || '';
+            const promises = Array.from(parents).map(function(parent) {
+                const fd = new FormData();
+                fd.append('supplier_id', supplierId);
+                fd.append('parent', parent);
+                fd.append('_token', token);
+                return fetch('{{ route("forecast.link-supplier-parent") }}', { method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' } })
+                    .then(function(r) { return r.json(); });
+            });
+            Promise.all(promises).then(function() {
+                table.replaceData();
+                table.deselectRow();
+                updateBulkEditBadge();
+                btn.disabled = false;
+                const sel = document.getElementById('bulk-supplier-select');
+                if (sel) sel.value = '';
+                const ddBtn = document.querySelector('#bulkEditSupplierBtn');
+                if (ddBtn) { const dd = bootstrap.Dropdown.getInstance(ddBtn); if (dd) dd.hide(); }
+            }).catch(function() { btn.disabled = false; });
+        });
+
+        document.getElementById('bulk-apply-current-supplier')?.addEventListener('click', function(e) {
+            e.preventDefault();
+            const supplierName = (document.getElementById('bulk-current-supplier-select')?.value || '').trim();
+            if (!supplierName) { alert('Please select a supplier.'); return; }
+            const selected = table.getSelectedRows();
+            const skus = [];
+            selected.forEach(function(row) {
+                const d = row.getData();
+                const sku = (d.SKU || '').trim();
+                if (sku && !sku.toLowerCase().includes('parent')) skus.push(sku);
+            });
+            if (skus.length === 0) { alert('No valid SKUs in selection.'); return; }
+            const btn = this;
+            btn.disabled = true;
+            const token = document.querySelector('input[name="_token"]')?.value || document.querySelector('meta[name="csrf-token"]')?.content || '';
+            const promises = skus.map(function(sku) {
+                const fd = new FormData();
+                fd.append('sku', sku);
+                fd.append('column', 'supplier');
+                fd.append('value', supplierName);
+                fd.append('_token', token);
+                return fetch('/mfrg-progresses/inline-update-by-sku', { method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' } })
+                    .then(function(r) { return r.json(); });
+            });
+            Promise.all(promises).then(function() {
+                table.replaceData();
+                table.deselectRow();
+                updateBulkEditBadge();
+                btn.disabled = false;
+                const sel = document.getElementById('bulk-current-supplier-select');
+                if (sel) sel.value = '';
+                const dd = bootstrap.Dropdown.getInstance(document.querySelector('#bulkEditCurrentSupplierBtn'));
+                if (dd) dd.hide();
+            }).catch(function() { btn.disabled = false; });
+        });
+
+        function bulkApplyForecastField(column, getValue, btnId, selectId, ddBtnId) {
+            const val = getValue();
+            if (val === '' || val === null || val === undefined) {
+                alert('Please enter a value.');
+                return;
+            }
+            const selected = table.getSelectedRows();
+            const rows = [];
+            selected.forEach(function(row) {
+                const d = row.getData();
+                const sku = (d.SKU || '').trim();
+                const parent = (d.Parent || '').trim();
+                if (sku && !sku.toLowerCase().includes('parent')) rows.push({ sku, parent });
+            });
+            if (rows.length === 0) { alert('No valid rows in selection.'); return; }
+            const btn = document.getElementById(btnId);
+            if (btn) btn.disabled = true;
+            let done = 0;
+            const total = rows.length;
+            const onComplete = function() {
+                done++;
+                if (done >= total) {
+                    table.replaceData();
+                    table.deselectRow();
+                    updateBulkEditBadge();
+                    if (btn) btn.disabled = false;
+                    const el = document.getElementById(selectId);
+                    if (el) el.value = el.tagName === 'SELECT' ? '' : '';
+                    const dd = bootstrap.Dropdown.getInstance(document.querySelector('#' + ddBtnId));
+                    if (dd) dd.hide();
+                }
+            };
+            rows.forEach(function(r) {
+                $.post('/update-forecast-data', { sku: r.sku, parent: r.parent, column: column, value: val, _token: $('meta[name="csrf-token"]').attr('content') })
+                    .done(function() { onComplete(); })
+                    .fail(function() { onComplete(); });
+            });
+        }
+
+        document.getElementById('bulk-apply-stage')?.addEventListener('click', function(e) {
+            e.preventDefault();
+            bulkApplyForecastField('Stage', function() { return document.getElementById('bulk-stage-select')?.value?.trim() || ''; },
+                'bulk-apply-stage', 'bulk-stage-select', 'bulkEditStageBtn');
+        });
+        document.getElementById('bulk-apply-moq')?.addEventListener('click', function(e) {
+            e.preventDefault();
+            const v = document.getElementById('bulk-moq-input')?.value?.trim() || '';
+            if (!v || isNaN(parseFloat(v))) { alert('Please enter a valid MOQ.'); return; }
+            bulkApplyForecastField('MOQ', function() { return v; }, 'bulk-apply-moq', 'bulk-moq-input', 'bulkEditMoqBtn');
+        });
+        document.getElementById('bulk-apply-cp')?.addEventListener('click', function(e) {
+            e.preventDefault();
+            const v = document.getElementById('bulk-cp-input')?.value?.trim() || '';
+            if (!v || isNaN(parseFloat(v))) { alert('Please enter a valid CP.'); return; }
+            bulkApplyForecastField('CP', function() { return v; }, 'bulk-apply-cp', 'bulk-cp-input', 'bulkEditCpBtn');
+        });
 
         $(document).on('change', '.forecast-supplier-select', function() {
             const sel = this;
@@ -2577,6 +2876,25 @@
                     }
                 });
             }
+
+            // Keep R2S Val badge in sync with Ready to Ship blade (refresh on load, every 60s, and when tab becomes visible)
+            function refreshR2sVal() {
+                const el = document.getElementById('total_r2s_value_display');
+                if (!el) return;
+                fetch("{{ route('ready.to.ship.r2s.total') }}", { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+                    .then(function(r) { return r.json(); })
+                    .then(function(data) {
+                        if (typeof data.value === 'number') {
+                            el.textContent = data.value.toLocaleString('en-US');
+                        }
+                    })
+                    .catch(function() {});
+            }
+            refreshR2sVal();
+            setInterval(refreshR2sVal, 60000);
+            document.addEventListener('visibilitychange', function() {
+                if (document.visibilityState === 'visible') refreshR2sVal();
+            });
         });
 
         // Scout products view handler
