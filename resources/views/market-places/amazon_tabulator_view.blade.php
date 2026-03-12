@@ -342,6 +342,12 @@
                         <option value="zero">0 Sold</option>
                     </select>
 
+                    <select id="sprice-filter" class="form-select form-select-sm"
+                        style="width: auto; display: inline-block;">
+                        <option value="all">S PRC</option>
+                        <option value="blank">Blank S PRC only</option>
+                    </select>
+
                     <select id="section-filter" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;">
                         <option value="all">Section</option>
@@ -5412,6 +5418,7 @@
                 const parentFilter = $('#parent-filter').val();
                 const statusFilter = $('#status-filter').val();
                 const soldFilter = $('#sold-filter').val();
+                const spriceFilter = $('#sprice-filter').val();
                 const rangeMin = parseFloat($('#range-min').val()) || null;
                 const rangeMax = parseFloat($('#range-max').val()) || null;
                 const rangeColumn = $('#range-column-select').val() || '';
@@ -5647,6 +5654,17 @@
                             return aL30 > 0;
                         }
                         return true;
+                    });
+                }
+
+                // S PRC filter: show only rows where SPRICE is blank (no value or 0)
+                if (spriceFilter === 'blank') {
+                    table.addFilter(function(data) {
+                        if (data.is_parent_summary) return true;
+                        const sprice = data.SPRICE;
+                        if (sprice == null || sprice === '') return true;
+                        const num = parseFloat(sprice);
+                        return isNaN(num) || num <= 0;
                     });
                 }
 
@@ -6009,7 +6027,7 @@
                 }, 100);
             }
 
-            $('#inventory-filter, #nrl-filter, #gpft-filter, #cvr-filter, #cvr-trend-filter, #dil-filter, #rating-filter, #parent-filter, #status-filter, #sold-filter, #utilization-type-filter, #campaign-status-filter, #nra-filter, #price-slab-filter, #acos-slab-filter').on('change', function() {
+            $('#inventory-filter, #nrl-filter, #gpft-filter, #cvr-filter, #cvr-trend-filter, #dil-filter, #rating-filter, #parent-filter, #status-filter, #sold-filter, #sprice-filter, #utilization-type-filter, #campaign-status-filter, #nra-filter, #price-slab-filter, #acos-slab-filter').on('change', function() {
                 applyFilters();
             });
 
