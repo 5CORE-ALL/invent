@@ -9,6 +9,7 @@ use App\Models\TemuPricing;
 use App\Models\TemuViewData;
 use App\Models\TemuDailyData;
 use App\Models\TemuAdData;
+use App\Models\TemuBadgeDailyData;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Log;
 
@@ -139,7 +140,83 @@ class CollectTemuMetrics extends Command
         $this->info("  - Collected: {$collected} SKUs");
         $this->info("  - Skipped: {$skipped} SKUs");
         $this->info("  - Date: " . $today->toDateString());
-        
+
+        // Snapshot badge daily data for today only (same source as badge on decrease page - no backfill)
+        $this->snapshotBadgeDailyData($today, $productData);
+
         return 0;
+    }
+
+    /**
+     * Build one row of badge summary for the given date and upsert into temu_badge_daily_data.
+     */
+    protected function snapshotBadgeDailyData(Carbon $recordDate, $productData): void
+    {
+        $normalizeSku = function ($sku) {
+            $sku = strtoupper(trim((string) $sku));
+            $sku = preg_replace('/(\d+)\s*(PCS?|PIECES?)$/i', '$1PC', $sku);
+            $sku = preg_replace('/\s+/', ' ', $sku);
+            return $sku;
+        };
+        $normalizedPmSet = $productData->keys()->flip()->all();
+        $noSpaceToNormalized = [];
+        foreach (array_keys($normalizedPmSet) as $nk) {
+            $noSpace = str_replace(' ', '', $nk);
+            if ($noSpace !== '') {
+                $noSpaceToNormalized[$noSpace] = $nk;
+            }
+        }
+
+        // Same sales logic as Temu decrease page badge (getTemuDecreaseData): all orders matching PM, no date filter – so chart and badge match
+        $allowedRawSkus = TemuDailyData::select('contribution_sku')->distinct()->get()
+            ->filter(function ($r) use ($normalizeSku, $normalizedPmSet, $noSpaceToNormalized) {
+                $n = $normalizeSku($r->contribution_sku ?? '');
+                return isset($normalizedPmSet[$n]) || isset($noSpaceToNormalized[str_replace(' ', '', $n)]);
+            })
+            ->pluck('contribution_sku')
+            ->unique()
+            ->values()
+            ->all();
+        $salesOrderRows = TemuDailyData::whereIn('contribution_sku', $allowedRawSkus)
+            ->get(['contribution_sku', 'order_id', 'quantity_purchased', 'base_price_total']);
+        $totalOrders = 0;
+        $totalQuantity = 0;
+        $totalSales = 0.0;
+        foreach ($salesOrderRows as $row) {
+            if (trim((string) ($row->contribution_sku ?? '')) === '' || trim((string) ($row->order_id ?? '')) === '') {
+                continue;
+            }
+            $totalOrders++;
+            $qty = (int) ($row->quantity_purchased ?? 0);
+            $base = (float) ($row->base_price_total ?? 0);
+            $totalQuantity += $qty;
+            $totalSales += $base * $qty;
+        }
+
+        // Aggregates from temu_sku_daily_data for this date
+        $skuDaily = DB::table('temu_sku_daily_data')
+            ->where('record_date', $recordDate->toDateString())
+            ->selectRaw('COUNT(*) as sku_count, COALESCE(SUM(product_clicks), 0) as total_views, COALESCE(AVG(product_clicks), 0) as avg_views, COALESCE(SUM(spend), 0) as total_spend, COALESCE(AVG(cvr_percent), 0) as avg_cvr_pct')
+            ->first();
+        $skuCount = (int) ($skuDaily->sku_count ?? 0);
+        $totalViews = (int) ($skuDaily->total_views ?? 0);
+        $avgViews = round((float) ($skuDaily->avg_views ?? 0), 2);
+        $totalSpend = round((float) ($skuDaily->total_spend ?? 0), 2);
+        $avgCvrPct = round((float) ($skuDaily->avg_cvr_pct ?? 0), 2);
+
+        TemuBadgeDailyData::updateOrCreate(
+            ['record_date' => $recordDate->toDateString()],
+            [
+                'total_sales' => round($totalSales, 2),
+                'total_orders' => $totalOrders,
+                'total_quantity' => $totalQuantity,
+                'sku_count' => $skuCount,
+                'total_views' => $totalViews,
+                'avg_views' => $avgViews,
+                'total_spend' => $totalSpend,
+                'avg_cvr_pct' => $avgCvrPct,
+            ]
+        );
+        $this->info("  - Badge daily snapshot saved for " . $recordDate->toDateString());
     }
 }

@@ -294,6 +294,14 @@
                         <option value="10plus">10%+</option>
                     </select>
 
+                    <select id="cvr-trend-filter" class="form-select form-select-sm"
+                        style="width: auto; display: inline-block;">
+                        <option value="all">CVR trend</option>
+                        <option value="l60_gt_l30">CVR L60 &gt; CVR L30</option>
+                        <option value="l30_gt_l60">CVR L30 &gt; CVR L60</option>
+                        <option value="equal">CVR L60 = CVR L30</option>
+                    </select>
+
                     <select id="dil-filter" class="form-select form-select-sm" style="width: auto; display: inline-block;">
                         <option value="all">DIL%</option>
                         <option value="red">Red &lt;16.7%</option>
@@ -332,6 +340,12 @@
                         <option value="all">Sold</option>
                         <option value="sold">Sold (>0)</option>
                         <option value="zero">0 Sold</option>
+                    </select>
+
+                    <select id="sprice-filter" class="form-select form-select-sm"
+                        style="width: auto; display: inline-block;">
+                        <option value="all">S PRC</option>
+                        <option value="blank">Blank S PRC only</option>
                     </select>
 
                     <select id="section-filter" class="form-select form-select-sm"
@@ -501,13 +515,17 @@
                         <i class="fas fa-download"></i> SPRICE N Upload
                     </a>
                     
-                    <button id="decrease-btn" class="btn btn-sm btn-warning">
-                        <i class="fas fa-percent"></i> Decrease
-                    </button>
-                    
-                    <button id="increase-btn" class="btn btn-sm btn-success">
-                        <i class="fas fa-percent"></i> Increase
-                    </button>
+                    <div class="btn-group">
+                        <button type="button" id="price-pct-btn" class="btn btn-sm btn-primary dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
+                            <i class="fas fa-percent"></i> Price %
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end" id="price-pct-dropdown">
+                            <li><a class="dropdown-item" href="#" data-mode="decrease"><i class="fas fa-minus-circle text-warning"></i> Decrease</a></li>
+                            <li><a class="dropdown-item" href="#" data-mode="increase"><i class="fas fa-plus-circle text-success"></i> Increase</a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item" href="#" data-mode="cancel"><i class="fas fa-times"></i> Cancel</a></li>
+                        </ul>
+                    </div>
 
                     <button id="clear-sprice-btn" class="btn btn-sm btn-danger" style="display: none;">
                         <i class="fas fa-eraser"></i> Clear SPRICE
@@ -605,19 +623,17 @@
                 </div>
             </div>
             <div class="card-body" style="padding: 0;">
-                <!-- Discount Input Box (shown when SKUs are selected) -->
+                <!-- Price % input: how much to decrease or increase (shown when Decrease/Increase is active) -->
                 <div id="discount-input-container" class="p-2 bg-light border-bottom" style="display: none;">
-                    <div class="d-flex align-items-center gap-2">
-                        <label class="mb-0 fw-bold">Type:</label>
-                        <select id="discount-type-select" class="form-select form-select-sm" style="width: 130px;">
+                    <div class="d-flex align-items-center gap-2 flex-wrap">
+                        <span class="text-muted fw-bold me-1">By how much:</span>
+                        <select id="discount-type-select" class="form-select form-select-sm" style="width: 140px;">
                             <option value="percentage">Percentage (%)</option>
                             <option value="value">Value ($)</option>
                         </select>
-                        
-                        <label class="mb-0 fw-bold" id="discount-input-label">Value:</label>
                         <input type="number" id="discount-percentage-input" class="form-control form-control-sm" 
-                            placeholder="Enter value" step="0.1" min="0" 
-                            style="width: 150px; display: inline-block;">
+                            placeholder="e.g. 10 or 2.50" step="0.1" min="0" 
+                            style="width: 140px;" title="Enter % or $ amount to decrease/increase price">
                         <button id="apply-discount-btn" class="btn btn-sm btn-primary">
                             <i class="fas fa-check"></i> Apply
                         </button>
@@ -931,6 +947,12 @@
         let missingAmazonNonFbaFilterActive = false; // Track Missing L (Non-FBA only) filter
         let seoModeActive = false; // Track SEO mode state
 
+        // Escape string for safe use in HTML attribute (fixes SKUs with " e.g. WF 8"-890 1PC)
+        function escAttr(s) {
+            if (s == null) return '';
+            return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        }
+
         // Play / Pause parent navigation (same as product-master / eBay)
         let productUniqueParents = [];
         let isProductNavigationActive = false;
@@ -953,7 +975,7 @@
             'map_count': 'Missing M', 'nmap_count': 'N Map', 'missing_count': 'Missing L',
             'prc_gt_lmp_count': 'Prc > LMP', 'campaign_count': 'Campaign',
             'missing_campaign_count': 'Missing A', 'nra_count': 'NRA',
-            'ra_count': 'RA', 'paused_count': 'Paused',
+            'ra_count': 'RA', 'paused_count': 'Paused',   
             'ub7_count': '7UB', 'ub7_ub1_count': '7UB+1UB',
             'kw_spend': 'KW Ads Spend', 'hl_spend': 'HL Ads Spend', 'pt_spend': 'PT Ads Spend',
             'total_pft': 'PFT', 'total_sales': 'Sales', 'total_spend': 'Ad Spend',
@@ -977,11 +999,11 @@
         const amzDollarMetrics = ['l30_sales', 'ad_spend', 'kw_spend', 'hl_spend', 'pt_spend', 'total_pft', 'total_sales', 'total_spend'];
 
         // Section column lists (defined once for faster section switching)
-        const SECTION_KW_ADS_COLUMNS = ['(Child) sku', 'acos', 'l30_spend', 'l30_clicks', 'ad_cvr', 'rating', 'campaignBudgetAmount', 'sbgt', 'NRA', 'active_toggle', 'missing_ad', 'l30_sales', 'l30_purchases', 'INV', 'L30', 'E Dil%', 'A_L30', 'A DIL %', 'NRL', 'price', 'campaign_info_icon', 'GPFT%', 'GROI%', 'l7_spend', 'l1_spend', 'avg_cpc', 'l7_cpc', 'l1_cpc', 'last_sbid', 'sbid', 'sbid_m', 'apr_bid', 'TPFT', 'campaignName'];
-        const SECTION_PRICING_COLUMNS = ['(Child) sku', 'price', 'campaign_info_icon', 'c_price', 'actual_cost', 'buy_box_price', 'GPFT%', 'PFT%', 'ROI_percentage', 'cost', 'margin', 'INV', 'A_L30'];
+        const SECTION_KW_ADS_COLUMNS = ['(Child) sku', 'acos', 'l30_spend', 'l30_clicks', 'ad_cvr', 'rating', 'campaignBudgetAmount', 'sbgt', 'NRA', 'active_toggle', 'missing_ad', 'l30_sales', 'l30_purchases', 'INV', 'L30', 'E Dil%', 'A_L30', 'A DIL %', 'NRL', 'price', 'fba_price', 'campaign_info_icon', 'GPFT%', 'GROI%', 'l7_spend', 'l1_spend', 'avg_cpc', 'l7_cpc', 'l1_cpc', 'last_sbid', 'sbid', 'sbid_m', 'apr_bid', 'TPFT', 'campaignName'];
+        const SECTION_PRICING_COLUMNS = ['(Child) sku', 'price', 'fba_price', 'campaign_info_icon', 'c_price', 'actual_cost', 'buy_box_price', 'GPFT%', 'PFT%', 'ROI_percentage', 'cost', 'margin', 'INV', 'A_L30'];
         const SECTION_MISSING_COLUMNS = ['image_path', '(Child) sku', 'NR', 'is_missing', 'inv_map', 'variation_dot'];
-        const SECTION_PT_ADS_COLUMNS = ['(Child) sku', 'pt_acos', 'pt_spend_L30', 'pt_clicks_L30', 'pt_ad_cvr', 'rating', 'INV', 'L30', 'E Dil%', 'A_L30', 'A DIL %', 'NRL', 'NRA', 'active_toggle', 'missing_ad', 'price', 'campaign_info_icon', 'GPFT%', 'GROI%', 'pt_campaignBudgetAmount', 'pt_sbgt', 'pt_sales_L30', 'pt_sold_L30', 'pt_7ub', 'pt_1ub', 'pt_avg_cpc', 'pt_l7_cpc', 'pt_l1_cpc', 'pt_last_sbid', 'pt_sbid', 'pt_sbid_m', 'pt_apr_bid', 'pt_campaignName', 'TPFT'];
-        const SECTION_HL_ADS_COLUMNS = ['(Child) sku', 'hl_acos', 'hl_spend_L30', 'hl_clicks_L30', 'hl_ad_cvr', 'rating', 'INV', 'L30', 'E Dil%', 'A_L30', 'A DIL %', 'NRL', 'NRA', 'active_toggle', 'missing_ad', 'price', 'campaign_info_icon', 'GPFT%', 'GROI%', 'hl_campaignBudgetAmount', 'hl_sbgt', 'hl_sales_L30', 'hl_sold_L30', 'hl_7ub', 'hl_1ub', 'hl_avg_cpc', 'hl_l7_cpc', 'hl_l1_cpc', 'hl_last_sbid', 'hl_sbid', 'hl_sbid_m', 'hl_apr_bid', 'hl_campaignName', 'TPFT'];
+        const SECTION_PT_ADS_COLUMNS = ['(Child) sku', 'pt_acos', 'pt_spend_L30', 'pt_clicks_L30', 'pt_ad_cvr', 'rating', 'INV', 'L30', 'E Dil%', 'A_L30', 'A DIL %', 'NRL', 'NRA', 'active_toggle', 'missing_ad', 'price', 'fba_price', 'campaign_info_icon', 'GPFT%', 'GROI%', 'pt_campaignBudgetAmount', 'pt_sbgt', 'pt_sales_L30', 'pt_sold_L30', 'pt_7ub', 'pt_1ub', 'pt_avg_cpc', 'pt_l7_cpc', 'pt_l1_cpc', 'pt_last_sbid', 'pt_sbid', 'pt_sbid_m', 'pt_apr_bid', 'pt_campaignName', 'TPFT'];
+        const SECTION_HL_ADS_COLUMNS = ['(Child) sku', 'hl_acos', 'hl_spend_L30', 'hl_clicks_L30', 'hl_ad_cvr', 'rating', 'INV', 'L30', 'E Dil%', 'A_L30', 'A DIL %', 'NRL', 'NRA', 'active_toggle', 'missing_ad', 'price', 'fba_price', 'campaign_info_icon', 'GPFT%', 'GROI%', 'hl_campaignBudgetAmount', 'hl_sbgt', 'hl_sales_L30', 'hl_sold_L30', 'hl_7ub', 'hl_1ub', 'hl_avg_cpc', 'hl_l7_cpc', 'hl_l1_cpc', 'hl_last_sbid', 'hl_sbid', 'hl_sbid_m', 'hl_apr_bid', 'hl_campaignName', 'TPFT'];
 
         function amzFmtVal(v) {
             if (amzDollarMetrics.includes(amzChartMetricKey)) return '$' + Math.round(v).toLocaleString('en-US');
@@ -1616,66 +1638,55 @@
                 }
             });
 
-            // Decrease Mode Toggle
-            $('#decrease-btn').on('click', function() {
-                decreaseModeActive = !decreaseModeActive;
-                const selectColumn = table.getColumn('_select');
-                
-                if (decreaseModeActive) {
-                    // Disable increase mode if active
-                    if (increaseModeActive) {
-                        increaseModeActive = false;
-                        $('#increase-btn').removeClass('btn-danger').addClass('btn-success');
-                        $('#increase-btn').html('<i class="fas fa-percent"></i> Increase');
-                    }
-                    selectColumn.show();
-                    $(this).removeClass('btn-warning').addClass('btn-danger');
-                    $(this).html('<i class="fas fa-times"></i> Cancel Decrease');
-                    // Show Clear SPRICE button
-                    $('#clear-sprice-btn').show();
-                } else {
-                    selectColumn.hide();
-                    $(this).removeClass('btn-danger').addClass('btn-warning');
-                    $(this).html('<i class="fas fa-percent"></i> Decrease');
-                    // Clear all selections
-                    selectedSkus.clear();
-                    $('.sku-select-checkbox').prop('checked', false);
-                    $('#select-all-checkbox').prop('checked', false);
-                    $('#discount-input-container').hide();
-                    // Hide Clear SPRICE button
-                    $('#clear-sprice-btn').hide();
+            // Price % (Decrease / Increase) — single dropdown
+            function exitPricePctMode() {
+                decreaseModeActive = false;
+                increaseModeActive = false;
+                if (table) {
+                    const col = table.getColumn('_select');
+                    if (col) col.hide();
                 }
-            });
+                selectedSkus.clear();
+                $('.sku-select-checkbox').prop('checked', false);
+                if ($('#select-all-checkbox').length) $('#select-all-checkbox').prop('checked', false);
+                $('#discount-input-container').hide();
+                $('#clear-sprice-btn').hide();
+                $('#price-pct-btn').removeClass('btn-danger btn-warning btn-success').addClass('btn-primary')
+                    .html('<i class="fas fa-percent"></i> Price %');
+                $('#apply-discount-btn').html('<i class="fas fa-check"></i> Apply');
+            }
 
-            // Increase Mode Toggle
-            $('#increase-btn').on('click', function() {
-                increaseModeActive = !increaseModeActive;
+            function setPricePctMode(mode) {
+                if (!table) return;
                 const selectColumn = table.getColumn('_select');
-                
-                if (increaseModeActive) {
-                    // Disable decrease mode if active
-                    if (decreaseModeActive) {
-                        decreaseModeActive = false;
-                        $('#decrease-btn').removeClass('btn-danger').addClass('btn-warning');
-                        $('#decrease-btn').html('<i class="fas fa-percent"></i> Decrease');
-                    }
-                    selectColumn.show();
-                    $(this).removeClass('btn-success').addClass('btn-danger');
-                    $(this).html('<i class="fas fa-times"></i> Cancel Increase');
-                    // Show Clear SPRICE button
-                    $('#clear-sprice-btn').show();
-                } else {
-                    selectColumn.hide();
-                    $(this).removeClass('btn-danger').addClass('btn-success');
-                    $(this).html('<i class="fas fa-percent"></i> Increase');
-                    // Clear all selections
-                    selectedSkus.clear();
-                    $('.sku-select-checkbox').prop('checked', false);
-                    $('#select-all-checkbox').prop('checked', false);
-                    $('#discount-input-container').hide();
-                    // Hide Clear SPRICE button
-                    $('#clear-sprice-btn').hide();
+                if (!selectColumn) return;
+
+                if (mode === 'cancel') {
+                    exitPricePctMode();
+                    return;
                 }
+
+                decreaseModeActive = (mode === 'decrease');
+                increaseModeActive = (mode === 'increase');
+                selectColumn.show();
+                $('#clear-sprice-btn').show();
+                $('#discount-input-container').show();
+                $('#discount-percentage-input').val('');
+                if (mode === 'decrease') {
+                    $('#price-pct-btn').removeClass('btn-primary btn-success').addClass('btn-warning')
+                        .html('<i class="fas fa-minus-circle"></i> Decrease');
+                    $('#apply-discount-btn').html('<i class="fas fa-check"></i> Apply Decrease');
+                } else {
+                    $('#price-pct-btn').removeClass('btn-primary btn-warning').addClass('btn-success')
+                        .html('<i class="fas fa-plus-circle"></i> Increase');
+                    $('#apply-discount-btn').html('<i class="fas fa-check"></i> Apply Increase');
+                }
+            }
+
+            $(document).on('click', '#price-pct-dropdown a[data-mode]', function(e) {
+                e.preventDefault();
+                const mode = $(this).data('mode');
+                setPricePctMode(mode);
             });
 
             // Checkbox change handler - track selected SKUs
@@ -1696,15 +1707,11 @@
             // Update selected count and discount input visibility
             function updateSelectedCount() {
                 const selectedCount = selectedSkus.size;
-                
-                if (selectedCount > 0) {
+                // Keep input container visible when in Price % mode; only hide when exiting mode
+                if (decreaseModeActive || increaseModeActive) {
                     $('#discount-input-container').show();
-                    $('#selected-skus-count').text(`(${selectedCount} SKU${selectedCount > 1 ? 's' : ''} selected)`);
-                } else {
-                    $('#discount-input-container').hide();
                 }
-                
-                // Update Apply All button
+                $('#selected-skus-count').text(selectedCount > 0 ? `(${selectedCount} SKU${selectedCount > 1 ? 's' : ''} selected)` : '(select SKUs in table)');
                 updateApplyAllButton();
             }
 
@@ -2109,13 +2116,29 @@
                 const roundedDollar = Math.ceil(price);
                 return +(roundedDollar - 0.01).toFixed(2);
             }
+            // Helper: round to retail (.49 endings) — use when .99 would match current price so S PRC stays visible
+            function roundToRetailPrice49(price) {
+                const roundedDollar = Math.ceil(price);
+                return +(roundedDollar - 0.51).toFixed(2);
+            }
 
             // Apply Discount/Increase Button
             $('#apply-discount-btn').on('click', function() {
-                const inputValue = parseFloat($('#discount-percentage-input').val());
+                const rawInput = $('#discount-percentage-input').val();
+                const inputValue = parseFloat(String(rawInput).replace(',', '.'));
                 
+                if (rawInput === '' || rawInput == null) {
+                    showToast('error', 'Please enter a value (% or $)');
+                    return;
+                }
                 if (isNaN(inputValue) || inputValue < 0) {
                     showToast('error', 'Please enter a valid positive number');
+                    return;
+                }
+                
+                const discountType = $('#discount-type-select').val();
+                if (discountType === 'percentage' && inputValue > 100) {
+                    showToast('error', 'Percentage cannot exceed 100');
                     return;
                 }
                 
@@ -2130,7 +2153,6 @@
                 }
                 
                 const mode = increaseModeActive ? 'increase' : 'decrease';
-                const discountType = $('#discount-type-select').val(); // Get selected type
                 let successCount = 0;
                 let errorCount = 0;
                 let totalToProcess = selectedSkus.size;
@@ -2165,7 +2187,7 @@
                                     newPrice = originalPrice * (1 + decimal);
                                 }
                             } else {
-                                // Treat as fixed value
+                                // Treat as fixed value ($)
                                 if (mode === 'decrease') {
                                     newPrice = Math.max(0.01, originalPrice - inputValue);
                                 } else {
@@ -2173,8 +2195,12 @@
                                 }
                             }
 
-                            // Round to retail .99 endings
+                            // Round to retail .99; when that would match current price, use .49 so S PRC doesn’t show blank
                             newPrice = roundToRetailPrice(newPrice);
+                            if (newPrice.toFixed(2) === originalPrice.toFixed(2)) {
+                                newPrice = roundToRetailPrice49(newPrice);
+                            }
+                            const newPriceNum = parseFloat(newPrice.toFixed(2));
                             
                             // Update SPRICE via AJAX
                             $.ajax({
@@ -2185,18 +2211,17 @@
                                 },
                                 data: {
                                     sku: sku,
-                                    sprice: newPrice.toFixed(2)
+                                    sprice: newPriceNum
                                 },
                                 success: function(response) {
                                     successCount++;
                                     
-                                    // Always update SPRICE with the new value, let the formatter decide display
+                                    // Update row so SPRICE column shows the new value (use number so formatter works)
                                     const updateData = {
-                                        'SPRICE': newPrice.toFixed(2), // Always save the new price
+                                        'SPRICE': newPriceNum,
                                         'has_custom_sprice': true,
-                                        'SPRICE_STATUS': null // Reset status so formatter shows/hides based on price match
+                                        'SPRICE_STATUS': response.SPRICE_STATUS != null ? response.SPRICE_STATUS : null
                                     };
-                                    
                                     if (response.sgpft_percent !== undefined) {
                                         updateData['SGPFT'] = response.sgpft_percent;
                                     }
@@ -2207,10 +2232,7 @@
                                         updateData['SROI'] = response.sroi_percent;
                                     }
                                     
-                                    // Update row with all data at once
                                     row.update(updateData);
-                                    
-                                    // Force redraw of the entire row to ensure all formatters run
                                     row.reformat();
                                     
                                     // Check if all requests are complete
@@ -2476,82 +2498,16 @@
                             }
 
                             const isListed = !rowData.is_missing_amazon;
-                            const chartBtn = (sku && isListed) ? `<button class="btn btn-sm ms-1 view-sku-chart" data-sku="${sku}" title="View Metrics Chart" style="border: none; background: none; color: #87CEEB; padding: 2px 6px;"><i class="fa fa-info-circle"></i></button>` : '';
+                            const chartBtn = (sku && isListed) ? `<button class="btn btn-sm ms-1 view-sku-chart" data-sku="${escAttr(sku)}" title="View Metrics Chart" style="border: none; background: none; color: #87CEEB; padding: 2px 6px;"><i class="fa fa-info-circle"></i></button>` : '';
                             return `<div style="display: flex; align-items: center; gap: 5px;">
                                 <span>${sku}</span>
-                                <button class="btn btn-sm btn-link copy-sku-btn p-0" data-sku="${sku}" title="Copy SKU">
+                                <button class="btn btn-sm btn-link copy-sku-btn p-0" data-sku="${escAttr(sku)}" title="Copy SKU">
                                     <i class="fas fa-copy"></i>
                                 </button>
                                 ${chartBtn}
                             </div>`;
                         },
                      
-                    },
-                    {
-                        title: "CVR L30",
-                        field: "CVR_L30",
-                        hozAlign: "center",
-                        formatter: function(cell) {
-                            const row = cell.getRow().getData();
-                            const sku = row['(Child) sku'] || '';
-                            const isListed = !row.is_missing_amazon;
-                            const aL30 = parseFloat(row['A_L30']) || 0;
-                            const sess30 = parseFloat(row['Sess30']) || 0;
-
-                            if (sess30 === 0) {
-                                const dotBtn = (sku && isListed) ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${sku}" data-metric="cvr" title="View CVR% chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #008000;"></span></button>` : '';
-                                return `<span style="color: #a00211; font-weight: 600;">0.0%</span> ${dotBtn}`.trim();
-                            }
-
-                            const cvr = (aL30 / sess30) * 100;
-                            let color = '';
-                            if (cvr <= 4) color = '#a00211';
-                            else if (cvr > 4 && cvr <= 7) color = '#ffc107';
-                            else if (cvr > 7 && cvr <= 10) color = '#28a745';
-                            else color = '#e83e8c';
-                            const dotBtn = (sku && isListed) ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${sku}" data-metric="cvr" title="View CVR% chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #008000;"></span></button>` : '';
-                            return `<span style="color: ${color}; font-weight: 600;">${cvr.toFixed(1)}%</span> ${dotBtn}`.trim();
-                        },
-                        sorter: function(a, b, aRow, bRow) {
-                            const calcCVR = (row) => {
-                                const aL30 = parseFloat(row['A_L30']) || 0;
-                                const sess30 = parseFloat(row['Sess30']) || 0;
-                                return sess30 === 0 ? 0 : (aL30 / sess30) * 100;
-                            };
-                            return calcCVR(aRow.getData()) - calcCVR(bRow.getData());
-                        },
-                        width: 65
-                    },
-                    {
-                        title: "CVR L7",
-                        field: "CVR_L7",
-                        hozAlign: "center",
-                        formatter: function(cell) {
-                            const row = cell.getRow().getData();
-                            const aL7 = parseFloat(row['A_L7']) || 0;
-                            const sess7 = parseFloat(row['Sess7']) || 0;
-
-                            if (sess7 === 0) return '<span style="color: #a00211; font-weight: 600;">0.0%</span>';
-
-                            const cvr = (aL7 / sess7) * 100;
-                            let color = '';
-                            
-                            if (cvr <= 4) color = '#a00211'; // red
-                            else if (cvr > 4 && cvr <= 7) color = '#ffc107'; // yellow
-                            else if (cvr > 7 && cvr <= 10) color = '#28a745'; // green
-                            else color = '#e83e8c'; // pink
-                            
-                            return `<span style="color: ${color}; font-weight: 600;">${cvr.toFixed(1)}%</span>`;
-                        },
-                        sorter: function(a, b, aRow, bRow) {
-                            const calcCVR = (row) => {
-                                const aL7 = parseFloat(row['A_L7']) || 0;
-                                const sess7 = parseFloat(row['Sess7']) || 0;
-                                return sess7 === 0 ? 0 : (aL7 / sess7) * 100;
-                            };
-                            return calcCVR(aRow.getData()) - calcCVR(bRow.getData());
-                        },
-                        width: 60
                     },
                     {
                         title: "CVR L60",
@@ -2585,6 +2541,95 @@
                         width: 65
                     },
                     {
+                        title: "CVR L45",
+                        field: "CVR_L45",
+                        hozAlign: "center",
+                        formatter: function(cell) {
+                            const row = cell.getRow().getData();
+                            // 45-day: use average of L30 and L60 (sold and views) for 45-day approximation
+                            const aL30 = parseFloat(row['A_L30']) || 0;
+                            const sess30 = parseFloat(row['Sess30']) || 0;
+                            const aL60 = parseFloat(row['units_ordered_l60']) || 0;
+                            const sess60 = parseFloat(row['sessions_l60']) || 0;
+                            const aL45 = (aL30 + aL60) / 2;
+                            const sess45 = (sess30 + sess60) / 2;
+
+                            if (sess45 === 0) return '<span style="color: #a00211; font-weight: 600;">0.0%</span>';
+
+                            const cvr = (aL45 / sess45) * 100;
+                            let color = '';
+                            if (cvr <= 4) color = '#a00211'; // red
+                            else if (cvr > 4 && cvr <= 7) color = '#ffc107'; // yellow
+                            else if (cvr > 7 && cvr <= 10) color = '#28a745'; // green
+                            else color = '#e83e8c'; // pink
+                            return `<span style="color: ${color}; font-weight: 600;">${cvr.toFixed(1)}%</span>`;
+                        },
+                        sorter: function(a, b, aRow, bRow) {
+                            const calcCVR = (row) => {
+                                const aL30 = parseFloat(row['A_L30']) || 0;
+                                const sess30 = parseFloat(row['Sess30']) || 0;
+                                const aL60 = parseFloat(row['units_ordered_l60']) || 0;
+                                const sess60 = parseFloat(row['sessions_l60']) || 0;
+                                const aL45 = (aL30 + aL60) / 2;
+                                const sess45 = (sess30 + sess60) / 2;
+                                return sess45 === 0 ? 0 : (aL45 / sess45) * 100;
+                            };
+                            return calcCVR(aRow.getData()) - calcCVR(bRow.getData());
+                        },
+                        width: 65
+                    },
+                    {
+                        title: "CVR L30",
+                        field: "CVR_L30",
+                        hozAlign: "center",
+                        formatter: function(cell) {
+                            const row = cell.getRow().getData();
+                            const sku = row['(Child) sku'] || '';
+                            const isListed = !row.is_missing_amazon;
+                            const aL30 = parseFloat(row['A_L30']) || 0;
+                            const sess30 = parseFloat(row['Sess30']) || 0;
+                            const aL60 = parseFloat(row['units_ordered_l60']) || 0;
+                            const sess60 = parseFloat(row['sessions_l60']) || 0;
+                            const cvrL30 = sess30 === 0 ? 0 : (aL30 / sess30) * 100;
+                            const cvrL60 = sess60 === 0 ? 0 : (aL60 / sess60) * 100;
+                            const tol = 0.1;
+                            let arrowHtml = '';
+                            if (sku && isListed) {
+                                let arrowColor = '#6c757d';
+                                let arrowIcon = 'fa-minus';
+                                if (cvrL30 > cvrL60 + tol) {
+                                    arrowColor = '#28a745';
+                                    arrowIcon = 'fa-arrow-up';
+                                } else if (cvrL30 < cvrL60 - tol) {
+                                    arrowColor = '#a00211';
+                                    arrowIcon = 'fa-arrow-down';
+                                }
+                                arrowHtml = `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${escAttr(sku)}" data-metric="cvr" title="View CVR% chart (vs L60: ${cvrL60.toFixed(1)}%)" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><i class="fas ${arrowIcon}" style="color: ${arrowColor}; font-size: 12px;"></i></button>`;
+                            }
+
+                            if (sess30 === 0) {
+                                return `<span style="color: #a00211; font-weight: 600;">0.0%</span> ${arrowHtml}`.trim();
+                            }
+
+                            const cvr = cvrL30;
+                            let color = '';
+                            if (cvr <= 4) color = '#a00211';
+                            else if (cvr > 4 && cvr <= 7) color = '#ffc107';
+                            else if (cvr > 7 && cvr <= 10) color = '#28a745';
+                            else color = '#e83e8c';
+                            return `<span style="color: ${color}; font-weight: 600;">${cvr.toFixed(1)}%</span> ${arrowHtml}`.trim();
+                        },
+                        sorter: function(a, b, aRow, bRow) {
+                            const calcCVR = (row) => {
+                                const aL30 = parseFloat(row['A_L30']) || 0;
+                                const sess30 = parseFloat(row['Sess30']) || 0;
+                                return sess30 === 0 ? 0 : (aL30 / sess30) * 100;
+                            };
+                            return calcCVR(aRow.getData()) - calcCVR(bRow.getData());
+                        },
+                        width: 65
+                    },
+                    {
                         title: "NR/RL <span class='nr-header-red-dot' style='display:inline-block;width:8px;height:8px;border-radius:50%;background:#dc3545;cursor:pointer;margin-left:3px;vertical-align:middle;' title='Show only red (NRL) rows'></span>",
                         field: "NR",
                         hozAlign: "center",
@@ -2601,7 +2646,7 @@
                             // Backend stores REQ or NRL; display NR = NRL
                             const value = (nrl === 'NR') ? 'NRL' : 'REQ';
 
-                            return `<select class="form-select form-select-sm editable-select" data-sku="${sku}" data-field="NRL"
+                            return `<select class="form-select form-select-sm editable-select" data-sku="${escAttr(sku)}" data-field="NRL"
                                 style="border: 1px solid #ddd; text-align: center; cursor: pointer; padding: 2px 4px; font-size: 16px; width: 50px; height: 28px; color: black; font-weight: bold;">
                                 <option value="REQ" ${value === 'REQ' ? 'selected' : ''} style="color: black;">🟢</option>
                                 <option value="NRL" ${value === 'NRL' ? 'selected' : ''} style="color: black;">🔴</option>
@@ -2686,7 +2731,7 @@
                             const color = isRed ? '#dc3545' : '#28a745';
                             const nextVal = isRed ? 'green' : 'red';
                             const sku = row['is_parent_summary'] ? (row['Parent'] || '') : (row['(Child) sku'] || '');
-                            return `<span class="variation-dot-click" data-sku="${sku}" data-next="${nextVal}" style="font-size: 16px; color: ${color}; cursor: pointer;" title="Click to toggle (${nextVal})">${isRed ? '🔴' : '🟢'}</span>`;
+                            return `<span class="variation-dot-click" data-sku="${escAttr(sku)}" data-next="${nextVal}" style="font-size: 16px; color: ${color}; cursor: pointer;" title="Click to toggle (${nextVal})">${isRed ? '🔴' : '🟢'}</span>`;
                         },
                         cellClick: function(e, cell) {
                             if (!e.target.classList.contains('variation-dot-click')) return;
@@ -2790,7 +2835,7 @@
                             const isListed = !row.is_missing_amazon;
                             const value = cell.getValue();
                             const num = Math.round(parseFloat(value) || 0);
-                            const dotBtn = (sku && isListed) ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${sku}" data-metric="inv" title="View INV chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #6c757d;"></span></button>` : '';
+                            const dotBtn = (sku && isListed) ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${escAttr(sku)}" data-metric="inv" title="View INV chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #6c757d;"></span></button>` : '';
                             return `${num} ${dotBtn}`.trim();
                         }
                     },
@@ -2812,7 +2857,7 @@
                             if (difference === 0) color = '#28a745';
                             else if (difference <= 3) color = '#ffc107';
                             else color = '#dc3545';
-                            const dotBtn = (sku && isListed) ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${sku}" data-metric="inv_amz" title="View INV AMZ chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #17a2b8;"></span></button>` : '';
+                            const dotBtn = (sku && isListed) ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${escAttr(sku)}" data-metric="inv_amz" title="View INV AMZ chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #17a2b8;"></span></button>` : '';
                             return `<span style="color: ${color}; font-weight: 600;">${Math.round(value)}</span> ${dotBtn}`.trim();
                         }
                     },
@@ -2829,7 +2874,7 @@
                             const isListed = !row.is_missing_amazon;
                             const value = cell.getValue();
                             const num = Math.round(parseFloat(value) || 0);
-                            const dotBtn = (sku && isListed) ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${sku}" data-metric="ovl30" title="View OV L30 chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #fd7e14;"></span></button>` : '';
+                            const dotBtn = (sku && isListed) ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${escAttr(sku)}" data-metric="ovl30" title="View OV L30 chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #fd7e14;"></span></button>` : '';
                             return `${num} ${dotBtn}`.trim();
                         }
                     },
@@ -2873,7 +2918,7 @@
                             const isListed = !row.is_missing_amazon;
                             const value = cell.getValue();
                             const num = Math.round(value || 0);
-                            const dotBtn = (sku && isListed) ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${sku}" data-metric="al30" title="View A L30 chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #e83e8c;"></span></button>` : '';
+                            const dotBtn = (sku && isListed) ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${escAttr(sku)}" data-metric="al30" title="View A L30 chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #e83e8c;"></span></button>` : '';
                             return `${num} ${dotBtn}`.trim();
                         }
                     },
@@ -2911,7 +2956,7 @@
 
                             return `
                                 <select class="form-select form-select-sm editable-select" 
-                                        data-sku="${sku}" 
+                                        data-sku="${escAttr(sku)}" 
                                         data-field="NRL"
                                         style="width: 50px; border: 1px solid gray; padding: 2px; font-size: 20px; text-align: center;">
                                     <option value="REQ" ${value === 'REQ' ? 'selected' : ''}>🟢</option>
@@ -2936,7 +2981,7 @@
 
                             return `
                                 <select class="form-select form-select-sm editable-select" 
-                                        data-sku="${sku}" 
+                                        data-sku="${escAttr(sku)}" 
                                         data-field="NRA"
                                         style="width: 50px; border: 1px solid gray; padding: 2px; font-size: 20px; text-align: center;">
                                     <option value="RA" ${value === 'RA' ? 'selected' : ''}>🟢</option>
@@ -2959,7 +3004,7 @@
                             const isListed = !row.is_missing_amazon;
                             const value = cell.getValue();
                             const num = Math.round(value || 0);
-                            const dotBtn = (sku && isListed) ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${sku}" data-metric="views" title="View View L30 chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #0000FF;"></span></button>` : '';
+                            const dotBtn = (sku && isListed) ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${escAttr(sku)}" data-metric="views" title="View View L30 chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #0000FF;"></span></button>` : '';
                             return `${num.toLocaleString('en-US')} ${dotBtn}`.trim();
                         }
                     },
@@ -2982,7 +3027,7 @@
                             const isListed = !rowData.is_missing_amazon;
 
                             // Dot icon: only for listed SKUs — opens SKU metrics chart (Price, Views, CVR%, AD%, Sold)
-                            const dotBtn = (sku && isListed) ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${sku}" title="View metrics chart (Price, Views, CVR%, AD%, Sold)" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #adb5bd;"></span></button>` : '';
+                            const dotBtn = (sku && isListed) ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${escAttr(sku)}" title="View metrics chart (Price, Views, CVR%, AD%, Sold)" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #adb5bd;"></span></button>` : '';
 
                             // If no listing, show nothing (no price, no dot)
                             if (!isListed) return '';
@@ -3008,6 +3053,28 @@
                     },
 
                     {
+                        title: "FBA<br> prc",
+                        field: "fba_price",
+                        hozAlign: "center",
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+                            if (rowData.is_parent_summary) return '';
+                            const val = cell.getValue();
+                            const price = parseFloat(val);
+                            if (val == null || val === '' || (price === 0 && val !== 0)) return '';
+                            const lmpPrice = parseFloat(rowData.lmp_price || 0);
+                            let color = '';
+                            if (lmpPrice > 0) {
+                                if (price > lmpPrice) color = 'color: #dc3545; font-weight: 600;';
+                                else if (price < lmpPrice) color = 'color: darkgreen;';
+                            }
+                            return `<span style="${color}">${Number(price).toFixed(2)}</span>`;
+                        },
+                        sorter: "number",
+                        width: 65
+                    },
+
+                    {
                         title: "Info",
                         field: "campaign_info_icon",
                         hozAlign: "center",
@@ -3018,7 +3085,7 @@
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             const sku = rowData['(Child) sku'] || '';
-                            return `<i class="fas fa-info-circle campaign-info-btn" data-sku="${sku}" style="color: #ffc107; cursor: pointer; font-size: 16px;" title="Click to view KW, PT, HL details"></i>`;
+                            return `<i class="fas fa-info-circle campaign-info-btn" data-sku="${escAttr(sku)}" style="color: #ffc107; cursor: pointer; font-size: 16px;" title="Click to view KW, PT, HL details"></i>`;
                         }
                     },
 
@@ -3117,7 +3184,7 @@
                             const isListed = !rowData.is_missing_amazon;
                             const adSpend = parseFloat(rowData.AD_Spend_L30) || 0;
                             const sales = parseFloat(rowData['A_L30']) || 0;
-                            const dotBtn = (sku && isListed) ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${sku}" data-metric="tacos" title="View TACOS% chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #FFD700;"></span></button>` : '';
+                            const dotBtn = (sku && isListed) ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${escAttr(sku)}" data-metric="tacos" title="View TACOS% chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #FFD700;"></span></button>` : '';
 
                             // If there is ad spend but no sales, show 100%
                             if (adSpend > 0 && sales === 0) {
@@ -4092,7 +4159,7 @@
                             
                             // Show link to open modal with all competitors
                             if (totalCompetitors > 0) {
-                                html += `<a href="#" class="view-lmp-competitors" data-sku="${sku}" 
+                                html += `<a href="#" class="view-lmp-competitors" data-sku="${escAttr(sku)}" 
                                     style="color: #007bff; text-decoration: none; cursor: pointer; font-size: 11px;">
                                     <i class="fa fa-eye"></i> View ${totalCompetitors}
                                 </a>`;
@@ -4123,7 +4190,7 @@
                             
                             const sku = rowData['(Child) sku'];
                             const isChecked = selectedSkus.has(sku) ? 'checked' : '';
-                            return `<input type="checkbox" class="sku-select-checkbox" data-sku="${sku}" ${isChecked} style="cursor: pointer;">`;
+                            return `<input type="checkbox" class="sku-select-checkbox" data-sku="${escAttr(sku)}" ${isChecked} style="cursor: pointer;">`;
                         },
                         width: 60
                     },
@@ -4216,7 +4283,7 @@
                             }
                             
                             // Show only icon with color, no background
-                            return `<button type="button" class="btn btn-sm apply-price-btn btn-circle" data-sku="${sku}" data-price="${sprice}" data-status="${status || ''}" title="${titleText}" style="border: none; background: none; color: ${iconColor}; padding: 0;">
+                            return `<button type="button" class="btn btn-sm apply-price-btn btn-circle" data-sku="${escAttr(sku)}" data-price="${sprice}" data-status="${status || ''}" title="${titleText}" style="border: none; background: none; color: ${iconColor}; padding: 0;">
                                 ${icon}
                             </button>`;
                         },
@@ -4692,7 +4759,7 @@
                                     <input class="form-check-input campaign-status-toggle" 
                                            type="checkbox" 
                                            role="switch" 
-                                           data-sku="${sku}"
+                                           data-sku="${escAttr(sku)}"
                                            data-campaign-id="${campaignId}"
                                            data-section="${sectionKey}"
                                            ${isEnabled ? 'checked' : ''}
@@ -4950,10 +5017,9 @@
                 });
             });
 
-            // SKU Search functionality
+            // SKU Search: use applyFilters() so it stacks with Sold, A L30 range, and all other filters
             $('#sku-search').on('keyup', function() {
-                const value = $(this).val();
-                table.setFilter("(Child) sku", "like", value);
+                applyFilters();
             });
 
             table.on('cellEdited', function(cell) {
@@ -5354,11 +5420,13 @@
                 const nrlFilter = $('#nrl-filter').val();
                 const gpftFilter = $('#gpft-filter').val();
                 const cvrFilter = $('#cvr-filter').val();
+                const cvrTrendFilter = $('#cvr-trend-filter').val();
                 const dilFilter = $('#dil-filter').val();
                 const ratingFilter = $('#rating-filter').val();
                 const parentFilter = $('#parent-filter').val();
                 const statusFilter = $('#status-filter').val();
                 const soldFilter = $('#sold-filter').val();
+                const spriceFilter = $('#sprice-filter').val();
                 const rangeMin = parseFloat($('#range-min').val()) || null;
                 const rangeMax = parseFloat($('#range-max').val()) || null;
                 const rangeColumn = $('#range-column-select').val() || '';
@@ -5481,6 +5549,24 @@
                     });
                 }
 
+                // CVR trend filter: CVR L60 vs CVR L30
+                if (cvrTrendFilter !== 'all') {
+                    const cvrTrendTol = 0.1; // treat as equal within 0.1%
+                    table.addFilter(function(data) {
+                        if (data.is_parent_summary) return true;
+                        const aL30 = parseFloat(data['A_L30']) || 0;
+                        const sess30 = parseFloat(data['Sess30']) || 0;
+                        const aL60 = parseFloat(data['units_ordered_l60']) || 0;
+                        const sess60 = parseFloat(data['sessions_l60']) || 0;
+                        const cvrL30 = sess30 === 0 ? 0 : (aL30 / sess30) * 100;
+                        const cvrL60 = sess60 === 0 ? 0 : (aL60 / sess60) * 100;
+                        if (cvrTrendFilter === 'l60_gt_l30') return cvrL60 > cvrL30 + cvrTrendTol;
+                        if (cvrTrendFilter === 'l30_gt_l60') return cvrL30 > cvrL60 + cvrTrendTol;
+                        if (cvrTrendFilter === 'equal') return Math.abs(cvrL60 - cvrL30) <= cvrTrendTol;
+                        return true;
+                    });
+                }
+
                 // DIL filter (sales velocity = L30 / INV * 100)
                 if (dilFilter !== 'all') {
                     table.addFilter(function(data) {
@@ -5576,6 +5662,17 @@
                             return aL30 > 0;
                         }
                         return true;
+                    });
+                }
+
+                // S PRC filter: show only rows where SPRICE is blank (no value or 0)
+                if (spriceFilter === 'blank') {
+                    table.addFilter(function(data) {
+                        if (data.is_parent_summary) return true;
+                        const sprice = data.SPRICE;
+                        if (sprice == null || sprice === '') return true;
+                        const num = parseFloat(sprice);
+                        return isNaN(num) || num <= 0;
                     });
                 }
 
@@ -5938,7 +6035,7 @@
                 }, 100);
             }
 
-            $('#inventory-filter, #nrl-filter, #gpft-filter, #cvr-filter, #dil-filter, #rating-filter, #parent-filter, #status-filter, #sold-filter, #utilization-type-filter, #campaign-status-filter, #nra-filter, #price-slab-filter, #acos-slab-filter').on('change', function() {
+            $('#inventory-filter, #nrl-filter, #gpft-filter, #cvr-filter, #cvr-trend-filter, #dil-filter, #rating-filter, #parent-filter, #status-filter, #sold-filter, #sprice-filter, #utilization-type-filter, #campaign-status-filter, #nra-filter, #price-slab-filter, #acos-slab-filter').on('change', function() {
                 applyFilters();
             });
 
@@ -6138,6 +6235,11 @@
                 // Always keep row_select column visible
                 if (table.getColumn('row_select')) {
                     table.showColumn('row_select');
+                }
+                // Re-show Select column if Price % (Decrease/Increase) mode is active
+                if (decreaseModeActive || increaseModeActive) {
+                    const selCol = table.getColumn('_select');
+                    if (selCol) selCol.show();
                 }
                 
                 if (section === 'missing') {

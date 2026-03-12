@@ -367,6 +367,12 @@
                         <option value="NR">NR</option>
                     </select>
 
+                    <select id="sprice-filter" class="form-select form-select-sm pricing-filter-item"
+                        style="width: auto; display: inline-block;">
+                        <option value="all">S PRC</option>
+                        <option value="blank">Blank S PRC only</option>
+                    </select>
+
                     <select id="ads-filter" class="form-select form-select-sm pricing-filter-item"
                         style="width: auto; display: inline-block;">
                         <option value="all">AD%</option>
@@ -565,12 +571,20 @@
                         <i class="fa fa-eye"></i> Show All
                     </button>
 
-                    <button id="decrease-btn" class="btn btn-sm btn-warning pricing-filter-item">
-                        <i class="fas fa-arrow-down"></i> Decrease Mode
-                    </button>
-                    
-                    <button id="increase-btn" class="btn btn-sm btn-success pricing-filter-item">
-                        <i class="fas fa-arrow-up"></i> Increase Mode
+                    <div class="dropdown pricing-filter-item">
+                        <button class="btn btn-sm btn-warning dropdown-toggle" type="button" id="pricePercentDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+                            <i class="fas fa-percent"></i> Price %
+                        </button>
+                        <ul class="dropdown-menu" aria-labelledby="pricePercentDropdown">
+                            <li><a class="dropdown-item price-percent-mode" href="#" data-mode="">Price %</a></li>
+                            <li><a class="dropdown-item price-percent-mode" href="#" data-mode="decrease"><i class="fas fa-arrow-down text-danger"></i> Decrease</a></li>
+                            <li><a class="dropdown-item price-percent-mode" href="#" data-mode="increase"><i class="fas fa-arrow-up text-success"></i> Increase</a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item price-percent-mode" href="#" data-mode="cancel">Cancel</a></li>
+                        </ul>
+                    </div>
+                    <button id="clear-sprice-btn" class="btn btn-sm btn-danger pricing-filter-item" style="display: none;">
+                        <i class="fas fa-eraser"></i> Clear SPRICE
                     </button>
 
                     <button type="button" class="btn btn-sm btn-success pricing-filter-item" data-bs-toggle="modal" data-bs-target="#exportModal">
@@ -1363,46 +1377,30 @@
                 }
             });
 
-            // Decrease button toggle
-            $('#decrease-btn').on('click', function() {
-                decreaseModeActive = !decreaseModeActive;
-                increaseModeActive = false; // Disable increase mode
-                const selectColumn = table.getColumn('_select');
-                
-                if (decreaseModeActive) {
-                    selectColumn.show();
-                    $(this).removeClass('btn-warning').addClass('btn-danger');
-                    $(this).html('<i class="fas fa-times"></i> Cancel Decrease');
-                    $('#increase-btn').removeClass('btn-danger').addClass('btn-success').html('<i class="fas fa-arrow-up"></i> Increase Mode');
-                } else {
-                    selectColumn.hide();
-                    $(this).removeClass('btn-danger').addClass('btn-warning');
-                    $(this).html('<i class="fas fa-arrow-down"></i> Decrease Mode');
+            // Price % (Decrease / Increase) — single dropdown (same as Amazon)
+            $(document).on('click', '.price-percent-mode', function(e) {
+                e.preventDefault();
+                const mode = $(this).data('mode');
+                decreaseModeActive = (mode === 'decrease');
+                increaseModeActive = (mode === 'increase');
+                const selectColumn = table && table.getColumn ? table.getColumn('_select') : null;
+                const $dropdownBtn = $('#pricePercentDropdown');
+                $('#clear-sprice-btn').hide();
+                $('#discount-input-container').hide();
+                if (selectColumn) selectColumn.hide();
+                if (mode === '' || mode === 'cancel') {
                     selectedSkus.clear();
                     updateSelectedCount();
                     updateSelectAllCheckbox();
+                    $dropdownBtn.removeClass('btn-danger btn-success').addClass('btn-warning').html('<i class="fas fa-percent"></i> Price %');
+                    return;
                 }
-            });
-            
-            // Increase Mode Toggle
-            $('#increase-btn').on('click', function() {
-                increaseModeActive = !increaseModeActive;
-                decreaseModeActive = false; // Disable decrease mode
-                const selectColumn = table.getColumn('_select');
-                
-                if (increaseModeActive) {
-                    selectColumn.show();
-                    $(this).removeClass('btn-success').addClass('btn-danger');
-                    $(this).html('<i class="fas fa-times"></i> Cancel Increase');
-                    $('#decrease-btn').removeClass('btn-danger').addClass('btn-warning').html('<i class="fas fa-arrow-down"></i> Decrease Mode');
-                } else {
-                    selectColumn.hide();
-                    selectedSkus.clear();
-                    $(this).removeClass('btn-danger').addClass('btn-success');
-                    $(this).html('<i class="fas fa-arrow-up"></i> Increase Mode');
-                    updateSelectedCount();
-                    updateSelectAllCheckbox();
-                }
+                $dropdownBtn.removeClass('btn-warning').addClass(mode === 'decrease' ? 'btn-danger' : 'btn-success')
+                    .html(mode === 'decrease' ? '<i class="fas fa-arrow-down"></i> Decrease' : '<i class="fas fa-arrow-up"></i> Increase');
+                if (selectColumn) selectColumn.show();
+                $('#clear-sprice-btn').show();
+                const count = selectedSkus.size;
+                updateSelectedCount();
             });
 
             // Select all checkbox handler (matching Amazon approach)
@@ -1444,6 +1442,17 @@
                 updateSelectedCount();
                 updateSelectAllCheckbox();
             });
+
+            // Helper: round to retail (.99 endings)
+            function roundToRetailPrice(price) {
+                const roundedDollar = Math.ceil(price);
+                return +(roundedDollar - 0.01).toFixed(2);
+            }
+            // Helper: round to retail (.49 endings) — use when .99 would match current price so S PRC stays visible
+            function roundToRetailPrice49(price) {
+                const roundedDollar = Math.ceil(price);
+                return +(roundedDollar - 0.51).toFixed(2);
+            }
 
             // Apply discount button
             $('#apply-discount-btn').on('click', function() {
@@ -1594,11 +1603,11 @@
                 const count = selectedSkus.size;
                 const currentSection = $('#section-filter').val() || 'pricing';
                 $('#selected-skus-count').text(`${count} SKU${count !== 1 ? 's' : ''} selected`);
-                // Show pricing discount bar only in pricing/pmt_ads section
+                // Show pricing discount bar when SKUs selected or when Price % (Decrease/Increase) mode is active
                 if (currentSection === 'kw_ads') {
                     $('#discount-input-container').hide();
                 } else {
-                    $('#discount-input-container').toggle(count > 0);
+                    $('#discount-input-container').toggle(count > 0 || decreaseModeActive || increaseModeActive);
                 }
                 // Show/hide KW Ads SBID action buttons only in KW Ads section
                 if (currentSection === 'kw_ads' && count > 0) {
@@ -1771,16 +1780,24 @@
                             sprice: sprice
                         },
                         success: function(response) {
-                            // Update calculated fields instantly (clear returns nulls)
-                            if (row) {
-                                row.update({
-                                    SPRICE: sprice,
+                            // Re-find row by SKU so we update the current row (avoids blank S PRC if table redrew)
+                            let targetRow = row;
+                            if (table && table.getRows) {
+                                table.getRows().forEach(function(r) {
+                                    if (r.getData()['(Child) sku'] === sku) targetRow = r;
+                                });
+                            }
+                            const numSprice = typeof sprice === 'number' && !isNaN(sprice) ? sprice : parseFloat(sprice);
+                            if (targetRow) {
+                                targetRow.update({
+                                    SPRICE: numSprice,
                                     SPFT: response.spft_percent != null ? response.spft_percent : 0,
                                     SROI: response.sroi_percent != null ? response.sroi_percent : 0,
                                     SGPFT: response.sgpft_percent != null ? response.sgpft_percent : 0,
-                                    SPRICE_STATUS: sprice > 0 ? 'saved' : null,
-                                    has_custom_sprice: sprice > 0
+                                    SPRICE_STATUS: numSprice > 0 ? 'saved' : null,
+                                    has_custom_sprice: numSprice > 0
                                 });
+                                targetRow.reformat();
                             }
                             resolve(response);
                         },
@@ -2241,18 +2258,30 @@
                 processNextSku();
             };
 
-            // Apply discount to selected SKUs
+            // Apply discount to selected SKUs (same flow as Amazon: validate, round .99/.49, re-find row on save)
             function applyDiscount() {
-                const discountValue = parseFloat($('#discount-percentage-input').val());
+                const rawInput = $('#discount-percentage-input').val();
+                const inputValue = parseFloat(String(rawInput || '').replace(',', '.'));
                 const discountType = $('#discount-type-select').val();
                 
-                if (isNaN(discountValue) || discountValue <= 0) {
-                    showToast('Please enter a valid discount value', 'error');
+                if (rawInput === '' || rawInput == null) {
+                    showToast('Please enter a value (% or $)', 'error');
                     return;
                 }
-
+                if (isNaN(inputValue) || inputValue < 0) {
+                    showToast('Please enter a valid positive number', 'error');
+                    return;
+                }
+                if (discountType === 'percentage' && inputValue > 100) {
+                    showToast('Percentage cannot exceed 100', 'error');
+                    return;
+                }
                 if (selectedSkus.size === 0) {
                     showToast('Please select at least one SKU', 'error');
+                    return;
+                }
+                if (!decreaseModeActive && !increaseModeActive) {
+                    showToast('Please activate Decrease or Increase mode first (Price % dropdown)', 'error');
                     return;
                 }
 
@@ -2267,45 +2296,42 @@
                     
                     const sku = row['(Child) sku'];
                     if (selectedSkus.has(sku)) {
-                        const currentPrice = parseFloat(row['eBay Price']) || 0;
-                        if (currentPrice > 0) {
+                        const originalPrice = parseFloat(row['eBay Price']) || 0;
+                        if (originalPrice > 0) {
                             let newSPrice;
-                            
                             if (discountType === 'percentage') {
+                                const decimal = inputValue / 100;
                                 if (increaseModeActive) {
-                                    newSPrice = currentPrice * (1 + discountValue / 100);
+                                    newSPrice = originalPrice * (1 + decimal);
                                 } else {
-                                    newSPrice = currentPrice * (1 - discountValue / 100);
+                                    newSPrice = originalPrice * (1 - decimal);
                                 }
-                            } else { // value
+                            } else {
                                 if (increaseModeActive) {
-                                    newSPrice = currentPrice + discountValue;
+                                    newSPrice = originalPrice + inputValue;
                                 } else {
-                                    newSPrice = currentPrice - discountValue;
+                                    newSPrice = Math.max(0.01, originalPrice - inputValue);
                                 }
                             }
-                            
                             newSPrice = Math.max(0.01, newSPrice);
+                            // Round to retail .99; when that would match current price, use .49 so S PRC doesn't show blank
+                            newSPrice = roundToRetailPrice(newSPrice);
+                            if (newSPrice.toFixed(2) === originalPrice.toFixed(2)) {
+                                newSPrice = roundToRetailPrice49(newSPrice);
+                            }
+                            const newPriceNum = parseFloat(newSPrice.toFixed(2));
                             
-                            // Store original SPRICE value for potential revert
                             const originalSPrice = parseFloat(row['SPRICE']) || 0;
-                            
-                            // Find the table row
                             const tableRow = table.getRows().find(r => {
                                 const rowData = r.getData();
                                 return rowData['(Child) sku'] === sku;
                             });
                             
-                            // Update SPRICE instantly in the table
                             if (tableRow) {
-                                tableRow.update({ 
-                                    SPRICE: newSPrice,
-                                    SPRICE_STATUS: 'processing'
-                                });
+                                tableRow.update({ SPRICE: newPriceNum, SPRICE_STATUS: 'processing' });
                             }
                             
-                            // Save SPRICE in database with retry
-                            saveSpriceWithRetry(sku, newSPrice, tableRow)
+                            saveSpriceWithRetry(sku, newPriceNum, tableRow)
                                 .then((response) => {
                                     updatedCount++;
                                     if (updatedCount + errorCount === totalSkus) {
@@ -2318,10 +2344,7 @@
                                 })
                                 .catch((error) => {
                                     errorCount++;
-                                    // Revert SPRICE on error
-                                    if (tableRow) {
-                                        tableRow.update({ SPRICE: originalSPrice });
-                                    }
+                                    if (tableRow) tableRow.update({ SPRICE: originalSPrice });
                                     if (updatedCount + errorCount === totalSkus) {
                                         showToast(`Discount applied to ${updatedCount} SKU(s), ${errorCount} failed`, 'error');
                                     }
@@ -3205,23 +3228,22 @@
                             const value = cell.getValue();
                             const rowData = cell.getRow().getData();
                             const hasCustomSprice = rowData.has_custom_sprice;
-                            const ebayPrice = parseFloat(rowData['eBay Price']) || 0;
-                            const sprice = parseFloat(value) || 0;
+                            const currentPrice = parseFloat(rowData['eBay Price']) || 0;
+                            const spriceNum = (value != null && value !== '') ? parseFloat(value) : NaN;
+                            const sprice = isNaN(spriceNum) ? 0 : spriceNum;
                             
-                            if (!value) return '';
+                            // Blank only when SPRICE is missing or zero (no override)
+                            if (value == null || value === '' || isNaN(spriceNum) || sprice <= 0) return '';
                             
-                            // If SPRICE matches eBay Price, show blank
-                            if (sprice === ebayPrice) {
-                                return '<span style="color: #999; font-style: italic;">-</span>';
+                            // Show blank if price and SPRICE match (same as eBay Price)
+                            if (currentPrice > 0 && sprice > 0 && currentPrice.toFixed(2) === sprice.toFixed(2)) {
+                                return '';
                             }
                             
-                            const formattedValue = `$${parseFloat(value).toFixed(2)}`;
-                            
-                            // If using default eBay Price (not custom), show in blue
+                            const formattedValue = `$${Number(sprice).toFixed(2)}`;
                             if (hasCustomSprice === false) {
                                 return `<span style="color: #0d6efd; font-weight: 500;">${formattedValue}</span>`;
                             }
-                            
                             return formattedValue;
                         },
                         width: 80
@@ -4641,6 +4663,7 @@
                 const gpftFilter = $('#gpft-filter').val();
                 const cvrFilter = $('#cvr-filter').val();
                 const statusFilter = $('#status-filter').val();
+                const spriceFilter = $('#sprice-filter').val();
                 const adsFilter = $('#ads-filter').val();
                 const dilFilter = $('.column-filter[data-column="dil_percent"].active')?.data('color') || 'all';
                 const rangeMin = parseFloat($('#range-min').val()) || null;
@@ -4761,6 +4784,17 @@
                             return status === 'NR';
                         }
                         return true;
+                    });
+                }
+
+                // S PRC filter: show only rows where SPRICE is blank (no value or 0)
+                if (spriceFilter === 'blank') {
+                    table.addFilter(function(data) {
+                        if (data.Parent && String(data.Parent).toUpperCase().startsWith('PARENT')) return true;
+                        const sprice = data.SPRICE;
+                        if (sprice == null || sprice === '') return true;
+                        const num = parseFloat(sprice);
+                        return isNaN(num) || num <= 0;
                     });
                 }
 
@@ -5139,7 +5173,7 @@
                 }, 100);
             }
 
-            $('#view-type-filter, #parent-sku-dropdown, #inventory-filter, #nrl-filter, #gpft-filter, #cvr-filter, #status-filter, #ads-filter').on('change', function() {
+            $('#view-type-filter, #parent-sku-dropdown, #inventory-filter, #nrl-filter, #gpft-filter, #cvr-filter, #status-filter, #sprice-filter, #ads-filter').on('change', function() {
                 applyFilters();
             });
 
@@ -5584,6 +5618,13 @@
                 var sectionVal = $(this).val();
 
                 applySectionColumnVisibility(sectionVal);
+                // Re-show Select column when Price % (Decrease/Increase) mode is active
+                if ((decreaseModeActive || increaseModeActive) && table && table.getColumn) {
+                    try {
+                        var selectCol = table.getColumn('_select');
+                        if (selectCol) selectCol.show();
+                    } catch (e) {}
+                }
 
                 if (sectionVal === 'all' || sectionVal === 'pricing') {
                     // Hide KW Ads stats & filters, show pricing filters & Summary stats
