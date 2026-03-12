@@ -30,7 +30,24 @@
         .tabulator .tabulator-header .tabulator-col.tabulator-sortable .tabulator-col-title {
             padding-right: 0px !important;
         }
-        
+
+        /* Red/Green toggle dot for Sugg Send column */
+        .send-toggle-dot {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            cursor: pointer;
+        }
+
+        .send-toggle-dot.red {
+            background-color: #dc3545;
+        }
+
+        .send-toggle-dot.green {
+            background-color: #28a745;
+        }
+
         /* Ensure all modals have proper z-index */
         .modal {
             z-index: 1050 !important;
@@ -837,14 +854,51 @@
 
                                 // Color coding: positive = green, else (negative or zero) = red
                                 const bgColor = value > 0 ? '#28a745' :
-                                '#dc3545'; // green for positive, red for else
+                                    '#dc3545'; // green for positive, red for else
                                 const textColor = '#fff';
                                 return `<span style="background-color:${bgColor}; color:${textColor}; padding:4px 8px; border-radius:3px; font-weight:600;">${display}</span>`;
                             }
                         },
 
+                        {
+                            title: "Send Toggle",
+                            field: "send_toggle",
+                            hozAlign: "center",
+                            formatter: function(cell) {
+                                const rowData = cell.getRow().getData();
+                                if (rowData.is_parent) {
+                                    return '';
+                                }
 
-                           {
+                                // Default is red dot
+                                const value = cell.getValue();
+                                const isGreen = value === true || value === 1 || value === '1';
+                                const colorClass = isGreen ? 'green' : 'red';
+
+                                return `<span class="send-toggle-dot ${colorClass}"></span>`;
+                            },
+                            cellClick: function(e, cell) {
+                                const rowData = cell.getRow().getData();
+                                if (rowData.is_parent) {
+                                    return;
+                                }
+
+                                const dot = e.target.closest('.send-toggle-dot');
+                                if (!dot) return;
+
+                                if (dot.classList.contains('red')) {
+                                    dot.classList.remove('red');
+                                    dot.classList.add('green');
+                                    cell.setValue(1, true);
+                                } else {
+                                    dot.classList.remove('green');
+                                    dot.classList.add('red');
+                                    cell.setValue(0, true);
+                                }
+                            }
+                        },
+
+                        {
                             title: "FBA Price",
                             field: "FBA_Price",
                             hozAlign: "center",

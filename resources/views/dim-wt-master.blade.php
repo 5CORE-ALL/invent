@@ -195,6 +195,25 @@
         .table-responsive .text-center {
             text-align: center;
         }
+        /* Highlight selected item dimension headers */
+        .table-responsive thead th.item-dim-header {
+            background-color: #fff9c4 !important; /* light yellow */
+        }
+        /* Always hide CTN L/W/H (CM) columns from view */
+        .table-responsive thead th.ctn-cm-col,
+        .table-responsive tbody td.ctn-cm-col {
+            display: none;
+        }
+        /* Always hide Item Length/Width/Height (CM) columns from view */
+        .table-responsive thead th.item-cm-col,
+        .table-responsive tbody td.item-cm-col {
+            display: none;
+        }
+        /* Hide Item Weight ACT (Kg) column */
+        .table-responsive thead th.hide-item-wt-act,
+        .table-responsive tbody td.hide-item-wt-act {
+            display: none;
+        }
 
         .table {
             margin-bottom: 0;
@@ -505,51 +524,57 @@
                                         </select>
                                     </th>
                                     <th><span class="th-vertical-label">INV</span></th>
-                                    <th class="th-has-filter">
-                                        <div class="th-vertical-label" style="font-size: 9px;">Weight ACT<br>(Kg)</div>
+                                    <th class="th-has-filter item-dim-header hide-item-wt-act">
+                                        <div class="th-vertical-label" style="font-size: 9px;">Item Weight ACT<br>(Kg)</div>
                                         <select id="filterWtActKg" class="form-control form-control-sm mt-1" style="font-size: 9px; padding: 2px 4px;">
                                             <option value="all">All</option>
                                             <option value="missing">Missing</option>
                                         </select>
                                     </th>
-                                    <th class="th-has-filter">
-                                        <div class="th-vertical-label" style="font-size: 9px;">WT ACT<br>(LB)</div>
+                                    <th class="th-has-filter item-dim-header">
+                                        <div class="th-vertical-label" style="font-size: 9px;">Item WT ACT<br>(LB)</div>
                                         <select id="filterWtAct" class="form-control form-control-sm mt-1" style="font-size: 9px; padding: 2px 4px;">
                                             <option value="all">All</option>
                                             <option value="missing">Missing</option>
                                         </select>
                                     </th>
-                                    <th class="th-has-filter">
-                                        <div class="th-vertical-label" style="font-size: 9px;">WT DECL<br>(LB)</div>
+                                    <th class="th-has-filter item-dim-header">
+                                        <div class="th-vertical-label" style="font-size: 9px;">Item WT DECL<br>(LB)</div>
                                         <select id="filterWtDecl" class="form-control form-control-sm mt-1" style="font-size: 9px; padding: 2px 4px;">
                                             <option value="all">All</option>
                                             <option value="missing">Missing</option>
                                         </select>
                                     </th>
-                                    <th class="th-has-filter">
-                                        <div class="th-vertical-label" style="font-size: 9px;">Length<br>(inch)</div>
+                                    <th class="th-has-filter item-dim-header">
+                                        <div class="th-vertical-label" style="font-size: 9px;">Item Length<br>(inch)</div>
                                         <select id="filterL" class="form-control form-control-sm mt-1" style="font-size: 9px; padding: 2px 4px;">
                                             <option value="all">All</option>
                                             <option value="missing">Missing</option>
                                         </select>
                                     </th>
-                                    <th class="th-has-filter">
-                                        <div class="th-vertical-label" style="font-size: 9px;">Width<br>(inch)</div>
+                                    <th class="th-has-filter item-dim-header">
+                                        <div class="th-vertical-label" style="font-size: 9px;">Item Width<br>(inch)</div>
                                         <select id="filterW" class="form-control form-control-sm mt-1" style="font-size: 9px; padding: 2px 4px;">
                                             <option value="all">All</option>
                                             <option value="missing">Missing</option>
                                         </select>
                                     </th>
-                                    <th class="th-has-filter">
-                                        <div class="th-vertical-label" style="font-size: 9px;">Height<br>(Inch)</div>
+                                    <th class="th-has-filter item-dim-header">
+                                        <div class="th-vertical-label" style="font-size: 9px;">Item Height<br>(Inch)</div>
                                         <select id="filterH" class="form-control form-control-sm mt-1" style="font-size: 9px; padding: 2px 4px;">
                                             <option value="all">All</option>
                                             <option value="missing">Missing</option>
                                         </select>
                                     </th>
-                                    <th><span class="th-vertical-label">Length<br>(CM)</span></th>
-                                    <th><span class="th-vertical-label">Width<br>(CM)</span></th>
-                                    <th><span class="th-vertical-label">Height<br>(CM)</span></th>
+                                    <th class="item-cm-col"><span class="th-vertical-label">Item Length<br>(CM)</span></th>
+                                    <th class="item-cm-col"><span class="th-vertical-label">Item Width<br>(CM)</span></th>
+                                    <th class="item-cm-col"><span class="th-vertical-label">Item Height<br>(CM)</span></th>
+                                    <th><span class="th-vertical-label">CTN L<br>(inch)</span></th>
+                                    <th><span class="th-vertical-label">CTN W<br>(inch)</span></th>
+                                    <th><span class="th-vertical-label">CTN H<br>(inch)</span></th>
+                                    <th class="ctn-cm-col"><span class="th-vertical-label">CTN L<br>(CM)</span></th>
+                                    <th class="ctn-cm-col"><span class="th-vertical-label">CTN W<br>(CM)</span></th>
+                                    <th class="ctn-cm-col"><span class="th-vertical-label">CTN H<br>(CM)</span></th>
                                     <th class="th-has-filter">
                                         <div class="th-vertical-label" style="font-size: 9px;">CBM</div>
                                         <select id="filterCbm" class="form-control form-control-sm mt-1" style="font-size: 9px; padding: 2px 4px;">
@@ -557,9 +582,6 @@
                                             <option value="missing">Missing</option>
                                         </select>
                                     </th>
-                                    <th><span class="th-vertical-label">CTN L<br>(CM)</span></th>
-                                    <th><span class="th-vertical-label">CTN W<br>(CM)</span></th>
-                                    <th><span class="th-vertical-label">CTN H<br>(CM)</span></th>
                                     <th><span class="th-vertical-label">Carton<br>CBM</span></th>
                                     <th><span class="th-vertical-label">CTN<br>QTY</span></th>
                                     <th><span class="th-vertical-label">Carton CBM<br>each</span></th>
@@ -607,45 +629,45 @@
                         </div>
                         <div class="row mb-3">
                             <div class="col-md-4">
-                                <label for="editWtActKg" class="form-label">Weight ACT (Kg)</label>
-                                <input type="number" step="0.01" class="form-control" id="editWtActKg" name="wt_act_kg" placeholder="Enter Weight ACT (Kg)">
+                                <label for="editWtActKg" class="form-label">Item Weight ACT (Kg)</label>
+                                <input type="number" step="0.01" class="form-control" id="editWtActKg" name="wt_act_kg" placeholder="Enter Item Weight ACT (Kg)">
                             </div>
                             <div class="col-md-4">
-                                <label for="editWtAct" class="form-label">WT ACT (LB)</label>
-                                <input type="number" step="0.01" class="form-control" id="editWtAct" name="wt_act" placeholder="Enter WT ACT (LB)">
+                                <label for="editWtAct" class="form-label">Item WT ACT (LB)</label>
+                                <input type="number" step="0.01" class="form-control" id="editWtAct" name="wt_act" placeholder="Enter Item WT ACT (LB)">
                             </div>
                             <div class="col-md-4">
-                                <label for="editWtDecl" class="form-label">WT DECL (LB)</label>
-                                <input type="number" step="0.01" class="form-control" id="editWtDecl" name="wt_decl" placeholder="Enter WT DECL (LB)">
+                                <label for="editWtDecl" class="form-label">Item WT DECL (LB)</label>
+                                <input type="number" step="0.01" class="form-control" id="editWtDecl" name="wt_decl" placeholder="Enter Item WT DECL (LB)">
                             </div>
                         </div>
                         
                         <div class="row mb-3">
                             <div class="col-md-4">
-                                <label for="editL" class="form-label">Length (inch)</label>
-                                <input type="number" step="0.01" class="form-control" id="editL" name="l" placeholder="Enter Length (inch)">
+                                <label for="editL" class="form-label">Item Length (inch)</label>
+                                <input type="number" step="0.01" class="form-control" id="editL" name="l" placeholder="Enter Item Length (inch)">
                             </div>
                             <div class="col-md-4">
-                                <label for="editW" class="form-label">Width (inch)</label>
-                                <input type="number" step="0.01" class="form-control" id="editW" name="w" placeholder="Enter Width (inch)">
+                                <label for="editW" class="form-label">Item Width (inch)</label>
+                                <input type="number" step="0.01" class="form-control" id="editW" name="w" placeholder="Enter Item Width (inch)">
                             </div>
                             <div class="col-md-4">
-                                <label for="editH" class="form-label">Height (Inch)</label>
-                                <input type="number" step="0.01" class="form-control" id="editH" name="h" placeholder="Enter Height (Inch)">
+                                <label for="editH" class="form-label">Item Height (Inch)</label>
+                                <input type="number" step="0.01" class="form-control" id="editH" name="h" placeholder="Enter Item Height (Inch)">
                             </div>
                         </div>
                         <div class="row mb-3">
                             <div class="col-md-4">
-                                <label for="editLCm" class="form-label">Length (CM)</label>
-                                <input type="number" step="0.01" class="form-control" id="editLCm" name="l_cm" placeholder="Enter Length (CM)">
+                                <label for="editLCm" class="form-label">Item Length (CM)</label>
+                                <input type="number" step="0.01" class="form-control" id="editLCm" name="l_cm" placeholder="Enter Item Length (CM)">
                             </div>
                             <div class="col-md-4">
-                                <label for="editWCm" class="form-label">Width (CM)</label>
-                                <input type="number" step="0.01" class="form-control" id="editWCm" name="w_cm" placeholder="Enter Width (CM)">
+                                <label for="editWCm" class="form-label">Item Width (CM)</label>
+                                <input type="number" step="0.01" class="form-control" id="editWCm" name="w_cm" placeholder="Enter Item Width (CM)">
                             </div>
                             <div class="col-md-4">
-                                <label for="editHCm" class="form-label">Height (CM)</label>
-                                <input type="number" step="0.01" class="form-control" id="editHCm" name="h_cm" placeholder="Enter Height (CM)">
+                                <label for="editHCm" class="form-label">Item Height (CM)</label>
+                                <input type="number" step="0.01" class="form-control" id="editHCm" name="h_cm" placeholder="Enter Item Height (CM)">
                             </div>
                         </div>
                         
@@ -655,20 +677,32 @@
                             </div>
                         </div>
                         <div class="row mb-3">
-                            <div class="col-md-4">
+                            <div class="col-md-2">
                                 <label for="editCtnL" class="form-label">CTN L (CM)</label>
                                 <input type="number" step="0.01" class="form-control" id="editCtnL" name="ctn_l" placeholder="Enter CTN L (CM)">
                             </div>
-                            <div class="col-md-4">
+                            <div class="col-md-2">
+                                <label for="editCtnLInch" class="form-label">CTN L (inch)</label>
+                                <input type="number" step="0.01" class="form-control" id="editCtnLInch" name="ctn_l_inch" placeholder="Auto from CM" readonly>
+                            </div>
+                            <div class="col-md-2">
                                 <label for="editCtnW" class="form-label">CTN W (CM)</label>
                                 <input type="number" step="0.01" class="form-control" id="editCtnW" name="ctn_w" placeholder="Enter CTN W (CM)">
                             </div>
-                            <div class="col-md-4">
+                            <div class="col-md-2">
+                                <label for="editCtnWInch" class="form-label">CTN W (inch)</label>
+                                <input type="number" step="0.01" class="form-control" id="editCtnWInch" name="ctn_w_inch" placeholder="Auto from CM" readonly>
+                            </div>
+                            <div class="col-md-2">
                                 <label for="editCtnH" class="form-label">CTN H (CM)</label>
                                 <input type="number" step="0.01" class="form-control" id="editCtnH" name="ctn_h" placeholder="Enter CTN H (CM)">
                             </div>
+                            <div class="col-md-2">
+                                <label for="editCtnHInch" class="form-label">CTN H (inch)</label>
+                                <input type="number" step="0.01" class="form-control" id="editCtnHInch" name="ctn_h_inch" placeholder="Auto from CM" readonly>
+                            </div>
                         </div>
-                        
+
                         <div class="row mb-3">
                             <div class="col-md-6">
                                 <label for="editCtnQty" class="form-label">CTN (QTY)</label>
@@ -958,9 +992,9 @@
                     }
                     row.appendChild(invCell);
 
-                    // Weight ACT (Kg) column
+                    // Weight ACT (Kg) column (hidden)
                     const wtActKgCell = document.createElement('td');
-                    wtActKgCell.className = 'text-center';
+                    wtActKgCell.className = 'text-center hide-item-wt-act';
                     wtActKgCell.textContent = cellVal(item.wt_act_kg, 1);
                     row.appendChild(wtActKgCell);
 
@@ -976,65 +1010,95 @@
                     wtDeclCell.textContent = cellVal(item.wt_decl, 1);
                     row.appendChild(wtDeclCell);
 
-                    // L column
+                    // L column (inch) - round to whole number
                     const lCell = document.createElement('td');
                     lCell.className = 'text-center';
-                    lCell.textContent = cellVal(item.l, 1);
+                    lCell.textContent = cellVal(item.l, 0);
                     row.appendChild(lCell);
 
-                    // W column
+                    // W column (inch) - round to whole number
                     const wCell = document.createElement('td');
                     wCell.className = 'text-center';
-                    wCell.textContent = cellVal(item.w, 1);
+                    wCell.textContent = cellVal(item.w, 0);
                     row.appendChild(wCell);
 
-                    // H column
+                    // H column (inch) - round to whole number
                     const hCell = document.createElement('td');
                     hCell.className = 'text-center';
-                    hCell.textContent = cellVal(item.h, 1);
+                    hCell.textContent = cellVal(item.h, 0);
                     row.appendChild(hCell);
 
-                    // Length (CM) column
+                    // Length (CM) column (use stored value or convert from inch) - hidden
                     const lCmCell = document.createElement('td');
-                    lCmCell.className = 'text-center';
-                    lCmCell.textContent = cellVal(item.l_cm, 1);
+                    lCmCell.className = 'text-center item-cm-col';
+                    const lCmVal = item.l_cm != null && item.l_cm !== undefined && item.l_cm !== ''
+                        ? item.l_cm
+                        : (parseFloat(item.l) || 0) * 2.54;
+                    lCmCell.textContent = cellVal(lCmVal, 0);
                     row.appendChild(lCmCell);
 
-                    // Width (CM) column
+                    // Width (CM) column (use stored value or convert from inch) - hidden
                     const wCmCell = document.createElement('td');
-                    wCmCell.className = 'text-center';
-                    wCmCell.textContent = cellVal(item.w_cm, 1);
+                    wCmCell.className = 'text-center item-cm-col';
+                    const wCmVal = item.w_cm != null && item.w_cm !== undefined && item.w_cm !== ''
+                        ? item.w_cm
+                        : (parseFloat(item.w) || 0) * 2.54;
+                    wCmCell.textContent = cellVal(wCmVal, 0);
                     row.appendChild(wCmCell);
 
-                    // Height (CM) column
+                    // Height (CM) column (use stored value or convert from inch) - hidden
                     const hCmCell = document.createElement('td');
-                    hCmCell.className = 'text-center';
-                    hCmCell.textContent = cellVal(item.h_cm, 1);
+                    hCmCell.className = 'text-center item-cm-col';
+                    const hCmVal = item.h_cm != null && item.h_cm !== undefined && item.h_cm !== ''
+                        ? item.h_cm
+                        : (parseFloat(item.h) || 0) * 2.54;
+                    hCmCell.textContent = cellVal(hCmVal, 0);
                     row.appendChild(hCmCell);
+
+                    // CTN L (inch) column (from carton dimensions)
+                    const ctnLenInchCell = document.createElement('td');
+                    ctnLenInchCell.className = 'text-center';
+                    const ctnLenInchVal = (parseFloat(item.ctn_l) || 0) / 2.54;
+                    ctnLenInchCell.textContent = cellVal(ctnLenInchVal, 0);
+                    row.appendChild(ctnLenInchCell);
+
+                    // CTN W (inch) column
+                    const ctnWidInchCell = document.createElement('td');
+                    ctnWidInchCell.className = 'text-center';
+                    const ctnWidInchVal = (parseFloat(item.ctn_w) || 0) / 2.54;
+                    ctnWidInchCell.textContent = cellVal(ctnWidInchVal, 0);
+                    row.appendChild(ctnWidInchCell);
+
+                    // CTN H (inch) column
+                    const ctnHeiInchCell = document.createElement('td');
+                    ctnHeiInchCell.className = 'text-center';
+                    const ctnHeiInchVal = (parseFloat(item.ctn_h) || 0) / 2.54;
+                    ctnHeiInchCell.textContent = cellVal(ctnHeiInchVal, 0);
+                    row.appendChild(ctnHeiInchCell);
+
+                    // CTN L (CM) column (hidden by CSS)
+                    const ctnLenCmCell = document.createElement('td');
+                    ctnLenCmCell.className = 'text-center ctn-cm-col';
+                    ctnLenCmCell.textContent = cellVal(item.ctn_l, 0);
+                    row.appendChild(ctnLenCmCell);
+
+                    // CTN W (CM) column (hidden by CSS)
+                    const ctnWidCmCell = document.createElement('td');
+                    ctnWidCmCell.className = 'text-center ctn-cm-col';
+                    ctnWidCmCell.textContent = cellVal(item.ctn_w, 0);
+                    row.appendChild(ctnWidCmCell);
+
+                    // CTN H (CM) column (hidden by CSS)
+                    const ctnHeiCmCell = document.createElement('td');
+                    ctnHeiCmCell.className = 'text-center ctn-cm-col';
+                    ctnHeiCmCell.textContent = cellVal(item.ctn_h, 0);
+                    row.appendChild(ctnHeiCmCell);
 
                     // CBM column
                     const cbmCell = document.createElement('td');
                     cbmCell.className = 'text-center';
                     cbmCell.textContent = cellVal(item.cbm, 1);
                     row.appendChild(cbmCell);
-
-                    // CTN L (CM) column
-                    const ctnLCell = document.createElement('td');
-                    ctnLCell.className = 'text-center';
-                    ctnLCell.textContent = cellVal(item.ctn_l, 0);
-                    row.appendChild(ctnLCell);
-
-                    // CTN W (CM) column
-                    const ctnWCell = document.createElement('td');
-                    ctnWCell.className = 'text-center';
-                    ctnWCell.textContent = cellVal(item.ctn_w, 0);
-                    row.appendChild(ctnWCell);
-
-                    // CTN H (CM) column
-                    const ctnHCell = document.createElement('td');
-                    ctnHCell.className = 'text-center';
-                    ctnHCell.textContent = cellVal(item.ctn_h, 0);
-                    row.appendChild(ctnHCell);
 
                     // CTN CBM column (calculated: CTN L * CTN W * CTN H / 1000000)
                     const ctnCbmCalculated = (parseFloat(item.ctn_l) || 0) * (parseFloat(item.ctn_w) || 0) * (parseFloat(item.ctn_h) || 0) / 1000000;
@@ -1117,7 +1181,7 @@
                 applyDimWtSectionFilter();
             }
 
-            // Section filter: Item Data (hide CTN/Carton columns) or Carton Data (hide Weight ACT..CBM columns)
+            // Section filter: controls visibility of item vs carton metrics
             function applyDimWtSectionFilter() {
                 const table = document.getElementById('dim-wt-master-datatable');
                 const sectionEl = document.getElementById('dimWtSectionFilter');
@@ -1131,12 +1195,29 @@
                 for (let i = 0; i < ths.length; i++) {
                     const th = ths[i];
                     const headerText = (th.textContent || '').toLowerCase();
+
+                    const isCtnDim =
+                        headerText.includes('ctn l') ||
+                        headerText.includes('ctn w') ||
+                        headerText.includes('ctn h');
+
+                    const isCartonMetric =
+                        (!isCtnDim && headerText.includes('carton')) ||
+                        headerText.includes('ctn cbm') ||
+                        (headerText.includes('ctn') && headerText.includes('qty')) ||
+                        headerText === 'cbm e' ||
+                        headerText === 'cbm';
+
                     let visible = true;
+
                     if (section === 'item_data') {
-                        visible = !headerText.includes('ctn') && !headerText.includes('carton');
+                        // Show all item columns + CTN dimensions; hide only carton summary metrics
+                        visible = !isCartonMetric;
                     } else if (section === 'carton_data') {
-                        visible = i < 6 || i > 15;
+                        // Focus on CTN dimensions and carton metrics; hide most pure item-only metrics
+                        visible = isCtnDim || isCartonMetric || headerText.includes('status') || headerText === 'inv';
                     }
+
                     th.style.display = visible ? '' : 'none';
                     tbody.querySelectorAll('tr').forEach(tr => {
                         const cell = tr.cells[i];
@@ -2102,6 +2183,27 @@
                 document.getElementById('editCtnL').value = product.ctn_l || '';
                 document.getElementById('editCtnW').value = product.ctn_w || '';
                 document.getElementById('editCtnH').value = product.ctn_h || '';
+                // Populate auto-calculated inch fields
+                // Auto-populate Item CM fields from inch values if CM is missing
+                const lValInch = parseFloat(product.l) || 0;
+                const wValInch = parseFloat(product.w) || 0;
+                const hValInch = parseFloat(product.h) || 0;
+                if (!product.l_cm && lValInch) {
+                    document.getElementById('editLCm').value = (lValInch * 2.54).toFixed(2);
+                }
+                if (!product.w_cm && wValInch) {
+                    document.getElementById('editWCm').value = (wValInch * 2.54).toFixed(2);
+                }
+                if (!product.h_cm && hValInch) {
+                    document.getElementById('editHCm').value = (hValInch * 2.54).toFixed(2);
+                }
+
+                const ctnLVal = parseFloat(product.ctn_l) || 0;
+                const ctnWVal = parseFloat(product.ctn_w) || 0;
+                const ctnHVal = parseFloat(product.ctn_h) || 0;
+                document.getElementById('editCtnLInch').value = ctnLVal ? (ctnLVal / 2.54).toFixed(2) : '';
+                document.getElementById('editCtnWInch').value = ctnWVal ? (ctnWVal / 2.54).toFixed(2) : '';
+                document.getElementById('editCtnHInch').value = ctnHVal ? (ctnHVal / 2.54).toFixed(2) : '';
                 document.getElementById('editCtnQty').value = product.ctn_qty || '';
                 document.getElementById('editCtnWeightKg').value = product.ctn_weight_kg || '';
                 
@@ -2283,6 +2385,87 @@
                 bulkEditList = null;
                 document.getElementById('editDimWtModalLabel').textContent = 'Edit Dimensions & Weight Master';
             });
+        });
+    </script>
+    <script>
+        // Auto conversions between inch and CM
+        document.addEventListener('DOMContentLoaded', function () {
+            const inchToCm = (inch) => (parseFloat(inch) || 0) * 2.54;
+            const cmToInch = (cm) => (parseFloat(cm) || 0) / 2.54;
+
+            // Item dimensions: inch -> CM
+            const lInchInput = document.getElementById('editL');
+            const wInchInput = document.getElementById('editW');
+            const hInchInput = document.getElementById('editH');
+            const lCmInput = document.getElementById('editLCm');
+            const wCmInput = document.getElementById('editWCm');
+            const hCmInput = document.getElementById('editHCm');
+
+            if (lInchInput && lCmInput) {
+                lInchInput.addEventListener('input', function () {
+                    const val = inchToCm(this.value);
+                    lCmInput.value = val ? val.toFixed(2) : '';
+                });
+            }
+            if (wInchInput && wCmInput) {
+                wInchInput.addEventListener('input', function () {
+                    const val = inchToCm(this.value);
+                    wCmInput.value = val ? val.toFixed(2) : '';
+                });
+            }
+            if (hInchInput && hCmInput) {
+                hInchInput.addEventListener('input', function () {
+                    const val = inchToCm(this.value);
+                    hCmInput.value = val ? val.toFixed(2) : '';
+                });
+            }
+
+            // Item dimensions: CM -> inch (for manual CM entry)
+            if (lCmInput && lInchInput) {
+                lCmInput.addEventListener('input', function () {
+                    const val = cmToInch(this.value);
+                    lInchInput.value = val ? val.toFixed(2) : '';
+                });
+            }
+            if (wCmInput && wInchInput) {
+                wCmInput.addEventListener('input', function () {
+                    const val = cmToInch(this.value);
+                    wInchInput.value = val ? val.toFixed(2) : '';
+                });
+            }
+            if (hCmInput && hInchInput) {
+                hCmInput.addEventListener('input', function () {
+                    const val = cmToInch(this.value);
+                    hInchInput.value = val ? val.toFixed(2) : '';
+                });
+            }
+
+            // CTN dimensions: CM -> inch (display only)
+            const ctnLInput = document.getElementById('editCtnL');
+            const ctnWInput = document.getElementById('editCtnW');
+            const ctnHInput = document.getElementById('editCtnH');
+            const ctnLInchInput = document.getElementById('editCtnLInch');
+            const ctnWInchInput = document.getElementById('editCtnWInch');
+            const ctnHInchInput = document.getElementById('editCtnHInch');
+
+            if (ctnLInput && ctnLInchInput) {
+                ctnLInput.addEventListener('input', function () {
+                    const val = cmToInch(this.value);
+                    ctnLInchInput.value = val ? val.toFixed(2) : '';
+                });
+            }
+            if (ctnWInput && ctnWInchInput) {
+                ctnWInput.addEventListener('input', function () {
+                    const val = cmToInch(this.value);
+                    ctnWInchInput.value = val ? val.toFixed(2) : '';
+                });
+            }
+            if (ctnHInput && ctnHInchInput) {
+                ctnHInput.addEventListener('input', function () {
+                    const val = cmToInch(this.value);
+                    ctnHInchInput.value = val ? val.toFixed(2) : '';
+                });
+            }
         });
     </script>
 @endsection
