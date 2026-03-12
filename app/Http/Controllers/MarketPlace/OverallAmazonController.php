@@ -31,6 +31,7 @@ use App\Models\AmazonListingStatus;
 use App\Models\AmazonChannelSummary;
 use App\Models\AmazonSeoAuditHistory;
 use App\Models\AmazonSkuCompetitor;
+use App\Models\FbaPrice;
 
 class OverallAmazonController extends Controller
 {
@@ -1470,6 +1471,14 @@ class OverallAmazonController extends Controller
 
         $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
 
+        // FBA price by SKU (seller_sku like "ABC FBA" -> key "ABC")
+        $fbaPriceBySku = FbaPrice::whereRaw("seller_sku LIKE '%FBA%' OR seller_sku LIKE '%fba%'")
+            ->get()
+            ->keyBy(function ($item) {
+                $base = preg_replace('/\s*FBA\s*/i', '', $item->seller_sku ?? '');
+                return strtoupper(str_replace(' ', '', trim($base)));
+            });
+
         // Get Amazon inventory from product_stock_mappings table
         $stockMappings = ProductStockMapping::whereIn('sku', $skus)
             ->get()
@@ -2178,6 +2187,10 @@ class OverallAmazonController extends Controller
                 $row['sessions_l60'] = 0;
                 $row['units_ordered_l60'] = 0;
             }
+
+            // FBA price for same SKU (from FbaPrice table)
+            $fbaPriceRecord = $fbaPriceBySku->get($skuLookupKey) ?? $fbaPriceBySku->get(str_replace(' ', '', $skuClean)) ?? $fbaPriceBySku->get($sku);
+            $row['fba_price'] = $fbaPriceRecord ? round(floatval($fbaPriceRecord->price ?? 0), 2) : null;
 
             $row['INV'] = $shopify->inv ?? 0;
             
