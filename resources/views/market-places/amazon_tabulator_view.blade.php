@@ -509,13 +509,17 @@
                         <i class="fas fa-download"></i> SPRICE N Upload
                     </a>
                     
-                    <button id="decrease-btn" class="btn btn-sm btn-warning">
-                        <i class="fas fa-percent"></i> Decrease
-                    </button>
-                    
-                    <button id="increase-btn" class="btn btn-sm btn-success">
-                        <i class="fas fa-percent"></i> Increase
-                    </button>
+                    <div class="btn-group">
+                        <button type="button" id="price-pct-btn" class="btn btn-sm btn-primary dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
+                            <i class="fas fa-percent"></i> Price %
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end" id="price-pct-dropdown">
+                            <li><a class="dropdown-item" href="#" data-mode="decrease"><i class="fas fa-minus-circle text-warning"></i> Decrease</a></li>
+                            <li><a class="dropdown-item" href="#" data-mode="increase"><i class="fas fa-plus-circle text-success"></i> Increase</a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item" href="#" data-mode="cancel"><i class="fas fa-times"></i> Cancel</a></li>
+                        </ul>
+                    </div>
 
                     <button id="clear-sprice-btn" class="btn btn-sm btn-danger" style="display: none;">
                         <i class="fas fa-eraser"></i> Clear SPRICE
@@ -613,19 +617,17 @@
                 </div>
             </div>
             <div class="card-body" style="padding: 0;">
-                <!-- Discount Input Box (shown when SKUs are selected) -->
+                <!-- Price % input: how much to decrease or increase (shown when Decrease/Increase is active) -->
                 <div id="discount-input-container" class="p-2 bg-light border-bottom" style="display: none;">
-                    <div class="d-flex align-items-center gap-2">
-                        <label class="mb-0 fw-bold">Type:</label>
-                        <select id="discount-type-select" class="form-select form-select-sm" style="width: 130px;">
+                    <div class="d-flex align-items-center gap-2 flex-wrap">
+                        <span class="text-muted fw-bold me-1">By how much:</span>
+                        <select id="discount-type-select" class="form-select form-select-sm" style="width: 140px;">
                             <option value="percentage">Percentage (%)</option>
                             <option value="value">Value ($)</option>
                         </select>
-                        
-                        <label class="mb-0 fw-bold" id="discount-input-label">Value:</label>
                         <input type="number" id="discount-percentage-input" class="form-control form-control-sm" 
-                            placeholder="Enter value" step="0.1" min="0" 
-                            style="width: 150px; display: inline-block;">
+                            placeholder="e.g. 10 or 2.50" step="0.1" min="0" 
+                            style="width: 140px;" title="Enter % or $ amount to decrease/increase price">
                         <button id="apply-discount-btn" class="btn btn-sm btn-primary">
                             <i class="fas fa-check"></i> Apply
                         </button>
@@ -1630,66 +1632,55 @@
                 }
             });
 
-            // Decrease Mode Toggle
-            $('#decrease-btn').on('click', function() {
-                decreaseModeActive = !decreaseModeActive;
-                const selectColumn = table.getColumn('_select');
-                
-                if (decreaseModeActive) {
-                    // Disable increase mode if active
-                    if (increaseModeActive) {
-                        increaseModeActive = false;
-                        $('#increase-btn').removeClass('btn-danger').addClass('btn-success');
-                        $('#increase-btn').html('<i class="fas fa-percent"></i> Increase');
-                    }
-                    selectColumn.show();
-                    $(this).removeClass('btn-warning').addClass('btn-danger');
-                    $(this).html('<i class="fas fa-times"></i> Cancel Decrease');
-                    // Show Clear SPRICE button
-                    $('#clear-sprice-btn').show();
-                } else {
-                    selectColumn.hide();
-                    $(this).removeClass('btn-danger').addClass('btn-warning');
-                    $(this).html('<i class="fas fa-percent"></i> Decrease');
-                    // Clear all selections
-                    selectedSkus.clear();
-                    $('.sku-select-checkbox').prop('checked', false);
-                    $('#select-all-checkbox').prop('checked', false);
-                    $('#discount-input-container').hide();
-                    // Hide Clear SPRICE button
-                    $('#clear-sprice-btn').hide();
+            // Price % (Decrease / Increase) — single dropdown
+            function exitPricePctMode() {
+                decreaseModeActive = false;
+                increaseModeActive = false;
+                if (table) {
+                    const col = table.getColumn('_select');
+                    if (col) col.hide();
                 }
-            });
+                selectedSkus.clear();
+                $('.sku-select-checkbox').prop('checked', false);
+                if ($('#select-all-checkbox').length) $('#select-all-checkbox').prop('checked', false);
+                $('#discount-input-container').hide();
+                $('#clear-sprice-btn').hide();
+                $('#price-pct-btn').removeClass('btn-danger btn-warning btn-success').addClass('btn-primary')
+                    .html('<i class="fas fa-percent"></i> Price %');
+                $('#apply-discount-btn').html('<i class="fas fa-check"></i> Apply');
+            }
 
-            // Increase Mode Toggle
-            $('#increase-btn').on('click', function() {
-                increaseModeActive = !increaseModeActive;
+            function setPricePctMode(mode) {
+                if (!table) return;
                 const selectColumn = table.getColumn('_select');
-                
-                if (increaseModeActive) {
-                    // Disable decrease mode if active
-                    if (decreaseModeActive) {
-                        decreaseModeActive = false;
-                        $('#decrease-btn').removeClass('btn-danger').addClass('btn-warning');
-                        $('#decrease-btn').html('<i class="fas fa-percent"></i> Decrease');
-                    }
-                    selectColumn.show();
-                    $(this).removeClass('btn-success').addClass('btn-danger');
-                    $(this).html('<i class="fas fa-times"></i> Cancel Increase');
-                    // Show Clear SPRICE button
-                    $('#clear-sprice-btn').show();
-                } else {
-                    selectColumn.hide();
-                    $(this).removeClass('btn-danger').addClass('btn-success');
-                    $(this).html('<i class="fas fa-percent"></i> Increase');
-                    // Clear all selections
-                    selectedSkus.clear();
-                    $('.sku-select-checkbox').prop('checked', false);
-                    $('#select-all-checkbox').prop('checked', false);
-                    $('#discount-input-container').hide();
-                    // Hide Clear SPRICE button
-                    $('#clear-sprice-btn').hide();
+                if (!selectColumn) return;
+
+                if (mode === 'cancel') {
+                    exitPricePctMode();
+                    return;
                 }
+
+                decreaseModeActive = (mode === 'decrease');
+                increaseModeActive = (mode === 'increase');
+                selectColumn.show();
+                $('#clear-sprice-btn').show();
+                $('#discount-input-container').show();
+                $('#discount-percentage-input').val('');
+                if (mode === 'decrease') {
+                    $('#price-pct-btn').removeClass('btn-primary btn-success').addClass('btn-warning')
+                        .html('<i class="fas fa-minus-circle"></i> Decrease');
+                    $('#apply-discount-btn').html('<i class="fas fa-check"></i> Apply Decrease');
+                } else {
+                    $('#price-pct-btn').removeClass('btn-primary btn-warning').addClass('btn-success')
+                        .html('<i class="fas fa-plus-circle"></i> Increase');
+                    $('#apply-discount-btn').html('<i class="fas fa-check"></i> Apply Increase');
+                }
+            }
+
+            $(document).on('click', '#price-pct-dropdown a[data-mode]', function(e) {
+                e.preventDefault();
+                const mode = $(this).data('mode');
+                setPricePctMode(mode);
             });
 
             // Checkbox change handler - track selected SKUs
@@ -1710,15 +1701,11 @@
             // Update selected count and discount input visibility
             function updateSelectedCount() {
                 const selectedCount = selectedSkus.size;
-                
-                if (selectedCount > 0) {
+                // Keep input container visible when in Price % mode; only hide when exiting mode
+                if (decreaseModeActive || increaseModeActive) {
                     $('#discount-input-container').show();
-                    $('#selected-skus-count').text(`(${selectedCount} SKU${selectedCount > 1 ? 's' : ''} selected)`);
-                } else {
-                    $('#discount-input-container').hide();
                 }
-                
-                // Update Apply All button
+                $('#selected-skus-count').text(selectedCount > 0 ? `(${selectedCount} SKU${selectedCount > 1 ? 's' : ''} selected)` : '(select SKUs in table)');
                 updateApplyAllButton();
             }
 
@@ -2126,10 +2113,21 @@
 
             // Apply Discount/Increase Button
             $('#apply-discount-btn').on('click', function() {
-                const inputValue = parseFloat($('#discount-percentage-input').val());
+                const rawInput = $('#discount-percentage-input').val();
+                const inputValue = parseFloat(String(rawInput).replace(',', '.'));
                 
+                if (rawInput === '' || rawInput == null) {
+                    showToast('error', 'Please enter a value (% or $)');
+                    return;
+                }
                 if (isNaN(inputValue) || inputValue < 0) {
                     showToast('error', 'Please enter a valid positive number');
+                    return;
+                }
+                
+                const discountType = $('#discount-type-select').val();
+                if (discountType === 'percentage' && inputValue > 100) {
+                    showToast('error', 'Percentage cannot exceed 100');
                     return;
                 }
                 
@@ -2144,7 +2142,6 @@
                 }
                 
                 const mode = increaseModeActive ? 'increase' : 'decrease';
-                const discountType = $('#discount-type-select').val(); // Get selected type
                 let successCount = 0;
                 let errorCount = 0;
                 let totalToProcess = selectedSkus.size;
@@ -2179,7 +2176,7 @@
                                     newPrice = originalPrice * (1 + decimal);
                                 }
                             } else {
-                                // Treat as fixed value
+                                // Treat as fixed value ($)
                                 if (mode === 'decrease') {
                                     newPrice = Math.max(0.01, originalPrice - inputValue);
                                 } else {
@@ -2187,8 +2184,9 @@
                                 }
                             }
 
-                            // Round to retail .99 endings
+                            // Round to retail .99 endings (only for display consistency; value type can keep 2 decimals)
                             newPrice = roundToRetailPrice(newPrice);
+                            const newPriceNum = parseFloat(newPrice.toFixed(2));
                             
                             // Update SPRICE via AJAX
                             $.ajax({
@@ -2199,18 +2197,17 @@
                                 },
                                 data: {
                                     sku: sku,
-                                    sprice: newPrice.toFixed(2)
+                                    sprice: newPriceNum
                                 },
                                 success: function(response) {
                                     successCount++;
                                     
-                                    // Always update SPRICE with the new value, let the formatter decide display
+                                    // Update row so SPRICE column shows the new value (use number so formatter works)
                                     const updateData = {
-                                        'SPRICE': newPrice.toFixed(2), // Always save the new price
+                                        'SPRICE': newPriceNum,
                                         'has_custom_sprice': true,
-                                        'SPRICE_STATUS': null // Reset status so formatter shows/hides based on price match
+                                        'SPRICE_STATUS': response.SPRICE_STATUS != null ? response.SPRICE_STATUS : null
                                     };
-                                    
                                     if (response.sgpft_percent !== undefined) {
                                         updateData['SGPFT'] = response.sgpft_percent;
                                     }
@@ -2221,10 +2218,7 @@
                                         updateData['SROI'] = response.sroi_percent;
                                     }
                                     
-                                    // Update row with all data at once
                                     row.update(updateData);
-                                    
-                                    // Force redraw of the entire row to ensure all formatters run
                                     row.reformat();
                                     
                                     // Check if all requests are complete
@@ -6215,6 +6209,11 @@
                 // Always keep row_select column visible
                 if (table.getColumn('row_select')) {
                     table.showColumn('row_select');
+                }
+                // Re-show Select column if Price % (Decrease/Increase) mode is active
+                if (decreaseModeActive || increaseModeActive) {
+                    const selCol = table.getColumn('_select');
+                    if (selCol) selCol.show();
                 }
                 
                 if (section === 'missing') {
