@@ -2116,6 +2116,11 @@
                 const roundedDollar = Math.ceil(price);
                 return +(roundedDollar - 0.01).toFixed(2);
             }
+            // Helper: round to retail (.49 endings) — use when .99 would match current price so S PRC stays visible
+            function roundToRetailPrice49(price) {
+                const roundedDollar = Math.ceil(price);
+                return +(roundedDollar - 0.51).toFixed(2);
+            }
 
             // Apply Discount/Increase Button
             $('#apply-discount-btn').on('click', function() {
@@ -2190,8 +2195,11 @@
                                 }
                             }
 
-                            // Round to retail .99 endings (only for display consistency; value type can keep 2 decimals)
+                            // Round to retail .99; when that would match current price, use .49 so S PRC doesn’t show blank
                             newPrice = roundToRetailPrice(newPrice);
+                            if (newPrice.toFixed(2) === originalPrice.toFixed(2)) {
+                                newPrice = roundToRetailPrice49(newPrice);
+                            }
                             const newPriceNum = parseFloat(newPrice.toFixed(2));
                             
                             // Update SPRICE via AJAX
