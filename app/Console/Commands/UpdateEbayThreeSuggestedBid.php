@@ -163,19 +163,19 @@ class UpdateEbayThreeSuggestedBid extends Command
                         // Get ESBID (suggested bid from campaign listing)
                         $esbid = (float) ($listing->suggested_bid ?? 0);
                         
-                        // PMT S BID rules: L30 sold = 0 → ESbid; 1-5 → 9; <7 (i.e. 6) → 7; >=7 → ESbid
+                        // PMT S BID rules: L30 sold = 0 → ESbid; 1-5 → 10; >5 → 8; else → ESbid; cap at 13
                         if ($soldL30 === 0) {
                             $newBid = $esbid;
                         } elseif ($soldL30 >= 1 && $soldL30 <= 5) {
-                            $newBid = 9.0;
+                            $newBid = 10.0;
                         } elseif ($soldL30 > 5) {
-                            $newBid = 7.0;
+                            $newBid = 8.0;
                         } else {
                             $newBid = $esbid;
                         }
                         
-                        // Cap newBid to maximum of 12
-                        $newBid = min($newBid, 12.0);
+                        // Cap newBid to maximum of 13
+                        $newBid = min($newBid, 13.0);
                         
                         $listing->new_bid = $newBid;
                         $listing->sku = $pm->sku; // Store SKU for logging
