@@ -360,6 +360,14 @@
                         <option value="10plus">10%+</option>
                     </select>
 
+                    <select id="cvr-trend-filter" class="form-select form-select-sm pricing-filter-item"
+                        style="width: auto; display: inline-block;">
+                        <option value="all">CVR trend</option>
+                        <option value="l60_gt_l30">CVR 60 &gt; CVR 30</option>
+                        <option value="l30_gt_l60">CVR 30 &gt; CVR 60</option>
+                        <option value="equal">CVR 60 = CVR 30</option>
+                    </select>
+
                     <select id="status-filter" class="form-select form-select-sm pricing-filter-item"
                         style="width: auto; display: inline-block;">
                         <option value="all">Status</option>
@@ -2756,6 +2764,65 @@
                         width: 50
                     },
                     {
+                        title: "CVR 30",
+                        field: "SCVR",
+                        hozAlign: "center",
+                        sorter: function(a, b, aRow, bRow) {
+                            const aData = aRow.getData();
+                            const bData = bRow.getData();
+                            const aVal = parseFloat(aData.SCVR) || 0;
+                            const bVal = parseFloat(bData.SCVR) || 0;
+                            return aVal - bVal;
+                        },
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+                            const val = parseFloat(cell.getValue()) || 0;
+                            const cvr60 = parseFloat(rowData.CVR_60) || 0;
+                            const tol = 0.1;
+                            let arrowHtml = '';
+                            const isParent = rowData.Parent && String(rowData.Parent).toUpperCase().startsWith('PARENT');
+                            if (!isParent) {
+                                let arrowColor = '#6c757d';
+                                let arrowIcon = 'fa-minus';
+                                if (val > cvr60 + tol) {
+                                    arrowColor = '#28a745';
+                                    arrowIcon = 'fa-arrow-up';
+                                } else if (val < cvr60 - tol) {
+                                    arrowColor = '#a00211';
+                                    arrowIcon = 'fa-arrow-down';
+                                }
+                                arrowHtml = ` <span title="CVR 30 vs CVR 60: ${cvr60.toFixed(1)}%" style="vertical-align: middle;"><i class="fas ${arrowIcon}" style="color: ${arrowColor}; font-size: 12px;"></i></span>`;
+                            }
+                            const color = val <= 4 ? '#a00211' : (val > 4 && val <= 7 ? '#ffc107' : (val > 7 && val <= 10 ? '#28a745' : '#e83e8c'));
+                            return `<span style="color: ${color}; font-weight: 600;">${val.toFixed(1)}%</span>${arrowHtml}`;
+                        },
+                        width: 65
+                    },
+                    {
+                        title: "CVR 45",
+                        field: "CVR_45",
+                        hozAlign: "center",
+                        sorter: "number",
+                        formatter: function(cell) {
+                            const val = parseFloat(cell.getValue()) || 0;
+                            let color = val <= 4 ? '#a00211' : (val > 4 && val <= 7 ? '#ffc107' : (val > 7 && val <= 10 ? '#28a745' : '#e83e8c'));
+                            return `<span style="color: ${color}; font-weight: 600;">${val.toFixed(1)}%</span>`;
+                        },
+                        width: 60
+                    },
+                    {
+                        title: "CVR 60",
+                        field: "CVR_60",
+                        hozAlign: "center",
+                        sorter: "number",
+                        formatter: function(cell) {
+                            const val = parseFloat(cell.getValue()) || 0;
+                            let color = val <= 4 ? '#a00211' : (val > 4 && val <= 7 ? '#ffc107' : (val > 7 && val <= 10 ? '#28a745' : '#e83e8c'));
+                            return `<span style="color: ${color}; font-weight: 600;">${val.toFixed(1)}%</span>`;
+                        },
+                        width: 60
+                    },
+                    {
                         title: "Missing Ad",
                         field: "kw_hasCampaign",
                         hozAlign: "center",
@@ -2830,8 +2897,37 @@
                         title: "E L30",
                         field: "eBay L30",
                         hozAlign: "center",
-                        width: 30,
-                        sorter: "number"
+                        width: 50,
+                        sorter: "number",
+                        formatter: function(cell) {
+                            const value = cell.getValue();
+                            const num = Math.round(parseFloat(value) || 0);
+                            return num;
+                        }
+                    },
+                    {
+                        title: "E L45",
+                        field: "eBay L45",
+                        hozAlign: "center",
+                        width: 50,
+                        sorter: "number",
+                        formatter: function(cell) {
+                            const value = cell.getValue();
+                            const num = Math.round(parseFloat(value) || 0);
+                            return num;
+                        }
+                    },
+                    {
+                        title: "E L60",
+                        field: "eBay L60",
+                        hozAlign: "center",
+                        width: 50,
+                        sorter: "number",
+                        formatter: function(cell) {
+                            const value = cell.getValue();
+                            const num = Math.round(parseFloat(value) || 0);
+                            return num;
+                        }
                     },
                     {
                         title: "E Stock",
@@ -2891,42 +2987,6 @@
                             }
                             return '';
                         }
-                    },
-                    {
-                        title: "S CVR",
-                        field: "SCVR",
-                        hozAlign: "center",
-                        sorter: function(a, b, aRow, bRow) {
-                            const aData = aRow.getData();
-                            const bData = bRow.getData();
-                            
-                            const aViews = parseFloat(aData.views || 0);
-                            const bViews = parseFloat(bData.views || 0);
-                            const aL30 = parseFloat(aData['eBay L30'] || 0);
-                            const bL30 = parseFloat(bData['eBay L30'] || 0);
-                            
-                            const aValue = aViews === 0 ? 0 : (aL30 / aViews) * 100;
-                            const bValue = bViews === 0 ? 0 : (bL30 / bViews) * 100;
-                            
-                            return aValue - bValue;
-                        },
-                        formatter: function(cell) {
-                            const rowData = cell.getRow().getData();
-                            const views = parseFloat(rowData.views || 0);
-                            const l30 = parseFloat(rowData['eBay L30'] || 0);
-                            
-                            const scvrValue = views > 0 ? (l30 / views) * 100 : 0;
-                            let color = '';
-                            
-                            // getCvrColor logic - 0% should be RED
-                            if (scvrValue <= 4) color = '#a00211'; // red (includes 0%)
-                            else if (scvrValue > 4 && scvrValue <= 7) color = '#ffc107'; // yellow
-                            else if (scvrValue > 7 && scvrValue <= 10) color = '#28a745'; // green
-                            else color = '#e83e8c'; // pink
-                            
-                            return `<span style="color: ${color}; font-weight: 600;">${scvrValue.toFixed(1)}%</span>`;
-                        },
-                        width: 60
                     },
 
                     {
@@ -4662,6 +4722,7 @@
                 const nrlFilter = $('#nrl-filter').val();
                 const gpftFilter = $('#gpft-filter').val();
                 const cvrFilter = $('#cvr-filter').val();
+                const cvrTrendFilter = $('#cvr-trend-filter').val();
                 const statusFilter = $('#status-filter').val();
                 const spriceFilter = $('#sprice-filter').val();
                 const adsFilter = $('#ads-filter').val();
@@ -4767,6 +4828,20 @@
                         if (cvrFilter === '4-7') return cvrRounded > 4 && cvrRounded <= 7;
                         if (cvrFilter === '7-10') return cvrRounded > 7 && cvrRounded <= 10;
                         if (cvrFilter === '10plus') return cvrRounded > 10;
+                        return true;
+                    });
+                }
+
+                // CVR trend filter: CVR 60 vs CVR 30 (same as Amazon)
+                if (cvrTrendFilter !== 'all') {
+                    const cvrTrendTol = 0.1;
+                    table.addFilter(function(data) {
+                        if (data.Parent && String(data.Parent).toUpperCase().startsWith('PARENT')) return true;
+                        const cvr30 = parseFloat(data['SCVR'] || 0);
+                        const cvr60 = parseFloat(data['CVR_60'] || 0);
+                        if (cvrTrendFilter === 'l60_gt_l30') return cvr60 > cvr30 + cvrTrendTol;
+                        if (cvrTrendFilter === 'l30_gt_l60') return cvr30 > cvr60 + cvrTrendTol;
+                        if (cvrTrendFilter === 'equal') return Math.abs(cvr60 - cvr30) <= cvrTrendTol;
                         return true;
                     });
                 }
@@ -5173,7 +5248,7 @@
                 }, 100);
             }
 
-            $('#view-type-filter, #parent-sku-dropdown, #inventory-filter, #nrl-filter, #gpft-filter, #cvr-filter, #status-filter, #sprice-filter, #ads-filter').on('change', function() {
+            $('#view-type-filter, #parent-sku-dropdown, #inventory-filter, #nrl-filter, #gpft-filter, #cvr-filter, #cvr-trend-filter, #status-filter, #sprice-filter, #ads-filter').on('change', function() {
                 applyFilters();
             });
 
@@ -5546,7 +5621,7 @@
             // Define column groups for each section
             // Columns that are ONLY in pricing section (will be hidden when KW Ads is selected)
             var pricingOnlyColumns = [
-                'image_path', 'Missing', 'eBay Stock', 'MAP', 'nr_req', 'SCVR',
+                'image_path', 'Missing', 'eBay Stock', 'MAP', 'nr_req', 'SCVR', 'CVR_45', 'CVR_60',
                 'A Price', 'GPFT%', 'AD%', 'PFT %', 'ROI%',
                 'lmp_price', 'SPRICE', '_accept', 'SGPFT', 'SPFT', 'SROI',
                 'AD_Spend_L30', 'pmt_spend_L30'
@@ -5566,7 +5641,7 @@
             ];
             // Columns shared between sections (shown in both pricing and KW Ads)
             var sharedColumns = [
-                '_select', 'INV', 'L30', 'E Dil%', 'eBay Price', 'eBay L30', 'views'
+                '_select', 'INV', 'L30', 'E Dil%', 'eBay Price', 'eBay L30', 'eBay L45', 'eBay L60', 'views'
             ];
 
             // Helper: apply column visibility for a given section
@@ -6343,6 +6418,7 @@
                 'L30': 'L30',
                 'E Dil%': 'Dil%',
                 'eBay L30': 'eBay L30',
+                'eBay L45': 'eBay L45',
                 'eBay L60': 'eBay L60',
                 'eBay Stock': 'eBay Stock',
                 'Missing': 'Missing',
@@ -6368,7 +6444,9 @@
                 'SGPFT': 'SGPFT',
                 'Listed': 'Listed',
                 'Live': 'Live',
-                'SCVR': 'SCVR',
+                'SCVR': 'CVR 30',
+                'CVR_45': 'CVR 45',
+                'CVR_60': 'CVR 60',
                 'kw_spend_L30': 'KW Spend L30',
                 'pmt_spend_L30': 'PMT Spend L30',
                 'ebay2_ship': 'eBay2 Ship',

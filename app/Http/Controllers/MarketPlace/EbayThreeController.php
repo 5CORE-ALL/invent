@@ -451,6 +451,7 @@ class EbayThreeController extends Controller
                 $row['L30'] = $sums['L30'];
                 $row['eBay L30'] = $sums['eBay L30'];
                 $row['eBay L60'] = $sums['eBay L60'] ?? 0;
+                $row['eBay L45'] = round(($row['eBay L30'] + $row['eBay L60']) / 2, 2);
                 $row['eBay Stock'] = $sums['eBay Stock'] ?? 0;
                 $row['views'] = $sums['views'];
                 
@@ -464,8 +465,10 @@ class EbayThreeController extends Controller
                 $row['LP_productmaster'] = $parentLp;
                 $row['Ship_productmaster'] = $parentShip;
                 
-                // Calculate SCVR for parent based on summed values
+                // Calculate SCVR, CVR_45, CVR_60 for parent based on summed values
                 $row['SCVR'] = $sums['views'] > 0 ? round(($sums['eBay L30'] / $sums['views']) * 100, 2) : 0;
+                $row['CVR_45'] = $sums['views'] > 0 ? round(($row['eBay L45'] / $sums['views']) * 100, 2) : 0;
+                $row['CVR_60'] = $sums['views'] > 0 ? round(($row['eBay L60'] / $sums['views']) * 100, 2) : 0;
                 
                 // Calculate E Dil% = (L30 / INV)
                 $row['E Dil%'] = $sums['INV'] > 0 ? round($sums['L30'] / $sums['INV'], 4) : 0;
@@ -672,6 +675,7 @@ class EbayThreeController extends Controller
             
                 // eBay3 Metrics (common fields)
                 $row['eBay L60'] = $ebayMetric->ebay_l60 ?? 0;
+                $row['eBay L45'] = round((($row['eBay L30'] ?? 0) + ($row['eBay L60'] ?? 0)) / 2, 2);
                 $row['eBay Stock'] = $ebayMetric->ebay_stock ?? 0;
                 $row['eBay_item_id'] = $ebayMetric->item_id ?? null;
                 
@@ -919,8 +923,12 @@ class EbayThreeController extends Controller
                     2
                 );
                 
-                // Calculate SCVR = (eBay L30 / views) * 100 (for display/filter only; not used for SPRICE)
+                // Calculate CVR 30 (SCVR), CVR 45, CVR 60
+                $ebayL45 = floatval($row['eBay L45'] ?? 0);
+                $ebayL60 = floatval($row['eBay L60'] ?? 0);
                 $row['SCVR'] = $views > 0 ? round(($ebayL30 / $views) * 100, 2) : 0;
+                $row['CVR_45'] = $views > 0 ? round(($ebayL45 / $views) * 100, 2) : 0;
+                $row['CVR_60'] = $views > 0 ? round(($ebayL60 / $views) * 100, 2) : 0;
 
                 // Calculate E Dil% = (L30 / INV) if INV > 0
                 $inv = floatval($row['INV'] ?? 0);
@@ -1079,9 +1087,12 @@ class EbayThreeController extends Controller
                 $syntheticParent['eBay Price'] = $avgPrice;
                 $syntheticParent['LP_productmaster'] = $avgLp;
                 $syntheticParent['Ship_productmaster'] = $avgShip;
+                $syntheticParent['eBay L45'] = round(($syntheticParent['eBay L30'] + $syntheticParent['eBay L60']) / 2, 2);
                 
-                // Calculate SCVR
+                // Calculate SCVR, CVR_45, CVR_60
                 $syntheticParent['SCVR'] = $syntheticParent['views'] > 0 ? round(($syntheticParent['eBay L30'] / $syntheticParent['views']) * 100, 2) : 0;
+                $syntheticParent['CVR_45'] = $syntheticParent['views'] > 0 ? round(($syntheticParent['eBay L45'] / $syntheticParent['views']) * 100, 2) : 0;
+                $syntheticParent['CVR_60'] = $syntheticParent['views'] > 0 ? round(($syntheticParent['eBay L60'] / $syntheticParent['views']) * 100, 2) : 0;
                 
                 // Calculate E Dil%
                 $syntheticParent['E Dil%'] = $syntheticParent['INV'] > 0 ? round($syntheticParent['L30'] / $syntheticParent['INV'], 4) : 0;

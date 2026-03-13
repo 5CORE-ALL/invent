@@ -411,6 +411,20 @@
                         <option value="10plus">10%+</option>
                     </select>
 
+                    <select id="cvr-trend-filter" class="form-select form-select-sm pricing-filter-item"
+                        style="width: auto; display: inline-block;">
+                        <option value="all">CVR trend</option>
+                        <option value="l60_gt_l30">CVR 60 &gt; CVR 30</option>
+                        <option value="l30_gt_l60">CVR 30 &gt; CVR 60</option>
+                        <option value="equal">CVR 60 = CVR 30</option>
+                    </select>
+
+                    <select id="sprice-filter" class="form-select form-select-sm pricing-filter-item"
+                        style="width: auto; display: inline-block;">
+                        <option value="all">S PRC</option>
+                        <option value="blank">Blank S PRC only</option>
+                    </select>
+
                     <select id="status-filter" class="form-select form-select-sm pricing-filter-item"
                         style="width: auto; display: inline-block;">
                         <option value="all">Status</option>
@@ -1009,9 +1023,17 @@
                         _token: '{{ csrf_token() }}'
                     },
                     success: function(response) {
-                        if (row) {
-                            if (sprice === 0 || sprice === '0') {
-                                row.update({
+                        let targetRow = row;
+                        if (table && table.getRows) {
+                            table.getRows().forEach(function(r) {
+                                const d = r.getData();
+                                if (d['(Child) sku'] === sku) targetRow = r;
+                            });
+                        }
+                        const numSprice = (typeof sprice === 'number' && !isNaN(sprice)) ? sprice : parseFloat(sprice);
+                        if (targetRow) {
+                            if (numSprice === 0) {
+                                targetRow.update({
                                     SPRICE: null,
                                     SPFT: null,
                                     SROI: null,
@@ -1019,14 +1041,16 @@
                                     SPRICE_STATUS: 'saved'
                                 });
                             } else {
-                                row.update({
-                                    SPRICE: sprice,
+                                targetRow.update({
+                                    SPRICE: numSprice,
                                     SPFT: response.data?.spft || response.spft_percent,
                                     SROI: response.data?.sroi || response.sroi_percent,
                                     SGPFT: response.data?.sgpft || response.sgpft_percent,
-                                    SPRICE_STATUS: 'saved'
+                                    SPRICE_STATUS: 'saved',
+                                    has_custom_sprice: true
                                 });
                             }
+                            targetRow.reformat();
                         }
                         resolve(response);
                     },
@@ -1559,18 +1583,39 @@
             processNextSku();
         };
 
+        function roundToRetailPrice(price) {
+            const roundedDollar = Math.ceil(price);
+            return +(roundedDollar - 0.01).toFixed(2);
+        }
+        function roundToRetailPrice49(price) {
+            const roundedDollar = Math.ceil(price);
+            return +(roundedDollar - 0.51).toFixed(2);
+        }
+
         // Apply discount to selected SKUs
         function applyDiscount() {
-            const discountValue = parseFloat($('#discount-percentage-input').val());
+            const rawInput = $('#discount-percentage-input').val();
+            const inputValue = parseFloat(String(rawInput || '').replace(',', '.'));
             const discountType = $('#discount-type-select').val();
             
-            if (isNaN(discountValue) || discountValue <= 0) {
-                showToast('Please enter a valid discount value', 'error');
+            if (rawInput === '' || rawInput == null) {
+                showToast('Please enter a value (% or $)', 'error');
                 return;
             }
-
+            if (isNaN(inputValue) || inputValue < 0) {
+                showToast('Please enter a valid positive number', 'error');
+                return;
+            }
+            if (discountType === 'percentage' && inputValue > 100) {
+                showToast('Percentage cannot exceed 100', 'error');
+                return;
+            }
             if (selectedSkus.size === 0) {
                 showToast('Please select at least one SKU', 'error');
+                return;
+            }
+            if (!decreaseModeActive && !increaseModeActive) {
+                showToast('Please activate Decrease or Increase mode first', 'error');
                 return;
             }
 
@@ -1585,25 +1630,21 @@
                 
                 const sku = row['(Child) sku'];
                 if (selectedSkus.has(sku)) {
-                    const currentPrice = parseFloat(row['eBay Price']) || 0;
-                    if (currentPrice > 0) {
+                    const originalPrice = parseFloat(row['eBay Price']) || 0;
+                    if (originalPrice > 0) {
                         let newSPrice;
-                        
                         if (discountType === 'percentage') {
-                            if (increaseModeActive) {
-                                newSPrice = currentPrice * (1 + discountValue / 100);
-                            } else {
-                                newSPrice = currentPrice * (1 - discountValue / 100);
-                            }
+                            const decimal = inputValue / 100;
+                            newSPrice = increaseModeActive ? originalPrice * (1 + decimal) : originalPrice * (1 - decimal);
                         } else {
-                            if (increaseModeActive) {
-                                newSPrice = currentPrice + discountValue;
-                            } else {
-                                newSPrice = currentPrice - discountValue;
-                            }
+                            newSPrice = increaseModeActive ? originalPrice + inputValue : Math.max(0.01, originalPrice - inputValue);
                         }
-                        
                         newSPrice = Math.max(0.01, newSPrice);
+                        newSPrice = roundToRetailPrice(newSPrice);
+                        if (newSPrice.toFixed(2) === originalPrice.toFixed(2)) {
+                            newSPrice = roundToRetailPrice49(newSPrice);
+                        }
+                        const newPriceNum = parseFloat(newSPrice.toFixed(2));
                         
                         const originalSPrice = parseFloat(row['SPRICE']) || 0;
                         
@@ -1613,13 +1654,10 @@
                         });
                         
                         if (tableRow) {
-                            tableRow.update({ 
-                                SPRICE: newSPrice,
-                                SPRICE_STATUS: 'processing'
-                            });
+                            tableRow.update({ SPRICE: newPriceNum, SPRICE_STATUS: 'processing' });
                         }
                         
-                        saveSpriceWithRetry(sku, newSPrice, tableRow)
+                        saveSpriceWithRetry(sku, newPriceNum, tableRow)
                             .then((response) => {
                                 updatedCount++;
                                 if (updatedCount + errorCount === totalSkus) {
@@ -2151,6 +2189,65 @@
                     width: 50
                 },
                 {
+                    title: "CVR 30",
+                    field: "SCVR",
+                    hozAlign: "center",
+                    sorter: function(a, b, aRow, bRow) {
+                        const aData = aRow.getData();
+                        const bData = bRow.getData();
+                        const aVal = parseFloat(aData.SCVR) || 0;
+                        const bVal = parseFloat(bData.SCVR) || 0;
+                        return aVal - bVal;
+                    },
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        const val = parseFloat(cell.getValue()) || 0;
+                        const cvr60 = parseFloat(rowData.CVR_60) || 0;
+                        const tol = 0.1;
+                        let arrowHtml = '';
+                        const isParent = rowData.Parent && String(rowData.Parent).toUpperCase().startsWith('PARENT');
+                        if (!isParent) {
+                            let arrowColor = '#6c757d';
+                            let arrowIcon = 'fa-minus';
+                            if (val > cvr60 + tol) {
+                                arrowColor = '#28a745';
+                                arrowIcon = 'fa-arrow-up';
+                            } else if (val < cvr60 - tol) {
+                                arrowColor = '#a00211';
+                                arrowIcon = 'fa-arrow-down';
+                            }
+                            arrowHtml = ` <span title="CVR 30 vs CVR 60: ${cvr60.toFixed(1)}%" style="vertical-align: middle;"><i class="fas ${arrowIcon}" style="color: ${arrowColor}; font-size: 12px;"></i></span>`;
+                        }
+                        const color = val <= 4 ? '#a00211' : (val > 4 && val <= 7 ? '#ffc107' : (val > 7 && val <= 10 ? '#28a745' : '#e83e8c'));
+                        return `<span style="color: ${color}; font-weight: 600;">${val.toFixed(1)}%</span>${arrowHtml}`;
+                    },
+                    width: 65
+                },
+                {
+                    title: "CVR 45",
+                    field: "CVR_45",
+                    hozAlign: "center",
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const val = parseFloat(cell.getValue()) || 0;
+                        let color = val <= 4 ? '#a00211' : (val > 4 && val <= 7 ? '#ffc107' : (val > 7 && val <= 10 ? '#28a745' : '#e83e8c'));
+                        return `<span style="color: ${color}; font-weight: 600;">${val.toFixed(1)}%</span>`;
+                    },
+                    width: 60
+                },
+                {
+                    title: "CVR 60",
+                    field: "CVR_60",
+                    hozAlign: "center",
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const val = parseFloat(cell.getValue()) || 0;
+                        let color = val <= 4 ? '#a00211' : (val > 4 && val <= 7 ? '#ffc107' : (val > 7 && val <= 10 ? '#28a745' : '#e83e8c'));
+                        return `<span style="color: ${color}; font-weight: 600;">${val.toFixed(1)}%</span>`;
+                    },
+                    width: 60
+                },
+                {
                     title: "E Stock",
                     field: "eBay Stock",
                     hozAlign: "center",
@@ -2168,8 +2265,34 @@
                     title: "E L30",
                     field: "eBay L30",
                     hozAlign: "center",
-                    width: 30,
-                    sorter: "number"
+                    width: 50,
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const value = cell.getValue();
+                        return Math.round(parseFloat(value) || 0);
+                    }
+                },
+                {
+                    title: "E L45",
+                    field: "eBay L45",
+                    hozAlign: "center",
+                    width: 50,
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const value = cell.getValue();
+                        return Math.round(parseFloat(value) || 0);
+                    }
+                },
+                {
+                    title: "E L60",
+                    field: "eBay L60",
+                    hozAlign: "center",
+                    width: 50,
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const value = cell.getValue();
+                        return Math.round(parseFloat(value) || 0);
+                    }
                 },
                 {
                     title: "Missing",
@@ -2249,46 +2372,6 @@
                     width: 50
                 },
                
-                {
-                    title: "S CVR",
-                    field: "SCVR",
-                    hozAlign: "center",
-                    sorter: function(a, b, aRow, bRow) {
-                        const aData = aRow.getData();
-                        const bData = bRow.getData();
-                        
-                        const aViews = parseFloat(aData.views || 0);
-                        const bViews = parseFloat(bData.views || 0);
-                        const aL30 = parseFloat(aData['eBay L30'] || 0);
-                        const bL30 = parseFloat(bData['eBay L30'] || 0);
-                        
-                        const aValue = aViews === 0 ? 0 : (aL30 / aViews) * 100;
-                        const bValue = bViews === 0 ? 0 : (bL30 / bViews) * 100;
-                        
-                        return aValue - bValue;
-                    },
-                    formatter: function(cell) {
-                        const rowData = cell.getRow().getData();
-                        const views = parseFloat(rowData.views || 0);
-                        const l30 = parseFloat(rowData['eBay L30'] || 0);
-                        
-                        if (views === 0) {
-                            return '<span style="color: #6c757d; font-weight: 600;">0.0%</span>';
-                        }
-                        
-                        const scvrValue = (l30 / views) * 100;
-                        let color = '';
-                        
-                        if (scvrValue <= 4) color = '#a00211';
-                        else if (scvrValue > 4 && scvrValue <= 7) color = '#ffc107';
-                        else if (scvrValue > 7 && scvrValue <= 10) color = '#28a745';
-                        else color = '#e83e8c';
-                        
-                        return `<span style="color: ${color}; font-weight: 600;">${scvrValue.toFixed(1)}%</span>`;
-                    },
-                    width: 60
-                },
-              
                 {
                     title: "NR/REQ",
                     field: "nr_req",
@@ -2504,16 +2587,13 @@
                         const value = cell.getValue();
                         const rowData = cell.getRow().getData();
                         const hasCustomSprice = rowData.has_custom_sprice;
-                        const ebayPrice = parseFloat(rowData['eBay Price']) || 0;
-                        const sprice = parseFloat(value) || 0;
+                        const currentPrice = parseFloat(rowData['eBay Price']) || 0;
+                        const spriceNum = (value != null && value !== '') ? parseFloat(value) : NaN;
+                        const sprice = isNaN(spriceNum) ? 0 : spriceNum;
                         
-                        if (value === null || value === undefined || value === '') return '<span style="color: #999;">-</span>';
-                        if (isNaN(sprice)) return '<span style="color: #999;">-</span>';
-                        
-                        const formattedValue = `$${sprice.toFixed(2)}`;
-                        if (sprice === ebayPrice) {
-                            return `<span style="color: #6c757d; font-weight: 500;">${formattedValue}</span>`;
-                        }
+                        if (value == null || value === '' || isNaN(spriceNum) || sprice <= 0) return '';
+                        if (currentPrice > 0 && sprice > 0 && currentPrice.toFixed(2) === sprice.toFixed(2)) return '';
+                        const formattedValue = `$${Number(sprice).toFixed(2)}`;
                         if (hasCustomSprice === false) {
                             return `<span style="color: #0d6efd; font-weight: 500;">${formattedValue}</span>`;
                         }
@@ -3458,6 +3538,8 @@
             const nrlFilter = $('#nrl-filter').val();
             const gpftFilter = $('#gpft-filter').val();
             const cvrFilter = $('#cvr-filter').val();
+            const cvrTrendFilter = $('#cvr-trend-filter').val();
+            const spriceFilter = $('#sprice-filter').val();
             const statusFilter = $('#status-filter').val();
             const dilutionFilter = $('#dilution-filter').val();
             const adsFilter = $('#ads-filter').val();
@@ -3571,6 +3653,33 @@
                     if (cvrFilter === '7-10') return cvrRounded > 7 && cvrRounded <= 10;
                     if (cvrFilter === '10plus') return cvrRounded > 10;
                     return true;
+                });
+            }
+
+            // CVR trend filter: CVR 60 vs CVR 30
+            if (cvrTrendFilter !== 'all') {
+                const cvrTrendTol = 0.1;
+                table.addFilter(function(data) {
+                    const sku = data['(Child) sku'] || '';
+                    if (viewModeFilter !== 'sku' && sku.toUpperCase().includes('PARENT')) return true;
+                    const cvr30 = parseFloat(data['SCVR'] || 0);
+                    const cvr60 = parseFloat(data['CVR_60'] || 0);
+                    if (cvrTrendFilter === 'l60_gt_l30') return cvr60 > cvr30 + cvrTrendTol;
+                    if (cvrTrendFilter === 'l30_gt_l60') return cvr30 > cvr60 + cvrTrendTol;
+                    if (cvrTrendFilter === 'equal') return Math.abs(cvr60 - cvr30) <= cvrTrendTol;
+                    return true;
+                });
+            }
+
+            // S PRC filter: blank only
+            if (spriceFilter === 'blank') {
+                table.addFilter(function(data) {
+                    const sku = data['(Child) sku'] || '';
+                    if (viewModeFilter !== 'sku' && sku.toUpperCase().includes('PARENT')) return true;
+                    const sprice = data.SPRICE;
+                    if (sprice == null || sprice === '') return true;
+                    const num = parseFloat(sprice);
+                    return isNaN(num) || num <= 0;
                 });
             }
 
@@ -3965,7 +4074,7 @@
             }, 100);
         }
 
-        $('#view-mode-filter, #inventory-filter, #nrl-filter, #gpft-filter, #cvr-filter, #status-filter, #dilution-filter, #ads-filter').on('change', function() {
+        $('#view-mode-filter, #inventory-filter, #nrl-filter, #gpft-filter, #cvr-filter, #cvr-trend-filter, #sprice-filter, #status-filter, #dilution-filter, #ads-filter').on('change', function() {
             applyFilters();
         });
 
@@ -3984,7 +4093,7 @@
 
         // ======== Section Filter: show/hide column groups ========
         var pricingOnlyColumns = [
-            'image_path', 'Missing', 'eBay Stock', 'MAP', 'nr_req', 'SCVR',
+            'image_path', 'Missing', 'eBay Stock', 'MAP', 'nr_req', 'SCVR', 'CVR_45', 'CVR_60',
             'A Price', 'GPFT%', 'AD%', 'PFT %', 'ROI%',
             'lmp_price', 'SPRICE', '_accept', 'SGPFT', 'SPFT', 'SROI',
             'AD_Spend_L30', 'pmt_spend_L30'
@@ -4001,7 +4110,7 @@
             'pmt_pft', 'pmt_roi', 'pmt_tpft', 'pmt_troi', 'pmt_nrl'
         ];
         var sharedColumns = [
-            '_select', 'INV', 'L30', 'E Dil%', 'eBay Price', 'eBay L30', 'views'
+            '_select', 'INV', 'L30', 'E Dil%', 'eBay Price', 'eBay L30', 'eBay L45', 'eBay L60', 'views'
         ];
 
         function applySectionColumnVisibility(sectionVal) {
