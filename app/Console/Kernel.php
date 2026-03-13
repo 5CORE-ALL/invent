@@ -149,6 +149,15 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
+        // Weekly/monthly automated tasks: run every minute so schedule_time can match (daily handled by generate-daily at 00:01)
+        $schedule->command('tasks:execute-automated')
+            ->everyMinute()
+            ->timezone('Asia/Kolkata')
+            ->name('execute-automated-tasks-weekly-monthly')
+            ->withoutOverlapping(2)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
         // Clear Laravel log periodically
         $schedule->call(function () {
             $logPath = storage_path('logs/laravel.log');

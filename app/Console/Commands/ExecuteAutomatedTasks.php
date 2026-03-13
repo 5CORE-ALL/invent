@@ -17,16 +17,16 @@ class ExecuteAutomatedTasks extends Command
     public function handle(TaskWhatsAppNotificationService $taskWhatsApp)
     {
         $this->info('Checking for automated tasks to execute...');
-        
-        $now = Carbon::now();
+
+        $now = Carbon::now('Asia/Kolkata');
         $currentTime = $now->format('H:i');
         $currentDay = $now->format('D'); // Mon, Tue, etc.
         $currentDate = $now->format('j'); // 1-31
-        
-        // Get all active automated tasks
+
+        // Get all active automated tasks (weekly/monthly; daily are handled by generate-daily-automated)
         $automatedTasks = DB::table('automate_tasks')
-            ->where('status', '!=', 'Done')
-            ->where('is_pause', '!=', 1)
+            ->whereNotIn('status', ['Done', 'Archived'])
+            ->where('is_pause', 0)
             ->get();
         
         $executed = 0;
@@ -35,31 +35,33 @@ class ExecuteAutomatedTasks extends Command
             $shouldRun = false;
             
             // Check if it's time to run based on schedule_type
+            // Daily tasks are created only by tasks:generate-daily-automated (00:01); skip here to avoid duplicates
             switch ($task->schedule_type) {
                 case 'daily':
-                    // Run all daily tasks when command is executed (at 12:01 AM via scheduler)
-                    $shouldRun = true;
+                    $shouldRun = false;
                     break;
-                    
+
                 case 'weekly':
-                    // Run on specific days of week
+                    // Run on specific days of week (schedule_days can be "Mon,Tue" or "Monday,Tuesday")
                     if ($task->schedule_days && $task->schedule_time) {
-                        $scheduledDays = explode(',', $task->schedule_days);
+                        $scheduledDays = array_map(function ($d) {
+                            $d = trim($d);
+                            return strlen($d) >= 3 ? substr($d, 0, 3) : $d; // Mon, Tue, etc.
+                        }, explode(',', $task->schedule_days));
                         $taskTime = Carbon::parse($task->schedule_time)->format('H:i');
                         $shouldRun = in_array($currentDay, $scheduledDays) && ($currentTime == $taskTime);
                     }
                     break;
                     
                 case 'monthly':
-                    // Run on specific dates of month
+                    // Run on specific dates of month (schedule_days e.g. "1,15,EOM")
                     if ($task->schedule_days && $task->schedule_time) {
-                        $scheduledDates = explode(',', $task->schedule_days);
+                        $scheduledDates = array_map('trim', explode(',', $task->schedule_days));
                         $taskTime = Carbon::parse($task->schedule_time)->format('H:i');
-                        
-                        // Check for End of Month
-                        $isEndOfMonth = ($currentDate == $now->endOfMonth()->format('j'));
-                        
-                        $shouldRun = (in_array($currentDate, $scheduledDates) || (in_array('EOM', $scheduledDates) && $isEndOfMonth)) 
+                        $lastDayNum = (int) $now->copy()->endOfMonth()->format('j');
+                        $isEndOfMonth = ((int) $currentDate) === $lastDayNum;
+
+                        $shouldRun = (in_array((string) $currentDate, $scheduledDates) || (in_array('EOM', $scheduledDates) && $isEndOfMonth))
                                      && ($currentTime == $taskTime);
                     }
                     break;
