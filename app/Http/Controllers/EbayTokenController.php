@@ -28,64 +28,80 @@ class EbayTokenController extends Controller
         return $keys[$account] ?? null;
     }
 
+    /** Map account name to config key in config/services.php */
+    private function getConfigKey($account)
+    {
+        $map = ['ebay1' => 'ebay', 'ebay2' => 'ebay2', 'ebay3' => 'ebay3'];
+        return $map[$account] ?? 'ebay';
+    }
+
     public function generate(Request $request)
     {
-        $account = $request->get('account', 'ebay1'); // Default to ebay1
-        
-        if (!in_array($account, ['ebay1', 'ebay2', 'ebay3'])) {
-            $account = 'ebay1';
-        }
+        try {
+            $account = $request->get('account', 'ebay1'); // Default to ebay1
 
-        $envKeys = $this->getEnvKeys($account);
-        $configKey = $this->getConfigKey($account);
-        $clientId = $configKey ? config("services.{$configKey}.app_id") : null;
-        $clientSecret = $configKey ? config("services.{$configKey}.cert_id") : null;
+            if (!in_array($account, ['ebay1', 'ebay2', 'ebay3'])) {
+                $account = 'ebay1';
+            }
 
-        if (!$clientId || !$clientSecret) {
+            $envKeys = $this->getEnvKeys($account);
+            $configKey = $this->getConfigKey($account);
+            $clientId = $configKey ? config("services.{$configKey}.app_id") : null;
+            $clientSecret = $configKey ? config("services.{$configKey}.cert_id") : null;
+
+            if (!$clientId || !$clientSecret) {
+                return view('ebay-token-generator', [
+                    'error' => "Missing {$envKeys['app_id']} or {$envKeys['cert_id']} in .env file",
+                    'selectedAccount' => $account,
+                ]);
+            }
+
+            $scopes = [
+                'https://api.ebay.com/oauth/api_scope/sell.account',
+                'https://api.ebay.com/oauth/api_scope/sell.inventory',
+                'https://api.ebay.com/oauth/api_scope/sell.fulfillment',
+                'https://api.ebay.com/oauth/api_scope/sell.analytics.readonly',
+                'https://api.ebay.com/oauth/api_scope/sell.stores',
+                'https://api.ebay.com/oauth/api_scope/sell.finances',
+                'https://api.ebay.com/oauth/api_scope/sell.marketing',
+                'https://api.ebay.com/oauth/api_scope/sell.marketing.readonly',
+            ];
+
+            $scopeString = implode(' ', $scopes);
+            $ruName = $this->ruNames[$account];
+
+            // Add state parameter to identify which account when callback is received
+            $state = base64_encode($account);
+
+            $authUrl = $this->baseUrl . '?' . http_build_query([
+                'client_id' => $clientId,
+                'redirect_uri' => $ruName,
+                'response_type' => 'code',
+                'scope' => $scopeString,
+                'state' => $state, // To identify account in callback
+            ]);
+
+            Log::info("eBay{$account} Authorization URL Generated", [
+                'account' => $account,
+                'ruName' => $ruName,
+                'clientId' => substr($clientId, 0, 10) . '...',
+            ]);
+
             return view('ebay-token-generator', [
-                'error' => "Missing {$envKeys['app_id']} or {$envKeys['cert_id']} in .env file",
+                'authUrl' => $authUrl,
+                'ruName' => $ruName,
+                'clientId' => substr($clientId, 0, 10) . '...',
                 'selectedAccount' => $account,
+                'debugUrl' => $authUrl,
+            ]);
+        } catch (\Throwable $e) {
+            $this->logEbayException('generate', $e);
+            return view('ebay-token-generator', [
+                'error' => $this->formatEbayExceptionMessage($e),
+                'selectedAccount' => $request->get('account', 'ebay1'),
+                'exceptionTrace' => config('app.debug') ? $e->getTraceAsString() : null,
             ]);
         }
-
-        $scopes = [
-            'https://api.ebay.com/oauth/api_scope/sell.account',
-            'https://api.ebay.com/oauth/api_scope/sell.inventory',
-            'https://api.ebay.com/oauth/api_scope/sell.fulfillment',
-            'https://api.ebay.com/oauth/api_scope/sell.analytics.readonly',
-            'https://api.ebay.com/oauth/api_scope/sell.stores',
-            'https://api.ebay.com/oauth/api_scope/sell.finances',
-            'https://api.ebay.com/oauth/api_scope/sell.marketing',
-            'https://api.ebay.com/oauth/api_scope/sell.marketing.readonly',
-        ];
-
-        $scopeString = implode(' ', $scopes);
-        $ruName = $this->ruNames[$account];
-
-        // Add state parameter to identify which account when callback is received
-        $state = base64_encode($account);
-
-        $authUrl = $this->baseUrl . '?' . http_build_query([
-            'client_id' => $clientId,
-            'redirect_uri' => $ruName,
-            'response_type' => 'code',
-            'scope' => $scopeString,
-            'state' => $state, // To identify account in callback
-        ]);
-
-        Log::info("eBay{$account} Authorization URL Generated", [
-            'account' => $account,
-            'ruName' => $ruName,
-            'clientId' => substr($clientId, 0, 10) . '...',
-        ]);
-
-        return view('ebay-token-generator', [
-            'authUrl' => $authUrl,
-            'ruName' => $ruName,
-            'clientId' => substr($clientId, 0, 10) . '...',
-            'selectedAccount' => $account,
-            'debugUrl' => $authUrl,
-        ]);
     }
 
     public function callback(Request $request)
@@ -189,17 +205,35 @@ class EbayTokenController extends Controller
                     'account' => $account,
                 ]);
             }
-        } catch (\Exception $e) {
-            Log::error("eBay{$account} Refresh Token Generation Exception", [
-                'account' => $account,
-                'message' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
-            ]);
-
+        } catch (\Throwable $e) {
+            $this->logEbayException('callback', $e, $account);
             return view('ebay-token-result', [
-                'error' => 'Exception: ' . $e->getMessage(),
+                'error' => $this->formatEbayExceptionMessage($e),
                 'account' => $account,
+                'exceptionTrace' => config('app.debug') ? $e->getTraceAsString() : null,
             ]);
         }
+    }
+
+    /**
+     * Log full exception to Laravel log (check storage/logs/laravel.log on server).
+     */
+    private function logEbayException(string $action, \Throwable $e, ?string $account = null): void
+    {
+        Log::error("eBay Token [{$action}] Exception", [
+            'account' => $account,
+            'message' => $e->getMessage(),
+            'file' => $e->getFile(),
+            'line' => $e->getLine(),
+            'trace' => $e->getTraceAsString(),
+        ]);
+    }
+
+    /**
+     * User-friendly exception message (exact error for debugging).
+     */
+    private function formatEbayExceptionMessage(\Throwable $e): string
+    {
+        return $e->getMessage() . ' (in ' . basename($e->getFile()) . ':' . $e->getLine() . ')';
     }
 }
