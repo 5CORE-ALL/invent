@@ -1781,6 +1781,34 @@ class OverallAmazonController extends Controller
             ->where('campaignStatus', '!=', 'ARCHIVED')
             ->get();
 
+        // L2 = one day before L1 (from date-based daily rows in table)
+        $dayBeforeYesterdayForL2 = date('Y-m-d', strtotime('-2 days'));
+        $amazonSpCampaignReportsL2 = DB::table('amazon_sp_campaign_reports')
+            ->selectRaw('
+                campaignName,
+                campaign_id,
+                MAX(spend) as spend,
+                SUM(clicks) as clicks,
+                SUM(sales30d) as sales30d,
+                MAX(costPerClick) as costPerClick,
+                MAX(campaignStatus) as campaignStatus,
+                MAX(campaignBudgetAmount) as campaignBudgetAmount
+            ')
+            ->where('ad_type', 'SPONSORED_PRODUCTS')
+            ->where('report_date_range', $dayBeforeYesterdayForL2)
+            ->whereRaw("campaignName NOT REGEXP '(PT\\.?$|FBA$)'")
+            ->groupBy('campaignName', 'campaign_id')
+            ->get();
+
+        $amazonSpCampaignReportsPtL2 = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
+            ->where('report_date_range', $dayBeforeYesterdayForL2)
+            ->where(function($q) {
+                $q->where('campaignName', 'LIKE', '% PT')
+                  ->orWhere('campaignName', 'LIKE', '% PT.');
+            })
+            ->where('campaignStatus', '!=', 'ARCHIVED')
+            ->get();
+
         // Fetch Amazon SP Campaign Reports for L90 (for budget data)
         $amazonSpCampaignReportsL90 = DB::table('amazon_sp_campaign_reports')
             ->selectRaw('
@@ -2438,6 +2466,11 @@ class OverallAmazonController extends Controller
             $matchedCampaignL1 = $amazonSpCampaignReportsL1->first(function ($item) use ($cleanSkuNorm, $kwCampaignMatchesSku) {
                 return $kwCampaignMatchesSku($item->campaignName ?? '', $cleanSkuNorm);
             });
+
+            // Match L2 campaign (one day before L1 - same match logic)
+            $matchedCampaignL2 = $amazonSpCampaignReportsL2->first(function ($item) use ($cleanSkuNorm, $kwCampaignMatchesSku) {
+                return $kwCampaignMatchesSku($item->campaignName ?? '', $cleanSkuNorm);
+            });
             
             // Match L90 campaign - exact SKU match
             $matchedCampaignL90 = $amazonSpCampaignReportsL90->first(function ($item) use ($cleanSkuNorm, $normalizeCampaignNameForMatch) {
@@ -2477,11 +2510,14 @@ class OverallAmazonController extends Controller
                 $row['campaignStatus'] = null;
             }
             
-            // L7/L1 spend and CPC (same as KW page)
+            // L7/L1/L2 spend and CPC (same as KW page; L2 = one day before L1 from daily table)
             $row['l7_spend'] = $matchedCampaignL7->spend ?? 0;
             $row['l1_spend'] = $matchedCampaignL1->spend ?? 0;
+            $row['l2_spend'] = $matchedCampaignL2?->spend ?? 0;
             $row['l7_cpc'] = $matchedCampaignL7->costPerClick ?? 0;
             $row['l1_cpc'] = $matchedCampaignL1->costPerClick ?? 0;
+            $row['l2_cpc'] = $matchedCampaignL2?->costPerClick ?? 0;
+            $row['l2_clicks'] = $matchedCampaignL2?->clicks ?? 0;
             // AVG CPC from lifetime average (same as KW page)
             $row['avg_cpc'] = $row['campaign_id'] ? $avgCpcData->get($row['campaign_id'], 0) : 0;
             
@@ -2527,6 +2563,18 @@ class OverallAmazonController extends Controller
                 }
                 return $baseNamePt === $cleanSkuNorm;
             });
+
+            // Match PT L2 campaign (one day before L1)
+            $matchedCampaignPtL2 = $amazonSpCampaignReportsPtL2->first(function ($item) use ($cleanSkuNorm, $normalizeCampaignNameForMatch) {
+                $campaignName = $normalizeCampaignNameForMatch($item->campaignName);
+                $baseNamePt = $campaignName;
+                if (str_ends_with($campaignName, ' PT')) {
+                    $baseNamePt = rtrim(substr($campaignName, 0, -3));
+                } elseif (str_ends_with($campaignName, ' PT.')) {
+                    $baseNamePt = rtrim(substr($campaignName, 0, -4));
+                }
+                return $baseNamePt === $cleanSkuNorm;
+            });
             
             // PT L30 data - sum from all matching PT campaigns
             $row['pt_spend_L30'] = $matchedCampaignsPtL30->sum('spend');
@@ -2549,6 +2597,10 @@ class OverallAmazonController extends Controller
             // PT L1 data - same spend fallback as amazon-utilized-pt page
             $row['pt_spend_L1'] = (float)($matchedCampaignPtL1->spend ?? $matchedCampaignPtL1->cost ?? 0);
             $row['pt_clicks_L1'] = (int)($matchedCampaignPtL1->clicks ?? 0);
+
+            // PT L2 data (one day before L1 from daily table)
+            $row['pt_spend_L2'] = (float)($matchedCampaignPtL2?->spend ?? $matchedCampaignPtL2?->cost ?? 0);
+            $row['pt_clicks_L2'] = (int)($matchedCampaignPtL2?->clicks ?? 0);
             
             // PT Campaign name, budget, and campaign_id - only from L30 (no L7/L1 fallback) so deleted campaigns don't show as active
             if ($matchedCampaignsPtL30->isNotEmpty()) {
@@ -2575,6 +2627,7 @@ class OverallAmazonController extends Controller
             // PT CPC fields (same calculation as KW)
             $row['pt_l7_cpc'] = $matchedCampaignPtL7->costPerClick ?? 0;
             $row['pt_l1_cpc'] = $matchedCampaignPtL1->costPerClick ?? 0;
+            $row['pt_l2_cpc'] = $matchedCampaignPtL2?->costPerClick ?? 0;
             $row['pt_avg_cpc'] = $row['pt_campaign_id'] ? $ptAvgCpcData->get($row['pt_campaign_id'], 0) : 0;
             
             // PT AD CVR = (Ad Sold L30 / Clicks L30) * 100 (same as KW page)
@@ -3073,6 +3126,15 @@ class OverallAmazonController extends Controller
                     || $campaignName === $parentCampaignName . ' KW'
                     || $campaignName === $parentCampaignNameNoDot . ' KW';
             });
+
+            // Match L2 campaign for parent (one day before L1)
+            $parentCampaignL2 = $amazonSpCampaignReportsL2->first(function ($item) use ($parentCampaignName, $parentCampaignNameNoDot, $normalizeCampaignName) {
+                $campaignName = $normalizeCampaignName($item->campaignName);
+                return $campaignName === $parentCampaignName 
+                    || $campaignName === $parentCampaignNameNoDot
+                    || $campaignName === $parentCampaignName . ' KW'
+                    || $campaignName === $parentCampaignNameNoDot . ' KW';
+            });
             
             // Match L90 campaign for parent (for budget) - include " PARENT X KW" variant
             $parentCampaignL90 = $amazonSpCampaignReportsL90->first(function ($item) use ($parentCampaignName, $parentCampaignNameNoDot, $normalizeCampaignName) {
@@ -3124,7 +3186,19 @@ class OverallAmazonController extends Controller
                 }
             }
             $sumRow['l1_spend'] = $l1SpendVal;
-            
+
+            // L2 spend and CPC for parent (one day before L1)
+            $l2SpendVal = $parentCampaignL2 ? (float)($parentCampaignL2->spend ?? $parentCampaignL2->cost ?? 0) : 0;
+            if ($l2SpendVal <= 0 && $parentCampaignL2) {
+                $c2 = (int)($parentCampaignL2->clicks ?? 0);
+                $cpc2 = (float)($parentCampaignL2->costPerClick ?? 0);
+                if ($c2 > 0 && $cpc2 > 0) {
+                    $l2SpendVal = round($c2 * $cpc2, 2);
+                }
+            }
+            $sumRow['l2_spend'] = $l2SpendVal;
+            $sumRow['l2_cpc'] = $parentCampaignL2 ? ($parentCampaignL2->costPerClick ?? 0) : 0;
+
             $sumRow['l7_cpc'] = $parentCampaignL7 ? ($parentCampaignL7->costPerClick ?? 0) : 0;
             $sumRow['l1_cpc'] = $parentCampaignL1 ? ($parentCampaignL1->costPerClick ?? 0) : 0;
             // AVG CPC from lifetime average (same as KW page)
@@ -3172,6 +3246,17 @@ class OverallAmazonController extends Controller
             
             // Match PT L1 campaign for parent
             $parentPtCampaignL1 = $amazonSpCampaignReportsPtL1->first(function ($item) use ($parentPtCampaignName, $parentPtCampaignNameDot, $parentPtCampaignNameNoDot, $parentPtCampaignNameNoDotDot, $normalizeCampaignName) {
+                $campaignName = $normalizeCampaignName($item->campaignName);
+                return $campaignName === $parentPtCampaignName 
+                    || $campaignName === $parentPtCampaignNameDot
+                    || $campaignName === $parentPtCampaignNameNoDot
+                    || $campaignName === $parentPtCampaignNameNoDotDot
+                    || str_ends_with($campaignName, $parentPtCampaignName)
+                    || str_ends_with($campaignName, $parentPtCampaignNameNoDot);
+            });
+
+            // Match PT L2 campaign for parent (one day before L1)
+            $parentPtCampaignL2 = $amazonSpCampaignReportsPtL2->first(function ($item) use ($parentPtCampaignName, $parentPtCampaignNameDot, $parentPtCampaignNameNoDot, $parentPtCampaignNameNoDotDot, $normalizeCampaignName) {
                 $campaignName = $normalizeCampaignName($item->campaignName);
                 return $campaignName === $parentPtCampaignName 
                     || $campaignName === $parentPtCampaignNameDot
@@ -3249,6 +3334,17 @@ class OverallAmazonController extends Controller
                 $sumRow['pt_spend_L1'] = 0;
                 $sumRow['pt_clicks_L1'] = 0;
                 $sumRow['pt_l1_cpc'] = 0;
+            }
+
+            // PT L2 data from parent's own PT campaign (one day before L1)
+            if ($hasParentPtCampaign && $parentPtCampaignL2) {
+                $sumRow['pt_spend_L2'] = $parentPtCampaignL2->spend ?? 0;
+                $sumRow['pt_clicks_L2'] = $parentPtCampaignL2->clicks ?? 0;
+                $sumRow['pt_l2_cpc'] = $parentPtCampaignL2->costPerClick ?? 0;
+            } else {
+                $sumRow['pt_spend_L2'] = 0;
+                $sumRow['pt_clicks_L2'] = 0;
+                $sumRow['pt_l2_cpc'] = 0;
             }
             
             // PT AVG CPC from parent's own campaign only
@@ -3566,8 +3662,11 @@ class OverallAmazonController extends Controller
                 'campaignStatus' => $rec->campaignStatus && trim((string)$rec->campaignStatus) !== '' ? $rec->campaignStatus : 'ENABLED',
                 'l7_spend' => 0,
                 'l1_spend' => 0,
+                'l2_spend' => 0,
                 'l7_cpc' => 0,
                 'l1_cpc' => 0,
+                'l2_cpc' => 0,
+                'l2_clicks' => 0,
                 'avg_cpc' => ($rec->campaign_id ?? null) ? $avgCpcData->get($rec->campaign_id, 0) : 0,
                 'l7_clicks' => 0,
                 'l7_sales' => 0,
@@ -3589,6 +3688,9 @@ class OverallAmazonController extends Controller
                 'pt_sold_L7' => 0,
                 'pt_spend_L1' => 0,
                 'pt_clicks_L1' => 0,
+                'pt_spend_L2' => 0,
+                'pt_clicks_L2' => 0,
+                'pt_l2_cpc' => 0,
                 'pt_campaignName' => null,
                 'pt_campaignBudgetAmount' => 0,
                 'pt_campaign_id' => null,

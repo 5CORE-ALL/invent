@@ -612,6 +612,13 @@ class ChannelMasterController extends Controller
                     ]);
                 }
 
+                case 'temu2':
+                    // Temu 2: no ad data table; return zeros
+                    return $defaults;
+
+                case 'topdawg':
+                    return $defaults;
+
                 case 'walmart': {
                     $row = DB::table('walmart_campaign_reports')
                         ->where('report_range', 'L30')
@@ -726,6 +733,12 @@ class ChannelMasterController extends Controller
                 $metrics = $this->fetchAdMetricsFromTables('temu');
                 return round((float) ($metrics['Total Ad Spend'] ?? 0), 2);
 
+            case 'temu2':
+                return 0.0;
+
+            case 'topdawg':
+                return 0.0;
+
             case 'walmart':
                 $walmartSpentData = DB::table('walmart_campaign_reports')
                     ->selectRaw('campaignName, MAX(spend) as max_spend')
@@ -836,6 +849,7 @@ class ChannelMasterController extends Controller
             'reverb'    => 'getReverbChannelData',
             'doba'      => 'getDobaChannelData',
             'temu'      => 'getTemuChannelData',
+            'temu2'     => 'getTemu2ChannelData',
             'walmart'   => 'getWalmartChannelData',
             'pls'       => 'getPlsChannelData',
             'wayfair'   => 'getWayfairChannelData',
@@ -910,7 +924,7 @@ class ChannelMasterController extends Controller
             }
 
             // AD CLICKS, AD SALES, AD SOLD + breakdown: fetch directly from tables for ad-enabled channels
-            $adMetricsChannels = ['amazon', 'amazonfba', 'ebay', 'ebaytwo', 'ebaythree', 'temu', 'walmart', 'shopifyb2c', 'tiktokshop'];
+            $adMetricsChannels = ['amazon', 'amazonfba', 'ebay', 'ebaytwo', 'ebaythree', 'temu', 'temu2', 'topdawg', 'walmart', 'shopifyb2c', 'tiktokshop'];
             if (in_array($key, $adMetricsChannels)) {
                 $metrics = $this->fetchAdMetricsFromTables($key);
                 $clicks = $metrics['clicks'];
@@ -1052,6 +1066,7 @@ class ChannelMasterController extends Controller
         'reverb'    => 'getReverbChannelData',
         'doba'      => 'getDobaChannelData',
         'temu'      => 'getTemuChannelData',
+        'temu2'     => 'getTemu2ChannelData',
         'walmart'   => 'getWalmartChannelData',
         'pls'       => 'getPlsChannelData',
         'wayfair'   => 'getWayfairChannelData',
@@ -2516,6 +2531,123 @@ class ChannelMasterController extends Controller
         return response()->json([
             'status' => 200,
             'message' => 'Temu channel data fetched successfully',
+            'data' => $result,
+        ]);
+    }
+
+    /**
+     * Temu 2 channel data (from marketplace_daily_metrics, channel = 'Temu 2').
+     */
+    public function getTemu2ChannelData(Request $request)
+    {
+        $result = [];
+        $metrics = MarketplaceDailyMetric::where('channel', 'Temu 2')->latest('date')->first();
+
+        if (!$metrics) {
+            $channelData = ChannelMaster::where('channel', 'Temu 2')->first();
+            $mapMissCounts = $this->getMapAndMissCounts('temu2');
+            $result[] = [
+                'Channel '   => 'Temu 2',
+                'L-60 Sales' => 0,
+                'L30 Sales'  => 0,
+                'Growth'     => '0%',
+                'L60 Orders' => 0,
+                'L30 Orders' => 0,
+                'Qty'        => 0,
+                'Gprofit%'   => '0%',
+                'gprofitL60' => '0%',
+                'G Roi'      => 0,
+                'G RoiL60'   => 0,
+                'Total PFT'  => 0,
+                'N PFT'      => '0%',
+                'N ROI'      => '0%',
+                'KW Spent'   => 0,
+                'PT Spent'   => 0,
+                'HL Spent'   => 0,
+                'PMT Spent'  => 0,
+                'Shopping Spent' => 0,
+                'SERP Spent' => 0,
+                'Total Ad Spend' => 0,
+                'Ads%'       => '0%',
+                'TACOS %'    => '0%',
+                'type'       => $channelData->type ?? '',
+                'W/Ads'      => $channelData->w_ads ?? 0,
+                'NR'         => $channelData->nr ?? 0,
+                'Update'     => $channelData->update ?? 0,
+                'cogs'       => 0,
+                'Map'        => $mapMissCounts['map'],
+                'Miss'       => $mapMissCounts['miss'],
+                'NMap'       => $mapMissCounts['nmap'],
+                'Total Views' => $mapMissCounts['total_views'] ?? 0,
+                ...$this->getChannelHealthAndReviewsStub(),
+            ];
+            return response()->json([
+                'status' => 200,
+                'message' => 'Temu 2 channel data (no metrics yet – run app:update-marketplace-daily-metrics)',
+                'data' => $result,
+            ]);
+        }
+
+        $l60Orders = 0;
+        $l60Sales = 0;
+        $l30Sales = $metrics->total_sales ?? 0;
+        $l30Orders = $metrics->total_orders ?? 0;
+        $totalQuantity = $metrics->total_quantity ?? 0;
+        $totalProfit = $metrics->total_pft ?? 0;
+        $totalCogs = $metrics->total_cogs ?? 0;
+        $gProfitPct = $metrics->pft_percentage ?? 0;
+        $gRoi = $metrics->roi_percentage ?? 0;
+        $tacosPercentage = $metrics->tacos_percentage ?? 0;
+        $nPft = $metrics->n_pft ?? $gProfitPct;
+        $nRoi = $metrics->n_roi ?? $gRoi;
+        $totalAdSpend = $this->fetchTotalAdSpendFromTables('temu2');
+        $growth = $l30Sales > 0 ? (($l30Sales - $l60Sales) / $l30Sales) * 100 : 0;
+        $gprofitL60 = 0;
+        $gRoiL60 = 0;
+        $adsPercentage = $l30Sales > 0 ? ($totalAdSpend / $l30Sales) * 100 : 0;
+
+        $channelData = ChannelMaster::where('channel', 'Temu 2')->first();
+        $mapMissCounts = $this->getMapAndMissCounts('temu2');
+
+        $result[] = [
+            'Channel '   => 'Temu 2',
+            'L-60 Sales' => intval($l60Sales),
+            'L30 Sales'  => intval($l30Sales),
+            'Growth'     => round($growth, 2) . '%',
+            'L60 Orders' => $l60Orders,
+            'L30 Orders' => $l30Orders,
+            'Qty'        => intval($totalQuantity),
+            'Gprofit%'   => round($gProfitPct, 2) . '%',
+            'gprofitL60' => round($gprofitL60, 2) . '%',
+            'G Roi'      => round($gRoi, 2),
+            'G RoiL60'   => round($gRoiL60, 2),
+            'Total PFT'  => round($totalProfit, 2),
+            'N PFT'      => round($nPft, 2) . '%',
+            'N ROI'      => round($nRoi, 2),
+            'KW Spent'   => $totalAdSpend,
+            'PT Spent'   => 0,
+            'HL Spent'   => 0,
+            'PMT Spent'  => 0,
+            'Shopping Spent' => 0,
+            'SERP Spent' => 0,
+            'Total Ad Spend' => $totalAdSpend,
+            'Ads%'       => round($adsPercentage, 2) . '%',
+            'TACOS %'    => round($tacosPercentage, 2) . '%',
+            'type'       => $channelData->type ?? '',
+            'W/Ads'      => $channelData->w_ads ?? 0,
+            'NR'         => $channelData->nr ?? 0,
+            'Update'     => $channelData->update ?? 0,
+            'cogs'       => round($totalCogs, 2),
+            'Map'        => $mapMissCounts['map'],
+            'Miss'       => $mapMissCounts['miss'],
+            'NMap'       => $mapMissCounts['nmap'],
+            'Total Views' => $mapMissCounts['total_views'] ?? 0,
+            ...$this->getChannelHealthAndReviewsStub(),
+        ];
+
+        return response()->json([
+            'status' => 200,
+            'message' => 'Temu 2 channel data fetched successfully',
             'data' => $result,
         ]);
     }
@@ -4964,37 +5096,103 @@ class ChannelMasterController extends Controller
         ]);
     }
 
+    /**
+     * TopDawg channel data. Prefer marketplace_daily_metrics (from app:update-marketplace-daily-metrics / topdawg_order_metrics), else fall back to TopDawgSheetdata.
+     */
     public function getTopDawgChannelData(Request $request)
     {
         $result = [];
+        $metrics = MarketplaceDailyMetric::where('channel', 'TopDawg')->latest('date')->first();
 
+        if ($metrics) {
+            $l60Orders = 0;
+            $l60Sales = 0;
+            $l30Sales = $metrics->total_sales ?? 0;
+            $l30Orders = $metrics->total_orders ?? 0;
+            $totalQuantity = $metrics->total_quantity ?? 0;
+            $totalProfit = $metrics->total_pft ?? 0;
+            $totalCogs = $metrics->total_cogs ?? 0;
+            $gProfitPct = $metrics->pft_percentage ?? 0;
+            $gRoi = $metrics->roi_percentage ?? 0;
+            $tacosPercentage = $metrics->tacos_percentage ?? 0;
+            $nPft = $metrics->n_pft ?? $gProfitPct;
+            $nRoi = $metrics->n_roi ?? $gRoi;
+            $totalAdSpend = $this->fetchTotalAdSpendFromTables('topdawg');
+            $growth = $l30Sales > 0 ? (($l30Sales - $l60Sales) / $l30Sales) * 100 : 0;
+            $gprofitL60 = 0;
+            $gRoiL60 = 0;
+            $adsPercentage = $l30Sales > 0 ? ($totalAdSpend / $l30Sales) * 100 : 0;
+
+            $channelData = ChannelMaster::where('channel', 'TopDawg')->first();
+            $mapMissCounts = $this->getMapAndMissCounts('topdawg');
+
+            $result[] = [
+                'Channel '   => 'TopDawg',
+                'L-60 Sales' => intval($l60Sales),
+                'L30 Sales'  => intval($l30Sales),
+                'Growth'     => round($growth, 2) . '%',
+                'L60 Orders' => $l60Orders,
+                'L30 Orders' => $l30Orders,
+                'Qty'        => intval($totalQuantity),
+                'Gprofit%'   => round($gProfitPct, 2) . '%',
+                'gprofitL60' => round($gprofitL60, 2) . '%',
+                'G Roi'      => round($gRoi, 2),
+                'G RoiL60'   => round($gRoiL60, 2),
+                'Total PFT'  => round($totalProfit, 2),
+                'N PFT'      => round($nPft, 2) . '%',
+                'N ROI'      => round($nRoi, 2),
+                'KW Spent'   => $totalAdSpend,
+                'PT Spent'   => 0,
+                'HL Spent'   => 0,
+                'PMT Spent'  => 0,
+                'Shopping Spent' => 0,
+                'SERP Spent' => 0,
+                'Total Ad Spend' => $totalAdSpend,
+                'Ads%'       => round($adsPercentage, 2) . '%',
+                'TACOS %'    => round($tacosPercentage, 2) . '%',
+                'type'       => $channelData->type ?? '',
+                'W/Ads'      => $channelData->w_ads ?? 0,
+                'NR'         => $channelData->nr ?? 0,
+                'Update'     => $channelData->update ?? 0,
+                'cogs'       => round($totalCogs, 2),
+                'Map'        => $mapMissCounts['map'],
+                'Miss'       => $mapMissCounts['miss'],
+                'NMap'       => $mapMissCounts['nmap'],
+                'Total Views' => $mapMissCounts['total_views'] ?? 0,
+                ...$this->getChannelHealthAndReviewsStub(),
+            ];
+
+            return response()->json([
+                'status' => 200,
+                'message' => 'TopDawg channel data (from marketplace daily metrics)',
+                'data' => $result,
+            ]);
+        }
+
+        // Fallback: TopDawgSheetdata (legacy)
         $query = TopDawgSheetdata::where('sku', 'not like', '%Parent%');
 
         $l30Orders = $query->sum('l30');
         $l60Orders = $query->sum('l60');
-        $totalQuantity = $l30Orders; // l30 is already units sold (quantity)
+        $totalQuantity = $l30Orders;
 
         $l30Sales  = (clone $query)->selectRaw('SUM(l30 * price) as total')->value('total') ?? 0;
         $l60Sales  = (clone $query)->selectRaw('SUM(l60 * price) as total')->value('total') ?? 0;
 
         $growth = $l30Sales > 0 ? (($l30Sales - $l60Sales) / $l30Sales) * 100 : 0;
 
-        // Get eBay marketing percentage
         $percentage = ChannelMaster::where('channel', 'TopDawg')->value('channel_percentage') ?? 100;
-        $percentage = $percentage / 100; // convert % to fraction
+        $percentage = $percentage / 100;
 
-        // Load product masters (lp, ship) keyed by SKU
         $productMasters = ProductMaster::all()->keyBy(function ($item) {
             return strtoupper($item->sku);
         });
 
-        // Calculate total profit
         $ebayRows     = $query->get(['sku', 'price', 'l30','l60']);
         $totalProfit  = 0;
         $totalProfitL60  = 0;
         $totalCogs       = 0;
         $totalCogsL60    = 0;
-
 
         foreach ($ebayRows as $row) {
             $sku       = strtoupper($row->sku);
@@ -5012,59 +5210,29 @@ class ChannelMasterController extends Controller
 
             if (isset($productMasters[$sku])) {
                 $pm = $productMasters[$sku];
-
                 $values = is_array($pm->Values) ? $pm->Values :
                         (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
-
                 $lp   = isset($values['lp']) ? (float) $values['lp'] : ($pm->lp ?? 0);
                 $ship = isset($values['ship']) ? (float) $values['ship'] : ($pm->ship ?? 0);
             }
 
-            // Profit per unit
             $profitPerUnit = ($price * $percentage) - $lp - $ship;
             $profitTotal   = $profitPerUnit * $unitsL30;
             $profitTotalL60   = $profitPerUnit * $unitsL60;
 
             $totalProfit += $profitTotal;
             $totalProfitL60 += $profitTotalL60;
-
             $totalCogs    += ($unitsL30 * $lp);
             $totalCogsL60 += ($unitsL60 * $lp);
         }
 
-        // --- FIX: Calculate total LP only for SKUs in eBayMetrics ---
-        $ebaySkus   = $ebayRows->pluck('sku')->map(fn($s) => strtoupper($s))->toArray();
-        $ebayPMs    = ProductMaster::whereIn('sku', $ebaySkus)->get();
-
-        $totalLpValue = 0;
-        foreach ($ebayPMs as $pm) {
-            $values = is_array($pm->Values) ? $pm->Values :
-                    (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
-
-            $lp = isset($values['lp']) ? (float) $values['lp'] : ($pm->lp ?? 0);
-            $totalLpValue += $lp;
-        }
-
-        // Use L30 Sales for denominator
         $gProfitPct = $l30Sales > 0 ? ($totalProfit / $l30Sales) * 100 : 0;
         $gprofitL60 = $l60Sales > 0 ? ($totalProfitL60 / $l60Sales) * 100 : 0;
-
-        // $gRoi       = $totalLpValue > 0 ? ($totalProfit / $totalLpValue) : 0;
-        // $gRoiL60    = $totalLpValue > 0 ? ($totalProfitL60 / $totalLpValue) : 0;
-
         $gRoi    = $totalCogs > 0 ? ($totalProfit / $totalCogs) * 100 : 0;
         $gRoiL60 = $totalCogsL60 > 0 ? ($totalProfitL60 / $totalCogsL60) * 100 : 0;
-
-        // N PFT = (Sum of PFT / Sum of L30 Sales) * 100
         $nPft = $l30Sales > 0 ? ($totalProfit / $l30Sales) * 100 : 0;
 
-        // Channel data
         $channelData = ChannelMaster::where('channel', 'TopDawg')->first();
-
-        // Get Missing Listing count
-        $missingListingCount = 0; // TopDawg doesn't have listing status tracking
-
-        // Get Map and Miss counts from amazon_channel_summary_data table
         $mapMissCounts = $this->getMapAndMissCounts('topdawg');
 
         $result[] = [
@@ -5079,7 +5247,9 @@ class ChannelMasterController extends Controller
             'gprofitL60' => round($gprofitL60, 2) . '%',
             'G Roi'      => round($gRoi, 2),
             'G RoiL60'   => round($gRoiL60, 2),
+            'Total PFT'  => round($totalProfit, 2),
             'N PFT'      => round($nPft, 2) . '%',
+            'N ROI'      => round($nPft, 2),
             'KW Spent'   => 0,
             'PT Spent'   => 0,
             'HL Spent'   => 0,
@@ -5087,6 +5257,8 @@ class ChannelMasterController extends Controller
             'Shopping Spent' => 0,
             'SERP Spent' => 0,
             'Total Ad Spend' => 0,
+            'Ads%'       => '0%',
+            'TACOS %'    => '0%',
             'type'       => $channelData->type ?? '',
             'W/Ads'      => $channelData->w_ads ?? 0,
             'NR'         => $channelData->nr ?? 0,
@@ -5101,7 +5273,7 @@ class ChannelMasterController extends Controller
 
         return response()->json([
             'status' => 200,
-            'message' => 'wayfair channel data fetched successfully',
+            'message' => 'TopDawg channel data (legacy sheet data)',
             'data' => $result,
         ]);
     }
@@ -6828,7 +7000,7 @@ class ChannelMasterController extends Controller
             if ($metric === 'acos' || $metric === 'ads_cvr') {
                 // For ad metrics, compute from totals
                 $liveTotal = ['Total Ad Spend' => 0, 'clicks' => 0, 'ad_sales' => 0, 'ad_sold' => 0];
-                $adChannels = ['amazon', 'amazonfba', 'ebay', 'ebaytwo', 'ebaythree', 'temu', 'walmart', 'shopifyb2c', 'tiktokshop'];
+                $adChannels = ['amazon', 'amazonfba', 'ebay', 'ebaytwo', 'ebaythree', 'temu', 'temu2', 'topdawg', 'walmart', 'shopifyb2c', 'tiktokshop'];
                 foreach ($adChannels as $ch) {
                     $live = $this->fetchAdMetricsFromTables($ch);
                     $liveTotal['Total Ad Spend'] += (float) ($live['Total Ad Spend'] ?? 0);
@@ -6890,7 +7062,7 @@ class ChannelMasterController extends Controller
 
         // For ad metrics, sum from live campaign tables
         if (in_array($metric, ['ad_spend', 'clicks', 'ad_sales', 'ad_sold'])) {
-            $adChannels = ['amazon', 'amazonfba', 'ebay', 'ebaytwo', 'ebaythree', 'temu', 'walmart', 'shopifyb2c', 'tiktokshop'];
+            $adChannels = ['amazon', 'amazonfba', 'ebay', 'ebaytwo', 'ebaythree', 'temu', 'temu2', 'topdawg', 'walmart', 'shopifyb2c', 'tiktokshop'];
             $total = 0;
             foreach ($adChannels as $ch) {
                 $live = $this->fetchAdMetricsFromTables($ch);
@@ -6923,7 +7095,8 @@ class ChannelMasterController extends Controller
             $channelMap = [
                 'amazon' => 'Amazon', 'amazonfba' => 'Amazon FBA',
                 'ebay' => 'eBay', 'ebaytwo' => 'eBay 2', 'ebaythree' => 'eBay 3',
-                'shopifyb2c' => 'Shopify B2C', 'temu' => 'Temu', 'walmart' => 'Walmart',
+                'shopifyb2c' => 'Shopify B2C', 'temu' => 'Temu',
+            'temu2' => 'Temu 2', 'walmart' => 'Walmart',
                 'tiktokshop' => 'TikTok Shop',
             ];
             $mdmChannel = $channelMap[$mdmKey] ?? null;
@@ -7098,6 +7271,7 @@ class ChannelMasterController extends Controller
             'ebaythree' => 'eBay 3',
             'walmart' => 'Walmart',
             'temu' => 'Temu',
+            'temu2' => 'Temu 2',
             'macys' => 'Macys',
             'tiendamia' => 'Tiendamia',
             'bestbuyusa' => 'Best Buy USA',
@@ -7377,7 +7551,8 @@ class ChannelMasterController extends Controller
             $metricsChannelMap = [
                 'amazon' => 'Amazon', 'amazonfba' => 'Amazon FBA',
                 'ebay' => 'eBay', 'ebaytwo' => 'eBay 2', 'ebaythree' => 'eBay 3',
-                'shopifyb2c' => 'Shopify B2C', 'temu' => 'Temu', 'walmart' => 'Walmart',
+                'shopifyb2c' => 'Shopify B2C', 'temu' => 'Temu',
+            'temu2' => 'Temu 2', 'walmart' => 'Walmart',
             ];
             $metricsChannel = $metricsChannelMap[$channel] ?? null;
             // ChannelMasterSummary uses the frontend channel name directly (lowercase)

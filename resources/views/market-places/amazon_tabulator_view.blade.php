@@ -999,10 +999,10 @@
         const amzDollarMetrics = ['l30_sales', 'ad_spend', 'kw_spend', 'hl_spend', 'pt_spend', 'total_pft', 'total_sales', 'total_spend'];
 
         // Section column lists (defined once for faster section switching)
-        const SECTION_KW_ADS_COLUMNS = ['(Child) sku', 'acos', 'l30_spend', 'l30_clicks', 'ad_cvr', 'rating', 'campaignBudgetAmount', 'sbgt', 'NRA', 'active_toggle', 'missing_ad', 'l30_sales', 'l30_purchases', 'INV', 'L30', 'E Dil%', 'A_L30', 'A DIL %', 'NRL', 'price', 'fba_price', 'campaign_info_icon', 'GPFT%', 'GROI%', 'l7_spend', 'l1_spend', 'avg_cpc', 'l7_cpc', 'l1_cpc', 'last_sbid', 'sbid', 'sbid_m', 'apr_bid', 'TPFT', 'campaignName'];
+        const SECTION_KW_ADS_COLUMNS = ['(Child) sku', 'acos', 'l30_spend', 'l30_clicks', 'ad_cvr', 'rating', 'campaignBudgetAmount', 'sbgt', 'NRA', 'active_toggle', 'missing_ad', 'l30_sales', 'l30_purchases', 'INV', 'L30', 'E Dil%', 'A_L30', 'A DIL %', 'NRL', 'price', 'fba_price', 'campaign_info_icon', 'GPFT%', 'GROI%', 'l7_spend', 'l1_spend', 'l2_spend', 'avg_cpc', 'l7_cpc', 'l1_cpc', 'l2_cpc', 'last_sbid', 'sbid', 'sbid_m', 'apr_bid', 'TPFT', 'campaignName'];
         const SECTION_PRICING_COLUMNS = ['(Child) sku', 'price', 'fba_price', 'campaign_info_icon', 'c_price', 'actual_cost', 'buy_box_price', 'GPFT%', 'PFT%', 'ROI_percentage', 'cost', 'margin', 'INV', 'A_L30'];
         const SECTION_MISSING_COLUMNS = ['image_path', '(Child) sku', 'NR', 'is_missing', 'inv_map', 'variation_dot'];
-        const SECTION_PT_ADS_COLUMNS = ['(Child) sku', 'pt_acos', 'pt_spend_L30', 'pt_clicks_L30', 'pt_ad_cvr', 'rating', 'INV', 'L30', 'E Dil%', 'A_L30', 'A DIL %', 'NRL', 'NRA', 'active_toggle', 'missing_ad', 'price', 'fba_price', 'campaign_info_icon', 'GPFT%', 'GROI%', 'pt_campaignBudgetAmount', 'pt_sbgt', 'pt_sales_L30', 'pt_sold_L30', 'pt_7ub', 'pt_1ub', 'pt_avg_cpc', 'pt_l7_cpc', 'pt_l1_cpc', 'pt_last_sbid', 'pt_sbid', 'pt_sbid_m', 'pt_apr_bid', 'pt_campaignName', 'TPFT'];
+        const SECTION_PT_ADS_COLUMNS = ['(Child) sku', 'pt_acos', 'pt_spend_L30', 'pt_clicks_L30', 'pt_ad_cvr', 'rating', 'INV', 'L30', 'E Dil%', 'A_L30', 'A DIL %', 'NRL', 'NRA', 'active_toggle', 'missing_ad', 'price', 'fba_price', 'campaign_info_icon', 'GPFT%', 'GROI%', 'pt_campaignBudgetAmount', 'pt_sbgt', 'pt_sales_L30', 'pt_sold_L30', 'pt_7ub', 'pt_1ub', 'pt_2ub', 'pt_avg_cpc', 'pt_l7_cpc', 'pt_l1_cpc', 'pt_l2_cpc', 'pt_last_sbid', 'pt_sbid', 'pt_sbid_m', 'pt_apr_bid', 'pt_campaignName', 'TPFT'];
         const SECTION_HL_ADS_COLUMNS = ['(Child) sku', 'hl_acos', 'hl_spend_L30', 'hl_clicks_L30', 'hl_ad_cvr', 'rating', 'INV', 'L30', 'E Dil%', 'A_L30', 'A DIL %', 'NRL', 'NRA', 'active_toggle', 'missing_ad', 'price', 'fba_price', 'campaign_info_icon', 'GPFT%', 'GROI%', 'hl_campaignBudgetAmount', 'hl_sbgt', 'hl_sales_L30', 'hl_sold_L30', 'hl_7ub', 'hl_1ub', 'hl_avg_cpc', 'hl_l7_cpc', 'hl_l1_cpc', 'hl_last_sbid', 'hl_sbid', 'hl_sbid_m', 'hl_apr_bid', 'hl_campaignName', 'TPFT'];
 
         function amzFmtVal(v) {
@@ -3604,6 +3604,41 @@
                         }
                     },
                     {
+                        title: "PT 2 UB%",
+                        field: "pt_2ub",
+                        hozAlign: "right",
+                        visible: false,
+                        minWidth: 72,
+                        formatter: function(cell) {
+                            var row = cell.getRow().getData();
+                            var hasCampaign = row.pt_campaignName || row.pt_spend_L30 > 0;
+                            if (!hasCampaign) return '-';
+                            var l2_spend = parseFloat(row.pt_spend_L2 || 0);
+                            var budget = parseFloat(row.pt_campaignBudgetAmount || 0);
+                            var ub2 = budget > 0 ? (l2_spend / budget) * 100 : 0;
+                            var td = cell.getElement();
+                            td.classList.remove('green-bg', 'pink-bg', 'red-bg');
+                            if (ub2 >= 66 && ub2 <= 99) td.classList.add('green-bg');
+                            else if (ub2 > 99) td.classList.add('pink-bg');
+                            else if (ub2 < 66) td.classList.add('red-bg');
+                            return ub2.toFixed(0) + "%";
+                        }
+                    },
+                    {
+                        title: "PT L2 CPC",
+                        field: "pt_l2_cpc",
+                        hozAlign: "center",
+                        visible: false,
+                        minWidth: 72,
+                        formatter: function(cell) {
+                            var row = cell.getRow().getData();
+                            var hasCampaign = row.pt_campaignName || row.pt_spend_L30 > 0;
+                            if (!hasCampaign) return '-';
+                            var l2_cpc = parseFloat(row.pt_l2_cpc || 0);
+                            return l2_cpc.toFixed(2);
+                        }
+                    },
+                    {
                         title: "PT Last SBID",
                         field: "pt_last_sbid",
                         hozAlign: "center",
@@ -4482,6 +4517,27 @@
                         }
                     },
                     {
+                        title: "KW 2 UB%",
+                        field: "l2_spend",
+                        hozAlign: "right",
+                        visible: false,
+                        minWidth: 72,
+                        formatter: function(cell) {
+                            var row = cell.getRow().getData();
+                            var hasCampaign = row.hasCampaign !== undefined ? row.hasCampaign : (row.campaign_id && row.campaignName);
+                            if (!hasCampaign) return '-';
+                            var l2_spend = parseFloat(row.l2_spend) || 0;
+                            var budget = (row.utilization_budget != null && row.utilization_budget !== '') ? parseFloat(row.utilization_budget) : (parseFloat(row.campaignBudgetAmount) || 0);
+                            var ub2 = budget > 0 ? (l2_spend / budget) * 100 : 0;
+                            var td = cell.getElement();
+                            td.classList.remove('green-bg', 'pink-bg', 'red-bg');
+                            if (ub2 >= 66 && ub2 <= 99) td.classList.add('green-bg');
+                            else if (ub2 > 99) td.classList.add('pink-bg');
+                            else if (ub2 < 66) td.classList.add('red-bg');
+                            return ub2.toFixed(0) + "%";
+                        }
+                    },
+                    {
                         title: "KW 1 UB%",
                         field: "l1_spend",
                         hozAlign: "right",
@@ -4534,6 +4590,21 @@
                             return l7_cpc.toFixed(2);
                         }
                     },
+
+                    {
+                        title: "KW L2 CPC",
+                        field: "l2_cpc",
+                        hozAlign: "center",
+                        visible: false,
+                        minWidth: 72,
+                        formatter: function(cell) {
+                            var row = cell.getRow().getData();
+                            var hasCampaign = row.hasCampaign !== undefined ? row.hasCampaign : (row.campaign_id && row.campaignName);
+                            if (!hasCampaign) return '-';
+                            var l2_cpc = parseFloat(row.l2_cpc) || 0;
+                            return l2_cpc.toFixed(2);
+                        }
+                    },
                     {
                         title: "KW L1 CPC",
                         field: "l1_cpc",
@@ -4548,6 +4619,7 @@
                             return l1_cpc.toFixed(2);
                         }
                     },
+                   
                     {
                         title: "KW Last SBID",
                         field: "last_sbid",
@@ -6316,9 +6388,11 @@
                     table.moveColumn("pt_avg_cpc", "pt_1ub", true);          // 27. PT AVG CPC
                     table.moveColumn("pt_l7_cpc", "pt_avg_cpc", true);       // 28. PT L7 CPC
                     table.moveColumn("pt_l1_cpc", "pt_l7_cpc", true);        // 29. PT L1 CPC
-                    table.moveColumn("pt_last_sbid", "pt_l1_cpc", true);     // 30. PT Last SBID
-                    table.moveColumn("pt_sbid", "pt_last_sbid", true);       // 31. PT SBID
-                    table.moveColumn("pt_sbid_m", "pt_sbid", true);          // 32. PT SBID M
+                    table.moveColumn("pt_2ub", "pt_l1_cpc", true);          // 30. PT 2 UB%
+                    table.moveColumn("pt_l2_cpc", "pt_2ub", true);           // 31. PT L2 CPC
+                    table.moveColumn("pt_last_sbid", "pt_l2_cpc", true);     // 32. PT Last SBID
+                    table.moveColumn("pt_sbid", "pt_last_sbid", true);       // 33. PT SBID
+                    table.moveColumn("pt_sbid_m", "pt_sbid", true);          // 34. PT SBID M
                     table.moveColumn("pt_apr_bid", "pt_sbid_m", true);       // 33. PT APR BID
                     
                     // 34-35: Campaign and TPFT at the end

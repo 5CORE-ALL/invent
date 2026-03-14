@@ -135,6 +135,7 @@
                             </a>
                             <div class="collapse" id="sidebarMarketplaceTopDawg">
                                 <ul class="side-nav-third-level">
+                                    <li><a href="{{ route('topdawg.sales.dashboard') }}">Sales Dashboard</a></li>
                                     <li><a href="{{ route('marketplace.products', 'topdawg') }}">Products</a></li>
                                     <li><a href="{{ route('marketplace.orders', 'topdawg') }}">Orders</a></li>
                                     <li><a href="{{ route('marketplace.settings', 'topdawg') }}">Settings</a></li>

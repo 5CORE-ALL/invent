@@ -449,6 +449,10 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/orders/push', [\App\Http\Controllers\MarketplaceController::class, 'pushOrderToShopify'])->name('marketplace.orders.push');
     });
 
+    // TopDawg Sales Dashboard (topdawg_order_metrics, margin 0.95, no ship)
+    Route::get('/topdawg/sales-dashboard', [\App\Http\Controllers\MarketPlace\TopDawgSyncController::class, 'salesDashboard'])->name('topdawg.sales.dashboard');
+    Route::get('/topdawg/sales-data', [\App\Http\Controllers\MarketPlace\TopDawgSyncController::class, 'getSalesData'])->name('topdawg.sales.data');
+
     // Route::get('/get-channel-sales-data', [ChannelMasterController::class, 'getChannelSalesData']);
     Route::get('/sales-trend-data', [ChannelMasterController::class, 'getSalesTrendData']);
     Route::get('/dashboard-metrics', [ChannelMasterController::class, 'getDashboardMetrics']);
@@ -1444,6 +1448,14 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/temu-tabulator', [TemuController::class, 'temuTabulatorView'])->name('temu.tabulator');
     Route::post('/temu-column-visibility', [TemuController::class, 'saveTemuColumnVisibility']);
     Route::get('/temu-column-visibility', [TemuController::class, 'getTemuColumnVisibility']);
+
+    // Temu 2 Tabulator View (separate tables: temu2_daily_data, temu2_daily_data_l60)
+    Route::get('/temu2-tabulator', [TemuController::class, 'temu2TabulatorView'])->name('temu2.tabulator');
+    Route::get('/temu2/daily-data', [TemuController::class, 'getTemu2DailyData'])->name('temu2.daily.data');
+    Route::post('/temu2/upload-daily-data-chunk', [TemuController::class, 'uploadDailyDataTemu2Chunk']);
+    Route::post('/temu2/upload-daily-data-l60-chunk', [TemuController::class, 'uploadDailyDataTemu2L60Chunk']);
+    Route::post('/temu2-column-visibility', [TemuController::class, 'saveTemu2ColumnVisibility']);
+    Route::get('/temu2-column-visibility', [TemuController::class, 'getTemu2ColumnVisibility']);
 
     // Temu Pricing Upload
     Route::post('/temu-pricing/upload', [TemuController::class, 'uploadTemuPricing'])->name('temu.pricing.upload');

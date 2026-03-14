@@ -8,6 +8,8 @@ use App\Models\EbayOrder;
 use App\Models\Ebay2Order;
 use App\Models\TemuDailyData;
 use App\Models\TemuAdData;
+use App\Models\Temu2DailyData;
+use App\Models\TopDawgOrderMetric;
 use App\Models\SheinDailyData;
 use App\Models\MercariDailyData;
 use App\Models\AliexpressDailyData;
@@ -43,6 +45,7 @@ class UpdateMarketplaceDailyMetrics extends Command
             'eBay 2' => fn() => $this->calculateEbay2Metrics($date),
             'eBay 3' => fn() => $this->calculateEbay3Metrics($date),
             'Temu' => fn() => $this->calculateTemuMetrics($date),
+            'Temu 2' => fn() => $this->calculateTemu2Metrics($date),
             'Shein' => fn() => $this->calculateSheinMetrics($date),
             'Mercari With Ship' => fn() => $this->calculateMercariWithShipMetrics($date),
             'Mercari Without Ship' => fn() => $this->calculateMercariWithoutShipMetrics($date),
@@ -56,6 +59,7 @@ class UpdateMarketplaceDailyMetrics extends Command
             'Doba' => fn() => $this->calculateDobaMetrics($date),
             'Walmart' => fn() => $this->calculateWalmartMetrics($date),
             'Wayfair' => fn() => $this->calculateWayfairMetrics($date),
+            'TopDawg' => fn() => $this->calculateTopDawgMetrics($date),
         ];
 
         foreach ($channels as $channel => $calculator) {
@@ -930,6 +934,229 @@ class UpdateMarketplaceDailyMetrics extends Command
             'l30_sales' => $totalL30Sales,
             'kw_spent' => round($temuSpent, 2), // Store Temu ad spend in kw_spent field
             'pmt_spent' => 0, // Temu doesn't have separate PMT
+            'tacos_percentage' => round($tacosPercentage, 1),
+            'n_pft' => round($nPftPercentage, 1),
+            'n_roi' => round($nRoiPercentage, 1),
+        ];
+    }
+
+    /**
+     * Temu 2: same logic as Temu but using temu2_daily_data. No separate ad table; ad spend = 0.
+     */
+    private function calculateTemu2Metrics($date)
+    {
+        $normalizeSku = function ($sku) {
+            $sku = strtoupper(trim((string) $sku));
+            $sku = preg_replace('/(\d+)\s*(PCS?|PIECES?)$/i', '$1PC', $sku);
+            $sku = preg_replace('/\s+/', ' ', $sku);
+            return $sku;
+        };
+
+        $data = Temu2DailyData::all();
+        if ($data->isEmpty()) {
+            return null;
+        }
+
+        $productMastersBySku = ProductMaster::all()->keyBy('sku');
+        $productMastersByNormalized = ProductMaster::all()->keyBy(function ($pm) use ($normalizeSku) {
+            return $normalizeSku($pm->sku ?? '');
+        });
+
+        $totalOrders = 0;
+        $totalQuantity = 0;
+        $totalRevenue = 0;
+        $totalL30Sales = 0;
+        $totalCogs = 0;
+        $totalPft = 0;
+        $totalWeightedPrice = 0;
+        $totalQuantityForPrice = 0;
+
+        foreach ($data as $row) {
+            if (!$row->contribution_sku || trim((string) $row->contribution_sku) === '') {
+                continue;
+            }
+            $pm = $productMastersBySku[$row->contribution_sku]
+                ?? $productMastersByNormalized[$normalizeSku($row->contribution_sku)]
+                ?? null;
+            $parent = $pm ? $pm->parent : '';
+            if ($parent && str_starts_with((string) $parent, 'PARENT')) {
+                continue;
+            }
+
+            $totalOrders++;
+            $quantity = (int) ($row->quantity_purchased ?? 0);
+            $basePrice = (float) ($row->base_price_total ?? 0);
+            $totalQuantity += $quantity;
+            $totalRevenue += $basePrice * $quantity;
+            $total = $basePrice * $quantity;
+            $fbPrice = $total < 27 ? $basePrice + 2.99 : $basePrice;
+
+            if ($quantity > 0 && $basePrice > 0) {
+                $totalWeightedPrice += $basePrice * $quantity;
+                $totalQuantityForPrice += $quantity;
+            }
+
+            $lp = 0;
+            $temuShip = 0;
+            if ($pm) {
+                $values = is_array($pm->Values) ? $pm->Values :
+                        (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
+                foreach ($values as $k => $v) {
+                    if (strtolower($k) === 'lp') {
+                        $lp = floatval($v);
+                        break;
+                    }
+                }
+                if ($lp === 0 && isset($pm->lp)) {
+                    $lp = floatval($pm->lp);
+                }
+                if (isset($values['temu_ship'])) {
+                    $temuShip = floatval($values['temu_ship']);
+                } elseif (isset($pm->temu_ship)) {
+                    $temuShip = floatval($pm->temu_ship);
+                }
+            }
+
+            $hasSales = $quantity > 0 && $basePrice > 0;
+            if ($hasSales) {
+                $pftDecimal = $fbPrice > 0 ? ($fbPrice * 0.96 - $lp - $temuShip) / $fbPrice : 0;
+                $totalPft += $pftDecimal * $fbPrice * $quantity;
+                $totalL30Sales += $fbPrice * $quantity;
+                $totalCogs += $lp * $quantity;
+            }
+        }
+
+        $avgPrice = $totalQuantityForPrice > 0 ? $totalWeightedPrice / $totalQuantityForPrice : 0;
+        $pftPercentage = $totalL30Sales > 0 ? ($totalPft / $totalL30Sales) * 100 : 0;
+        $roiPercentage = $totalCogs > 0 ? ($totalPft / $totalCogs) * 100 : 0;
+
+        // Temu 2: no separate ad table; use 0 for ad spend
+        $temu2Spent = 0;
+        $tacosPercentage = $totalL30Sales > 0 ? ($temu2Spent / $totalL30Sales) * 100 : 0;
+        $nPftPercentage = $pftPercentage - $tacosPercentage;
+        $nRoiPercentage = $roiPercentage - $tacosPercentage;
+
+        return [
+            'total_orders' => $totalOrders,
+            'total_quantity' => $totalQuantity,
+            'total_revenue' => $totalRevenue,
+            'total_sales' => $totalL30Sales,
+            'total_cogs' => $totalCogs,
+            'total_pft' => $totalPft,
+            'pft_percentage' => $pftPercentage,
+            'roi_percentage' => $roiPercentage,
+            'avg_price' => $avgPrice,
+            'l30_sales' => $totalL30Sales,
+            'kw_spent' => round($temu2Spent, 2),
+            'pmt_spent' => 0,
+            'tacos_percentage' => round($tacosPercentage, 1),
+            'n_pft' => round($nPftPercentage, 1),
+            'n_roi' => round($nRoiPercentage, 1),
+        ];
+    }
+
+    /**
+     * TopDawg: from topdawg_order_metrics. PFT = (price * 0.95 - lp) * quantity, no ship. No ad spend.
+     */
+    private function calculateTopDawgMetrics($date)
+    {
+        if (!\Illuminate\Support\Facades\Schema::hasTable('topdawg_order_metrics')) {
+            return null;
+        }
+
+        $data = TopDawgOrderMetric::all();
+        if ($data->isEmpty()) {
+            return null;
+        }
+
+        $productMastersBySku = ProductMaster::all()->keyBy('sku');
+        $productMastersByNormalized = ProductMaster::all()->keyBy(function ($pm) {
+            $sku = strtoupper(trim((string) ($pm->sku ?? '')));
+            $sku = preg_replace('/(\d+)\s*(PCS?|PIECES?)$/i', '$1PC', $sku);
+            $sku = preg_replace('/\s+/', ' ', $sku);
+            return $sku;
+        });
+
+        $normalizeSku = function ($sku) {
+            $sku = strtoupper(trim((string) $sku));
+            $sku = preg_replace('/(\d+)\s*(PCS?|PIECES?)$/i', '$1PC', $sku);
+            $sku = preg_replace('/\s+/', ' ', $sku);
+            return $sku;
+        };
+
+        $totalOrders = 0;
+        $totalQuantity = 0;
+        $totalRevenue = 0;
+        $totalL30Sales = 0;
+        $totalCogs = 0;
+        $totalPft = 0;
+        $totalWeightedPrice = 0;
+        $totalQuantityForPrice = 0;
+
+        foreach ($data as $row) {
+            $sku = $row->sku ?? '';
+            if (trim($sku) === '') {
+                continue;
+            }
+
+            $pm = $productMastersBySku[$sku] ?? $productMastersByNormalized[$normalizeSku($sku)] ?? null;
+            $lp = 0;
+            if ($pm) {
+                $values = is_array($pm->Values) ? $pm->Values : (is_string($pm->Values ?? null) ? json_decode($pm->Values, true) : []);
+                if (is_array($values)) {
+                    foreach ($values as $k => $v) {
+                        if (strtolower((string) $k) === 'lp') {
+                            $lp = (float) $v;
+                            break;
+                        }
+                    }
+                }
+                if ($lp === 0 && isset($pm->lp)) {
+                    $lp = (float) $pm->lp;
+                }
+            }
+
+            $amount = (float) ($row->amount ?? 0);
+            $quantity = (int) ($row->quantity ?? 1);
+            $quantity = $quantity >= 1 ? $quantity : 1;
+            $unitPrice = $quantity > 0 ? $amount / $quantity : 0;
+
+            $totalOrders++;
+            $totalQuantity += $quantity;
+            $totalRevenue += $amount;
+            if ($quantity > 0 && $amount > 0) {
+                $totalWeightedPrice += $amount;
+                $totalQuantityForPrice += $quantity;
+            }
+
+            $cogs = $lp * $quantity;
+            $pft = ($unitPrice * 0.95 - $lp) * $quantity;
+            $totalPft += $pft;
+            $totalL30Sales += $amount;
+            $totalCogs += $cogs;
+        }
+
+        $avgPrice = $totalQuantityForPrice > 0 ? $totalWeightedPrice / $totalQuantityForPrice : 0;
+        $pftPercentage = $totalL30Sales > 0 ? ($totalPft / $totalL30Sales) * 100 : 0;
+        $roiPercentage = $totalCogs > 0 ? ($totalPft / $totalCogs) * 100 : 0;
+        $topdawgSpent = 0;
+        $tacosPercentage = $totalL30Sales > 0 ? ($topdawgSpent / $totalL30Sales) * 100 : 0;
+        $nPftPercentage = $pftPercentage - $tacosPercentage;
+        $nRoiPercentage = $roiPercentage - $tacosPercentage;
+
+        return [
+            'total_orders' => $totalOrders,
+            'total_quantity' => $totalQuantity,
+            'total_revenue' => $totalRevenue,
+            'total_sales' => $totalL30Sales,
+            'total_cogs' => $totalCogs,
+            'total_pft' => $totalPft,
+            'pft_percentage' => $pftPercentage,
+            'roi_percentage' => $roiPercentage,
+            'avg_price' => $avgPrice,
+            'l30_sales' => $totalL30Sales,
+            'kw_spent' => round($topdawgSpent, 2),
+            'pmt_spent' => 0,
             'tacos_percentage' => round($tacosPercentage, 1),
             'n_pft' => round($nPftPercentage, 1),
             'n_roi' => round($nRoiPercentage, 1),
