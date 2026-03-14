@@ -417,6 +417,25 @@ class AutoUpdateAmazonKwBids extends Command
             ->where('campaignName', 'NOT LIKE', '% PT.')
             ->get();
 
+        // L2 = 2nd last date from table (table's latest date - 1 day), not server today
+        $latestDateInTable = DB::table('amazon_sp_campaign_reports')
+            ->where('ad_type', 'SPONSORED_PRODUCTS')
+            ->whereRaw("report_date_range REGEXP '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'")
+            ->max('report_date_range');
+        $dayBeforeYesterdayForL2 = $latestDateInTable
+            ? date('Y-m-d', strtotime($latestDateInTable . ' -1 day'))
+            : date('Y-m-d', strtotime('-2 days'));
+        $amazonSpCampaignReportsL2 = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
+            ->where('report_date_range', $dayBeforeYesterdayForL2)
+            ->where(function ($q) use ($skus) {
+                foreach ($skus as $sku) {
+                    $q->orWhere('campaignName', 'LIKE', '%' . $sku . '%');
+                }
+            })
+            ->where('campaignName', 'NOT LIKE', '% PT')
+            ->where('campaignName', 'NOT LIKE', '% PT.')
+            ->get();
+
         $amazonSpCampaignReportsL30 = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
             ->where('report_date_range', 'L30')
             ->where(function ($q) use ($skus) {
@@ -449,6 +468,12 @@ class AutoUpdateAmazonKwBids extends Command
                 $campaignName = preg_replace('/\s+/', ' ', strtoupper(trim(rtrim($item->campaignName, '.'))));
                 $cleanSku = preg_replace('/\s+/', ' ', strtoupper(trim(rtrim($sku, '.'))));
                 // Match campaign with or without " KW" suffix
+                return $campaignName === $cleanSku || $campaignName === $cleanSku . ' KW';
+            });
+
+            $matchedCampaignL2 = $amazonSpCampaignReportsL2->first(function ($item) use ($sku) {
+                $campaignName = preg_replace('/\s+/', ' ', strtoupper(trim(rtrim($item->campaignName, '.'))));
+                $cleanSku = preg_replace('/\s+/', ' ', strtoupper(trim(rtrim($sku, '.'))));
                 return $campaignName === $cleanSku || $campaignName === $cleanSku . ' KW';
             });
 
@@ -489,6 +514,8 @@ class AutoUpdateAmazonKwBids extends Command
             $row['l7_cpc'] = $matchedCampaignL7 ? (float)($matchedCampaignL7->costPerClick ?? 0) : 0;
             $row['l1_spend'] = $matchedCampaignL1 ? (float)($matchedCampaignL1->spend ?? 0) : 0;
             $row['l1_cpc'] = $matchedCampaignL1 ? (float)($matchedCampaignL1->costPerClick ?? 0) : 0;
+            $row['l2_spend'] = $matchedCampaignL2 ? (float)($matchedCampaignL2->spend ?? 0) : 0;
+            $row['l2_cpc'] = $matchedCampaignL2 ? (float)($matchedCampaignL2->costPerClick ?? 0) : 0;
             $row['l30_spend'] = $matchedCampaignL30 ? (float)($matchedCampaignL30->spend ?? 0) : 0;
 
             if (!$matchedCampaignL7 && !$matchedCampaignL1 && $matchedCampaignL30 && ($row['l30_spend'] ?? 0) > 0) {
@@ -587,43 +614,36 @@ class AutoUpdateAmazonKwBids extends Command
                 $ub1 = 0;
             }
 
-            // Determine utilization type (must match tabulator)
-            $rowType = 'all';
-            if ($ub7 > 99 && $ub1 > 99) {
-                $rowType = 'over';
-            } elseif ($ub7 < 66 && $ub1 < 66) {
-                $rowType = 'under';
-            } elseif ($ub7 >= 66 && $ub7 <= 99 && $ub1 >= 66 && $ub1 <= 99) {
-                $rowType = 'correctly';
-            }
+            // UB2: 2-day utilization (L2 spend / budget) - for SBID condition matching tabulator
+            $l2_spend = floatval($row['l2_spend'] ?? 0);
+            $ub2 = ($budget > 0 && $l2_spend > 0) ? ($l2_spend / $budget) * 100 : 0;
+            $ub2Red = $ub2 < 66;
+            $ub2Pink = $ub2 > 99;
+            $ub1Red = $ub1 < 66;
+            $ub1Pink = $ub1 > 99;
 
-            // Calculate SBID to match tabulator (no price-range default; over/under only)
+            // Calculate SBID to match tabulator: only 2UB+1UB red or 2UB+1UB pink (otherwise skip)
             $l1_cpc = floatval($row['l1_cpc']);
+            $l2_cpc = floatval($row['l2_cpc'] ?? 0);
             $l7_cpc = floatval($row['l7_cpc']);
             $row['sbid'] = 0;
 
-            if ($rowType === 'over') {
-                if ($l1_cpc > 0) {
-                    $row['sbid'] = floor($l1_cpc * 0.90 * 100) / 100;
-                } elseif ($l7_cpc > 0) {
-                    $row['sbid'] = floor($l7_cpc * 0.90 * 100) / 100;
-                } elseif ($avgCpc > 0) {
-                    $row['sbid'] = floor($avgCpc * 0.90 * 100) / 100;
-                } else {
-                    $row['sbid'] = 1.00;
-                }
-            } elseif ($rowType === 'under') {
-                // Under-utilized: L1 CPC → L7 CPC → AVG CPC → 1.00, all increase by 10%
+            if ($ub2Red && $ub1Red) {
+                // KW 2UB red AND KW 1UB red: L1*1.1, else L2*1.1, else L7*1.1, else 0.60
                 if ($l1_cpc > 0) {
                     $row['sbid'] = floor($l1_cpc * 1.10 * 100) / 100;
+                } elseif ($l2_cpc > 0) {
+                    $row['sbid'] = floor($l2_cpc * 1.10 * 100) / 100;
                 } elseif ($l7_cpc > 0) {
                     $row['sbid'] = floor($l7_cpc * 1.10 * 100) / 100;
-                } elseif ($avgCpc > 0) {
-                    $row['sbid'] = floor($avgCpc * 1.10 * 100) / 100;
                 } else {
-                    $row['sbid'] = 1.00;
+                    $row['sbid'] = 0.60;
                 }
+            } elseif ($ub2Pink && $ub1Pink) {
+                // KW 2UB pink AND KW 1UB pink: L1*0.90
+                $row['sbid'] = floor($l1_cpc * 0.90 * 100) / 100;
             }
+            // Else: conditions do not match → sbid stays 0, row will be skipped
 
             // Validate all required fields before adding
             if (empty($row['campaign_id'])) {

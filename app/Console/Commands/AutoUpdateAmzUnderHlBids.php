@@ -15,7 +15,7 @@ use Illuminate\Support\Facades\DB;
 
 class AutoUpdateAmzUnderHlBids extends Command
 {
-    protected $signature = 'amazon:auto-update-under-hl-bids';
+    protected $signature = 'amazon:auto-update-under-hl-bids {--dry-run : Show what would be updated without calling API}';
     protected $description = 'Automatically update Amazon campaign hl bids';
 
     public function __construct()
@@ -26,7 +26,8 @@ class AutoUpdateAmzUnderHlBids extends Command
     public function handle()
     {
         try {
-            $this->info("Starting Amazon bids auto-update...");
+            $dryRun = $this->option('dry-run');
+            $this->info("Starting Amazon Under-Utilized HL bids auto-update..." . ($dryRun ? " [DRY RUN - no API calls]" : ""));
 
             // Check database connection (without creating persistent connection)
             try {
@@ -64,14 +65,36 @@ class AutoUpdateAmzUnderHlBids extends Command
             $this->info("Found " . $validCampaigns->count() . " valid campaigns to update.");
             $this->line("");
 
-            // Log campaigns before update
-            $this->info("Campaigns to be updated:");
+            // Log campaigns before update (same format as Under KW/PT)
+            $this->info("========================================");
+            $this->info("CAMPAIGNS TO UPDATE (UNDER-UTILIZED HL):");
+            $this->info("========================================");
             foreach ($validCampaigns as $campaign) {
                 $campaignName = $campaign->campaignName ?? 'N/A';
                 $newBid = $campaign->sbid ?? 0;
-                $this->line("  Campaign: {$campaignName} | New Bid: {$newBid}");
+                $campaignId = $campaign->campaign_id ?? '';
+                $budget = floatval($campaign->campaignBudgetAmount ?? 0);
+                $l7_spend = floatval($campaign->l7_spend ?? 0);
+                $l1_spend = floatval($campaign->l1_spend ?? 0);
+                $ub7 = $budget > 0 ? ($l7_spend / ($budget * 7)) * 100 : 0;
+                $ub1 = $budget > 0 ? ($l1_spend / $budget) * 100 : 0;
+                $inv = (int)($campaign->INV ?? 0);
+                $this->info("Campaign Name: {$campaignName}");
+                $this->info("  - Campaign ID: {$campaignId}");
+                $this->info("  - Bid: {$newBid}");
+                $this->info("  - 7UB: " . round($ub7, 2) . "% | 1UB: " . round($ub1, 2) . "%");
+                $this->info("  - INV: {$inv}");
+                $this->info("---");
             }
+            $this->info("========================================");
             $this->line("");
+
+            if ($dryRun) {
+                $this->newLine();
+                $this->warn("DRY RUN: No API call made. Remove --dry-run to apply updates.");
+                $this->info("✓ Dry run completed. Total campaigns that would be updated: " . $validCampaigns->count());
+                return 0;
+            }
 
             $campaignIds = $validCampaigns->pluck('campaign_id')->toArray();
             $newBids = $validCampaigns->pluck('sbid')->toArray();
@@ -200,9 +223,23 @@ class AutoUpdateAmzUnderHlBids extends Command
             $shopifyData = [];
             $nrValues = [];
 
+            $normalizeSku = function ($s) {
+                if ($s === null || $s === '') return '';
+                $s = preg_replace('/\s+/', ' ', trim((string) $s));
+                $s = preg_replace('/\s+2\s+PCS\b/i', ' 2PCS', $s);
+                return $s;
+            };
+
             if (!empty($skus)) {
                 $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
-                $nrValues = AmazonDataView::whereIn('sku', $skus)->pluck('value', 'sku');
+                $nrValues = [];
+                foreach (AmazonDataView::whereIn('sku', $skus)->get() as $r) {
+                    $nrValues[$r->sku] = $r->value;
+                    $n = $normalizeSku($r->sku);
+                    if ($n !== '') {
+                        $nrValues[$n] = $r->value;
+                    }
+                }
             }
 
         $amazonSpCampaignReportsL7 = AmazonSbCampaignReport::where('ad_type', 'SPONSORED_BRANDS')
@@ -229,6 +266,11 @@ class AutoUpdateAmzUnderHlBids extends Command
 
         foreach ($productMasters as $pm) {
             $sku = strtoupper($pm->sku);
+
+            // Skip PARENT rows (same as Under KW/PT: only process child SKU campaigns)
+            if (stripos($pm->sku ?? '', 'PARENT') !== false) {
+                continue;
+            }
 
             $shopify = $shopifyData[$pm->sku] ?? null;
 
@@ -290,13 +332,15 @@ class AutoUpdateAmzUnderHlBids extends Command
             }
 
             $row['NRA'] = '';
-            if (isset($nrValues[$pm->sku])) {
-                $raw = $nrValues[$pm->sku];
-                if (!is_array($raw)) {
-                    $raw = json_decode($raw, true);
-                }
+            $nrRaw = $nrValues[$pm->sku] ?? ($nrValues[$normalizeSku($pm->sku)] ?? null);
+            if ($nrRaw !== null) {
+                $raw = is_array($nrRaw) ? $nrRaw : (is_string($nrRaw) ? json_decode($nrRaw, true) : null);
                 if (is_array($raw)) {
-                    $row['NRA'] = $raw['NRA'] ?? null;
+                    $row['NRA'] = trim((string)($raw['NRA'] ?? ''));
+                    // When NRA is empty, derive from NRL (same as tabulator: NRL=NRL -> NRA, else RA)
+                    if ($row['NRA'] === '') {
+                        $row['NRA'] = (trim((string)($raw['NRL'] ?? '')) === 'NRL') ? 'NRA' : 'RA';
+                    }
                 }
             }
 
@@ -308,8 +352,9 @@ class AutoUpdateAmzUnderHlBids extends Command
             $ub7 = $budget > 0 ? ($l7_spend / ($budget * 7)) * 100 : 0;
             $ub1 = $budget > 0 ? ($l1_spend / $budget) * 100 : 0;
 
-            // Under-utilized rule: NRA !== 'NRA', campaignName !== '', ub7 < 66 && ub1 < 66
-            if ($row['NRA'] !== 'NRA' && $row['campaignName'] !== '' && ($ub7 < 66 && $ub1 < 66)) {
+            // Under-utilized rule: INV > 0, NRA !== 'NRA', campaignName !== '', ub7 < 66 && ub1 < 66 (aligned with Under KW/PT)
+            $row['INV'] = (int) ($row['INV'] ?? 0);
+            if ($row['INV'] > 0 && $row['NRA'] !== 'NRA' && $row['campaignName'] !== '' && ($ub7 < 66 && $ub1 < 66)) {
                 // Calculate SBID for HL campaigns - use same logic as HL SBID column (never avg_cpc)
                 // Under-utilized: Priority - L1 CPC → L7 CPC → 0.60 when both zero
                 if ($l1_cpc > 0) {

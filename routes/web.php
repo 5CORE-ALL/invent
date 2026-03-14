@@ -1109,6 +1109,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/amazon-column-visibility', [OverallAmazonController::class, 'saveAmazonColumnVisibility'])->name('amazon.column.visibility.save');
     Route::post('/amazon-badge-stats-save', [OverallAmazonController::class, 'saveAmazonBadgeStats']);
     Route::get('/amazon-badge-chart-data', [OverallAmazonController::class, 'getAmazonBadgeChartData']);
+    Route::get('/amazon-kw-last-sbid-chart-data', [OverallAmazonController::class, 'getAmazonKwLastSbidChartData']);
     Route::get('/amazon-data-json', action: [OverallAmazonController::class, 'amazonDataJson'])->name('amazon.data.json');
     Route::get('/amazon-campaign-data-by-sku', action: [OverallAmazonController::class, 'getCampaignDataBySku'])->name('amazon.campaign.data.by.sku');
     Route::post('/amazon/refresh-links', [OverallAmazonController::class, 'refreshAmazonLinks'])->name('amazon.refresh.links');

@@ -1900,11 +1900,12 @@ class AmazonSpBudgetController extends Controller
 
     public function updateNrNRLFba(Request $request)
     {
-        $sku   = $request->input('sku');
-        $field = $request->input('field');
-        $value = $request->input('value');
+        // Accept both JSON body and form input
+        $sku   = trim((string) ($request->input('sku') ?? $request->json('sku') ?? ''));
+        $field = $request->input('field') ?? $request->json('field');
+        $value = $request->input('value') ?? $request->json('value');
 
-        if (empty($sku) || $field === null || $field === '') {
+        if ($sku === '' || $field === null || $field === '') {
             return response()->json([
                 'status' => 422,
                 'message' => 'SKU and field are required',

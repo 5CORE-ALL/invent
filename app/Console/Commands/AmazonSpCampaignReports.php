@@ -6,6 +6,7 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\DB;
 use App\Models\AmazonSpCampaignReport;
+use App\Models\AmazonKwLastSbidDaily;
 
 class AmazonSpCampaignReports extends Command
 {
@@ -247,14 +248,47 @@ class AmazonSpCampaignReports extends Command
                                 'ad_type' => $adType,
                                 'report_date' => $startDate,
                             ]);
+                            // Carry forward last_sbid date-wise for KW Last SBID graph (from previous day or L1)
+                            $campaignId = $row['campaignId'] ?? null;
+                            if ($campaignId && (!isset($payload['last_sbid']) || $payload['last_sbid'] === null || $payload['last_sbid'] === '')) {
+                                $prevDate = date('Y-m-d', strtotime($startDate . ' -1 day'));
+                                $existing = AmazonSpCampaignReport::where('campaign_id', $campaignId)
+                                    ->where('profile_id', $profileId)
+                                    ->where('ad_type', $adType)
+                                    ->where(function ($q) use ($prevDate) {
+                                        $q->where('report_date_range', $prevDate)->orWhere('report_date_range', 'L1');
+                                    })
+                                    ->orderByRaw("CASE WHEN report_date_range = 'L1' THEN 0 ELSE 1 END")
+                                    ->value('last_sbid');
+                                if ($existing !== null && $existing !== '') {
+                                    $payload['last_sbid'] = $existing;
+                                }
+                            }
                             AmazonSpCampaignReport::updateOrCreate(
                                 [
-                                    'campaign_id' => $row['campaignId'] ?? null,
+                                    'campaign_id' => $campaignId,
                                     'profile_id' => $profileId,
                                     'report_date_range' => $finalRangeKey,
                                 ],
                                 $payload
                             );
+                            // Record KW Last SBID data only (date-wise daily) for chart
+                            if ($adType === 'SPONSORED_PRODUCTS') {
+                                $lastSbid = $payload['last_sbid'] ?? null;
+                                if ($lastSbid !== null && $lastSbid !== '') {
+                                    AmazonKwLastSbidDaily::updateOrCreate(
+                                        [
+                                            'campaign_id' => $campaignId,
+                                            'report_date' => $finalRangeKey,
+                                        ],
+                                        [
+                                            'profile_id' => $profileId,
+                                            'last_sbid' => $lastSbid,
+                                            'campaign_name' => $payload['campaignName'] ?? null,
+                                        ]
+                                    );
+                                }
+                            }
                             if ($syncL1) {
                                 AmazonSpCampaignReport::updateOrCreate(
                                     [

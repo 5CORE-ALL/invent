@@ -358,10 +358,8 @@ class AutoUpdateAmazonBgtKw extends Command
                 $acos = (float) ($row['acos_L30'] ?? 0);
                 $price = (float) ($row['price'] ?? 0);
 
-                // ACOS-based SBGT rules
-                if ($acos > 35) {
-                    $row['sbgt'] = 1;
-                } elseif ($acos >= 30) {
+                // ACOS-based SBGT rules (match amazon_tabulator_view KW SBGT)
+                if ($acos >= 30) {
                     $row['sbgt'] = 3;
                 } elseif ($acos >= 25) {
                     $row['sbgt'] = 5;
