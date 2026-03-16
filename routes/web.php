@@ -983,6 +983,13 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/tiktok-column-visibility', [\App\Http\Controllers\Sales\TikTokSalesController::class, 'getColumnVisibility']);
     Route::post('/tiktok-column-visibility', [\App\Http\Controllers\Sales\TikTokSalesController::class, 'saveColumnVisibility']);
 
+    // TikTok 2 Sales Routes (upload-based, margin 0.80)
+    Route::get('/tiktok-two/daily-sales', [\App\Http\Controllers\Sales\TikTokSalesController::class, 'indexTwo'])->name('tiktok.two.daily.sales');
+    Route::get('/tiktok-two/daily-sales-data', [\App\Http\Controllers\Sales\TikTokSalesController::class, 'getDataTwo'])->name('tiktok.two.daily.sales.data');
+    Route::post('/tiktok-two/upload', [\App\Http\Controllers\Sales\TikTokSalesController::class, 'uploadTwo'])->name('tiktok.two.upload');
+    Route::get('/tiktok-two-column-visibility', [\App\Http\Controllers\Sales\TikTokSalesController::class, 'getColumnVisibilityTwo']);
+    Route::post('/tiktok-two-column-visibility', [\App\Http\Controllers\Sales\TikTokSalesController::class, 'saveColumnVisibilityTwo']);
+
     // Doba Sales Routes
     Route::get('/doba/daily-sales-data', [DobaSalesController::class, 'getData'])->name('doba.daily.sales.data');
     Route::get('/doba/daily-sales', [DobaSalesController::class, 'index'])->name('doba.daily.sales');
