@@ -92,10 +92,10 @@ class UpdateMarketplaceDailyMetrics extends Command
 
     private function calculateAmazonMetrics($date)
     {
-        // Last 32 days ending on $date (California Pacific), from actual orders, non-cancelled
+        // Last 34 days ending on $date (California Pacific), from actual orders, non-cancelled
         $datePacific = Carbon::parse($date->format('Y-m-d'), 'America/Los_Angeles');
         $endOfDay = $datePacific->copy()->endOfDay();
-        $startOfDay = $datePacific->copy()->subDays(31)->startOfDay();
+        $startOfDay = $datePacific->copy()->subDays(33)->startOfDay();
 
         $orderRows = DB::table('amazon_orders as o')
             ->join('amazon_order_items as i', 'o.id', '=', 'i.amazon_order_id')
