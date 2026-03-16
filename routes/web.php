@@ -990,6 +990,11 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/tiktok-two-column-visibility', [\App\Http\Controllers\Sales\TikTokSalesController::class, 'getColumnVisibilityTwo']);
     Route::post('/tiktok-two-column-visibility', [\App\Http\Controllers\Sales\TikTokSalesController::class, 'saveColumnVisibilityTwo']);
 
+    // Depop Sheet Routes (margin 0.87)
+    Route::get('/depop/sheet', [\App\Http\Controllers\Sales\DepopSalesController::class, 'index'])->name('depop.sheet');
+    Route::get('/depop/sheet-data', [\App\Http\Controllers\Sales\DepopSalesController::class, 'getData'])->name('depop.sheet.data');
+    Route::post('/depop/upload', [\App\Http\Controllers\Sales\DepopSalesController::class, 'upload'])->name('depop.upload');
+
     // Doba Sales Routes
     Route::get('/doba/daily-sales-data', [DobaSalesController::class, 'getData'])->name('doba.daily.sales.data');
     Route::get('/doba/daily-sales', [DobaSalesController::class, 'index'])->name('doba.daily.sales');
