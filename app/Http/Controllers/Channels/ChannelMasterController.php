@@ -1142,13 +1142,13 @@ class ChannelMasterController extends Controller
     {
         $result = [];
 
-        // 32 days sales/orders from actual orders (California Pacific, ending today) — same as amazon/daily-sales page
+        // 34 days sales/orders from actual orders (California Pacific, ending today) — same as amazon/daily-sales page
         $todayPacific = Carbon::now('America/Los_Angeles');
         $endToday = $todayPacific->copy()->endOfDay();
-        $start32 = $todayPacific->copy()->subDays(31)->startOfDay();
+        $start34 = $todayPacific->copy()->subDays(33)->startOfDay();
         $orderAgg = DB::table('amazon_orders as o')
             ->join('amazon_order_items as i', 'o.id', '=', 'i.amazon_order_id')
-            ->where('o.order_date', '>=', $start32)
+            ->where('o.order_date', '>=', $start34)
             ->where('o.order_date', '<=', $endToday)
             ->where(function ($q) {
                 $q->whereNull('o.status')->orWhere('o.status', '!=', 'Canceled');
