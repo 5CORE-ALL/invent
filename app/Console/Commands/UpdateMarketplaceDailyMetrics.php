@@ -16,6 +16,7 @@ use App\Models\AliexpressDailyData;
 use App\Models\ShopifyB2CDailyData;
 use App\Models\ShopifyB2BDailyData;
 use App\Models\TikTokDailyData;
+use App\Models\TiktokSalesTwo;
 use App\Models\MiraklDailyData;
 use App\Models\DobaDailyData;
 use App\Models\WayfairDailyData;
@@ -53,6 +54,7 @@ class UpdateMarketplaceDailyMetrics extends Command
             'Shopify B2C' => fn() => $this->calculateShopifyB2CMetrics($date),
             'Shopify B2B' => fn() => $this->calculateShopifyB2BMetrics($date),
             'TikTok' => fn() => $this->calculateTikTokMetrics($date),
+            'TikTok 2' => fn() => $this->calculateTikTokTwoMetrics($date),
             'Best Buy USA' => fn() => $this->calculateBestBuyMetrics($date),
             'Macys' => fn() => $this->calculateMacysMetrics($date),
             'Tiendamia' => fn() => $this->calculateTiendamiaMetrics($date),
@@ -2240,6 +2242,110 @@ class UpdateMarketplaceDailyMetrics extends Command
         $roiPercentage = $totalCogs > 0 ? ($totalPft / $totalCogs) * 100 : 0;
 
         // TikTok has no ads currently, so N ROI = G ROI and N PFT = G PFT
+        return [
+            'total_orders' => $totalOrders,
+            'total_quantity' => $totalQuantity,
+            'total_revenue' => $totalRevenue,
+            'total_sales' => $totalRevenue,
+            'total_cogs' => $totalCogs,
+            'total_pft' => $totalPft,
+            'pft_percentage' => $pftPercentage,
+            'roi_percentage' => $roiPercentage,
+            'avg_price' => $avgPrice,
+            'l30_sales' => $totalRevenue,
+            'kw_spent' => 0,
+            'pmt_spent' => 0,
+            'n_pft' => $totalPft,
+            'n_roi' => $roiPercentage,
+        ];
+    }
+
+    private function calculateTikTokTwoMetrics($date)
+    {
+        // L30 from tiktok_sales_two: order_date in last 30 days ending on $date
+        $endDate = Carbon::parse($date)->endOfDay();
+        $startDate = Carbon::parse($date)->subDays(29)->startOfDay();
+
+        $rows = TiktokSalesTwo::whereBetween('order_date', [$startDate, $endDate])->get();
+        if ($rows->isEmpty()) {
+            return null;
+        }
+
+        $productMasters = ProductMaster::all()->keyBy(function ($item) {
+            return strtoupper($item->sku);
+        });
+
+        $margin = 0.80; // 80% margin (same as TikTok)
+        $totalOrders = 0;
+        $totalQuantity = 0;
+        $totalRevenue = 0;
+        $totalCogs = 0;
+        $totalPft = 0;
+        $totalWeightedPrice = 0;
+        $totalQuantityForPrice = 0;
+
+        foreach ($rows as $row) {
+            $quantity = (int) ($row->quantity ?: 1);
+            $unitPrice = (float) $row->unit_price;
+            $saleAmount = $unitPrice * $quantity;
+
+            $totalOrders++;
+            $totalQuantity += $quantity;
+            $totalRevenue += $saleAmount;
+
+            if ($quantity > 0 && $unitPrice > 0) {
+                $totalWeightedPrice += $unitPrice * $quantity;
+                $totalQuantityForPrice += $quantity;
+            }
+
+            $sku = strtoupper($row->seller_sku ?? '');
+            $lp = 0;
+            $ship = 0;
+            $weightAct = 0;
+
+            if ($sku && isset($productMasters[$sku])) {
+                $pm = $productMasters[$sku];
+                $values = is_array($pm->Values) ? $pm->Values : (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
+                foreach ($values as $k => $v) {
+                    if (strtolower($k) === 'lp') {
+                        $lp = floatval($v);
+                        break;
+                    }
+                }
+                if ($lp === 0 && isset($pm->lp)) {
+                    $lp = floatval($pm->lp);
+                }
+                if (isset($values['ship'])) {
+                    $ship = floatval($values['ship']);
+                } elseif (isset($pm->ship)) {
+                    $ship = floatval($pm->ship);
+                }
+                if (isset($values['wt_act'])) {
+                    $weightAct = floatval($values['wt_act']);
+                }
+            }
+
+            $tWeight = $weightAct * $quantity;
+            if ($quantity == 1) {
+                $shipCost = $ship;
+            } elseif ($quantity > 1 && $tWeight < 20) {
+                $shipCost = $ship / $quantity;
+            } else {
+                $shipCost = $ship;
+            }
+
+            $cogs = $lp * $quantity;
+            $pftEach = ($unitPrice * $margin) - $lp - $shipCost;
+            $pft = $pftEach * $quantity;
+
+            $totalCogs += $cogs;
+            $totalPft += $pft;
+        }
+
+        $avgPrice = $totalQuantityForPrice > 0 ? $totalWeightedPrice / $totalQuantityForPrice : 0;
+        $pftPercentage = $totalRevenue > 0 ? ($totalPft / $totalRevenue) * 100 : 0;
+        $roiPercentage = $totalCogs > 0 ? ($totalPft / $totalCogs) * 100 : 0;
+
         return [
             'total_orders' => $totalOrders,
             'total_quantity' => $totalQuantity,
