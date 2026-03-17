@@ -234,6 +234,9 @@
                     <button class="btn btn-danger btn-sm d-none" id="delete-selected-btn">
                         <i class="fas fa-trash me-1"></i> Delete
                     </button>
+                    <button type="button" class="btn btn-secondary btn-sm" id="transit-history-btn" data-bs-toggle="modal" data-bs-target="#transitHistoryModal">
+                        <i class="fas fa-history me-1"></i> History
+                    </button>
                 </div>
 
                 <!-- Tabs Navigation -->
@@ -398,6 +401,65 @@
                     </button>
                 </div>
             </form>
+        </div>
+    </div>
+</div>
+
+{{-- Transit Container History Modal --}}
+<div class="modal fade" id="transitHistoryModal" tabindex="-1" aria-labelledby="transitHistoryModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header bg-light">
+                <h5 class="modal-title fw-bold" id="transitHistoryModalLabel">
+                    <i class="fas fa-history me-2"></i> Transit Container History
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-3">
+                <div class="row g-2 mb-3">
+                    <div class="col-auto">
+                        <label class="form-label small mb-0">Action</label>
+                        <select id="history-action-filter" class="form-select form-select-sm" style="width: auto;">
+                            <option value="">All</option>
+                            <option value="row_created">Row created</option>
+                            <option value="row_updated">Row updated</option>
+                            <option value="row_moved">Row moved</option>
+                            <option value="row_deleted">Row deleted</option>
+                            <option value="purchase_added">Purchase added</option>
+                            <option value="tab_added">Tab/Container added</option>
+                        </select>
+                    </div>
+                    <div class="col-auto">
+                        <label class="form-label small mb-0">Container / Tab</label>
+                        <input type="text" id="history-tab-filter" class="form-control form-control-sm" placeholder="Tab name" style="width: 140px;">
+                    </div>
+                    <div class="col-auto">
+                        <label class="form-label small mb-0">SKU</label>
+                        <input type="text" id="history-sku-filter" class="form-control form-control-sm" placeholder="SKU" style="width: 120px;">
+                    </div>
+                    <div class="col-auto align-self-end">
+                        <button type="button" id="history-refresh-btn" class="btn btn-primary btn-sm"><i class="fas fa-sync-alt me-1"></i> Load</button>
+                    </div>
+                </div>
+                <div class="table-responsive" style="max-height: 60vh;">
+                    <table class="table table-bordered table-hover table-sm mb-0">
+                        <thead class="table-light sticky-top">
+                            <tr>
+                                <th>Time</th>
+                                <th>Action</th>
+                                <th>From Tab</th>
+                                <th>To Tab</th>
+                                <th>SKU</th>
+                                <th>Details</th>
+                                <th>User</th>
+                            </tr>
+                        </thead>
+                        <tbody id="transit-history-tbody">
+                            <tr><td colspan="7" class="text-center text-muted">Click Load to fetch history.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
         </div>
     </div>
 </div>
@@ -1564,6 +1626,60 @@ document.getElementById('search-input').addEventListener('input', function () {
         previewBox.style.display = "none";
       }
     });
+
+    // Transit Container History: load when modal is shown or when Load is clicked
+    function loadTransitHistory() {
+      const params = new URLSearchParams();
+      const action = document.getElementById("history-action-filter").value;
+      const tab = document.getElementById("history-tab-filter").value.trim();
+      const sku = document.getElementById("history-sku-filter").value.trim();
+      if (action) params.set("action_type", action);
+      if (tab) params.set("tab_name", tab);
+      if (sku) params.set("sku", sku);
+      params.set("limit", "200");
+      const tbody = document.getElementById("transit-history-tbody");
+      tbody.innerHTML = '<tr><td colspan="7" class="text-center">Loading...</td></tr>';
+      fetch("/transit-container/history?" + params.toString())
+        .then(r => r.json())
+        .then(res => {
+          const data = res.data || [];
+          const actionLabels = {
+            row_created: "Row created",
+            row_updated: "Row updated",
+            row_moved: "Moved",
+            row_deleted: "Row deleted",
+            purchase_added: "Purchase added",
+            tab_added: "Container added",
+            push_inventory: "Push inventory",
+            push_arrived: "Push arrived"
+          };
+          if (data.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted">No history found.</td></tr>';
+            return;
+          }
+          tbody.innerHTML = data.map(h => {
+            const label = actionLabels[h.action_type] || h.action_type;
+            let detailsStr = "—";
+            if (h.details) {
+              try {
+                const parsed = typeof h.details === "string" && h.details.trim().startsWith("{") ? JSON.parse(h.details) : h.details;
+                if (parsed && typeof parsed === "object") {
+                  if (parsed.from && parsed.to) detailsStr = parsed.from + " → " + parsed.to;
+                  else if (parsed.tab_name && parsed.count) detailsStr = parsed.count + " item(s) in " + parsed.tab_name;
+                  else detailsStr = JSON.stringify(parsed);
+                } else detailsStr = h.details;
+              } catch (_) { detailsStr = h.details; }
+            }
+            return "<tr><td>" + h.created_at + "</td><td>" + label + "</td><td>" + (h.from_tab || "—") + "</td><td>" + (h.to_tab || "—") + "</td><td>" + (h.our_sku || "—") + "</td><td class=\"small\">" + detailsStr + "</td><td>" + (h.user_name || "—") + "</td></tr>";
+          }).join("");
+        })
+        .catch(() => {
+          tbody.innerHTML = '<tr><td colspan="7" class="text-center text-danger">Failed to load history.</td></tr>';
+        });
+    }
+    document.getElementById("transit-history-btn")?.addEventListener("click", loadTransitHistory);
+    document.getElementById("history-refresh-btn")?.addEventListener("click", loadTransitHistory);
+    document.getElementById("transitHistoryModal")?.addEventListener("show.bs.modal", function() { loadTransitHistory(); });
 
   });
 

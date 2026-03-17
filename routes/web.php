@@ -608,11 +608,17 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/incoming-orders-view', [IncomingController::class, 'incomingOrderIndex'])->name('incoming.orders.view');
     Route::post('/incoming-orders-store', [IncomingController::class, 'incomingOrderStore'])->name('incoming.orders.store');
     Route::get('/incoming-orders-list', [IncomingController::class, 'incomingOrderList']);
+    Route::get('/incoming-reasons', [IncomingController::class, 'getIncomingReasons']);
+    Route::post('/incoming-reasons', [IncomingController::class, 'storeIncomingReason']);
 
     //outgoing
     Route::get('/outgoing-view', [OutgoingController::class, 'index'])->name('outgoing.view');
     Route::post('/outgoing-data-store', [OutgoingController::class, 'store'])->name('outgoing.store');
     Route::get('/outgoing-data-list', [OutgoingController::class, 'list']);
+    Route::get('/outgoing-reasons', [OutgoingController::class, 'getReasons']);
+    Route::post('/outgoing-reasons', [OutgoingController::class, 'storeReason']);
+    Route::put('/outgoing-update-reason-comment', [OutgoingController::class, 'updateReasonAndComment']);
+    Route::get('/outgoing-history/{id}', [OutgoingController::class, 'getHistory']);
     Route::post('/outgoing-archive', [OutgoingController::class, 'archive']);
 
 
@@ -1718,6 +1724,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/transit-container-new', [TransitContainerDetailsController::class, 'transitContainerNew'])->name('transit.container.new');
     Route::post('/transit-container/save', [TransitContainerDetailsController::class, 'transitContainerStoreItems']);
     Route::post('/transit-container/delete', [TransitContainerDetailsController::class, 'deleteTransitItem']);
+    Route::get('/transit-container/history', [TransitContainerDetailsController::class, 'getHistory']);
 
     Route::post('/inventory-warehouse/push', [InventoryWarehouseController::class, 'pushInventory'])->name('inventory.push');
     Route::post('/inventory-warehouse/push-single', [InventoryWarehouseController::class, 'pushSingleItem'])->name('inventory.push.single');
