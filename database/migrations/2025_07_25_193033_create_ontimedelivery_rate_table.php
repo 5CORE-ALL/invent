@@ -11,6 +11,9 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('ontimedelivery_rate')) {
+            return;
+        }
         Schema::create('ontimedelivery_rate', function (Blueprint $table) {
             $table->id();
             $table->integer('channel_id')->nullable();

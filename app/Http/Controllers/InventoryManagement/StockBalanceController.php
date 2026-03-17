@@ -12,6 +12,7 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Carbon\Carbon;
 use App\Models\StockBalance;
+use App\Models\StockBalanceTransferPreference;
 use App\Http\Controllers\ApiController;
 use App\Models\ShopifySku;
 use App\Models\SkuRelationship;
@@ -1512,5 +1513,53 @@ class StockBalanceController extends Controller
             });
 
         return response()->json(['data' => $data]);
+    }
+
+    /**
+     * Get transfer preferences (FROM SKU, ratio) for the current user, keyed by to_sku.
+     * Used so saved preferences sync across devices.
+     */
+    public function getTransferPreferences()
+    {
+        $user = Auth::user();
+        if (!$user) {
+            return response()->json(['preferences' => []]);
+        }
+        $rows = StockBalanceTransferPreference::where('user_id', $user->id)->get();
+        $preferences = [];
+        foreach ($rows as $row) {
+            $preferences[$row->to_sku] = [
+                'fromSku' => $row->from_sku,
+                'ratio' => $row->ratio ?? '1:1',
+            ];
+        }
+        return response()->json(['preferences' => $preferences]);
+    }
+
+    /**
+     * Save transfer preference for one to_sku (FROM SKU and ratio). Persists across devices.
+     */
+    public function saveTransferPreference(Request $request)
+    {
+        $request->validate([
+            'to_sku' => 'required|string',
+            'from_sku' => 'nullable|string',
+            'ratio' => 'nullable|string|max:20',
+        ]);
+        $user = Auth::user();
+        if (!$user) {
+            return response()->json(['error' => 'Unauthorized'], 401);
+        }
+        StockBalanceTransferPreference::updateOrCreate(
+            [
+                'user_id' => $user->id,
+                'to_sku' => trim($request->to_sku),
+            ],
+            [
+                'from_sku' => $request->filled('from_sku') ? trim($request->from_sku) : null,
+                'ratio' => $request->input('ratio', '1:1'),
+            ]
+        );
+        return response()->json(['success' => true]);
     }
 }

@@ -292,6 +292,7 @@
     let transferModeActive = false;
     let selectedSkus = new Set();
     let allTableData = [];
+    let serverSavedPreferences = {}; // FROM SKU & ratio per to_sku (synced across devices)
     
     // Toast notification (optional delay in ms; default 5000)
     function showToast(message, type = 'info', delayMs = 5000) {
@@ -722,11 +723,17 @@
             const fromSku = $select.val();
             
             if (fromSku) {
-                // Save FROM SKU specifically for this TO SKU
                 const savedData = JSON.parse(localStorage.getItem('transfer_' + toSku) || '{}');
                 savedData.fromSku = fromSku;
                 localStorage.setItem('transfer_' + toSku, JSON.stringify(savedData));
-                
+                serverSavedPreferences[toSku] = serverSavedPreferences[toSku] || {};
+                serverSavedPreferences[toSku].fromSku = fromSku;
+                $.post('/stock-balance-transfer-preferences', {
+                    _token: $('meta[name="csrf-token"]').attr('content'),
+                    to_sku: toSku,
+                    from_sku: fromSku,
+                    ratio: $row.find('.ratio-select').val() || '1:1'
+                });
                 const selectedOption = $select.find('option:selected');
                 const fromParent = selectedOption.attr('data-parent') || '';
                 const fromInv = selectedOption.attr('data-inv') || 0;
@@ -772,11 +779,17 @@
             const toSku = rowData.SKU; // Current row's SKU (TO SKU)
             const ratio = $select.val();
             
-            // Save Ratio specifically for this TO SKU
             const savedData = JSON.parse(localStorage.getItem('transfer_' + toSku) || '{}');
             savedData.ratio = ratio;
             localStorage.setItem('transfer_' + toSku, JSON.stringify(savedData));
-            
+            serverSavedPreferences[toSku] = serverSavedPreferences[toSku] || {};
+            serverSavedPreferences[toSku].ratio = ratio;
+            $.post('/stock-balance-transfer-preferences', {
+                _token: $('meta[name="csrf-token"]').attr('content'),
+                to_sku: toSku,
+                from_sku: $row.find('.to-sku-select').val() || '',
+                ratio: ratio
+            });
             // Recalculate TO Qty
             calculateToQty($row);
         });
@@ -913,6 +926,15 @@
             ajaxResponse: function(url, params, response) {
                 allTableData = response.data || [];
                 return response.data || [];
+            },
+            dataLoaded: function() {
+                // Fetch server-saved preferences so FROM SKU & ratio sync across devices
+                $.get('/stock-balance-transfer-preferences').done(function(res) {
+                    if (res.preferences && typeof res.preferences === 'object') {
+                        serverSavedPreferences = res.preferences;
+                        restoreSavedFromSku();
+                    }
+                });
             },
             layout: "fitDataStretch",
             pagination: true,
@@ -1281,7 +1303,7 @@
             applyAllFilters();
         });
         
-        // Restore saved FROM SKU and sync custom select display (combo-trf style, no Select2)
+        // Restore saved FROM SKU and ratio: server (cross-device) first, then localStorage, then LAST_UPDATE
         function restoreSavedFromSku() {
             $('.to-sku-select').each(function() {
                 const $select = $(this);
@@ -1290,12 +1312,21 @@
                 if (!row) return;
                 const rowData = row.getData();
                 const toSku = rowData.SKU;
+                const serverPref = serverSavedPreferences[toSku] || null;
                 const savedData = JSON.parse(localStorage.getItem('transfer_' + toSku) || '{}');
                 const savedFromSku = savedData.fromSku || null;
                 const savedRatio = savedData.ratio || '1:1';
-                $row.find('.ratio-select').val(savedRatio);
-                if (savedFromSku) {
-                    $select.val(savedFromSku).trigger('change');
+                const lastUpdate = rowData.LAST_UPDATE || null;
+                const lastUpdateFromSku = (lastUpdate && lastUpdate.direction === 'IN' && lastUpdate.other_sku) ? lastUpdate.other_sku : null;
+                const fromSkuToRestore = (serverPref && serverPref.fromSku) || savedFromSku || lastUpdateFromSku;
+                const ratioToRestore = (serverPref && serverPref.ratio) || savedRatio || '1:1';
+                $row.find('.ratio-select').val(ratioToRestore);
+                if (fromSkuToRestore) {
+                    $select.val(fromSkuToRestore).trigger('change');
+                    if (!savedFromSku && lastUpdateFromSku && !(serverPref && serverPref.fromSku)) {
+                        savedData.fromSku = lastUpdateFromSku;
+                        localStorage.setItem('transfer_' + toSku, JSON.stringify(savedData));
+                    }
                 }
                 syncDisplayFromSkuSingle($row);
             });
