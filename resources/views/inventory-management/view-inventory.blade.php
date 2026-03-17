@@ -2047,9 +2047,9 @@
                             }
                         });
 
-                        // Map over sheet data and merge fields from inventory data if SKU matches
+                        // Map over sheet data and merge fields from inventory data if SKU matches (API may send sku lowercase)
                         tableData = sheetDataRaw.map((item, index) => {
-                            const sku = (item.SKU || '').toUpperCase().trim();
+                            const sku = (item.SKU || item.sku || '').toUpperCase().trim();
                             const invItem = inventoryMap[sku] || {};
 
                             // Parse inventory and L30 values as floats (like your original)
@@ -2085,11 +2085,11 @@
                                 return months[index] || '';
                             }
 
-                            // Compose merged row object
+                            // Compose merged row object (API may send sku/parent lowercase)
                             return {
                                 sl_no: index + 1,
                                 Parent: item.Parent || item.parent || item.parent_asin || item.Parent_ASIN || '(No Parent)',
-                                SKU: item.SKU || '',
+                                SKU: item.SKU || item.sku || '',
                                 'R&A': invItem['R&A'] !== undefined ? invItem['R&A'] : (item['R&A'] !== undefined ? item['R&A'] : ''),
                                 TITLE: item.TITLE || '',
                                 IMAGE_URL: invItem.IMAGE_URL || item.IMAGE_URL || 'https://skala.or.id/wp-content/uploads/2024/01/dummy-post-square-1-1.jpg',
@@ -2111,8 +2111,8 @@
                                 LOSS_GAIN: item.LOSS_GAIN !== undefined ? Math.trunc(item.LOSS_GAIN) : null,
                                 APPROVED_AT: invItem.approved_at ? formatOhioTime(invItem.approved_at) : '',
                                 is_parent: (() => {
-                                        const sku = (item.SKU || '').toUpperCase();
-                                        const parent = (item.Parent || '').toUpperCase();
+                                        const sku = (item.SKU || item.sku || '').toUpperCase();
+                                        const parent = (item.Parent || item.parent || '').toUpperCase();
                                         return sku.startsWith('PARENT') || sku === parent;
                                     })(),
 
@@ -2152,7 +2152,7 @@
                 filteredData.forEach((item, rowIndex) => {
                     const $row = $('<tr>');
 
-                    if (item.SKU && item.SKU.toUpperCase().startsWith('PARENT')) {
+                    if ((item.SKU || item.sku) && (item.SKU || item.sku).toUpperCase().startsWith('PARENT')) {
                         $row.css({
                             backgroundColor: 'rgba(13, 110, 253, 0.2)',
                             fontWeight: '500'
@@ -2201,7 +2201,7 @@
 
                     // SKU with hover content for links
                     const $skuCell = $('<td>').addClass('skuColumn').css('position', 'static');
-                    const sku = item.SKU || '';
+                    const sku = item.SKU || item.sku || '';
 
                     if (item.is_parent) {
                         $skuCell.html(`<strong>${sku}</strong><input type="hidden" class="sku-hidden" value="${sku}" />`);
@@ -2241,10 +2241,10 @@
                                 type: 'checkbox',
                                 checked: isChecked,
                                 class: 'ra-checkbox',
-                                'data-sku': item['SKU'],
+                                'data-sku': item.SKU || item.sku || '',
                                 disabled: isChecked 
                             }).data('original-value', item['R&A'])
-                            .data('sku', item.SKU); // Store original value
+                            .data('sku', item.SKU || item.sku || ''); // Store original value
 
                             // Edit/Save icon
                             const $editIcon = $('<i>').addClass('fas fa-pen edit-icon ml-2 text-primary')
@@ -2292,7 +2292,7 @@
                     const $historyIcon = $(`
                         <td class="text-center">
                             <i class="fas fa-external-link-alt text-primary view-history-icon" 
-                            data-sku="${item.SKU}" 
+                            data-sku="${item.SKU || item.sku || ''}" 
                             title="View History" 
                             style="cursor: pointer;"></i>
                         </td>
@@ -2709,7 +2709,7 @@
                         },
                         {
                             title: 'SKU',
-                            content: dataToUse['(Child) sku']
+                            content: dataToUse['SKU'] || dataToUse['sku'] || ''
                         }
                     ];
 
@@ -3629,7 +3629,7 @@
 
                 // Initialize both dropdowns
                 initEnhancedDropdown($parentSearch, $parentResults, 'Parent');
-                initEnhancedDropdown($skuSearch, $skuResults, '(Child) sku');
+                initEnhancedDropdown($skuSearch, $skuResults, 'SKU');
 
                 // Close dropdowns when clicking outside
                 $(document).on('click', function(e) {
@@ -3701,6 +3701,9 @@
 
                         timeout = setTimeout(() => {
                             updateDropdownResults($results, field, searchTerm);
+                            if (searchTerm === '') {
+                                filterByColumn(field, '');
+                            }
                         }, 300);
                     });
 
