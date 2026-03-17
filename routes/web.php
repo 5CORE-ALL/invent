@@ -641,6 +641,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/stock-balance-delete-relationship', [StockBalanceController::class, 'deleteRelationship']);
     Route::get('/stock-balance-get-skus-autocomplete', [StockBalanceController::class, 'getSkusForAutocomplete']);
     Route::get('/stock-balance-get-recent-history', [StockBalanceController::class, 'getRecentHistory']);
+    Route::get('/stock-balance-search-history', [StockBalanceController::class, 'searchHistory']);
     Route::get('/combo-trf', [StockBalanceController::class, 'comboTrfView'])->name('combo.trf');
     Route::post('/combo-trf-store', [StockBalanceController::class, 'storeComboTrf'])->name('combo.trf.store');
     Route::get('/combo-trf-inventory-data', [StockBalanceController::class, 'getComboTrfInventoryData']);
