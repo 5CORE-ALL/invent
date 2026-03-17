@@ -1465,4 +1465,52 @@ class StockBalanceController extends Controller
             ], 500);
         }
     }
+
+    /**
+     * Search transfer history with optional filters (from_sku, to_sku, date_from, date_to, transferred_by).
+     */
+    public function searchHistory(Request $request)
+    {
+        $query = StockBalance::query();
+
+        if ($request->filled('from_sku')) {
+            $query->where('from_sku', 'like', '%' . trim($request->from_sku) . '%');
+        }
+        if ($request->filled('to_sku')) {
+            $query->where('to_sku', 'like', '%' . trim($request->to_sku) . '%');
+        }
+        if ($request->filled('date_from')) {
+            $query->whereDate('transferred_at', '>=', $request->date_from);
+        }
+        if ($request->filled('date_to')) {
+            $query->whereDate('transferred_at', '<=', $request->date_to);
+        }
+        if ($request->filled('transferred_by')) {
+            $query->where('transferred_by', 'like', '%' . trim($request->transferred_by) . '%');
+        }
+
+        $data = $query->orderBy('transferred_at', 'desc')
+            ->orderBy('created_at', 'desc')
+            ->get()
+            ->map(function ($item) {
+                return [
+                    'from_parent_name'    => $item->from_parent_name,
+                    'from_sku'            => $item->from_sku,
+                    'from_dil_percent'    => $item->from_dil_percent,
+                    'from_available_qty'  => $item->from_available_qty,
+                    'from_adjust_qty'     => $item->from_adjust_qty,
+                    'to_parent_name'      => $item->to_parent_name,
+                    'to_sku'              => $item->to_sku,
+                    'to_dil_percent'      => $item->to_dil_percent,
+                    'to_available_qty'    => $item->to_available_qty,
+                    'to_adjust_qty'       => $item->to_adjust_qty,
+                    'transferred_by'      => $item->transferred_by,
+                    'transferred_at'      => $item->transferred_at
+                        ? Carbon::parse($item->transferred_at)->timezone('America/New_York')->format('m-d-Y H:i')
+                        : '',
+                ];
+            });
+
+        return response()->json(['data' => $data]);
+    }
 }
