@@ -955,6 +955,8 @@
 
                         <li><a href="{{ route('tiktok.two.daily.sales') }}">TikTok 2 Sales Data</a></li>
 
+                        <li><a href="{{ route('depop.sheet') }}">Depop Sheet Data</a></li>
+
                         <li><a href="{{ route('walmart.daily.sales') }}">Walmart Sales Data</a></li>
 
                         <li><a href="{{ route('wayfair.daily.sales') }}">Wayfair Sales Data</a></li>

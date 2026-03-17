@@ -103,6 +103,8 @@ use App\Models\TiktokCampaignReport;
 use App\Models\TiktokSheet;
 use App\Models\TiktokSalesTwo;
 use App\Models\TiktokShopListingStatus;
+use App\Models\DepopSheetData;
+use App\Models\DepopSalesData;
 use App\Models\TopDawgSheetdata;
 use App\Models\WayfairDailyData;
 use App\Models\WayfairListingStatus;
@@ -699,6 +701,9 @@ class ChannelMasterController extends Controller
                     // TikTok 2: upload-based, no ads
                     return $defaults;
 
+                case 'depop':
+                    return $defaults;
+
                 default:
                     return $defaults;
             }
@@ -775,6 +780,9 @@ class ChannelMasterController extends Controller
                 return $metrics['Total Ad Spend'] ?? 0.0;
 
             case 'tiktokshop2':
+                return 0.0;
+
+            case 'depop':
                 return 0.0;
 
             default:
@@ -865,6 +873,7 @@ class ChannelMasterController extends Controller
             'shein'     => 'getSheinChannelData',
             'tiktokshop'=> 'getTiktokChannelData',
             'tiktokshop2'   => 'getTikTokTwoChannelData',
+            'depop'         => 'getDepopChannelData',
             'instagramshop' => 'getInstagramChannelData',
             'aliexpress' => 'getAliexpressChannelData',
             'mercariwship' => 'getMercariWShipChannelData',
@@ -933,7 +942,7 @@ class ChannelMasterController extends Controller
             }
 
             // AD CLICKS, AD SALES, AD SOLD + breakdown: fetch directly from tables for ad-enabled channels
-            $adMetricsChannels = ['amazon', 'amazonfba', 'ebay', 'ebaytwo', 'ebaythree', 'temu', 'temu2', 'topdawg', 'walmart', 'shopifyb2c', 'tiktokshop', 'tiktokshop2'];
+            $adMetricsChannels = ['amazon', 'amazonfba', 'ebay', 'ebaytwo', 'ebaythree', 'temu', 'temu2', 'topdawg', 'walmart', 'shopifyb2c', 'tiktokshop', 'tiktokshop2', 'depop'];
             if (in_array($key, $adMetricsChannels)) {
                 $metrics = $this->fetchAdMetricsFromTables($key);
                 $clicks = $metrics['clicks'];
@@ -1083,6 +1092,7 @@ class ChannelMasterController extends Controller
         'shein'     => 'getSheinChannelData',
         'tiktokshop'=> 'getTiktokChannelData',
         'tiktokshop2'   => 'getTikTokTwoChannelData',
+        'depop'         => 'getDepopChannelData',
         'instagramshop' => 'getInstagramChannelData',
         'aliexpress' => 'getAliexpressChannelData',
         'mercariwship' => 'getMercariWShipChannelData',
@@ -4226,6 +4236,96 @@ class ChannelMasterController extends Controller
         ]);
     }
 
+    public function getDepopChannelData(Request $request)
+    {
+        $result = [];
+        $margin = 0.87; // Depop margin
+        $latestSaleDate = DepopSalesData::whereNotNull('sale_date')->max('sale_date');
+        $l60Orders = 0;
+        $l60Sales = 0;
+        $l30Orders = 0;
+        $l30Sales = 0;
+        $totalQuantity = 0;
+        $totalProfit = 0;
+        $totalCogs = 0;
+        $gProfitPct = 0;
+        $gRoi = 0;
+
+        if ($latestSaleDate) {
+            $latestCarbon = \Carbon\Carbon::parse($latestSaleDate);
+            $l30Start = $latestCarbon->copy()->subDays(29)->format('Y-m-d');
+            $l30End = $latestCarbon->format('Y-m-d');
+            $l60Start = $latestCarbon->copy()->subDays(59)->format('Y-m-d');
+            $l60End = $latestCarbon->copy()->subDays(30)->format('Y-m-d');
+
+            $l60Rows = DepopSalesData::whereBetween('sale_date', [$l60Start, $l60End])->get();
+            $l60Orders = $l60Rows->count();
+            $l60Sales = $l60Rows->sum(function ($r) {
+                return (float) $r->item_price * (int) ($r->quantity ?: 1);
+            });
+
+            $rows = DepopSalesData::whereBetween('sale_date', [$l30Start, $l30End])->get();
+            foreach ($rows as $row) {
+                $quantity = (int) ($row->quantity ?: 1);
+                $unitPrice = (float) $row->item_price;
+                $l30Sales += $unitPrice * $quantity;
+                $l30Orders++;
+                $totalQuantity += $quantity;
+            }
+            // No SKU / Product Master — PFT = sales × margin only
+            $totalProfit = $l30Sales * $margin;
+            $totalCogs = 0;
+            $gProfitPct = $l30Sales > 0 ? ($totalProfit / $l30Sales) * 100 : 0;
+            $gRoi = 0;
+        }
+
+        $growth = 0;
+        $mapMissCounts = $this->getMapAndMissCounts('depop');
+        $channelData = ChannelMaster::where('channel', 'Depop')->first();
+
+        $result[] = [
+            'Channel '   => 'Depop',
+            'L-60 Sales' => intval($l60Sales),
+            'L30 Sales'  => intval($l30Sales),
+            'Growth'     => round($growth, 2) . '%',
+            'L60 Orders' => $l60Orders,
+            'L30 Orders' => $l30Orders,
+            'Qty'        => intval($totalQuantity),
+            'Gprofit%'   => round($gProfitPct, 2) . '%',
+            'gprofitL60' => 0,
+            'G Roi'      => round($gRoi, 2),
+            'G RoiL60'   => 0,
+            'Total PFT'  => round($totalProfit, 2),
+            'N PFT'      => round($gProfitPct, 2) . '%',
+            'N ROI'      => round($gRoi, 2),
+            'Ads%'       => 0,
+            'TikTok Ad Spend' => 0,
+            'KW Spent'   => 0,
+            'PT Spent'   => 0,
+            'HL Spent'   => 0,
+            'PMT Spent'  => 0,
+            'Shopping Spent' => 0,
+            'SERP Spent' => 0,
+            'Total Ad Spend' => 0,
+            'type'       => optional($channelData)->type ?? 'B2C',
+            'W/Ads'      => optional($channelData)->w_ads ?? 0,
+            'NR'         => optional($channelData)->nr ?? 0,
+            'Update'     => optional($channelData)->update ?? 0,
+            'cogs'       => round($totalCogs, 2),
+            'Map' => $mapMissCounts['map'],
+            'Miss' => $mapMissCounts['miss'],
+            'base'       => optional($channelData)->base ?? 0,
+            'sheet_link' => optional($channelData)->sheet_link ?? '',
+            'ra'         => optional($channelData)->ra ?? 0,
+        ];
+
+        return response()->json([
+            'status' => 200,
+            'message' => 'Depop channel data fetched successfully',
+            'data' => $result,
+        ]);
+    }
+
     private function getTiktokShopMissingListingCount()
     {
         $productMasters = ProductMaster::whereNull('deleted_at')->get();
@@ -7249,6 +7349,7 @@ class ChannelMasterController extends Controller
             'temu2' => 'Temu 2', 'walmart' => 'Walmart',
                 'tiktokshop' => 'TikTok Shop',
                 'tiktokshop2' => 'TikTok 2',
+                'depop' => 'Depop',
             ];
             $mdmChannel = $channelMap[$mdmKey] ?? null;
             $mdmCache[$mdmKey] = $mdmChannel
@@ -7434,6 +7535,7 @@ class ChannelMasterController extends Controller
             'shein' => 'Shein',
             'tiktokshop' => 'TikTok',
             'tiktokshop2' => 'TikTok 2',
+            'depop' => 'Depop',
             'instagramshop' => 'Instagram Shop',
             'aliexpress' => 'AliExpress',
             'mercariwship' => 'Mercari With Ship',

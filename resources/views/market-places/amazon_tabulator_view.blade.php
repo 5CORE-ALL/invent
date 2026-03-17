@@ -254,7 +254,7 @@
             <div class="card-body py-3">
                 
                 <div class="d-flex align-items-center flex-wrap gap-2">
-                    <input type="text" id="sku-search" class="form-control form-control-sm" placeholder="Search SKU..." style="width: 150px; display: inline-block;">
+                    <input type="text" id="sku-search" class="form-control form-control-sm" placeholder="Search SKU / Campaign..." style="width: 180px; display: inline-block;">
 
                     <select id="inventory-filter" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;">
@@ -4643,6 +4643,8 @@
                         hozAlign: "center",
                         visible: false,
                         minWidth: 88,
+                        sorter: "number",
+                        sorterParams: { alignEmptyValues: "bottom" },
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
                             if (parseFloat(row.INV) <= 0) return '-';
@@ -4691,6 +4693,48 @@
                         hozAlign: "center",
                         visible: false,
                         minWidth: 72,
+                        sorter: function(a, b, aRow, bRow, column, dir, sorterParams) {
+                            var getSortVal = function(row) {
+                                if (!row || parseFloat(row.INV) <= 0) return -1;
+                                var currentSection = $('#section-filter').val();
+                                var hasCampaign = false;
+                                if (currentSection === 'kw-ads') {
+                                    hasCampaign = !!((row.campaign_id || row.campaignName) && (row.kw_campaign_status || '').toUpperCase() !== '');
+                                } else {
+                                    hasCampaign = row.hasCampaign !== undefined ? row.hasCampaign : (row.campaign_id && row.campaignName);
+                                }
+                                if (!hasCampaign) return -1;
+                                var kwStatus = (currentSection === 'kw-ads' ? (row.kw_campaign_status || '') : (row.kw_campaign_status || row.campaignStatus || '')).toUpperCase();
+                                if (kwStatus !== 'ENABLED') return -1;
+                                var l1Cpc = parseFloat(row.l1_cpc) || 0;
+                                var l2Cpc = parseFloat(row.l2_cpc) || 0;
+                                var l7Cpc = parseFloat(row.l7_cpc) || 0;
+                                var budget = (row.utilization_budget != null && row.utilization_budget !== '') ? parseFloat(row.utilization_budget) : (parseFloat(row.campaignBudgetAmount) || 0);
+                                var ub1 = budget > 0 ? (parseFloat(row.l1_spend) || 0) / budget * 100 : 0;
+                                var ub2 = budget > 0 ? (parseFloat(row.l2_spend) || 0) / budget * 100 : 0;
+                                var ub1Red = ub1 < 66;
+                                var ub1Pink = ub1 > 99;
+                                var ub2Red = ub2 < 66;
+                                var ub2Pink = ub2 > 99;
+                                var sbid = 0;
+                                if (ub2Red && ub1Red) {
+                                    if (l1Cpc > 0) sbid = Math.floor(l1Cpc * 1.10 * 100) / 100;
+                                    else if (l2Cpc > 0) sbid = Math.floor(l2Cpc * 1.10 * 100) / 100;
+                                    else if (l7Cpc > 0) sbid = Math.floor(l7Cpc * 1.10 * 100) / 100;
+                                    else sbid = 0.60;
+                                } else if (ub2Pink && ub1Pink) {
+                                    sbid = Math.floor(l1Cpc * 0.90 * 100) / 100;
+                                }
+                                return sbid <= 0 ? -1 : sbid;
+                            };
+                            var va = getSortVal(aRow.getData());
+                            var vb = getSortVal(bRow.getData());
+                            if (va === -1 && vb === -1) return 0;
+                            if (va === -1) return 1;
+                            if (vb === -1) return -1;
+                            return dir === 'asc' ? (va - vb) : (vb - va);
+                        },
+                        sorterParams: { alignEmptyValues: "bottom" },
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
                             if (parseFloat(row.INV) <= 0) return '-';
@@ -5352,18 +5396,15 @@
                         if (parentFilterVal === 'skus' && isParent) return;
                     }
                     
-                    // Search filter
+                    // Search filter: SKU + KW / PT / HL campaign name (any of the three)
                     if (searchVal) {
                         var skuLower = sku.toLowerCase();
-                        var campName = '';
-                        if (currentSection === 'hl-ads') {
-                            campName = (row.hl_campaignName || '').toLowerCase();
-                        } else if (currentSection === 'pt-ads') {
-                            campName = (row.pt_campaignName || '').toLowerCase();
-                        } else {
-                            campName = (row.campaignName || '').toLowerCase();
-                        }
-                        if (skuLower.indexOf(searchVal) === -1 && campName.indexOf(searchVal) === -1) return;
+                        var kwCamp = (row.campaignName || '').toLowerCase();
+                        var ptCamp = (row.pt_campaignName || '').toLowerCase();
+                        var hlCamp = (row.hl_campaignName || '').toLowerCase();
+                        var matchSku = skuLower.indexOf(searchVal) !== -1;
+                        var matchCamp = kwCamp.indexOf(searchVal) !== -1 || ptCamp.indexOf(searchVal) !== -1 || hlCamp.indexOf(searchVal) !== -1;
+                        if (!matchSku && !matchCamp) return;
                     }
                     
                     // Inventory filter
@@ -5757,14 +5798,16 @@
 
                 // Play / Pause filter is applied at top of applyFilters when isProductNavigationActive (early return)
 
-                // SKU Search filter (inside applyFilters so it stacks with Active/campaign status and other filters)
+                // SKU / Campaign search: match SKU (or Parent for parent rows) or any of KW, PT, HL campaign names
                 var searchVal = ($('#sku-search').val() || '').trim().toLowerCase();
                 if (searchVal) {
                     table.addFilter(function(data) {
-                        if (data.is_parent_summary) return true;
-                        var sku = ((data['(Child) sku'] || data.sku || '') + '').toLowerCase();
-                        var campName = (sectionFilter === 'hl-ads' ? (data.hl_campaignName || '') : sectionFilter === 'pt-ads' ? (data.pt_campaignName || '') : (data.campaignName || '')).toString().toLowerCase();
-                        return sku.indexOf(searchVal) !== -1 || campName.indexOf(searchVal) !== -1;
+                        var sku = (data.is_parent_summary ? (data.Parent || data['(Child) sku'] || data.sku || '') : (data['(Child) sku'] || data.sku || ''));
+                        sku = (sku + '').toLowerCase();
+                        var kwCamp = ((data.campaignName || '') + '').toLowerCase();
+                        var ptCamp = ((data.pt_campaignName || '') + '').toLowerCase();
+                        var hlCamp = ((data.hl_campaignName || '') + '').toLowerCase();
+                        return sku.indexOf(searchVal) !== -1 || kwCamp.indexOf(searchVal) !== -1 || ptCamp.indexOf(searchVal) !== -1 || hlCamp.indexOf(searchVal) !== -1;
                     });
                 }
 
