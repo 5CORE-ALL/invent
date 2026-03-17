@@ -196,6 +196,9 @@ use App\Http\Controllers\PurchaseMaster\PurchaseController;
 use App\Http\Controllers\PurchaseMaster\TransitContainerDetailsController;
 use App\Http\Controllers\InventoryManagement\IncomingController;
 use App\Http\Controllers\InventoryManagement\OutgoingController;
+use App\Http\Controllers\InventoryManagement\RefundController;
+use App\Http\Controllers\CustomerCare\CustomerFollowupController;
+use App\Http\Controllers\CustomerCare\DARController;
 use App\Http\Controllers\InventoryManagement\StockAdjustmentController;
 use App\Http\Controllers\InventoryManagement\StockTransferController;
 use App\Http\Controllers\Channels\ChannelMovementAnalysisController;
@@ -589,6 +592,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/verified-stock-activity-log', [VerificationAdjustmentController::class, 'getVerifiedStockActivityLog']);
     Route::get('/view-inventory-data', [VerificationAdjustmentController::class, 'viewInventory'])->name('view-inventory');
     Route::get('/inventory-history', [VerificationAdjustmentController::class, 'getSkuWiseHistory']);
+    Route::get('/shopify-inventory-history-url', [VerificationAdjustmentController::class, 'getShopifyInventoryHistoryUrl']);
     Route::post('/row-hide-toggle', [VerificationAdjustmentController::class, 'toggleHide']);
     Route::get('/get-hidden-rows', [VerificationAdjustmentController::class, 'getHiddenRows']);
     Route::post('/unhide-multiple-rows', [VerificationAdjustmentController::class, 'unhideMultipleRows']);
@@ -598,6 +602,21 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/shopify-updates-pending', [VerificationAdjustmentController::class, 'getPendingShopifyUpdates']);
     // Google Sheets export
     Route::post('/export-to-google-sheets', [VerificationAdjustmentController::class, 'exportToGoogleSheets']);
+
+    Route::get('/customer-care', function () {
+        return view('customer-care.index');
+    })->name('customer.care');
+    Route::get('/customer-care/refunds', [RefundController::class, 'index'])->name('customer.care.refunds');
+    Route::get('/customer-care/followups', [CustomerFollowupController::class, 'index'])->name('customer.care.followups');
+    Route::get('/customer-care/followups/data', [CustomerFollowupController::class, 'data'])->name('customer.care.followups.data');
+    Route::post('/customer-care/followups', [CustomerFollowupController::class, 'store'])->name('customer.care.followups.store');
+    Route::get('/customer-care/followups/{customer_followup}', [CustomerFollowupController::class, 'show'])->name('customer.care.followups.show');
+    Route::put('/customer-care/followups/{customer_followup}', [CustomerFollowupController::class, 'update'])->name('customer.care.followups.update');
+    Route::delete('/customer-care/followups/{customer_followup}', [CustomerFollowupController::class, 'destroy'])->name('customer.care.followups.destroy');
+
+    Route::get('/dar', [DARController::class, 'index'])->name('dar.index');
+    Route::post('/dar', [DARController::class, 'store'])->name('dar.store');
+    Route::get('/dar/window-status', [DARController::class, 'windowStatus'])->name('dar.window');
 
     //incoming
     Route::get('/incoming-view', [IncomingController::class, 'index'])->name('incoming.view');
@@ -620,6 +639,17 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::put('/outgoing-update-reason-comment', [OutgoingController::class, 'updateReasonAndComment']);
     Route::get('/outgoing-history/{id}', [OutgoingController::class, 'getHistory']);
     Route::post('/outgoing-archive', [OutgoingController::class, 'archive']);
+
+    Route::get('/refunds-view', [RefundController::class, 'index'])->name('refunds.view');
+    Route::post('/refunds-data-store', [RefundController::class, 'store'])->name('refunds.store');
+    Route::get('/refunds-data-list', [RefundController::class, 'list']);
+    Route::get('/refunds-supplier-for-sku', [RefundController::class, 'supplierForSku'])->name('refunds.supplier-for-sku');
+    Route::get('/refunds-stats-30d', [RefundController::class, 'refundStatsLast30Days'])->name('refunds.stats-30d');
+    Route::get('/refunds-reasons', [RefundController::class, 'getReasons']);
+    Route::post('/refunds-reasons', [RefundController::class, 'storeReason']);
+    Route::put('/refunds-update-reason-comment', [RefundController::class, 'updateReasonAndComment']);
+    Route::get('/refunds-history/{id}', [RefundController::class, 'getHistory']);
+    Route::post('/refunds-archive', [RefundController::class, 'archive']);
 
 
 
@@ -1735,6 +1765,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::controller(ArrivedContainerController::class)->group(function () {
         Route::get('/arrived/container', 'index')->name('arrived.container');
         Route::post('/arrived/container/push', 'pushArrivedContainer');
+        Route::post('/arrived/container/save-row', 'saveArrivedRow');
+        Route::get('/arrived/container/history', 'getHistory');
         Route::get('/arrived/container/summary', 'containerSummary')->name('container.summary');
     });
 

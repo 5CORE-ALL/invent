@@ -3,16 +3,37 @@
 namespace App\Http\Controllers;
 
 use App\Models\ArrivedContainer;
+use App\Models\ArrivedContainerHistory;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use App\Models\Supplier;
 use App\Models\TransitContainerDetail;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 use App\Models\OnSeaTransit;
 
 class ArrivedContainerController extends Controller
 {
+    protected function logHistory(
+        string $actionType,
+        ?int $arrivedContainerId = null,
+        ?string $fromTab = null,
+        ?string $toTab = null,
+        ?string $ourSku = null,
+        $details = null
+    ): void {
+        ArrivedContainerHistory::create([
+            'action_type' => $actionType,
+            'arrived_container_id' => $arrivedContainerId,
+            'from_tab' => $fromTab,
+            'to_tab' => $toTab,
+            'our_sku' => $ourSku,
+            'details' => is_array($details) || is_object($details) ? json_encode($details) : $details,
+            'user_id' => Auth::id(),
+        ]);
+    }
+
     public function index()
     {
 
@@ -94,9 +115,10 @@ class ArrivedContainerController extends Controller
         $userId = auth()->id();
 
         foreach ($rows as $row) {
-            ArrivedContainer::updateOrCreate(
+            $transitId = $row['id'] ?? null;
+            $model = ArrivedContainer::updateOrCreate(
                 [
-                    'transit_container_id' => $row['id'],
+                    'transit_container_id' => $transitId,
                     'tab_name'          => $row['tab_name'] ?? $tabName,
                 ],
                 [
@@ -121,6 +143,12 @@ class ArrivedContainerController extends Controller
                 ]
             );
 
+            $this->logHistory('pushed_from_transit', $model->id, null, $model->tab_name, $model->our_sku, [
+                'transit_container_id' => $transitId,
+                'tab_name' => $model->tab_name,
+                'sku' => $model->our_sku,
+            ]);
+
             if (!empty($row['id'])) {
                 TransitContainerDetail::where('id', $row['id'])->update([
                     'status' => 'inactive',
@@ -142,5 +170,119 @@ class ArrivedContainerController extends Controller
         })->get();
         //  OnSeaTransit::all();
         return view('purchase-master.transit_container.container-summary', ['onSeaTransitData' => [], 'chinaLoadMap' => []]);
+    }
+
+    /**
+     * Save / update a row in Arrived Container (Tabulator cell edits).
+     */
+    public function saveArrivedRow(Request $request)
+    {
+        $data = $request->all();
+        $tabName = $data['tab_name'] ?? null;
+        if (empty($tabName)) {
+            return response()->json(['success' => false, 'message' => 'Tab name is missing.'], 422);
+        }
+
+        $payload = [
+            'tab_name' => $tabName,
+            'our_sku' => $data['our_sku'] ?? null,
+            'supplier_name' => $data['supplier_name'] ?? null,
+            'company_name' => $data['company_name'] ?? null,
+            'parent' => $data['parent'] ?? null,
+            'no_of_units' => isset($data['no_of_units']) && $data['no_of_units'] !== '' ? (int) $data['no_of_units'] : null,
+            'total_ctn' => isset($data['total_ctn']) && $data['total_ctn'] !== '' ? (int) $data['total_ctn'] : null,
+            'rate' => isset($data['rate']) && $data['rate'] !== '' ? (float) $data['rate'] : null,
+            'unit' => $data['unit'] ?? null,
+            'changes' => $data['changes'] ?? null,
+            'package_size' => $data['package_size'] ?? null,
+            'product_size_link' => $data['product_size_link'] ?? null,
+            'comparison_link' => $data['comparison_link'] ?? null,
+            'order_link' => $data['order_link'] ?? null,
+            'image_src' => $data['image_src'] ?? null,
+            'photos' => $data['photos'] ?? null,
+            'specification' => $data['specification'] ?? null,
+        ];
+
+        if (!empty($data['transit_container_id'])) {
+            $payload['transit_container_id'] = (int) $data['transit_container_id'];
+        }
+
+        if (!empty($data['id'])) {
+            $row = ArrivedContainer::find($data['id']);
+            if (!$row) {
+                return response()->json(['success' => false, 'message' => 'Row not found.'], 404);
+            }
+            $fromTab = $row->tab_name;
+            $toTab = $tabName;
+            $fieldDiff = [];
+            foreach ($payload as $key => $newVal) {
+                if ($key === 'tab_name') {
+                    continue;
+                }
+                $oldVal = $row->getAttribute($key);
+                $oldNorm = $oldVal === null ? '' : (string) $oldVal;
+                $newNorm = $newVal === null ? '' : (string) $newVal;
+                if ($oldNorm !== $newNorm) {
+                    $fieldDiff[$key] = ['from' => $oldVal, 'to' => $newVal];
+                }
+            }
+            $row->fill($payload);
+            $row->save();
+
+            if ($fromTab !== $toTab) {
+                $this->logHistory('row_moved', $row->id, $fromTab, $toTab, $row->our_sku, [
+                    'sku' => $row->our_sku,
+                    'from' => $fromTab,
+                    'to' => $toTab,
+                ]);
+            }
+            if (!empty($fieldDiff)) {
+                $this->logHistory('row_updated', $row->id, null, $toTab, $row->our_sku, $fieldDiff);
+            }
+        } else {
+            $payload['created_by'] = Auth::id();
+            $row = ArrivedContainer::create($payload);
+            $this->logHistory('row_created', $row->id, null, $row->tab_name, $row->our_sku, null);
+        }
+
+        return response()->json(['success' => true, 'id' => $row->id]);
+    }
+
+    /**
+     * History for Arrived Container (same filters as transit container history).
+     */
+    public function getHistory(Request $request)
+    {
+        $query = ArrivedContainerHistory::with('user')
+            ->orderByDesc('created_at');
+
+        if ($request->filled('tab_name')) {
+            $tab = trim($request->tab_name);
+            $query->where(function ($q) use ($tab) {
+                $q->where('to_tab', $tab)->orWhere('from_tab', $tab);
+            });
+        }
+        if ($request->filled('sku')) {
+            $query->where('our_sku', 'like', '%' . trim($request->sku) . '%');
+        }
+        if ($request->filled('action_type')) {
+            $query->where('action_type', $request->action_type);
+        }
+
+        $limit = min((int) $request->get('limit', 100), 500);
+        $items = $query->limit($limit)->get()->map(function ($h) {
+            return [
+                'id' => $h->id,
+                'action_type' => $h->action_type,
+                'from_tab' => $h->from_tab,
+                'to_tab' => $h->to_tab,
+                'our_sku' => $h->our_sku,
+                'details' => $h->details,
+                'user_name' => $h->user->name ?? '—',
+                'created_at' => $h->created_at->format('Y-m-d H:i:s'),
+            ];
+        });
+
+        return response()->json(['data' => $items]);
     }
 }

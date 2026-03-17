@@ -842,6 +842,37 @@
                 </div>
             </li>
 
+            <li class="side-nav-item">
+                <a data-bs-toggle="collapse" href="#sidebarCustomerCare2" aria-expanded="false"
+                    aria-controls="sidebarCustomerCare2" class="side-nav-link">
+                    <i class="ri-customer-service-2-line"></i>
+                    <span>Customer Care</span>
+                    <span class="menu-arrow"></span>
+                </a>
+                <div class="collapse" id="sidebarCustomerCare2">
+                    <ul class="side-nav-second-level">
+                        <li>
+                            <a href="{{ route('customer.care') }}">Overview</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('customer.care.refunds') }}">Refunds</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('customer.care.followups') }}">Follow UP</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('dar.index') }}">DAR</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('incoming.view') }}">Incoming View</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('outgoing.view') }}">Outgoing View</a>
+                        </li>
+                    </ul>
+                </div>
+            </li>
+
             {{-- Shopify --}}
             <li class="side-nav-item">
                 <a data-bs-toggle="collapse" href="#sidebarPages" aria-expanded="false"

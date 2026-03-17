@@ -1259,6 +1259,7 @@
                                         <div class="d-flex flex-column align-items-center">
                                             <div class="d-flex align-items-center">
                                                 HISTORY<span class="sort-arrow">↓</span>
+                                                <div class="small text-muted fw-normal">(ours / Shopify)</div>
                                             </div>
                                         </div>
                                     </th>
@@ -2288,11 +2289,17 @@
                     $row.append($('<td>').text(item.AVAILABLE_TO_SELL));
 
                     const $historyIcon = $(`
-                        <td class="text-center">
-                            <i class="fas fa-external-link-alt text-primary view-history-icon" 
-                            data-sku="${item.SKU || item.sku || ''}" 
-                            title="View History" 
-                            style="cursor: pointer;"></i>
+                        <td class="text-center align-middle">
+                            <div class="d-flex gap-2 justify-content-center align-items-center flex-wrap">
+                                <i class="fas fa-eye text-primary view-history-icon"
+                                    data-sku="${item.SKU || item.sku || ''}"
+                                    title="Our approval history"
+                                    style="cursor: pointer;"></i>
+                                <i class="fas fa-external-link-alt text-success shopify-shop-history-icon"
+                                    data-sku="${item.SKU || item.sku || ''}"
+                                    title="Shopify adjustment history (opens Shopify Admin)"
+                                    style="cursor: pointer;"></i>
+                            </div>
                         </td>
                     `);
 
@@ -2382,6 +2389,32 @@
                 // Initialize tooltips
                 initTooltips();
             }
+
+            $(document).on('click', '.shopify-shop-history-icon', function (e) {
+                e.stopPropagation();
+                const sku = $(this).data('sku');
+                if (!sku) return;
+                const $i = $(this);
+                $i.removeClass('fa-external-link-alt').addClass('fa-spinner fa-spin');
+                $.ajax({
+                    url: '/shopify-inventory-history-url',
+                    type: 'GET',
+                    data: { sku: sku },
+                    success: function (res) {
+                        $i.removeClass('fa-spinner fa-spin').addClass('fa-external-link-alt');
+                        if (res.success && res.url) {
+                            window.open(res.url, '_blank', 'noopener,noreferrer');
+                        } else {
+                            alert(res.message || 'Could not get Shopify history link.');
+                        }
+                    },
+                    error: function (xhr) {
+                        $i.removeClass('fa-spinner fa-spin').addClass('fa-external-link-alt');
+                        const msg = (xhr.responseJSON && xhr.responseJSON.message) ? xhr.responseJSON.message : 'Could not load Shopify link.';
+                        alert(msg);
+                    }
+                });
+            });
 
             $(document).on('click', '.view-history-icon', function () {
                 const sku = $(this).data('sku');
