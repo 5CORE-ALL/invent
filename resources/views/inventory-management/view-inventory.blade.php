@@ -1137,7 +1137,7 @@
                         <table class="custom-resizable-table" id="ebay-table">
                             <thead>
                                 <tr id="summaryRow">
-                                    <th colspan="4"></th> <!-- Skip SL No., Parent, SKU, R&A. Images -->
+                                    <th colspan="3"></th> <!-- Skip Images, Parent, SKU -->
                                     <th>
                                         <div class="metric-total" id="inv-total" style="font-weight: bold; color: #007bff;">0</div>
                                     </th>
@@ -1159,9 +1159,6 @@
                                     <th></th>
                                 </tr>
                                 <tr>
-
-                                    <th data-field="sl_no">SL No. <span class="sort-arrow">↓</span></th>
-
                                      <th data-field="images" style="vertical-align: middle; white-space: nowrap;">
                                         <div class="d-flex flex-column align-items-center">
                                             <div class="d-flex align-items-center sortable-header">
@@ -2122,6 +2119,10 @@
 
                         // Optional: filter if needed (your original filteredData logic)
                         filteredData = tableData.filter(row => row.ON_HAND !== "N/A");
+                        // Sort by Parent ascending by default
+                        filteredData.sort((a, b) => String(a.Parent || '').localeCompare(String(b.Parent || '')));
+                        currentSort.field = 'Parent';
+                        currentSort.direction = 1;
 
                         renderTable(filteredData);
                         hideLoader();
@@ -2140,12 +2141,12 @@
                 let zeroInvCount = 0;
 
                 if (isLoading) {
-                    $tbody.append('<tr><td colspan="15" class="text-center">Loading data...</td></tr>');
+                    $tbody.append('<tr><td colspan="11" class="text-center">Loading data...</td></tr>');
                     return;
                 }
 
                 if (filteredData.length === 0) {
-                    $tbody.append('<tr><td colspan="15" class="text-center">No matching records found</td></tr>');
+                    $tbody.append('<tr><td colspan="11" class="text-center">No matching records found</td></tr>');
                     return;
                 }
 
@@ -2175,9 +2176,6 @@
                         if (percent >= 25 && percent < 50) return 'green';
                         return 'pink'; // 50 and above
                     };
-
-                    $row.append($('<td>').text(item.sl_no));
-                    
 
                     // $row.append($('<td>').html(`
                     //     <img src="${item.IMAGE_URL || 'https://skala.or.id/wp-content/uploads/2024/01/dummy-post-square-1-1.jpg'}" 
@@ -3283,7 +3281,7 @@
                         const valB = b[dataField] || '';
 
                         // Numeric comparison for numeric fields
-                        if (dataField === 'sl_no' || dataField === 'INV' || dataField === 'L30') {
+                        if (dataField === 'INV' || dataField === 'L30') {
                             return (parseFloat(valA) - parseFloat(valB)) * currentSort.direction;
                         }
 

@@ -129,9 +129,17 @@
                     <div class="row mb-3 p-3 bg-light rounded">
                         <div class="col-auto">
                             <label class="form-label small mb-0">Reason</label>
-                            <select id="filterReason" class="form-select form-select-sm" style="min-width: 140px;">
-                                <option value="">All</option>
-                            </select>
+                            <div class="d-flex align-items-center gap-1">
+                                <select id="filterReason" class="form-select form-select-sm" style="min-width: 140px;">
+                                    <option value="">All</option>
+                                    @foreach($reasons ?? [] as $r)
+                                        <option value="{{ $r }}">{{ $r }}</option>
+                                    @endforeach
+                                </select>
+                                <button type="button" class="btn btn-outline-secondary btn-sm" id="manageReasonsBtn" title="Add or manage reasons">
+                                    <i class="fas fa-plus"></i>
+                                </button>
+                            </div>
                         </div>
                         <div class="col-auto">
                             <label class="form-label small mb-0">Person</label>
@@ -277,19 +285,9 @@
                                             <label for="reason" class="form-label fw-bold">Reason</label>
                                             <select class="form-select" id="reason" name="reason" required>
                                                 <option selected disabled>Select Reason</option>
-                                                <option value="Issue(Dispatch)">Issue(Dispatch)</option>
-                                                <option value="Issue(Label)">Issue(Label)</option>
-                                                <option value="Issue(Quality)">Issue(Quality)</option>
-                                                <option value="Issue(Packaging)">Issue(Packaging)</option>
-                                                <option value="Issue(Carrier)">Issue(Carrier)</option>
-                                                <option value="Issue(Lost)">Issue(Lost)</option>
-                                                <option value="Issue(WAC)">Issue(WAC)</option>
-                                                <option value="Issue(listing)">Issue(listing)</option>
-                                                <option value="Issue(pricing)">Issue(pricing)</option>
-                                                <option value="Gift">Gift</option>
-                                                <option value="Promotion">Promotion</option>
-                                                <option value="FBA">FBA</option>
-                                                <option value="Issue(Other)">Issue(Other)</option>
+                                                @foreach($reasons ?? [] as $r)
+                                                    <option value="{{ $r }}">{{ $r }}</option>
+                                                @endforeach
                                             </select>
                                         </div>
                                         <div class="mb-3">
@@ -311,6 +309,99 @@
                         </div>
                     </div>
 
+
+                    <!-- Edit Reason & Comment Modal -->
+                    <div id="editReasonCommentModal" class="modal fade" tabindex="-1">
+                        <div class="modal-dialog">
+                            <div class="modal-content">
+                                <div class="modal-header">
+                                    <h5 class="modal-title">Edit Reason & Comment</h5>
+                                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                </div>
+                                <div class="modal-body">
+                                    <input type="hidden" id="editInventoryId">
+                                    <p class="mb-2"><strong>SKU:</strong> <span id="editSkuDisplay"></span></p>
+                                    <div class="mb-3">
+                                        <label for="editReason" class="form-label">Reason</label>
+                                        <select class="form-select" id="editReason">
+                                            @foreach($reasons ?? [] as $r)
+                                                <option value="{{ $r }}">{{ $r }}</option>
+                                            @endforeach
+                                        </select>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label for="editComment" class="form-label">Comment</label>
+                                        <input type="text" class="form-control" id="editComment" maxlength="80" placeholder="Comment (optional)">
+                                    </div>
+                                    <div id="editReasonCommentError" class="text-danger small" style="display:none;"></div>
+                                </div>
+                                <div class="modal-footer">
+                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                                    <button type="button" class="btn btn-primary" id="saveEditReasonCommentBtn">Save</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- History Modal -->
+                    <div id="historyModal" class="modal fade" tabindex="-1">
+                        <div class="modal-dialog modal-lg">
+                            <div class="modal-content">
+                                <div class="modal-header">
+                                    <h5 class="modal-title">History — SKU: <span id="historySkuDisplay"></span></h5>
+                                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                </div>
+                                <div class="modal-body">
+                                    <p class="text-muted small">First row shows original; below are updates (reason/comment changes).</p>
+                                    <div class="table-responsive">
+                                        <table class="table table-sm table-bordered">
+                                            <thead class="table-light">
+                                                <tr>
+                                                    <th>Field</th>
+                                                    <th>Previous</th>
+                                                    <th>Updated to</th>
+                                                    <th>By</th>
+                                                    <th>Date</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="historyTableBody">
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                    <div id="historyEmpty" class="text-muted" style="display:none;">No edit history for this record.</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Manage Reasons Modal -->
+                    <div id="manageReasonsModal" class="modal fade" tabindex="-1">
+                        <div class="modal-dialog">
+                            <div class="modal-content">
+                                <div class="modal-header">
+                                    <h5 class="modal-title">Manage Outgoing Reasons</h5>
+                                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                </div>
+                                <div class="modal-body">
+                                    <div class="mb-3">
+                                        <label class="form-label">Add new reason</label>
+                                        <div class="d-flex gap-2">
+                                            <input type="text" id="newReasonName" class="form-control" placeholder="e.g. Issue(Returns)" maxlength="255">
+                                            <button type="button" id="addReasonBtn" class="btn btn-primary">Add</button>
+                                        </div>
+                                        <div id="newReasonError" class="text-danger small mt-1" style="display:none;"></div>
+                                    </div>
+                                    <hr>
+                                    <label class="form-label">Current reasons</label>
+                                    <ul id="reasonsList" class="list-group list-group-flush mb-0">
+                                        @foreach($reasons ?? [] as $r)
+                                            <li class="list-group-item d-flex justify-content-between align-items-center">{{ $r }}</li>
+                                        @endforeach
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
 
                     <!-- Progress Modal -->
                     <div id="progressModal" class="modal fade" tabindex="-1">
@@ -349,6 +440,7 @@
                                     <th class="sortable" data-col="approved_at">DATE <i class="fas fa-sort ms-1"></i></th>
                                     <th class="sortable" data-col="value">VALUE <i class="fas fa-sort ms-1"></i></th>
                                     <th class="sortable" data-col="is_archived">ARCHIVE <i class="fas fa-sort ms-1"></i></th>
+                                    <th>ACTIONS</th>
                                 </tr>
                             </thead>
                             <tbody id="inventory-table-body">
@@ -665,9 +757,11 @@
                     },
                     success: function (response) {
                         tableData = response.data || [];
-                        if (response.reasons && $('#filterReason option').length <= 1) {
+                        if (response.reasons && response.reasons.length) {
+                            var $sel = $('#filterReason');
+                            $sel.find('option:not([value=""])').remove();
                             response.reasons.forEach(function(r) {
-                                $('#filterReason').append($('<option></option>').val(r).text(r));
+                                $sel.append($('<option></option>').val(r).text(r));
                             });
                         }
                         if (response.persons && $('#filterPerson option').length <= 1) {
@@ -696,7 +790,152 @@
                 loadData();
             });
 
-            $(document).on('click', '#archiveSelectedBtn', function() {
+            function refreshReasonsDropdowns(reasons) {
+                if (!reasons) return;
+                var $filter = $('#filterReason');
+                $filter.find('option:not([value=""])').remove();
+                reasons.forEach(function(r) { $filter.append($('<option></option>').val(r).text(r)); });
+                var $reason = $('#reason');
+                $reason.find('option:not(:first)').remove();
+                reasons.forEach(function(r) { $reason.append($('<option></option>').val(r).text(r)); });
+                var $editReason = $('#editReason');
+                $editReason.find('option').remove();
+                reasons.forEach(function(r) { $editReason.append($('<option></option>').val(r).text(r)); });
+                var $list = $('#reasonsList');
+                $list.empty();
+                reasons.forEach(function(r) {
+                    $list.append($('<li class="list-group-item d-flex justify-content-between align-items-center"></li>').text(r));
+                });
+            }
+
+            $(document).on('click', '#manageReasonsBtn', function() {
+                $.get('/outgoing-reasons', function(res) {
+                    if (res.reasons && res.reasons.length) {
+                        $('#reasonsList').empty();
+                        res.reasons.forEach(function(r) {
+                            $('#reasonsList').append($('<li class="list-group-item d-flex justify-content-between align-items-center"></li>').text(r));
+                        });
+                    }
+                });
+                $('#newReasonName').val('');
+                $('#newReasonError').hide().text('');
+                new bootstrap.Modal(document.getElementById('manageReasonsModal')).show();
+            });
+
+            $(document).on('click', '#addReasonBtn', function() {
+                var name = ($('#newReasonName').val() || '').trim();
+                var $err = $('#newReasonError');
+                $err.hide().text('');
+                if (!name) {
+                    $err.text('Please enter a reason name.').show();
+                    return;
+                }
+                $.ajax({
+                    url: '/outgoing-reasons',
+                    method: 'POST',
+                    headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+                    contentType: 'application/json',
+                    data: JSON.stringify({ name: name }),
+                    success: function(res) {
+                        if (res.success && res.reasons) {
+                            refreshReasonsDropdowns(res.reasons);
+                            $('#newReasonName').val('');
+                        }
+                    },
+                    error: function(xhr) {
+                        var msg = (xhr.responseJSON && xhr.responseJSON.message) ? xhr.responseJSON.message : 'Could not add reason.';
+                        $err.text(msg).show();
+                    }
+                });
+            });
+
+                $(document).on('click', '.edit-reason-btn', function() {
+                    var id = $(this).data('id');
+                    var sku = $(this).data('sku') || '-';
+                    var reason = $(this).data('reason') || '';
+                    var remarks = $(this).data('remarks') || '';
+                    $('#editInventoryId').val(id);
+                    $('#editSkuDisplay').text(sku);
+                    $('#editReason').val(reason);
+                    $('#editComment').val(remarks);
+                    $('#editReasonCommentError').hide().text('');
+                    new bootstrap.Modal(document.getElementById('editReasonCommentModal')).show();
+                });
+
+                $(document).on('click', '#saveEditReasonCommentBtn', function() {
+                    var id = $('#editInventoryId').val();
+                    var reason = $('#editReason').val();
+                    var comment = $('#editComment').val();
+                    var $err = $('#editReasonCommentError');
+                    $err.hide().text('');
+                    if (!reason) {
+                        $err.text('Reason is required.').show();
+                        return;
+                    }
+                    $.ajax({
+                        url: '/outgoing-update-reason-comment',
+                        method: 'PUT',
+                        headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+                        contentType: 'application/json',
+                        data: JSON.stringify({ id: id, reason: reason, comment: comment }),
+                        success: function(res) {
+                            if (res.success && res.record) {
+                                var idNum = parseInt(id, 10);
+                                var idx = tableData.findIndex(function(r) { return parseInt(r.id, 10) === idNum; });
+                                if (idx !== -1) {
+                                    tableData[idx].reason = res.record.reason;
+                                    tableData[idx].remarks = res.record.remarks;
+                                }
+                                if (currentDisplayData.length) {
+                                    var dx = currentDisplayData.findIndex(function(r) { return parseInt(r.id, 10) === idNum; });
+                                    if (dx !== -1) {
+                                        currentDisplayData[dx].reason = res.record.reason;
+                                        currentDisplayData[dx].remarks = res.record.remarks;
+                                    }
+                                }
+                                renderTable(currentDisplayData.length ? currentDisplayData : tableData);
+                                bootstrap.Modal.getInstance(document.getElementById('editReasonCommentModal')).hide();
+                            }
+                        },
+                        error: function(xhr) {
+                            var msg = (xhr.responseJSON && xhr.responseJSON.message) ? xhr.responseJSON.message : 'Update failed.';
+                            $err.text(msg).show();
+                        }
+                    });
+                });
+
+                $(document).on('click', '.history-btn', function() {
+                    var id = $(this).data('id');
+                    var sku = $(this).data('sku') || '-';
+                    $('#historySkuDisplay').text(sku);
+                    $('#historyTableBody').empty();
+                    $('#historyEmpty').hide();
+                    $.get('/outgoing-history/' + id, function(res) {
+                        if (res.success) {
+                            if (res.history && res.history.length) {
+                                res.history.forEach(function(h) {
+                                    $('#historyTableBody').append(
+                                        '<tr><td>' + (h.field_label || h.field) + '</td><td>' + escapeHtml(h.old_value || '') + '</td><td>' + escapeHtml(h.new_value || '') + '</td><td>' + escapeHtml(h.updated_by || '') + '</td><td>' + escapeHtml(h.updated_at || '') + '</td></tr>'
+                                    );
+                                });
+                            } else {
+                                $('#historyEmpty').show();
+                            }
+                        }
+                    }).fail(function() {
+                        $('#historyEmpty').text('Could not load history.').show();
+                    });
+                    new bootstrap.Modal(document.getElementById('historyModal')).show();
+                });
+
+                function escapeHtml(str) {
+                    if (str == null) return '';
+                    var div = document.createElement('div');
+                    div.textContent = str;
+                    return div.innerHTML;
+                }
+
+                $(document).on('click', '#archiveSelectedBtn', function() {
                 const ids = [];
                 document.querySelectorAll('.row-select:checked').forEach(function(cb) {
                     if (cb.getAttribute('data-archived') === '1') return;
@@ -728,7 +967,7 @@
                 tbody.innerHTML = '';
 
                 if (data.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="10" class="text-center">No records found</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="11" class="text-center">No records found</td></tr>';
                     updateTotalValueFiltered(0);
                     $('#selectedRowsValue').text('$0');
                     return;
@@ -758,6 +997,10 @@
                         <td>${item.approved_at || '-'}</td>
                         <td>${valueFormatted}</td>
                         <td class="text-center"><input type="checkbox" class="archive-display" ${archiveChecked}${archiveDisabled} title="${archived ? 'Archived' : 'Not archived'}"></td>
+                        <td>
+                            <button type="button" class="btn btn-sm btn-outline-primary edit-reason-btn" data-id="${item.id}" data-sku="${(item.sku || '').replace(/"/g, '&quot;')}" data-reason="${(item.reason || '').replace(/"/g, '&quot;')}" data-remarks="${(item.remarks || '').replace(/"/g, '&quot;')}" title="Edit reason & comment"><i class="fas fa-edit"></i></button>
+                            <button type="button" class="btn btn-sm btn-outline-secondary history-btn" data-id="${item.id}" data-sku="${(item.sku || '').replace(/"/g, '&quot;')}" title="View history"><i class="fas fa-history"></i></button>
+                        </td>
                     `;
                     tbody.appendChild(row);
                 });

@@ -5,14 +5,29 @@ namespace App\Http\Controllers\PurchaseMaster;
 use App\Http\Controllers\Controller;
 use App\Models\InventoryWarehouse;
 use App\Models\TransitContainerDetail;
+use App\Models\TransitContainerHistory;
 use App\Models\Supplier;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 
 class TransitContainerDetailsController extends Controller
 {
+    protected function logHistory(string $actionType, ?int $detailId = null, ?string $fromTab = null, ?string $toTab = null, ?string $ourSku = null, $details = null): void
+    {
+        TransitContainerHistory::create([
+            'action_type' => $actionType,
+            'transit_container_detail_id' => $detailId,
+            'from_tab' => $fromTab,
+            'to_tab' => $toTab,
+            'our_sku' => $ourSku,
+            'details' => is_array($details) || is_object($details) ? json_encode($details) : $details,
+            'user_id' => Auth::id(),
+        ]);
+    }
+
     public function index()
     {
         $allRecords = TransitContainerDetail::with('user')->where(function($q){
@@ -143,6 +158,8 @@ class TransitContainerDetailsController extends Controller
             'tab_name' => $tabName,
         ]);
 
+        $this->logHistory('tab_added', null, null, $tabName, null, ['tab_name' => $tabName]);
+
         return response()->json(['success' => true]);
     }
 
@@ -157,12 +174,20 @@ class TransitContainerDetailsController extends Controller
         if (!empty($data['id'])) {
             $row = TransitContainerDetail::find($data['id']);
             if ($row) {
+                $fromTab = $row->tab_name;
+                $toTab = $data['tab_name'] ?? $fromTab;
                 $row->update($data);
+                if ($fromTab !== $toTab) {
+                    $this->logHistory('row_moved', $row->id, $fromTab, $toTab, $row->our_sku, ['sku' => $row->our_sku, 'from' => $fromTab, 'to' => $toTab]);
+                } else {
+                    $this->logHistory('row_updated', $row->id, null, $toTab, $row->our_sku, null);
+                }
             } else {
                 return response()->json(['success' => false, 'message' => 'Row not found.']);
             }
         } else {
             $row = TransitContainerDetail::create($data);
+            $this->logHistory('row_created', $row->id, null, $row->tab_name, $row->our_sku, null);
         }
 
         return response()->json(['success' => true, 'id' => $row->id]);
@@ -229,6 +254,11 @@ class TransitContainerDetailsController extends Controller
                 $data
             );
         }
+        $this->logHistory('purchase_added', null, null, $request->tab_name, null, [
+            'tab_name' => $request->tab_name,
+            'count' => count($request->our_sku),
+            'skus' => $request->our_sku,
+        ]);
         return back()->with('success', 'Items saved successfully!');
     }
 
@@ -238,6 +268,11 @@ class TransitContainerDetailsController extends Controller
             $ids = $request->ids;
 
             $authUser = auth()->check() ? auth()->user()->name : 'system';
+
+            $rows = TransitContainerDetail::whereIn('id', $ids)->get();
+            foreach ($rows as $row) {
+                $this->logHistory('row_deleted', $row->id, $row->tab_name, null, $row->our_sku, ['tab' => $row->tab_name, 'sku' => $row->our_sku]);
+            }
 
             TransitContainerDetail::whereIn('id', $ids)->update([
                 'auth_user' => $authUser,
@@ -389,5 +424,42 @@ class TransitContainerDetailsController extends Controller
             'groupedData' => $groupedData
         ]);
     }
-    
+
+    /**
+     * Get history of all transit container actions (moves, adds, deletes, purchase, etc.)
+     */
+    public function getHistory(Request $request)
+    {
+        $query = TransitContainerHistory::with('user')
+            ->orderByDesc('created_at');
+
+        if ($request->filled('tab_name')) {
+            $query->where(function ($q) use ($request) {
+                $tab = trim($request->tab_name);
+                $q->where('to_tab', $tab)->orWhere('from_tab', $tab);
+            });
+        }
+        if ($request->filled('sku')) {
+            $query->where('our_sku', 'like', '%' . trim($request->sku) . '%');
+        }
+        if ($request->filled('action_type')) {
+            $query->where('action_type', $request->action_type);
+        }
+
+        $limit = min((int) $request->get('limit', 100), 500);
+        $items = $query->limit($limit)->get()->map(function ($h) {
+            return [
+                'id' => $h->id,
+                'action_type' => $h->action_type,
+                'from_tab' => $h->from_tab,
+                'to_tab' => $h->to_tab,
+                'our_sku' => $h->our_sku,
+                'details' => $h->details,
+                'user_name' => $h->user->name ?? '—',
+                'created_at' => $h->created_at->format('Y-m-d H:i:s'),
+            ];
+        });
+
+        return response()->json(['data' => $items]);
+    }
 }
