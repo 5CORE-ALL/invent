@@ -411,27 +411,92 @@ class ReadyToShipController extends Controller
 
     public function moveToTransit(Request $request)
     {
-        $skus = $request->input('skus', []);
-        $tabName = trim($request->input('tab_name'));
+        $tabName = '';
+        $ids = [];
+        $skus = [];
 
-        if (empty($skus)) {
-            return response()->json(['success' => false, 'message' => 'No SKUs provided.']);
+        // Always parse JSON from raw body when it looks like JSON (fixes missing ids when Content-Type is odd)
+        $raw = (string) $request->getContent();
+        if ($raw !== '' && str_starts_with(ltrim($raw), '{')) {
+            $decoded = json_decode($raw, true);
+            if (is_array($decoded)) {
+                $tabName = trim((string) ($decoded['tab_name'] ?? ''));
+                if (!empty($decoded['ids']) && is_array($decoded['ids'])) {
+                    $ids = array_values(array_filter(array_map('intval', $decoded['ids']), fn ($id) => $id > 0));
+                }
+                if (!empty($decoded['skus']) && is_array($decoded['skus'])) {
+                    $skus = array_values(array_filter(array_map('strval', $decoded['skus']), fn ($s) => $s !== ''));
+                }
+            }
         }
 
-        $readyItems = ReadyToShip::whereIn('sku', $skus)->get();
+        if ($tabName === '') {
+            $tabName = trim((string) $request->input('tab_name', ''));
+        }
+        if (empty($ids)) {
+            $rawIds = $request->input('ids', []);
+            if (!is_array($rawIds)) {
+                $rawIds = $rawIds !== null && $rawIds !== '' ? [$rawIds] : [];
+            }
+            $ids = array_values(array_filter(array_map('intval', $rawIds), fn ($id) => $id > 0));
+        }
+        if (empty($skus)) {
+            $rawSkus = $request->input('skus', []);
+            if (!is_array($rawSkus)) {
+                $rawSkus = $rawSkus ? [(string) $rawSkus] : [];
+            }
+            $skus = array_values(array_filter(array_map('strval', $rawSkus), fn ($s) => $s !== ''));
+        }
 
-        $normalizeSku = function ($sku) {
+        if ($tabName === '') {
+            Log::warning('[ReadyToShip] moveToTransit rejected: empty tab_name', ['ids' => $ids, 'skus_count' => count($skus)]);
+
+            return response()->json(['success' => false, 'message' => 'Please choose a container.']);
+        }
+
+        if (!empty($ids)) {
+            $readyItems = ReadyToShip::whereIn('id', $ids)
+                ->where('transit_inv_status', 0)
+                ->whereNull('deleted_at')
+                ->get();
+        } elseif (!empty($skus)) {
+            $readyItems = ReadyToShip::whereIn('sku', $skus)
+                ->where('transit_inv_status', 0)
+                ->whereNull('deleted_at')
+                ->get();
+        } else {
+            Log::warning('[ReadyToShip] moveToTransit rejected: no ids or skus', ['parsed_ids' => $ids]);
+
+            return response()->json(['success' => false, 'message' => 'No rows selected.']);
+        }
+
+        if ($readyItems->isEmpty()) {
+            Log::warning('[ReadyToShip] moveToTransit: no matching rows', [
+                'tab_name' => $tabName,
+                'ids' => $ids,
+                'skus' => $skus,
+            ]);
+
+            return response()->json(['success' => false, 'message' => 'No matching ready-to-ship rows to move.']);
+        }
+
+        $movedCount = $readyItems->count();
+
+        try {
+            DB::beginTransaction();
+
+            $normalizeSku = function ($sku) {
             if (empty($sku)) return '';
             $sku = strtoupper(trim($sku));
             $sku = preg_replace('/\s+/u', ' ', $sku);
             return trim($sku);
-        };
+            };
 
-        $productMaster = DB::table('product_master')
-            ->get()
-            ->keyBy(fn($row) => $normalizeSku($row->sku ?? ''));
+            $productMaster = DB::table('product_master')
+                ->get()
+                ->keyBy(fn($row) => $normalizeSku($row->sku ?? ''));
 
-        foreach ($readyItems as $item) {
+            foreach ($readyItems as $item) {
             $qtyForTransit = $item->rec_qty ?? $item->qty;
             $rate = $item->rate ?? null;
             $cbm = $item->cbm ?? null;
@@ -468,6 +533,7 @@ class ReadyToShipController extends Controller
                 ]);
             } else {
                 $transitData['created_at'] = now();
+                $transitData['created_by'] = auth()->id();
                 TransitContainerDetail::create($transitData);
                 $item->update([
                     'rec_qty' => NULL,
@@ -476,13 +542,27 @@ class ReadyToShipController extends Controller
             }
 
             // Mark as transit so it no longer shows in Ready to Ship list
-            $item->update([
-                'transit_inv_status' => 1,
-                'updated_at' => now(),
-            ]);
+                $item->update([
+                    'transit_inv_status' => 1,
+                    'updated_at' => now(),
+                ]);
+            }
+
+            DB::commit();
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            Log::error('moveToTransit failed', ['error' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Move failed: ' . $e->getMessage(),
+            ], 500);
         }
 
-        return response()->json(['success' => true, 'message' => 'Data moved to TransitContainerDetail.']);
+        return response()->json([
+            'success' => true,
+            'message' => 'Moved ' . $movedCount . ' row(s) to "' . $tabName . '". Open Transit Container Details to view.',
+        ]);
     }
 
     public function deleteItems(Request $request)
