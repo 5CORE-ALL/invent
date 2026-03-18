@@ -52,6 +52,8 @@
             justify-content: center;
         }
 
+      
+
         /* Supplier column: ensure column and filter don't truncate text */
         .tabulator .tabulator-header .tabulator-col[tabulator-field="Supplier Tag"] .tabulator-header-filter input,
         .tabulator .tabulator-header-filter input.supplier-header-filter {
@@ -60,6 +62,30 @@
             min-width: 90px !important;
             box-sizing: border-box;
         }
+
+        /* NRP: REQ = green dot, 2BDC (NR) = red, LATER = yellow; select overlaid for editing */
+        .nrp-dot-cell {
+            min-height: 36px;
+            min-width: 44px;
+        }
+        .nrp-dot-cell .nrp-status-dot {
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            flex-shrink: 0;
+            box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.15);
+        }
+        .nrp-dot-cell .nrp-nr-select {
+            opacity: 0;
+            cursor: pointer;
+            margin: 0 !important;
+            border: 0 !important;
+            padding: 0 !important;
+            background: transparent !important;
+            -webkit-appearance: none;
+            appearance: none;
+        }
+
     </style>
 @endsection
 
@@ -68,10 +94,6 @@
         'page_title' => 'Forecast Analysis',
         'sub_title' => 'Forecast Analysis',
     ])
-
-    <div class="alert alert-warning mb-3">
-        <strong>Items with 0 Inventory:</strong> <span id="zero_inv_count" class="fw-bold">0</span>
-    </div>
 
     <div class="row">
         <div class="col-12">
@@ -104,6 +126,18 @@
                         </div>
 
                         <div class="d-flex align-items-center flex-wrap gap-2">
+                            <!-- Stage Filter (before Column) -->
+                            <select id="stage-filter" class="form-select-sm border border-primary" style="width: 160px;">
+                                <option value="">All Stages</option>
+                                <option value="__blank__">Select / Blank</option>
+                                <option value="mip">MIP</option>
+                                <option value="r2s">R2S</option>
+                                <option value="transit">Transit</option>
+                                <option value="to_order_analysis">2 Order</option>
+                                <option value="appr_req">Appr. Req</option>
+                                <option value="all_good">All Good</option>
+                            </select>
+
                             <!-- Column Management -->
                             <div class="dropdown">
                                 <button class="btn btn-sm btn-primary dropdown-toggle d-flex align-items-center gap-1"
@@ -117,61 +151,30 @@
                                 </ul>
                             </div>
 
-                            <!-- 2 ORDER Color Filter -->
+                            <!-- Appr Req.: filter + count in one badge -->
                             <div class="dropdown">
-                                <button class="btn btn-sm btn-warning dropdown-toggle d-flex align-items-center gap-1 fw-semibold text-dark"
-                                    type="button" id="order-color-filter-dropdown" data-bs-toggle="dropdown">
-                                    <i class="bi bi-funnel-fill"></i>
-                                    2 ORDER
+                                <button class="btn btn-sm btn-warning dropdown-toggle d-flex align-items-center flex-wrap gap-2 fw-semibold text-dark px-2"
+                                    type="button" id="order-color-filter-dropdown" data-bs-toggle="dropdown"
+                                    aria-expanded="false"
+                                    title="Appr Req. filter (All / Appr Req.)">
+                                    <span class="d-none" aria-hidden="true">
+                                        <i class="bi bi-funnel-fill"></i>
+                                        <span id="appr-req-badge-label">All</span>
+                                    </span>
+                                    <span class="vr align-self-stretch my-n1 opacity-50 d-none" aria-hidden="true"></span>
+                                    <span class="d-inline-flex align-items-center gap-1 text-nowrap">
+                                        <i class="bi bi-star-fill"></i>
+                                        <span id="yellow-count-box">Appr Req: 0</span>
+                                    </span>
                                 </button>
                                 <ul class="dropdown-menu p-2 shadow-lg border rounded-3">
-                                    <li><button class="dropdown-item" data-filter="">All</button></li>
-                                    <li><button class="dropdown-item" data-filter="yellow">🟡 Yellow</button></li>
+                                    <li><button class="dropdown-item" type="button" data-filter="">All</button></li>
+                                    <li><button class="dropdown-item" type="button" data-filter="yellow">Appr Req.</button></li>
                                 </ul>
                             </div>
 
-                            <!-- Yellow Count -->
-                            <div id="yellow-count-container" class="d-none px-2 btn btn-sm rounded-2 shadow-sm border border-warning bg-warning">
-                                <div class="d-flex align-items-center gap-1">
-                                    <i class="bi bi-star-fill text-dark"></i>
-                                    <span id="yellow-count-box" class="fw-semibold text-dark">App Pending: 0</span>
-                                </div>
-                            </div>
-
-
-                            <!-- Show All Columns -->
-                            <button id="show-all-columns-btn"
-                                class="btn btn-sm btn-outline-success d-flex align-items-center gap-1">
-                                <i class="bi bi-eye"></i>
-                                Show All
-                            </button>
-
-                            <!-- Toggle NR -->
-                            <button id="toggle-nr-rows" class="btn btn-sm btn-outline-secondary">
-                                Show NR
-                            </button>
-
-                            <!-- Toggle LATER -->
-                            <button id="toggle-later-rows" class="btn btn-sm text-white" style="background-color: #343a40;">
-                                Show LATER
-                            </button>
-
-                            <!-- Row Type Filter -->
-                            <select id="row-data-type" class="form-select-sm border border-primary" style="width: 170px;">
-                                <option value="all">🔁 Show All</option>
-                                <option value="sku" selected>🔹 SKU (Child)</option>
-                                <option value="sku_value">💲 SKU Value</option>
-                                <option value="parent">🔸 Parent</option>
-                            </select>
-
-                            <!-- Stage Filter -->
-                            <select id="stage-filter" class="form-select-sm border border-primary" style="width: 150px;">
-                                <option value="">All Stages</option>
-                                <option value="to_order_analysis">2 Order</option>
-                                <option value="mip">MIP</option>
-                                <option value="r2s">R2S</option>
-                                <option value="transit">Transit</option>
-                            </select>
+                            <!-- Row Type Filter: Show All / SKU (Child) / Parent -->
+                            <select id="row-data-type" class="form-select-sm border border-primary" style="width: 170px;" aria-label="Row type"></select>
 
                             <!-- NRP / All Items multiselect (checked types are shown) -->
                             <div class="dropdown d-inline-block">
@@ -201,20 +204,12 @@
                                 </ul>
                             </div>
 
-                            <button id="total-transit" class="btn btn-sm btn-info">
-                                 Transit
-                            </button>
-
-                            <button id="show-zero-inv" class="btn btn-sm btn-danger">
-                                 0 INV
-                            </button>
-
-                            <button id="restock_needed" class="btn btn-sm btn-warning fw-semibold text-dark">
-                                Zero Stock: <span id = "total_restock" class="fw-semibold text-dark">0</span>
-                            </button>
-
                             <button id="total_msl_c" class="btn btn-sm btn-success fw-semibold text-dark">
                                  MSL_LP: $<span id="total_msl_c_value" class="fw-semibold text-dark">0.00</span>
+                            </button>
+
+                            <button type="button" class="btn btn-sm btn-info fw-semibold text-dark" title="MSL × AMZ price ÷ 4 (amazon_datsheets.price)">
+                                 MSL_SP: $<span id="total_msl_sp_amz_value" class="fw-semibold text-dark">0</span>
                             </button>
 
                             <button id="total_inv_value" class="btn btn-sm btn-info fw-semibold text-dark">
@@ -252,23 +247,6 @@
                             <button id="total_transit_value" class="btn btn-sm btn-secondary fw-semibold text-dark">
                                  Trn Val: $<span id="total_transit_value_display" class="fw-semibold text-dark">0</span>
                             </button>
-
-                            <!-- Navigation Buttons -->
-                            <a href="{{ route('to.order.analysis') }}" target="_blank" class="btn btn-sm btn-primary fw-semibold text-dark" style="text-decoration: none;">
-                                2 Order
-                            </a>
-
-                            <a href="{{ route('mfrg.in.progress') }}" target="_blank" class="btn btn-sm btn-success fw-semibold text-dark" style="text-decoration: none;">
-                                MIP
-                            </a>
-
-                            <a href="{{ route('ready.to.ship') }}" target="_blank" class="btn btn-sm btn-info fw-semibold text-dark" style="text-decoration: none;">
-                                R2S
-                            </a>
-
-                            <a href="{{ route('transit.container.details') }}" target="_blank" class="btn btn-sm btn-secondary fw-semibold text-dark" style="text-decoration: none;">
-                                Transit
-                            </a>
                         </div>
                     </div>
 
@@ -277,7 +255,7 @@
                         <span class="fw-semibold text-dark" id="bulk-edit-count">0 selected</span>
                         <div class="dropdown">
                             <button class="btn btn-sm btn-primary dropdown-toggle" type="button" id="bulkEditSupplierBtn" data-bs-toggle="dropdown" aria-expanded="false">
-                                Edit Supply All
+                                Edit Supplier All
                             </button>
                             <ul class="dropdown-menu" aria-labelledby="bulkEditSupplierBtn">
                                 <li class="px-3 py-2">
@@ -537,7 +515,7 @@
             pagination: true,
             paginationSize: 200,
             initialSort: [{ column: "Parent", dir: "asc" }],
-            initialHeaderFilter: [{ field: "nr", value: "" }],
+            initialHeaderFilter: [{ field: "nr", value: "" }, { field: "stage", value: "" }, { field: "INV", value: "" }],
             paginationCounter: "rows",
             movableColumns: false,
             resizableColumns: true,
@@ -631,6 +609,10 @@
                     title: "INV",
                     field: "INV",
                     accessor: row => row["INV"],
+                    headerSort: false,
+                    headerFilter: "input",
+                    headerFilterPlaceholder: "All · 0 · >0",
+                    headerFilterFunc: function() { return true; },
                     formatter: function(cell) {
                         const value = cell.getValue();
                         return `<span style="display:block; text-align:center;">${value}</span>`;
@@ -668,7 +650,7 @@
                 // },
                
                 {
-                    title: "OV L30",
+                    title: "l30",
                     field: "L30",
                     accessor: row => row["L30"],
                     formatter: function(cell) {
@@ -761,21 +743,7 @@
                     }
                 },
                 {
-                    title: "Appr.req",
-                    field: "appr_req_qty",
-                    accessor: row => (row ? row.appr_req_qty : null),
-                    sorter: "number",
-                    headerSort: true,
-                    formatter: function(cell) {
-                        const v = parseFloat(cell.getValue());
-                        if (!v || isNaN(v)) {
-                            return '<div style="text-align:center;" class="text-muted">—</div>';
-                        }
-                        return `<div style="text-align:center;font-weight:bold;">${Number.isInteger(v) ? v : v.toFixed(2).replace(/\.?0+$/, '')}</div>`;
-                    }
-                },
-                {
-                    title: "2 Order",
+                    title: "Order",
                     field: "two_order_qty",
                     accessor: row => (row ? row.two_order_qty : null),
                     sorter: "number",
@@ -932,7 +900,7 @@
                 // },
 
                 {
-                    title: "Transit",
+                    title: "Trn",
                     field: "transit",
                     accessor: row => (row ? row["transit"] : null),
                     sorter: "number",
@@ -987,6 +955,80 @@
                     }
                 },
                 {
+                    title: "TAT",
+                    field: "TAT",
+                    headerSort: true,
+                    titleFormatter: function() {
+                        const span = document.createElement("span");
+                        span.setAttribute("title", "Turn Around Time (Months)");
+                        span.setAttribute("aria-label", "Turn Around Time (Months)");
+                        span.style.cursor = "help";
+                        span.textContent = "TAT";
+                        return span;
+                    },
+                    hozAlign: "center",
+                    accessor: function(row) {
+                        if (!row || row.is_parent || row.isParent) {
+                            return null;
+                        }
+                        const mAvg = parseFloat(row.m_avg) || 0;
+                        const moq = parseFloat(row.MOQ) || 0;
+                        if (mAvg <= 0) {
+                            return null;
+                        }
+
+                        return Math.round(moq / mAvg);
+                    },
+                    sorter: function(a, b, aRow, bRow) {
+                        const tatVal = function(row) {
+                            const d = row.getData();
+                            if (d.is_parent || d.isParent) {
+                                return null;
+                            }
+                            const mAvg = parseFloat(d.m_avg) || 0;
+                            const moq = parseFloat(d.MOQ) || 0;
+                            if (mAvg <= 0) {
+                                return null;
+                            }
+
+                            return Math.round(moq / mAvg);
+                        };
+                        const va = tatVal(aRow);
+                        const vb = tatVal(bRow);
+                        if (va == null && vb == null) {
+                            return 0;
+                        }
+                        if (va == null) {
+                            return 1;
+                        }
+                        if (vb == null) {
+                            return -1;
+                        }
+
+                        return va - vb;
+                    },
+                    formatter: function(cell) {
+                        const d = cell.getRow().getData();
+                        if (d.is_parent || d.isParent) {
+                            return '<span style="display:block;text-align:center;color:#6c757d">—</span>';
+                        }
+                        const mAvg = parseFloat(d.m_avg) || 0;
+                        const moq = parseFloat(d.MOQ) || 0;
+                        if (mAvg <= 0) {
+                            return '<span style="display:block;text-align:center;color:#6c757d">—</span>';
+                        }
+                        const tat = moq / mAvg;
+                        const rounded = Math.round(tat);
+                        let color = '#1b5e20';
+                        if (rounded > 6) {
+                            color = '#b71c1c';
+                        } else if (rounded >= 4) {
+                            color = '#9a7b00';
+                        }
+                        return `<span style="display:block;text-align:center;font-weight:700;color:${color};" title="MOQ ÷ M AVG (rounded) — green &lt;4, yellow 4–6, red &gt;6">${rounded}</span>`;
+                    }
+                },
+                {
                     title: "Stage",
                     field: "stage",
                     accessor: function(row) {
@@ -995,6 +1037,37 @@
                         return stageValue ? String(stageValue).trim().toLowerCase() : '';
                     },
                     headerSort: false,
+                    titleFormatter: function() {
+                        const wrap = document.createElement("span");
+                        wrap.className = "d-inline-flex align-items-center justify-content-center gap-1";
+                        const icon = document.createElement("i");
+                        icon.className = "bi bi-funnel-fill";
+                        icon.setAttribute("title", "Stage filter");
+                        wrap.appendChild(icon);
+                        wrap.appendChild(document.createTextNode(" Stage"));
+                        return wrap;
+                    },
+                    headerFilter: "list",
+                    headerFilterParams: {
+                        values: {
+                            "": "All",
+                            "__blank__": "Select / Blank",
+                            "mip": "MIP",
+                            "r2s": "R2S",
+                            "transit": "Transit",
+                            "to_order_analysis": "2 Order",
+                            "appr_req": "Appr. Req",
+                            "all_good": "All Good"
+                        },
+                        clearable: false,
+                        listOnEmpty: true
+                    },
+                    headerFilterEmptyCheck: function(value) {
+                        return value === "" || value === null || value === undefined;
+                    },
+                    headerFilterFunc: function() {
+                        return true;
+                    },
                     formatter: function(cell) {
                         let value = cell.getValue() ?? '';
                         // Ensure value is normalized (should already be from accessor, but double-check)
@@ -1030,7 +1103,81 @@
                     }
                 },
                 {
-                    title: "Supply All",
+                    title: "NRP",
+                    field: "nr",
+                    minWidth: 52,
+                    hozAlign: "center",
+                    accessor: row => {
+                        const val = row?.["nr"];
+                        if (val === null || val === undefined) return '';
+                        const strVal = String(val);
+                        const normalized = strVal.trim().toUpperCase();
+                        return normalized;
+                    },
+                    headerSort: false,
+                    headerFilter: "list",
+                    headerFilterParams: {
+                        values: { "": "All", "REQ": "REQ", "NR": "2BDC", "LATER": "LATER" },
+                        clearable: false,
+                        listOnEmpty: true
+                    },
+                    headerFilterEmptyCheck: function(value) {
+                        return value === "" || value === null || value === undefined;
+                    },
+                    headerFilterFunc: function(headerValue, rowValue, rowData, filterParams) {
+                        if (headerValue === "" || headerValue === null || headerValue === undefined) {
+                            return true;
+                        }
+                        const raw = rowValue ?? rowData.nr ?? '';
+                        const normalized = String(raw).trim().toUpperCase() || 'REQ';
+                        return normalized === headerValue;
+                    },
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        let value = cell.getValue();
+                        if (value === null || value === undefined || value === '') {
+                            value = rowData["nr"];
+                        }
+                        if (value === null || value === undefined) {
+                            value = '';
+                        } else {
+                            value = String(value).trim().toUpperCase();
+                        }
+                        const sku = rowData["SKU"] || '';
+                        const parent = rowData["Parent"] || '';
+                        if (!value || value === '') {
+                            value = 'REQ';
+                        }
+                        if (value !== 'REQ' && value !== 'NR' && value !== 'LATER') {
+                            value = 'REQ';
+                        }
+                        let dotColor = '#22c55e';
+                        let tip = 'REQ';
+                        if (value === 'NR') {
+                            dotColor = '#dc3545';
+                            tip = '2BDC';
+                        } else if (value === 'LATER') {
+                            dotColor = '#facc15';
+                            tip = 'LATER';
+                        }
+                        return `
+                            <div class="nrp-dot-cell position-relative d-flex justify-content-center align-items-center w-100" title="${tip} (click to change)">
+                                <span class="nrp-status-dot" style="background-color:${dotColor};" aria-hidden="true"></span>
+                                <select class="form-select form-select-sm editable-select nrp-nr-select position-absolute top-0 start-0 w-100 h-100"
+                                    data-type="NR"
+                                    data-sku='${sku}'
+                                    data-parent='${parent}'
+                                    aria-label="NRP: ${tip}">
+                                    <option value="REQ" ${value === 'REQ' ? 'selected' : ''}>REQ</option>
+                                    <option value="NR" ${value === 'NR' ? 'selected' : ''}>2BDC</option>
+                                    <option value="LATER" ${value === 'LATER' ? 'selected' : ''}>LATER</option>
+                                </select>
+                            </div>
+                        `;
+                    }
+                },
+                {
+                    title: "Supplier All",
                     field: "Supplier Tag",
                     accessor: row => row["Supplier Tag"],
                     minWidth: 200,
@@ -1075,106 +1222,6 @@
                         return `<span class="text-truncate d-inline-block" style="max-width:140px;">${String(value).replace(/</g, '&lt;').replace(/>/g, '&gt;') || '-'}</span>`;
                     }
                 },
-                {
-                    title: "NRP",
-                    field: "nr",
-                    accessor: row => {
-                        const val = row?.["nr"];
-                        // Return null/undefined as empty string, but preserve actual values
-                        if (val === null || val === undefined) return '';
-                        // Convert to string and normalize
-                        const strVal = String(val);
-                        const normalized = strVal.trim().toUpperCase();
-                        // Return normalized value (even if empty string)
-                        return normalized;
-                    },
-                    headerSort: false,
-                    headerFilter: "list",
-                    headerFilterParams: {
-                        values: { "": "All", "REQ": "REQ", "NR": "2BDC", "LATER": "LATER" },
-                        clearable: false,
-                        listOnEmpty: true
-                    },
-                    headerFilterEmptyCheck: function(value) {
-                        return value === "" || value === null || value === undefined;
-                    },
-                    headerFilterFunc: function(headerValue, rowValue, rowData, filterParams) {
-                        // When "All" is selected (headerValue is ""), show every row
-                        if (headerValue === "" || headerValue === null || headerValue === undefined) {
-                            return true;
-                        }
-                        // Normalize row value: empty/null → REQ (match formatter logic)
-                        const raw = rowValue ?? rowData.nr ?? '';
-                        const normalized = String(raw).trim().toUpperCase() || 'REQ';
-                        return normalized === headerValue;
-                    },
-                    formatter: function(cell) {
-                        const rowData = cell.getRow().getData();
-                        let value = cell.getValue();
-                        
-                        // Get raw value from row data as fallback - check both cell value and row data
-                        if (value === null || value === undefined || value === '') {
-                            value = rowData["nr"];
-                        }
-                        
-                        // Convert to string and normalize - handle all cases
-                        if (value === null || value === undefined) {
-                            value = '';
-                        } else {
-                            value = String(value).trim().toUpperCase();
-                        }
-                        
-                        const sku = rowData["SKU"] || '';
-                        const parent = rowData["Parent"] || '';
-
-                        let bgColor = '#ffffff'; // default white
-                        let textColor = '#000000'; // default black
-
-                        // ✅ If value is empty or null, treat as REQ by default
-                        if (!value || value === '') {
-                            value = 'REQ';
-                        }
-                        
-                        // Normalize value to match expected values
-                        if (value !== 'REQ' && value !== 'NR' && value !== 'LATER') {
-                            value = 'REQ'; // Default to REQ if value doesn't match
-                        }
-
-                        // ✅ Set background and text color based on value
-                        if (value === 'NR') {
-                            bgColor = '#dc3545'; // red
-                            textColor = '#ffffff';
-                        } else if (value === 'REQ') {
-                            bgColor = '#28a745'; // green
-                            textColor = '#000000';
-                        } else if (value === 'LATER') {
-                            bgColor = '#ffc107'; // yellow
-                            textColor = '#000000';
-                        }
-
-                        return `
-                            <select class="form-select form-select-sm editable-select"
-                                data-type="NR"
-                                data-sku='${sku}'
-                                data-parent='${parent}'
-                                style="
-                                    width: auto; 
-                                    min-width: 85px; 
-                                    padding: 4px 8px;
-                                    font-size: 0.875rem; 
-                                    border-radius: 4px; 
-                                    border: 1px solid #dee2e6;
-                                    background-color: ${bgColor};
-                                    color: ${textColor};
-                                ">
-                                <option value="REQ" ${value === 'REQ' ? 'selected' : ''}>REQ</option>
-                                <option value="NR" ${value === 'NR' ? 'selected' : ''}>2BDC</option>
-                                <option value="LATER" ${value === 'LATER' ? 'selected' : ''}>LATER</option>
-                            </select>
-                        `;
-
-                    }
-                },
                  {
                     title: "CP",
                     field: "CP",
@@ -1207,6 +1254,10 @@
                 if (totalMslCElement && response.total_msl_c !== undefined) {
                     const wholeNumber = Math.round(parseFloat(response.total_msl_c));
                     totalMslCElement.textContent = wholeNumber.toLocaleString('en-US');
+                }
+                const totalMslSpAmzEl = document.getElementById('total_msl_sp_amz_value');
+                if (totalMslSpAmzEl && response.total_msl_sp_amz !== undefined) {
+                    totalMslSpAmzEl.textContent = Math.round(parseFloat(response.total_msl_sp_amz)).toLocaleString('en-US');
                 }
 
                 // Calculate and update total INV Value
@@ -1355,33 +1406,16 @@
                     totalR2sValueElement.textContent = roundedTotal.toLocaleString('en-US');
                 }
 
-                // Calculate and update total Transit Value - use pre-calculated total from controller (from ALL transit_container_details records)
-                // In transit-container-details page: totalAmount += qty * rate for each row (where qty = no_of_units * total_ctn)
-                // Controller calculates total_transit_value from ALL transit_container_details records (like transit-container-details page)
-                // This matches transit-container-details page calculation: sum of (qty * rate) for ALL rows across ALL tabs
+                // Trn Val: controller sends sum of (transit QTY × CP) per child SKU
                 let totalTransitValue = 0;
                 if (response.total_transit_value !== undefined) {
-                    // Use pre-calculated total from controller (sum of ALL transit_container_details records)
                     totalTransitValue = parseFloat(response.total_transit_value || 0) || 0;
                 } else {
-                    // Fallback: calculate from response data (for backward compatibility)
-                    totalTransitValue = response.data.reduce((sum, item) => {
-                        if (!item.is_parent) {
-                            // Use pre-calculated transit_value_calculated if available (sum of all (qty * rate) for this SKU)
-                            const transitValueCalculated = parseFloat(item.transit_value_calculated || 0) || 0;
-                            if (transitValueCalculated > 0) {
-                                return sum + transitValueCalculated;
-                            }
-                            // Fallback: calculate directly if we have transit qty and rate
-                            const transitQty = parseFloat(item.transit || 0) || 0;
-                            const transitRate = parseFloat(item.transit_rate || 0) || 0;
-                            if (transitQty > 0 && transitRate > 0) {
-                                return sum + (transitQty * transitRate);
-                            }
-                            // Final fallback: use Transit_Value field (which might be calculated as CP * transit)
-                            return sum + (parseFloat(item.Transit_Value) || 0);
-                        }
-                        return sum;
+                    totalTransitValue = (response.data || []).reduce(function(sum, item) {
+                        if (item.is_parent) return sum;
+                        const t = parseFloat(item.transit) || 0;
+                        const cp = parseFloat(item.CP) || 0;
+                        return sum + (t * cp);
                     }, 0);
                 }
                 const totalTransitValueElement = document.getElementById('total_transit_value_display');
@@ -1416,6 +1450,7 @@
                     const orderGiven = parseFloat(item["order_given"] ?? item["Order Given"]) || 0;
                     const r2s = parseFloat(item["readyToShipQty"] ?? item["readyToShipQty"]) || 0;
                     const msl = totalMonth > 0 ? (total / totalMonth) * 4 : 0;
+                    const m_avg = totalMonth > 0 ? total / totalMonth : 0;
 
                     // Get stage from item to determine which fields to use for to_order calculation
                     const itemStage = item.stage || '';
@@ -1460,6 +1495,10 @@
                     const lp = parseFloat(item["LP"]) || 0;
                     const msl_c = Math.round((msl * lp / 4) * 100) / 100; // Round to 2 decimal places
                     
+                    // MSL_SP badge: same as MSL_LP but AMZ price (amazon_datsheets.price)
+                    const amzPrc = parseFloat(item.amz_prc) || 0;
+                    const msl_sp_amz = Math.round((msl * amzPrc / 4) * 100) / 100;
+                    
                     // Calculate MSL SP (shopify price * MSL / 4)
                     const shopifyPrice = parseFloat(item["shopifyb2c_price"]) || 0;
                     const msl_sp = Math.round(shopifyPrice * msl / 4);
@@ -1487,8 +1526,11 @@
                         sl_no: index + 1,
                         pft_percent: item['pft%'] ?? null,
                         msl: Math.round(msl),
+                        m_avg: m_avg,
                         MSL_C: msl_c,
                         MSL_SP: msl_sp,
+                        MSL_SP_AMZ: msl_sp_amz,
+                        amz_prc: amzPrc,
                         to_order: toOrder,
                         two_order_qty: twoOrderQty,
                         appr_req_qty: apprReqQty,
@@ -1522,6 +1564,8 @@
                         const sumMOQ = children.reduce((s, c) => s + (parseFloat(c.MOQ) || parseFloat(c.raw_data && c.raw_data["MOQ"]) || 0), 0);
                         const sumTwoOrderQty = children.reduce((s, c) => s + (parseFloat(c.two_order_qty) || 0), 0);
                         const sumApprReqQty = children.reduce((s, c) => s + (parseFloat(c.appr_req_qty) || 0), 0);
+                        row.m_avg = 0;
+                        row.TAT = null;
                         row.INV = sumInv;
                         row["L30"] = sumL30;
                         row.order_given = sumOrderGiven;
@@ -1573,14 +1617,12 @@
                     const r2sCount = allData.filter(row => notParent(row) && (parseFloat(row.readyToShipQty) || 0) > 0).length;
                     const transitCount = allData.filter(row => notParent(row) && (parseFloat(row.transit) || 0) > 0).length;
                     const twoOrderStageCount = allData.filter(row => notParent(row) && (parseFloat(row.two_order_qty) || 0) > 0).length;
-                    const apprReqStageCount = allData.filter(row => notParent(row) && (parseFloat(row.appr_req_qty) || 0) > 0).length;
                     table.updateColumnDefinition("msl", { title: "MSL (" + mslCount + ")" });
                     table.updateColumnDefinition("to_order", { title: "2 Ord (" + toOrderCount + ")" });
-                    table.updateColumnDefinition("appr_req_qty", { title: "Appr.req (" + apprReqStageCount + ")" });
-                    table.updateColumnDefinition("two_order_qty", { title: "2 Order (" + twoOrderStageCount + ")" });
+                    table.updateColumnDefinition("two_order_qty", { title: "Order (" + twoOrderStageCount + ")" });
                     table.updateColumnDefinition("order_given", { title: "MIP (" + mipCount + ")" });
                     table.updateColumnDefinition("readyToShipQty", { title: "R2S (" + r2sCount + ")" });
-                    table.updateColumnDefinition("transit", { title: "Transit (" + transitCount + ")" });
+                    table.updateColumnDefinition("transit", { title: "Trn (" + transitCount + ")" });
                 }, 0);
                 return sorted;
             },
@@ -1790,12 +1832,38 @@
 
         let currentParentFilter = null;
         let currentColorFilter = null;
-        let hideNRYes = true;
-        let hideLATERYes = true;
-        let currentRowTypeFilter = 'all';
-        let currentRestockFilter = false;
-        let currentZeroInvFilter = false;
+        const hideNRYes = false;
+        const hideLATERYes = false;
+        let currentRowTypeFilter = 'sku';
         let currentStageFilter = '';
+        /** INV header: empty=all, 0/zero=exactly 0, >0/gt0=positive */
+        let currentInvFilter = '';
+        function invHeaderFilterMode(raw) {
+            if (raw === undefined || raw === null) return '';
+            const s = String(raw).trim().toLowerCase();
+            if (s === '' || s === 'all') return '';
+            if (s === '0' || s === 'zero' || s === '=0') return 'zero';
+            if (s === '>0' || s === '> 0' || s === 'gt0' || s === '+' || s === 'pos' || s === 'positive') return 'gt0';
+            return '';
+        }
+        function invHeaderMatchesRow(data) {
+            if (!data) return true;
+            const mode = invHeaderFilterMode(currentInvFilter);
+            if (!mode) return true;
+            const invValue = data.raw_data ? data.raw_data["INV"] : data["INV"];
+            const inv = parseFloat(invValue);
+            const invNum = Number.isFinite(inv) ? inv : 0;
+            if (mode === 'gt0') return invNum > 0;
+            if (mode === 'zero') return invNum === 0;
+            return true;
+        }
+        function syncInvFilterFromHeader() {
+            const tbl = Tabulator.findTable("#forecast-table")[0];
+            if (!tbl || typeof tbl.getHeaderFilterValue !== 'function') return;
+            const v = tbl.getHeaderFilterValue("INV");
+            currentInvFilter = v === undefined || v === null ? '' : String(v);
+            if (typeof setCombinedFilters === 'function') setCombinedFilters();
+        }
         function syncParentStageQtyColumns(parentKey) {
             if (!parentKey || typeof table === 'undefined' || !table) return;
             let sumTwo = 0;
@@ -1844,21 +1912,37 @@
             updateNRPMultiselectLabel();
         }
 
+        /** APPR Req. filter: hide rows with any pipeline qty in 2 Order / MIP / R2S / Transit */
+        function apprReqHideRowForPipelineQty(rowData) {
+            if (!rowData || rowData.is_parent) return false;
+            const raw = rowData.raw_data || {};
+            const transit = parseFloat(rowData.transit ?? raw.transit ?? 0) || 0;
+            const r2s = parseFloat(raw.readyToShipQty ?? raw['readyToShipQty'] ?? rowData.readyToShipQty ?? 0) || 0;
+            const mip = parseFloat(raw.order_given ?? raw['Order Given'] ?? 0) || 0;
+            const twoOrd = parseFloat(rowData.two_order_qty ?? 0) || 0;
+            return transit > 0 || r2s > 0 || mip > 0 || twoOrd > 0;
+        }
+
+        /** Appr Req. filter: hide NRP = 2BDC (NR) and LATER — only REQ rows */
+        function apprReqHideRowForNrp2BdcOrLater(rowData) {
+            if (!rowData || rowData.is_parent) return false;
+            const nr = String(rowData.nr || '').trim().toUpperCase();
+            return nr === 'NR' || nr === 'LATER';
+        }
+
+        function apprReqYellowRowVisible(rowData) {
+            return rowData &&
+                rowData.to_order >= 0 &&
+                !apprReqHideRowForPipelineQty(rowData) &&
+                !apprReqHideRowForNrp2BdcOrLater(rowData);
+        }
+
         function setCombinedFilters() {
             const allData = table.getData();
             const groupedChildrenMap = {};
             const visibleParentKeys = new Set();
 
             const nrpSel = getEffectiveNRPFilterSet();
-
-            // Calculate total restock count
-            const restockCount = allData.filter(item => {
-                const invValue = item.raw_data ? item.raw_data["INV"] : item["INV"];
-                const inv = parseFloat(invValue) || 0;
-                return !item.is_parent && inv === 0;
-            }).length;
-            document.getElementById('total_restock').textContent = restockCount;
-            document.getElementById('zero_inv_count').textContent = restockCount;
 
             // Group all children by parent
             allData.forEach(item => {
@@ -1900,23 +1984,12 @@
                         }
                     }
                     
-                    let filterMatch = true;
-                    if (currentRestockFilter) {
-                        const invValue = child.raw_data ? child.raw_data["INV"] : child["INV"];
-                        const l30Value = child.raw_data ? child.raw_data["L30"] : child["L30"];
-                        const inv = parseFloat(invValue) || 0;
-                        const l30 = parseFloat(l30Value) || 0;
-                        const dilOver100 = inv === 0 || (inv > 0 && l30 / inv > 1);
-                        filterMatch = dilOver100;
-                    } 
-                    else {
-                        filterMatch = currentColorFilter === 'red' ?
-                            child.to_order < 0 :
-                            currentColorFilter === 'yellow' ?
-                            child.to_order >= 0 :
-                            true;
-                    }
-                    return nrMatch && laterMatch && nrpMatch && stageMatch && filterMatch;
+                    const filterMatch = currentColorFilter === 'red' ?
+                        child.to_order < 0 :
+                        currentColorFilter === 'yellow' ?
+                        apprReqYellowRowVisible(child) :
+                        true;
+                    return nrMatch && laterMatch && nrpMatch && stageMatch && filterMatch && invHeaderMatchesRow(child);
                 });
 
                 if (matchingChildren.length > 0) {
@@ -1930,21 +2003,11 @@
                 const isChild = !data.is_parent;
                 const isParent = data.is_parent;
 
-                let matchesFilter = true;
-                if (currentRestockFilter) {
-                    const invValue = data.raw_data ? data.raw_data["INV"] : data["INV"];
-                    const l30Value = data.raw_data ? data.raw_data["L30"] : data["L30"];
-                    const inv = parseFloat(invValue) || 0;
-                    const l30 = parseFloat(l30Value) || 0;
-                    const dilOver100 = inv === 0 || (inv > 0 && l30 / inv > 1);
-                    matchesFilter = dilOver100;
-                } else {
-                    matchesFilter = currentColorFilter === 'red' ?
-                        data.to_order < 0 :
-                        currentColorFilter === 'yellow' ?
-                        data.to_order >= 0 :
-                        true;
-                }
+                const matchesFilter = currentColorFilter === 'red' ?
+                    data.to_order < 0 :
+                    currentColorFilter === 'yellow' ?
+                    apprReqYellowRowVisible(data) :
+                    true;
 
                 const dataNR = data.nr || '';
                 let effectiveNR = (dataNR === '' ? 'REQ' : String(dataNR).trim().toUpperCase());
@@ -1976,37 +2039,32 @@
                 // 🎯 Force filter to one parent group if play mode is active
                 if (currentParentFilter) {
                     if (isParent) {
+                        if (currentColorFilter === 'yellow') {
+                            return false;
+                        }
                         return data.Parent === currentParentFilter;
                     } else {
-                        let okChild = data.Parent === currentParentFilter && matchesFilter && matchesNR && matchesLATER && nrpMatch && stageMatch;
-                        if (currentRowTypeFilter === 'sku_value' && okChild) {
-                            const iv = parseFloat(data.inv_value) || 0;
-                            const lv = parseFloat(data.lp_value) || 0;
-                            okChild = iv > 0 || lv > 0;
-                        }
-                        return okChild;
+                        return data.Parent === currentParentFilter && matchesFilter && matchesNR && matchesLATER && nrpMatch && stageMatch && invHeaderMatchesRow(data);
                     }
                 }
 
                 if (isChild) {
-                    const showChild = matchesFilter && matchesNR && matchesLATER && nrpMatch && stageMatch;
+                    const showChild = matchesFilter && matchesNR && matchesLATER && nrpMatch && stageMatch && invHeaderMatchesRow(data);
                     if (currentRowTypeFilter === 'parent') return false;
                     if (currentRowTypeFilter === 'sku') return showChild;
-                    if (currentRowTypeFilter === 'sku_value') {
-                        if (!showChild) return false;
-                        const iv = parseFloat(data.inv_value) || 0;
-                        const lv = parseFloat(data.lp_value) || 0;
-                        return iv > 0 || lv > 0;
-                    }
                     return showChild;
                 }
 
                 if (isParent) {
-                    if (currentRowTypeFilter === 'sku' || currentRowTypeFilter === 'sku_value') return false;
+                    if (currentColorFilter === 'yellow') {
+                        return false;
+                    }
+                    if (currentRowTypeFilter === 'sku') return false;
                     // When NRP multiselect is partial (not all types), only show parents that have
                     // at least one visible child matching filters — otherwise every parent stayed visible
                     // with default REQ styling while children were filtered (broken UX).
-                    if (nrpSel !== null) {
+                    const useChildDerivedParentVisibility = (nrpSel !== null) || !!invHeaderFilterMode(currentInvFilter);
+                    if (useChildDerivedParentVisibility) {
                         return visibleParentKeys.has(data.Parent);
                     }
                     const showParent =
@@ -2039,6 +2097,18 @@
                 if (totalMslCElement) {
                     const wholeNumber = Math.round(totalMslC);
                     totalMslCElement.textContent = wholeNumber.toLocaleString('en-US');
+                }
+
+                let totalMslSpAmz = 0;
+                visibleRows.forEach(row => {
+                    const data = row.getData();
+                    if (!data.is_parent) {
+                        totalMslSpAmz += parseFloat(data.MSL_SP_AMZ) || 0;
+                    }
+                });
+                const totalMslSpAmzEl = document.getElementById('total_msl_sp_amz_value');
+                if (totalMslSpAmzEl) {
+                    totalMslSpAmzEl.textContent = Math.round(totalMslSpAmz).toLocaleString('en-US');
                 }
 
                 // Calculate total Restock MSL for visible rows
@@ -2200,22 +2270,15 @@
                     totalR2sValueElement.textContent = roundedTotal.toLocaleString('en-US');
                 }
 
-                // Note: Transit Value is calculated from ALL transit_container_details records (like transit-container-details page)
-                // It should remain constant regardless of filters, so we don't recalculate it here
-                // The value is set in ajaxResponse from the pre-calculated total_transit_value from controller
-                // Transit Value total is from ALL transit_container_details records across ALL tabs, not just filtered table rows
+                // Trn Val badge: sum(transit QTY × CP) from controller; not recalculated on row filter
             }, 50);
 
             const visibleRows = table.getRows(true).map(r => r.getData());
             const yellowCount = visibleRows.filter(r =>
-                r.to_order >= 0 &&
-                !r.is_parent &&
-                r.nr !== 'NR'
+                !r.is_parent && apprReqYellowRowVisible(r)
             ).length;
 
             document.getElementById('yellow-count-box').textContent = `Appr Req: ${yellowCount}`;
-            document.getElementById('toggle-nr-rows').textContent = hideNRYes ? "Show NR" : "Hide NR";
-            document.getElementById('toggle-later-rows').textContent = hideLATERYes ? "Show LATER" : "Hide LATER";
         }
 
         function updateParentTotalsBasedOnVisibleRows() {
@@ -2488,18 +2551,6 @@
                 }
             });
 
-            // Show All Columns button
-            document.getElementById("show-all-columns-btn").addEventListener("click", function() {
-                const checkboxes = document.querySelectorAll(
-                    "#column-dropdown-menu input[type='checkbox']");
-                checkboxes.forEach(cb => {
-                    cb.checked = true;
-                    const col = table.getColumn(cb.value);
-                    if (col) col.show();
-                });
-                saveColumnVisibilityToLocalStorage();
-            });
-
             // On focus, select all text in MOQ so user can replace whole value in one go
             $(document).off('focus', '.editable-qty').on('focus', '.editable-qty', function() {
                 const $cell = $(this);
@@ -2583,7 +2634,7 @@
                                 const apprq = st === 'appr_req' ? moqNum : 0;
                                 row.update({ MOQ: newValue, two_order_qty: twoq, appr_req_qty: apprq }, true);
                                 syncParentStageQtyColumns(d.Parent || d.parentKey);
-                                ['two_order_qty', 'appr_req_qty'].forEach(function(f) {
+                                ['two_order_qty', 'appr_req_qty', 'TAT'].forEach(function(f) {
                                     const c = row.getCells().find(function(x) { return x.getField() === f; });
                                     if (c) c.reformat();
                                 });
@@ -2688,8 +2739,8 @@
                     // For date input: skip if no change
                     if (isDate && newValue === originalValue) return;
 
-                    // Add visual feedback
-                    $el.css('opacity', '0.6');
+                    // Add visual feedback (NRP uses dot + reformat; skip dimming invisible select)
+                    if (field !== 'NR') $el.css('opacity', '0.6');
                     
                     // Debounce for rapid changes
                     debounce(`select-${sku}-${field}`, function() {
@@ -2700,7 +2751,7 @@
                                 value: newValue
                             },
                             function() {
-                                $el.css('opacity', '1');
+                                if (field !== 'NR') $el.css('opacity', '1');
                                 
                                 if (isDate) {
                                     $el.data('original', newValue);
@@ -2714,7 +2765,10 @@
                                 
                                 if (field === 'NR') {
                                     row.update({ nr: newValue }, true);
-                                    setCombinedFilters(); // NR affects filtering
+                                    const nrCell = row.getCells().find(function(c) { return c.getField() === 'nr'; });
+                                    if (nrCell) nrCell.reformat();
+                                    setCombinedFilters();
+                                    return;
                                 } else if (field === 'Stage') {
                                     const rowData = row.getData();
                                     
@@ -2886,6 +2940,28 @@
             document.documentElement.setAttribute("data-sidenav-size", "condensed");
             const table = Tabulator.findTable("#forecast-table")[0];
 
+            (function initRowDataTypeSelect() {
+                const sel = document.getElementById('row-data-type');
+                if (!sel) return;
+                const prev = (sel.value || 'sku').trim();
+                const ROW_TYPE_OPTS = [
+                    ['all', '🔁 Show All'],
+                    ['sku', '🔹 SKU (Child)'],
+                    ['parent', '🔸 Parent']
+                ];
+                sel.innerHTML = '';
+                ROW_TYPE_OPTS.forEach(function(pair) {
+                    const o = document.createElement('option');
+                    o.value = pair[0];
+                    o.textContent = pair[1];
+                    sel.appendChild(o);
+                });
+                const allowed = new Set(ROW_TYPE_OPTS.map(function(p) { return p[0]; }));
+                sel.value = allowed.has(prev) ? prev : 'sku';
+                currentRowTypeFilter = sel.value;
+                if (typeof setCombinedFilters === 'function') setCombinedFilters();
+            })();
+
             const parentKeys = () => Object.keys(groupedSkuData);
             let currentIndex = 0;
             let isPlaying = false;
@@ -2939,14 +3015,9 @@
                 document.getElementById('play-auto').style.display = 'inline-block';
             });
 
-            const countContainer = document.getElementById('yellow-count-container');
-            countContainer.classList.add('d-none');
-
-            // Set yellow filter as default
             currentColorFilter = '';
-            document.getElementById('yellow-count-container').classList.remove('d-none');
-            document.getElementById('order-color-filter-dropdown').innerHTML =
-                '<i class="bi bi-funnel-fill text-dark"></i> <span class="text-dark fw-bold">2 Ord</span>';
+            const apprLabelEl = document.getElementById('appr-req-badge-label');
+            if (apprLabelEl) apprLabelEl.textContent = 'All';
             setCombinedFilters();
 
             document.querySelectorAll('#order-color-filter-dropdown + .dropdown-menu [data-filter]').forEach(
@@ -2956,50 +3027,31 @@
                         currentColorFilter = filter || null;
                         setCombinedFilters();
 
-                        const buttonText = filter ? filter.charAt(0).toUpperCase() + filter.slice(1) +
-                            ' Filter' : 'All';
-                        document.getElementById('order-color-filter-dropdown').innerHTML =
-                            `<i class="bi bi-funnel-fill"></i> ${buttonText}`;
-
-                        const countContainer = document.getElementById('yellow-count-container');
-                        if (filter === 'yellow') {
-                            countContainer.classList.remove('d-none');
-                        } else {
-                            countContainer.classList.add('d-none');
+                        const lbl = document.getElementById('appr-req-badge-label');
+                        if (lbl) {
+                            lbl.textContent = filter === 'yellow' ? 'Appr Req.' :
+                                (filter === 'red' ? 'Filter' : 'All');
+                        }
+                        const ddBtn = document.getElementById('order-color-filter-dropdown');
+                        if (ddBtn && typeof bootstrap !== 'undefined' && bootstrap.Dropdown) {
+                            const inst = bootstrap.Dropdown.getInstance(ddBtn);
+                            if (inst) inst.hide();
                         }
                     });
                 });
-
-            document.getElementById('toggle-nr-rows').addEventListener('click', function() {
-                hideNRYes = !hideNRYes;
-                setCombinedFilters();
-
-                if (currentColorFilter === 'yellow') {
-                    const allData = table.getRows().map(r => r.getData());
-                    const yellowCount = allData.filter(r => r.to_order >= 0 && !r.is_parent && (hideNRYes ?
-                        r.nr !== 'NR' : true)).length;
-                    document.getElementById('yellow-count-box').textContent =
-                        `Appr Req: ${yellowCount}`;
-                }
-
-                document.getElementById('toggle-nr-rows').textContent = hideNRYes ? "Show NR" : "Hide NR";
-
-            });
-
-            document.getElementById('toggle-later-rows').addEventListener('click', function() {
-                hideLATERYes = !hideLATERYes;
-                setCombinedFilters();
-                document.getElementById('toggle-later-rows').textContent = hideLATERYes ? "Show LATER" : "Hide LATER";
-            });
 
             document.getElementById('row-data-type').addEventListener('change', function(e) {
                 currentRowTypeFilter = e.target.value;
                 setCombinedFilters();
             });
 
-            // Stage filter event listener
+            // Stage filter (toolbar) — keep in sync with Stage column header filter
             document.getElementById('stage-filter').addEventListener('change', function(e) {
                 currentStageFilter = e.target.value;
+                const tbl = Tabulator.findTable("#forecast-table")[0];
+                if (tbl && typeof tbl.setHeaderFilterValue === 'function') {
+                    tbl.setHeaderFilterValue("stage", currentStageFilter || "");
+                }
                 setCombinedFilters();
             });
 
@@ -3028,6 +3080,24 @@
                             syncNRPMultiselectFromHeader(tbl.getHeaderFilterValue("nr"));
                         }
                         setCombinedFilters();
+                    }
+                    if (e.target.closest && e.target.closest('.tabulator-col[tabulator-field="stage"]')) {
+                        const tbl = Tabulator.findTable("#forecast-table")[0];
+                        if (tbl && typeof tbl.getHeaderFilterValue === 'function') {
+                            let v = tbl.getHeaderFilterValue("stage");
+                            currentStageFilter = (v === undefined || v === null) ? "" : String(v);
+                            const sf = document.getElementById("stage-filter");
+                            if (sf) sf.value = currentStageFilter;
+                            setCombinedFilters();
+                        }
+                    }
+                    if (e.target.closest && e.target.closest('.tabulator-col[tabulator-field="INV"]')) {
+                        syncInvFilterFromHeader();
+                    }
+                });
+                tableEl.addEventListener('input', function(e) {
+                    if (e.target.closest && e.target.closest('.tabulator-col[tabulator-field="INV"]')) {
+                        syncInvFilterFromHeader();
                     }
                 });
             }
@@ -3151,65 +3221,5 @@
             instance.show();
         }
 
-        document.getElementById("total-transit").addEventListener("click", function(e) {
-            currentColorFilter = null;
-
-            setCombinedFilters();
-
-            table.setSort([{
-                column: "transit",
-                dir: "desc",
-                sorter: function(a, b) {
-                    const aValue = a.getData().transit ? 1 : 0;
-                    const bValue = b.getData().transit ? 1 : 0;
-                    return bValue - aValue;
-                }
-            }]);
-        });
-
-        document.getElementById("restock_needed").addEventListener("click", function(e) {
-            currentRestockFilter = true;
-            currentColorFilter = null;
-
-            setCombinedFilters();
-
-            table.setSort([{
-                column: "ov_dil",
-                dir: "desc",
-                sorter: function(a, b) {
-                    const aData = a.getData();
-                    const aInv = parseFloat(aData.raw_data ? aData.raw_data["INV"] : aData[
-                        "INV"]) || 0;
-                    const aL30 = parseFloat(aData.raw_data ? aData.raw_data["L30"] : aData[
-                        "L30"]) || 0;
-                    const aDil = aInv === 0 ? Infinity : (aL30 / aInv) * 100;
-
-                    const bData = b.getData();
-                    const bInv = parseFloat(bData.raw_data ? bData.raw_data["INV"] : bData[
-                        "INV"]) || 0;
-                    const bL30 = parseFloat(bData.raw_data ? bData.raw_data["L30"] : bData[
-                        "L30"]) || 0;
-                    const bDil = bInv === 0 ? Infinity : (bL30 / bInv) * 100;
-
-                    return bDil - aDil;
-                }
-            }]);
-        });
     </script>
-
-        <script>
-            (function(){
-                const select = document.currentScript.previousElementSibling;
-                const setColor = (val) => {
-                    if(val === 'REQ') select.style.backgroundColor = 'green';
-                    else if(val === 'NR') select.style.backgroundColor = 'red';
-                    else if(val === 'LATER') select.style.backgroundColor = 'yellow';
-                    select.style.color = (val === 'LATER') ? 'black' : 'white';
-                };
-                setColor(select.value);
-                select.addEventListener('change', function() {
-                    setColor(this.value);
-                });
-            })();
-        </script>
 @endsection

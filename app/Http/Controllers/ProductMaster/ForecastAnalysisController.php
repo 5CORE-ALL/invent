@@ -66,6 +66,31 @@ class ForecastAnalysisController extends Controller
             return $normalizeSku($item->sku);
         });
 
+        $amazonPriceBySku = [];
+        foreach (DB::table('amazon_datsheets')->whereNotNull('sku')->get(['sku', 'price']) as $ar) {
+            $k = $normalizeSku($ar->sku ?? '');
+            if ($k === '') {
+                continue;
+            }
+            $p = is_numeric($ar->price) ? (float) $ar->price : 0.0;
+            if ($p > 0) {
+                $amazonPriceBySku[$k] = $p;
+            }
+        }
+        $resolveAmazonPrice = function ($sheetSku) use ($amazonPriceBySku, $normalizeSku) {
+            $k = $normalizeSku($sheetSku);
+            if (isset($amazonPriceBySku[$k]) && $amazonPriceBySku[$k] > 0) {
+                return $amazonPriceBySku[$k];
+            }
+            $skuNoSpaces = str_replace(' ', '', $k);
+            foreach ($amazonPriceBySku as $key => $p) {
+                if ($p > 0 && str_replace(' ', '', $key) === $skuNoSpaces) {
+                    return $p;
+                }
+            }
+
+            return 0.0;
+        };
 
         $supplierRows = Supplier::where('type', 'Supplier')->get();
         $supplierMapByParent = [];
@@ -97,6 +122,11 @@ class ForecastAnalysisController extends Controller
         });
         $movementMap = DB::table('movement_analysis')->get()->keyBy(fn($item) => $normalizeSku($item->sku));
         $readyToShipMap = DB::table('ready_to_ship')->where('transit_inv_status', 0)->whereNull('deleted_at')->get()->keyBy(fn($item) => $normalizeSku($item->sku));
+        $toOrderApprovedBySku = collect(DB::table('to_order_analysis')
+            ->whereNull('deleted_at')
+            ->get(['sku', 'approved_qty']))
+            ->groupBy(fn ($r) => $normalizeSku($r->sku))
+            ->map(fn ($rows) => (float) $rows->max(fn ($r) => (float) ($r->approved_qty ?? 0)));
         $mfrg = DB::table('mfrg_progress')->get()->keyBy(fn($item) => $normalizeSku($item->sku));
         $purchases = DB::table('purchases')->whereNull('deleted_at')
             ->select('items')
@@ -382,9 +412,22 @@ class ForecastAnalysisController extends Controller
 
                 $item->{'MSL_SP'} = floor($shopifyb2c_price * $effectiveMsl / 4);
 
+                $amzPrc = $resolveAmazonPrice($sheetSku);
+                $item->amz_prc = $amzPrc;
+                $item->{'MSL_SP_AMZ'} = round($msl * $amzPrc / 4, 2);
+
                 $item->msl = (int) round($msl);
+                // M AVG = average monthly movement (same months as MSL: sum of movement / count of non-zero months)
+                $mAvg = $totalMonthCount > 0 ? ($totalSum / $totalMonthCount) : 0.0;
+                $item->m_avg = round($mAvg, 6);
+                $moqVal = is_numeric($item->{'MOQ'} ?? null) ? (float) $item->{'MOQ'} : (float) preg_replace('/[^0-9.\-]/', '', (string) ($item->{'MOQ'} ?? ''));
+                $item->TAT = $mAvg > 0 ? (int) round($moqVal / $mAvg) : null;
             } else {
                 $item->msl = 0;
+                $item->amz_prc = $resolveAmazonPrice($sheetSku);
+                $item->{'MSL_SP_AMZ'} = 0;
+                $item->m_avg = 0.0;
+                $item->TAT = null;
             }
 
             $cp = (float)($item->{'CP'} ?? 0);
@@ -426,70 +469,31 @@ class ForecastAnalysisController extends Controller
                 $item->Transit_Value = round($cp * $transit, 2);
             }
 
-            // Auto-clear Transit stage → empty (Select) when pipeline qtys are 0 and 2 Ord < 1
-            if (
-                ! $item->is_parent
-                && strtolower(trim((string) ($item->stage ?? ''))) === 'transit'
-            ) {
-                $og = (float) ($item->order_given ?? 0);
-                $r2sQ = (float) ($item->readyToShipQty ?? 0);
-                $transitUnits = (float) ($item->transit ?? 0);
-                if ($og == 0.0 && $r2sQ == 0.0 && $transitUnits == 0.0) {
-                    $totalMonth = (float) ($item->{'Total month'} ?? 0);
-                    $total = (float) ($item->{'Total'} ?? 0);
-                    $mslForOrd = $totalMonth > 0
-                        ? ($total / $totalMonth) * 4
-                        : (float) ($item->msl ?? 0);
-                    $inv = (float) ($item->INV ?? 0);
-                    // Same as forecast blade for transit stage: no MIP/R2S subtracted from 2 Ord
-                    $toOrderCalc = (int) round($mslForOrd - $inv - $transitUnits);
-                    if ($toOrderCalc < 1) {
-                        DB::table('forecast_analysis')
-                            ->whereRaw('TRIM(LOWER(sku)) = ?', [strtolower($sheetSku)])
-                            ->whereRaw('LOWER(TRIM(COALESCE(stage, \'\'))) = ?', ['transit'])
-                            ->update(['stage' => '', 'updated_at' => now()]);
-                        $item->stage = '';
-                    }
-                }
-            }
-
-            // Appr. Req: MIP/R2S/Transit qty all 0, 2 Ord > 0 (same formula as forecast blade), MOQ ← Product Master
+            // Stage from pipeline qtys: Transit → R2S → MIP → 2 Order; none → Select (empty)
             if (! $item->is_parent) {
-                $ogAppr = (float) ($item->order_given ?? 0);
-                $r2sAppr = (float) ($item->readyToShipQty ?? 0);
-                $transitAppr = (float) ($item->transit ?? 0);
-                if ($ogAppr == 0.0 && $r2sAppr == 0.0 && $transitAppr == 0.0) {
-                    $totalMonthAppr = (float) ($item->{'Total month'} ?? 0);
-                    $totalAppr = (float) ($item->{'Total'} ?? 0);
-                    $mslAppr = $totalMonthAppr > 0
-                        ? ($totalAppr / $totalMonthAppr) * 4
-                        : (float) ($item->msl ?? 0);
-                    $invAppr = (float) ($item->INV ?? 0);
-                    $stageAppr = strtolower(trim((string) ($item->stage ?? '')));
-                    $effOg = ($stageAppr === 'mip') ? $ogAppr : 0.0;
-                    $effR2s = ($stageAppr === 'r2s') ? $r2sAppr : 0.0;
-                    $toOrderAppr = (int) round($mslAppr - $invAppr - $transitAppr - $effOg - $effR2s);
-                    if ($toOrderAppr > 0) {
-                        if (! in_array($stageAppr, ['appr_req', 'to_order_analysis'], true)) {
-                            $moqForAppr = $productMasterMoq > 0
-                                ? $productMasterMoq
-                                : max((float) ($item->{'MOQ'} ?? 0), (float) ($item->{'Approved QTY'} ?? 0));
-                            $updateAppr = ['stage' => 'appr_req', 'updated_at' => now()];
-                            if ($moqForAppr > 0) {
-                                $updateAppr['approved_qty'] = $moqForAppr;
-                            }
-                            DB::table('forecast_analysis')
-                                ->whereRaw('TRIM(LOWER(sku)) = ?', [strtolower($sheetSku)])
-                                ->whereRaw('LOWER(TRIM(COALESCE(stage, \'\'))) NOT IN (?, ?)', ['appr_req', 'to_order_analysis'])
-                                ->update($updateAppr);
-                            $item->stage = 'appr_req';
-                            if ($moqForAppr > 0) {
-                                $item->{'MOQ'} = $moqForAppr;
-                                $item->{'Approved QTY'} = $moqForAppr;
-                            }
-                        }
-                    }
+                $qtyTransit = (float) ($item->transit ?? 0);
+                $qtyR2s = (float) ($item->readyToShipQty ?? 0);
+                $qtyMip = (float) ($item->order_given ?? 0);
+                // 2 Order column = to_order_analysis approved qty only (not Appr.req MOQ)
+                $qtyTwoOrder = (float) ($toOrderApprovedBySku->get($sheetSku, 0));
+                if ($qtyTransit > 0) {
+                    $derivedStage = 'transit';
+                } elseif ($qtyR2s > 0) {
+                    $derivedStage = 'r2s';
+                } elseif ($qtyMip > 0) {
+                    $derivedStage = 'mip';
+                } elseif ($qtyTwoOrder > 0) {
+                    $derivedStage = 'to_order_analysis';
+                } else {
+                    $derivedStage = '';
                 }
+                $currentStage = strtolower(trim((string) ($item->stage ?? '')));
+                if ($currentStage !== $derivedStage) {
+                    DB::table('forecast_analysis')
+                        ->whereRaw('TRIM(LOWER(sku)) = ?', [strtolower($sheetSku)])
+                        ->update(['stage' => $derivedStage, 'updated_at' => now()]);
+                }
+                $item->stage = $derivedStage;
             }
 
             $item->product_master_moq = $productMasterMoq;
@@ -521,20 +525,25 @@ class ForecastAnalysisController extends Controller
                     return floatval($item->{'MSL_SP'} ?? 0);
                 });
 
-            // Calculate total Transit Value from ALL transit_container_details records (like transit-container-details page)
-            // This matches the transit-container-details page calculation: sum of (qty * rate) for ALL rows across ALL tabs
-            $totalTransitValue = TransitContainerDetail::whereNull('deleted_at')
-                ->where(function ($q) {
-                    $q->whereNull('status')
-                    ->orWhere('status', '');
+            $totalMslSpAmz = collect($processedData)
+                ->filter(function ($item) {
+                    return ! $item->is_parent;
                 })
-                ->get()
-                ->sum(function ($row) {
-                    $no_of_units = (float) ($row->no_of_units ?? 0);
-                    $total_ctn = (float) ($row->total_ctn ?? 0);
-                    $rate = (float) ($row->rate ?? 0);
-                    $qty = $no_of_units * $total_ctn;
-                    return $qty * $rate; // Calculate qty * rate for each row (like transit-container-details page)
+                ->sum(function ($item) {
+                    return floatval($item->{'MSL_SP_AMZ'} ?? 0);
+                });
+
+            // Trn Val: sum of (transit QTY × CP) per SKU (child rows only).
+            // Transit qty matches the grid (aggregated units×ctn per SKU, warehouse-pushed lines excluded).
+            $totalTransitValue = collect($processedData)
+                ->filter(function ($item) {
+                    return ! $item->is_parent;
+                })
+                ->sum(function ($item) {
+                    $transitQty = (float) ($item->transit ?? 0);
+                    $cp = (float) ($item->{'CP'} ?? 0);
+
+                    return $transitQty * $cp;
                 });
 
             return response()->json([
@@ -542,7 +551,8 @@ class ForecastAnalysisController extends Controller
                 'data' => $processedData,
                 'total_msl_c' => round($totalMslC, 2),
                 'total_msl_sp' => round($totalMslSp, 0),
-                'total_transit_value' => round($totalTransitValue, 2), // Total Transit Value from ALL transit_container_details records
+                'total_msl_sp_amz' => round($totalMslSpAmz, 2),
+                'total_transit_value' => round($totalTransitValue, 2), // Sum(transit QTY × CP) for forecast child SKUs
                 'status' => 200,
             ]);
 
