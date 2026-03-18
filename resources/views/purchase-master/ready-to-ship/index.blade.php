@@ -1,6 +1,7 @@
 @extends('layouts.vertical', ['title' => 'Ready To Ship', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
 @section('css')
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
 <link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
 <style>
     .custom-select-wrapper {
@@ -165,6 +166,12 @@
                                 <button id="delete-selected-item" class="btn btn-danger d-none" style="border-radius: 6px;">
                                     <i class="mdi mdi-trash-can"></i> Delete
                                 </button>
+                                <button type="button" id="r2s-add-tab-btn" class="btn btn-primary btn-sm" style="border-radius: 6px;">
+                                    <i class="fas fa-plus"></i> Add Container
+                                </button>
+                                <button type="button" class="btn btn-info btn-sm" style="border-radius: 6px;" data-bs-toggle="modal" data-bs-target="#r2sTransitAddItemModal">
+                                    <i class="fas fa-plus"></i> Add Notes
+                                </button>
                             </div>
                         </div>
                     </div>
@@ -265,6 +272,166 @@
                                     <i class="fas fa-save"></i> Save Remark
                                 </button>
                             </div>
+                        </div>
+                    </div>
+                </div>
+
+                {{-- Same Add Notes form as transit-container-details --}}
+                <div class="modal fade" id="r2sTransitAddItemModal" tabindex="-1" aria-labelledby="r2sTransitAddItemModalLabel" aria-hidden="true">
+                    <div class="modal-dialog modal-xl modal-dialog-centered shadow-none">
+                        <div class="modal-content border-0 shadow-lg">
+                            <div class="modal-header bg-primary text-white">
+                                <h5 class="modal-title fw-bold" id="r2sTransitAddItemModalLabel">
+                                    <i class="fas fa-file-invoice me-2"></i> Add Notes
+                                </h5>
+                                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                            </div>
+                            <form id="r2sPurchaseOrderForm" method="POST" action="{{ url('transit-container/save') }}" enctype="multipart/form-data" autocomplete="off">
+                                @csrf
+                                <div class="modal-body">
+                                    <div>
+                                        <h5 class="fw-semibold mb-2 text-primary">
+                                            <i class="fas fa-boxes-stacked me-1"></i> Notes
+                                        </h5>
+                                        <div class="row g-2">
+                                            <div class="col-md-3">
+                                                <label class="form-label fw-semibold">Container <span class="text-danger">*</span></label>
+                                                <select class="form-select" name="tab_name" id="r2s-transit-tab-select" required>
+                                                    <option value="" disabled selected>select container</option>
+                                                    @foreach($transitTabs as $tab)
+                                                        <option value="{{ $tab }}">{{ $tab }}</option>
+                                                    @endforeach
+                                                </select>
+                                            </div>
+                                        </div>
+                                        <div id="r2sProductRowsWrapper">
+                                            <div class="row g-2 product-row r2s-product-row border rounded p-2 mt-2 position-relative">
+                                                <div class="d-flex justify-content-end position-absolute top-0 end-0 p-2 ">
+                                                    <i class="fas fa-trash-alt text-danger r2s-delete-product-row-btn" style="cursor: pointer; font-size: 1.2rem; margin-top:-10px;"></i>
+                                                </div>
+                                                <div class="col-md-3">
+                                                    <select class="form-select r2s-sku-select" name="our_sku[]" required>
+                                                        <option value="" disabled selected>Select SKU</option>
+                                                        @foreach($transitSkus as $sku)
+                                                            <option value="{{ $sku }}">{{ $sku }}</option>
+                                                        @endforeach
+                                                    </select>
+                                                </div>
+                                                <div class="col-md-3">
+                                                    <label class="form-label fw-semibold">Supplier</label>
+                                                    <select class="form-select" name="supplier_name[]">
+                                                        <option value="" disabled>Select Supplier</option>
+                                                        @foreach($transitSuppliers as $supplier)
+                                                            <option value="{{ $supplier->name }}">{{ $supplier->name }}</option>
+                                                        @endforeach
+                                                    </select>
+                                                </div>
+                                                <div class="col-md-3">
+                                                    <label class="form-label fw-semibold">Qty/Ctns</label>
+                                                    <input type="number" class="form-control" name="no_of_units[]" step="any">
+                                                </div>
+                                                <div class="col-md-3">
+                                                    <label class="form-label fw-semibold">Qty Ctns</label>
+                                                    <input type="number" class="form-control" name="total_ctn[]" step="any">
+                                                </div>
+                                                <div class="col-md-3">
+                                                    <label class="form-label fw-semibold">Qty</label>
+                                                    <input type="number" class="form-control" name="pcs_qty[]" step="any">
+                                                </div>
+                                                <div class="col-md-3">
+                                                    <label class="form-label fw-semibold">Rate ($)</label>
+                                                    <input type="number" class="form-control" name="rate[]" step="any">
+                                                </div>
+                                                <div class="col-md-3">
+                                                    <label class="form-label fw-semibold">CBM</label>
+                                                    <input type="number" class="form-control" name="cbm[]" step="any">
+                                                </div>
+                                                <div class="col-md-3">
+                                                    <label class="form-label fw-semibold">Unit</label>
+                                                    <input type="text" class="form-control" name="unit[]">
+                                                </div>
+                                                <div class="col-md-3">
+                                                    <label class="form-label fw-semibold">Changes</label>
+                                                    <input type="text" class="form-control" name="changes[]">
+                                                </div>
+                                                <div class="col-md-3">
+                                                    <label class="form-label fw-semibold">Specifications</label>
+                                                    <textarea class="form-control" name="specification[]" rows="2"></textarea>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="mt-3">
+                                            <button type="button" class="btn btn-outline-primary btn-sm" id="r2sAddItemRowBtn">
+                                                <i class="fas fa-plus-circle me-1"></i> Add Item Row
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <template id="r2s-product-row-template">
+                                    <div class="row g-2 r2s-product-row border rounded p-2 mt-2 position-relative">
+                                        <div class="d-flex justify-content-end position-absolute top-0 end-0 p-2 ">
+                                            <i class="fas fa-trash-alt text-danger r2s-delete-product-row-btn" style="cursor: pointer; font-size: 1.2rem; margin-top:-10px;"></i>
+                                        </div>
+                                        <div class="col-md-3">
+                                            <select class="form-select r2s-sku-select" name="our_sku[]" required>
+                                                <option value="" disabled selected>Select SKU</option>
+                                                @foreach($transitSkus as $sku)
+                                                    <option value="{{ $sku }}">{{ $sku }}</option>
+                                                @endforeach
+                                            </select>
+                                        </div>
+                                        <div class="col-md-3">
+                                            <label class="form-label fw-semibold">Supplier</label>
+                                            <select class="form-select" name="supplier_name[]">
+                                                <option value="" disabled selected>Select Supplier</option>
+                                                @foreach($transitSuppliers as $supplier)
+                                                    <option value="{{ $supplier->name }}">{{ $supplier->name }}</option>
+                                                @endforeach
+                                            </select>
+                                        </div>
+                                        <div class="col-md-3">
+                                            <label class="form-label fw-semibold">Qty/Ctns</label>
+                                            <input type="number" class="form-control" name="no_of_units[]" step="any">
+                                        </div>
+                                        <div class="col-md-3">
+                                            <label class="form-label fw-semibold">Qty Ctns</label>
+                                            <input type="number" class="form-control" name="total_ctn[]" step="any">
+                                        </div>
+                                        <div class="col-md-3">
+                                            <label class="form-label fw-semibold">Qty</label>
+                                            <input type="number" class="form-control" name="pcs_qty[]" step="any">
+                                        </div>
+                                        <div class="col-md-3">
+                                            <label class="form-label fw-semibold">Rate ($)</label>
+                                            <input type="number" class="form-control" name="rate[]" step="any">
+                                        </div>
+                                        <div class="col-md-3">
+                                            <label class="form-label fw-semibold">CBM</label>
+                                            <input type="number" class="form-control" name="cbm[]" step="any">
+                                        </div>
+                                        <div class="col-md-3">
+                                            <label class="form-label fw-semibold">Unit</label>
+                                            <input type="text" class="form-control" name="unit[]">
+                                        </div>
+                                        <div class="col-md-3">
+                                            <label class="form-label fw-semibold">Changes</label>
+                                            <input type="text" class="form-control" name="changes[]">
+                                        </div>
+                                        <div class="col-md-3">
+                                            <label class="form-label fw-semibold">Specifications</label>
+                                            <textarea class="form-control" name="specification[]" rows="2"></textarea>
+                                        </div>
+                                    </div>
+                                </template>
+                                <div class="modal-footer bg-white">
+                                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
+                                        <i class="fas fa-times me-1"></i> Close
+                                    </button>
+                                    <button type="submit" class="btn btn-primary">
+                                        <i class="fas fa-save me-1"></i> Save
+                                    </button>
+                                </div>
+                            </form>
                         </div>
                     </div>
                 </div>
@@ -2119,5 +2286,94 @@
             updateSupplierCounts();
         }, 500);
     });
+</script>
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+<script>
+(function () {
+    const r2sProductValues = {!! $transitProductValuesMap !!};
+
+    document.getElementById('r2s-add-tab-btn')?.addEventListener('click', async function () {
+        const tabName = prompt('Enter new container name:');
+        if (!tabName || tabName.trim() === '') {
+            alert('Tab name is required.');
+            return;
+        }
+        const response = await fetch('/transit-container/add-tab', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '{{ csrf_token() }}',
+            },
+            body: JSON.stringify({ tab_name: tabName.trim() })
+        });
+        const result = await response.json();
+        if (!result.success) {
+            alert(result.message || 'Failed to create tab.');
+            return;
+        }
+        location.reload();
+    });
+
+    function r2sInitFirstRowSelect2() {
+        const $modal = $('#r2sTransitAddItemModal');
+        const $sel = $modal.find('#r2sProductRowsWrapper .r2s-product-row:first .r2s-sku-select');
+        if ($sel.length && !$sel.hasClass('select2-hidden-accessible')) {
+            $sel.select2({ width: '100%', dropdownParent: $modal });
+        }
+    }
+
+    $('#r2sTransitAddItemModal').on('shown.bs.modal', function () {
+        r2sInitFirstRowSelect2();
+    });
+
+    document.getElementById('r2sAddItemRowBtn')?.addEventListener('click', function () {
+        const tpl = document.getElementById('r2s-product-row-template');
+        if (!tpl || !tpl.content) return;
+        const node = tpl.content.cloneNode(true);
+        document.getElementById('r2sProductRowsWrapper').appendChild(node);
+        const $modal = $('#r2sTransitAddItemModal');
+        const $last = $('#r2sProductRowsWrapper .r2s-product-row:last .r2s-sku-select');
+        $last.select2({ width: '100%', dropdownParent: $modal });
+        r2sBindDeleteBtns();
+    });
+
+    function r2sBindDeleteBtns() {
+        const wrapper = document.getElementById('r2sProductRowsWrapper');
+        if (!wrapper) return;
+        wrapper.querySelectorAll('.r2s-delete-product-row-btn').forEach(function (btn) {
+            btn.onclick = function () {
+                const rows = wrapper.querySelectorAll('.r2s-product-row');
+                if (rows.length > 1) {
+                    const row = btn.closest('.r2s-product-row');
+                    const $sku = $(row).find('.r2s-sku-select');
+                    if ($sku.hasClass('select2-hidden-accessible')) {
+                        $sku.select2('destroy');
+                    }
+                    row.remove();
+                } else {
+                    alert('At least one row is required.');
+                }
+            };
+        });
+    }
+    r2sBindDeleteBtns();
+
+    $(document).on('change', '.r2s-sku-select', function () {
+        let selectedSku = $(this).val();
+        if (!selectedSku) return;
+        selectedSku = selectedSku.toUpperCase().trim().replace(/\s+/g, ' ');
+        const row = $(this).closest('.r2s-product-row');
+        const values = r2sProductValues[selectedSku];
+        if (!values || typeof values !== 'object') {
+            row.find('input[name="cbm[]"]').val('');
+            row.find('input[name="rate[]"]').val('');
+            row.find('input[name="unit[]"]').val('');
+            return;
+        }
+        row.find('input[name="cbm[]"]').val(values.cbm ?? '');
+        row.find('input[name="rate[]"]').val(values.cp ?? '');
+        row.find('input[name="unit[]"]').val(values.unit ? String(values.unit).toLowerCase().trim() : '');
+    });
+})();
 </script>
 @endsection
