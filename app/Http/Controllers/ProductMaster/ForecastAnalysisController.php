@@ -192,6 +192,9 @@ class ForecastAnalysisController extends Controller
 
             $valuesRaw = $prodData->Values ?? '{}';
             $values = json_decode($valuesRaw, true);
+            $productMasterMoq = (isset($values['moq']) && $values['moq'] !== '' && is_numeric($values['moq']))
+                ? (float) $values['moq']
+                : 0.0;
 
             $item->{'CP'} = $values['cp'] ?? '';
             $item->{'LP'} = $values['lp'] ?? '';
@@ -422,6 +425,74 @@ class ForecastAnalysisController extends Controller
                 // Final fallback: CP * transit (for backward compatibility)
                 $item->Transit_Value = round($cp * $transit, 2);
             }
+
+            // Auto-clear Transit stage → empty (Select) when pipeline qtys are 0 and 2 Ord < 1
+            if (
+                ! $item->is_parent
+                && strtolower(trim((string) ($item->stage ?? ''))) === 'transit'
+            ) {
+                $og = (float) ($item->order_given ?? 0);
+                $r2sQ = (float) ($item->readyToShipQty ?? 0);
+                $transitUnits = (float) ($item->transit ?? 0);
+                if ($og == 0.0 && $r2sQ == 0.0 && $transitUnits == 0.0) {
+                    $totalMonth = (float) ($item->{'Total month'} ?? 0);
+                    $total = (float) ($item->{'Total'} ?? 0);
+                    $mslForOrd = $totalMonth > 0
+                        ? ($total / $totalMonth) * 4
+                        : (float) ($item->msl ?? 0);
+                    $inv = (float) ($item->INV ?? 0);
+                    // Same as forecast blade for transit stage: no MIP/R2S subtracted from 2 Ord
+                    $toOrderCalc = (int) round($mslForOrd - $inv - $transitUnits);
+                    if ($toOrderCalc < 1) {
+                        DB::table('forecast_analysis')
+                            ->whereRaw('TRIM(LOWER(sku)) = ?', [strtolower($sheetSku)])
+                            ->whereRaw('LOWER(TRIM(COALESCE(stage, \'\'))) = ?', ['transit'])
+                            ->update(['stage' => '', 'updated_at' => now()]);
+                        $item->stage = '';
+                    }
+                }
+            }
+
+            // Appr. Req: MIP/R2S/Transit qty all 0, 2 Ord > 0 (same formula as forecast blade), MOQ ← Product Master
+            if (! $item->is_parent) {
+                $ogAppr = (float) ($item->order_given ?? 0);
+                $r2sAppr = (float) ($item->readyToShipQty ?? 0);
+                $transitAppr = (float) ($item->transit ?? 0);
+                if ($ogAppr == 0.0 && $r2sAppr == 0.0 && $transitAppr == 0.0) {
+                    $totalMonthAppr = (float) ($item->{'Total month'} ?? 0);
+                    $totalAppr = (float) ($item->{'Total'} ?? 0);
+                    $mslAppr = $totalMonthAppr > 0
+                        ? ($totalAppr / $totalMonthAppr) * 4
+                        : (float) ($item->msl ?? 0);
+                    $invAppr = (float) ($item->INV ?? 0);
+                    $stageAppr = strtolower(trim((string) ($item->stage ?? '')));
+                    $effOg = ($stageAppr === 'mip') ? $ogAppr : 0.0;
+                    $effR2s = ($stageAppr === 'r2s') ? $r2sAppr : 0.0;
+                    $toOrderAppr = (int) round($mslAppr - $invAppr - $transitAppr - $effOg - $effR2s);
+                    if ($toOrderAppr > 0) {
+                        if (! in_array($stageAppr, ['appr_req', 'to_order_analysis'], true)) {
+                            $moqForAppr = $productMasterMoq > 0
+                                ? $productMasterMoq
+                                : max((float) ($item->{'MOQ'} ?? 0), (float) ($item->{'Approved QTY'} ?? 0));
+                            $updateAppr = ['stage' => 'appr_req', 'updated_at' => now()];
+                            if ($moqForAppr > 0) {
+                                $updateAppr['approved_qty'] = $moqForAppr;
+                            }
+                            DB::table('forecast_analysis')
+                                ->whereRaw('TRIM(LOWER(sku)) = ?', [strtolower($sheetSku)])
+                                ->whereRaw('LOWER(TRIM(COALESCE(stage, \'\'))) NOT IN (?, ?)', ['appr_req', 'to_order_analysis'])
+                                ->update($updateAppr);
+                            $item->stage = 'appr_req';
+                            if ($moqForAppr > 0) {
+                                $item->{'MOQ'} = $moqForAppr;
+                                $item->{'Approved QTY'} = $moqForAppr;
+                            }
+                        }
+                    }
+                }
+            }
+
+            $item->product_master_moq = $productMasterMoq;
 
             $processedData[] = $item;
         }

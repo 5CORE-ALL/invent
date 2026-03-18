@@ -157,9 +157,10 @@
                             </button>
 
                             <!-- Row Type Filter -->
-                            <select id="row-data-type" class="form-select-sm border border-primary" style="width: 150px;">
+                            <select id="row-data-type" class="form-select-sm border border-primary" style="width: 170px;">
                                 <option value="all">🔁 Show All</option>
-                                <option value="sku">🔹 SKU (Child)</option>
+                                <option value="sku" selected>🔹 SKU (Child)</option>
+                                <option value="sku_value">💲 SKU Value</option>
                                 <option value="parent">🔸 Parent</option>
                             </select>
 
@@ -172,13 +173,33 @@
                                 <option value="transit">Transit</option>
                             </select>
 
-                            <!-- NRP Filter (ALL Items = show all) -->
-                            <select id="nrp-filter" class="form-select-sm border border-primary" style="width: 150px;">
-                                <option value="" selected>ALL Items</option>
-                                <option value="NR">2BDC</option>
-                                <option value="REQ">REQ</option>
-                                <option value="LATER">LATER</option>
-                            </select>
+                            <!-- NRP / All Items multiselect (checked types are shown) -->
+                            <div class="dropdown d-inline-block">
+                                <button class="btn btn-sm btn-light border border-primary dropdown-toggle text-start" type="button" id="nrp-filter-dropdown" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false" style="min-width: 140px;">
+                                    <span id="nrp-filter-label">ALL Items</span>
+                                </button>
+                                <ul class="dropdown-menu shadow-sm p-2" style="min-width: 180px;" aria-labelledby="nrp-filter-dropdown">
+                                    <li class="small text-muted px-2 mb-1">Show item types</li>
+                                    <li>
+                                        <label class="dropdown-item-text mb-0 d-flex align-items-center gap-2 cursor-pointer">
+                                            <input type="checkbox" class="form-check-input nrp-ms-opt flex-shrink-0" value="REQ" checked>
+                                            <span>REQ</span>
+                                        </label>
+                                    </li>
+                                    <li>
+                                        <label class="dropdown-item-text mb-0 d-flex align-items-center gap-2 cursor-pointer">
+                                            <input type="checkbox" class="form-check-input nrp-ms-opt flex-shrink-0" value="NR" checked>
+                                            <span>2BDC</span>
+                                        </label>
+                                    </li>
+                                    <li>
+                                        <label class="dropdown-item-text mb-0 d-flex align-items-center gap-2 cursor-pointer">
+                                            <input type="checkbox" class="form-check-input nrp-ms-opt flex-shrink-0" value="LATER" checked>
+                                            <span>LATER</span>
+                                        </label>
+                                    </li>
+                                </ul>
+                            </div>
 
                             <button id="total-transit" class="btn btn-sm btn-info">
                                  Transit
@@ -739,6 +760,34 @@
                         return `<div style="text-align:center; font-weight:bold;">${value.toFixed(0)}</div>`;
                     }
                 },
+                {
+                    title: "Appr.req",
+                    field: "appr_req_qty",
+                    accessor: row => (row ? row.appr_req_qty : null),
+                    sorter: "number",
+                    headerSort: true,
+                    formatter: function(cell) {
+                        const v = parseFloat(cell.getValue());
+                        if (!v || isNaN(v)) {
+                            return '<div style="text-align:center;" class="text-muted">—</div>';
+                        }
+                        return `<div style="text-align:center;font-weight:bold;">${Number.isInteger(v) ? v : v.toFixed(2).replace(/\.?0+$/, '')}</div>`;
+                    }
+                },
+                {
+                    title: "2 Order",
+                    field: "two_order_qty",
+                    accessor: row => (row ? row.two_order_qty : null),
+                    sorter: "number",
+                    headerSort: true,
+                    formatter: function(cell) {
+                        const v = parseFloat(cell.getValue());
+                        if (!v || isNaN(v)) {
+                            return '<div style="text-align:center;" class="text-muted">—</div>';
+                        }
+                        return `<div style="text-align:center;font-weight:bold;">${Number.isInteger(v) ? v : v.toFixed(2).replace(/\.?0+$/, '')}</div>`;
+                    }
+                },
                 //   {
                 //     title: "S-MSL",
                 //     field: "s_msl",
@@ -785,6 +834,9 @@
                     formatter: function(cell) {
                         const value = cell.getValue();
                         const rowData = cell.getRow().getData();
+                        const n = parseFloat(value);
+                        const showDash = value === null || value === undefined || value === '' || isNaN(n) || n === 0;
+                        const display = showDash ? '-' : String(value);
 
                         const sku = rowData.SKU ?? '';
                         const parent = rowData.Parent ?? '';
@@ -797,7 +849,7 @@
                             data-sku='${sku}' 
                             data-parent='${parent}' 
                             style="outline:none; min-width:40px; text-align:center; font-weight:bold;" readonly>
-                            ${value ?? ''}
+                            ${display}
                         </div>`;
                     }
                 },
@@ -809,8 +861,9 @@
                     headerSort: true,
                     formatter: function(cell) {
                         const value = cell.getValue();
-                        
-                        return value ?? '';
+                        const n = parseFloat(value);
+                        const showDash = value === null || value === undefined || value === '' || isNaN(n) || n === 0;
+                        return `<div style="text-align:center;">${showDash ? '-' : String(value)}</div>`;
                     }
                 },
                 // {
@@ -888,6 +941,8 @@
                     formatter: function(cell) {
                         const row = cell.getRow();
                         const transit = row.getData().transit;
+                        const tn = parseFloat(transit);
+                        const transitDisp = (transit === null || transit === undefined || transit === '' || isNaN(tn) || tn === 0) ? '-' : transit;
                         let containerName = row.getData().containerName;
                         if (containerName) {
                             containerName = containerName
@@ -900,9 +955,9 @@
                                 })
                                 .join(", ");
                         }
-                        return `<div style="line-height:1.5;">
-                            <span style="font-weight:600;">${transit}</span><br>
-                            <small class="text-info">${containerName}</small>
+                        const sub = containerName ? `<br><small class="text-info">${containerName}</small>` : '';
+                        return `<div style="line-height:1.5; text-align:center;">
+                            <span style="font-weight:600;">${transitDisp}</span>${sub}
                         </div>`;
                     }
                 },
@@ -1380,6 +1435,14 @@
 
                     const toOrder = Math.round(msl - inv - effectiveTransit - effectiveOrderGiven - effectiveR2s);
 
+                    const stageNorm = String(itemStage || '').trim().toLowerCase();
+                    const twoOrderQty = stageNorm === 'to_order_analysis'
+                        ? (parseFloat(item.MOQ ?? item['Approved QTY']) || 0)
+                        : 0;
+                    const apprReqQty = stageNorm === 'appr_req'
+                        ? (parseFloat(item.MOQ ?? item['Approved QTY']) || 0)
+                        : 0;
+
                     // if (toOrder == 0) {
                     //     return false;
                     // }
@@ -1427,6 +1490,8 @@
                         MSL_C: msl_c,
                         MSL_SP: msl_sp,
                         to_order: toOrder,
+                        two_order_qty: twoOrderQty,
+                        appr_req_qty: apprReqQty,
                         parentKey: parentKey,
                         s_msl: s_msl_val,
                         is_parent: isParent,
@@ -1455,12 +1520,16 @@
                         const sumTransit = children.reduce((s, c) => s + (parseFloat(c.transit) || parseFloat(c.raw_data && c.raw_data["transit"]) || 0), 0);
                         const sumToOrder = children.reduce((s, c) => s + (parseFloat(c.to_order) || 0), 0);
                         const sumMOQ = children.reduce((s, c) => s + (parseFloat(c.MOQ) || parseFloat(c.raw_data && c.raw_data["MOQ"]) || 0), 0);
+                        const sumTwoOrderQty = children.reduce((s, c) => s + (parseFloat(c.two_order_qty) || 0), 0);
+                        const sumApprReqQty = children.reduce((s, c) => s + (parseFloat(c.appr_req_qty) || 0), 0);
                         row.INV = sumInv;
                         row["L30"] = sumL30;
                         row.order_given = sumOrderGiven;
                         row.transit = sumTransit;
                         row.to_order = sumToOrder;
                         row.MOQ = sumMOQ;
+                        row.two_order_qty = sumTwoOrderQty;
+                        row.appr_req_qty = sumApprReqQty;
                         if (row.raw_data) {
                             row.raw_data["INV"] = sumInv;
                             row.raw_data["L30"] = sumL30;
@@ -1468,6 +1537,8 @@
                             row.raw_data["transit"] = sumTransit;
                             row.raw_data["to_order"] = sumToOrder;
                             row.raw_data["MOQ"] = sumMOQ;
+                            row.raw_data["two_order_qty"] = sumTwoOrderQty;
+                            row.raw_data["appr_req_qty"] = sumApprReqQty;
                         }
                     }
                 });
@@ -1501,8 +1572,12 @@
                     const mipCount = allData.filter(row => notParent(row) && (parseFloat(row.order_given) || 0) > 0).length;
                     const r2sCount = allData.filter(row => notParent(row) && (parseFloat(row.readyToShipQty) || 0) > 0).length;
                     const transitCount = allData.filter(row => notParent(row) && (parseFloat(row.transit) || 0) > 0).length;
+                    const twoOrderStageCount = allData.filter(row => notParent(row) && (parseFloat(row.two_order_qty) || 0) > 0).length;
+                    const apprReqStageCount = allData.filter(row => notParent(row) && (parseFloat(row.appr_req_qty) || 0) > 0).length;
                     table.updateColumnDefinition("msl", { title: "MSL (" + mslCount + ")" });
                     table.updateColumnDefinition("to_order", { title: "2 Ord (" + toOrderCount + ")" });
+                    table.updateColumnDefinition("appr_req_qty", { title: "Appr.req (" + apprReqStageCount + ")" });
+                    table.updateColumnDefinition("two_order_qty", { title: "2 Order (" + twoOrderStageCount + ")" });
                     table.updateColumnDefinition("order_given", { title: "MIP (" + mipCount + ")" });
                     table.updateColumnDefinition("readyToShipQty", { title: "R2S (" + r2sCount + ")" });
                     table.updateColumnDefinition("transit", { title: "Transit (" + transitCount + ")" });
@@ -1721,15 +1796,60 @@
         let currentRestockFilter = false;
         let currentZeroInvFilter = false;
         let currentStageFilter = '';
-        let currentNRPFilter = '';
+        function syncParentStageQtyColumns(parentKey) {
+            if (!parentKey || typeof table === 'undefined' || !table) return;
+            let sumTwo = 0;
+            let sumAppr = 0;
+            let parentRow = null;
+            table.getRows().forEach(function(r) {
+                const d = r.getData();
+                const pk = d.Parent || d.parentKey || '';
+                if (pk !== parentKey) return;
+                const isP = d.is_parent === true || String(d.SKU || '').toLowerCase().includes('parent');
+                if (isP) parentRow = r;
+                else {
+                    sumTwo += parseFloat(d.two_order_qty) || 0;
+                    sumAppr += parseFloat(d.appr_req_qty) || 0;
+                }
+            });
+            if (parentRow) parentRow.update({ two_order_qty: sumTwo, appr_req_qty: sumAppr }, true);
+        }
+        function getEffectiveNRPFilterSet() {
+            const checked = [...document.querySelectorAll('.nrp-ms-opt:checked')].map(b => b.value);
+            if (checked.length === 0) {
+                document.querySelectorAll('.nrp-ms-opt').forEach(cb => { cb.checked = true; });
+                return null;
+            }
+            if (checked.length === 3) return null;
+            return new Set(checked);
+        }
+
+        function updateNRPMultiselectLabel() {
+            const el = document.getElementById('nrp-filter-label');
+            if (!el) return;
+            const checked = [...document.querySelectorAll('.nrp-ms-opt:checked')].map(b => b.value);
+            if (checked.length === 3 || checked.length === 0) {
+                el.textContent = 'ALL Items';
+                return;
+            }
+            const labels = { REQ: 'REQ', NR: '2BDC', LATER: 'LATER' };
+            el.textContent = checked.map(v => labels[v] || v).join(', ');
+        }
+
+        function syncNRPMultiselectFromHeader(val) {
+            const v = (val === undefined || val === null || val === '') ? '' : String(val).trim().toUpperCase();
+            document.querySelectorAll('.nrp-ms-opt').forEach(cb => {
+                cb.checked = !v ? true : (cb.value === v);
+            });
+            updateNRPMultiselectLabel();
+        }
 
         function setCombinedFilters() {
             const allData = table.getData();
             const groupedChildrenMap = {};
             const visibleParentKeys = new Set();
 
-            // Use NRP column header filter value so "All" / REQ / 2BDC / LATER work from column dropdown
-            const nrpFilterValue = (typeof table.getHeaderFilterValue === 'function' ? table.getHeaderFilterValue("nr") : undefined) ?? currentNRPFilter ?? '';
+            const nrpSel = getEffectiveNRPFilterSet();
 
             // Calculate total restock count
             const restockCount = allData.filter(item => {
@@ -1754,16 +1874,14 @@
                 const children = groupedChildrenMap[parentKey];
 
                 const matchingChildren = children.filter(child => {
-                    // NRP filter - use column header value: "" = All (show all), REQ/NR/LATER = filter to that value
                     const childNR = child.nr || '';
-                    const effectiveChildNR = (childNR === '' ? 'REQ' : childNR).trim().toUpperCase();
-                    const nrpMatch = !nrpFilterValue || effectiveChildNR === nrpFilterValue;
-                    
-                    // NR match - when NRP filter is All or NR, show NR rows; else respect hideNRYes
-                    const nrMatch = (nrpFilterValue === '' || nrpFilterValue === 'NR') || !hideNRYes || child.nr !== 'NR';
-                    
-                    // LATER match - when NRP filter is All or LATER, show LATER rows; else respect hideLATERYes
-                    const laterMatch = (nrpFilterValue === '' || nrpFilterValue === 'LATER') || !hideLATERYes || child.nr !== 'LATER';
+                    let effectiveChildNR = (childNR === '' ? 'REQ' : String(childNR).trim().toUpperCase());
+                    if (effectiveChildNR !== 'REQ' && effectiveChildNR !== 'NR' && effectiveChildNR !== 'LATER') {
+                        effectiveChildNR = 'REQ';
+                    }
+                    const nrpMatch = !nrpSel || nrpSel.has(effectiveChildNR);
+                    const nrMatch = !nrpSel || nrpSel.has('NR') || !hideNRYes || child.nr !== 'NR';
+                    const laterMatch = !nrpSel || nrpSel.has('LATER') || !hideLATERYes || child.nr !== 'LATER';
                     
                     // Stage filter - check stage field or transit field
                     // If filter is "__blank__", match empty/null/undefined stage
@@ -1828,17 +1946,15 @@
                         true;
                 }
 
-                // NRP filter - use column header value so "All" shows REQ+2BDC+LATER; REQ/NR/LATER filter to that value
-                const rowNrpFilterValue = (typeof table.getHeaderFilterValue === 'function' ? table.getHeaderFilterValue("nr") : undefined) ?? currentNRPFilter ?? '';
                 const dataNR = data.nr || '';
-                const effectiveNR = (dataNR === '' ? 'REQ' : String(dataNR).trim().toUpperCase());
-                const nrpMatch = !rowNrpFilterValue || effectiveNR === rowNrpFilterValue;
-                
-                // When NRP filter is All or NR, show NR rows; else hide NR if hideNRYes
-                const matchesNR = (rowNrpFilterValue === '' || rowNrpFilterValue === 'NR') || !hideNRYes || data.nr !== 'NR';
-                
-                // When NRP filter is All or LATER, show LATER rows; else hide LATER if hideLATERYes
-                const matchesLATER = (rowNrpFilterValue === '' || rowNrpFilterValue === 'LATER') || !hideLATERYes || data.nr !== 'LATER';
+                let effectiveNR = (dataNR === '' ? 'REQ' : String(dataNR).trim().toUpperCase());
+                if (effectiveNR !== 'REQ' && effectiveNR !== 'NR' && effectiveNR !== 'LATER') {
+                    effectiveNR = 'REQ';
+                }
+                const rowNrpSel = nrpSel;
+                const nrpMatch = !rowNrpSel || rowNrpSel.has(effectiveNR);
+                const matchesNR = !rowNrpSel || rowNrpSel.has('NR') || !hideNRYes || data.nr !== 'NR';
+                const matchesLATER = !rowNrpSel || rowNrpSel.has('LATER') || !hideLATERYes || data.nr !== 'LATER';
                 
                 // Stage filter - check stage field or transit field
                 // If filter is "__blank__", match empty/null/undefined stage
@@ -1862,7 +1978,13 @@
                     if (isParent) {
                         return data.Parent === currentParentFilter;
                     } else {
-                        return data.Parent === currentParentFilter && matchesFilter && matchesNR && matchesLATER && nrpMatch && stageMatch;
+                        let okChild = data.Parent === currentParentFilter && matchesFilter && matchesNR && matchesLATER && nrpMatch && stageMatch;
+                        if (currentRowTypeFilter === 'sku_value' && okChild) {
+                            const iv = parseFloat(data.inv_value) || 0;
+                            const lv = parseFloat(data.lp_value) || 0;
+                            okChild = iv > 0 || lv > 0;
+                        }
+                        return okChild;
                     }
                 }
 
@@ -1870,16 +1992,27 @@
                     const showChild = matchesFilter && matchesNR && matchesLATER && nrpMatch && stageMatch;
                     if (currentRowTypeFilter === 'parent') return false;
                     if (currentRowTypeFilter === 'sku') return showChild;
+                    if (currentRowTypeFilter === 'sku_value') {
+                        if (!showChild) return false;
+                        const iv = parseFloat(data.inv_value) || 0;
+                        const lv = parseFloat(data.lp_value) || 0;
+                        return iv > 0 || lv > 0;
+                    }
                     return showChild;
                 }
 
                 if (isParent) {
-                    // Show All: show both SKU and parent rows; Parent only: show parents; SKU only: hide parents
+                    if (currentRowTypeFilter === 'sku' || currentRowTypeFilter === 'sku_value') return false;
+                    // When NRP multiselect is partial (not all types), only show parents that have
+                    // at least one visible child matching filters — otherwise every parent stayed visible
+                    // with default REQ styling while children were filtered (broken UX).
+                    if (nrpSel !== null) {
+                        return visibleParentKeys.has(data.Parent);
+                    }
                     const showParent =
                         currentRowTypeFilter === 'parent' ? true :
                         currentRowTypeFilter === 'all' ? true :
                         visibleParentKeys.has(data.Parent);
-                    if (currentRowTypeFilter === 'sku') return false;
                     return showParent;
                 }
 
@@ -2442,7 +2575,19 @@
                                 r.getData().SKU === sku && r.getData().Parent === parent
                             );
 
-                            if (row) row.update({ "MOQ": newValue }, true);
+                            if (row) {
+                                const d = row.getData();
+                                const st = String(d.stage || '').trim().toLowerCase();
+                                const moqNum = parseFloat(newValue) || 0;
+                                const twoq = st === 'to_order_analysis' ? moqNum : 0;
+                                const apprq = st === 'appr_req' ? moqNum : 0;
+                                row.update({ MOQ: newValue, two_order_qty: twoq, appr_req_qty: apprq }, true);
+                                syncParentStageQtyColumns(d.Parent || d.parentKey);
+                                ['two_order_qty', 'appr_req_qty'].forEach(function(f) {
+                                    const c = row.getCells().find(function(x) { return x.getField() === f; });
+                                    if (c) c.reformat();
+                                });
+                            }
 
                             updateForecastField({
                                 sku,
@@ -2583,7 +2728,10 @@
                                     const stageConfig = stageTableMap[newValue];
                                     
                                     // Prepare update - clear other stage fields
+                                    const stLow = String(newValue || '').trim().toLowerCase();
                                     const updateData = { stage: newValue };
+                                    updateData.two_order_qty = stLow === 'to_order_analysis' ? (parseFloat(rowData.MOQ) || 0) : 0;
+                                    updateData.appr_req_qty = stLow === 'appr_req' ? (parseFloat(rowData.MOQ) || 0) : 0;
                                     if (newValue !== 'mip') updateData['order_given'] = 0;
                                     if (newValue !== 'r2s') updateData['readyToShipQty'] = 0;
                                     if (newValue !== 'transit') updateData['transit'] = 0;
@@ -2601,11 +2749,11 @@
                                         .then(data => {
                                             updateData[stageConfig.field] = (data.success && data.exists) ? (parseFloat(data.quantity) || 0) : 0;
                                             row.update(updateData, true);
-                                            // Only refresh cells for this row, not entire table
+                                            syncParentStageQtyColumns(rowData.Parent || rowData.parentKey);
                                             const cells = row.getCells();
                                             cells.forEach(cell => {
                                                 const cellField = cell.getField();
-                                                if (['stage', 'order_given', 'readyToShipQty', 'transit', 'to_order'].includes(cellField)) {
+                                                if (['stage', 'order_given', 'readyToShipQty', 'transit', 'to_order', 'two_order_qty', 'appr_req_qty'].includes(cellField)) {
                                                     cell.reformat();
                                                 }
                                             });
@@ -2614,13 +2762,18 @@
                                         .catch(error => {
                                             console.error('Error:', error);
                                             row.update(updateData, true);
+                                            syncParentStageQtyColumns(rowData.Parent || rowData.parentKey);
                                             setCombinedFilters();
                                         });
                                     } else {
-                                        // Stages without table check
                                         row.update(updateData, true);
-                                        const stageCell = row.getCells().find(cell => cell.getField() === 'stage');
-                                        if (stageCell) stageCell.reformat();
+                                        syncParentStageQtyColumns(rowData.Parent || rowData.parentKey);
+                                        row.getCells().forEach(cell => {
+                                            const cellField = cell.getField();
+                                            if (['stage', 'order_given', 'readyToShipQty', 'transit', 'to_order', 'two_order_qty', 'appr_req_qty'].includes(cellField)) {
+                                                cell.reformat();
+                                            }
+                                        });
                                         setCombinedFilters(); // Stage affects filtering
                                     }
                                 } else if (field === 'Hide') {
@@ -2850,27 +3003,29 @@
                 setCombinedFilters();
             });
 
-            // NRP filter event listener (toolbar) – sync column header filter and recompute
-            document.getElementById('nrp-filter').addEventListener('change', function(e) {
-                currentNRPFilter = e.target.value;
-                const tbl = Tabulator.findTable("#forecast-table")[0];
-                if (tbl && typeof tbl.setHeaderFilterValue === 'function') {
-                    tbl.setHeaderFilterValue("nr", currentNRPFilter);
-                }
-                setCombinedFilters();
+            document.querySelectorAll('.nrp-ms-opt').forEach(function(cb) {
+                cb.addEventListener('change', function() {
+                    let n = document.querySelectorAll('.nrp-ms-opt:checked').length;
+                    if (n === 0) {
+                        document.querySelectorAll('.nrp-ms-opt').forEach(x => { x.checked = true; });
+                    }
+                    updateNRPMultiselectLabel();
+                    const tbl = Tabulator.findTable("#forecast-table")[0];
+                    if (tbl && typeof tbl.setHeaderFilterValue === 'function') {
+                        const vals = [...document.querySelectorAll('.nrp-ms-opt:checked')].map(b => b.value);
+                        tbl.setHeaderFilterValue("nr", vals.length === 1 ? vals[0] : '');
+                    }
+                    setCombinedFilters();
+                });
             });
 
-            // When NRP column header filter (All/REQ/2BDC/LATER) changes, sync toolbar and recompute
             const tableEl = document.getElementById('forecast-table');
             if (tableEl) {
                 tableEl.addEventListener('change', function(e) {
                     if (e.target.closest && e.target.closest('.tabulator-col[tabulator-field="nr"]')) {
                         const tbl = Tabulator.findTable("#forecast-table")[0];
                         if (tbl && typeof tbl.getHeaderFilterValue === 'function') {
-                            const val = tbl.getHeaderFilterValue("nr");
-                            currentNRPFilter = (val !== undefined && val !== null) ? val : '';
-                            const sel = document.getElementById('nrp-filter');
-                            if (sel) sel.value = currentNRPFilter;
+                            syncNRPMultiselectFromHeader(tbl.getHeaderFilterValue("nr"));
                         }
                         setCombinedFilters();
                     }
