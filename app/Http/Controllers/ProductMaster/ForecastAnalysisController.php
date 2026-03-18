@@ -9,6 +9,7 @@ use App\Models\ShopifySku;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use App\Models\AmazonDataView;
 use App\Models\JungleScoutProductData;
 use App\Models\Supplier;
 use App\Models\TransitContainerDetail;
@@ -90,6 +91,79 @@ class ForecastAnalysisController extends Controller
             }
 
             return 0.0;
+        };
+
+        $amazonAdvBySku = [];
+        foreach (AmazonDataView::query()->get(['sku', 'value']) as $advRow) {
+            $k = $normalizeSku($advRow->sku ?? '');
+            if ($k === '') {
+                continue;
+            }
+            $v = $advRow->value;
+            if (! is_array($v)) {
+                $v = json_decode($advRow->value ?? '{}', true) ?: [];
+            }
+            $amazonAdvBySku[$k] = $v;
+        }
+        $getAmazonAdv = function ($sheetSku) use ($amazonAdvBySku, $normalizeSku) {
+            $k = $normalizeSku($sheetSku);
+            if (isset($amazonAdvBySku[$k])) {
+                return $amazonAdvBySku[$k];
+            }
+            $skuNoSpaces = str_replace(' ', '', $k);
+            foreach ($amazonAdvBySku as $key => $val) {
+                if (str_replace(' ', '', $key) === $skuNoSpaces) {
+                    return $val;
+                }
+            }
+
+            return null;
+        };
+
+        $jungleReviewsBySku = [];
+        $jungleRatingBySku = [];
+        foreach (JungleScoutProductData::query()->get(['sku', 'data']) as $jsRow) {
+            $k = $normalizeSku($jsRow->sku ?? '');
+            if ($k === '') {
+                continue;
+            }
+            $d = is_array($jsRow->data) ? $jsRow->data : [];
+            $rv = $d['reviews'] ?? null;
+            if ($rv !== null && $rv !== '') {
+                $jungleReviewsBySku[$k] = is_numeric($rv) ? (int) $rv : (string) $rv;
+            }
+            $rat = $d['rating'] ?? null;
+            if ($rat !== null && $rat !== '') {
+                $jungleRatingBySku[$k] = is_numeric($rat) ? round((float) $rat, 2) : (string) $rat;
+            }
+        }
+        $getJungleReviews = function ($sheetSku) use ($jungleReviewsBySku, $normalizeSku) {
+            $k = $normalizeSku($sheetSku);
+            if (isset($jungleReviewsBySku[$k])) {
+                return $jungleReviewsBySku[$k];
+            }
+            $skuNoSpaces = str_replace(' ', '', $k);
+            foreach ($jungleReviewsBySku as $key => $rv) {
+                if (str_replace(' ', '', $key) === $skuNoSpaces) {
+                    return $rv;
+                }
+            }
+
+            return null;
+        };
+        $getJungleRating = function ($sheetSku) use ($jungleRatingBySku, $normalizeSku) {
+            $k = $normalizeSku($sheetSku);
+            if (isset($jungleRatingBySku[$k])) {
+                return $jungleRatingBySku[$k];
+            }
+            $skuNoSpaces = str_replace(' ', '', $k);
+            foreach ($jungleRatingBySku as $key => $rv) {
+                if (str_replace(' ', '', $key) === $skuNoSpaces) {
+                    return $rv;
+                }
+            }
+
+            return null;
         };
 
         $supplierRows = Supplier::where('type', 'Supplier')->get();
@@ -265,6 +339,23 @@ class ForecastAnalysisController extends Controller
             $lp = is_numeric($item->{'LP'}) ? (float)$item->{'LP'} : 0;
             $item->lp_value = $lp * $item->INV;
 
+            $adv = $getAmazonAdv($sheetSku);
+            $item->avg_npft_pct = null;
+            $item->avg_nroi_pct = null;
+            if (is_array($adv)) {
+                $gpft = (float) ($adv['GPFT'] ?? 0);
+                $adPct = (float) ($adv['AD_percent'] ?? $adv['AD%'] ?? 0);
+                $roiPct = (float) ($adv['ROI'] ?? 0);
+                $hasAdv = array_key_exists('GPFT', $adv) || array_key_exists('ROI', $adv)
+                    || array_key_exists('AD_percent', $adv) || array_key_exists('AD%', $adv);
+                if ($hasAdv || $gpft != 0.0 || $roiPct != 0.0 || $adPct != 0.0) {
+                    $item->avg_npft_pct = (int) round($gpft - $adPct);
+                    $item->avg_nroi_pct = (int) round($roiPct - $adPct);
+                }
+            }
+            $item->reviews = $getJungleReviews($sheetSku);
+            $item->rating = $getJungleRating($sheetSku);
+
             // if (!empty($item->Parent) && $jungleScoutData->has($item->Parent)) {
             //     $item->scout_data = json_decode(json_encode($jungleScoutData[$item->Parent]), true);
             // }
@@ -428,6 +519,13 @@ class ForecastAnalysisController extends Controller
                 $item->{'MSL_SP_AMZ'} = 0;
                 $item->m_avg = 0.0;
                 $item->TAT = null;
+            }
+
+            $item->eff_roi_pct = null;
+            $tatInt = $item->TAT ?? null;
+            $nroiForEff = $item->avg_nroi_pct;
+            if ($tatInt !== null && (int) $tatInt > 0 && $nroiForEff !== null && is_numeric($nroiForEff)) {
+                $item->eff_roi_pct = (int) round(((float) $nroiForEff / (int) $tatInt) * 12);
             }
 
             $cp = (float)($item->{'CP'} ?? 0);
