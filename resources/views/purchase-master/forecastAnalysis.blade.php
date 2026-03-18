@@ -86,6 +86,17 @@
             appearance: none;
         }
 
+        .forecast-rating-header-label {
+            font-weight: 700;
+            color: #111;
+            display: inline-block;
+            transform: rotate(-90deg);
+            transform-origin: center center;
+            white-space: nowrap;
+            font-size: 0.95rem;
+            letter-spacing: 0.03em;
+        }
+
     </style>
 @endsection
 
@@ -661,6 +672,17 @@
                 {
                     title: "DIL",
                     field: "ov_dil",
+                    headerSort: true,
+                    accessor: function(row) {
+                        const l30 = parseFloat(row.L30);
+                        const inv = parseFloat(row.INV);
+                        if (!isNaN(l30) && !isNaN(inv) && inv !== 0) {
+                            return l30 / inv;
+                        }
+
+                        return 0;
+                    },
+                    sorter: "number",
                     formatter: function(cell) {
                         const data = cell.getData();
                         const l30 = parseFloat(data.L30);
@@ -942,6 +964,19 @@
                         const sku = rowData.SKU ?? '';
                         const parent = rowData.Parent ?? '';
 
+                        let moqColor = '#212529';
+                        if (!rowData.is_parent && !rowData.isParent) {
+                            const moq = parseFloat(value);
+                            const msl = parseFloat(rowData.msl);
+                            if (Number.isFinite(moq) && Number.isFinite(msl) && msl > 0) {
+                                if (moq < msl) {
+                                    moqColor = '#1b5e20';
+                                } else if (moq > msl) {
+                                    moqColor = '#b71c1c';
+                                }
+                            }
+                        }
+
                         return `<div 
                         class="editable-qty" 
                         contenteditable="true"
@@ -949,7 +984,8 @@
                         data-original="${value ?? ''}" 
                         data-sku='${sku}' 
                         data-parent='${parent}' 
-                        style="outline:none; min-width:40px; text-align:center; font-weight:bold;">
+                        style="outline:none; min-width:40px; text-align:center; font-weight:bold;color:${moqColor};"
+                        title="${Number.isFinite(parseFloat(rowData.msl)) && parseFloat(rowData.msl) > 0 ? 'Green: MOQ < MSL · Red: MOQ > MSL' : ''}">
                         ${value ?? ''}
                     </div>`;
                     }
@@ -1026,6 +1062,233 @@
                             color = '#9a7b00';
                         }
                         return `<span style="display:block;text-align:center;font-weight:700;color:${color};" title="MOQ ÷ M AVG (rounded) — green &lt;4, yellow 4–6, red &gt;6">${rounded}</span>`;
+                    }
+                },
+                {
+                    title: "NPFT%",
+                    field: "avg_npft_pct",
+                    minWidth: 58,
+                    width: 62,
+                    headerSort: true,
+                    hozAlign: "center",
+                    sorter: "number",
+                    titleFormatter: function() {
+                        const wrap = document.createElement("div");
+                        wrap.style.cssText = "background:#7ec8c3;width:100%;min-height:76px;display:flex;align-items:center;justify-content:center;padding:8px 4px;box-sizing:border-box;";
+                        const span = document.createElement("span");
+                        span.className = "forecast-rating-header-label";
+                        span.textContent = "NPFT%";
+                        span.setAttribute("title", "GPFT% − AD% (amazon_data_view)");
+                        wrap.appendChild(span);
+                        return wrap;
+                    },
+                    accessor: function(row) {
+                        const v = parseFloat(row.avg_npft_pct);
+                        return Number.isFinite(v) ? v : null;
+                    },
+                    formatter: function(cell) {
+                        const v = cell.getValue();
+                        if (v === null || v === undefined || v === '' || (typeof v === 'number' && isNaN(v))) {
+                            return '<span style="display:block;text-align:center;color:#6c757d">—</span>';
+                        }
+                        const n = Math.round(parseFloat(v));
+                        let col = '#1b5e20';
+                        if (n < 18) {
+                            col = '#b71c1c';
+                        } else if (n > 33) {
+                            col = '#c2185b';
+                        }
+                        return `<span style="display:block;text-align:center;font-weight:700;color:${col};" title="GPFT% − AD% — red &lt;18, green 18–33, magenta &gt;33">${n}%</span>`;
+                    }
+                },
+                {
+                    title: "NROI%",
+                    field: "avg_nroi_pct",
+                    minWidth: 58,
+                    width: 62,
+                    headerSort: true,
+                    hozAlign: "center",
+                    sorter: "number",
+                    titleFormatter: function() {
+                        const wrap = document.createElement("div");
+                        wrap.style.cssText = "background:#7ec8c3;width:100%;min-height:76px;display:flex;align-items:center;justify-content:center;padding:8px 4px;box-sizing:border-box;";
+                        const span = document.createElement("span");
+                        span.className = "forecast-rating-header-label";
+                        span.textContent = "NROI%";
+                        span.setAttribute("title", "ROI% − AD% (amazon_data_view)");
+                        wrap.appendChild(span);
+                        return wrap;
+                    },
+                    accessor: function(row) {
+                        const v = parseFloat(row.avg_nroi_pct);
+                        return Number.isFinite(v) ? v : null;
+                    },
+                    formatter: function(cell) {
+                        const v = cell.getValue();
+                        if (v === null || v === undefined || v === '' || (typeof v === 'number' && isNaN(v))) {
+                            return '<span style="display:block;text-align:center;color:#6c757d">—</span>';
+                        }
+                        const n = Math.round(parseFloat(v));
+                        let col = '#1b5e20';
+                        if (n < 50) {
+                            col = '#b71c1c';
+                        } else if (n > 100) {
+                            col = '#c2185b';
+                        }
+
+                        return `<span style="display:block;text-align:center;font-weight:700;color:${col};" title="ROI% − AD% — red &lt;50, green 50–100, magenta &gt;100">${n}%</span>`;
+                    }
+                },
+                {
+                    title: "EFF ROI %",
+                    field: "eff_roi_pct",
+                    minWidth: 58,
+                    width: 62,
+                    headerSort: true,
+                    hozAlign: "center",
+                    titleFormatter: function() {
+                        const wrap = document.createElement("div");
+                        wrap.style.cssText = "background:#7ec8c3;width:100%;min-height:76px;display:flex;align-items:center;justify-content:center;padding:8px 4px;box-sizing:border-box;";
+                        const span = document.createElement("span");
+                        span.className = "forecast-rating-header-label";
+                        span.textContent = "EFF ROI %";
+                        span.setAttribute("title", "NROI% ÷ TAT × 12");
+                        wrap.appendChild(span);
+                        return wrap;
+                    },
+                    accessor: function(row) {
+                        if (!row) {
+                            return null;
+                        }
+                        if (row.is_parent || row.isParent) {
+                            const pe = row.eff_roi_pct;
+                            return pe != null && Number.isFinite(Number(pe)) ? Math.round(Number(pe)) : null;
+                        }
+                        const mAvg = parseFloat(row.m_avg) || 0;
+                        const moq = parseFloat(row.MOQ) || 0;
+                        const tat = mAvg > 0 ? Math.round(moq / mAvg) : 0;
+                        const nroi = parseFloat(row.avg_nroi_pct);
+                        if (!tat || tat <= 0 || !Number.isFinite(nroi)) {
+                            return null;
+                        }
+
+                        return Math.round((nroi / tat) * 12);
+                    },
+                    sorter: "number",
+                    formatter: function(cell) {
+                        function effRoiTextColor(effRounded) {
+                            const e = Math.round(Number(effRounded));
+                            if (e < 100) {
+                                return '#b71c1c';
+                            }
+                            if (e <= 200) {
+                                return '#1b5e20';
+                            }
+                            return '#c2185b';
+                        }
+                        const d = cell.getRow().getData();
+                        if (d.is_parent || d.isParent) {
+                            const pe = d.eff_roi_pct;
+                            if (pe != null && pe !== '' && Number.isFinite(Number(pe))) {
+                                const eff = Math.round(Number(pe));
+                                const col = effRoiTextColor(eff);
+
+                                return `<span style="display:block;text-align:center;font-weight:700;color:${col};" title="Avg of child EFF ROI % (NROI% ÷ TAT × 12)">${eff}%</span>`;
+                            }
+                            return '<span style="display:block;text-align:center;color:#6c757d">—</span>';
+                        }
+                        const mAvg = parseFloat(d.m_avg) || 0;
+                        const moq = parseFloat(d.MOQ) || 0;
+                        const tat = mAvg > 0 ? Math.round(moq / mAvg) : 0;
+                        const nroi = parseFloat(d.avg_nroi_pct);
+                        if (!tat || tat <= 0 || !Number.isFinite(nroi)) {
+                            return '<span style="display:block;text-align:center;color:#6c757d">—</span>';
+                        }
+                        const eff = Math.round((nroi / tat) * 12);
+                        const col = effRoiTextColor(eff);
+
+                        return `<span style="display:block;text-align:center;font-weight:700;color:${col};" title="NROI% ÷ TAT × 12 — red &lt;100, green 100–200, magenta &gt;200">${eff}%</span>`;
+                    }
+                },
+                {
+                    title: "Rating",
+                    field: "rating",
+                    minWidth: 88,
+                    width: 92,
+                    headerSort: true,
+                    hozAlign: "center",
+                    vertAlign: "middle",
+                    titleFormatter: function() {
+                        const wrap = document.createElement("div");
+                        wrap.style.cssText = "background:#7ec8c3;width:100%;min-height:76px;display:flex;align-items:center;justify-content:center;padding:8px 4px;box-sizing:border-box;";
+                        const span = document.createElement("span");
+                        span.className = "forecast-rating-header-label";
+                        span.textContent = "Rating";
+                        span.setAttribute("title", "Rating & reviews (Jungle Scout)");
+                        wrap.appendChild(span);
+                        return wrap;
+                    },
+                    accessor: function(row) {
+                        const r = row.rating;
+                        if (r === null || r === undefined || r === '') {
+                            return null;
+                        }
+                        const n = parseFloat(r);
+
+                        return Number.isFinite(n) ? n : null;
+                    },
+                    sorter: "number",
+                    cssClass: "forecast-rating-combo-cell",
+                    formatter: function(cell) {
+                        const d = cell.getRow().getData();
+                        const rawR = d.rating;
+                        const rawRev = d.reviews;
+                        const rVal = parseFloat(rawR);
+                        const hasRating = rawR !== null && rawR !== undefined && String(rawR).trim() !== '' && Number.isFinite(rVal);
+                        const revParsed = parseInt(String(rawRev == null ? '' : rawRev).replace(/,/g, ''), 10);
+                        const hasReviews = Number.isFinite(revParsed) && revParsed >= 0 && String(rawRev).trim() !== '';
+
+                        if (!hasRating && !hasReviews) {
+                            return '<div style="display:flex;align-items:center;justify-content:center;min-height:48px;"><span style="color:#6c757d;font-size:1.1rem;">—</span></div>';
+                        }
+
+                        let starColor = '#c9a227';
+                        if (hasRating) {
+                            if (rVal >= 4.5) {
+                                starColor = '#1565c0';
+                            } else if (rVal >= 3.5) {
+                                starColor = '#c9a227';
+                            } else if (rVal >= 2.5) {
+                                starColor = '#e8941c';
+                            } else {
+                                starColor = '#c62828';
+                            }
+                        }
+
+                        const ratingLine = hasRating
+                            ? (Number.isInteger(rVal) ? String(rVal) : rVal.toFixed(1))
+                            : null;
+                        const revLine = hasReviews
+                            ? (revParsed.toLocaleString("en-US") + " reviews")
+                            : null;
+
+                        let html = "<div style=\"display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1.2;padding:6px 4px;min-height:52px;\">";
+                        if (hasRating) {
+                            html += "<div style=\"font-weight:700;color:" + starColor + ";display:inline-flex;align-items:center;gap:4px;font-size:0.95rem;\">";
+                            html += "<i class=\"bi bi-star-fill\" style=\"font-size:0.9rem;line-height:1;\"></i>";
+                            html += "<span>" + ratingLine + "</span></div>";
+                        } else {
+                            html += "<div style=\"font-weight:700;color:#9e9e9e;display:inline-flex;align-items:center;gap:4px;font-size:0.85rem;\">";
+                            html += "<i class=\"bi bi-star\" style=\"font-size:0.85rem;\"></i><span>—</span></div>";
+                        }
+                        if (revLine) {
+                            html += "<div style=\"font-size:0.72rem;color:#5c5c5c;margin-top:4px;text-align:center;\">" + revLine + "</div>";
+                        } else if (hasRating) {
+                            html += "<div style=\"font-size:0.72rem;color:#9e9e9e;margin-top:4px;\">0 reviews</div>";
+                        }
+                        html += "</div>";
+
+                        return html;
                     }
                 },
                 {
@@ -1566,6 +1829,56 @@
                         const sumApprReqQty = children.reduce((s, c) => s + (parseFloat(c.appr_req_qty) || 0), 0);
                         row.m_avg = 0;
                         row.TAT = null;
+                        const npftKids = children.map(c => c.avg_npft_pct).filter(function(v) {
+                            return v != null && v !== '' && Number.isFinite(parseFloat(v));
+                        });
+                        row.avg_npft_pct = npftKids.length
+                            ? Math.round(npftKids.reduce(function(s, x) { return s + parseFloat(x); }, 0) / npftKids.length)
+                            : null;
+                        const nroiKids = children.map(c => c.avg_nroi_pct).filter(function(v) {
+                            return v != null && v !== '' && Number.isFinite(parseFloat(v));
+                        });
+                        row.avg_nroi_pct = nroiKids.length
+                            ? Math.round(nroiKids.reduce(function(s, x) { return s + parseFloat(x); }, 0) / nroiKids.length)
+                            : null;
+                        const effKids = children.map(function(c) {
+                            const mAvg = parseFloat(c.m_avg) || 0;
+                            const moq = parseFloat(c.MOQ) || 0;
+                            const tat = mAvg > 0 ? Math.round(moq / mAvg) : 0;
+                            const nroi = parseFloat(c.avg_nroi_pct);
+                            if (!tat || tat <= 0 || !Number.isFinite(nroi)) {
+                                return null;
+                            }
+
+                            return Math.round((nroi / tat) * 12);
+                        }).filter(function(x) { return x != null && !isNaN(x); });
+                        row.eff_roi_pct = effKids.length
+                            ? Math.round(effKids.reduce(function(s, x) { return s + x; }, 0) / effKids.length)
+                            : null;
+                        const revNums = children.map(function(c) {
+                            const r = c.reviews;
+                            if (r === null || r === undefined || r === '') {
+                                return null;
+                            }
+                            const n = parseInt(String(r).replace(/,/g, ''), 10);
+
+                            return Number.isFinite(n) ? n : null;
+                        }).filter(function(x) { return x != null; });
+                        row.reviews = revNums.length
+                            ? Math.round(revNums.reduce(function(s, x) { return s + x; }, 0) / revNums.length)
+                            : null;
+                        const ratNums = children.map(function(c) {
+                            const r = c.rating;
+                            if (r === null || r === undefined || r === '') {
+                                return null;
+                            }
+                            const n = parseFloat(r);
+
+                            return Number.isFinite(n) ? n : null;
+                        }).filter(function(x) { return x != null; });
+                        row.rating = ratNums.length
+                            ? Math.round(ratNums.reduce(function(s, x) { return s + x; }, 0) / ratNums.length * 10) / 10
+                            : null;
                         row.INV = sumInv;
                         row["L30"] = sumL30;
                         row.order_given = sumOrderGiven;
@@ -2634,7 +2947,7 @@
                                 const apprq = st === 'appr_req' ? moqNum : 0;
                                 row.update({ MOQ: newValue, two_order_qty: twoq, appr_req_qty: apprq }, true);
                                 syncParentStageQtyColumns(d.Parent || d.parentKey);
-                                ['two_order_qty', 'appr_req_qty', 'TAT'].forEach(function(f) {
+                                ['MOQ', 'two_order_qty', 'appr_req_qty', 'TAT', 'eff_roi_pct'].forEach(function(f) {
                                     const c = row.getCells().find(function(x) { return x.getField() === f; });
                                     if (c) c.reformat();
                                 });
