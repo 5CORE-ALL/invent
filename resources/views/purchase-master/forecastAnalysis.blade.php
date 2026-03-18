@@ -38,6 +38,19 @@
             transition: opacity 0.2s ease;
         }
 
+        /* Forecast table: no gray behind headers — Tabulator defaults show gray around title area */
+        #forecast-table.tabulator .tabulator-header,
+        #forecast-table.tabulator .tabulator-header .tabulator-col,
+        #forecast-table.tabulator .tabulator-header .tabulator-col .tabulator-col-content,
+        #forecast-table.tabulator .tabulator-header .tabulator-col .tabulator-col-title,
+        #forecast-table.tabulator .tabulator-header .tabulator-col .tabulator-col-title-holder {
+            background: #7ec8c3 !important;
+            background-color: #7ec8c3 !important;
+        }
+        #forecast-table.tabulator .tabulator-header .tabulator-col .tabulator-header-filter {
+            background: #7ec8c3 !important;
+        }
+
         /* Center-align all header text */
         .tabulator .tabulator-header .tabulator-col,
         .tabulator .tabulator-header .tabulator-col .tabulator-col-content {
@@ -95,6 +108,25 @@
             white-space: nowrap;
             font-size: 0.95rem;
             letter-spacing: 0.03em;
+            background: transparent !important;
+            box-shadow: none !important;
+        }
+
+        .forecast-dil-pct {
+            font-weight: 700;
+            font-size: 0.95rem;
+            background: none !important;
+            border: none !important;
+            padding: 0;
+            border-radius: 0;
+        }
+
+        .forecast-to-order-pct {
+            font-weight: 700;
+            font-size: 0.95rem;
+            background: none !important;
+            padding: 0;
+            border-radius: 0;
         }
 
     </style>
@@ -138,15 +170,13 @@
 
                         <div class="d-flex align-items-center flex-wrap gap-2">
                             <!-- Stage Filter (before Column) -->
-                            <select id="stage-filter" class="form-select-sm border border-primary" style="width: 160px;">
-                                <option value="">All Stages</option>
-                                <option value="__blank__">Select / Blank</option>
+                            <select id="stage-filter" class="form-select-sm border border-primary" style="width: 118px;">
+                                <option value="">All</option>
+                                <option value="__blank__">sel</option>
                                 <option value="mip">MIP</option>
                                 <option value="r2s">R2S</option>
-                                <option value="transit">Transit</option>
-                                <option value="to_order_analysis">2 Order</option>
-                                <option value="appr_req">Appr. Req</option>
-                                <option value="all_good">All Good</option>
+                                <option value="transit">Trn</option>
+                                <option value="to_order_analysis">Ord</option>
                             </select>
 
                             <!-- Column Management -->
@@ -306,14 +336,12 @@
                             </button>
                             <ul class="dropdown-menu" aria-labelledby="bulkEditStageBtn">
                                 <li class="px-3 py-2">
-                                    <select id="bulk-stage-select" class="form-select form-select-sm" style="min-width: 160px;">
+                                    <select id="bulk-stage-select" class="form-select form-select-sm" style="min-width: 140px;">
                                         <option value="">Select stage...</option>
-                                        <option value="appr_req">Appr. Req</option>
                                         <option value="mip">MIP</option>
                                         <option value="r2s">R2S</option>
-                                        <option value="transit">Transit</option>
-                                        <option value="all_good">All Good</option>
-                                        <option value="to_order_analysis">2 Order</option>
+                                        <option value="transit">Trn</option>
+                                        <option value="to_order_analysis">Ord</option>
                                     </select>
                                 </li>
                                 <li><hr class="dropdown-divider"></li>
@@ -491,12 +519,17 @@
             debounceTimers[key] = setTimeout(callback, delay);
         }
         
-        const getDilColor = (value) => {
-            const percent = parseFloat(value) * 100;
-            if (percent < 16.66) return 'red';
-            if (percent >= 16.66 && percent < 25) return 'yellow';
-            if (percent >= 25 && percent < 50) return 'green';
-            return 'pink';
+        /** DIL % display: text color only (red / dark green / magenta). */
+        const getDilTextColor = (ratio) => {
+            const percent = parseFloat(ratio) * 100;
+            if (percent < 16.66) {
+                return '#b71c1c';
+            }
+            if (percent < 50) {
+                return '#1b5e20';
+            }
+
+            return '#ad1457';
         };
 
         const getPftColor = (value) => {
@@ -690,10 +723,10 @@
 
                         if (!isNaN(l30) && !isNaN(inv) && inv !== 0) {
                             const dilDecimal = (l30 / inv);
-                            const color = getDilColor(dilDecimal);
-                            return `<div class="text-center"><span class="dil-percent-value ${color}">${Math.round(dilDecimal * 100)}%</span></div>`;
+                            const col = getDilTextColor(dilDecimal);
+                            return `<div class="text-center"><span class="forecast-dil-pct" style="color:${col};">${Math.round(dilDecimal * 100)}%</span></div>`;
                         }
-                        return `<div class="text-center"><span class="dil-percent-value red">0%</span></div>`;
+                        return `<div class="text-center"><span class="forecast-dil-pct" style="color:#b71c1c;">0%</span></div>`;
                     }
                 },
 
@@ -738,21 +771,13 @@
                     title: "2 Ord",
                     field: "to_order",
                     formatter: function(cell) {
-                        const value = cell.getValue();
-                        const isNegative = value < 0;
+                        const raw = cell.getValue();
+                        const n = parseFloat(raw);
+                        const disp = Number.isFinite(n) ? n : raw;
+                        const isNeg = Number.isFinite(n) && n < 0;
+                        const col = isNeg ? '#b71c1c' : '#e6aa19';
 
-                        return `<div style="text-align: center;">
-                        <span style="
-                            background-color: ${isNegative ? '#dc3545' : '#ffc107'};
-                            color: ${isNegative ? 'white' : 'black'};
-                            padding: 2px 6px;
-                            border-radius: 4px;
-                            display: inline-block;
-                            min-width: 30px;
-                            text-align: center;
-                            font-weight: bold;
-                        ">${value}</span>
-                    </div>`;
+                        return `<div class="text-center"><span class="forecast-to-order-pct" style="color:${col};">${disp}</span></div>`;
                     }
                 },
                 {
@@ -1074,7 +1099,7 @@
                     sorter: "number",
                     titleFormatter: function() {
                         const wrap = document.createElement("div");
-                        wrap.style.cssText = "background:#7ec8c3;width:100%;min-height:76px;display:flex;align-items:center;justify-content:center;padding:8px 4px;box-sizing:border-box;";
+                        wrap.style.cssText = "background:transparent;width:100%;min-height:76px;display:flex;align-items:center;justify-content:center;padding:8px 4px;box-sizing:border-box;";
                         const span = document.createElement("span");
                         span.className = "forecast-rating-header-label";
                         span.textContent = "NPFT%";
@@ -1111,7 +1136,7 @@
                     sorter: "number",
                     titleFormatter: function() {
                         const wrap = document.createElement("div");
-                        wrap.style.cssText = "background:#7ec8c3;width:100%;min-height:76px;display:flex;align-items:center;justify-content:center;padding:8px 4px;box-sizing:border-box;";
+                        wrap.style.cssText = "background:transparent;width:100%;min-height:76px;display:flex;align-items:center;justify-content:center;padding:8px 4px;box-sizing:border-box;";
                         const span = document.createElement("span");
                         span.className = "forecast-rating-header-label";
                         span.textContent = "NROI%";
@@ -1148,7 +1173,7 @@
                     hozAlign: "center",
                     titleFormatter: function() {
                         const wrap = document.createElement("div");
-                        wrap.style.cssText = "background:#7ec8c3;width:100%;min-height:76px;display:flex;align-items:center;justify-content:center;padding:8px 4px;box-sizing:border-box;";
+                        wrap.style.cssText = "background:transparent;width:100%;min-height:76px;display:flex;align-items:center;justify-content:center;padding:8px 4px;box-sizing:border-box;";
                         const span = document.createElement("span");
                         span.className = "forecast-rating-header-label";
                         span.textContent = "EFF ROI %";
@@ -1220,7 +1245,7 @@
                     vertAlign: "middle",
                     titleFormatter: function() {
                         const wrap = document.createElement("div");
-                        wrap.style.cssText = "background:#7ec8c3;width:100%;min-height:76px;display:flex;align-items:center;justify-content:center;padding:8px 4px;box-sizing:border-box;";
+                        wrap.style.cssText = "background:transparent;width:100%;min-height:76px;display:flex;align-items:center;justify-content:center;padding:8px 4px;box-sizing:border-box;";
                         const span = document.createElement("span");
                         span.className = "forecast-rating-header-label";
                         span.textContent = "Rating";
@@ -1294,6 +1319,9 @@
                 {
                     title: "Stage",
                     field: "stage",
+                    minWidth: 86,
+                    width: 92,
+                    maxWidth: 110,
                     accessor: function(row) {
                         const stageValue = row?.["stage"] ?? '';
                         // Normalize stage value: trim and convert to lowercase
@@ -1314,13 +1342,11 @@
                     headerFilterParams: {
                         values: {
                             "": "All",
-                            "__blank__": "Select / Blank",
+                            "__blank__": "sel",
                             "mip": "MIP",
                             "r2s": "R2S",
-                            "transit": "Transit",
-                            "to_order_analysis": "2 Order",
-                            "appr_req": "Appr. Req",
-                            "all_good": "All Good"
+                            "transit": "Trn",
+                            "to_order_analysis": "Ord"
                         },
                         clearable: false,
                         listOnEmpty: true
@@ -1337,21 +1363,27 @@
                         value = String(value).trim().toLowerCase();
                         const rowData = cell.getRow().getData();
 
+                        const apprLegacy = value === 'appr_req'
+                            ? '<option value="appr_req" selected>Appr. Req</option>'
+                            : '';
+                        const allGoodLegacy = value === 'all_good'
+                            ? '<option value="all_good" selected>😊 All Good</option>'
+                            : '';
                         return `
                         <select class="form-select form-select-sm editable-select"
                             data-type="Stage"
                             data-sku='${rowData["SKU"]}'
                             data-parent='${rowData["Parent"]}'
-                            style="width: auto; min-width: 100px; padding: 4px 24px 4px 8px;
-                                font-size: 0.875rem; border-radius: 4px; border: 1px solid #dee2e6;
+                            style="width: 100%; max-width: 100%; min-width: 0; padding: 4px 20px 4px 6px;
+                                font-size: 0.8rem; border-radius: 4px; border: 1px solid #dee2e6;
                                 background-color: #fff;">
-                            <option value="">Select</option>
-                            <option value="appr_req" ${value === 'appr_req' ? 'selected' : ''}>Appr. Req</option>
+                            <option value="">sel</option>
+                            ${apprLegacy}
+                            ${allGoodLegacy}
                             <option value="mip" ${value === 'mip' ? 'selected' : ''}>MIP</option>
                             <option value="r2s" ${value === 'r2s' ? 'selected' : ''}>R2S</option>
-                            <option value="transit" ${value === 'transit' ? 'selected' : ''}>Transit</option>
-                            <option value="all_good" ${value === 'all_good' ? 'selected' : ''}>😊 All Good</option>
-                            <option value="to_order_analysis" ${value === 'to_order_analysis' ? 'selected' : ''}>2 Order</option>
+                            <option value="transit" ${value === 'transit' ? 'selected' : ''}>Trn</option>
+                            <option value="to_order_analysis" ${value === 'to_order_analysis' ? 'selected' : ''}>Ord</option>
                         </select>
                     `;
                     },
