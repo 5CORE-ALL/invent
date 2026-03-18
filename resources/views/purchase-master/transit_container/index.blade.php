@@ -884,8 +884,11 @@ Object.entries(groupedData).forEach(([tabName, data], index) => {
             success: function(response) {
                 if (response.success) {
                     ids.forEach(id => table.deleteRow(id));
+                    if (response.message) {
+                        alert(response.message);
+                    }
                 } else {
-                    alert("Failed to delete rows.");
+                    alert(response.message || "Failed to delete rows.");
                 }
             },
             error: function(xhr) {
