@@ -151,6 +151,16 @@
                                 if (!t) return [];
                                 return Array.prototype.slice.call(t.querySelectorAll('tbody .r2s-row-checkbox')).filter(function (cb) { return cb.checked; });
                             }
+                            /** Rec. QTY column (20); falls back to Or. QTY (4) if empty/invalid */
+                            function r2sRecQtyFromRow(tr) {
+                                if (!tr) return 0;
+                                var recInp = tr.querySelector('td[data-column="20"] input');
+                                var v = recInp ? parseFloat(String(recInp.value).trim()) : NaN;
+                                if (!isNaN(v) && v >= 0) return v;
+                                var orInp = tr.querySelector('td[data-column="4"] input');
+                                var ov = orInp ? parseFloat(String(orInp.value).trim()) : 0;
+                                return !isNaN(ov) && ov >= 0 ? ov : 0;
+                            }
                             function r2sDoMove(ev) {
                                 if (ev) {
                                     ev.preventDefault();
@@ -173,7 +183,20 @@
                                     return (!isNaN(n) && n > 0) ? n : null;
                                 }).filter(Boolean);
                                 var skus = checked.map(function (c) { return (c.getAttribute('data-sku') || '').trim(); }).filter(Boolean);
-                                var payload = { tab_name: tabName };
+                                var recQtyById = {};
+                                var recQtyBySku = {};
+                                checked.forEach(function (c) {
+                                    var tr = c.closest('tr');
+                                    var q = r2sRecQtyFromRow(tr);
+                                    var id = parseInt(c.getAttribute('data-id'), 10);
+                                    if (!isNaN(id) && id > 0) recQtyById[id] = q;
+                                    var sku = (c.getAttribute('data-sku') || '').trim();
+                                    if (sku) {
+                                        var skuK = sku.toUpperCase().replace(/\s+/g, ' ').trim();
+                                        if (skuK) recQtyBySku[skuK] = q;
+                                    }
+                                });
+                                var payload = { tab_name: tabName, rec_qty_by_id: recQtyById, rec_qty_by_sku: recQtyBySku };
                                 if (idList.length) {
                                     payload.ids = idList;
                                 } else if (checked.length === 1 && skus.length === 1) {
@@ -206,9 +229,23 @@
                                         return;
                                     }
                                     if (data.success) {
-                                        checked.forEach(function (cb) {
-                                            var tr = cb.closest('tr');
+                                        var rem = data.removed_ids || [];
+                                        rem.forEach(function (id) {
+                                            var cb = document.querySelector('#readyToShipTable .r2s-row-checkbox[data-id="' + id + '"]');
+                                            var tr = cb ? cb.closest('tr') : null;
                                             if (tr) tr.remove();
+                                        });
+                                        (data.partial_updates || []).forEach(function (u) {
+                                            var cb = document.querySelector('#readyToShipTable .r2s-row-checkbox[data-id="' + u.id + '"]');
+                                            var tr = cb ? cb.closest('tr') : null;
+                                            if (tr) {
+                                                var nq = u.new_qty != null ? String(u.new_qty) : '';
+                                                var orInp = tr.querySelector('td[data-column="4"] input');
+                                                if (orInp) orInp.value = nq;
+                                                var recInp = tr.querySelector('td[data-column="20"] input');
+                                                if (recInp) recInp.value = nq;
+                                                if (cb) cb.checked = false;
+                                            }
                                         });
                                         if (tabSel) tabSel.value = '';
                                         if (typeof window.r2sAfterMoveSuccess === 'function') {
@@ -725,11 +762,15 @@
                                         class="form-control form-control-sm">
                                 </td>
                                 <td data-column="20" class="text-center">
+                                    @php
+                                        $orderQty = $item->qty ?? '';
+                                        $recQtyVal = ($item->rec_qty !== null && $item->rec_qty !== '') ? $item->rec_qty : $orderQty;
+                                    @endphp
                                     <input type="number" 
                                            class="form-control auto-save" 
                                            data-sku="{{ $item->sku }}" 
                                            data-column="rec_qty" 
-                                           value="{{ $item->rec_qty }}" 
+                                           value="{{ $recQtyVal }}" 
                                            min="0"
                                            max="10000"
                                            style="font-size: 0.95rem; height: 36px; width: 90px;">
@@ -1295,28 +1336,34 @@
         // Filter to show only R2S stage on page load
         filterByR2SStage();
 
-        // Supplier to Zone mapping
+        // Supplier → default zone (matches server; case-insensitive name lookup)
         const supplierZoneMap = @json($supplierZoneMap ?? []);
+        function r2sZoneForSupplier(supplierName) {
+            const s = String(supplierName || '').trim();
+            if (!s) return '';
+            if (Object.prototype.hasOwnProperty.call(supplierZoneMap, s)) return supplierZoneMap[s];
+            const lower = s.toLowerCase();
+            for (const k of Object.keys(supplierZoneMap)) {
+                if (String(k).trim().toLowerCase() === lower) return supplierZoneMap[k];
+            }
+            return '';
+        }
 
-        // Auto-populate zone for already selected suppliers on page load
+        // Auto-populate zone from supplier when zone still empty (e.g. before server backfill cached page)
         function autoPopulateZoneForSelectedSuppliers() {
             document.querySelectorAll('select[data-column="supplier"]').forEach(supplierSelect => {
                 const selectedSupplier = supplierSelect.value;
-                if (selectedSupplier && supplierZoneMap[selectedSupplier]) {
-                    const row = supplierSelect.closest('tr');
-                    const zoneSelect = row.querySelector('select[data-column="area"]');
-                    if (zoneSelect && !zoneSelect.value) {
-                        // Only update if zone is not already set
-                        zoneSelect.value = supplierZoneMap[selectedSupplier];
-                    }
+                const z = r2sZoneForSupplier(selectedSupplier);
+                if (!z) return;
+                const row = supplierSelect.closest('tr');
+                const zoneSelect = row.querySelector('select[data-column="area"]');
+                if (zoneSelect && !String(zoneSelect.value || '').trim()) {
+                    zoneSelect.value = z;
+                    zoneSelect.dispatchEvent(new Event('change', { bubbles: true }));
                 }
             });
-            // Reapply filter after auto-populating zones
             filterByR2SStage();
         }
-
-        // Run on page load
-        autoPopulateZoneForSelectedSuppliers();
 
         // Save data on input change
         document.querySelectorAll('.auto-save').forEach(input => {
@@ -1326,18 +1373,17 @@
 
                 if (!sku || !column) return;
 
-                // If supplier is changed, auto-update zone
-                if (column === 'supplier' && value && supplierZoneMap[value]) {
-                    const row = this.closest('tr');
-                    const zoneSelect = row.querySelector('select[data-column="area"]');
-                    if (zoneSelect) {
-                        zoneSelect.value = supplierZoneMap[value];
-                        // Trigger change event to save zone
-                        zoneSelect.dispatchEvent(new Event('change'));
-                        // Reapply filter after zone is updated
-                        setTimeout(() => {
-                            filterByR2SStage();
-                        }, 100);
+                // Supplier changed → default zone from supplier master (still editable afterward)
+                if (column === 'supplier' && value) {
+                    const z = r2sZoneForSupplier(value);
+                    if (z) {
+                        const row = this.closest('tr');
+                        const zoneSelect = row.querySelector('select[data-column="area"]');
+                        if (zoneSelect) {
+                            zoneSelect.value = z;
+                            zoneSelect.dispatchEvent(new Event('change', { bubbles: true }));
+                            setTimeout(() => filterByR2SStage(), 100);
+                        }
                     }
                 }
 
@@ -1368,6 +1414,9 @@
                 });
             });
         });
+
+        // After auto-save listeners exist: persist zone for any row still empty + supplier default
+        autoPopulateZoneForSelectedSuppliers();
 
         // PMT Confirm toggle (red/green dot) using ready_to_ship.payment (Yes/No)
         document.querySelectorAll('.pmt-toggle').forEach(dot => {
