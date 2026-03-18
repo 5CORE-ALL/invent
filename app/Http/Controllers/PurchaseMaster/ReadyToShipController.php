@@ -4,6 +4,7 @@ namespace App\Http\Controllers\PurchaseMaster;
 
 use App\Http\Controllers\Controller;
 use App\Models\MfrgProgress;
+use App\Models\ProductMaster;
 use App\Models\ReadyToShip;
 use App\Models\Supplier;
 use App\Models\TransitContainerDetail;
@@ -236,10 +237,37 @@ class ReadyToShipController extends Controller
             ->pluck('zone', 'name')
             ->toArray();
 
+        // Transit container modal (same as transit-container-details)
+        $transitTabs = TransitContainerDetail::where(function ($q) {
+            $q->whereNull('status')->orWhereRaw("TRIM(status) = ''");
+        })->distinct()->pluck('tab_name')->toArray();
+        if (empty($transitTabs)) {
+            $transitTabs = ['Container 1'];
+        }
+        $transitSuppliers = Supplier::select('id', 'name')->get();
+        $transitSkus = ProductMaster::pluck('sku')->toArray();
+        $transitProductValuesMap = [];
+        foreach (ProductMaster::select('sku', 'Values')->get() as $p) {
+            $normSku = strtoupper(trim(preg_replace('/\s+/', ' ', $p->sku ?? '')));
+            $val = $p->Values;
+            if (is_array($val)) {
+                $transitProductValuesMap[$normSku] = $val;
+            } elseif (is_string($val) && $val !== '') {
+                $decoded = json_decode($val, true);
+                $transitProductValuesMap[$normSku] = is_array($decoded) ? $decoded : [];
+            } else {
+                $transitProductValuesMap[$normSku] = [];
+            }
+        }
+
         return view('purchase-master.ready-to-ship.index', [
             'readyToShipList' => $readyToShipData,
             'suppliers' => Supplier::pluck('name'),
             'supplierZoneMap' => $supplierZoneMap,
+            'transitTabs' => $transitTabs,
+            'transitSuppliers' => $transitSuppliers,
+            'transitSkus' => $transitSkus,
+            'transitProductValuesMap' => json_encode($transitProductValuesMap, JSON_UNESCAPED_UNICODE),
         ]);
     }
 
