@@ -4,11 +4,13 @@ namespace App\Http\Controllers;
 
 use App\Models\Task;
 use App\Models\User;
+use App\Models\UserRR;
 use App\Models\DeletedTask;
 use App\Policies\TaskPolicy;
 use App\Services\TaskWhatsAppNotificationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Session;
 
 class TaskController extends Controller
 {
@@ -51,10 +53,134 @@ class TaskController extends Controller
         // Get all users for filter dropdowns (include email, avatar for user-select card)
         $users = User::select('id', 'name', 'email', 'avatar')->orderBy('name')->get();
 
+        // Assignor/assignee roles from visible tasks (for "Select user" dropdown labels)
+        $assignorEmails = (clone $tasksQuery)->whereNotNull('assignor')->where('assignor', '!=', '')
+            ->distinct()->pluck('assignor')->values()->all();
+        $assigneeEmails = (clone $tasksQuery)->whereNotNull('assign_to')->where('assign_to', '!=', '')
+            ->pluck('assign_to')
+            ->flatMap(function ($assignTo) {
+                return array_map('trim', explode(',', $assignTo));
+            })
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+        foreach ($users as $u) {
+            $u->is_assignor = in_array($u->email, $assignorEmails, true);
+            $u->is_assignee = in_array($u->email, $assigneeEmails, true);
+        }
+
+        // Get selected user from session (set from user selection)
+        $selectedUserName = Session::get('selected_user_name', '');
+        $selectedUserEmail = null;
+        if ($selectedUserName) {
+            $selectedUser = User::where('name', $selectedUserName)->first();
+            $selectedUserEmail = $selectedUser ? $selectedUser->email : null;
+        }
+
+        // TAT badge: average TAT (days from start_date to completion_date) for Done tasks completed in last 30 days
+        $last30DoneQuery = (clone $tasksQuery)
+            ->where('status', 'Done')
+            ->whereNotNull('start_date')
+            ->where(function($q) {
+                $q->whereNotNull('completion_date')
+                  ->where('completion_date', '>=', now()->subDays(30))
+                  ->orWhere(function($q2) {
+                      $q2->whereNull('completion_date')
+                         ->where('updated_at', '>=', now()->subDays(30));
+                  });
+            });
+        // Filter by selected user if set (search in both assignor and assign_to)
+        if ($selectedUserEmail) {
+            $last30DoneQuery->where(function($query) use ($selectedUserEmail) {
+                $query->where('assignor', $selectedUserEmail)
+                      ->orWhere('assign_to', 'LIKE', '%' . $selectedUserEmail . '%');
+            });
+        }
+        $last30DoneTasks = $last30DoneQuery->get();
+        $tatValues = [];
+        foreach ($last30DoneTasks as $task) {
+            $start = \Carbon\Carbon::parse($task->start_date);
+            $completion = $task->completion_date 
+                ? \Carbon\Carbon::parse($task->completion_date)
+                : \Carbon\Carbon::parse($task->updated_at);
+            $days = abs($completion->getTimestamp() - $start->getTimestamp()) / 86400;
+            $tatValues[] = round($days, 1);
+        }
+        $stats['tat_avg_30'] = count($tatValues) > 0 ? round(array_sum($tatValues) / count($tatValues), 1) : null;
+
+        // Daily TAT for line chart (last 30 days): date => avg TAT for tasks completed on that day
+        $tatByDay = [];
+        foreach ($last30DoneTasks as $task) {
+            $completion = $task->completion_date 
+                ? \Carbon\Carbon::parse($task->completion_date)
+                : \Carbon\Carbon::parse($task->updated_at);
+            $day = $completion->format('Y-m-d');
+            $start = \Carbon\Carbon::parse($task->start_date);
+            $days = abs($completion->getTimestamp() - $start->getTimestamp()) / 86400;
+            if (!isset($tatByDay[$day])) {
+                $tatByDay[$day] = [];
+            }
+            $tatByDay[$day][] = round($days, 1);
+        }
+        $tatChartData = [];
+        for ($i = 29; $i >= 0; $i--) {
+            $d = now()->subDays($i);
+            $key = $d->format('Y-m-d');
+            $avg = isset($tatByDay[$key]) && count($tatByDay[$key]) > 0
+                ? round(array_sum($tatByDay[$key]) / count($tatByDay[$key]), 1)
+                : null;
+            $tatChartData[] = [
+                'date' => $key,
+                'label' => $d->format('d M'),
+                'avg' => $avg,
+            ];
+        }
+
+        // Missed badge: count of tasks that are overdue or not Done, with start_date in last 30 days
+        $missedQuery = (clone $tasksQuery)
+            ->whereNotNull('start_date')
+            ->where('start_date', '>=', now()->subDays(30))
+            ->where(function($q) {
+                $q->whereNotIn('status', ['Done', 'Archived'])
+                  ->orWhere(function($q2) {
+                      $q2->whereNotNull('start_date')
+                         ->whereRaw('DATE_ADD(start_date, INTERVAL 10 DAY) < NOW()')
+                         ->whereNotIn('status', ['Done', 'Archived']);
+                  });
+            });
+        // Filter by selected user if set (search in both assignor and assign_to)
+        if ($selectedUserEmail) {
+            $missedQuery->where(function($query) use ($selectedUserEmail) {
+                $query->where('assignor', $selectedUserEmail)
+                      ->orWhere('assign_to', 'LIKE', '%' . $selectedUserEmail . '%');
+            });
+        }
+        $stats['missed_count_30'] = $missedQuery->count();
+
+        // Daily missed count for line chart (last 30 days): date => count of missed tasks started on that day
+        $missedByDay = [];
+        $missedTasks = $missedQuery->get();
+        foreach ($missedTasks as $task) {
+            $day = \Carbon\Carbon::parse($task->start_date)->format('Y-m-d');
+            $missedByDay[$day] = ($missedByDay[$day] ?? 0) + 1;
+        }
+        $missedChartData = [];
+        for ($i = 29; $i >= 0; $i--) {
+            $d = now()->subDays($i);
+            $key = $d->format('Y-m-d');
+            $count = $missedByDay[$key] ?? 0;
+            $missedChartData[] = [
+                'date' => $key,
+                'label' => $d->format('d M'),
+                'count' => $count,
+            ];
+        }
+
         // Special permission: Jasmine, Ritu mam, Joy sir can delete/modify any task
         $canDeleteAnyTask = TaskPolicy::userHasSpecialTaskPermission($user);
 
-        return view('tasks.index', compact('stats', 'isAdmin', 'users', 'canDeleteAnyTask'));
+        return view('tasks.index', compact('stats', 'isAdmin', 'users', 'canDeleteAnyTask', 'tatChartData', 'missedChartData', 'selectedUserName'));
     }
 
     public function getData()
@@ -1549,12 +1675,29 @@ class TaskController extends Controller
     }
 
     /**
+     * Store selected user in session (called from AJAX)
+     */
+    public function setSelectedUser(Request $request)
+    {
+        $userName = $request->input('user_name', '');
+        if ($userName) {
+            Session::put('selected_user_name', $userName);
+        } else {
+            Session::forget('selected_user_name');
+        }
+        return response()->json(['success' => true, 'user_name' => $userName]);
+    }
+
+    /**
      * Display deleted tasks page
      */
     public function deletedIndex()
     {
         $user = Auth::user();
         $isAdmin = strtolower($user->role ?? '') === 'admin';
+
+        // Get selected user from session (set from tasks index page)
+        $selectedUserName = Session::get('selected_user_name', '');
 
         // Calculate statistics for deleted tasks
         $deletedQuery = DeletedTask::query();
@@ -1567,6 +1710,14 @@ class TaskController extends Controller
             });
         }
 
+        // Filter by selected user if set (search in both assignor_name and assignee_name)
+        if ($selectedUserName) {
+            $deletedQuery->where(function($query) use ($selectedUserName) {
+                $query->where('assignor_name', 'LIKE', '%' . $selectedUserName . '%')
+                      ->orWhere('assignee_name', 'LIKE', '%' . $selectedUserName . '%');
+            });
+        }
+
         $stats = [
             'total' => (clone $deletedQuery)->count(),
             'this_month' => (clone $deletedQuery)->whereMonth('deleted_at', now()->month)->count(),
@@ -1574,7 +1725,78 @@ class TaskController extends Controller
             'today' => (clone $deletedQuery)->whereDate('deleted_at', today())->count(),
         ];
 
-        return view('tasks.deleted', compact('stats', 'isAdmin'));
+        // TAT badge: average TAT (days from start_date to deleted_at) for deleted tasks in last 30 days
+        $last30Query = (clone $deletedQuery)
+            ->where('deleted_at', '>=', now()->subDays(30))
+            ->whereNotNull('deleted_at')
+            ->whereNotNull('start_date');
+        $last30Tasks = $last30Query->get();
+        $tatValues = [];
+        foreach ($last30Tasks as $task) {
+            $deleted = \Carbon\Carbon::parse($task->deleted_at);
+            $tid = \Carbon\Carbon::parse($task->start_date);
+            $days = abs($deleted->getTimestamp() - $tid->getTimestamp()) / 86400;
+            $tatValues[] = round($days, 1);
+        }
+        $stats['tat_avg_30'] = count($tatValues) > 0 ? round(array_sum($tatValues) / count($tatValues), 1) : null;
+
+        // Daily TAT for line chart (last 30 days): date => avg TAT for tasks deleted on that day
+        $tatByDay = [];
+        foreach ($last30Tasks as $task) {
+            $day = \Carbon\Carbon::parse($task->deleted_at)->format('Y-m-d');
+            $deleted = \Carbon\Carbon::parse($task->deleted_at);
+            $tid = \Carbon\Carbon::parse($task->start_date);
+            $days = abs($deleted->getTimestamp() - $tid->getTimestamp()) / 86400;
+            if (!isset($tatByDay[$day])) {
+                $tatByDay[$day] = [];
+            }
+            $tatByDay[$day][] = round($days, 1);
+        }
+        $tatChartData = [];
+        for ($i = 29; $i >= 0; $i--) {
+            $d = now()->subDays($i);
+            $key = $d->format('Y-m-d');
+            $avg = isset($tatByDay[$key]) && count($tatByDay[$key]) > 0
+                ? round(array_sum($tatByDay[$key]) / count($tatByDay[$key]), 1)
+                : null;
+            $tatChartData[] = [
+                'date' => $key,
+                'label' => $d->format('d M'),
+                'avg' => $avg,
+            ];
+        }
+
+        // Missed badge: count of tasks deleted in last 30 days where status != 'Done'
+        $missedQuery = (clone $deletedQuery)
+            ->where('deleted_at', '>=', now()->subDays(30))
+            ->whereNotNull('deleted_at')
+            ->where(function($q) {
+                $q->where('status', '!=', 'Done')
+                  ->orWhereNull('status')
+                  ->orWhere('status', '');
+            });
+        $stats['missed_count_30'] = $missedQuery->count();
+
+        // Daily missed count for line chart (last 30 days): date => count of missed tasks deleted on that day
+        $missedByDay = [];
+        $missedTasks = $missedQuery->get();
+        foreach ($missedTasks as $task) {
+            $day = \Carbon\Carbon::parse($task->deleted_at)->format('Y-m-d');
+            $missedByDay[$day] = ($missedByDay[$day] ?? 0) + 1;
+        }
+        $missedChartData = [];
+        for ($i = 29; $i >= 0; $i--) {
+            $d = now()->subDays($i);
+            $key = $d->format('Y-m-d');
+            $count = $missedByDay[$key] ?? 0;
+            $missedChartData[] = [
+                'date' => $key,
+                'label' => $d->format('d M'),
+                'count' => $count,
+            ];
+        }
+
+        return view('tasks.deleted', compact('stats', 'isAdmin', 'tatChartData', 'missedChartData', 'selectedUserName'));
     }
 
     /**
@@ -1596,7 +1818,7 @@ class TaskController extends Controller
 
         $deletedTasks = $query->orderBy('deleted_at', 'desc')->get();
 
-        // Add avatar URLs for assignor and assignee
+        // Add avatar URLs for assignor and assignee; compute TAT (days from deleted_at to start_date/tidDate)
         $defaultAvatar = asset('images/users/avatar-2.jpg');
         $deletedTasks->each(function($task) use ($defaultAvatar) {
             if ($task->assignor) {
@@ -1614,6 +1836,14 @@ class TaskController extends Controller
                     : $defaultAvatar;
             } else {
                 $task->assignee_avatar = null;
+            }
+            // TAT = number of days from tidDate (start_date) to deleted date, one decimal (always positive)
+            $task->tat = null;
+            if ($task->deleted_at && $task->start_date) {
+                $deleted = \Carbon\Carbon::parse($task->deleted_at);
+                $tid = \Carbon\Carbon::parse($task->start_date);
+                $days = abs($deleted->getTimestamp() - $tid->getTimestamp()) / 86400;
+                $task->tat = round($days, 1);
             }
         });
 
@@ -1714,6 +1944,148 @@ class TaskController extends Controller
             $message .= ' ' . (count($titles) - $created) . ' skipped (title too long or empty).';
         }
         return redirect()->route('tasks.index')->with('success', $message);
+    }
+
+    /**
+     * Get user's Role & Responsibility data.
+     * Returns rendered Blade partial as HTML for AJAX injection.
+     */
+    public function getUserRR(Request $request)
+    {
+        $userName = $request->input('user_name');
+        
+        if (empty($userName)) {
+            return response()->json([
+                'html' => view('partials.rr_card', ['userRR' => null, 'userName' => null])->render()
+            ]);
+        }
+
+        $user = User::where('name', $userName)->first();
+        
+        if (!$user) {
+            return response()->json([
+                'html' => view('partials.rr_card', ['userRR' => null, 'userName' => $userName])->render()
+            ]);
+        }
+
+        $userRR = $user->userRR;
+        
+        return response()->json([
+            'html' => view('partials.rr_card', ['userRR' => $userRR, 'userName' => $userName])->render()
+        ]);
+    }
+
+    /**
+     * Store or update user's Role & Responsibility.
+     */
+    public function storeUserRR(Request $request)
+    {
+        // Log incoming request data for debugging
+        \Log::info('storeUserRR - Request data:', [
+            'user_id' => $request->user_id,
+            'content_length' => $request->content ? strlen($request->content) : 0,
+            'content_preview' => $request->content ? substr($request->content, 0, 100) : 'empty',
+            'all_input' => $request->all()
+        ]);
+
+        $request->validate([
+            'user_id' => 'required|exists:users,id',
+            'content' => 'nullable|string',
+        ]);
+
+        $user = User::findOrFail($request->user_id);
+        
+        // Get content - handle empty string or null
+        $content = $request->input('content');
+        if (empty($content) || trim($content) === '') {
+            $content = null;
+        }
+
+        \Log::info('storeUserRR - Saving data:', [
+            'user_id' => $user->id,
+            'content_length' => $content ? strlen($content) : 0,
+            'content_is_null' => is_null($content)
+        ]);
+        
+        // Store combined content in role field (for simplicity, we use role field to store all content)
+        // You can also create a separate 'content' field if preferred
+        $userRR = UserRR::updateOrCreate(
+            ['user_id' => $user->id],
+            [
+                'role' => $content, // Store combined content in role field
+                'responsibilities' => null, // Clear old separate fields
+                'goals' => null,
+            ]
+        );
+
+        \Log::info('storeUserRR - Saved successfully:', [
+            'user_rr_id' => $userRR->id,
+            'role_length' => $userRR->role ? strlen($userRR->role) : 0
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Role & Responsibility saved successfully.',
+            'userRR' => [
+                'id' => $userRR->id,
+                'user_id' => $userRR->user_id,
+                'role' => $userRR->role,
+                'role_length' => $userRR->role ? strlen($userRR->role) : 0
+            ]
+        ]);
+    }
+
+    /**
+     * Upload image for TinyMCE editor.
+     */
+    public function uploadImage(Request $request)
+    {
+        $request->validate([
+            'file' => 'required|image|mimes:jpeg,png,jpg,gif,svg,webp|max:2048',
+        ]);
+
+        if ($request->hasFile('file')) {
+            $image = $request->file('file');
+            $filename = time() . '_' . uniqid() . '.' . $image->getClientOriginalExtension();
+            $path = $image->storeAs('public/rr-images', $filename);
+            
+            return response()->json([
+                'location' => asset('storage/rr-images/' . $filename)
+            ]);
+        }
+
+        return response()->json(['error' => 'No file uploaded'], 400);
+    }
+
+    /**
+     * Get R&R data for a specific user (for editing).
+     */
+    public function getUserRRData(Request $request)
+    {
+        $userId = $request->input('user_id');
+        
+        if (!$userId) {
+            return response()->json(['error' => 'User ID is required'], 400);
+        }
+
+        $user = User::findOrFail($userId);
+        $userRR = $user->userRR;
+
+        return response()->json([
+            'userRR' => $userRR ? [
+                'id' => $userRR->id,
+                'user_id' => $userRR->user_id,
+                'role' => $userRR->role,
+                'responsibilities' => $userRR->responsibilities,
+                'goals' => $userRR->goals,
+                'content' => $userRR->role, // For backward compatibility, use role as content
+            ] : null,
+            'user' => [
+                'id' => $user->id,
+                'name' => $user->name,
+                'email' => $user->email,
+            ]
+        ]);
     }
 
 }
