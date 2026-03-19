@@ -695,7 +695,6 @@ class FbaDataController extends Controller
 
       // Prepare table data with repeated parent name for all child SKUs
       $tableData = $fbaData->map(function ($fba, $sku) use ($fbaPriceData, $fbaReportsData, $shopifyData, $productData, $fbaMonthlySales, $fbaManualData, $fbaDispatchDates, $fbaShipCalculations, $amazonDatasheet, $fbaShipments, $adsKWDataBySku, $adsPTDataBySku, $overallAvgPrice, $fbaListingStatuses, $amazonLmpLookup, $amazonAdSpendBySku, $amazonPercentage) {
-      $tableData = $fbaData->map(function ($fba, $sku) use ($fbaPriceData, $fbaReportsData, $shopifyData, $productData, $fbaMonthlySales, $fbaManualData, $fbaDispatchDates, $fbaShipCalculations, $amazonDatasheet, $fbaShipments, $adsKWDataBySku, $adsPTDataBySku, $overallAvgPrice, $fbaListingStatuses, $amazonLmpLookup) {
          $fbaPriceInfo = $fbaPriceData->get($sku);
          $fbaReportsInfo = $fbaReportsData->get($sku);
          $shopifyInfo = $shopifyData->get($sku);
@@ -837,7 +836,13 @@ class FbaDataController extends Controller
          $lp_amt = $LP * $l30Units;
 
          // Calculate Amazon L30 data from Amazon Datasheet
+         // Try exact SKU match first, then try base SKU (without FBA) if needed
          $amazonData = $amazonDatasheet->get($sku);
+         // If not found, try with normalized SKU (remove FBA suffix if present)
+         if (!$amazonData) {
+            $baseSkuForAmazon = strtoupper(preg_replace('/\s*FBA\s*/i', '', trim($sku)));
+            $amazonData = $amazonDatasheet->get($baseSkuForAmazon);
+         }
          $amzL30 = $amazonData ? ($amazonData->units_ordered_l30 ?? 0) : 0;
          $amzPrice = $amazonData ? round(($amazonData->price ?? 0), 2) : null;
          
@@ -891,6 +896,10 @@ class FbaDataController extends Controller
             'FBA_Price' => $fbaPriceInfo ? round(($fbaPriceInfo->price ?? 0), 2) : 0,
             'l30_units' => $monthlySales ? ($monthlySales->l30_units ?? 0) : 0,
             'AMZ_L30' => $amzL30,
+            'AMZ_Price' => $amzPrice,
+            'AMZ_GPFT' => $amzGPFT,
+            'AMZ_AD' => $amzAD,
+            'AMZ_NPFT' => $amzNPFT,
             'Shopify_OV_L30' => $shopifyInfo ? ($shopifyInfo->quantity ?? 0) : 0,
             'Shopify_INV' => $shopifyInfo ? ($shopifyInfo->inv ?? 0) : 0,
             'l60_units' => $monthlySales ? ($monthlySales->l60_units ?? 0) : 0,
@@ -1024,7 +1033,7 @@ class FbaDataController extends Controller
                 );
                 return $msl == 0 ? 1 : $msl;
             })(),
-            'Sugg_Send' => (function() use ($monthlySales, $fba) {
+            'Sugg_Send' => (function() use ($monthlySales, $fba, $manual) {
                 $msl = max(
                     ($monthlySales ? floatval($monthlySales->jan ?? 0) : 0),
                     ($monthlySales ? floatval($monthlySales->feb ?? 0) : 0),
@@ -1041,7 +1050,9 @@ class FbaDataController extends Controller
                 );
                 // If MSL is 0, use 1 as default
                 if ($msl == 0) $msl = 1;
-                return $msl - floatval($fba->quantity_available ?? 0) - floatval($manual ? ($manual->data['total_quantity_sent'] ?? 0) : 0);
+                $fbaQuantity = floatval($fba->getAttribute('quantity_available') ?? 0);
+                $inboundQuantity = $manual ? floatval($manual->data['inbound_quantity'] ?? 0) : 0;
+                return $msl - $fbaQuantity - $inboundQuantity;
             })(),
             'SEND' => $manual ? ($manual->data['send'] ?? '') : '',
             'Correct_Cost' => $manual ? ($manual->data['correct_cost'] ?? false) : false,
@@ -1214,6 +1225,13 @@ class FbaDataController extends Controller
             'SROI%' => '',
             'lmp_1' => '',
             'lmp_data' => [],
+            'LMP' => null,
+            'LMP_Link' => null,
+            'AMZ_L30' => null,
+            'AMZ_Price' => null,
+            'AMZ_GPFT' => null,
+            'AMZ_AD' => null,
+            'AMZ_NPFT' => null,
             'ACTION_ACTION' => '',
             'REV_COUNT' => '',
             'RATING' => '',
