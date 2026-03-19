@@ -3176,6 +3176,11 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::delete('/tasks/automated/{id}', [\App\Http\Controllers\TaskController::class, 'automatedDestroy'])->name('tasks.automatedDestroy');
     Route::get('/tasks/deleted', [\App\Http\Controllers\TaskController::class, 'deletedIndex'])->name('tasks.deleted');
     Route::get('/tasks/deleted/data', [\App\Http\Controllers\TaskController::class, 'deletedData'])->name('tasks.deletedData');
+    Route::post('/tasks/set-selected-user', [\App\Http\Controllers\TaskController::class, 'setSelectedUser'])->name('tasks.setSelectedUser');
+    Route::get('/get-user-rr', [\App\Http\Controllers\TaskController::class, 'getUserRR'])->name('tasks.getUserRR');
+    Route::post('/tasks/store-user-rr', [\App\Http\Controllers\TaskController::class, 'storeUserRR'])->name('tasks.storeUserRR');
+    Route::get('/tasks/get-user-rr-data', [\App\Http\Controllers\TaskController::class, 'getUserRRData'])->name('tasks.getUserRRData');
+    Route::post('/tasks/upload-image', [\App\Http\Controllers\TaskController::class, 'uploadImage'])->name('tasks.uploadImage');
     Route::get('/tasks/users-list', [\App\Http\Controllers\TaskController::class, 'getUsersList'])->name('tasks.usersList');
     Route::get('/tasks/download-template', [\App\Http\Controllers\TaskController::class, 'downloadTemplate'])->name('tasks.downloadTemplate');
     Route::post('/tasks/import-csv', [\App\Http\Controllers\TaskController::class, 'importCsv'])->name('tasks.importCsv');

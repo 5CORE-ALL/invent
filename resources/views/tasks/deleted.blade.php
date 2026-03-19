@@ -92,6 +92,20 @@
             background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
         }
 
+        .stat-card-teal {
+            border-left-color: #20c997;
+        }
+        .stat-card-teal .stat-icon {
+            background: linear-gradient(135deg, #20c997 0%, #17a2b8 100%);
+        }
+
+        .stat-card-red-missed {
+            border-left-color: #dc3545;
+        }
+        .stat-card-red-missed .stat-icon {
+            background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
+        }
+
         /* Table styling */
         .tabulator {
             border: 1px solid #e9ecef !important;
@@ -172,7 +186,15 @@
                             <li class="breadcrumb-item active">Task Deletion Record</li>
                         </ol>
                     </div>
-                    <h4 class="page-title">Task Deletion Record</h4>
+                    <h4 class="page-title">
+                        Task Deletion Record
+                        @if(!empty($selectedUserName))
+                            <span class="badge bg-info ms-2" style="font-size: 0.75rem; font-weight: 600;">
+                                <i class="mdi mdi-account me-1"></i>Filtered: {{ $selectedUserName }}
+                                <button type="button" class="btn-close btn-close-white ms-2" style="font-size: 0.6rem;" onclick="clearUserFilter()" title="Clear filter"></button>
+                            </span>
+                        @endif
+                    </h4>
                 </div>
             </div>
         </div>
@@ -223,6 +245,80 @@
                     <div class="stat-content">
                         <div class="stat-label">TODAY</div>
                         <div class="stat-value">{{ $stats['today'] }}</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-xl-3 col-md-6">
+                <div class="stat-card stat-card-teal">
+                    <div class="stat-icon">
+                        <i class="mdi mdi-clock-outline"></i>
+                    </div>
+                    <div class="stat-content d-flex align-items-center justify-content-between">
+                        <div>
+                            <div class="stat-label">TAT</div>
+                            <div class="stat-value">{{ $stats['tat_avg_30'] !== null ? number_format($stats['tat_avg_30'], 1) : '-' }}</div>
+                            <div class="stat-label mt-1" style="font-size: 10px; opacity: 0.9;">Avg last 30 days (days)</div>
+                        </div>
+                        <button type="button" class="btn btn-sm btn-light border-0 p-2 rounded" id="tat-chart-eye-btn" title="View TAT trend">
+                            <i class="mdi mdi-eye" style="font-size: 1.5rem; color: #20c997;"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-xl-3 col-md-6">
+                <div class="stat-card stat-card-red-missed">
+                    <div class="stat-icon">
+                        <i class="mdi mdi-alert-circle"></i>
+                    </div>
+                    <div class="stat-content d-flex align-items-center justify-content-between">
+                        <div>
+                            <div class="stat-label">MISSED</div>
+                            <div class="stat-value">{{ $stats['missed_count_30'] ?? 0 }}</div>
+                            <div class="stat-label mt-1" style="font-size: 10px; opacity: 0.9;">Last 30 days</div>
+                        </div>
+                        <button type="button" class="btn btn-sm btn-light border-0 p-2 rounded" id="missed-chart-eye-btn" title="View Missed trend">
+                            <i class="mdi mdi-eye" style="font-size: 1.5rem; color: #dc3545;"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAT Line Graph Modal -->
+        <div class="modal fade" id="tatChartModal" tabindex="-1" aria-labelledby="tatChartModalLabel" aria-hidden="true">
+            <div class="modal-dialog modal-lg">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="tatChartModalLabel">
+                            <i class="mdi mdi-chart-line me-2"></i>TAT – Last 30 Days (Avg days)
+                        </h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div style="height: 320px;">
+                            <canvas id="tat-line-chart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Missed Line Graph Modal -->
+        <div class="modal fade" id="missedChartModal" tabindex="-1" aria-labelledby="missedChartModalLabel" aria-hidden="true">
+            <div class="modal-dialog modal-lg">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="missedChartModalLabel">
+                            <i class="mdi mdi-chart-line me-2"></i>Missed Tasks – Last 30 Days (Count)
+                        </h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div style="height: 320px;">
+                            <canvas id="missed-line-chart"></canvas>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -283,9 +379,154 @@
 
 @section('script')
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     
     <script>
+        var tatChartData = @json($tatChartData ?? []);
+        var tatLineChart = null;
+        var missedChartData = @json($missedChartData ?? []);
+        var missedLineChart = null;
+
+        // Clear user filter and reload page
+        function clearUserFilter() {
+            $.ajax({
+                url: '{{ route("tasks.setSelectedUser") }}',
+                method: 'POST',
+                data: {
+                    user_name: '',
+                    _token: '{{ csrf_token() }}'
+                },
+                success: function() {
+                    window.location.reload();
+                }
+            });
+        }
+
         $(document).ready(function() {
+            // TAT badge eye icon: show line graph modal
+            $('#tat-chart-eye-btn').on('click', function() {
+                $('#tatChartModal').modal('show');
+                setTimeout(function() { renderTatLineChart(); }, 300);
+            });
+            $('#tatChartModal').on('hidden.bs.modal', function() {
+                if (tatLineChart) {
+                    tatLineChart.destroy();
+                    tatLineChart = null;
+                }
+            });
+
+            // Missed badge eye icon: show line graph modal
+            $('#missed-chart-eye-btn').on('click', function() {
+                $('#missedChartModal').modal('show');
+                setTimeout(function() { renderMissedLineChart(); }, 300);
+            });
+            $('#missedChartModal').on('hidden.bs.modal', function() {
+                if (missedLineChart) {
+                    missedLineChart.destroy();
+                    missedLineChart = null;
+                }
+            });
+
+            function renderTatLineChart() {
+                var ctx = document.getElementById('tat-line-chart');
+                if (!ctx) return;
+                if (tatLineChart) {
+                    tatLineChart.destroy();
+                    tatLineChart = null;
+                }
+                var labels = tatChartData.map(function(d) { return d.label; });
+                var values = tatChartData.map(function(d) { return d.avg != null ? d.avg : null; });
+                tatLineChart = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: 'Avg TAT (days)',
+                            data: values,
+                            borderColor: '#20c997',
+                            backgroundColor: 'rgba(32, 201, 151, 0.1)',
+                            fill: true,
+                            tension: 0.2,
+                            spanGaps: true
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        interaction: { mode: 'index', intersect: false },
+                        plugins: {
+                            legend: { display: true },
+                            tooltip: {
+                                callbacks: {
+                                    label: function(ctx) {
+                                        var v = ctx.raw;
+                                        return v != null ? v + ' days' : 'No data';
+                                    }
+                                }
+                            }
+                        },
+                        scales: {
+                            x: { display: true, title: { display: true, text: 'Date' } },
+                            y: {
+                                beginAtZero: true,
+                                title: { display: true, text: 'TAT (days)' },
+                                ticks: { stepSize: 1 }
+                            }
+                        }
+                    }
+                });
+            }
+
+            function renderMissedLineChart() {
+                var ctx = document.getElementById('missed-line-chart');
+                if (!ctx) return;
+                if (missedLineChart) {
+                    missedLineChart.destroy();
+                    missedLineChart = null;
+                }
+                var labels = missedChartData.map(function(d) { return d.label; });
+                var values = missedChartData.map(function(d) { return d.count || 0; });
+                missedLineChart = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: 'Missed Tasks (count)',
+                            data: values,
+                            borderColor: '#dc3545',
+                            backgroundColor: 'rgba(220, 53, 69, 0.1)',
+                            fill: true,
+                            tension: 0.2,
+                            spanGaps: false
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        interaction: { mode: 'index', intersect: false },
+                        plugins: {
+                            legend: { display: true },
+                            tooltip: {
+                                callbacks: {
+                                    label: function(ctx) {
+                                        var v = ctx.raw;
+                                        return v + ' task' + (v != 1 ? 's' : '');
+                                    }
+                                }
+                            }
+                        },
+                        scales: {
+                            x: { display: true, title: { display: true, text: 'Date' } },
+                            y: {
+                                beginAtZero: true,
+                                title: { display: true, text: 'Count' },
+                                ticks: { stepSize: 1 }
+                            }
+                        }
+                    }
+                });
+            }
+
             // Initialize Tabulator
             var table = new Tabulator("#deleted-tasks-table", {
                 ajaxURL: "{{ route('tasks.deletedData') }}",
@@ -300,7 +541,9 @@
                 layoutColumnsOnNewData: true,
                 rowFormatter: function(row) {
                     var data = row.getData();
-                    if (data.status && String(data.status).trim().toLowerCase() === 'missed') {
+                    var status = (data.status && String(data.status).trim()) || '';
+                    // Missed = deleted without being Done (any status other than Done)
+                    if (status.toLowerCase() !== 'done') {
                         var el = row.getElement();
                         if (el) {
                             el.classList.add('deleted-row-missed');
@@ -414,13 +657,31 @@
                         }
                     },
                     {
-                        title: "STATUS", 
-                        field: "status", 
+                        title: "STATUS",
+                        field: "status",
                         width: 100,
                         hozAlign: "center",
                         formatter: function(cell) {
-                            var value = cell.getValue() || '-';
-                            return '<span style="font-weight: 600; color: #6c757d;">' + value + '</span>';
+                            var value = (cell.getValue() || '').trim();
+                            // Done when deleted as Done; otherwise Missed (deleted without completing)
+                            var display = (value.toLowerCase() === 'done') ? 'Done' : 'Missed';
+                            if (display === 'Done') {
+                                return '<span style="font-weight: 600; color: #6c757d;">Done</span>';
+                            }
+                            return '<span style="font-weight: 600; color: #dc3545;">Missed</span>';
+                        }
+                    },
+                    {
+                        title: "TAT",
+                        field: "tat",
+                        width: 90,
+                        hozAlign: "center",
+                        formatter: function(cell) {
+                            var value = cell.getValue();
+                            if (value !== null && value !== undefined && value !== '') {
+                                return '<span style="font-weight: 600;">' + Number(value).toFixed(1) + ' days</span>';
+                            }
+                            return '<span style="color: #adb5bd;">-</span>';
                         }
                     },
                     {
@@ -456,7 +717,8 @@
             function styleMissedRows() {
                 table.getRows().forEach(function(row) {
                     var data = row.getData();
-                    if (data.status && String(data.status).trim().toLowerCase() === 'missed') {
+                    var status = (data.status && String(data.status).trim()) || '';
+                    if (status.toLowerCase() !== 'done') {
                         var el = row.getElement();
                         if (el) {
                             el.classList.add('deleted-row-missed');
