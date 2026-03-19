@@ -2737,16 +2737,14 @@
                     }
                 },
                 {
-                    title: "Temu L30",
-                    field: "temu_l30",
+                    title: "T L60",
+                    field: "temu_l60",
                     hozAlign: "center",
+                    width: 50,
                     sorter: "number",
                     formatter: function(cell) {
-                        const row = cell.getRow().getData();
-                        const sku = row.sku || '';
-                        const value = parseInt(cell.getValue()) || 0;
-                        const dotBtn = sku ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${sku}" data-metric="temu_l30" title="View Temu L30 chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #fd7e14;"></span></button>` : '';
-                        return `${value.toLocaleString()} ${dotBtn}`.trim();
+                        const value = cell.getValue();
+                        return Math.round(parseFloat(value) || 0);
                     }
                 },
                 {
@@ -2761,14 +2759,16 @@
                     }
                 },
                 {
-                    title: "T L60",
-                    field: "temu_l60",
+                    title: "Temu L30",
+                    field: "temu_l30",
                     hozAlign: "center",
-                    width: 50,
                     sorter: "number",
                     formatter: function(cell) {
-                        const value = cell.getValue();
-                        return Math.round(parseFloat(value) || 0);
+                        const row = cell.getRow().getData();
+                        const sku = row.sku || '';
+                        const value = parseInt(cell.getValue()) || 0;
+                        const dotBtn = sku ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${sku}" data-metric="temu_l30" title="View Temu L30 chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #fd7e14;"></span></button>` : '';
+                        return `${value.toLocaleString()} ${dotBtn}`.trim();
                     }
                 },
                 {
