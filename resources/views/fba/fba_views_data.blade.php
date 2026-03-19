@@ -115,9 +115,9 @@
                     <a href="{{ url('/fba-manual-sample') }}" class="btn btn-sm btn-info">
                         <i class="fa fa-download"></i> Sample Template
                     </a>
-                    <button type="button" class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#exportModal">
+                    <a href="{{ url('/fba-manual-export') }}" class="btn btn-sm btn-success">
                         <i class="fa fa-file-excel"></i>
-                    </button>
+                    </a>
                     <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal"
                         data-bs-target="#importModal">
                         <i class="fa fa-upload"></i>
@@ -313,36 +313,6 @@
             </div>
         </div>
 
-    <!-- Export Column Selection Modal -->
-    <div class="modal fade" id="exportModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-lg">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">Select Columns to Export</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <div class="mb-3">
-                        <button type="button" class="btn btn-sm btn-primary" id="select-all-export-columns">
-                            <i class="fa fa-check-square"></i> Select All
-                        </button>
-                        <button type="button" class="btn btn-sm btn-secondary" id="deselect-all-export-columns">
-                            <i class="fa fa-square"></i> Deselect All
-                        </button>
-                    </div>
-                    <div id="export-columns-list" style="max-height: 400px; overflow-y: auto; border: 1px solid #ddd; padding: 10px;">
-                        <!-- Columns will be populated by JavaScript -->
-                    </div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="button" class="btn btn-success" id="confirm-export-btn">
-                        <i class="fa fa-file-excel"></i> Export Selected Columns
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
     @endsection
 
     @section('script-bottom')
@@ -3363,101 +3333,5 @@
                 console.log('Modal shown');
             }
 
-            // Export column mapping (field -> display name)
-            const exportColumnMapping = {
-                'Parent': 'Parent',
-                'SKU': 'Child SKU',
-                'FBA_SKU': 'FBA SKU',
-                'FBA_Quantity': 'FBA INV',
-                'l60_units': 'L60 Units',
-                'l30_units': 'L30 Units',
-                'FBA_Dil': 'FBA Dil',
-                'FBA_Price': 'FBA Price',
-                'GPFT%': 'GPFT%',
-                'GROI%': 'GROI%',
-                'TCOS_Percentage': 'TACOS',
-                'TPFT': 'PRFT%',
-                'ROI': 'ROI%',
-                'S_Price': 'S Price',
-                'SPFT': 'SPft%',
-                'SROI%': 'SROI%',
-                'SGPFT%': 'SGPFT%',
-                'LP': 'LP',
-                'FBA_Ship_Calculation': 'FBA Ship',
-                'FBA_CVR': 'FBA CVR',
-                'Current_Month_Views': 'Views',
-                'Inv_age': 'Inv age',
-                'lmp_1': 'LMP',
-                'Fulfillment_Fee': 'FBA Fee',
-                'FBA_Fee_Manual': 'FBA Fee M',
-                'Send_Cost': 'Send Cost',
-                'Commission_Percentage': 'Comm %',
-                'Ratings': 'Ratings'
-            };
-
-            // Build export columns list
-            function buildExportColumnsList() {
-                const container = document.getElementById('export-columns-list');
-                container.innerHTML = '';
-                
-                const columns = table.getColumns().filter(col => {
-                    const field = col.getField();
-                    return field && exportColumnMapping[field] && field !== '_select' && field !== '_accept';
-                });
-
-                columns.forEach(col => {
-                    const field = col.getField();
-                    const displayName = exportColumnMapping[field];
-                    
-                    const div = document.createElement('div');
-                    div.className = 'form-check mb-2';
-                    div.innerHTML = `
-                        <input class="form-check-input export-column-checkbox" type="checkbox" 
-                               value="${field}" id="export-col-${field}" checked>
-                        <label class="form-check-label" for="export-col-${field}">
-                            ${displayName}
-                        </label>
-                    `;
-                    container.appendChild(div);
-                });
-            }
-
-            // Select all export columns
-            $('#select-all-export-columns').on('click', function() {
-                $('.export-column-checkbox').prop('checked', true);
-            });
-
-            // Deselect all export columns
-            $('#deselect-all-export-columns').on('click', function() {
-                $('.export-column-checkbox').prop('checked', false);
-            });
-
-            // Confirm export
-            $('#confirm-export-btn').on('click', function() {
-                const selectedColumns = [];
-                $('.export-column-checkbox:checked').each(function() {
-                    selectedColumns.push($(this).val());
-                });
-
-                if (selectedColumns.length === 0) {
-                    showToast('error', 'Please select at least one column to export');
-                    return;
-                }
-
-                // Build export URL with selected columns
-                const columnsParam = encodeURIComponent(JSON.stringify(selectedColumns));
-                const exportUrl = `/fba-manual-export?columns=${columnsParam}`;
-                
-                // Close modal and trigger download
-                $('#exportModal').modal('hide');
-                window.location.href = exportUrl;
-            });
-
-            // When export modal is shown, build the columns list
-            $('#exportModal').on('show.bs.modal', function() {
-                if (table) {
-                    buildExportColumnsList();
-                }
-            });
         </script>
     @endsection
