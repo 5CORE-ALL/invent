@@ -905,6 +905,36 @@
                             visible: true,
                             // formatter: "dollar"
                         },
+                        {
+                            title: "LMP",
+                            field: "LMP",
+                            hozAlign: "center",
+                            visible: true,
+                            formatter: function(cell) {
+                                const rowData = cell.getRow().getData();
+                                const value = cell.getValue();
+                                const lmpLink = rowData.LMP_Link;
+                                const sku = rowData.SKU || '';
+                                
+                                if (rowData.is_parent) {
+                                    return '';
+                                }
+                                
+                                if (value == null || value === '' || parseFloat(value) <= 0) {
+                                    const skuEnc = encodeURIComponent(sku);
+                                    const url = '/repricer/amazon-search' + (skuEnc ? '?sku=' + skuEnc : '');
+                                    return '<a href="' + url + '" target="_blank" rel="noopener" class="lmp-no-data-link" title="No LMP – open Amazon repricer search"><i class="fas fa-circle" style="color: #ff9c00; font-size: 10px;"></i></a>';
+                                }
+                                
+                                const price = parseFloat(value);
+                                const fbaPrice = parseFloat(rowData.FBA_Price || 0);
+                                const color = (fbaPrice > 0 && price < fbaPrice) ? '#dc3545' : '#28a745';
+                                // Make LMP price clickable to show all competitors in modal
+                                const baseSku = sku.replace(/\s*FBA\s*/i, '').trim();
+                                return '<a href="#" class="lmp-price-link" data-sku="' + baseSku.replace(/"/g, '&quot;') + '" data-marketplace="amazon" style="color: ' + color + '; text-decoration: none; cursor: pointer; font-weight: 600;">$' + price.toFixed(2) + '</a>';
+                            },
+                            minWidth: 70
+                        },
 
                         {
                             title: "PRFT<br>%",
@@ -2103,7 +2133,7 @@
                 });
             });
 
-            // LMP Modal Event Listener
+            // LMP Modal Event Listener for lmp-link (existing functionality)
             $(document).on('click', '.lmp-link', function(e) {
                 e.preventDefault();
                 const sku = $(this).data('sku');
@@ -2122,7 +2152,101 @@
                 }
             });
 
-            // LMP Modal Function
+            // LMP Price Link Event Listener - fetch all competitors
+            $(document).on('click', '.lmp-price-link', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                const sku = $(this).data('sku');
+                const marketplace = $(this).data('marketplace') || 'amazon';
+                
+                $('#lmpSku').text(sku);
+                $('#lmpModal').appendTo('body');
+                
+                // Show loading state
+                $('#lmpDataList').html(`
+                    <div class="text-center py-5">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                        <p class="mt-2">Loading competitors for ${sku}...</p>
+                    </div>
+                `);
+                
+                // Fix modal z-index and backdrop issues
+                const modal = $('#lmpModal');
+                modal.css('z-index', '1050');
+                modal.modal('show');
+                $('.modal-backdrop').css('z-index', '1040');
+                
+                // Fetch all competitors from backend
+                $.ajax({
+                    url: '/amazon/competitors',
+                    method: 'GET',
+                    data: { sku: sku },
+                    success: function(res) {
+                        if (res.success && res.competitors && res.competitors.length > 0) {
+                            renderLmpCompetitors(sku, res.competitors);
+                        } else {
+                            $('#lmpDataList').html('<div class="alert alert-info"><i class="fa fa-info-circle"></i> No Amazon competitors found for this SKU</div>');
+                        }
+                    },
+                    error: function(xhr) {
+                        console.error('Error fetching competitors:', xhr);
+                        $('#lmpDataList').html('<div class="alert alert-danger"><i class="fa fa-exclamation-circle"></i> Failed to load competitors. Please try again.</div>');
+                    }
+                });
+            });
+
+            // Render LMP Competitors in Modal
+            function renderLmpCompetitors(sku, competitors) {
+                if (!competitors || competitors.length === 0) {
+                    $('#lmpDataList').html('<div class="alert alert-info"><i class="fa fa-info-circle"></i> No competitors found for this SKU</div>');
+                    return;
+                }
+                
+                // Sort by price ascending
+                const sortedCompetitors = competitors.slice().sort((a, b) => {
+                    const priceA = parseFloat(a.price) || 0;
+                    const priceB = parseFloat(b.price) || 0;
+                    return priceA - priceB;
+                });
+                
+                const lowestPrice = sortedCompetitors.length > 0 ? parseFloat(sortedCompetitors[0].price) || 0 : 0;
+                
+                let html = '';
+                if (lowestPrice > 0) {
+                    html += '<div class="mb-3"><span class="badge" style="background-color: transparent; color: #ff9c00; font-weight: 600;">Lowest Price: $' + lowestPrice.toFixed(2) + '</span></div>';
+                }
+                
+                html += '<div class="table-responsive"><table class="table table-hover table-bordered table-sm"><thead class="table-light"><tr><th>#</th><th>Price</th><th>Title</th><th>Rating</th><th>Reviews</th><th>Link</th></tr></thead><tbody>';
+                
+                sortedCompetitors.forEach(function(comp, i) {
+                    const sn = i + 1;
+                    const price = parseFloat(comp.price) || 0;
+                    const link = comp.product_link || comp.link || '';
+                    const image = comp.image || '';
+                    const title = (comp.product_title || '').substring(0, 60) + ((comp.product_title || '').length > 60 ? '...' : '');
+                    const rating = comp.rating != null ? parseFloat(comp.rating).toFixed(1) : '-';
+                    const reviews = comp.reviews != null ? (parseInt(comp.reviews) || 0).toLocaleString() : '-';
+                    const isLowest = price > 0 && lowestPrice > 0 && Math.abs(price - lowestPrice) < 0.01;
+                    const rowClass = isLowest ? 'table-success' : '';
+                    const imgHtml = image ? `<img src="${image.replace(/"/g, '&quot;')}" alt="Product" class="rounded" style="height:40px;width:40px;object-fit:contain;margin-right:6px;" onerror="this.style.display='none'">` : '';
+                    
+                    html += `<tr class="${rowClass}">
+                        <td>${sn}</td>
+                        <td><div class="d-flex align-items-center">${imgHtml}<span>${isLowest ? '<i class="fa fa-trophy text-success me-1"></i>' : ''}<strong>$${price.toFixed(2)}</strong></span></div></td>
+                        <td title="${(comp.product_title || '').replace(/"/g, '&quot;')}">${title || '-'}</td>
+                        <td>${rating !== '-' ? '<i class="fa fa-star text-warning"></i> ' + rating : '-'}</td>
+                        <td>${reviews !== '-' ? reviews : '-'}</td>
+                        <td>${link ? '<a href="' + link.replace(/"/g, '&quot;') + '" target="_blank" class="text-primary" title="Open product"><i class="fa fa-external-link"></i></a>' : '-'}</td>
+                    </tr>`;
+                });
+                
+                html += '</tbody></table></div>';
+                $('#lmpDataList').html(html);
+            }
+
+            // LMP Modal Function (for existing lmp-link)
             function openLmpModal(sku, data) {
                 console.log('Opening modal for SKU:', sku, 'Data length:', data.length);
                 console.log('lmpDataList exists:', $('#lmpDataList').length);

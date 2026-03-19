@@ -1187,6 +1187,21 @@ class CvrMasterController extends Controller
                 Log::info('Found full SKU in ProductMaster: ' . $fullSku . ' (from: ' . $sku . ')');
             }
 
+            // Fetch Amazon LMP data from amazon_sku_competitors (same as getCvrDataJson)
+            $amazonLmpLookup = collect();
+            try {
+                $amazonLmpRecords = AmazonSkuCompetitor::where('marketplace', 'amazon')
+                    ->where('price', '>', 0)
+                    ->orderBy('price', 'asc')
+                    ->get()
+                    ->groupBy(function ($item) {
+                        return strtoupper(preg_replace('/\s+/', ' ', trim($item->sku)));
+                    });
+                $amazonLmpLookup = $amazonLmpRecords->map(fn ($items) => $items->first());
+            } catch (\Exception $e) {
+                Log::warning('Could not fetch Amazon LMP in breakdown: ' . $e->getMessage());
+            }
+
             // Get LP and Ship from ProductMaster for profit calculations
             $values = $productMaster ? ($productMaster->Values ?: []) : [];
             $lp = 0;
@@ -2309,10 +2324,20 @@ class CvrMasterController extends Controller
                         $fbaSroi = $amazonSuggested['sroi'] ?? 0;
                     }
 
+                    // Get LMP data for FBA SKU by matching base SKU (remove "FBA" suffix)
+                    $baseSkuForLmp = strtoupper(preg_replace('/\s*FBA\s*/i', '', $fullSku));
+                    $baseSkuForLmp = preg_replace('/\s+/', ' ', trim($baseSkuForLmp));
+                    $fbaLmp = $amazonLmpLookup->get($baseSkuForLmp);
+                    $fbaLmpPrice = ($fbaLmp && isset($fbaLmp->price) && is_numeric($fbaLmp->price))
+                        ? round(floatval($fbaLmp->price), 2) : null;
+                    $fbaLmpLink = ($fbaLmp && !empty($fbaLmp->product_link)) ? $fbaLmp->product_link : null;
+
                     $breakdownData[] = [
                         'marketplace' => 'FBA',
                         'sku' => $fullSku,
                         'price' => round($fbaPrice, 2),
+                        'lmp_price' => $fbaLmpPrice,
+                        'lmp_link' => $fbaLmpLink,
                         'views' => $fbaViews,
                         'l30' => $fbaL30,
                         'gpft' => round($fbaGPFT, 2),

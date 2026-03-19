@@ -17,6 +17,7 @@ use App\Models\FbaListingStatus;
 use App\Models\FbaShipCalculation;
 use App\Models\FbaMetricsHistory;
 use App\Models\FbaSkuDailyData;
+use App\Models\AmazonSkuCompetitor;
 use App\Services\ColorService;
 use App\Services\FbaManualDataService;
 use App\Services\LmpaDataService;
@@ -207,10 +208,25 @@ class FbaDataController extends Controller
          ->where('campaignStatus', '!=', 'ARCHIVED')
          ->get();
 
+      // Fetch Amazon LMP data from amazon_sku_competitors
+      $amazonLmpLookup = collect();
+      try {
+         $amazonLmpRecords = AmazonSkuCompetitor::where('marketplace', 'amazon')
+            ->where('price', '>', 0)
+            ->orderBy('price', 'asc')
+            ->get()
+            ->groupBy(function ($item) {
+               return strtoupper(preg_replace('/\s+/', ' ', trim($item->sku)));
+            });
+         $amazonLmpLookup = $amazonLmpRecords->map(fn ($items) => $items->first());
+      } catch (\Exception $e) {
+         Log::warning('Could not fetch Amazon LMP in FBA data: ' . $e->getMessage());
+      }
+
       $matchedSkus = $fbaData->keys()->toArray();
       $unmatchedSkus = array_diff($skus, $matchedSkus);
 
-      return compact('productData', 'shopifyData', 'fbaData', 'fbaPriceData', 'fbaReportsData', 'matchedSkus', 'unmatchedSkus', 'fbaMonthlySales', 'fbaManualData', 'fbaDispatchDates', 'fbaShipCalculations', 'amazonDatasheet', 'fbaShipments', 'amazonSpCampaignReportsL60', 'amazonSpCampaignReportsL30', 'amazonSpCampaignReportsL15', 'amazonSpCampaignReportsL7', 'amazonSpCampaignReportsL1');
+      return compact('productData', 'shopifyData', 'fbaData', 'fbaPriceData', 'fbaReportsData', 'matchedSkus', 'unmatchedSkus', 'fbaMonthlySales', 'fbaManualData', 'fbaDispatchDates', 'fbaShipCalculations', 'amazonDatasheet', 'fbaShipments', 'amazonSpCampaignReportsL60', 'amazonSpCampaignReportsL30', 'amazonSpCampaignReportsL15', 'amazonSpCampaignReportsL7', 'amazonSpCampaignReportsL1', 'amazonLmpLookup');
    }
 
    public function fbaPageView()
@@ -571,6 +587,7 @@ class FbaDataController extends Controller
       $fbaShipCalculations = $data['fbaShipCalculations'];
       $amazonDatasheet = $data['amazonDatasheet'];
       $fbaShipments = $data['fbaShipments'];
+      $amazonLmpLookup = $data['amazonLmpLookup'];
       $productData = $data['productData']->keyBy(function ($p) {
          return strtoupper(trim($p->sku));
       });
@@ -646,7 +663,7 @@ class FbaDataController extends Controller
       $overallAvgPrice = $totalL30 > 0 ? $totalPrice * $totalL30 / $totalL30 : 0;
 
       // Prepare table data with repeated parent name for all child SKUs
-      $tableData = $fbaData->map(function ($fba, $sku) use ($fbaPriceData, $fbaReportsData, $shopifyData, $productData, $fbaMonthlySales, $fbaManualData, $fbaDispatchDates, $fbaShipCalculations, $amazonDatasheet, $fbaShipments, $adsKWDataBySku, $adsPTDataBySku, $overallAvgPrice, $fbaListingStatuses) {
+      $tableData = $fbaData->map(function ($fba, $sku) use ($fbaPriceData, $fbaReportsData, $shopifyData, $productData, $fbaMonthlySales, $fbaManualData, $fbaDispatchDates, $fbaShipCalculations, $amazonDatasheet, $fbaShipments, $adsKWDataBySku, $adsPTDataBySku, $overallAvgPrice, $fbaListingStatuses, $amazonLmpLookup) {
          $fbaPriceInfo = $fbaPriceData->get($sku);
          $fbaReportsInfo = $fbaReportsData->get($sku);
          $shopifyInfo = $shopifyData->get($sku);
@@ -811,6 +828,18 @@ class FbaDataController extends Controller
             'FBA_SKU' => $fba->seller_sku,
             'NRL_FBA' => $listingStatus ? ($listingStatus->status_value['status'] ?? 'FBA') : 'FBA',
             'FBA_Price' => $fbaPriceInfo ? round(($fbaPriceInfo->price ?? 0), 2) : 0,
+            // Get LMP data by matching base SKU (remove "FBA" suffix)
+            'LMP' => (function() use ($sku, $amazonLmpLookup) {
+               $baseSkuForLmp = strtoupper(preg_replace('/\s+/', ' ', trim($sku)));
+               $lmp = $amazonLmpLookup->get($baseSkuForLmp);
+               return ($lmp && isset($lmp->price) && is_numeric($lmp->price))
+                  ? round(floatval($lmp->price), 2) : null;
+            })(),
+            'LMP_Link' => (function() use ($sku, $amazonLmpLookup) {
+               $baseSkuForLmp = strtoupper(preg_replace('/\s+/', ' ', trim($sku)));
+               $lmp = $amazonLmpLookup->get($baseSkuForLmp);
+               return ($lmp && !empty($lmp->product_link)) ? $lmp->product_link : null;
+            })(),
             'l30_units' => $monthlySales ? ($monthlySales->l30_units ?? 0) : 0,
             'AMZ_L30' => $amzL30,
             'Shopify_OV_L30' => $shopifyInfo ? ($shopifyInfo->quantity ?? 0) : 0,
@@ -1062,6 +1091,8 @@ class FbaDataController extends Controller
             'SKU' => $parentKey,
             'FBA_SKU' => '',
             'FBA_Price' => '',
+            'LMP' => null, // Parent rows don't show LMP
+            'LMP_Link' => null,
             'l30_units' => $children->sum('l30_units'),
             'l60_units' => $children->sum('l60_units'),
             'FBA_Quantity' => $children->sum('FBA_Quantity'),

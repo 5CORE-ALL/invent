@@ -25,7 +25,7 @@
             font-weight: 600;
         }
 
-        
+
         
         .tabulator .tabulator-header .tabulator-col {
             height: 80px !important;
