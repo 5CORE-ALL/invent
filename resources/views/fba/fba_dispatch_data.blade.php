@@ -669,7 +669,7 @@
                                         title="Click to view missing fields">${missingCount}</span>`;
                                 }
 
-                                return `${fbaSku}${ratingDisplay}${missingDisplay} <button class="btn btn-sm ms-1 view-sku-chart" data-sku="${sku}" title="View Metrics Chart" style="border: none; background: none; color: #87CEEB; padding: 2px 6px;"><i class="fa fa-info-circle"></i></button>`;
+                                return `${fbaSku}${ratingDisplay}${missingDisplay} <i class="fa fa-copy text-secondary copy-fba-sku-btn" style="cursor: pointer; margin-left: 8px; font-size: 14px;" data-fba-sku="${fbaSku}" title="Copy FBA SKU"></i> <button class="btn btn-sm ms-1 view-sku-chart" data-sku="${sku}" title="View Metrics Chart" style="border: none; background: none; color: #87CEEB; padding: 2px 6px;"><i class="fa fa-info-circle"></i></button>`;
                             }
                         },
 
@@ -2238,6 +2238,32 @@
                 } catch (err) {
                     console.error('Failed to show monthly sales modal', err);
                     alert('Failed to load monthly sales details');
+                }
+            });
+
+            // Copy FBA SKU button handler
+            $(document).on('click', '.copy-fba-sku-btn', function(e) {
+                e.stopPropagation();
+                const fbaSku = $(this).data('fba-sku');
+                if (fbaSku) {
+                    navigator.clipboard.writeText(fbaSku).then(() => {
+                        showToast(`Copied: ${fbaSku}`, 'success');
+                    }).catch(() => {
+                        // Fallback for older browsers
+                        const textArea = document.createElement('textarea');
+                        textArea.value = fbaSku;
+                        textArea.style.position = 'fixed';
+                        textArea.style.opacity = '0';
+                        document.body.appendChild(textArea);
+                        textArea.select();
+                        try {
+                            document.execCommand('copy');
+                            showToast(`Copied: ${fbaSku}`, 'success');
+                        } catch (err) {
+                            showToast('Failed to copy', 'error');
+                        }
+                        document.body.removeChild(textArea);
+                    });
                 }
             });
         </script>
