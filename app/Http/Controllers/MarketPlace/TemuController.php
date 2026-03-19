@@ -2252,7 +2252,12 @@ class TemuController extends Controller
                 $qty = (int)($row->quantity_purchased ?? 0);
                 $base = (float)($row->base_price_total ?? 0);
                 $salesTotalQuantity += $qty;
-                $salesTotalRevenue += $base * $qty;
+                
+                // Calculate fbPrice same as temu-tabulator and UpdateMarketplaceDailyMetrics
+                // fbPrice = (basePrice * quantity < 27) ? basePrice + 2.99 : basePrice
+                $total = $base * $qty;
+                $fbPrice = $total < 27 ? $base + 2.99 : $base;
+                $salesTotalRevenue += $fbPrice * $qty;
             }
             $salesSummary = [
                 'total_orders' => $salesTotalOrders,
