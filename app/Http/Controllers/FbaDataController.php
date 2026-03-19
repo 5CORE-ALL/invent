@@ -844,6 +844,9 @@ class FbaDataController extends Controller
             $amazonData = $amazonDatasheet->get($baseSkuForAmazon);
          }
          $amzL30 = $amazonData ? ($amazonData->units_ordered_l30 ?? 0) : 0;
+         $amzL60 = $amazonData ? ($amazonData->units_ordered_l60 ?? 0) : 0;
+         $amzSess30 = $amazonData ? ($amazonData->sessions_l30 ?? 0) : 0;
+         $amzSess60 = $amazonData ? ($amazonData->sessions_l60 ?? 0) : 0;
          $amzPrice = $amazonData ? round(($amazonData->price ?? 0), 2) : null;
          
          // Calculate Amazon GPFT, PFT, AD, NPFT (using LP and Ship from ProductMaster only for Amazon)
@@ -896,6 +899,9 @@ class FbaDataController extends Controller
             'FBA_Price' => $fbaPriceInfo ? round(($fbaPriceInfo->price ?? 0), 2) : 0,
             'l30_units' => $monthlySales ? ($monthlySales->l30_units ?? 0) : 0,
             'AMZ_L30' => $amzL30,
+            'AMZ_L60' => $amzL60,
+            'AMZ_Sess30' => $amzSess30,
+            'AMZ_Sess60' => $amzSess60,
             'AMZ_Price' => $amzPrice,
             'AMZ_GPFT' => $amzGPFT,
             'AMZ_AD' => $amzAD,
@@ -1229,6 +1235,9 @@ class FbaDataController extends Controller
             'LMP' => null,
             'LMP_Link' => null,
             'AMZ_L30' => null,
+            'AMZ_L60' => null,
+            'AMZ_Sess30' => null,
+            'AMZ_Sess60' => null,
             'AMZ_Price' => null,
             'AMZ_GPFT' => null,
             'AMZ_AD' => null,
