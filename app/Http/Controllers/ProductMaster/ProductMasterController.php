@@ -5,10 +5,16 @@ namespace App\Http\Controllers\ProductMaster;
 use App\Http\Controllers\ApiController;
 use App\Http\Controllers\Controller;
 use App\Models\AmazonListingRaw;
+use App\Models\Ebay2Metric;
+use App\Models\Ebay3Metric;
+use App\Models\EbayMetric;
 use App\Models\MarketplacePushLog;
 use App\Models\Permission;
 use App\Models\ProductMaster;
 use App\Services\AmazonSpApiService;
+use App\Services\Ebay2ApiService;
+use App\Services\EbayApiService;
+use App\Services\EbayThreeApiService;
 use App\Services\ReverbApiService;
 use App\Services\TemuApiService;
 use App\Services\WayfairApiService;
@@ -2265,6 +2271,144 @@ PROMPT;
     }
 
     /**
+     * Generate 4 Title 80 options (75-85 chars) using Claude for the "Improve with AI" popup (eBay).
+     */
+    public function generateTitle80WithAI(Request $request)
+    {
+        $request->validate([
+            'sku' => 'nullable|string',
+            'title_150' => 'required|string',
+            'current_title_80' => 'nullable|string',
+            'category' => 'nullable|string',
+        ]);
+
+        $apiKey = config('services.anthropic.key');
+        if (! $apiKey) {
+            Log::warning('AI generate title 80: ANTHROPIC_API_KEY not configured');
+
+            return response()->json([
+                'success' => false,
+                'message' => 'ANTHROPIC_API_KEY is not configured.',
+            ], 503);
+        }
+
+        $title150 = trim($request->input('title_150', ''));
+        $currentTitle80 = trim($request->input('current_title_80', ''));
+        $sku = $request->input('sku', '');
+        $category = $request->input('category', '');
+
+        $model = 'claude-sonnet-4-20250514';
+        $minLen = 75;
+        $maxLen = 85;
+
+        $prompt = <<<PROMPT
+Generate 4 eBay product titles that are between 75-85 characters.
+
+Original title: "{$title150}"
+SKU: {$sku}
+Category: {$category}
+Existing Title 80 (if any): "{$currentTitle80}"
+
+REQUIREMENTS:
+- Length: MUST be between 75-85 characters
+- Include brand "5 Core" at beginning
+- Focus on key features for eBay marketplace
+- Include important keywords
+- No promotional text
+- Return 4 variations with character counts
+
+For each title, provide a success score out of 100 (based on: character count 75-85 = high, brand inclusion, keyword density, eBay best practices).
+
+Technical requirement: Return ONLY a JSON array of exactly 4 objects. No markdown, no code block, no explanations. Each object must have "title" (string) and "score" (integer 1-100).
+Example format: [{"title": "5 Core First title here 75-85 chars...", "score": 94}, {"title": "5 Core Second title...", "score": 87}, ...]
+PROMPT;
+
+        try {
+            Log::info('🤖 AI Title 80 generation started', ['sku' => $sku]);
+
+            $response = Http::timeout(90)
+                ->withHeaders([
+                    'x-api-key' => $apiKey,
+                    'anthropic-version' => '2023-06-01',
+                    'content-type' => 'application/json',
+                ])
+                ->post('https://api.anthropic.com/v1/messages', [
+                    'model' => $model,
+                    'max_tokens' => 1024,
+                    'messages' => [['role' => 'user', 'content' => $prompt]],
+                ]);
+
+            if (! $response->successful()) {
+                $bodyJson = $response->json();
+                $errorMsg = $bodyJson['error']['message'] ?? $response->body();
+                Log::warning('AI generate title 80: API error', ['status' => $response->status()]);
+
+                return response()->json([
+                    'success' => false,
+                    'message' => 'AI service error: '.$errorMsg,
+                ], 502);
+            }
+
+            $body = $response->json();
+            $text = trim($body['content'][0]['text'] ?? '');
+            $text = preg_replace('/^```\w*\s*|\s*```$/m', '', $text);
+            $arr = json_decode($text, true);
+
+            if (! is_array($arr) || count($arr) < 4) {
+                Log::warning('AI generate title 80: invalid response format', ['preview' => mb_substr($text, 0, 300)]);
+
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Invalid AI response: expected 4 titles with scores.',
+                ], 422);
+            }
+
+            $validItems = [];
+            $invalidCount = 0;
+            for ($i = 0; $i < 4; $i++) {
+                $raw = $arr[$i] ?? null;
+                $t = is_array($raw) && ! empty($raw['title'])
+                    ? trim((string) $raw['title'])
+                    : trim(is_string($raw) ? $raw : (string) ($raw ?? ''));
+                $len = mb_strlen($t);
+                $valid = $len >= $minLen && $len <= $maxLen;
+                if (! $valid) {
+                    $invalidCount++;
+                    Log::info('AI generate title 80: title '.($i + 1).' out of range (discarded)', ['len' => $len, 'min' => $minLen, 'max' => $maxLen]);
+                    continue;
+                }
+                $scoreFromAi = (is_array($raw) && isset($raw['score'])) ? max(1, min(100, (int) $raw['score'])) : null;
+                if ($scoreFromAi === null) {
+                    $scoreFromAi = ($len >= 75 && $len <= 85) ? 94 : 70;
+                }
+                $validItems[] = ['title' => $t, 'score' => $scoreFromAi];
+            }
+
+            if (count($validItems) === 0) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'All 4 titles were out of range (75-85 characters). Please click Regenerate to try again.',
+                ], 422);
+            }
+
+            Log::info('✅ AI Title 80 generation success', ['sku' => $sku, 'titles' => count($validItems), 'invalid_count' => $invalidCount]);
+
+            return response()->json([
+                'success' => true,
+                'titles' => $validItems,
+                'invalid_count' => $invalidCount,
+            ]);
+        } catch (\Exception $e) {
+            Log::error('AI generate title 80: exception', ['message' => $e->getMessage()]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Error: '.$e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
      * Push Title 150 to Amazon for a single SKU via SP-API Listings Items API.
      */
     public function pushTitleToAmazon(Request $request)
@@ -2533,15 +2677,15 @@ PROMPT;
     }
 
     /**
-     * Push a single title (150 or 100) to a single marketplace.
+     * Push a single title (150, 100, or 80) to a single marketplace.
      * Used by per-row buttons on Title Master screen.
      */
     public function pushSingleMarketplace(Request $request)
     {
         $request->validate([
             'sku' => 'required|string|max:255',
-            'marketplace' => 'required|string|in:amazon,temu,reverb,wayfair,shopify,doba',
-            'title_type' => 'required|string|in:150,100',
+            'marketplace' => 'required|string|in:amazon,temu,reverb,wayfair,shopify,doba,ebay1,ebay2,ebay3',
+            'title_type' => 'required|string|in:150,100,80',
             'title' => 'nullable|string|max:2000',
         ]);
 
@@ -2564,6 +2708,12 @@ PROMPT;
                 'message' => 'Title 100 is only valid for Shopify and Doba.',
             ], 422);
         }
+        if ($titleType === '80' && ! in_array($marketplace, ['ebay1', 'ebay2', 'ebay3'], true)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Title 80 is only valid for eBay 1, eBay 2, eBay 3.',
+            ], 422);
+        }
 
         // If title not provided, attempt to resolve from DB for safety
         if ($title === '') {
@@ -2574,6 +2724,8 @@ PROMPT;
             if ($product) {
                 if ($titleType === '150') {
                     $title = $product->title150 ?? $product->amazon_title ?? '';
+                } elseif ($titleType === '80') {
+                    $title = $product->title80 ?? '';
                 } else {
                     $title = $product->title100 ?? '';
                 }
@@ -2650,6 +2802,66 @@ PROMPT;
                     $endpoint = 'ProductMasterController::updateDobaTitle';
                     $success = $this->updateDobaTitle($sku, $title);
                     $message = $success ? 'OK' : 'Update failed, see logs.';
+                    break;
+
+                case 'ebay1':
+                    $endpoint = 'EbayApiService::updateTitle';
+                    $metric = EbayMetric::where('sku', $sku)->orWhereRaw('UPPER(TRIM(sku)) = ?', [strtoupper(trim($sku))])->first();
+                    if (! $metric || ! $metric->item_id) {
+                        Log::error('❌ eBay 1 push failed: listing not found', ['sku' => $sku]);
+                        $success = false;
+                        $message = 'eBay listing not found for this SKU.';
+                    } else {
+                        $ebayService = new EbayApiService;
+                        $res = $ebayService->updateTitle($metric->item_id, $title);
+                        $success = $res['success'] ?? false;
+                        $message = $res['message'] ?? ($success ? 'OK' : 'Unknown error');
+                        if ($success) {
+                            Log::info('✅ eBay 1 title updated', ['sku' => $sku, 'item_id' => $metric->item_id]);
+                        } else {
+                            Log::error('❌ eBay 1 push failed', ['sku' => $sku, 'error' => $message]);
+                        }
+                    }
+                    break;
+
+                case 'ebay2':
+                    $endpoint = 'Ebay2ApiService::updateTitle';
+                    $metric = Ebay2Metric::where('sku', $sku)->orWhereRaw('UPPER(TRIM(sku)) = ?', [strtoupper(trim($sku))])->first();
+                    if (! $metric || ! $metric->item_id) {
+                        Log::error('❌ eBay 2 push failed: listing not found', ['sku' => $sku]);
+                        $success = false;
+                        $message = 'eBay 2 listing not found for this SKU.';
+                    } else {
+                        $ebayService = new Ebay2ApiService;
+                        $res = $ebayService->updateTitle($metric->item_id, $title);
+                        $success = $res['success'] ?? false;
+                        $message = $res['message'] ?? ($success ? 'OK' : 'Unknown error');
+                        if ($success) {
+                            Log::info('✅ eBay 2 title updated', ['sku' => $sku, 'item_id' => $metric->item_id]);
+                        } else {
+                            Log::error('❌ eBay 2 push failed', ['sku' => $sku, 'error' => $message]);
+                        }
+                    }
+                    break;
+
+                case 'ebay3':
+                    $endpoint = 'EbayThreeApiService::updateTitle';
+                    $metric = Ebay3Metric::where('sku', $sku)->orWhereRaw('UPPER(TRIM(sku)) = ?', [strtoupper(trim($sku))])->first();
+                    if (! $metric || ! $metric->item_id) {
+                        Log::error('❌ eBay 3 push failed: listing not found', ['sku' => $sku]);
+                        $success = false;
+                        $message = 'eBay 3 listing not found for this SKU.';
+                    } else {
+                        $ebayService = new EbayThreeApiService;
+                        $res = $ebayService->updateTitle($metric->item_id, $title);
+                        $success = $res['success'] ?? false;
+                        $message = $res['message'] ?? ($success ? 'OK' : 'Unknown error');
+                        if ($success) {
+                            Log::info('✅ eBay 3 title updated', ['sku' => $sku, 'item_id' => $metric->item_id]);
+                        } else {
+                            Log::error('❌ eBay 3 push failed', ['sku' => $sku, 'error' => $message]);
+                        }
+                    }
                     break;
             }
         } catch (\Throwable $e) {

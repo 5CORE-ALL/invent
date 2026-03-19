@@ -245,6 +245,12 @@
         .btn-wayfair { background-color: #dc3545; }
         .btn-shopify { background-color: #6f42c1; }
         .btn-doba { background-color: #fd7e14; }
+        .btn-ebay1 { background-color: #0d6efd; }
+        .btn-ebay2 { background-color: #198754; }
+        .btn-ebay3 { background-color: #fd7e14; }
+        .mp-dot.ebay1 { color: #0d6efd; }
+        .mp-dot.ebay2 { color: #198754; }
+        .mp-dot.ebay3 { color: #fd7e14; }
 
         .marketplace-btn[data-tooltip] {
             position: relative;
@@ -601,6 +607,7 @@
                                     <th>ACTION</th>
                                     <th title="Amazon, Temu, Reverb, Wayfair">MARKETPLACES (150)</th>
                                     <th title="Shopify, Doba">MARKETPLACES (100)</th>
+                                    <th title="eBay 1 (AmarjitK), eBay 2 (ProLight), eBay 3 (KaneerKa)">MARKETPLACES (80)</th>
                                     <th>PUSH TO ALL</th>
                                 </tr>
                             </thead>
@@ -671,6 +678,12 @@
                                 Title 80 <span class="char-counter" id="counter80">0/80</span>
                             </label>
                             <textarea class="form-control" id="title80" name="title80" rows="2" maxlength="80"></textarea>
+                        </div>
+
+                        <div class="mb-3">
+                            <button type="button" class="btn btn-ai-improve" id="aiImproveBtn80" title="Generate Title 80 (75-85 chars) with AI for eBay">
+                                <i class="fas fa-magic"></i> Improve with AI
+                            </button>
                         </div>
 
                         <div class="mb-3">
@@ -797,6 +810,69 @@
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-regen-titles" id="aiRegenerateBtn100">
+                        <i class="fas fa-redo-alt me-1"></i> REGENERATE 4 NEW TITLES
+                    </button>
+                    <button type="button" class="btn btn-cancel-ai" data-bs-dismiss="modal">Cancel</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- AI Generated Title 80 Preview Modal (4 options, 75-85 chars) -->
+    <div class="modal fade" id="aiTitle80Modal" tabindex="-1" aria-labelledby="aiTitle80ModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-lg">
+            <div class="modal-content">
+                <div class="modal-header" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">
+                    <h5 class="modal-title" id="aiTitle80ModalLabel" title="75-85 chars for eBay">
+                        <i class="fas fa-magic me-2"></i>AI Generated Titles (80 chars)
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="aiTitle80Warning" class="alert alert-warning mb-3 d-none" role="alert"></div>
+                    <div id="aiTitle80Option1" class="p-3 bg-light rounded mb-3 border">
+                        <div class="fw-bold mb-2">Option 1:</div>
+                        <p class="mb-2 ai-title80-text" style="font-size: 15px; line-height: 1.5; white-space: pre-wrap; word-wrap: break-word;"></p>
+                        <div class="ai-title80-score mb-2 text-muted small fw-bold"></div>
+                        <div class="d-flex align-items-center flex-wrap gap-2 mb-2">
+                            <span class="ai-char80-badge badge">0/80 chars</span>
+                            <span class="ai-char80-status text-success"></span>
+                        </div>
+                        <button type="button" class="btn btn-keep-title ai-keep-btn-80" data-option="0"><i class="fas fa-check me-1"></i> KEEP THIS TITLE</button>
+                    </div>
+                    <div id="aiTitle80Option2" class="p-3 bg-light rounded mb-3 border">
+                        <div class="fw-bold mb-2">Option 2:</div>
+                        <p class="mb-2 ai-title80-text" style="font-size: 15px; line-height: 1.5; white-space: pre-wrap; word-wrap: break-word;"></p>
+                        <div class="ai-title80-score mb-2 text-muted small fw-bold"></div>
+                        <div class="d-flex align-items-center flex-wrap gap-2 mb-2">
+                            <span class="ai-char80-badge badge">0/80 chars</span>
+                            <span class="ai-char80-status text-success"></span>
+                        </div>
+                        <button type="button" class="btn btn-keep-title ai-keep-btn-80" data-option="1"><i class="fas fa-check me-1"></i> KEEP THIS TITLE</button>
+                    </div>
+                    <div id="aiTitle80Option3" class="p-3 bg-light rounded mb-3 border">
+                        <div class="fw-bold mb-2">Option 3:</div>
+                        <p class="mb-2 ai-title80-text" style="font-size: 15px; line-height: 1.5; white-space: pre-wrap; word-wrap: break-word;"></p>
+                        <div class="ai-title80-score mb-2 text-muted small fw-bold"></div>
+                        <div class="d-flex align-items-center flex-wrap gap-2 mb-2">
+                            <span class="ai-char80-badge badge">0/80 chars</span>
+                            <span class="ai-char80-status text-success"></span>
+                        </div>
+                        <button type="button" class="btn btn-keep-title ai-keep-btn-80" data-option="2"><i class="fas fa-check me-1"></i> KEEP THIS TITLE</button>
+                    </div>
+                    <div id="aiTitle80Option4" class="p-3 bg-light rounded mb-3 border">
+                        <div class="fw-bold mb-2">Option 4:</div>
+                        <p class="mb-2 ai-title80-text" style="font-size: 15px; line-height: 1.5; white-space: pre-wrap; word-wrap: break-word;"></p>
+                        <div class="ai-title80-score mb-2 text-muted small fw-bold"></div>
+                        <div class="d-flex align-items-center flex-wrap gap-2 mb-2">
+                            <span class="ai-char80-badge badge">0/80 chars</span>
+                            <span class="ai-char80-status text-success"></span>
+                        </div>
+                        <button type="button" class="btn btn-keep-title ai-keep-btn-80" data-option="3"><i class="fas fa-check me-1"></i> KEEP THIS TITLE</button>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-regen-titles" id="aiRegenerateBtn80">
                         <i class="fas fa-redo-alt me-1"></i> REGENERATE 4 NEW TITLES
                     </button>
                     <button type="button" class="btn btn-cancel-ai" data-bs-dismiss="modal">Cancel</button>
@@ -1160,6 +1236,8 @@
         let currentAIGeneratedTitles = [];
         let aiTitle100ModalInstance;
         let currentAIGeneratedTitles100 = [];
+        let aiTitle80ModalInstance;
+        let currentAIGeneratedTitles80 = [];
 
         document.addEventListener('DOMContentLoaded', function() {
             titleModal = new bootstrap.Modal(document.getElementById('titleModal'));
@@ -1168,6 +1246,8 @@
             if (aiTitleModalEl) aiTitleModalInstance = new bootstrap.Modal(aiTitleModalEl);
             const aiTitle100ModalEl = document.getElementById('aiTitle100Modal');
             if (aiTitle100ModalEl) aiTitle100ModalInstance = new bootstrap.Modal(aiTitle100ModalEl);
+            const aiTitle80ModalEl = document.getElementById('aiTitle80Modal');
+            if (aiTitle80ModalEl) aiTitle80ModalInstance = new bootstrap.Modal(aiTitle80ModalEl);
             loadTitleData();
             setupSearchHandlers();
             setupModalHandlers();
@@ -1676,6 +1756,86 @@
                 });
             }
 
+            // Improve with AI button for Title 80 (4 options, 75-85 chars)
+            const aiImproveBtn80 = document.getElementById('aiImproveBtn80');
+            if (aiImproveBtn80) {
+                aiImproveBtn80.addEventListener('click', function() {
+                    const btn = this;
+                    const originalHtml = btn.innerHTML;
+                    const title150 = document.getElementById('title150').value.trim();
+                    const currentTitle80 = document.getElementById('title80').value.trim();
+                    const sku = (document.getElementById('editSku') && document.getElementById('editSku').value) || (document.getElementById('selectSku') && document.getElementById('selectSku').value) || '';
+                    const item = tableData && sku ? tableData.find(d => d.SKU === sku) : null;
+                    const category = (item && item.Parent) ? item.Parent : '';
+
+                    if (!title150) {
+                        alert('Please enter or load a Title 150 before using Improve with AI for Title 80.');
+                        return;
+                    }
+
+                    btn.disabled = true;
+                    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status"></span>Generating 80-char titles...';
+
+                    fetch('/title-master/ai/generate-title-80', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': csrfToken
+                        },
+                        body: JSON.stringify({
+                            sku: sku,
+                            title_150: title150,
+                            current_title_80: currentTitle80,
+                            category: category
+                        })
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success && data.titles && data.titles.length >= 1) {
+                            showTitle80Popup(data.titles, data.invalid_count || 0);
+                        } else {
+                            alert(data.message || 'Failed to generate titles. Please click Regenerate to try again.');
+                        }
+                    })
+                    .catch(err => {
+                        console.error('AI generate title 80 error:', err);
+                        alert('Error: ' + (err.message || 'Network or server error'));
+                    })
+                    .finally(function() {
+                        btn.disabled = false;
+                        btn.innerHTML = originalHtml;
+                    });
+                });
+            }
+
+            // AI Title 80 popup: Keep buttons (apply to Title 80 field) and Regenerate
+            document.querySelectorAll('.ai-keep-btn-80').forEach(function(btn) {
+                btn.addEventListener('click', function() {
+                    const idx = parseInt(this.getAttribute('data-option'), 10);
+                    const title = currentAIGeneratedTitles80[idx];
+                    const el80 = document.getElementById('title80');
+                    if (el80 && title) {
+                        el80.value = title.length > 80 ? title.substring(0, 80) : title;
+                        updateModalCounter('title80');
+                    }
+                    if (aiTitle80ModalInstance) aiTitle80ModalInstance.hide();
+                    if (typeof showToast === 'function') {
+                        showToast('success', 'Title applied to Title 80 field. Click Save to store.');
+                    } else {
+                        alert('Title applied to Title 80 field. Click Save to store.');
+                    }
+                });
+            });
+            const aiRegenBtn80 = document.getElementById('aiRegenerateBtn80');
+            if (aiRegenBtn80) {
+                aiRegenBtn80.addEventListener('click', function() {
+                    if (aiTitle80ModalInstance) aiTitle80ModalInstance.hide();
+                    setTimeout(function() {
+                        if (document.getElementById('aiImproveBtn80')) document.getElementById('aiImproveBtn80').click();
+                    }, 300);
+                });
+            }
+
             // AI Title popup: Keep buttons (per option) and Regenerate
             document.querySelectorAll('.ai-keep-btn').forEach(function(btn) {
                 btn.addEventListener('click', function() {
@@ -1807,6 +1967,66 @@
             if (aiTitle100ModalInstance) aiTitle100ModalInstance.show();
         }
 
+        function showTitle80Popup(titles, invalidCount) {
+            invalidCount = invalidCount || 0;
+            if (!Array.isArray(titles) || titles.length < 1) return;
+            var padded = titles.slice(0, 4);
+            while (padded.length < 4) padded.push({ title: '', score: null });
+            currentAIGeneratedTitles80 = padded.map(function(t) { return (t && typeof t === 'string' ? t : (t.title || '')) || ''; });
+            const minLen = 75;
+            const maxLen = 85;
+            const optionIds = ['aiTitle80Option1', 'aiTitle80Option2', 'aiTitle80Option3', 'aiTitle80Option4'];
+            const warningEl = document.getElementById('aiTitle80Warning');
+            if (warningEl) {
+                if (invalidCount > 0) {
+                    const validN = titles.length;
+                    warningEl.textContent = validN + ' title(s) generated, ' + invalidCount + ' was out of range (75-85).';
+                    warningEl.classList.remove('d-none');
+                } else {
+                    warningEl.classList.add('d-none');
+                }
+            }
+            optionIds.forEach(function(id, i) {
+                const opt = document.getElementById(id);
+                if (!opt) return;
+                const item = padded[i];
+                const title = currentAIGeneratedTitles80[i] || '';
+                const hasTitle = title.length > 0;
+                const score = item && typeof item === 'object' && item.score != null ? item.score : null;
+                const len = title.length;
+                const inRange = len >= minLen && len <= maxLen;
+                const textEl = opt.querySelector('.ai-title80-text');
+                const scoreEl = opt.querySelector('.ai-title80-score');
+                const badgeEl = opt.querySelector('.ai-char80-badge');
+                const statusEl = opt.querySelector('.ai-char80-status');
+                const keepBtn = opt.querySelector('.ai-keep-btn-80');
+                if (hasTitle) {
+                    opt.style.display = '';
+                    if (textEl) textEl.textContent = title;
+                    if (scoreEl) {
+                        if (score != null) scoreEl.textContent = 'Score: ' + score + '%';
+                        else scoreEl.textContent = '';
+                    }
+                    if (badgeEl) {
+                        badgeEl.textContent = len + '/80 chars';
+                        let badgeClass = 'badge ai-char80-badge ';
+                        if (inRange) badgeClass += 'bg-success';
+                        else badgeClass += 'bg-danger';
+                        badgeEl.className = badgeClass;
+                    }
+                    if (statusEl) {
+                        statusEl.textContent = inRange ? '✅ Within 75-85' : '❌ Out of range';
+                        statusEl.className = 'ai-char80-status ' + (inRange ? 'text-success' : 'text-danger');
+                    }
+                    if (keepBtn) { keepBtn.disabled = false; keepBtn.style.display = ''; }
+                } else {
+                    opt.style.display = 'none';
+                    if (keepBtn) keepBtn.disabled = true;
+                }
+            });
+            if (aiTitle80ModalInstance) aiTitle80ModalInstance.show();
+        }
+
         function loadTitleData() {
             document.getElementById('rainbow-loader').style.display = 'block';
             
@@ -1841,6 +2061,19 @@
         function renderMarketplaceDots(sku, statusMap) {
             const mps = ['amazon', 'temu', 'reverb', 'wayfair'];
             const labels = { amazon: 'Amazon', temu: 'Temu', reverb: 'Reverb', wayfair: 'Wayfair' };
+            let html = '<div class="marketplaces-dots" data-sku="' + (sku || '') + '">';
+            mps.forEach(function(mp) {
+                const st = (statusMap && statusMap[mp]) ? statusMap[mp] : 'pending';
+                const title = labels[mp] + ': ' + (st === 'success' ? 'Pushed' : st === 'failed' ? 'Failed' : st === 'loading' ? 'In progress...' : 'Not pushed');
+                html += '<span class="mp-dot ' + mp + ' ' + st + '" data-marketplace="' + mp + '" title="' + title + '"></span>';
+            });
+            html += '</div>';
+            return html;
+        }
+
+        function renderMarketplaceDots80(sku, statusMap) {
+            const mps = ['ebay1', 'ebay2', 'ebay3'];
+            const labels = { ebay1: 'eBay 1 (AmarjitK)', ebay2: 'eBay 2 (ProLight)', ebay3: 'eBay 3 (KaneerKa)' };
             let html = '<div class="marketplaces-dots" data-sku="' + (sku || '') + '">';
             mps.forEach(function(mp) {
                 const st = (statusMap && statusMap[mp]) ? statusMap[mp] : 'pending';
@@ -1888,7 +2121,7 @@
             tbody.innerHTML = '';
 
             if (data.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="12" class="text-center">No products found</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="13" class="text-center">No products found</td></tr>';
                 return;
             }
 
@@ -1898,7 +2131,7 @@
             });
 
             if (filteredData.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="12" class="text-center">No products found</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="13" class="text-center">No products found</td></tr>';
                 return;
             }
 
@@ -1995,6 +2228,19 @@
                 marketplaces100Cell.innerHTML = mp100Html;
                 row.appendChild(marketplaces100Cell);
 
+                // MARKETPLACES (80): status dots + E1, E2, E3 buttons (eBay 1, 2, 3)
+                const marketplaces80Cell = document.createElement('td');
+                marketplaces80Cell.className = 'marketplaces-80-cell';
+                const hasTitle80 = !!(item.title80 && String(item.title80).trim() !== '');
+                let mp80Html = '<div class="marketplaces-dots-wrapper marketplaces-dots-80" data-sku="' + skuEscaped + '">' + renderMarketplaceDots80(skuEscaped, null) + '</div>';
+                mp80Html += '<div class="marketplace-buttons">';
+                mp80Html += '<button type="button" class="marketplace-btn marketplace-btn-80 btn-ebay1" data-sku="' + skuEscaped + '" data-marketplace="ebay1" data-title-type="80" data-tooltip="Push Title 80 to eBay Account 1 (AmarjitK)" ' + (hasTitle80 ? '' : 'disabled') + '>E1</button>';
+                mp80Html += '<button type="button" class="marketplace-btn marketplace-btn-80 btn-ebay2" data-sku="' + skuEscaped + '" data-marketplace="ebay2" data-title-type="80" data-tooltip="Push Title 80 to eBay Account 2 (ProLight)" ' + (hasTitle80 ? '' : 'disabled') + '>E2</button>';
+                mp80Html += '<button type="button" class="marketplace-btn marketplace-btn-80 btn-ebay3" data-sku="' + skuEscaped + '" data-marketplace="ebay3" data-title-type="80" data-tooltip="Push Title 80 to eBay Account 3 (KaneerKa)" ' + (hasTitle80 ? '' : 'disabled') + '>E3</button>';
+                mp80Html += '</div>';
+                marketplaces80Cell.innerHTML = mp80Html;
+                row.appendChild(marketplaces80Cell);
+
                 // PUSH TO ALL MARKETPLACES column
                 const pushCell = document.createElement('td');
                 pushCell.className = 'push-button-cell';
@@ -2018,24 +2264,27 @@
             wayfair: 'Wayfair',
             shopify: 'Shopify',
             doba: 'Doba',
+            ebay1: 'eBay 1 (AmarjitK)',
+            ebay2: 'eBay 2 (ProLight)',
+            ebay3: 'eBay 3 (KaneerKa)',
         };
 
         function setupIndividualMarketplaceButtons() {
-            document.querySelectorAll('.marketplace-btn-150, .marketplace-btn-100').forEach(btn => {
+            document.querySelectorAll('.marketplace-btn-150, .marketplace-btn-100, .marketplace-btn-80').forEach(btn => {
                 btn.addEventListener('click', function (e) {
                     e.preventDefault();
                     const button = this;
                     const sku = button.getAttribute('data-sku');
                     const marketplace = button.getAttribute('data-marketplace');
-                    const titleType = button.getAttribute('data-title-type'); // '150' or '100'
+                    const titleType = button.getAttribute('data-title-type'); // '150', '100', or '80'
                     const marketplaceName = marketplaceLabels[marketplace] || marketplace.toUpperCase();
 
                     const item = tableData.find(x => x.SKU === sku);
                     let title = '';
                     if (item) {
-                        title = titleType === '150'
-                            ? (item.amazon_title || '')
-                            : (item.title100 || '');
+                        if (titleType === '150') title = item.amazon_title || '';
+                        else if (titleType === '100') title = item.title100 || '';
+                        else if (titleType === '80') title = item.title80 || '';
                     }
 
                     if (!title || String(title).trim() === '') {
@@ -2081,7 +2330,18 @@
                                 }
                                 console.log('✅ Push successful', data);
                                 if (data.statuses && row) {
-                                    updateMarketplaceDotsInRow(row, data.statuses);
+                                    if (marketplace === 'ebay1' || marketplace === 'ebay2' || marketplace === 'ebay3') {
+                                        const wrapper80 = row.querySelector('.marketplaces-dots-80');
+                                        if (wrapper80) {
+                                            const statusMap80 = {};
+                                            ['ebay1', 'ebay2', 'ebay3'].forEach(function(mp) {
+                                                statusMap80[mp] = (data.statuses[mp] && data.statuses[mp].status) ? data.statuses[mp].status : 'pending';
+                                            });
+                                            wrapper80.innerHTML = renderMarketplaceDots80(sku, statusMap80);
+                                        }
+                                    } else {
+                                        updateMarketplaceDotsInRow(row, data.statuses);
+                                    }
                                 }
                             } else {
                                 const msg = data.message || 'Unknown error';
