@@ -886,15 +886,47 @@
                                 const dot = e.target.closest('.send-toggle-dot');
                                 if (!dot) return;
 
+                                let newValue;
                                 if (dot.classList.contains('red')) {
                                     dot.classList.remove('red');
                                     dot.classList.add('green');
+                                    newValue = 1;
                                     cell.setValue(1, true);
                                 } else {
                                     dot.classList.remove('green');
                                     dot.classList.add('red');
+                                    newValue = 0;
                                     cell.setValue(0, true);
                                 }
+
+                                // Save to database immediately
+                                $.ajax({
+                                    url: '/update-fba-manual-data',
+                                    method: 'POST',
+                                    data: {
+                                        sku: rowData.FBA_SKU || rowData.SKU,
+                                        field: 'send_toggle',
+                                        value: newValue,
+                                        _token: '{{ csrf_token() }}'
+                                    },
+                                    success: function(response) {
+                                        console.log('Send toggle saved successfully:', response);
+                                    },
+                                    error: function(xhr) {
+                                        console.error('Error saving send toggle:', xhr.responseText);
+                                        // Revert the toggle on error
+                                        if (newValue === 1) {
+                                            dot.classList.remove('green');
+                                            dot.classList.add('red');
+                                            cell.setValue(0, true);
+                                        } else {
+                                            dot.classList.remove('red');
+                                            dot.classList.add('green');
+                                            cell.setValue(1, true);
+                                        }
+                                        alert('Failed to save send toggle. Please try again.');
+                                    }
+                                });
                             }
                         },
 

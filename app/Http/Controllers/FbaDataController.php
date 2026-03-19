@@ -1055,6 +1055,7 @@ class FbaDataController extends Controller
                 return $msl - $fbaQuantity - $inboundQuantity;
             })(),
             'SEND' => $manual ? ($manual->data['send'] ?? '') : '',
+            'send_toggle' => $manual ? ($manual->data['send_toggle'] ?? 0) : 0,
             'Correct_Cost' => $manual ? ($manual->data['correct_cost'] ?? false) : false,
             'Zero_Stock' => $manual ? ($manual->data['zero_stock'] ?? false) : false,
             '0-to-90-days' => $manual ? ($manual->data['0-to-90-days'] ?? '') : '',
