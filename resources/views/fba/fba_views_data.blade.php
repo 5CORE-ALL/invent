@@ -1802,6 +1802,87 @@
                             minWidth: 70
                         },
                         {
+                            title: "Price",
+                            field: "AMZ_Price",
+                            hozAlign: "center",
+                            visible: true,
+                            formatter: function(cell) {
+                                const rowData = cell.getRow().getData();
+                                const value = cell.getValue();
+                                
+                                if (rowData.is_parent) {
+                                    return '';
+                                }
+                                
+                                if (value == null || value === '' || parseFloat(value) <= 0) {
+                                    return '<span class="text-muted">-</span>';
+                                }
+                                
+                                const price = parseFloat(value);
+                                return '<span style="font-weight: 600;">$' + price.toFixed(2) + '</span>';
+                            },
+                            minWidth: 70
+                        },
+                        {
+                            title: "AMZ<br>GPFT%",
+                            field: "AMZ_GPFT",
+                            hozAlign: "center",
+                            visible: true,
+                            formatter: function(cell) {
+                                const value = cell.getValue();
+                                if (value == null || value === '') return '<span class="text-muted">-</span>';
+                                const pct = parseFloat(value);
+                                let color = '';
+                                if (pct < 0) color = '#a00211';
+                                else if (pct >= 0 && pct < 10) color = '#ffc107';
+                                else if (pct >= 10 && pct < 20) color = '#3591dc';
+                                else if (pct >= 20 && pct <= 40) color = '#28a745';
+                                else color = '#e83e8c';
+                                return `<span style="color: ${color}; font-weight: 600;">${pct.toFixed(1)}%</span>`;
+                            },
+                            minWidth: 70
+                        },
+                        {
+                            title: "AMZ<br>AD%",
+                            field: "AMZ_AD",
+                            hozAlign: "center",
+                            visible: true,
+                            formatter: function(cell) {
+                                const value = cell.getValue();
+                                if (value == null || value === '') return '<span class="text-muted">-</span>';
+                                const pct = parseFloat(value);
+                                let color = '';
+                                // AD% color: lower is better
+                                if (pct >= 100) color = '#a00211';
+                                else if (pct >= 50) color = '#dc3545';
+                                else if (pct >= 20) color = '#ffc107';
+                                else if (pct >= 10) color = '#3591dc';
+                                else if (pct > 0) color = '#28a745';
+                                else color = '#6c757d';
+                                return `<span style="color: ${color}; font-weight: 600;">${pct.toFixed(1)}%</span>`;
+                            },
+                            minWidth: 70
+                        },
+                        {
+                            title: "AMZ<br>NPFT%",
+                            field: "AMZ_NPFT",
+                            hozAlign: "center",
+                            visible: true,
+                            formatter: function(cell) {
+                                const value = cell.getValue();
+                                if (value == null || value === '') return '<span class="text-muted">-</span>';
+                                const pct = parseFloat(value);
+                                let color = '';
+                                if (pct < 0) color = '#a00211';
+                                else if (pct >= 0 && pct < 10) color = '#ffc107';
+                                else if (pct >= 10 && pct < 20) color = '#3591dc';
+                                else if (pct >= 20 && pct <= 40) color = '#28a745';
+                                else color = '#e83e8c';
+                                return `<span style="color: ${color}; font-weight: 600;">${pct.toFixed(1)}%</span>`;
+                            },
+                            minWidth: 70
+                        },
+                        {
                             title: "LMP ",
                             field: "lmp_1",
                             hozAlign: "center",
