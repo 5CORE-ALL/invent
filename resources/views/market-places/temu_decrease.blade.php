@@ -2655,6 +2655,18 @@
                     }
                 },
                 {
+                    title: "CVR 60",
+                    field: "cvr_60",
+                    hozAlign: "center",
+                    sorter: "number",
+                    width: 60,
+                    formatter: function(cell) {
+                        const val = parseFloat(cell.getValue()) || 0;
+                        let color = val <= 4 ? '#a00211' : (val > 4 && val <= 7 ? '#ffc107' : (val > 7 && val <= 10 ? '#28a745' : '#e83e8c'));
+                        return `<span style="color: ${color}; font-weight: 600;">${val.toFixed(1)}%</span>`;
+                    }
+                },
+                {
                     title: "CVR 30",
                     field: "cvr_30",
                     hozAlign: "center",
@@ -2685,18 +2697,6 @@
                 {
                     title: "CVR 45",
                     field: "cvr_45",
-                    hozAlign: "center",
-                    sorter: "number",
-                    width: 60,
-                    formatter: function(cell) {
-                        const val = parseFloat(cell.getValue()) || 0;
-                        let color = val <= 4 ? '#a00211' : (val > 4 && val <= 7 ? '#ffc107' : (val > 7 && val <= 10 ? '#28a745' : '#e83e8c'));
-                        return `<span style="color: ${color}; font-weight: 600;">${val.toFixed(1)}%</span>`;
-                    }
-                },
-                {
-                    title: "CVR 60",
-                    field: "cvr_60",
                     hozAlign: "center",
                     sorter: "number",
                     width: 60,
