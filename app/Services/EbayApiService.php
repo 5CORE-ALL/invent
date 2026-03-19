@@ -22,12 +22,12 @@ class EbayApiService
 
     public function __construct()
     {
-        $this->appId       = env('EBAY_APP_ID');
-        $this->certId      = env('EBAY_CERT_ID');
-        $this->devId       = env('EBAY_DEV_ID');
-        $this->endpoint    = env('EBAY_TRADING_API_ENDPOINT', 'https://api.ebay.com/ws/api.dll');
-        $this->siteId      = env('EBAY_SITE_ID', 0); // US = 0
-        $this->compatLevel = env('EBAY_COMPAT_LEVEL', '1189');
+        $this->appId       = config('services.ebay.app_id');
+        $this->certId      = config('services.ebay.cert_id');
+        $this->devId       = config('services.ebay.dev_id');
+        $this->endpoint    = config('services.ebay.trading_api_endpoint', 'https://api.ebay.com/ws/api.dll');
+        $this->siteId      = config('services.ebay.site_id', 0);
+        $this->compatLevel = config('services.ebay.compat_level', '1189');
     }
     // public function generateBearerToken()
     // {
@@ -69,32 +69,80 @@ class EbayApiService
     // }
     public function generateBearerToken()
     {
+        $clientId = config('services.ebay.app_id');
+        $clientSecret = config('services.ebay.cert_id');
+        $refreshToken = config('services.ebay.refresh_token');
 
-        $clientId     = env('EBAY_APP_ID');
-        $clientSecret = env('EBAY_CERT_ID');
-        $refreshToken = env('EBAY_REFRESH_TOKEN');
+        if (empty($clientId) || empty($clientSecret) || empty($refreshToken)) {
+            Log::error('eBay1 token: missing required credentials', [
+                'has_client_id' => !empty($clientId),
+                'has_cert_id' => !empty($clientSecret),
+                'has_refresh_token' => !empty($refreshToken),
+            ]);
+            throw new \Exception('eBay 1 credentials not configured (app_id/cert_id/refresh_token).');
+        }
+
+        // IMPORTANT: When using refresh_token, eBay expects the original scopes to be inherited.
+        // Do NOT send a `scope` parameter in the refresh-token request.
+
+        $cacheKey = 'ebay1_bearer_token_' . md5((string) $clientId);
+        if (Cache::has($cacheKey)) {
+            $cached = Cache::get($cacheKey);
+            if (!empty($cached)) {
+                return $cached;
+            }
+        }
 
         $response = Http::withoutVerifying()->asForm()
             ->withBasicAuth($clientId, $clientSecret)
+            ->timeout(30)
             ->post('https://api.ebay.com/identity/v1/oauth2/token', [
-                'grant_type'    => 'refresh_token',
+                'grant_type' => 'refresh_token',
                 'refresh_token' => $refreshToken,
-                'scope'         => 'https://api.ebay.com/oauth/api_scope/sell.analytics.readonly https://api.ebay.com/oauth/api_scope/sell.inventory',
             ]);
 
+        $body = (string) $response->body();
+        $status = $response->status();
+
         if ($response->failed()) {
-            throw new \Exception('Failed to get eBay token: ' . $response->body());
+            $json = json_decode($body, true) ?? [];
+            $error = $json['error'] ?? null;
+            $errorDescription = $json['error_description'] ?? null;
+
+            Log::error('eBay1 token generation failed', [
+                'http_status' => $status,
+                'error' => $error,
+                'error_description' => $errorDescription,
+                'scope_parameter_sent' => false,
+                'full_response_body' => substr($body, 0, 2000),
+            ]);
+
+            if ($error === 'invalid_grant') {
+                throw new \Exception('Refresh token expired. Please generate a new one in eBay Developer Portal.');
+            }
+
+            if ($error === 'invalid_scope') {
+                throw new \Exception('eBay returned invalid_scope even though `scope` parameter was omitted. Your refresh token likely does not include required Trading API scopes; regenerate the refresh token with Trading API access.');
+            }
+
+            throw new \Exception('Failed to get eBay token: ' . ($errorDescription ?: $body));
         }
 
-        $data        = $response->json();
+        $data = $response->json() ?? [];
         $accessToken = $data['access_token'] ?? null;
-        $expiresIn   = $data['expires_in'] ?? 3600; 
+        $expiresIn = (int) ($data['expires_in'] ?? 3600);
 
-        if (!$accessToken) {
+        if (empty($accessToken)) {
+            Log::error('eBay1 token generation succeeded but no access_token returned', [
+                'scope_parameter_sent' => false,
+                'full_response_body' => substr($body, 0, 2000),
+            ]);
             throw new \Exception('No access token returned from eBay.');
         }
 
-        
+        $ttlSeconds = max(0, $expiresIn - 60);
+        Cache::put($cacheKey, $accessToken, now()->addSeconds($ttlSeconds));
+
         return $accessToken;
     }
 
@@ -150,6 +198,85 @@ class EbayApiService
         } catch (\Exception $e) {
             Log::warning('Error fetching item details', ['itemId' => $itemId, 'error' => $e->getMessage()]);
             return null;
+        }
+    }
+
+    /**
+     * Update listing title via ReviseItem (eBay title max 80 chars).
+     *
+     * @param string $itemId eBay ItemID
+     * @param string $title New title (will be truncated to 80 chars)
+     * @return array{success: bool, message?: string}
+     */
+    public function updateTitle($itemId, $title)
+    {
+        $title = trim((string) $title);
+        $title = mb_substr($title, 0, 80);
+
+        if ($title === '') {
+            Log::warning('eBay updateTitle: empty title', ['itemId' => $itemId]);
+
+            return ['success' => false, 'message' => 'Title cannot be empty.'];
+        }
+
+        try {
+            $xml = new SimpleXMLElement('<?xml version="1.0" encoding="utf-8"?><ReviseItemRequest xmlns="urn:ebay:apis:eBLBaseComponents"/>');
+            $credentials = $xml->addChild('RequesterCredentials');
+            $authToken = $this->generateBearerToken();
+            $credentials->addChild('eBayAuthToken', $authToken ?? '');
+            $xml->addChild('ErrorLanguage', 'en_US');
+            $xml->addChild('WarningLevel', 'High');
+
+            $item = $xml->addChild('Item');
+            $item->addChild('ItemID', $itemId);
+            $item->addChild('Title', $title);
+
+            $xmlBody = $xml->asXML();
+            $headers = [
+                'X-EBAY-API-COMPATIBILITY-LEVEL' => $this->compatLevel,
+                'X-EBAY-API-DEV-NAME'            => $this->devId,
+                'X-EBAY-API-APP-NAME'            => $this->appId,
+                'X-EBAY-API-CERT-NAME'           => $this->certId,
+                'X-EBAY-API-CALL-NAME'           => 'ReviseItem',
+                'X-EBAY-API-SITEID'              => $this->siteId,
+                'Content-Type'                   => 'text/xml',
+            ];
+
+            $response = Http::withHeaders($headers)
+                ->withBody($xmlBody, 'text/xml')
+                ->post($this->endpoint);
+
+            $body = $response->body();
+            libxml_use_internal_errors(true);
+            $xmlResp = simplexml_load_string($body);
+
+            if ($xmlResp === false) {
+                Log::error('eBay updateTitle: invalid XML response', ['itemId' => $itemId, 'body' => substr($body, 0, 500)]);
+
+                return ['success' => false, 'message' => 'Invalid API response.'];
+            }
+
+            $responseArray = json_decode(json_encode($xmlResp), true);
+            $ack = $responseArray['Ack'] ?? 'Failure';
+
+            if ($ack === 'Success' || $ack === 'Warning') {
+                Log::info('✅ eBay title updated', ['item_id' => $itemId, 'title_preview' => mb_substr($title, 0, 40)]);
+
+                return ['success' => true, 'message' => 'Title updated successfully.'];
+            }
+
+            $errors = $responseArray['Errors'] ?? [];
+            if (! is_array($errors)) {
+                $errors = [$errors];
+            }
+            $msg = isset($errors[0]['LongMessage']) ? $errors[0]['LongMessage'] : (isset($errors[0]['ShortMessage']) ? $errors[0]['ShortMessage'] : 'Unknown error');
+            Log::error('❌ eBay updateTitle failed', ['itemId' => $itemId, 'error' => $msg]);
+
+            return ['success' => false, 'message' => $msg];
+        } catch (\Throwable $e) {
+            Log::error('❌ eBay updateTitle exception', ['itemId' => $itemId, 'error' => $e->getMessage()]);
+
+            return ['success' => false, 'message' => $e->getMessage()];
         }
     }
 
@@ -566,35 +693,8 @@ class EbayApiService
 
     private function generateEbayToken(): ?string
     {
-       
-       $clientId = env('EBAY_APP_ID');
-        $clientSecret = env('EBAY_CERT_ID');
-        $refreshToken = env('EBAY_REFRESH_TOKEN');
-        $credentials = base64_encode("{$clientId}:{$clientSecret}");
-
-        $payload = [
-            'grant_type' => 'refresh_token',
-            'refresh_token' => $refreshToken,
-            'scope' => implode(' ', [
-                'https://api.ebay.com/oauth/api_scope/sell.inventory',
-                'https://api.ebay.com/oauth/api_scope/sell.account',
-            ]),
-        ];
-
-        $response = Http::withoutVerifying()
-            ->asForm()
-            ->withHeaders([
-                'Authorization' => "Basic {$credentials}",
-                'Content-Type' => 'application/json',
-            ])
-            ->post('https://api.ebay.com/identity/v1/oauth2/token', $payload);
-
-        if ($response->failed()) {
-            Log::error('eBay Access Token Error', ['response' => $response->json()]);
-            throw new \RuntimeException('Unable to retrieve eBay access token.');
-        }
-
-        return $response->json('access_token');
+        // Backwards-compatible wrapper: keep a single token method + scope.
+        return $this->generateBearerToken();
     }
     
 // ==========================================================================
@@ -603,7 +703,7 @@ class EbayApiService
      */
     public function getRateLimitForAPI(String $name, String $context)
     {
-        $bearerToken = $this->generateEbayToken();
+        $bearerToken = $this->generateBearerToken();
 
         $response = Http::withHeaders([
             'Authorization' => "Bearer {$bearerToken}"
@@ -616,7 +716,7 @@ class EbayApiService
         return $response->json();
     }
     public function getEbayInventory(){
-        $token = $this->generateEbayToken();
+        $token = $this->generateBearerToken();
          if (!$token) {
             Log::error('Failed to generate token.');
             return;
@@ -989,7 +1089,7 @@ public function downloadAndParseEbayReport(string $taskId, string $token): array
 
     public function getEbayInventory3()
 {
-    $token = $this->generateEbayToken();
+    $token = $this->generateBearerToken();
     if (!$token) {
         Log::error('Failed to generate eBay token.');
         return [];
@@ -1177,7 +1277,7 @@ public function downloadAndParseEbayReport(string $taskId, string $token): array
         }
 
         // Handle GZIP (TSV) format
-        if (substr($content, 0, 2) === "\x1f\x8b") {
+        if (substr($content, 0, 12) === "\x1f\x8b") {
             $gzPath = $filePath . ".tsv.gz";
             $tsvPath = $filePath . ".tsv";
             file_put_contents($gzPath, $content);
@@ -1237,7 +1337,7 @@ public function downloadAndParseEbayReport(string $taskId, string $token): array
 }
 
     public function getEbayInventory1(){
-         $token = $this->generateEbayToken();
+         $token = $this->generateBearerToken();
         if (!$token) { Log::error('Failed to generate token.'); return; }
         $reportType='LMS_ACTIVE_INVENTORY_REPORT';
 

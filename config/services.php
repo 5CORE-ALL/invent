@@ -188,7 +188,7 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | eBay Account 1 (Legacy)
+    | eBay Account 1 (AmarjitK-Products) / Legacy
     |--------------------------------------------------------------------------
     */
     'ebay' => [
@@ -199,6 +199,14 @@ return [
         'trading_api_endpoint' => env('EBAY_TRADING_API_ENDPOINT', 'https://api.ebay.com/ws/api.dll'),
         'site_id' => env('EBAY_SITE_ID', 0),
         'compat_level' => env('EBAY_COMPAT_LEVEL', '1189'),
+        'base_url' => env('EBAY_BASE_URL', 'https://api.ebay.com/'),
+    ],
+    'ebay1' => [
+        'app_id' => env('EBAY_APP_ID'),
+        'cert_id' => env('EBAY_CERT_ID'),
+        'dev_id' => env('EBAY_DEV_ID'),
+        'refresh_token' => env('EBAY_REFRESH_TOKEN'),
+        'scope' => env('EBAY_SCOPE', 'https://api.ebay.com/oauth/api_scope/sell.analytics.readonly https://api.ebay.com/oauth/api_scope/sell.inventory'),
         'base_url' => env('EBAY_BASE_URL', 'https://api.ebay.com/'),
     ],
 
