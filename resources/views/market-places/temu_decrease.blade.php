@@ -2301,6 +2301,7 @@
             let totalCvr = 0;
             let totalDil = 0;
             let totalSpend = 0;
+            let totalSpendL30 = 0; // Total spend_l30 for aggregate Ads% calculation (matches all-marketplace-master)
             let totalViews = 0;
             let totalTemuL30 = 0;
             let totalInv = 0;
@@ -2324,13 +2325,17 @@
                 totalPriceWeighted += price * temuL30;
                 totalQty += temuL30;
 
-                // Only include rows with sales (Temu L30 > 0 and Temu Price > 0) in PFT/revenue/COGS
-                const hasSales = temuL30 > 0 && temuPrice > 0;
+                // Only include rows with sales (Temu L30 > 0 and basePrice > 0) in PFT/revenue/COGS
+                // Match marketplace_daily_metrics calculation: fbPrice = (basePrice * quantity < 27) ? basePrice + 2.99 : basePrice
+                const hasSales = temuL30 > 0 && price > 0;
                 if (hasSales) {
-                    // PFT % formula: (price * 0.96 - lp - temuship) / price — use Temu Price column as price
-                    const pftDecimal = (temuPrice * 0.96 - lpPerUnit - temuShip) / temuPrice;
-                    const rowProfit = pftDecimal * temuPrice * temuL30;
-                    totalRevenue += temuPrice * temuL30;
+                    // Calculate fbPrice same as marketplace_daily_metrics: check if basePrice * quantity < 27
+                    const total = price * temuL30;
+                    const fbPrice = total < 27 ? price + 2.99 : price;
+                    // PFT % formula: (price * 0.96 - lp - temuship) / price — use fbPrice as price
+                    const pftDecimal = fbPrice > 0 ? (fbPrice * 0.96 - lpPerUnit - temuShip) / fbPrice : 0;
+                    const rowProfit = pftDecimal * fbPrice * temuL30;
+                    totalRevenue += fbPrice * temuL30; // Use fbPrice for revenue (matches marketplace_daily_metrics total_sales)
                     totalProfit += rowProfit;
                     totalLp += lpPerUnit * temuL30;
                 }
@@ -2358,6 +2363,8 @@
                 
                 // Ad spend and views
                 totalSpend += parseFloat(row['spend']) || 0;
+                // Use spend_l30 ONLY (no fallback to spend) to match all-marketplace-master fetchTotalAdSpendFromTables
+                totalSpendL30 += parseFloat(row['spend_l30'] || 0);
                 totalViews += parseInt(row['product_clicks']) || 0;
                 totalTemuL30 += temuL30;
                 
@@ -2414,11 +2421,26 @@
             // Weighted GROI% = (Total Profit / Total LP/COGS) × 100
             const avgGroi = totalLp > 0 ? (totalProfit / totalLp) * 100 : (totalProducts > 0 ? totalGroi / totalProducts : 0);
             const avgAds = totalProducts > 0 ? totalAds / totalProducts : 0;
-            badgeAvgAds = avgAds; // use in ADS% column for all rows
-            // Weighted NPFT% and NROI% using Total Net Profit (Profit - Spend)
-            const totalNetProfit = totalProfit - totalSpend;
-            const avgNpft = totalRevenue > 0 ? (totalNetProfit / totalRevenue) * 100 : (totalProducts > 0 ? totalNpft / totalProducts : 0);
-            const avgNroi = totalLp > 0 ? (totalNetProfit / totalLp) * 100 : (totalProducts > 0 ? totalNroi / totalProducts : 0);
+            // Use aggregate_ads_percent from backend if available (exact match with all-marketplace-master)
+            // Otherwise calculate as fallback: (Total Ad Spend L30 / Total Revenue) * 100
+            if (badgeAvgAds == null || badgeAvgAds === undefined) {
+                const aggregateAdsPercent = totalRevenue > 0 ? (totalSpendL30 / totalRevenue) * 100 : 0;
+                badgeAvgAds = aggregateAdsPercent;
+            }
+            // NPFT% = GPFT% - ADS% (simple formula, not weighted)
+            // CRITICAL: Always use badgeAvgAds (aggregate Ads% from backend) - never use avgAds (simple average)
+            // This ensures NPFT uses the same Ads% as all-marketplace-master (2.9%)
+            let adsPercentForNpft = 0;
+            if (badgeAvgAds != null && badgeAvgAds !== undefined) {
+                adsPercentForNpft = badgeAvgAds;
+            } else if (totalRevenue > 0) {
+                // Fallback: calculate same way as backend
+                adsPercentForNpft = (totalSpendL30 / totalRevenue) * 100;
+            }
+            // Use weighted avgGprft for accurate NPFT calculation
+            const avgNpft = avgGprft - adsPercentForNpft;
+            // NROI% = GROI% - ADS% (simple formula)
+            const avgNroi = avgGroi - adsPercentForNpft;
             const avgCvr = cvrCount > 0 ? totalCvr / cvrCount : 0;
             // QTY/Views = (Total QTY / Total Views) × 100
             const qtyPerViews = totalViews > 0 ? (totalQuantity / totalViews) * 100 : 0;
@@ -2453,7 +2475,9 @@
             $('#avg-gprft-badge').text('GPFT: ' + avgGprft.toFixed(1) + '%');
             $('#avg-groi-badge').text('GROI: ' + Math.round(avgGroi) + '%');
             $('#total-spend-badge').text('Spend: $' + totalSpend.toFixed(2));
-            $('#avg-ads-badge').text('Ads: ' + Math.round(avgAds) + '%');
+            // Use badgeAvgAds (aggregate Ads% from backend) for badge display (matches all-marketplace-master)
+            const displayAdsPercent = (badgeAvgAds != null) ? badgeAvgAds : adsPercentForNpft;
+            $('#avg-ads-badge').text('Ads: ' + displayAdsPercent.toFixed(1) + '%');
             $('#avg-npft-badge').text('NPFT: ' + avgNpft.toFixed(1) + '%');
             $('#avg-nroi-badge').text('NROI: ' + avgNroi.toFixed(1) + '%');
             $('#total-views-badge').text('Views: ' + totalViews.toLocaleString());
@@ -2587,6 +2611,12 @@
                 if (response && Array.isArray(response.data)) {
                     totalCampaignCountFromBackend = parseInt(response.total_campaign_count || 0, 10);
                     salesSummaryFromBackend = response.sales_summary || null;
+                    // Use exact aggregate_ads_percent from backend (matches all-marketplace-master)
+                    // This is the authoritative value - always use it for NPFT calculation
+                    if (response.aggregate_ads_percent != null && response.aggregate_ads_percent !== undefined) {
+                        badgeAvgAds = parseFloat(response.aggregate_ads_percent);
+                        console.log('badgeAvgAds set from backend:', badgeAvgAds);
+                    }
                     return response.data;
                 }
                 if (Array.isArray(response)) return response;
@@ -3057,7 +3087,7 @@
                         const value = parseFloat(cell.getValue()) || 0;
                         const colorClass = getRoiColor(value);
                         const dotBtn = sku ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${sku}" data-metric="roi_percent" title="View GROI% chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #6f42c1;"></span></button>` : '';
-                        return `<span class="dil-percent-value ${colorClass}">${Math.round(value)}%</span> ${dotBtn}`.trim();
+                        return `<span class="dil-percent-value ${colorClass}">${value.toFixed(1)}%</span> ${dotBtn}`.trim();
                     }
                 },
 
@@ -3074,7 +3104,7 @@
                         const value = parseFloat(cell.getValue()) || 0;
                         const colorClass = getPftColor(value);
                         const dotBtn = sku ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${sku}" data-metric="npft_percent" title="View NPFT% chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #28a745;"></span></button>` : '';
-                        return `<span class="dil-percent-value ${colorClass}">${Math.round(value)}%</span> ${dotBtn}`.trim();
+                        return `<span class="dil-percent-value ${colorClass}">${value.toFixed(1)}%</span> ${dotBtn}`.trim();
                     }
                 },
                 {
@@ -3088,7 +3118,7 @@
                         const value = parseFloat(cell.getValue()) || 0;
                         const colorClass = getRoiColor(value);
                         const dotBtn = sku ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${sku}" data-metric="nroi_percent" title="View NROI% chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #17a2b8;"></span></button>` : '';
-                        return `<span class="dil-percent-value ${colorClass}">${Math.round(value)}%</span> ${dotBtn}`.trim();
+                        return `<span class="dil-percent-value ${colorClass}">${value.toFixed(1)}%</span> ${dotBtn}`.trim();
                     }
                 },
                 {
@@ -4602,7 +4632,10 @@
             }
             fullDataset = (data && Array.isArray(data)) ? data : (table.getData ? table.getData("all") : []) || [];
             applyFilters();
-            updateSummary();
+            // Wait a bit to ensure badgeAvgAds is set from ajaxResponse before calculating NPFT
+            setTimeout(function() {
+                updateSummary();
+            }, 50);
             if (typeof updateTemuAdsCounts === 'function') updateTemuAdsCounts();
 
             // Auto-store daily average views if not already stored today
