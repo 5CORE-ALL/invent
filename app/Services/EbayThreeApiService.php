@@ -2,8 +2,10 @@
 
 namespace App\Services;
 
+use App\Models\Ebay3Metric;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use SimpleXMLElement;
 
 class EbayThreeApiService
@@ -26,33 +28,108 @@ class EbayThreeApiService
         $this->siteId      = env('EBAY_SITE_ID', 0); // US = 0
         $this->compatLevel = env('EBAY_COMPAT_LEVEL', '1189');
     }
+    /**
+     * Generate OAuth bearer token for Trading API (GetItem, ReviseItem).
+     * Uses only the base Trading API scope - required for ReviseItem; other scopes
+     * can cause "The requested scope is invalid" if not granted to the app keyset.
+     */
     public function generateBearerToken()
     {
         $clientId     = env('EBAY_3_APP_ID');
         $clientSecret = env('EBAY_3_CERT_ID');
         $refreshToken = env('EBAY_3_REFRESH_TOKEN');
 
-        $response = Http::withoutVerifying()->asForm()
-            ->withBasicAuth($clientId, $clientSecret)
-            ->post('https://api.ebay.com/identity/v1/oauth2/token', [
-                'grant_type'    => 'refresh_token',
-                'refresh_token' => $refreshToken,
-                'scope'         => 'https://api.ebay.com/oauth/api_scope/sell.analytics.readonly https://api.ebay.com/oauth/api_scope/sell.inventory',
+        if (empty($refreshToken)) {
+            Log::error('eBay3 token: EBAY_3_REFRESH_TOKEN is not configured');
+            throw new \Exception('eBay 3 refresh token is not configured. Check EBAY_3_REFRESH_TOKEN.');
+        }
+
+        if (empty($clientId) || empty($clientSecret)) {
+            Log::error('eBay3 token: missing required credentials', [
+                'has_client_id' => !empty($clientId),
+                'has_cert_id' => !empty($clientSecret),
+                'has_refresh_token' => !empty($refreshToken),
             ]);
-
-        if ($response->failed()) {
-            throw new \Exception('Failed to get eBay token: ' . $response->body());
+            throw new \Exception('eBay 3 credentials not configured (app_id/cert_id/refresh_token).');
         }
 
-        $data        = $response->json();
-        $accessToken = $data['access_token'] ?? null;
-        $expiresIn   = $data['expires_in'] ?? 3600; 
-
-        if (!$accessToken) {
-            throw new \Exception('No access token returned from eBay.');
+        $cacheKey = 'ebay3_bearer_token_' . md5((string) $clientId);
+        if (Cache::has($cacheKey)) {
+            $cached = Cache::get($cacheKey);
+            if (!empty($cached)) {
+                return $cached;
+            }
         }
 
-        return $accessToken;
+        try {
+            $response = Http::withoutVerifying()->asForm()
+                ->withBasicAuth($clientId, $clientSecret)
+                ->timeout(30)
+                ->post('https://api.ebay.com/identity/v1/oauth2/token', [
+                    'grant_type'    => 'refresh_token',
+                    'refresh_token' => $refreshToken,
+                    // IMPORTANT: When using refresh_token, omit `scope` so eBay inherits
+                    // the scopes originally granted with the refresh token.
+                ]);
+
+            $body   = $response->body();
+            $status = $response->status();
+
+            if ($response->failed()) {
+                $json = is_string($body) ? json_decode($body, true) : [];
+                $errorCode        = $json['error'] ?? null;
+                $errorDescription = $json['error_description'] ?? null;
+                Log::error('eBay3 token generation failed', [
+                    'http_status'     => $status,
+                    'ebay_error'      => $errorCode,
+                    'ebay_description' => $errorDescription,
+                    'full_response'   => $body,
+                    'client_id_prefix' => substr($clientId ?? '', 0, 8) . '...',
+                    'scope_parameter_sent' => false,
+                ]);
+                $msg = 'Failed to get eBay 3 token. ';
+                if ($status === 400 && ($errorCode || $errorDescription)) {
+                    $err = $errorDescription ?: $errorCode;
+                    if (stripos((string) $err, 'scope') !== false) {
+                        $msg .= 'Scope error: ' . $err . ' (scope parameter was omitted). Your refresh token likely does not include required Trading API scopes; regenerate the refresh token with Trading API access.';
+                    } elseif (
+                        $errorCode === 'invalid_grant'
+                        || stripos((string) $err, 'invalid_grant') !== false
+                        || stripos((string) $err, 'refresh_token') !== false
+                        || stripos((string) $err, 'expired') !== false
+                    ) {
+                        $msg .= 'Refresh token may be expired. Please re-authorize the application in eBay Developer Portal.';
+                    } else {
+                        $msg .= $err;
+                    }
+                } else {
+                    $msg .= 'HTTP ' . $status . '. ' . ($errorDescription ?: substr($body, 0, 500));
+                }
+                throw new \Exception($msg);
+            }
+
+            $data        = json_decode($body, true) ?? [];
+            $accessToken = $data['access_token'] ?? null;
+            $expiresIn   = (int) ($data['expires_in'] ?? 3600);
+
+            if (empty($accessToken)) {
+                Log::error('eBay3 token: no access_token in response', ['body' => substr($body, 0, 500)]);
+                throw new \Exception('No access token returned from eBay. Full response: ' . substr($body, 0, 300));
+            }
+
+            $ttlSeconds = max(0, $expiresIn - 60);
+            Cache::put($cacheKey, $accessToken, now()->addSeconds($ttlSeconds));
+            Log::debug('eBay3 token generated successfully', ['expires_in' => $expiresIn]);
+            return $accessToken;
+        } catch (\Exception $e) {
+            if ($e instanceof \Illuminate\Http\Client\RequestException) {
+                Log::error('eBay3 token request exception', [
+                    'message' => $e->getMessage(),
+                    'response' => $e->response?->body(),
+                ]);
+            }
+            throw $e;
+        }
     }
 
 
@@ -89,21 +166,215 @@ class EbayThreeApiService
             $xmlResp = simplexml_load_string($body);
             
             if ($xmlResp === false) {
-                \Illuminate\Support\Facades\Log::warning('Failed to parse GetItem response', ['body' => $body]);
+                Log::warning('eBay3 GetItem: failed to parse XML response', ['itemId' => $itemId, 'body' => substr($body, 0, 1000)]);
                 return null;
             }
-            
+
             $responseArray = json_decode(json_encode($xmlResp), true);
-            $ack = $responseArray['Ack'] ?? 'Failure';
-            
+            $ack           = $responseArray['Ack'] ?? 'Failure';
+
             if ($ack === 'Success' || $ack === 'Warning') {
+                Log::debug('eBay3 GetItem success', ['itemId' => $itemId]);
                 return $responseArray;
             }
-            
+
+            $errors = $responseArray['Errors'] ?? [];
+            $errors = is_array($errors) ? $errors : [$errors];
+            $errMsg = '';
+            foreach ($errors as $err) {
+                $errMsg .= ($errMsg ? '; ' : '') . ($this->parseEbayError(is_array($err) ? $err : ['ShortMessage' => (string) $err]));
+            }
+            Log::warning('eBay3 GetItem failed', ['itemId' => $itemId, 'ack' => $ack, 'errors' => $errors, 'parsed' => $errMsg]);
             return null;
         } catch (\Exception $e) {
-            \Illuminate\Support\Facades\Log::warning('Error fetching item details', ['itemId' => $itemId, 'error' => $e->getMessage()]);
+            Log::warning('eBay3 GetItem exception', ['itemId' => $itemId, 'error' => $e->getMessage()]);
             return null;
+        }
+    }
+
+    /**
+     * Parse eBay API errors into a clear message (LongMessage, ShortMessage, ErrorCode, ErrorParameters).
+     */
+    private function parseEbayError(array $error): string
+    {
+        $long   = $error['LongMessage'] ?? null;
+        $short  = $error['ShortMessage'] ?? null;
+        $code   = $error['ErrorCode'] ?? null;
+        $params = $error['ErrorParameters'] ?? [];
+        $parts  = [];
+        if ($long && $long !== $short) {
+            $parts[] = $long;
+        } elseif ($short) {
+            $parts[] = $short;
+        }
+        if ($code) {
+            $parts[] = "(eBay code: {$code})";
+        }
+        if (is_array($params)) {
+            foreach ($params as $p) {
+                if (is_array($p) && isset($p['Value'])) {
+                    $val = is_string($p['Value']) ? strip_tags($p['Value']) : json_encode($p['Value']);
+                    if (trim($val) !== '') {
+                        $parts[] = $val;
+                    }
+                }
+            }
+        }
+        return implode(' ', $parts) ?: 'Unknown error';
+    }
+
+    /**
+     * Update listing title via ReviseItem (eBay title max 80 chars).
+     * Fetches item details first and includes required fields (SKU, ListingType, Country, Currency, ConditionID).
+     */
+    public function updateTitle($itemId, $title)
+    {
+        $itemId = trim((string) $itemId);
+        $title  = trim((string) $title);
+        $title  = mb_substr($title, 0, 80);
+
+        if ($itemId === '') {
+            Log::warning('eBay3 updateTitle: empty item ID');
+            return ['success' => false, 'message' => 'Item ID is required.'];
+        }
+        if ($title === '') {
+            Log::warning('eBay3 updateTitle: empty title', ['itemId' => $itemId]);
+            return ['success' => false, 'message' => 'Title cannot be empty.'];
+        }
+
+        $metric = Ebay3Metric::where('item_id', $itemId)->first();
+        if (!$metric) {
+            Log::warning('eBay3 updateTitle: item_id not found in Ebay3Metric', ['itemId' => $itemId]);
+            return [
+                'success' => false,
+                'message' => "Item ID {$itemId} not found in eBay 3 metrics. Ensure the listing exists and is synced.",
+            ];
+        }
+
+        try {
+            $authToken = $this->generateBearerToken();
+            Log::info('eBay3 updateTitle: token generated, fetching item details', ['itemId' => $itemId]);
+
+            $itemDetails = $this->getItem($itemId);
+            if (!$itemDetails || !isset($itemDetails['Item'])) {
+                Log::error('eBay3 updateTitle: GetItem failed or returned no item', [
+                    'itemId' => $itemId,
+                    'getItemResult' => $itemDetails ? 'partial' : 'null',
+                ]);
+                return [
+                    'success' => false,
+                    'message' => 'Could not fetch item details from eBay. The item may not exist or the token may lack Trading API access.',
+                ];
+            }
+
+            $existingItem = $itemDetails['Item'];
+            Log::info('eBay3 updateTitle: item details fetched', [
+                'itemId'      => $itemId,
+                'listingType' => $existingItem['ListingType'] ?? null,
+                'country'     => $existingItem['Country'] ?? null,
+                'currency'    => $existingItem['Currency'] ?? null,
+                'conditionId' => $existingItem['ConditionID'] ?? null,
+                'sku'         => isset($existingItem['SKU']) ? substr($existingItem['SKU'], 0, 20) . '...' : null,
+            ]);
+
+            $xml = new \SimpleXMLElement('<?xml version="1.0" encoding="utf-8"?><ReviseItemRequest xmlns="urn:ebay:apis:eBLBaseComponents"/>');
+            $credentials = $xml->addChild('RequesterCredentials');
+            $credentials->addChild('eBayAuthToken', $authToken ?? '');
+            $xml->addChild('ErrorLanguage', 'en_US');
+            $xml->addChild('WarningLevel', 'High');
+            $xml->addChild('DetailLevel', 'ReturnAll');
+
+            $item = $xml->addChild('Item');
+            $item->addChild('ItemID', $itemId);
+            $item->addChild('Title', $title);
+
+            if (isset($existingItem['SKU']) && $existingItem['SKU'] !== '' && $existingItem['SKU'] !== null) {
+                $item->addChild('SKU', (string) $existingItem['SKU']);
+            }
+            if (isset($existingItem['ListingType'])) {
+                $item->addChild('ListingType', (string) $existingItem['ListingType']);
+            }
+            if (isset($existingItem['Country'])) {
+                $item->addChild('Country', (string) $existingItem['Country']);
+            }
+            if (isset($existingItem['Currency'])) {
+                $item->addChild('Currency', (string) $existingItem['Currency']);
+            }
+            if (isset($existingItem['ConditionID'])) {
+                $item->addChild('ConditionID', (string) $existingItem['ConditionID']);
+            }
+
+            $xmlBody = $xml->asXML();
+            $headers = [
+                'X-EBAY-API-COMPATIBILITY-LEVEL' => $this->compatLevel,
+                'X-EBAY-API-DEV-NAME'            => $this->devId,
+                'X-EBAY-API-APP-NAME'            => $this->appId,
+                'X-EBAY-API-CERT-NAME'           => $this->certId,
+                'X-EBAY-API-CALL-NAME'           => 'ReviseItem',
+                'X-EBAY-API-SITEID'              => $this->siteId,
+                'Content-Type'                   => 'text/xml',
+            ];
+
+            Log::info('eBay3 updateTitle: ReviseItem request', [
+                'itemId'  => $itemId,
+                'title'   => substr($title, 0, 80),
+                'xml'     => $xmlBody,
+            ]);
+
+            $response = Http::withHeaders($headers)->withBody($xmlBody, 'text/xml')->post($this->endpoint);
+            $body     = $response->body();
+            $rlogId   = $response->header('rlogid') ?? $response->header('X-EBAY-API-SERVER-LOG-ID') ?? null;
+
+            Log::info('eBay3 updateTitle: ReviseItem response', [
+                'itemId'       => $itemId,
+                'statusCode'   => $response->status(),
+                'rlogId'       => $rlogId,
+                'responseBody' => $body,
+            ]);
+
+            libxml_use_internal_errors(true);
+            $xmlResp = simplexml_load_string($body);
+            if ($xmlResp === false) {
+                Log::error('eBay3 updateTitle: invalid XML response', [
+                    'itemId' => $itemId,
+                    'body'   => substr($body, 0, 1000),
+                    'rlogId' => $rlogId,
+                ]);
+                return ['success' => false, 'message' => 'Invalid API response from eBay.'];
+            }
+
+            $responseArray = json_decode(json_encode($xmlResp), true);
+            $ack           = $responseArray['Ack'] ?? 'Failure';
+
+            if ($ack === 'Success' || $ack === 'Warning') {
+                Log::info('eBay3 title updated', ['item_id' => $itemId]);
+                return ['success' => true, 'message' => 'Title updated successfully.'];
+            }
+
+            $errors   = $responseArray['Errors'] ?? [];
+            $errors   = is_array($errors) ? $errors : [$errors];
+            $messages = [];
+            foreach ($errors as $err) {
+                $messages[] = $this->parseEbayError(is_array($err) ? $err : ['ShortMessage' => (string) $err]);
+            }
+            $msg = implode('; ', $messages) ?: 'Unknown error';
+
+            Log::error('eBay3 updateTitle failed', [
+                'itemId'       => $itemId,
+                'ack'          => $ack,
+                'rlogId'       => $rlogId,
+                'errors'       => $errors,
+                'parsedMsg'    => $msg,
+            ]);
+
+            return ['success' => false, 'message' => $msg];
+        } catch (\Throwable $e) {
+            Log::error('eBay3 updateTitle exception', [
+                'itemId'   => $itemId,
+                'error'    => $e->getMessage(),
+                'trace'    => $e->getTraceAsString(),
+            ]);
+            return ['success' => false, 'message' => $e->getMessage()];
         }
     }
 
