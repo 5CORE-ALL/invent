@@ -135,6 +135,7 @@
                             </a>
                             <div class="collapse" id="sidebarMarketplaceTopDawg">
                                 <ul class="side-nav-third-level">
+                                    <li><a href="{{ route('topdawg.sales.dashboard') }}">Sales Dashboard</a></li>
                                     <li><a href="{{ route('marketplace.products', 'topdawg') }}">Products</a></li>
                                     <li><a href="{{ route('marketplace.orders', 'topdawg') }}">Orders</a></li>
                                     <li><a href="{{ route('marketplace.settings', 'topdawg') }}">Settings</a></li>
@@ -952,6 +953,10 @@
 
                         <li><a href="{{ route('tiktok.daily.sales') }}">TikTok Sales Data</a></li>
 
+                        <li><a href="{{ route('tiktok.two.daily.sales') }}">TikTok 2 Sales Data</a></li>
+
+                        <li><a href="{{ route('depop.sheet') }}">Depop Sheet Data</a></li>
+
                         <li><a href="{{ route('walmart.daily.sales') }}">Walmart Sales Data</a></li>
 
                         <li><a href="{{ route('wayfair.daily.sales') }}">Wayfair Sales Data</a></li>
@@ -1391,6 +1396,37 @@
                         </li>
                         <li>
                             <a href="#">Conversion Other Masters</a>
+                        </li>
+                    </ul>
+                </div>
+            </li>
+
+            <li class="side-nav-item">
+                <a data-bs-toggle="collapse" href="#sidebarCustomerCare" aria-expanded="false"
+                    aria-controls="sidebarCustomerCare" class="side-nav-link">
+                    <i class="ri-customer-service-2-line"></i>
+                    <span>Customer Care</span>
+                    <span class="menu-arrow"></span>
+                </a>
+                <div class="collapse" id="sidebarCustomerCare">
+                    <ul class="side-nav-second-level">
+                        <li>
+                            <a href="{{ route('customer.care') }}">Overview</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('customer.care.refunds') }}">Refunds</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('customer.care.followups') }}">Follow UP</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('dar.index') }}">DAR</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('incoming.view') }}">Incoming View</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('outgoing.view') }}">Outgoing View</a>
                         </li>
                     </ul>
                 </div>

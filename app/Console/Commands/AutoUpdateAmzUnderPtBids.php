@@ -287,6 +287,24 @@ class AutoUpdateAmzUnderPtBids extends Command
             ->where('campaignStatus', '!=', 'ARCHIVED')
             ->get();
 
+        // L2 = 2nd last date from table (table's latest date - 1 day), not server today
+        $latestDateInTable = DB::table('amazon_sp_campaign_reports')
+            ->where('ad_type', 'SPONSORED_PRODUCTS')
+            ->whereRaw("report_date_range REGEXP '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'")
+            ->max('report_date_range');
+        $dayBeforeYesterdayForL2 = $latestDateInTable
+            ? date('Y-m-d', strtotime($latestDateInTable . ' -1 day'))
+            : date('Y-m-d', strtotime('-2 days'));
+        $amazonSpCampaignReportsL2 = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
+            ->where('report_date_range', $dayBeforeYesterdayForL2)
+            ->where(function ($q) use ($skus) {
+                foreach ($skus as $sku) {
+                    $q->orWhere('campaignName', 'LIKE', '%' . strtoupper($sku) . '%');
+                }
+            })
+            ->where('campaignStatus', '!=', 'ARCHIVED')
+            ->get();
+
         $result = [];
         $processedCampaignIds = []; // Deduplicate: one bid per campaign (first SKU wins)
 
@@ -309,7 +327,14 @@ class AutoUpdateAmzUnderPtBids extends Command
 
             $matchedCampaignL1 = $amazonSpCampaignReportsL1->first(function ($item) use ($cleanSku) {
                 $cleanName = preg_replace('/\s+/', ' ', strtoupper(trim($item->campaignName)));
+                return (
+                    (str_ends_with($cleanName, $cleanSku . ' PT') || str_ends_with($cleanName, $cleanSku . ' PT.'))
+                    && strtoupper($item->campaignStatus) === 'ENABLED'
+                );
+            });
 
+            $matchedCampaignL2 = $amazonSpCampaignReportsL2->first(function ($item) use ($cleanSku) {
+                $cleanName = preg_replace('/\s+/', ' ', strtoupper(trim($item->campaignName)));
                 return (
                     (str_ends_with($cleanName, $cleanSku . ' PT') || str_ends_with($cleanName, $cleanSku . ' PT.'))
                     && strtoupper($item->campaignStatus) === 'ENABLED'
@@ -339,6 +364,8 @@ class AutoUpdateAmzUnderPtBids extends Command
             $row['l7_cpc'] = $matchedCampaignL7->costPerClick ?? 0;
             $row['l1_spend'] = $matchedCampaignL1->spend ?? 0;
             $row['l1_cpc'] = $matchedCampaignL1->costPerClick ?? 0;
+            $row['l2_spend'] = $matchedCampaignL2 ? ($matchedCampaignL2->spend ?? 0) : 0;
+            $row['l2_cpc'] = $matchedCampaignL2 ? ($matchedCampaignL2->costPerClick ?? 0) : 0;
 
             // Get price from AmazonDatasheet
             $amazonSheet = $amazonDatasheets[strtoupper($pm->sku)] ?? null;
@@ -404,55 +431,33 @@ class AutoUpdateAmzUnderPtBids extends Command
             }
 
             $l1_cpc = floatval($row['l1_cpc']);
+            $l2_cpc = floatval($row['l2_cpc'] ?? 0);
             $l7_cpc = floatval($row['l7_cpc']);
             $budget = floatval($row['campaignBudgetAmount']);
             $l7_spend = floatval($row['l7_spend']);
             $l1_spend = floatval($row['l1_spend']);
+            $l2_spend = floatval($row['l2_spend'] ?? 0);
             $ub7 = $budget > 0 ? ($l7_spend / ($budget * 7)) * 100 : 0;
             $ub1 = $budget > 0 ? ($l1_spend / $budget) * 100 : 0;
+            $ub2 = ($budget > 0 && $l2_spend > 0) ? ($l2_spend / $budget) * 100 : 0;
+            $ub2Red = $ub2 < 66;
+            $ub1Red = $ub1 < 66;
 
-            // Under-utilized rule: INV > 0, NRA !== 'NRA', campaignName !== '', ub7 < 66 && ub1 < 66
-            if ($row['INV'] > 0 && $row['NRA'] !== 'NRA' && $row['campaignName'] !== '' && ($ub7 < 66 && $ub1 < 66)) {
-                // Calculate SBID based on blade file logic
-                // Special case: If UB7 and UB1 = 0%, use price-based default (parent rows now have avg price, so apply for all)
-                if ($ub7 === 0 && $ub1 === 0) {
-                    if ($price < 50) {
-                        $row['sbid'] = 0.50;
-                    } else if ($price >= 50 && $price < 100) {
-                        $row['sbid'] = 1.00;
-                    } else if ($price >= 100 && $price < 200) {
-                        $row['sbid'] = 1.50;
-                    } else {
-                        $row['sbid'] = 2.00;
-                    }
+            // Under-utilized: 2UB red AND 1UB red (same as KW/tabulator)
+            if ($row['INV'] > 0 && $row['NRA'] !== 'NRA' && $row['campaignName'] !== '' && ($ub2Red && $ub1Red)) {
+                $row['sbid'] = 0;
+                if ($l1_cpc > 0) {
+                    $row['sbid'] = floor($l1_cpc * 1.10 * 100) / 100;
+                } elseif ($l2_cpc > 0) {
+                    $row['sbid'] = floor($l2_cpc * 1.10 * 100) / 100;
+                } elseif ($l7_cpc > 0) {
+                    $row['sbid'] = floor($l7_cpc * 1.10 * 100) / 100;
                 } else {
-                    // Under-utilized: Priority - L1 CPC → L7 CPC → AVG CPC → 1.00, then increase by 10%
-                    if ($l1_cpc > 0) {
-                        $row['sbid'] = floor($l1_cpc * 1.10 * 100) / 100;
-                    } else if ($l7_cpc > 0) {
-                        $row['sbid'] = floor($l7_cpc * 1.10 * 100) / 100;
-                    } else if ($avgCpc > 0) {
-                        $row['sbid'] = floor($avgCpc * 1.10 * 100) / 100;
-                    } else {
-                        // Use price-based default when no CPC data (same as UB=0% logic)
-                        if ($price < 50) {
-                            $row['sbid'] = 0.50;
-                        } else if ($price >= 50 && $price < 100) {
-                            $row['sbid'] = 1.00;
-                        } else if ($price >= 100 && $price < 200) {
-                            $row['sbid'] = 1.50;
-                        } else {
-                            $row['sbid'] = 2.00;
-                        }
-                    }
+                    $row['sbid'] = 0.60;
                 }
-                
-                // Apply price-based cap only for very low price (under-utilized: allow higher bids for $10+)
                 if ($price < 10 && $row['sbid'] > 0.10) {
                     $row['sbid'] = 0.10;
                 }
-                // No cap for price 10–20 so under-utilized bids can reach 1.5 etc.
-
                 $result[] = (object) $row;
             }
             }

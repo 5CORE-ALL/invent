@@ -144,10 +144,17 @@
                 </div>
                 <div class="modal-body">
                     <div class="mb-3">
+                        <label for="dailyDataUploadPeriod" class="form-label">Upload for</label>
+                        <select id="dailyDataUploadPeriod" class="form-select form-select-sm" style="width: auto;">
+                            <option value="L30">L30 Sales (temu_daily_data)</option>
+                            <option value="L60">L60 Sales (temu_daily_data_l60)</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
                         <label for="dailyDataFile" class="form-label">Select Excel File</label>
                         <input type="file" class="form-control" id="dailyDataFile" accept=".xlsx,.xls,.csv">
                         <div class="form-text">
-                            Supported formats: Excel (.xlsx, .xls) or CSV
+                            Supported formats: Excel (.xlsx, .xls) or CSV. Same format for L30 and L60.
                             <br>
                             <a href="{{ route('temu.daily.sample') }}" class="text-primary">
                                 <i class="fa fa-download me-1"></i>Download Sample Excel Template
@@ -782,7 +789,9 @@
 
             // Chunk settings
             const totalChunks = 5;
-            const uploadId = 'temu_' + Date.now();
+            const period = $('#dailyDataUploadPeriod').val() || 'L30';
+            const uploadUrl = period === 'L60' ? '/temu/upload-daily-data-l60-chunk' : '/temu/upload-daily-data-chunk';
+            const uploadId = (period === 'L60' ? 'temu_l60_' : 'temu_') + Date.now();
             let currentChunk = 0;
             let totalImported = 0;
 
@@ -795,7 +804,7 @@
                 formData.append('_token', '{{ csrf_token() }}');
 
                 $.ajax({
-                    url: '/temu/upload-daily-data-chunk',
+                    url: uploadUrl,
                     type: 'POST',
                     data: formData,
                     processData: false,
@@ -824,16 +833,16 @@
                                 $('#uploadResult')
                                     .removeClass('alert-danger')
                                     .addClass('alert-success')
-                                    .html(`<i class="fa fa-check-circle me-2"></i>Upload completed successfully! ${totalImported} records imported.`)
+                                    .html(`<i class="fa fa-check-circle me-2"></i>Upload completed successfully! ${totalImported} records imported to ${period} Sales.`)
                                     .show();
 
                                 $('#startUploadBtn').prop('disabled', false);
-                                showToast(`Upload completed! ${totalImported} records imported.`, 'success');
+                                showToast(`${period} Sales upload completed! ${totalImported} records imported.`, 'success');
 
                                 setTimeout(function() {
                                     $('#uploadDailyDataModal').modal('hide');
                                     resetUploadForm();
-                                    table.setData('/temu/daily-data'); // Refresh table data
+                                    if (period === 'L30') table.setData('/temu/daily-data');
                                 }, 2000);
                             }
                         } else {

@@ -159,6 +159,26 @@
                         </select>
                     </div>
 
+                    <!-- CVR Trend Filter -->
+                    <div>
+                        <select id="cvr-trend-filter" class="form-select form-select-sm" style="width: 150px;">
+                            <option value="all">All CVR trend</option>
+                            <option value="l60_gt_l30">CVR 60 &gt; CVR 30</option>
+                            <option value="l30_gt_l60">CVR 30 &gt; CVR 60</option>
+                            <option value="equal">CVR 60 = CVR 30</option>
+                        </select>
+                    </div>
+
+                    <!-- Arrow filter (CVR 30 vs CVR 60: up / down / equal) -->
+                    <div>
+                        <select id="arrow-filter" class="form-select form-select-sm" style="width: 120px;">
+                            <option value="all">All arrows</option>
+                            <option value="up">↑ Up (CVR 30 &gt; CVR 60)</option>
+                            <option value="down">↓ Down (CVR 30 &lt; CVR 60)</option>
+                            <option value="equal">＝ Equal</option>
+                        </select>
+                    </div>
+
                     <!-- CVR Filter -->
                     <div>
                         <select id="cvr-filter" class="form-select form-select-sm" style="width: 120px;">
@@ -210,6 +230,7 @@
                     <div>
                         <select id="sprice-filter" class="form-select form-select-sm" style="width: 130px;">
                             <option value="all">All SPRICE</option>
+                            <option value="blank">Blank S PRC only</option>
                             <option value="27-31">$27-$31</option>
                             <option value="lt27">&lt; $27</option>
                             <option value="gt31">&gt; $31</option>
@@ -335,6 +356,14 @@
                             <i class="fa-solid fa-upload me-1"></i>L60
                         </button>
                         <span id="temu-upload-status-container" class="ms-2" style="font-size: 0.7rem;"></span>
+                    </div>
+                    <div class="d-flex align-items-center gap-2 mt-2 pt-2 border-top">
+                        <label class="form-label mb-0 me-1 text-nowrap" style="font-size: 0.8rem;"><i class="fa-solid fa-upload me-1"></i>Sales:</label>
+                        <input type="file" id="temu-l60-sales-upload-file" accept=".xlsx,.xls,.csv" class="form-control form-control-sm d-none" style="width: 0;">
+                        <button type="button" id="temu-l60-sales-upload-btn" class="btn btn-sm btn-success" title="Upload L60 Sales (order data, same format as L30)" style="font-size: 0.75rem;">
+                            <i class="fa-solid fa-upload me-1"></i>L60 Sales
+                        </button>
+                        <span id="temu-l60-sales-upload-status" class="ms-2" style="font-size: 0.7rem;"></span>
                     </div>
                 </div>
 
@@ -1775,6 +1804,15 @@
             $('#select-all-checkbox').prop('checked', allFilteredSelected);
         }
 
+        function roundToRetailPrice(price) {
+            const roundedDollar = Math.ceil(price);
+            return +(roundedDollar - 0.01).toFixed(2);
+        }
+        function roundToRetailPrice49(price) {
+            const roundedDollar = Math.ceil(price);
+            return +(roundedDollar - 0.51).toFixed(2);
+        }
+
         // Retry function for saving SPRICE
         function saveSpriceWithRetry(sku, sprice, row, retryCount = 0) {
             return new Promise((resolve, reject) => {
@@ -1791,14 +1829,20 @@
                         _token: '{{ csrf_token() }}'
                     },
                     success: function(response) {
-                        if (row) {
-                            row.update({
-                                sprice: sprice,
+                        const newPriceNum = typeof sprice === 'number' ? sprice : parseFloat(sprice);
+                        let targetRow = row;
+                        if (table) {
+                            const found = table.getRows().find(r => (r.getData().sku || '') === sku);
+                            if (found) targetRow = found;
+                        }
+                        if (targetRow) {
+                            targetRow.update({
+                                sprice: newPriceNum,
                                 sgprft_percent: response.sgprft_percent,
                                 sroi_percent: response.sroi_percent,
                                 sprice_status: 'saved'
                             });
-                            row.reformat();
+                            targetRow.reformat();
                         }
                         resolve(response);
                     },
@@ -1823,11 +1867,16 @@
         }
 
         function applyDiscount() {
-            const discountValue = parseFloat($('#discount-percentage-input').val());
+            const rawInput = $('#discount-percentage-input').val();
+            const discountValue = parseFloat(String(rawInput).replace(',', '.')) || 0;
             const discountType = $('#discount-type-select').val();
             
             if (isNaN(discountValue) || discountValue <= 0) {
                 showToast('Please enter a valid discount value', 'error');
+                return;
+            }
+            if (discountType === 'percentage' && discountValue > 100 && !increaseModeActive) {
+                showToast('Discount percentage cannot exceed 100%', 'error');
                 return;
             }
 
@@ -1863,6 +1912,12 @@
                         }
                         
                         newSPrice = Math.max(0.01, newSPrice);
+                        const originalPrice = currentPrice;
+                        newSPrice = roundToRetailPrice(newSPrice);
+                        if (newSPrice.toFixed(2) === originalPrice.toFixed(2)) {
+                            newSPrice = roundToRetailPrice49(newSPrice);
+                        }
+                        const newPriceNum = parseFloat(newSPrice.toFixed(2));
                         
                         const originalSPrice = parseFloat(row['sprice']) || 0;
                         
@@ -1873,15 +1928,13 @@
                         
                         if (tableRow) {
                             tableRow.update({ 
-                                sprice: newSPrice,
+                                sprice: newPriceNum,
                                 sprice_status: 'processing'
                             });
-                            
-                            // Force row to recalculate all formatted columns
                             tableRow.reformat();
                         }
                         
-                        saveSpriceWithRetry(sku, newSPrice, tableRow)
+                        saveSpriceWithRetry(sku, newPriceNum, tableRow)
                             .then((response) => {
                                 updatedCount++;
                                 if (updatedCount + errorCount === totalSkus) {
@@ -2602,6 +2655,58 @@
                     }
                 },
                 {
+                    title: "CVR 30",
+                    field: "cvr_30",
+                    hozAlign: "center",
+                    sorter: "number",
+                    width: 65,
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        const val = parseFloat(cell.getValue()) || 0;
+                        const cvr60 = parseFloat(rowData.cvr_60) || 0;
+                        const tol = 0.1;
+                        let arrowHtml = '';
+                        let arrowColor = '#6c757d';
+                        let arrowIcon = 'fa-minus';
+                        if (val > cvr60 + tol) {
+                            arrowColor = '#28a745';
+                            arrowIcon = 'fa-arrow-up';
+                        } else if (val < cvr60 - tol) {
+                            arrowColor = '#a00211';
+                            arrowIcon = 'fa-arrow-down';
+                        }
+                        arrowHtml = ` <span title="CVR 30 vs CVR 60: ${cvr60.toFixed(1)}%" style="vertical-align: middle;"><i class="fas ${arrowIcon}" style="color: ${arrowColor}; font-size: 12px;"></i></span>`;
+                        const color = val <= 4 ? '#a00211' : (val > 4 && val <= 7 ? '#ffc107' : (val > 7 && val <= 10 ? '#28a745' : '#e83e8c'));
+                        const sku = rowData.sku || '';
+                        const dotBtn = sku ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${sku}" data-metric="cvr" title="View CVR% chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #008000;"></span></button>` : '';
+                        return `<span style="color: ${color}; font-weight: 600;">${val.toFixed(1)}%</span>${arrowHtml} ${dotBtn}`.trim();
+                    }
+                },
+                {
+                    title: "CVR 45",
+                    field: "cvr_45",
+                    hozAlign: "center",
+                    sorter: "number",
+                    width: 60,
+                    formatter: function(cell) {
+                        const val = parseFloat(cell.getValue()) || 0;
+                        let color = val <= 4 ? '#a00211' : (val > 4 && val <= 7 ? '#ffc107' : (val > 7 && val <= 10 ? '#28a745' : '#e83e8c'));
+                        return `<span style="color: ${color}; font-weight: 600;">${val.toFixed(1)}%</span>`;
+                    }
+                },
+                {
+                    title: "CVR 60",
+                    field: "cvr_60",
+                    hozAlign: "center",
+                    sorter: "number",
+                    width: 60,
+                    formatter: function(cell) {
+                        const val = parseFloat(cell.getValue()) || 0;
+                        let color = val <= 4 ? '#a00211' : (val > 4 && val <= 7 ? '#ffc107' : (val > 7 && val <= 10 ? '#28a745' : '#e83e8c'));
+                        return `<span style="color: ${color}; font-weight: 600;">${val.toFixed(1)}%</span>`;
+                    }
+                },
+                {
                     title: "Temu L30",
                     field: "temu_l30",
                     hozAlign: "center",
@@ -2612,6 +2717,28 @@
                         const value = parseInt(cell.getValue()) || 0;
                         const dotBtn = sku ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${sku}" data-metric="temu_l30" title="View Temu L30 chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #fd7e14;"></span></button>` : '';
                         return `${value.toLocaleString()} ${dotBtn}`.trim();
+                    }
+                },
+                {
+                    title: "T L45",
+                    field: "temu_l45",
+                    hozAlign: "center",
+                    width: 50,
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const value = cell.getValue();
+                        return Math.round(parseFloat(value) || 0);
+                    }
+                },
+                {
+                    title: "T L60",
+                    field: "temu_l60",
+                    hozAlign: "center",
+                    width: 50,
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const value = cell.getValue();
+                        return Math.round(parseFloat(value) || 0);
                     }
                 },
                 {
@@ -2729,24 +2856,6 @@
                         e.stopPropagation();
                     },
                     width: 60
-                },
-                {
-                    title: "CVR %",
-                    field: "cvr_percent",
-                    hozAlign: "center",
-                    sorter: "number",
-                    formatter: function(cell) {
-                        const row = cell.getRow().getData();
-                        const sku = row.sku || '';
-                        const value = parseFloat(cell.getValue()) || 0;
-                        let color = '#000';
-                        if (value <= 4) color = '#a00211';
-                        else if (value > 4 && value <= 7) color = '#ffc107';
-                        else if (value > 7 && value <= 10) color = '#28a745';
-                        else color = '#ff1493';
-                        const dotBtn = sku ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${sku}" data-metric="cvr" title="View CVR% chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #008000;"></span></button>` : '';
-                        return `<span style="color: ${color}; font-weight: 600;">${value.toFixed(1)}%</span> ${dotBtn}`.trim();
-                    }
                 },
                  {
                     title: "Views",
@@ -3054,17 +3163,14 @@
                     formatter: function(cell) {
                         const value = cell.getValue();
                         const rowData = cell.getRow().getData();
-                        const basePrice = parseFloat(rowData['base_price']) || 0;
-                        const sprice = parseFloat(value) || 0;
-                        
-                        if (!value || sprice === 0) return '';
-                        
-                        // If SPRICE matches Base Price, show dash
-                        if (sprice === basePrice) {
-                            return '<span style="color: #999; font-style: italic;">-</span>';
-                        }
-                        
-                        return `$${parseFloat(value).toFixed(2)}`;
+                        const currentPrice = parseFloat(rowData['base_price']) || 0;
+                        const spriceNum = (value != null && value !== '') ? parseFloat(value) : NaN;
+                        const sprice = isNaN(spriceNum) ? 0 : spriceNum;
+
+                        if (value == null || value === '' || isNaN(spriceNum) || sprice <= 0) return '';
+                        if (currentPrice > 0 && sprice > 0 && currentPrice.toFixed(2) === sprice.toFixed(2)) return '';
+
+                        return `$${sprice.toFixed(2)}`;
                     }
                 },
            
@@ -3594,6 +3700,61 @@
             $('#temu-l60-upload-file')[0].click();
         });
 
+        // L60 Sales upload (same format as L30, stored in temu_daily_data_l60)
+        $('#temu-l60-sales-upload-btn').on('click', function() {
+            $('#temu-l60-sales-upload-file').off('change').on('change', function() {
+                const file = this.files[0];
+                if (!file) return;
+                const $status = $('#temu-l60-sales-upload-status');
+                $status.text('Uploading...').css('color', '');
+                const totalChunks = 5;
+                const uploadId = 'temu_l60_' + Date.now();
+                let currentChunk = 0;
+                let totalImported = 0;
+
+                function uploadNextChunk() {
+                    const formData = new FormData();
+                    formData.append('file', file);
+                    formData.append('chunk', currentChunk);
+                    formData.append('totalChunks', totalChunks);
+                    formData.append('uploadId', uploadId);
+                    formData.append('_token', '{{ csrf_token() }}');
+
+                    $.ajax({
+                        url: '/temu/upload-daily-data-l60-chunk',
+                        type: 'POST',
+                        data: formData,
+                        processData: false,
+                        contentType: false,
+                        success: function(response) {
+                            if (response.success) {
+                                totalImported += response.imported || 0;
+                                $status.text('Chunk ' + (currentChunk + 1) + '/' + totalChunks + '...');
+                                if (currentChunk < totalChunks - 1) {
+                                    currentChunk++;
+                                    setTimeout(uploadNextChunk, 300);
+                                } else {
+                                    $status.text('Done. ' + totalImported + ' rows.').css('color', 'green');
+                                    showToast('L60 Sales upload completed. ' + totalImported + ' records.', 'success');
+                                    if (table) table.setData('/temu-decrease-data');
+                                }
+                            } else {
+                                $status.text('Error').css('color', 'red');
+                                showToast(response.message || 'Upload failed', 'error');
+                            }
+                        },
+                        error: function(xhr) {
+                            const msg = xhr.responseJSON && xhr.responseJSON.message ? xhr.responseJSON.message : 'Upload failed';
+                            $status.text('Error').css('color', 'red');
+                            showToast(msg, 'error');
+                        }
+                    });
+                }
+                uploadNextChunk();
+            });
+            $('#temu-l60-sales-upload-file')[0].click();
+        });
+
         $('#sku-search').on('keyup', function() {
             applyFilters();
         });
@@ -3609,6 +3770,8 @@
             const inventoryFilter = $('#inventory-filter').val();
             const gpftFilter = $('#gpft-filter').val();
             const cvrFilter = $('#cvr-filter').val();
+            const cvrTrendFilter = $('#cvr-trend-filter').val();
+            const arrowFilter = $('#arrow-filter').val();
             const adsFilter = $('#ads-filter').val();
             const spriceFilter = $('#sprice-filter').val();
             const dilFilter = $('.column-filter[data-column="dil_percent"].active')?.data('color') || 'all';
@@ -3700,11 +3863,34 @@
                 });
             }
 
+            // CVR trend filter (CVR 60 vs CVR 30)
+            const cvrTrendTol = 0.1;
+            const applyArrowOrCvrTrend = (filterVal) => {
+                if (filterVal === 'all') return;
+                table.addFilter(function(data) {
+                    const cvr30 = parseFloat(data.cvr_30 || data.cvr_percent) || 0;
+                    const cvr60 = parseFloat(data.cvr_60) || 0;
+                    if (filterVal === 'l60_gt_l30' || filterVal === 'down') return cvr60 > cvr30 + cvrTrendTol;
+                    if (filterVal === 'l30_gt_l60' || filterVal === 'up') return cvr30 > cvr60 + cvrTrendTol;
+                    if (filterVal === 'equal') return Math.abs(cvr30 - cvr60) <= cvrTrendTol;
+                    return true;
+                });
+            };
+            if (arrowFilter !== 'all') {
+                applyArrowOrCvrTrend(arrowFilter);
+            } else if (cvrTrendFilter !== 'all') {
+                applyArrowOrCvrTrend(cvrTrendFilter);
+            }
+
             // SPRICE filter
             if (spriceFilter !== 'all') {
                 table.addFilter(function(data) {
-                    const sprice = parseFloat(data.sprice) || 0;
-                    
+                    const spriceVal = data.sprice;
+                    const sprice = parseFloat(spriceVal) || 0;
+                    if (spriceFilter === 'blank') {
+                        const blank = spriceVal == null || spriceVal === '' || isNaN(sprice) || sprice <= 0;
+                        return blank;
+                    }
                     if (spriceFilter === '27-31') return sprice >= 27 && sprice <= 31;
                     if (spriceFilter === 'lt27') return sprice > 0 && sprice < 27;
                     if (spriceFilter === 'gt31') return sprice > 31;
@@ -4136,7 +4322,7 @@
             });
         });
 
-        $('#inventory-filter, #gpft-filter, #cvr-filter, #ads-filter, #sprice-filter, #ads-req-filter, #ads-running-filter, #nr-req-filter').on('change', function() {
+        $('#inventory-filter, #gpft-filter, #cvr-filter, #cvr-trend-filter, #arrow-filter, #ads-filter, #sprice-filter, #ads-req-filter, #ads-running-filter, #nr-req-filter').on('change', function() {
             applyFilters();
         });
 

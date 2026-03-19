@@ -1781,6 +1781,40 @@ class OverallAmazonController extends Controller
             ->where('campaignStatus', '!=', 'ARCHIVED')
             ->get();
 
+        // L2 = 2nd last date in table (based on table's latest data, not server today).
+        $latestDateInTable = DB::table('amazon_sp_campaign_reports')
+            ->where('ad_type', 'SPONSORED_PRODUCTS')
+            ->whereRaw("report_date_range REGEXP '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'")
+            ->max('report_date_range');
+        $dayBeforeYesterdayForL2 = $latestDateInTable
+            ? date('Y-m-d', strtotime($latestDateInTable . ' -1 day'))
+            : date('Y-m-d', strtotime('-2 days'));
+        $amazonSpCampaignReportsL2 = DB::table('amazon_sp_campaign_reports')
+            ->selectRaw('
+                campaignName,
+                campaign_id,
+                MAX(spend) as spend,
+                SUM(clicks) as clicks,
+                SUM(sales30d) as sales30d,
+                MAX(costPerClick) as costPerClick,
+                MAX(campaignStatus) as campaignStatus,
+                MAX(campaignBudgetAmount) as campaignBudgetAmount
+            ')
+            ->where('ad_type', 'SPONSORED_PRODUCTS')
+            ->where('report_date_range', $dayBeforeYesterdayForL2)
+            ->whereRaw("campaignName NOT REGEXP '(PT\\.?$|FBA$)'")
+            ->groupBy('campaignName', 'campaign_id')
+            ->get();
+
+        $amazonSpCampaignReportsPtL2 = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
+            ->where('report_date_range', $dayBeforeYesterdayForL2)
+            ->where(function($q) {
+                $q->where('campaignName', 'LIKE', '% PT')
+                  ->orWhere('campaignName', 'LIKE', '% PT.');
+            })
+            ->where('campaignStatus', '!=', 'ARCHIVED')
+            ->get();
+
         // Fetch Amazon SP Campaign Reports for L90 (for budget data)
         $amazonSpCampaignReportsL90 = DB::table('amazon_sp_campaign_reports')
             ->selectRaw('
@@ -1808,8 +1842,8 @@ class OverallAmazonController extends Controller
             ->groupBy('campaignName', 'campaign_id')
             ->get();
 
-        // Fetch last_sbid and sbid_m from day-before-yesterday and yesterday records
-        // This ensures last_sbid shows the PREVIOUS day's calculated SBID
+        // Fetch last_sbid and sbid_m from yesterday and day-before-yesterday records.
+        // Prefer YESTERDAY so KW Last SBID column shows the previous day's SBID (not 2 days ago).
         $dayBeforeYesterday = date('Y-m-d', strtotime('-2 days'));
         $yesterday = date('Y-m-d', strtotime('-1 day'));
         
@@ -1829,7 +1863,7 @@ class OverallAmazonController extends Controller
                   });
             })
             ->whereRaw("campaignName NOT REGEXP '(PT\\.?$|FBA$)'")
-            ->orderByRaw("CASE WHEN report_date_range = ? THEN 0 ELSE 1 END", [$dayBeforeYesterday])
+            ->orderByRaw("CASE WHEN report_date_range = ? THEN 0 ELSE 1 END", [$yesterday])
             ->get();
         
         // Build last_sbid, sbid_m, and sbid maps by campaign_id and campaignName
@@ -2438,6 +2472,11 @@ class OverallAmazonController extends Controller
             $matchedCampaignL1 = $amazonSpCampaignReportsL1->first(function ($item) use ($cleanSkuNorm, $kwCampaignMatchesSku) {
                 return $kwCampaignMatchesSku($item->campaignName ?? '', $cleanSkuNorm);
             });
+
+            // Match L2 campaign (one day before L1 - same match logic)
+            $matchedCampaignL2 = $amazonSpCampaignReportsL2->first(function ($item) use ($cleanSkuNorm, $kwCampaignMatchesSku) {
+                return $kwCampaignMatchesSku($item->campaignName ?? '', $cleanSkuNorm);
+            });
             
             // Match L90 campaign - exact SKU match
             $matchedCampaignL90 = $amazonSpCampaignReportsL90->first(function ($item) use ($cleanSkuNorm, $normalizeCampaignNameForMatch) {
@@ -2477,11 +2516,14 @@ class OverallAmazonController extends Controller
                 $row['campaignStatus'] = null;
             }
             
-            // L7/L1 spend and CPC (same as KW page)
+            // L7/L1/L2 spend and CPC (same as KW page; L2 = one day before L1 from daily table)
             $row['l7_spend'] = $matchedCampaignL7->spend ?? 0;
             $row['l1_spend'] = $matchedCampaignL1->spend ?? 0;
+            $row['l2_spend'] = $matchedCampaignL2?->spend ?? 0;
             $row['l7_cpc'] = $matchedCampaignL7->costPerClick ?? 0;
             $row['l1_cpc'] = $matchedCampaignL1->costPerClick ?? 0;
+            $row['l2_cpc'] = $matchedCampaignL2?->costPerClick ?? 0;
+            $row['l2_clicks'] = $matchedCampaignL2?->clicks ?? 0;
             // AVG CPC from lifetime average (same as KW page)
             $row['avg_cpc'] = $row['campaign_id'] ? $avgCpcData->get($row['campaign_id'], 0) : 0;
             
@@ -2527,6 +2569,18 @@ class OverallAmazonController extends Controller
                 }
                 return $baseNamePt === $cleanSkuNorm;
             });
+
+            // Match PT L2 campaign (one day before L1)
+            $matchedCampaignPtL2 = $amazonSpCampaignReportsPtL2->first(function ($item) use ($cleanSkuNorm, $normalizeCampaignNameForMatch) {
+                $campaignName = $normalizeCampaignNameForMatch($item->campaignName);
+                $baseNamePt = $campaignName;
+                if (str_ends_with($campaignName, ' PT')) {
+                    $baseNamePt = rtrim(substr($campaignName, 0, -3));
+                } elseif (str_ends_with($campaignName, ' PT.')) {
+                    $baseNamePt = rtrim(substr($campaignName, 0, -4));
+                }
+                return $baseNamePt === $cleanSkuNorm;
+            });
             
             // PT L30 data - sum from all matching PT campaigns
             $row['pt_spend_L30'] = $matchedCampaignsPtL30->sum('spend');
@@ -2549,6 +2603,10 @@ class OverallAmazonController extends Controller
             // PT L1 data - same spend fallback as amazon-utilized-pt page
             $row['pt_spend_L1'] = (float)($matchedCampaignPtL1->spend ?? $matchedCampaignPtL1->cost ?? 0);
             $row['pt_clicks_L1'] = (int)($matchedCampaignPtL1->clicks ?? 0);
+
+            // PT L2 data (one day before L1 from daily table)
+            $row['pt_spend_L2'] = (float)($matchedCampaignPtL2?->spend ?? $matchedCampaignPtL2?->cost ?? 0);
+            $row['pt_clicks_L2'] = (int)($matchedCampaignPtL2?->clicks ?? 0);
             
             // PT Campaign name, budget, and campaign_id - only from L30 (no L7/L1 fallback) so deleted campaigns don't show as active
             if ($matchedCampaignsPtL30->isNotEmpty()) {
@@ -2575,6 +2633,7 @@ class OverallAmazonController extends Controller
             // PT CPC fields (same calculation as KW)
             $row['pt_l7_cpc'] = $matchedCampaignPtL7->costPerClick ?? 0;
             $row['pt_l1_cpc'] = $matchedCampaignPtL1->costPerClick ?? 0;
+            $row['pt_l2_cpc'] = $matchedCampaignPtL2?->costPerClick ?? 0;
             $row['pt_avg_cpc'] = $row['pt_campaign_id'] ? $ptAvgCpcData->get($row['pt_campaign_id'], 0) : 0;
             
             // PT AD CVR = (Ad Sold L30 / Clicks L30) * 100 (same as KW page)
@@ -2806,6 +2865,7 @@ class OverallAmazonController extends Controller
                 if (is_array($raw)) {
                     // Read NRL field from amazon_data_view - "REQ" means RL, "NRL" means NRL
                     $nrlValue = $raw['NRL'] ?? null;
+                    $row['NRL'] = $nrlValue; // So frontend shows correct NRL icon (REQ=green, NRL=red)
                     if ($nrlValue === 'NRL') {
                         $row['NR'] = 'NR';
                     } else if ($nrlValue === 'REQ') {
@@ -2948,11 +3008,24 @@ class OverallAmazonController extends Controller
         $groupedByParent = collect($result)->groupBy('Parent');
         $parentSkus = $groupedByParent->keys()->filter(function ($p) { return $p !== '' && $p !== null; })->values()->toArray();
         $parentVariations = [];
+        $parentNrData = []; // NRL/NRA from amazon_data_view for parent rows (sku = "PARENT {parent}")
         if (!empty($parentSkus)) {
             $parentViewRows = AmazonDataView::whereIn('sku', $parentSkus)->get();
             foreach ($parentViewRows as $r) {
                 $val = is_array($r->value) ? $r->value : (is_string($r->value) ? json_decode($r->value, true) : []);
                 $parentVariations[$r->sku] = (isset($val['variation']) && in_array($val['variation'], ['red', 'green'], true)) ? $val['variation'] : 'red';
+            }
+            // Load NRL/NRA for parent rows (stored under sku "PARENT {parent}")
+            $parentRowSkus = array_map(function ($p) { return 'PARENT ' . $p; }, $parentSkus);
+            $parentDataViewRows = AmazonDataView::whereIn('sku', $parentRowSkus)->get();
+            foreach ($parentDataViewRows as $r) {
+                $val = is_array($r->value) ? $r->value : (is_string($r->value) ? json_decode($r->value, true) : []);
+                if (is_array($val)) {
+                    $parentNrData[$r->sku] = [
+                        'NRL' => trim((string) ($val['NRL'] ?? '')),
+                        'NRA' => trim((string) ($val['NRA'] ?? '')),
+                    ];
+                }
             }
         }
         $finalResult = [];
@@ -3024,19 +3097,27 @@ class OverallAmazonController extends Controller
                 'ad_updates' => $adUpdates,
                 'variation_display' => $parentVariations[$parent] ?? 'red'
             ];
-            // Parent NRL/NRA from children: if any child is NRL/NRA, parent is NRL/NRA; else REQ/RA (so KW NRA filter works on parent rows)
-            // Support both array and object items (grouped rows may be stdClass when coming from JSON/etc.)
-            $hasNraChild = $rows->contains(function ($r) {
-                $nra = trim((string) (is_array($r) ? ($r['NRA'] ?? '') : ($r->NRA ?? '')));
-                if ($nra !== '') {
-                    return $nra === 'NRA';
-                }
-                $nrl = trim((string) (is_array($r) ? ($r['NRL'] ?? 'REQ') : ($r->NRL ?? 'REQ')));
-                return $nrl === 'NRL';
-            });
-            $sumRow['NRL'] = $hasNraChild ? 'NRL' : 'REQ';
-            $sumRow['NRA'] = $hasNraChild ? 'NRA' : 'RA';
-            $sumRow['NR'] = $hasNraChild ? 'NR' : 'REQ'; // NRL/RL filter uses NR; parent derives from children
+            // Parent NRL/NRA: prefer stored values from amazon_data_view (sku = "PARENT {parent}"); else derive from children
+            $parentRowSku = 'PARENT ' . $parent;
+            $stored = $parentNrData[$parentRowSku] ?? null;
+            if ($stored && ($stored['NRL'] !== '' || $stored['NRA'] !== '')) {
+                $sumRow['NRL'] = $stored['NRL'] !== '' ? $stored['NRL'] : 'REQ';
+                $sumRow['NRA'] = $stored['NRA'] !== '' ? $stored['NRA'] : 'RA';
+                $sumRow['NR'] = ($sumRow['NRL'] === 'NRL') ? 'NR' : 'REQ';
+            } else {
+                // Fallback: from children - if any child is NRL/NRA, parent is NRL/NRA; else REQ/RA
+                $hasNraChild = $rows->contains(function ($r) {
+                    $nra = trim((string) (is_array($r) ? ($r['NRA'] ?? '') : ($r->NRA ?? '')));
+                    if ($nra !== '') {
+                        return $nra === 'NRA';
+                    }
+                    $nrl = trim((string) (is_array($r) ? ($r['NRL'] ?? 'REQ') : ($r->NRL ?? 'REQ')));
+                    return $nrl === 'NRL';
+                });
+                $sumRow['NRL'] = $hasNraChild ? 'NRL' : 'REQ';
+                $sumRow['NRA'] = $hasNraChild ? 'NRA' : 'RA';
+                $sumRow['NR'] = $hasNraChild ? 'NR' : 'REQ';
+            }
 
             // Add campaign data for parent rows - match by "PARENT {parent}" campaign name
             // Normalize parent name (handle special characters like non-breaking spaces)
@@ -3068,6 +3149,15 @@ class OverallAmazonController extends Controller
             $parentCampaignL1 = $amazonSpCampaignReportsL1->first(function ($item) use ($parentCampaignName, $parentCampaignNameNoDot, $normalizeCampaignName) {
                 $campaignName = $normalizeCampaignName($item->campaignName);
                 // Match exact "PARENT {parent}" campaign or with " KW" suffix
+                return $campaignName === $parentCampaignName 
+                    || $campaignName === $parentCampaignNameNoDot
+                    || $campaignName === $parentCampaignName . ' KW'
+                    || $campaignName === $parentCampaignNameNoDot . ' KW';
+            });
+
+            // Match L2 campaign for parent (one day before L1)
+            $parentCampaignL2 = $amazonSpCampaignReportsL2->first(function ($item) use ($parentCampaignName, $parentCampaignNameNoDot, $normalizeCampaignName) {
+                $campaignName = $normalizeCampaignName($item->campaignName);
                 return $campaignName === $parentCampaignName 
                     || $campaignName === $parentCampaignNameNoDot
                     || $campaignName === $parentCampaignName . ' KW'
@@ -3124,7 +3214,19 @@ class OverallAmazonController extends Controller
                 }
             }
             $sumRow['l1_spend'] = $l1SpendVal;
-            
+
+            // L2 spend and CPC for parent (one day before L1)
+            $l2SpendVal = $parentCampaignL2 ? (float)($parentCampaignL2->spend ?? $parentCampaignL2->cost ?? 0) : 0;
+            if ($l2SpendVal <= 0 && $parentCampaignL2) {
+                $c2 = (int)($parentCampaignL2->clicks ?? 0);
+                $cpc2 = (float)($parentCampaignL2->costPerClick ?? 0);
+                if ($c2 > 0 && $cpc2 > 0) {
+                    $l2SpendVal = round($c2 * $cpc2, 2);
+                }
+            }
+            $sumRow['l2_spend'] = $l2SpendVal;
+            $sumRow['l2_cpc'] = $parentCampaignL2 ? ($parentCampaignL2->costPerClick ?? 0) : 0;
+
             $sumRow['l7_cpc'] = $parentCampaignL7 ? ($parentCampaignL7->costPerClick ?? 0) : 0;
             $sumRow['l1_cpc'] = $parentCampaignL1 ? ($parentCampaignL1->costPerClick ?? 0) : 0;
             // AVG CPC from lifetime average (same as KW page)
@@ -3172,6 +3274,17 @@ class OverallAmazonController extends Controller
             
             // Match PT L1 campaign for parent
             $parentPtCampaignL1 = $amazonSpCampaignReportsPtL1->first(function ($item) use ($parentPtCampaignName, $parentPtCampaignNameDot, $parentPtCampaignNameNoDot, $parentPtCampaignNameNoDotDot, $normalizeCampaignName) {
+                $campaignName = $normalizeCampaignName($item->campaignName);
+                return $campaignName === $parentPtCampaignName 
+                    || $campaignName === $parentPtCampaignNameDot
+                    || $campaignName === $parentPtCampaignNameNoDot
+                    || $campaignName === $parentPtCampaignNameNoDotDot
+                    || str_ends_with($campaignName, $parentPtCampaignName)
+                    || str_ends_with($campaignName, $parentPtCampaignNameNoDot);
+            });
+
+            // Match PT L2 campaign for parent (one day before L1)
+            $parentPtCampaignL2 = $amazonSpCampaignReportsPtL2->first(function ($item) use ($parentPtCampaignName, $parentPtCampaignNameDot, $parentPtCampaignNameNoDot, $parentPtCampaignNameNoDotDot, $normalizeCampaignName) {
                 $campaignName = $normalizeCampaignName($item->campaignName);
                 return $campaignName === $parentPtCampaignName 
                     || $campaignName === $parentPtCampaignNameDot
@@ -3249,6 +3362,17 @@ class OverallAmazonController extends Controller
                 $sumRow['pt_spend_L1'] = 0;
                 $sumRow['pt_clicks_L1'] = 0;
                 $sumRow['pt_l1_cpc'] = 0;
+            }
+
+            // PT L2 data from parent's own PT campaign (one day before L1)
+            if ($hasParentPtCampaign && $parentPtCampaignL2) {
+                $sumRow['pt_spend_L2'] = $parentPtCampaignL2->spend ?? 0;
+                $sumRow['pt_clicks_L2'] = $parentPtCampaignL2->clicks ?? 0;
+                $sumRow['pt_l2_cpc'] = $parentPtCampaignL2->costPerClick ?? 0;
+            } else {
+                $sumRow['pt_spend_L2'] = 0;
+                $sumRow['pt_clicks_L2'] = 0;
+                $sumRow['pt_l2_cpc'] = 0;
             }
             
             // PT AVG CPC from parent's own campaign only
@@ -3566,8 +3690,11 @@ class OverallAmazonController extends Controller
                 'campaignStatus' => $rec->campaignStatus && trim((string)$rec->campaignStatus) !== '' ? $rec->campaignStatus : 'ENABLED',
                 'l7_spend' => 0,
                 'l1_spend' => 0,
+                'l2_spend' => 0,
                 'l7_cpc' => 0,
                 'l1_cpc' => 0,
+                'l2_cpc' => 0,
+                'l2_clicks' => 0,
                 'avg_cpc' => ($rec->campaign_id ?? null) ? $avgCpcData->get($rec->campaign_id, 0) : 0,
                 'l7_clicks' => 0,
                 'l7_sales' => 0,
@@ -3589,6 +3716,9 @@ class OverallAmazonController extends Controller
                 'pt_sold_L7' => 0,
                 'pt_spend_L1' => 0,
                 'pt_clicks_L1' => 0,
+                'pt_spend_L2' => 0,
+                'pt_clicks_L2' => 0,
+                'pt_l2_cpc' => 0,
                 'pt_campaignName' => null,
                 'pt_campaignBudgetAmount' => 0,
                 'pt_campaign_id' => null,
@@ -5558,11 +5688,8 @@ class OverallAmazonController extends Controller
             }
         }
         
-        // Fetch last_sbid from day-before-yesterday's date records for KW campaigns
-        // This ensures last_sbid shows the PREVIOUS day's calculated SBID, not the current day's
-        // Example: On 15-01-2026, we fetch from 13-01-2026 records (which has SBID calculated on 14-01-2026)
-        // So last_sbid = previous day's calculated SBID, SBID = current day's calculated SBID
-        // Also try yesterday as fallback if day-before-yesterday doesn't have the record
+        // Fetch last_sbid from yesterday and day-before-yesterday for KW campaigns.
+        // Prefer YESTERDAY so Last SBID shows the previous day's SBID (SBID that was in effect yesterday).
         $dayBeforeYesterday = date('Y-m-d', strtotime('-2 days'));
         $yesterday = date('Y-m-d', strtotime('-1 day'));
         $lastSbidMapKw = [];
@@ -5575,9 +5702,9 @@ class OverallAmazonController extends Controller
             ->where('campaignName', 'NOT LIKE', '%PT')
             ->where('campaignName', 'NOT LIKE', '%PT.')
             ->get()
-            ->sortBy(function($report) use ($dayBeforeYesterday) {
-                // Prioritize day-before-yesterday over yesterday
-                return $report->report_date_range === $dayBeforeYesterday ? 0 : 1;
+            ->sortBy(function($report) use ($yesterday) {
+                // Prioritize yesterday so Last SBID = previous day's SBID
+                return $report->report_date_range === $yesterday ? 0 : 1;
             })
             ->groupBy('campaign_id');
         
@@ -5737,7 +5864,7 @@ class OverallAmazonController extends Controller
                                 $q->where('campaignName', 'NOT LIKE', '%PT')
                                   ->where('campaignName', 'NOT LIKE', '%PT.');
                             })
-                            ->orderByRaw("CASE WHEN report_date_range = ? THEN 0 ELSE 1 END", [$dayBeforeYesterday])
+                            ->orderByRaw("CASE WHEN report_date_range = ? THEN 0 ELSE 1 END", [$yesterday])
                             ->value('last_sbid');
                         
                         if ($directLastSbid !== null && $directLastSbid !== '') {
@@ -6411,6 +6538,105 @@ class OverallAmazonController extends Controller
         } catch (\Exception $e) {
             Log::error('getAmazonBadgeChartData error: ' . $e->getMessage());
             return response()->json(['success' => false, 'message' => 'Error fetching chart data'], 500);
+        }
+    }
+
+    /**
+     * Get KW Last SBID date-wise chart data for a campaign (daily last_sbid from amazon_sp_campaign_reports).
+     */
+    public function getAmazonKwLastSbidChartData(Request $request)
+    {
+        try {
+            $campaignId = $request->input('campaign_id');
+            $days = min(90, max(7, intval($request->input('days', 30))));
+
+            if (empty($campaignId)) {
+                return response()->json(['success' => false, 'message' => 'campaign_id required'], 400);
+            }
+
+            $startDate = date('Y-m-d', strtotime("-{$days} days"));
+            $rows = DB::table('amazon_kw_last_sbid_daily')
+                ->select('report_date', 'last_sbid', 'campaign_name')
+                ->where('campaign_id', $campaignId)
+                ->where('report_date', '>=', $startDate)
+                ->orderBy('report_date', 'asc')
+                ->get();
+
+            $chartData = $rows->map(function ($row) {
+                $val = $row->last_sbid;
+                if ($val !== null && $val !== '') {
+                    $val = floatval($val);
+                } else {
+                    $val = null;
+                }
+                $rawDate = $row->report_date instanceof \DateTimeInterface
+                    ? $row->report_date->format('Y-m-d')
+                    : (string) $row->report_date;
+                return [
+                    'date' => \Carbon\Carbon::parse($rawDate)->format('M d'),
+                    'value' => $val,
+                    'raw_date' => $rawDate,
+                ];
+            })->values()->toArray();
+
+            $campaignName = $rows->isNotEmpty() ? ($rows->first()->campaign_name ?? '') : '';
+
+            // Fallback: if no daily history, show current last_sbid (same source as KW Last SBID column)
+            if (empty($chartData)) {
+                $yesterday = date('Y-m-d', strtotime('-1 day'));
+                $dayBefore = date('Y-m-d', strtotime('-2 days'));
+                // Match table: yesterday, day-before, L1, L7 (KW only: exclude PT)
+                $current = DB::table('amazon_sp_campaign_reports')
+                    ->select('report_date_range', 'last_sbid', 'campaignName')
+                    ->where('campaign_id', $campaignId)
+                    ->where('ad_type', 'SPONSORED_PRODUCTS')
+                    ->where(function ($q) {
+                        $q->where('campaignName', 'NOT LIKE', '%PT')
+                          ->where('campaignName', 'NOT LIKE', '%PT.');
+                    })
+                    ->where(function ($q) use ($yesterday, $dayBefore) {
+                        $q->where('report_date_range', $yesterday)
+                          ->orWhere('report_date_range', $dayBefore)
+                          ->orWhereIn('report_date_range', ['L1', 'L7', 'L30']);
+                    })
+                    ->whereNotNull('last_sbid')
+                    ->orderByRaw("CASE WHEN report_date_range = '{$yesterday}' THEN 0 WHEN report_date_range = '{$dayBefore}' THEN 1 WHEN report_date_range = 'L1' THEN 2 WHEN report_date_range = 'L7' THEN 3 ELSE 4 END")
+                    ->first();
+                $val = $current ? (trim((string)$current->last_sbid) !== '' ? floatval($current->last_sbid) : null) : null;
+                if ($current && $val !== null) {
+                    $rawDate = preg_match('/^\d{4}-\d{2}-\d{2}$/', $current->report_date_range) ? $current->report_date_range : $yesterday;
+                    $chartData = [[
+                        'date' => \Carbon\Carbon::parse($rawDate)->format('M d'),
+                        'value' => $val,
+                        'raw_date' => $rawDate,
+                    ]];
+                    if (empty($campaignName) && !empty($current->campaignName)) {
+                        $campaignName = $current->campaignName;
+                    }
+                }
+            }
+
+            // If still empty, use value from table cell (passed as current_value) so chart always shows what table shows
+            if (empty($chartData)) {
+                $currentValue = $request->input('current_value');
+                if ($currentValue !== null && $currentValue !== '' && is_numeric($currentValue)) {
+                    $today = date('Y-m-d');
+                    $chartData = [[
+                        'date' => \Carbon\Carbon::parse($today)->format('M d'),
+                        'value' => floatval($currentValue),
+                        'raw_date' => $today,
+                    ]];
+                }
+            }
+
+            return response()->json([
+                'success' => true,
+                'data' => $chartData,
+                'campaign_name' => $campaignName,
+            ]);
+        } catch (\Exception $e) {
+            Log::error('getAmazonKwLastSbidChartData error: ' . $e->getMessage());
+            return response()->json(['success' => false, 'message' => 'Error fetching KW Last SBID chart data'], 500);
         }
     }
 }

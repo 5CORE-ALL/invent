@@ -358,6 +358,23 @@ class AutoUpdateAmazonPtBids extends Command
             })
             ->get();
 
+        // L2 = 2nd last date from table (table's latest date - 1 day), not server today
+        $latestDateInTable = DB::table('amazon_sp_campaign_reports')
+            ->where('ad_type', 'SPONSORED_PRODUCTS')
+            ->whereRaw("report_date_range REGEXP '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'")
+            ->max('report_date_range');
+        $dayBeforeYesterdayForL2 = $latestDateInTable
+            ? date('Y-m-d', strtotime($latestDateInTable . ' -1 day'))
+            : date('Y-m-d', strtotime('-2 days'));
+        $amazonSpCampaignReportsL2 = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
+            ->where('report_date_range', $dayBeforeYesterdayForL2)
+            ->where(function ($q) use ($skus) {
+                foreach ($skus as $sku) {
+                    $q->orWhere('campaignName', 'LIKE', '%' . strtoupper($sku) . '%');
+                }
+            })
+            ->get();
+
         $result = [];
         $processedCampaignIds = []; // Track to avoid processing same campaign multiple times
 
@@ -378,10 +395,17 @@ class AutoUpdateAmazonPtBids extends Command
             });
 
             $matchedCampaignL1 = $amazonSpCampaignReportsL1->first(function ($item) use ($sku) {
-                // Normalize spaces: replace multiple spaces with single space
                 $cleanName = preg_replace('/\s+/', ' ', strtoupper(trim($item->campaignName)));
                 $cleanSku = preg_replace('/\s+/', ' ', $sku);
-                
+                return (
+                    (str_ends_with($cleanName, $cleanSku . ' PT') || str_ends_with($cleanName, $cleanSku . ' PT.'))
+                    && strtoupper($item->campaignStatus) === 'ENABLED'
+                );
+            });
+
+            $matchedCampaignL2 = $amazonSpCampaignReportsL2->first(function ($item) use ($sku) {
+                $cleanName = preg_replace('/\s+/', ' ', strtoupper(trim($item->campaignName)));
+                $cleanSku = preg_replace('/\s+/', ' ', $sku);
                 return (
                     (str_ends_with($cleanName, $cleanSku . ' PT') || str_ends_with($cleanName, $cleanSku . ' PT.'))
                     && strtoupper($item->campaignStatus) === 'ENABLED'
@@ -419,6 +443,8 @@ class AutoUpdateAmazonPtBids extends Command
             $row['l7_cpc'] = $matchedCampaignL7->costPerClick ?? 0;
             $row['l1_spend'] = $matchedCampaignL1->spend ?? 0;
             $row['l1_cpc'] = $matchedCampaignL1->costPerClick ?? 0;
+            $row['l2_spend'] = $matchedCampaignL2 ? ($matchedCampaignL2->spend ?? 0) : 0;
+            $row['l2_cpc'] = $matchedCampaignL2 ? ($matchedCampaignL2->costPerClick ?? 0) : 0;
 
             // Get price from AmazonDatasheet
             $amazonSheet = $amazonDatasheets[strtoupper($pm->sku)] ?? null;
@@ -477,53 +503,47 @@ class AutoUpdateAmazonPtBids extends Command
 
             $ub7 = $budget > 0 ? ($l7_spend / ($budget * 7)) * 100 : 0;
             $ub1 = $budget > 0 ? ($l1_spend / $budget) * 100 : 0;
+            $l2_spend = floatval($row['l2_spend'] ?? 0);
+            $ub2 = ($budget > 0 && $l2_spend > 0) ? ($l2_spend / $budget) * 100 : 0;
+            $ub2Red = $ub2 < 66;
+            $ub2Pink = $ub2 > 99;
+            $ub1Red = $ub1 < 66;
+            $ub1Pink = $ub1 > 99;
 
-            // Calculate SBID based on blade file logic
             $l1_cpc = floatval($row['l1_cpc']);
+            $l2_cpc = floatval($row['l2_cpc'] ?? 0);
             $l7_cpc = floatval($row['l7_cpc']);
-            // Parent rows now have avg price, so apply same price-based rules for all rows (including PARENT)
-            // Special case - If UB7 and UB1 = 0%, use price-based default
-            if ($ub7 === 0 && $ub1 === 0) {
-                if ($price < 50) {
-                    $row['sbid'] = 0.50;
-                } else if ($price >= 50 && $price < 100) {
-                    $row['sbid'] = 1.00;
-                } else if ($price >= 100 && $price < 200) {
-                    $row['sbid'] = 1.50;
-                } else {
-                    $row['sbid'] = 2.00;
-                }
-            } else {
-                // Over-utilized: Priority - L1 CPC → L7 CPC → AVG CPC → 1.00, then decrease by 10%
+            $row['sbid'] = 0;
+
+            if ($ub2Red && $ub1Red) {
                 if ($l1_cpc > 0) {
-                    $row['sbid'] = floor($l1_cpc * 0.90 * 100) / 100;
-                } else if ($l7_cpc > 0) {
-                    $row['sbid'] = floor($l7_cpc * 0.90 * 100) / 100;
-                } else if ($avgCpc > 0) {
-                    $row['sbid'] = floor($avgCpc * 0.90 * 100) / 100;
+                    $row['sbid'] = floor($l1_cpc * 1.10 * 100) / 100;
+                } elseif ($l2_cpc > 0) {
+                    $row['sbid'] = floor($l2_cpc * 1.10 * 100) / 100;
+                } elseif ($l7_cpc > 0) {
+                    $row['sbid'] = floor($l7_cpc * 1.10 * 100) / 100;
                 } else {
-                    $row['sbid'] = 1.00;
+                    $row['sbid'] = 0.60;
                 }
+            } elseif ($ub2Pink && $ub1Pink) {
+                $row['sbid'] = floor($l1_cpc * 0.90 * 100) / 100;
             }
-            // Apply price-based caps (parent rows now have avg price, so apply for all rows)
+
             if ($price < 10 && $row['sbid'] > 0.10) {
                 $row['sbid'] = 0.10;
-            } else if ($price >= 10 && $price < 20 && $row['sbid'] > 0.20) {
+            } elseif ($price >= 10 && $price < 20 && $row['sbid'] > 0.20) {
                 $row['sbid'] = 0.20;
             }
 
-            // Validate all required fields before adding
             if (empty($row['campaign_id'])) {
-                continue; // Skip if no campaign ID
+                continue;
             }
-            
             if (!is_numeric($row['sbid']) || $row['sbid'] <= 0) {
-                continue; // Skip if invalid bid
+                continue;
             }
 
-            // Include only OVER-utilized + ENABLED (matches frontend: Over filter excludes PAUSED).
-            // Frontend shows only ENABLED when filtering by utilization type; command must match.
-            if ($row['INV'] > 0 && ($ub7 > 99 && $ub1 > 99) && ($row['campaignStatus'] ?? '') === 'ENABLED') {
+            // Include only when 2UB pink AND 1UB pink (over-utilized) + ENABLED
+            if ($row['INV'] > 0 && ($ub2Pink && $ub1Pink) && ($row['campaignStatus'] ?? '') === 'ENABLED') {
                 $result[] = (object) $row;
             }
         }

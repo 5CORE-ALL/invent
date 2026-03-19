@@ -12,6 +12,8 @@ class GenerateEbay1RefreshToken extends Command
     protected $description = 'Generate a new eBay1 refresh token using RuName';
 
     private $ruName = 'Amarjit_Kalra-AmarjitK-Produc-wmgogtl';
+    /** Must match exactly between auth URL and token exchange (eBay requirement). */
+    private $redirectUri = 'https://auth.ebay.com/oauth2/consentsdk';
     private $baseUrl = 'https://auth.ebay.com/oauth2/authorize';
     private $tokenUrl = 'https://api.ebay.com/identity/v1/oauth2/token';
 
@@ -52,11 +54,10 @@ class GenerateEbay1RefreshToken extends Command
             ];
 
             $scopeString = implode(' ', $scopes);
-            $redirectUri = urlencode('https://auth.ebay.com/oauth2/consentsdk');
 
             $authUrl = $this->baseUrl . '?' . http_build_query([
                 'client_id' => $clientId,
-                'redirect_uri' => $redirectUri,
+                'redirect_uri' => $this->redirectUri,
                 'response_type' => 'code',
                 'scope' => $scopeString,
                 'ruName' => $this->ruName,
@@ -67,26 +68,37 @@ class GenerateEbay1RefreshToken extends Command
             $this->line($authUrl);
             $this->newLine();
             $this->info('After authorizing, you will be redirected to a page with a URL containing "code=" parameter.');
-            $this->info('Copy the entire authorization code value and run this command again with:');
+            $this->info('Copy the ENTIRE code (it contains # and ^). Use SINGLE QUOTES so the shell does not truncate it:');
             $this->newLine();
-            $this->line('php artisan ebay1:generate-refresh-token --code=YOUR_AUTHORIZATION_CODE');
+            $this->line("  php artisan ebay1:generate-refresh-token --code='PASTE_FULL_CODE_HERE'");
+            $this->newLine();
+            $this->comment('Important: Wrap the code in single quotes. Without quotes, characters like # break the command.');
             $this->newLine();
 
             return 0;
         }
 
         // Step 2: Exchange authorization code for refresh token
+        // eBay codes contain # and ^ - if passed without quotes, shell truncates at # and causes invalid_grant
+        if (strlen($authCode) < 30 || strpos($authCode, '#') === false) {
+            $this->warn('Your code looks truncated (too short or missing #). Use single quotes around the full code:');
+            $this->line("  php artisan ebay1:generate-refresh-token --code='FULL_CODE_FROM_EBAY'");
+            $this->newLine();
+            $this->comment('Get a fresh code from eBay (old one may be invalid now), then run the command with the code in single quotes.');
+            return 1;
+        }
+
         $this->info('Step 2: Exchanging Authorization Code for Refresh Token');
         $this->newLine();
 
         try {
-            // eBay requires redirect_uri to be the RuName value (not the URL) when exchanging authorization code
+            // redirect_uri must exactly match the value used in the authorization URL (eBay requirement)
             $response = Http::asForm()
                 ->withBasicAuth($clientId, $clientSecret)
                 ->post($this->tokenUrl, [
                     'grant_type' => 'authorization_code',
                     'code' => $authCode,
-                    'redirect_uri' => $this->ruName, // Must be RuName, not the redirect URL
+                    'redirect_uri' => $this->redirectUri,
                 ]);
 
             if ($response->successful()) {
@@ -128,13 +140,13 @@ class GenerateEbay1RefreshToken extends Command
                 $this->line('Request details:');
                 $this->line('  - grant_type: authorization_code');
                 $this->line('  - code: ' . substr($authCode, 0, 20) . '...');
-                $this->line('  - redirect_uri: ' . $this->ruName);
+                $this->line('  - redirect_uri: ' . $this->redirectUri);
                 $this->line('  - token_url: ' . $this->tokenUrl);
 
                 Log::error('eBay1 Refresh Token Generation Failed', [
                     'status' => $response->status(),
                     'response' => $response->body(),
-                    'redirect_uri' => $this->ruName,
+                    'redirect_uri' => $this->redirectUri,
                 ]);
 
                 return 1;

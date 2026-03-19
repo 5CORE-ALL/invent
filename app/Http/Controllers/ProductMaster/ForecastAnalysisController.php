@@ -9,6 +9,7 @@ use App\Models\ShopifySku;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use App\Models\AmazonDataView;
 use App\Models\JungleScoutProductData;
 use App\Models\Supplier;
 use App\Models\TransitContainerDetail;
@@ -66,6 +67,104 @@ class ForecastAnalysisController extends Controller
             return $normalizeSku($item->sku);
         });
 
+        $amazonPriceBySku = [];
+        foreach (DB::table('amazon_datsheets')->whereNotNull('sku')->get(['sku', 'price']) as $ar) {
+            $k = $normalizeSku($ar->sku ?? '');
+            if ($k === '') {
+                continue;
+            }
+            $p = is_numeric($ar->price) ? (float) $ar->price : 0.0;
+            if ($p > 0) {
+                $amazonPriceBySku[$k] = $p;
+            }
+        }
+        $resolveAmazonPrice = function ($sheetSku) use ($amazonPriceBySku, $normalizeSku) {
+            $k = $normalizeSku($sheetSku);
+            if (isset($amazonPriceBySku[$k]) && $amazonPriceBySku[$k] > 0) {
+                return $amazonPriceBySku[$k];
+            }
+            $skuNoSpaces = str_replace(' ', '', $k);
+            foreach ($amazonPriceBySku as $key => $p) {
+                if ($p > 0 && str_replace(' ', '', $key) === $skuNoSpaces) {
+                    return $p;
+                }
+            }
+
+            return 0.0;
+        };
+
+        $amazonAdvBySku = [];
+        foreach (AmazonDataView::query()->get(['sku', 'value']) as $advRow) {
+            $k = $normalizeSku($advRow->sku ?? '');
+            if ($k === '') {
+                continue;
+            }
+            $v = $advRow->value;
+            if (! is_array($v)) {
+                $v = json_decode($advRow->value ?? '{}', true) ?: [];
+            }
+            $amazonAdvBySku[$k] = $v;
+        }
+        $getAmazonAdv = function ($sheetSku) use ($amazonAdvBySku, $normalizeSku) {
+            $k = $normalizeSku($sheetSku);
+            if (isset($amazonAdvBySku[$k])) {
+                return $amazonAdvBySku[$k];
+            }
+            $skuNoSpaces = str_replace(' ', '', $k);
+            foreach ($amazonAdvBySku as $key => $val) {
+                if (str_replace(' ', '', $key) === $skuNoSpaces) {
+                    return $val;
+                }
+            }
+
+            return null;
+        };
+
+        $jungleReviewsBySku = [];
+        $jungleRatingBySku = [];
+        foreach (JungleScoutProductData::query()->get(['sku', 'data']) as $jsRow) {
+            $k = $normalizeSku($jsRow->sku ?? '');
+            if ($k === '') {
+                continue;
+            }
+            $d = is_array($jsRow->data) ? $jsRow->data : [];
+            $rv = $d['reviews'] ?? null;
+            if ($rv !== null && $rv !== '') {
+                $jungleReviewsBySku[$k] = is_numeric($rv) ? (int) $rv : (string) $rv;
+            }
+            $rat = $d['rating'] ?? null;
+            if ($rat !== null && $rat !== '') {
+                $jungleRatingBySku[$k] = is_numeric($rat) ? round((float) $rat, 2) : (string) $rat;
+            }
+        }
+        $getJungleReviews = function ($sheetSku) use ($jungleReviewsBySku, $normalizeSku) {
+            $k = $normalizeSku($sheetSku);
+            if (isset($jungleReviewsBySku[$k])) {
+                return $jungleReviewsBySku[$k];
+            }
+            $skuNoSpaces = str_replace(' ', '', $k);
+            foreach ($jungleReviewsBySku as $key => $rv) {
+                if (str_replace(' ', '', $key) === $skuNoSpaces) {
+                    return $rv;
+                }
+            }
+
+            return null;
+        };
+        $getJungleRating = function ($sheetSku) use ($jungleRatingBySku, $normalizeSku) {
+            $k = $normalizeSku($sheetSku);
+            if (isset($jungleRatingBySku[$k])) {
+                return $jungleRatingBySku[$k];
+            }
+            $skuNoSpaces = str_replace(' ', '', $k);
+            foreach ($jungleRatingBySku as $key => $rv) {
+                if (str_replace(' ', '', $key) === $skuNoSpaces) {
+                    return $rv;
+                }
+            }
+
+            return null;
+        };
 
         $supplierRows = Supplier::where('type', 'Supplier')->get();
         $supplierMapByParent = [];
@@ -97,6 +196,11 @@ class ForecastAnalysisController extends Controller
         });
         $movementMap = DB::table('movement_analysis')->get()->keyBy(fn($item) => $normalizeSku($item->sku));
         $readyToShipMap = DB::table('ready_to_ship')->where('transit_inv_status', 0)->whereNull('deleted_at')->get()->keyBy(fn($item) => $normalizeSku($item->sku));
+        $toOrderApprovedBySku = collect(DB::table('to_order_analysis')
+            ->whereNull('deleted_at')
+            ->get(['sku', 'approved_qty']))
+            ->groupBy(fn ($r) => $normalizeSku($r->sku))
+            ->map(fn ($rows) => (float) $rows->max(fn ($r) => (float) ($r->approved_qty ?? 0)));
         $mfrg = DB::table('mfrg_progress')->get()->keyBy(fn($item) => $normalizeSku($item->sku));
         $purchases = DB::table('purchases')->whereNull('deleted_at')
             ->select('items')
@@ -192,6 +296,9 @@ class ForecastAnalysisController extends Controller
 
             $valuesRaw = $prodData->Values ?? '{}';
             $values = json_decode($valuesRaw, true);
+            $productMasterMoq = (isset($values['moq']) && $values['moq'] !== '' && is_numeric($values['moq']))
+                ? (float) $values['moq']
+                : 0.0;
 
             $item->{'CP'} = $values['cp'] ?? '';
             $item->{'LP'} = $values['lp'] ?? '';
@@ -231,6 +338,23 @@ class ForecastAnalysisController extends Controller
             // Calculate lp_value (LP * INV)
             $lp = is_numeric($item->{'LP'}) ? (float)$item->{'LP'} : 0;
             $item->lp_value = $lp * $item->INV;
+
+            $adv = $getAmazonAdv($sheetSku);
+            $item->avg_npft_pct = null;
+            $item->avg_nroi_pct = null;
+            if (is_array($adv)) {
+                $gpft = (float) ($adv['GPFT'] ?? 0);
+                $adPct = (float) ($adv['AD_percent'] ?? $adv['AD%'] ?? 0);
+                $roiPct = (float) ($adv['ROI'] ?? 0);
+                $hasAdv = array_key_exists('GPFT', $adv) || array_key_exists('ROI', $adv)
+                    || array_key_exists('AD_percent', $adv) || array_key_exists('AD%', $adv);
+                if ($hasAdv || $gpft != 0.0 || $roiPct != 0.0 || $adPct != 0.0) {
+                    $item->avg_npft_pct = (int) round($gpft - $adPct);
+                    $item->avg_nroi_pct = (int) round($roiPct - $adPct);
+                }
+            }
+            $item->reviews = $getJungleReviews($sheetSku);
+            $item->rating = $getJungleRating($sheetSku);
 
             // if (!empty($item->Parent) && $jungleScoutData->has($item->Parent)) {
             //     $item->scout_data = json_decode(json_encode($jungleScoutData[$item->Parent]), true);
@@ -379,9 +503,29 @@ class ForecastAnalysisController extends Controller
 
                 $item->{'MSL_SP'} = floor($shopifyb2c_price * $effectiveMsl / 4);
 
+                $amzPrc = $resolveAmazonPrice($sheetSku);
+                $item->amz_prc = $amzPrc;
+                $item->{'MSL_SP_AMZ'} = round($msl * $amzPrc / 4, 2);
+
                 $item->msl = (int) round($msl);
+                // M AVG = average monthly movement (same months as MSL: sum of movement / count of non-zero months)
+                $mAvg = $totalMonthCount > 0 ? ($totalSum / $totalMonthCount) : 0.0;
+                $item->m_avg = round($mAvg, 6);
+                $moqVal = is_numeric($item->{'MOQ'} ?? null) ? (float) $item->{'MOQ'} : (float) preg_replace('/[^0-9.\-]/', '', (string) ($item->{'MOQ'} ?? ''));
+                $item->TAT = $mAvg > 0 ? (int) round($moqVal / $mAvg) : null;
             } else {
                 $item->msl = 0;
+                $item->amz_prc = $resolveAmazonPrice($sheetSku);
+                $item->{'MSL_SP_AMZ'} = 0;
+                $item->m_avg = 0.0;
+                $item->TAT = null;
+            }
+
+            $item->eff_roi_pct = null;
+            $tatInt = $item->TAT ?? null;
+            $nroiForEff = $item->avg_nroi_pct;
+            if ($tatInt !== null && (int) $tatInt > 0 && $nroiForEff !== null && is_numeric($nroiForEff)) {
+                $item->eff_roi_pct = (int) round(((float) $nroiForEff / (int) $tatInt) * 12);
             }
 
             $cp = (float)($item->{'CP'} ?? 0);
@@ -423,6 +567,35 @@ class ForecastAnalysisController extends Controller
                 $item->Transit_Value = round($cp * $transit, 2);
             }
 
+            // Stage from pipeline qtys: Transit → R2S → MIP → 2 Order; none → Select (empty)
+            if (! $item->is_parent) {
+                $qtyTransit = (float) ($item->transit ?? 0);
+                $qtyR2s = (float) ($item->readyToShipQty ?? 0);
+                $qtyMip = (float) ($item->order_given ?? 0);
+                // 2 Order column = to_order_analysis approved qty only (not Appr.req MOQ)
+                $qtyTwoOrder = (float) ($toOrderApprovedBySku->get($sheetSku, 0));
+                if ($qtyTransit > 0) {
+                    $derivedStage = 'transit';
+                } elseif ($qtyR2s > 0) {
+                    $derivedStage = 'r2s';
+                } elseif ($qtyMip > 0) {
+                    $derivedStage = 'mip';
+                } elseif ($qtyTwoOrder > 0) {
+                    $derivedStage = 'to_order_analysis';
+                } else {
+                    $derivedStage = '';
+                }
+                $currentStage = strtolower(trim((string) ($item->stage ?? '')));
+                if ($currentStage !== $derivedStage) {
+                    DB::table('forecast_analysis')
+                        ->whereRaw('TRIM(LOWER(sku)) = ?', [strtolower($sheetSku)])
+                        ->update(['stage' => $derivedStage, 'updated_at' => now()]);
+                }
+                $item->stage = $derivedStage;
+            }
+
+            $item->product_master_moq = $productMasterMoq;
+
             $processedData[] = $item;
         }
 
@@ -450,20 +623,25 @@ class ForecastAnalysisController extends Controller
                     return floatval($item->{'MSL_SP'} ?? 0);
                 });
 
-            // Calculate total Transit Value from ALL transit_container_details records (like transit-container-details page)
-            // This matches the transit-container-details page calculation: sum of (qty * rate) for ALL rows across ALL tabs
-            $totalTransitValue = TransitContainerDetail::whereNull('deleted_at')
-                ->where(function ($q) {
-                    $q->whereNull('status')
-                    ->orWhere('status', '');
+            $totalMslSpAmz = collect($processedData)
+                ->filter(function ($item) {
+                    return ! $item->is_parent;
                 })
-                ->get()
-                ->sum(function ($row) {
-                    $no_of_units = (float) ($row->no_of_units ?? 0);
-                    $total_ctn = (float) ($row->total_ctn ?? 0);
-                    $rate = (float) ($row->rate ?? 0);
-                    $qty = $no_of_units * $total_ctn;
-                    return $qty * $rate; // Calculate qty * rate for each row (like transit-container-details page)
+                ->sum(function ($item) {
+                    return floatval($item->{'MSL_SP_AMZ'} ?? 0);
+                });
+
+            // Trn Val: sum of (transit QTY × CP) per SKU (child rows only).
+            // Transit qty matches the grid (aggregated units×ctn per SKU, warehouse-pushed lines excluded).
+            $totalTransitValue = collect($processedData)
+                ->filter(function ($item) {
+                    return ! $item->is_parent;
+                })
+                ->sum(function ($item) {
+                    $transitQty = (float) ($item->transit ?? 0);
+                    $cp = (float) ($item->{'CP'} ?? 0);
+
+                    return $transitQty * $cp;
                 });
 
             return response()->json([
@@ -471,7 +649,8 @@ class ForecastAnalysisController extends Controller
                 'data' => $processedData,
                 'total_msl_c' => round($totalMslC, 2),
                 'total_msl_sp' => round($totalMslSp, 0),
-                'total_transit_value' => round($totalTransitValue, 2), // Total Transit Value from ALL transit_container_details records
+                'total_msl_sp_amz' => round($totalMslSpAmz, 2),
+                'total_transit_value' => round($totalTransitValue, 2), // Sum(transit QTY × CP) for forecast child SKUs
                 'status' => 200,
             ]);
 

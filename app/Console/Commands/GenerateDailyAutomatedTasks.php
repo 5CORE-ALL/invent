@@ -28,6 +28,8 @@ class GenerateDailyAutomatedTasks extends Command
 
     /**
      * Execute the console command.
+     * Daily task is skipped if: schedule_type != 'daily', is_pause = 1, status in (Done, Archived),
+     * or a task for this automate_task_id was already created today (same day in Asia/Kolkata).
      */
     public function handle(TaskWhatsAppNotificationService $taskWhatsApp)
     {
@@ -37,7 +39,14 @@ class GenerateDailyAutomatedTasks extends Command
             // Use Asia/Kolkata timezone explicitly
             $now = Carbon::now('Asia/Kolkata');
             $today = $now->toDateString();
-            
+
+            // Ensure duplicate check and stored datetimes are compared in same timezone (Asia/Kolkata)
+            try {
+                DB::statement("SET time_zone = '+05:30'");
+            } catch (\Throwable $e) {
+                Log::warning('Could not set session time_zone to Asia/Kolkata: ' . $e->getMessage());
+            }
+
             $this->info("Current date: {$today} {$now->format('H:i:s')}");
             $generated = 0;
             $skipped = 0;
@@ -51,15 +60,23 @@ class GenerateDailyAutomatedTasks extends Command
                 ->chunk(100, function ($automatedTasks) use ($now, $today, $taskWhatsApp, &$generated, &$skipped) {
                     foreach ($automatedTasks as $autoTask) {
                         try {
-                            // Check for duplicate - prevent creating same task twice today
+                            // Check for duplicate - prevent creating same task twice today (use Asia/Kolkata day window)
+                            $dayStart = Carbon::today('Asia/Kolkata')->startOfDay();
+                            $dayEnd = Carbon::today('Asia/Kolkata')->endOfDay();
                             $alreadyExists = DB::table('tasks')
                                 ->where('automate_task_id', $autoTask->id)
-                                ->whereDate('start_date', $today)
+                                ->whereBetween('start_date', [$dayStart, $dayEnd])
+                                ->whereNull('deleted_at')
                                 ->exists();
 
                             if ($alreadyExists) {
                                 $skipped++;
                                 $this->warn("⊘ Skipped (already created today): {$autoTask->title}");
+                                Log::debug('Automated task skipped: already created today', [
+                                    'automate_task_id' => $autoTask->id,
+                                    'title' => $autoTask->title,
+                                    'today' => $today,
+                                ]);
                                 continue;
                             }
 

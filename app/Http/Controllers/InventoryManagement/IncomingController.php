@@ -15,6 +15,7 @@ use Illuminate\Support\Facades\Log;
 use App\Http\Controllers\ApiController;
 use App\Models\IncomingData;
 use App\Models\IncomingOrder;
+use App\Models\IncomingReason;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 
@@ -776,8 +777,38 @@ class IncomingController extends Controller
     {
         $warehouses = Warehouse::select('id', 'name')->get();
         $skus = ProductMaster::select('id','parent','sku')->get();
+        $reasons = IncomingReason::orderBy('sort_order')->orderBy('name')->pluck('name')->toArray();
 
-        return view('inventory-management.incoming-orders-view', compact('warehouses', 'skus'));
+        return view('inventory-management.incoming-orders-view', compact('warehouses', 'skus', 'reasons'));
+    }
+
+    public function getIncomingReasons()
+    {
+        $reasons = IncomingReason::orderBy('sort_order')->orderBy('name')->pluck('name')->toArray();
+        return response()->json(['reasons' => $reasons]);
+    }
+
+    public function storeIncomingReason(Request $request)
+    {
+        $request->validate([
+            'name' => 'required|string|max:255',
+        ]);
+        $name = trim($request->name);
+        if ($name === '') {
+            return response()->json(['success' => false, 'message' => 'Reason name is required.'], 422);
+        }
+        if (IncomingReason::where('name', $name)->exists()) {
+            return response()->json(['success' => false, 'message' => 'This reason already exists.'], 422);
+        }
+        $maxOrder = IncomingReason::max('sort_order') ?? 0;
+        IncomingReason::create([
+            'name' => $name,
+            'sort_order' => $maxOrder + 1,
+        ]);
+        return response()->json([
+            'success' => true,
+            'reasons' => IncomingReason::orderBy('sort_order')->orderBy('name')->pluck('name')->toArray(),
+        ]);
     }
 
    

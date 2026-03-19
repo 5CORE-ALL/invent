@@ -11,6 +11,9 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('lateshipment_rate')) {
+            return;
+        }
         Schema::create('lateshipment_rate', function (Blueprint $table) {
             $table->id();
             $table->integer('channel_id')->nullable();

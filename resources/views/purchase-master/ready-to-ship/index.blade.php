@@ -1,6 +1,7 @@
 @extends('layouts.vertical', ['title' => 'Ready To Ship', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
 @section('css')
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
 <link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
 <style>
     .custom-select-wrapper {
@@ -121,6 +122,159 @@
                             </select>
                         </div>
 
+                        <!-- Move to transit: container + Move (always visible) -->
+                        <div class="col-auto">
+                            <label class="form-label fw-semibold mb-1 d-block" style="visibility: hidden;">To container</label>
+                            <div class="d-flex align-items-center gap-2 flex-nowrap">
+                                <select id="r2s-move-tab-select" class="form-select border-2 rounded-2 fw-bold" style="min-width: 160px;" title="Target container">
+                                    <option value="">Container</option>
+                                    @foreach($transitTabs as $tab)
+                                        <option value="{{ $tab }}">{{ $tab }}</option>
+                                    @endforeach
+                                </select>
+                                <button type="button" id="r2s-move-to-transit-btn" class="btn btn-info fw-bold border-2 rounded-2 px-3" style="white-space: nowrap; position: relative; z-index: 106;" title="Move checked rows to selected container">
+                                    <i class="mdi mdi-truck-fast"></i> Move
+                                </button>
+                            </div>
+                        </div>
+                        {{-- Move handler MUST register here: main page script is 1000+ lines; any JS error above Move blocks the listener --}}
+                        <script>
+                        (function () {
+                            var R2S_MOVE_URL = @json(rtrim(request()->getSchemeAndHttpHost() . request()->getBasePath(), '/') . '/ready-to-ship/move-to-transit');
+                            var R2S_CSRF_FALLBACK = @json(csrf_token());
+                            function r2sCsrf() {
+                                var m = document.querySelector('meta[name="csrf-token"]');
+                                return (m && m.getAttribute('content')) || R2S_CSRF_FALLBACK;
+                            }
+                            function r2sCheckedRows() {
+                                var t = document.getElementById('readyToShipTable');
+                                if (!t) return [];
+                                return Array.prototype.slice.call(t.querySelectorAll('tbody .r2s-row-checkbox')).filter(function (cb) { return cb.checked; });
+                            }
+                            /** Rec. QTY column (20); falls back to Or. QTY (4) if empty/invalid */
+                            function r2sRecQtyFromRow(tr) {
+                                if (!tr) return 0;
+                                var recInp = tr.querySelector('td[data-column="20"] input');
+                                var v = recInp ? parseFloat(String(recInp.value).trim()) : NaN;
+                                if (!isNaN(v) && v >= 0) return v;
+                                var orInp = tr.querySelector('td[data-column="4"] input');
+                                var ov = orInp ? parseFloat(String(orInp.value).trim()) : 0;
+                                return !isNaN(ov) && ov >= 0 ? ov : 0;
+                            }
+                            function r2sDoMove(ev) {
+                                if (ev) {
+                                    ev.preventDefault();
+                                    ev.stopPropagation();
+                                }
+                                var btn = document.getElementById('r2s-move-to-transit-btn');
+                                var checked = r2sCheckedRows();
+                                if (!checked.length) {
+                                    alert('No rows selected.');
+                                    return;
+                                }
+                                var tabSel = document.getElementById('r2s-move-tab-select');
+                                var tabName = (tabSel && tabSel.value) ? String(tabSel.value).trim() : '';
+                                if (!tabName) {
+                                    alert('Please choose a container from the dropdown.');
+                                    return;
+                                }
+                                var idList = checked.map(function (c) {
+                                    var n = parseInt(c.getAttribute('data-id'), 10);
+                                    return (!isNaN(n) && n > 0) ? n : null;
+                                }).filter(Boolean);
+                                var skus = checked.map(function (c) { return (c.getAttribute('data-sku') || '').trim(); }).filter(Boolean);
+                                var recQtyById = {};
+                                var recQtyBySku = {};
+                                checked.forEach(function (c) {
+                                    var tr = c.closest('tr');
+                                    var q = r2sRecQtyFromRow(tr);
+                                    var id = parseInt(c.getAttribute('data-id'), 10);
+                                    if (!isNaN(id) && id > 0) recQtyById[id] = q;
+                                    var sku = (c.getAttribute('data-sku') || '').trim();
+                                    if (sku) {
+                                        var skuK = sku.toUpperCase().replace(/\s+/g, ' ').trim();
+                                        if (skuK) recQtyBySku[skuK] = q;
+                                    }
+                                });
+                                var payload = { tab_name: tabName, rec_qty_by_id: recQtyById, rec_qty_by_sku: recQtyBySku };
+                                if (idList.length) {
+                                    payload.ids = idList;
+                                } else if (checked.length === 1 && skus.length === 1) {
+                                    payload.skus = [skus[0]];
+                                } else {
+                                    alert('Row IDs missing on this page. Hard refresh (Ctrl+Shift+R) and try again.');
+                                    return;
+                                }
+                                if (btn) btn.disabled = true;
+                                fetch(R2S_MOVE_URL, {
+                                    method: 'POST',
+                                    credentials: 'same-origin',
+                                    headers: {
+                                        'Content-Type': 'application/json',
+                                        'Accept': 'application/json',
+                                        'X-CSRF-TOKEN': r2sCsrf(),
+                                        'X-Requested-With': 'XMLHttpRequest'
+                                    },
+                                    body: JSON.stringify(payload)
+                                }).then(function (res) {
+                                    return res.text().then(function (text) { return { res: res, text: text }; });
+                                }).then(function (o) {
+                                    if (btn) btn.disabled = false;
+                                    var data;
+                                    try {
+                                        data = o.text ? JSON.parse(o.text) : {};
+                                    } catch (e) {
+                                        if (o.res.status === 419) alert('Session expired—refresh and log in again.');
+                                        else alert('Server error (HTTP ' + o.res.status + '). Check you are logged in.');
+                                        return;
+                                    }
+                                    if (data.success) {
+                                        var rem = data.removed_ids || [];
+                                        rem.forEach(function (id) {
+                                            var cb = document.querySelector('#readyToShipTable .r2s-row-checkbox[data-id="' + id + '"]');
+                                            var tr = cb ? cb.closest('tr') : null;
+                                            if (tr) tr.remove();
+                                        });
+                                        (data.partial_updates || []).forEach(function (u) {
+                                            var cb = document.querySelector('#readyToShipTable .r2s-row-checkbox[data-id="' + u.id + '"]');
+                                            var tr = cb ? cb.closest('tr') : null;
+                                            if (tr) {
+                                                var nq = u.new_qty != null ? String(u.new_qty) : '';
+                                                var orInp = tr.querySelector('td[data-column="4"] input');
+                                                if (orInp) orInp.value = nq;
+                                                var recInp = tr.querySelector('td[data-column="20"] input');
+                                                if (recInp) recInp.value = nq;
+                                                if (cb) cb.checked = false;
+                                            }
+                                        });
+                                        if (tabSel) tabSel.value = '';
+                                        if (typeof window.r2sAfterMoveSuccess === 'function') {
+                                            try { window.r2sAfterMoveSuccess(); } catch (e2) {}
+                                        }
+                                        alert(data.message || 'Moved successfully.');
+                                    } else {
+                                        alert(data.message || 'Move failed.');
+                                    }
+                                }).catch(function () {
+                                    if (btn) btn.disabled = false;
+                                    alert('Network error.');
+                                });
+                            }
+                            (function attachR2sMove() {
+                                var b = document.getElementById('r2s-move-to-transit-btn');
+                                if (b) {
+                                    b.onclick = function (ev) { r2sDoMove(ev); };
+                                } else {
+                                    document.addEventListener('DOMContentLoaded', function () {
+                                        var b2 = document.getElementById('r2s-move-to-transit-btn');
+                                        if (b2) b2.onclick = function (ev) { r2sDoMove(ev); };
+                                    });
+                                }
+                            })();
+                            window.r2sDoMoveToTransit = r2sDoMove;
+                        })();
+                        </script>
+
                         <!-- 💰 Advance + Pending Summary -->
                         <div class="col-auto">
                             <label class="form-label fw-semibold mb-1 d-block" style="visibility: hidden;">Advance</label>
@@ -155,15 +309,18 @@
                         <!-- Action Buttons -->
                         <div class="col-auto">
                             <label class="form-label fw-semibold mb-1 d-block" style="visibility: hidden;">Actions</label>
-                            <div class="d-flex align-items-center gap-2">
-                                <button class="btn btn-info move-to-transit-btn d-none" style="border-radius: 6px;">
-                                    <i class="mdi mdi-truck-fast"></i> Move to Transit INV
-                                </button>
+                            <div class="d-flex align-items-center gap-2 flex-wrap">
                                 <button id="delete-selected-btn" class="btn btn-primary text-black d-none" style="border-radius: 6px;">
                                     <i class="mdi mdi-backup-restore"></i> Revert to MFRG
                                 </button>
                                 <button id="delete-selected-item" class="btn btn-danger d-none" style="border-radius: 6px;">
                                     <i class="mdi mdi-trash-can"></i> Delete
+                                </button>
+                                <button type="button" id="r2s-add-tab-btn" class="btn btn-primary btn-sm" style="border-radius: 6px;">
+                                    <i class="fas fa-plus"></i> Add Container
+                                </button>
+                                <button type="button" class="btn btn-info btn-sm" style="border-radius: 6px;" data-bs-toggle="modal" data-bs-target="#r2sTransitAddItemModal">
+                                    <i class="fas fa-plus"></i> Add Notes
                                 </button>
                             </div>
                         </div>
@@ -269,8 +426,168 @@
                     </div>
                 </div>
 
+                {{-- Same Add Notes form as transit-container-details --}}
+                <div class="modal fade" id="r2sTransitAddItemModal" tabindex="-1" aria-labelledby="r2sTransitAddItemModalLabel" aria-hidden="true">
+                    <div class="modal-dialog modal-xl modal-dialog-centered shadow-none">
+                        <div class="modal-content border-0 shadow-lg">
+                            <div class="modal-header bg-primary text-white">
+                                <h5 class="modal-title fw-bold" id="r2sTransitAddItemModalLabel">
+                                    <i class="fas fa-file-invoice me-2"></i> Add Notes
+                                </h5>
+                                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                            </div>
+                            <form id="r2sPurchaseOrderForm" method="POST" action="{{ url('transit-container/save') }}" enctype="multipart/form-data" autocomplete="off">
+                                @csrf
+                                <div class="modal-body">
+                                    <div>
+                                        <h5 class="fw-semibold mb-2 text-primary">
+                                            <i class="fas fa-boxes-stacked me-1"></i> Notes
+                                        </h5>
+                                        <div class="row g-2">
+                                            <div class="col-md-3">
+                                                <label class="form-label fw-semibold">Container <span class="text-danger">*</span></label>
+                                                <select class="form-select" name="tab_name" id="r2s-transit-tab-select" required>
+                                                    <option value="" disabled selected>select container</option>
+                                                    @foreach($transitTabs as $tab)
+                                                        <option value="{{ $tab }}">{{ $tab }}</option>
+                                                    @endforeach
+                                                </select>
+                                            </div>
+                                        </div>
+                                        <div id="r2sProductRowsWrapper">
+                                            <div class="row g-2 product-row r2s-product-row border rounded p-2 mt-2 position-relative">
+                                                <div class="d-flex justify-content-end position-absolute top-0 end-0 p-2 ">
+                                                    <i class="fas fa-trash-alt text-danger r2s-delete-product-row-btn" style="cursor: pointer; font-size: 1.2rem; margin-top:-10px;"></i>
+                                                </div>
+                                                <div class="col-md-3">
+                                                    <select class="form-select r2s-sku-select" name="our_sku[]" required>
+                                                        <option value="" disabled selected>Select SKU</option>
+                                                        @foreach($transitSkus as $sku)
+                                                            <option value="{{ $sku }}">{{ $sku }}</option>
+                                                        @endforeach
+                                                    </select>
+                                                </div>
+                                                <div class="col-md-3">
+                                                    <label class="form-label fw-semibold">Supplier</label>
+                                                    <select class="form-select" name="supplier_name[]">
+                                                        <option value="" disabled>Select Supplier</option>
+                                                        @foreach($transitSuppliers as $supplier)
+                                                            <option value="{{ $supplier->name }}">{{ $supplier->name }}</option>
+                                                        @endforeach
+                                                    </select>
+                                                </div>
+                                                <div class="col-md-3">
+                                                    <label class="form-label fw-semibold">Qty/Ctns</label>
+                                                    <input type="number" class="form-control" name="no_of_units[]" step="any">
+                                                </div>
+                                                <div class="col-md-3">
+                                                    <label class="form-label fw-semibold">Qty Ctns</label>
+                                                    <input type="number" class="form-control" name="total_ctn[]" step="any">
+                                                </div>
+                                                <div class="col-md-3">
+                                                    <label class="form-label fw-semibold">Qty</label>
+                                                    <input type="number" class="form-control" name="pcs_qty[]" step="any">
+                                                </div>
+                                                <div class="col-md-3">
+                                                    <label class="form-label fw-semibold">Rate ($)</label>
+                                                    <input type="number" class="form-control" name="rate[]" step="any">
+                                                </div>
+                                                <div class="col-md-3">
+                                                    <label class="form-label fw-semibold">CBM</label>
+                                                    <input type="number" class="form-control" name="cbm[]" step="any">
+                                                </div>
+                                                <div class="col-md-3">
+                                                    <label class="form-label fw-semibold">Unit</label>
+                                                    <input type="text" class="form-control" name="unit[]">
+                                                </div>
+                                                <div class="col-md-3">
+                                                    <label class="form-label fw-semibold">Changes</label>
+                                                    <input type="text" class="form-control" name="changes[]">
+                                                </div>
+                                                <div class="col-md-3">
+                                                    <label class="form-label fw-semibold">Specifications</label>
+                                                    <textarea class="form-control" name="specification[]" rows="2"></textarea>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="mt-3">
+                                            <button type="button" class="btn btn-outline-primary btn-sm" id="r2sAddItemRowBtn">
+                                                <i class="fas fa-plus-circle me-1"></i> Add Item Row
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <template id="r2s-product-row-template">
+                                    <div class="row g-2 r2s-product-row border rounded p-2 mt-2 position-relative">
+                                        <div class="d-flex justify-content-end position-absolute top-0 end-0 p-2 ">
+                                            <i class="fas fa-trash-alt text-danger r2s-delete-product-row-btn" style="cursor: pointer; font-size: 1.2rem; margin-top:-10px;"></i>
+                                        </div>
+                                        <div class="col-md-3">
+                                            <select class="form-select r2s-sku-select" name="our_sku[]" required>
+                                                <option value="" disabled selected>Select SKU</option>
+                                                @foreach($transitSkus as $sku)
+                                                    <option value="{{ $sku }}">{{ $sku }}</option>
+                                                @endforeach
+                                            </select>
+                                        </div>
+                                        <div class="col-md-3">
+                                            <label class="form-label fw-semibold">Supplier</label>
+                                            <select class="form-select" name="supplier_name[]">
+                                                <option value="" disabled selected>Select Supplier</option>
+                                                @foreach($transitSuppliers as $supplier)
+                                                    <option value="{{ $supplier->name }}">{{ $supplier->name }}</option>
+                                                @endforeach
+                                            </select>
+                                        </div>
+                                        <div class="col-md-3">
+                                            <label class="form-label fw-semibold">Qty/Ctns</label>
+                                            <input type="number" class="form-control" name="no_of_units[]" step="any">
+                                        </div>
+                                        <div class="col-md-3">
+                                            <label class="form-label fw-semibold">Qty Ctns</label>
+                                            <input type="number" class="form-control" name="total_ctn[]" step="any">
+                                        </div>
+                                        <div class="col-md-3">
+                                            <label class="form-label fw-semibold">Qty</label>
+                                            <input type="number" class="form-control" name="pcs_qty[]" step="any">
+                                        </div>
+                                        <div class="col-md-3">
+                                            <label class="form-label fw-semibold">Rate ($)</label>
+                                            <input type="number" class="form-control" name="rate[]" step="any">
+                                        </div>
+                                        <div class="col-md-3">
+                                            <label class="form-label fw-semibold">CBM</label>
+                                            <input type="number" class="form-control" name="cbm[]" step="any">
+                                        </div>
+                                        <div class="col-md-3">
+                                            <label class="form-label fw-semibold">Unit</label>
+                                            <input type="text" class="form-control" name="unit[]">
+                                        </div>
+                                        <div class="col-md-3">
+                                            <label class="form-label fw-semibold">Changes</label>
+                                            <input type="text" class="form-control" name="changes[]">
+                                        </div>
+                                        <div class="col-md-3">
+                                            <label class="form-label fw-semibold">Specifications</label>
+                                            <textarea class="form-control" name="specification[]" rows="2"></textarea>
+                                        </div>
+                                    </div>
+                                </template>
+                                <div class="modal-footer bg-white">
+                                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
+                                        <i class="fas fa-times me-1"></i> Close
+                                    </button>
+                                    <button type="submit" class="btn btn-primary">
+                                        <i class="fas fa-save me-1"></i> Save
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="wide-table-wrapper table-container">
-                    <table class="wide-table">
+                    <table class="wide-table" id="readyToShipTable">
                         <thead>
                             <tr>
                                 <th data-column="0" style="width: 50px;">
@@ -283,20 +600,10 @@
                                 <th data-column="2" hidden>
                                     Parent
                                     <div class="resizer"></div>
-                                    <input type="text" class="form-control column-search" data-search-column="2"
-                                        placeholder="Search Parent..."
-                                        style="margin-top:4px; font-size:12px; height:28px; width: 120px;">
-                                    <div class="search-results" data-results-column="2"
-                                        style="position:relative; z-index:10;"></div>
                                 </th>
                                 <th data-column="3">
                                     SKU
                                     <div class="resizer"></div>
-                                    <input type="text" class="form-control column-search" data-search-column="3"
-                                        placeholder="Search SKU..."
-                                        style="margin-top:4px; font-size:12px; height:28px; width: 120px;">
-                                    <div class="search-results" data-results-column="3"
-                                        style="position:relative; z-index:10;"></div>
                                 </th>
                                 <th data-column="21" data-column-name="stage" class="text-center">Stage<div class="resizer"></div></th>
                                 <th data-column="22" data-column-name="nr" class="text-center" hidden>NRP<div class="resizer"></div></th>
@@ -305,9 +612,6 @@
                                 <th data-column="5" data-column-name="supplier">
                                     Supplier
                                     <div class="resizer"></div>
-                                    <input type="text" class="form-control column-search" data-search-column="5"
-                                        placeholder="Search Supplier..."
-                                        style="margin-top:4px; font-size:12px; height:28px; width: 120px;">
                                 </th>
                                 <th data-column="18" data-column-name="qty" class="text-center" hidden>Rate<div class="resizer"></div></th>
                                 <th data-column="6" data-column-name="cbm" hidden>CBM<div class="resizer"></div>
@@ -356,7 +660,7 @@
                                 @continue($nrValue === 'NR')
                             <tr data-stage="{{ $item->stage ?? '' }}" class="stage-row">
                                 <td data-column="0">
-                                    <input type="checkbox" class="row-checkbox" data-sku="{{ $item->sku }}">
+                                    <input type="checkbox" class="r2s-row-checkbox" data-id="{{ $item->id }}" data-sku="{{ e($item->sku) }}" aria-label="Select row">
                                 </td>
                                 <td data-column="7">
                                     <select data-sku="{{ $item->sku }}" data-column="area" class="form-select form-select-sm auto-save" style="width: 90px; font-size: 13px;">
@@ -458,11 +762,15 @@
                                         class="form-control form-control-sm">
                                 </td>
                                 <td data-column="20" class="text-center">
+                                    @php
+                                        $orderQty = $item->qty ?? '';
+                                        $recQtyVal = ($item->rec_qty !== null && $item->rec_qty !== '') ? $item->rec_qty : $orderQty;
+                                    @endphp
                                     <input type="number" 
                                            class="form-control auto-save" 
                                            data-sku="{{ $item->sku }}" 
                                            data-column="rec_qty" 
-                                           value="{{ $item->rec_qty }}" 
+                                           value="{{ $recQtyVal }}" 
                                            min="0"
                                            max="10000"
                                            style="font-size: 0.95rem; height: 36px; width: 90px;">
@@ -579,6 +887,9 @@
     document.body.style.zoom = '85%';
 
     document.addEventListener('DOMContentLoaded', function() {
+        /** null = all R2S; 'unassigned' = no supplier; string = that supplier (dropdown or play mode) */
+        window.r2sSupplierNavLock = null;
+
         document.documentElement.setAttribute("data-sidenav-size", "condensed");
 
         // Column resizing functionality
@@ -619,8 +930,9 @@
             table.querySelectorAll('thead th[data-column]').forEach(th => {
                 th.style.cursor = 'pointer';
                 th.addEventListener('click', function (e) {
-                    // Ignore direct clicks on the resizer handle
                     if (e.target.classList.contains('resizer')) return;
+                    // Don't sort when focusing/typing column search inputs
+                    if (e.target.matches && (e.target.matches('input') || e.target.matches('select') || e.target.matches('label'))) return;
 
                     const col = this.getAttribute('data-column');
                     if (!col) return;
@@ -791,27 +1103,6 @@
             saveHiddenColumns([]);
         }
 
-            input.addEventListener('input', function() {
-                const col = this.getAttribute('data-search-column');
-                const searchValue = this.value.trim().toLowerCase();
-                rows.forEach(row => {
-                    // Check if stage is R2S
-                    const stageSelect = row.querySelector('.editable-select-stage');
-                    const rowStage = stageSelect ? stageSelect.value.toLowerCase().trim() : '';
-                    const isR2S = rowStage === 'r2s';
-                    
-                    // Only show R2S stage rows
-                    if (!isR2S) {
-                        row.style.display = 'none';
-                        return;
-                    }
-                    
-                    const cell = row.querySelector(`td[data-column="${col}"]`);
-                    row.style.display = cell && (cell.textContent.toLowerCase().includes(searchValue) || searchValue === '') ? '' : 'none';
-                });
-            });
-        });
-
         // Reusable AJAX call for forecast data updates
         function updateForecastField(data, onSuccess = () => {}, onFail = () => {}) {
             fetch('/update-forecast-data', {
@@ -970,54 +1261,74 @@
             });
         }
 
-        // Filter to show only R2S stage rows
+        // R2S + zone + supplier nav lock (dropdown / play)
         function filterByR2SStage() {
+            const table = document.getElementById('readyToShipTable');
             const zoneFilter = document.getElementById('zoneFilter');
             const rawZone = zoneFilter ? zoneFilter.value.trim() : '';
             const selectedZone = rawZone.toLowerCase();
-            const rows = document.querySelectorAll('.wide-table tbody tr');
+            const rows = table
+                ? table.querySelectorAll('tbody tr.stage-row')
+                : document.querySelectorAll('.wide-table tbody tr.stage-row');
             const visibleRows = [];
 
             rows.forEach(row => {
-                // Check stage from data attribute first (more reliable)
-                const rowStageAttr = row.getAttribute('data-stage') ? row.getAttribute('data-stage').toLowerCase().trim() : '';
-                
-                // Also check from select dropdown value
+                const rowStageAttr = row.getAttribute('data-stage')
+                    ? row.getAttribute('data-stage').toLowerCase().trim()
+                    : '';
                 const stageSelect = row.querySelector('.editable-select-stage');
                 const rowStageSelect = stageSelect ? stageSelect.value.toLowerCase().trim() : '';
-                
-                // Use select value if available, otherwise use data attribute
                 const rowStage = rowStageSelect || rowStageAttr;
-                
-                // Only show R2S stage rows
                 const isR2S = rowStage === 'r2s';
 
-                // Check zone filter
                 const selectInRow = row.querySelector('select[data-column="area"]');
                 const rowZoneRaw = selectInRow ? selectInRow.value.trim() : '';
                 const rowZone = rowZoneRaw.toLowerCase();
 
                 let zoneMatch = true;
                 if (!selectedZone) {
-                    zoneMatch = true; // All zones
+                    zoneMatch = true;
                 } else if (rawZone === '__select_zone__') {
-                    // Only rows where zone dropdown is still at its default (empty / "select zone")
                     zoneMatch = rowZone === '';
                 } else {
                     zoneMatch = rowZone === selectedZone;
                 }
 
-                if (isR2S && zoneMatch) {
-                    row.style.display = '';
-                    visibleRows.push(row);
-                } else {
+                if (!isR2S) {
                     row.style.display = 'none';
+                    return;
                 }
+                const navLock = window.r2sSupplierNavLock;
+                if (navLock === 'unassigned') {
+                    const sc = row.querySelector('td[data-column="5"]');
+                    const ss = sc ? sc.querySelector('select[data-column="supplier"]') : null;
+                    const sn = ss ? ss.value.trim() : '';
+                    if (sn && sn !== 'supplier') {
+                        row.style.display = 'none';
+                        return;
+                    }
+                } else if (navLock && typeof navLock === 'string') {
+                    const sc = row.querySelector('td[data-column="5"]');
+                    const ss = sc ? sc.querySelector('select[data-column="supplier"]') : null;
+                    const sn = ss ? ss.value.trim() : '';
+                    if (sn.toLowerCase() !== navLock.toLowerCase()) {
+                        row.style.display = 'none';
+                        return;
+                    }
+                }
+                if (!zoneMatch) {
+                    row.style.display = 'none';
+                    return;
+                }
+
+                row.style.display = '';
+                visibleRows.push(row);
             });
 
-            // Recalculate totals after filtering
             calculateSupplierTotals(visibleRows);
         }
+
+        window.filterByR2SStage = filterByR2SStage;
 
         // Initialize stage handlers
         setupStageUpdate();
@@ -1025,28 +1336,34 @@
         // Filter to show only R2S stage on page load
         filterByR2SStage();
 
-        // Supplier to Zone mapping
+        // Supplier → default zone (matches server; case-insensitive name lookup)
         const supplierZoneMap = @json($supplierZoneMap ?? []);
+        function r2sZoneForSupplier(supplierName) {
+            const s = String(supplierName || '').trim();
+            if (!s) return '';
+            if (Object.prototype.hasOwnProperty.call(supplierZoneMap, s)) return supplierZoneMap[s];
+            const lower = s.toLowerCase();
+            for (const k of Object.keys(supplierZoneMap)) {
+                if (String(k).trim().toLowerCase() === lower) return supplierZoneMap[k];
+            }
+            return '';
+        }
 
-        // Auto-populate zone for already selected suppliers on page load
+        // Auto-populate zone from supplier when zone still empty (e.g. before server backfill cached page)
         function autoPopulateZoneForSelectedSuppliers() {
             document.querySelectorAll('select[data-column="supplier"]').forEach(supplierSelect => {
                 const selectedSupplier = supplierSelect.value;
-                if (selectedSupplier && supplierZoneMap[selectedSupplier]) {
-                    const row = supplierSelect.closest('tr');
-                    const zoneSelect = row.querySelector('select[data-column="area"]');
-                    if (zoneSelect && !zoneSelect.value) {
-                        // Only update if zone is not already set
-                        zoneSelect.value = supplierZoneMap[selectedSupplier];
-                    }
+                const z = r2sZoneForSupplier(selectedSupplier);
+                if (!z) return;
+                const row = supplierSelect.closest('tr');
+                const zoneSelect = row.querySelector('select[data-column="area"]');
+                if (zoneSelect && !String(zoneSelect.value || '').trim()) {
+                    zoneSelect.value = z;
+                    zoneSelect.dispatchEvent(new Event('change', { bubbles: true }));
                 }
             });
-            // Reapply filter after auto-populating zones
             filterByR2SStage();
         }
-
-        // Run on page load
-        autoPopulateZoneForSelectedSuppliers();
 
         // Save data on input change
         document.querySelectorAll('.auto-save').forEach(input => {
@@ -1056,18 +1373,17 @@
 
                 if (!sku || !column) return;
 
-                // If supplier is changed, auto-update zone
-                if (column === 'supplier' && value && supplierZoneMap[value]) {
-                    const row = this.closest('tr');
-                    const zoneSelect = row.querySelector('select[data-column="area"]');
-                    if (zoneSelect) {
-                        zoneSelect.value = supplierZoneMap[value];
-                        // Trigger change event to save zone
-                        zoneSelect.dispatchEvent(new Event('change'));
-                        // Reapply filter after zone is updated
-                        setTimeout(() => {
-                            filterByR2SStage();
-                        }, 100);
+                // Supplier changed → default zone from supplier master (still editable afterward)
+                if (column === 'supplier' && value) {
+                    const z = r2sZoneForSupplier(value);
+                    if (z) {
+                        const row = this.closest('tr');
+                        const zoneSelect = row.querySelector('select[data-column="area"]');
+                        if (zoneSelect) {
+                            zoneSelect.value = z;
+                            zoneSelect.dispatchEvent(new Event('change', { bubbles: true }));
+                            setTimeout(() => filterByR2SStage(), 100);
+                        }
                     }
                 }
 
@@ -1098,6 +1414,9 @@
                 });
             });
         });
+
+        // After auto-save listeners exist: persist zone for any row still empty + supplier default
+        autoPopulateZoneForSelectedSuppliers();
 
         // PMT Confirm toggle (red/green dot) using ready_to_ship.payment (Yes/No)
         document.querySelectorAll('.pmt-toggle').forEach(dot => {
@@ -1192,150 +1511,177 @@
             });
         });
 
-        // Select All functionality
+        // Debug: set true for checkbox/Move alerts + extra console logs
+        const R2S_DEBUG_UI = false;
+        const r2sLog = function(tag, payload) {
+            console.log('%c[ReadyToShip]', 'color:#0d9488;font-weight:bold;', tag, payload !== undefined ? payload : '');
+        };
+
+        // Row checkboxes: unique class + #readyToShipTable only (avoids clash with other pages using .row-checkbox)
+        const readyToShipTableEl = document.getElementById('readyToShipTable');
+        function r2sRowCheckboxEls() {
+            const t = document.getElementById('readyToShipTable');
+            return t ? Array.from(t.querySelectorAll('tbody .r2s-row-checkbox')) : [];
+        }
+        function r2sCheckedCount() {
+            return r2sRowCheckboxEls().filter(function(cb) { return cb.checked; }).length;
+        }
+
         const selectAllCheckbox = document.getElementById('selectAllCheckbox');
         const deleteBtn = document.getElementById('delete-selected-btn');
         const deleteSelectedItemBtn = document.getElementById('delete-selected-item');
-        const moveToTransitBtn = document.querySelector('.move-to-transit-btn');
-        const checkboxes = document.querySelectorAll('.row-checkbox');
+        const moveToTransitBtn = document.getElementById('r2s-move-to-transit-btn');
+        let r2sSuppressRowCheckboxAlert = false;
+
+        r2sLog('init', {
+            tableFound: !!readyToShipTableEl,
+            rowCheckboxes: r2sRowCheckboxEls().length,
+            moveButtonFound: !!moveToTransitBtn,
+            selectAllFound: !!selectAllCheckbox,
+        });
+        if (R2S_DEBUG_UI && !readyToShipTableEl) {
+            alert('[ReadyToShip] Table #readyToShipTable NOT found.');
+        }
+        if (R2S_DEBUG_UI && !moveToTransitBtn) {
+            alert('[ReadyToShip] Move button NOT found (id=r2s-move-to-transit-btn). Check layout.');
+        }
 
         // Select All checkbox handler
         if (selectAllCheckbox) {
             selectAllCheckbox.addEventListener('change', function() {
-                checkboxes.forEach(checkbox => {
-                    checkbox.checked = this.checked;
+                const rows = r2sRowCheckboxEls();
+                r2sLog('SELECT ALL checkbox clicked', { checked: this.checked, rowCount: rows.length });
+                if (R2S_DEBUG_UI) {
+                    alert('[ReadyToShip] Select-all checkbox: ' + (this.checked ? 'CHECKED (all rows)' : 'UNCHECKED'));
+                }
+                r2sSuppressRowCheckboxAlert = true;
+                rows.forEach(function(checkbox) {
+                    checkbox.checked = selectAllCheckbox.checked;
                 });
+                r2sSuppressRowCheckboxAlert = false;
                 updateButtonVisibility();
                 updateSelectAllState();
             });
         }
 
-        // Individual checkbox change handlers
-        checkboxes.forEach(cb => {
-            cb.addEventListener('change', function() {
+        // Delegated change: works after sort/reorder; count only inside #readyToShipTable
+        if (readyToShipTableEl) {
+            readyToShipTableEl.addEventListener('change', function(e) {
+                const el = e.target;
+                if (!el || !el.classList.contains('r2s-row-checkbox')) return;
+                const countScoped = r2sCheckedCount();
+                const info = {
+                    dataId: el.getAttribute('data-id'),
+                    dataSku: el.getAttribute('data-sku'),
+                    checked: el.checked,
+                    checkedCountThisTable: countScoped,
+                    countLegacyGlobal: document.querySelectorAll('.row-checkbox:checked').length,
+                };
+                r2sLog('ROW checkbox change (r2s-row-checkbox)', info);
+                if (R2S_DEBUG_UI && !r2sSuppressRowCheckboxAlert) {
+                    alert('[ReadyToShip] Row checkbox\nSKU: ' + (info.dataSku || '—') + '\nID: ' + (info.dataId || '—') + '\nChecked: ' + info.checked + '\nChecked in this table: ' + info.checkedCountThisTable);
+                }
                 updateButtonVisibility();
                 updateSelectAllState();
             });
-        });
+        }
 
         function updateSelectAllState() {
-            if (selectAllCheckbox && checkboxes.length > 0) {
-                const allChecked = Array.from(checkboxes).every(cb => cb.checked);
-                const someChecked = Array.from(checkboxes).some(cb => cb.checked);
+            const rows = r2sRowCheckboxEls();
+            if (selectAllCheckbox && rows.length > 0) {
+                const allChecked = rows.every(function(cb) { return cb.checked; });
+                const someChecked = rows.some(function(cb) { return cb.checked; });
                 selectAllCheckbox.checked = allChecked;
                 selectAllCheckbox.indeterminate = someChecked && !allChecked;
             }
         }
 
         function updateButtonVisibility() {
-            const anyChecked = document.querySelectorAll('.row-checkbox:checked').length > 0;
-            deleteBtn.classList.toggle('d-none', !anyChecked);
-            moveToTransitBtn.classList.toggle('d-none', !anyChecked);
-            deleteSelectedItemBtn.classList.toggle('d-none', !anyChecked);
+            const anyChecked = r2sCheckedCount() > 0;
+            if (deleteBtn) deleteBtn.classList.toggle('d-none', !anyChecked);
+            if (deleteSelectedItemBtn) deleteSelectedItemBtn.classList.toggle('d-none', !anyChecked);
         }
+
+        window.r2sAfterMoveSuccess = function() {
+            try {
+                updateButtonVisibility();
+                updateSelectAllState();
+            } catch (e) {}
+        };
 
         // Initialize select all state
         updateSelectAllState();
 
         // Delete selected rows
-        deleteBtn.addEventListener('click', function() {
-            const selectedSkus = Array.from(document.querySelectorAll('.row-checkbox:checked'))
-                .map(cb => cb.getAttribute('data-sku')).filter(Boolean);
+        if (deleteBtn) {
+            deleteBtn.addEventListener('click', function() {
+                const selectedSkus = r2sRowCheckboxEls().filter(function(cb) { return cb.checked; })
+                    .map(function(cb) { return cb.getAttribute('data-sku'); }).filter(Boolean);
 
-            if (!selectedSkus.length) return alert("No rows selected.");
+                if (!selectedSkus.length) return alert("No rows selected.");
 
-            fetch('/ready-to-ship/revert-back-mfrg', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRF-TOKEN': '{{ csrf_token() }}'
-                },
-                body: JSON.stringify({ skus: selectedSkus })
-            })
-            .then(res => res.json())
-            .then(data => {
-                if (data.success) {
-                    selectedSkus.forEach(sku => {
-                        const row = document.querySelector(`.row-checkbox[data-sku="${sku}"]`)?.closest('tr');
-                        if (row) row.remove();
-                    });
-                    updateButtonVisibility();
-                    updateSelectAllState();
-                } else {
-                    alert('Revert failed');
+                fetch('/ready-to-ship/revert-back-mfrg', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                    },
+                    body: JSON.stringify({ skus: selectedSkus })
+                })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success) {
+                        selectedSkus.forEach(function(sku) {
+                            const cb = r2sRowCheckboxEls().find(function(c) { return c.getAttribute('data-sku') === sku; });
+                            if (cb) cb.closest('tr')?.remove();
+                        });
+                        updateButtonVisibility();
+                        updateSelectAllState();
+                    } else {
+                        alert('Revert failed');
+                    }
+                })
+                .catch(() => alert('Error occurred during revert.'));
+            });
+        }
+
+        // Move is handled by inline script after the Move button (avoids duplicate fetch if main script errors earlier).
+
+        if (deleteSelectedItemBtn) {
+            deleteSelectedItemBtn.addEventListener('click', function() {
+                const selectedSkus = r2sRowCheckboxEls().filter(function(cb) { return cb.checked; })
+                    .map(function(cb) { return cb.getAttribute('data-sku'); }).filter(Boolean);
+
+                if (!selectedSkus.length) return alert("No rows selected.");
+
+                if (!confirm("Are you sure you want to delete the selected items? This action cannot be undone.")) {
+                    return;
                 }
-            })
-            .catch(() => alert('Error occurred during revert.'));
-        });
 
-        // Move to Transit INV
-        moveToTransitBtn.addEventListener('click', function() {
-            const selectedSkus = Array.from(document.querySelectorAll('.row-checkbox:checked'))
-                .map(cb => cb.getAttribute('data-sku')).filter(Boolean);
-
-            if (!selectedSkus.length) return alert("No rows selected.");
-
-            const tabName = prompt("Please enter container name:");
-            if (!tabName || !tabName.trim()) return alert("Tab name is required.");
-
-            fetch('/ready-to-ship/move-to-transit', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRF-TOKEN': '{{ csrf_token() }}'
-                },
-                body: JSON.stringify({ skus: selectedSkus, tab_name: tabName.trim() })
-            })
-            .then(res => res.json())
-            .then(data => {
-                if (data.success) {
-                    selectedSkus.forEach(sku => {
-                        const checkbox = document.querySelector(`.row-checkbox[data-sku="${sku}"]`);
-                        if (checkbox) {
-                            checkbox.closest('tr').remove();
-                        }
-                    });
-                    updateButtonVisibility();
-                    updateSelectAllState();
-                } else {
-                    alert('Move to Transit failed');
-                }
-            })
-            .catch(() => alert('Error occurred during transit.'));
-        });
-
-        deleteSelectedItemBtn.addEventListener('click', function() {
-            const selectedSkus = Array.from(document.querySelectorAll('.row-checkbox:checked')).map(cb => cb.getAttribute('data-sku')).filter(Boolean);
-
-            if (!selectedSkus.length) return alert("No rows selected.");
-
-            if (!confirm("Are you sure you want to delete the selected items? This action cannot be undone.")) {
-                return;
-            }
-
-            fetch('/ready-to-ship/delete-items', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRF-TOKEN': '{{ csrf_token() }}'
-                },
-                body: JSON.stringify({ skus: selectedSkus })
-            })
-            .then(res => res.json())
-            .then(data => {
-                if (data.success) {
-                    selectedSkus.forEach(sku => {
-                        const row = document.querySelector(`.row-checkbox[data-sku="${sku}"]`)?.closest('tr');
-                        if (row) row.remove();
-                    });
-                    updateButtonVisibility();
-                    updateSelectAllState();
-                } else {
-                    alert('Delete failed');
-                }
-            })
-            .catch(() => alert('Error occurred during deletion.'));
-        });
+                fetch('/ready-to-ship/delete-items', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                    },
+                    body: JSON.stringify({ skus: selectedSkus })
+                })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success) {
+                        selectedSkus.forEach(function(sku) {
+                            const cb = r2sRowCheckboxEls().find(function(c) { return c.getAttribute('data-sku') === sku; });
+                            if (cb) cb.closest('tr')?.remove();
+                        });
+                        updateButtonVisibility();
+                        updateSelectAllState();
+                    } else {
+                        alert('Delete failed');
+                    }
+                })
+                .catch(() => alert('Error occurred during deletion.'));
+            });
+        }
 
         // Helper functions
         function capitalizeWords(str) {
@@ -1397,21 +1743,14 @@
 
                 const selectedSupplier = optionText.replace(/\s*\(\d+\)\s*$/, '').trim();
                 const selectedValue = e.target.getAttribute('data-value');
-                const allRows = document.querySelectorAll('tbody tr');
+                const r2sTbl = document.getElementById('readyToShipTable');
 
                 if (!selectedSupplier || selectedSupplier === 'Select supplier' || selectedSupplier === 'All supplier') {
                     if (wrapper) wrapper.style.display = 'none';
-                    allRows.forEach(row => {
-                        const rowStageAttr = row.getAttribute('data-stage') ? row.getAttribute('data-stage').toLowerCase().trim() : '';
-                        const stageSelect = row.querySelector('.editable-select-stage');
-                        const rowStageSelect = stageSelect ? stageSelect.value.toLowerCase().trim() : '';
-                        const rowStage = rowStageSelect || rowStageAttr;
-                        if (rowStage === 'r2s') {
-                            row.style.display = '';
-                        } else {
-                            row.style.display = 'none';
-                        }
-                    });
+                    window.r2sSupplierNavLock = null;
+                    if (typeof window.filterByR2SStage === 'function') {
+                        window.filterByR2SStage();
+                    }
                     calculateTotalCBM();
                     calculateTotalAmount();
                     calculateTotalOrderItems();
@@ -1420,59 +1759,19 @@
                     return;
                 }
 
-                allRows.forEach(row => row.style.display = '');
-                let matchingRows = [];
-                
                 if (selectedValue === '__all_suppliers__' || selectedSupplier === 'Supplier') {
-                    allRows.forEach(row => {
-                        const rowStageAttr = row.getAttribute('data-stage') ? row.getAttribute('data-stage').toLowerCase().trim() : '';
-                        const stageSelect = row.querySelector('.editable-select-stage');
-                        const rowStageSelect = stageSelect ? stageSelect.value.toLowerCase().trim() : '';
-                        const rowStage = rowStageSelect || rowStageAttr;
-                        if (rowStage !== 'r2s') {
-                            row.style.display = 'none';
-                            return;
-                        }
-                        const supplierCell = row.querySelector('td[data-column="5"]');
-                        if (supplierCell) {
-                            const supplierSelect = supplierCell.querySelector('select[data-column="supplier"]');
-                            const supplierName = supplierSelect ? supplierSelect.value.trim() : '';
-                            if (!supplierName || supplierName === '' || supplierName === 'supplier') {
-                                row.style.display = '';
-                                matchingRows.push(row);
-                            } else {
-                                row.style.display = 'none';
-                            }
-                        } else {
-                            row.style.display = '';
-                            matchingRows.push(row);
-                        }
-                    });
+                    window.r2sSupplierNavLock = 'unassigned';
                 } else {
-                    allRows.forEach(row => {
-                        const rowStageAttr = row.getAttribute('data-stage') ? row.getAttribute('data-stage').toLowerCase().trim() : '';
-                        const stageSelect = row.querySelector('.editable-select-stage');
-                        const rowStageSelect = stageSelect ? stageSelect.value.toLowerCase().trim() : '';
-                        const rowStage = rowStageSelect || rowStageAttr;
-                        if (rowStage !== 'r2s') {
-                            row.style.display = 'none';
-                            return;
-                        }
-                        const supplierCell = row.querySelector('td[data-column="5"]');
-                        if (supplierCell) {
-                            const supplierSelect = supplierCell.querySelector('select[data-column="supplier"]');
-                            const supplierName = supplierSelect ? supplierSelect.value.trim() : '';
-                            if (supplierName.toLowerCase() === selectedSupplier.toLowerCase()) {
-                                row.style.display = '';
-                                matchingRows.push(row);
-                            } else {
-                                row.style.display = 'none';
-                            }
-                        } else {
-                            row.style.display = 'none';
-                        }
-                    });
+                    window.r2sSupplierNavLock = selectedSupplier;
                 }
+                if (typeof window.filterByR2SStage === 'function') {
+                    window.filterByR2SStage();
+                }
+                const matchingRows = r2sTbl
+                    ? Array.from(r2sTbl.querySelectorAll('tbody tr.stage-row')).filter(function (r) {
+                        return r.style.display !== 'none';
+                    })
+                    : [];
 
                 // Hide advance wrapper when any supplier is selected
                 if (wrapper) wrapper.style.display = 'none';
@@ -1644,25 +1943,20 @@
         });
     });
 
-    // Filter to show only R2S stage on page load
+    // After main script sets window.filterByR2SStage (DOMContentLoaded), re-apply zone filter
     function filterByR2SStageOnLoad() {
-        const rows = document.querySelectorAll('tbody tr.stage-row');
-        rows.forEach(row => {
-            const rowStageAttr = row.getAttribute('data-stage') ? row.getAttribute('data-stage').toLowerCase().trim() : '';
-            const stageSelect = row.querySelector('.editable-select-stage');
-            const rowStageSelect = stageSelect ? stageSelect.value.toLowerCase().trim() : '';
-            const rowStage = rowStageSelect || rowStageAttr;
-            
-            if (rowStage === 'r2s') {
-                row.style.display = '';
-            } else {
-                row.style.display = 'none';
-            }
-        });
+        if (typeof window.filterByR2SStage === 'function') {
+            window.filterByR2SStage();
+        }
     }
 
-    // Initialize filter on page load
-    filterByR2SStageOnLoad();
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', function () {
+            setTimeout(filterByR2SStageOnLoad, 150);
+        });
+    } else {
+        setTimeout(filterByR2SStageOnLoad, 150);
+    }
 
 </script>
 
@@ -1928,28 +2222,10 @@
         });
 
         function showSupplierRows(supplier) {
-            rows.forEach(row => {
-                const rowStageAttr = row.getAttribute('data-stage') ? row.getAttribute('data-stage').toLowerCase().trim() : '';
-                const stageSelect = row.querySelector('.editable-select-stage');
-                const rowStageSelect = stageSelect ? stageSelect.value.toLowerCase().trim() : '';
-                const rowStage = rowStageSelect || rowStageAttr;
-                if (rowStage !== 'r2s') {
-                    row.style.display = "none";
-                    return;
-                }
-                const cell = row.querySelector('td[data-column="5"]');
-                if (cell) {
-                    const supplierSelect = cell.querySelector('select[data-column="supplier"]');
-                    const supplierName = supplierSelect ? supplierSelect.value.trim() : '';
-                    if (supplierName === supplier) {
-                        row.style.display = "";
-                    } else {
-                        row.style.display = "none";
-                    }
-                } else {
-                    row.style.display = "none";
-                }
-            });
+            window.r2sSupplierNavLock = supplier || null;
+            if (typeof window.filterByR2SStage === 'function') {
+                window.filterByR2SStage();
+            }
 
             const supplierBadgeContainer = document.getElementById("supplier-badge-container");
             const supplierBadge = document.getElementById("current-supplier");
@@ -2032,17 +2308,10 @@
                 const supplierBadgeVr = document.getElementById("supplier-badge-vr");
                 if (supplierBadgeContainer) supplierBadgeContainer.style.display = "none";
                 if (supplierBadgeVr) supplierBadgeVr.style.display = "none";
-                rows.forEach(row => {
-                    const rowStageAttr = row.getAttribute('data-stage') ? row.getAttribute('data-stage').toLowerCase().trim() : '';
-                    const stageSelect = row.querySelector('.editable-select-stage');
-                    const rowStageSelect = stageSelect ? stageSelect.value.toLowerCase().trim() : '';
-                    const rowStage = rowStageSelect || rowStageAttr;
-                    if (rowStage === 'r2s') {
-                        row.style.display = "";
-                    } else {
-                        row.style.display = "none";
-                    }
-                });
+                window.r2sSupplierNavLock = null;
+                if (typeof window.filterByR2SStage === 'function') {
+                    window.filterByR2SStage();
+                }
                 const title = document.getElementById("current-supplier");
                 if (title) title.textContent = "-";
                 calculateTotalCBM();
@@ -2119,5 +2388,94 @@
             updateSupplierCounts();
         }, 500);
     });
+</script>
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+<script>
+(function () {
+    const r2sProductValues = {!! $transitProductValuesMap !!};
+
+    document.getElementById('r2s-add-tab-btn')?.addEventListener('click', async function () {
+        const tabName = prompt('Enter new container name:');
+        if (!tabName || tabName.trim() === '') {
+            alert('Tab name is required.');
+            return;
+        }
+        const response = await fetch('/transit-container/add-tab', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '{{ csrf_token() }}',
+            },
+            body: JSON.stringify({ tab_name: tabName.trim() })
+        });
+        const result = await response.json();
+        if (!result.success) {
+            alert(result.message || 'Failed to create tab.');
+            return;
+        }
+        location.reload();
+    });
+
+    function r2sInitFirstRowSelect2() {
+        const $modal = $('#r2sTransitAddItemModal');
+        const $sel = $modal.find('#r2sProductRowsWrapper .r2s-product-row:first .r2s-sku-select');
+        if ($sel.length && !$sel.hasClass('select2-hidden-accessible')) {
+            $sel.select2({ width: '100%', dropdownParent: $modal });
+        }
+    }
+
+    $('#r2sTransitAddItemModal').on('shown.bs.modal', function () {
+        r2sInitFirstRowSelect2();
+    });
+
+    document.getElementById('r2sAddItemRowBtn')?.addEventListener('click', function () {
+        const tpl = document.getElementById('r2s-product-row-template');
+        if (!tpl || !tpl.content) return;
+        const node = tpl.content.cloneNode(true);
+        document.getElementById('r2sProductRowsWrapper').appendChild(node);
+        const $modal = $('#r2sTransitAddItemModal');
+        const $last = $('#r2sProductRowsWrapper .r2s-product-row:last .r2s-sku-select');
+        $last.select2({ width: '100%', dropdownParent: $modal });
+        r2sBindDeleteBtns();
+    });
+
+    function r2sBindDeleteBtns() {
+        const wrapper = document.getElementById('r2sProductRowsWrapper');
+        if (!wrapper) return;
+        wrapper.querySelectorAll('.r2s-delete-product-row-btn').forEach(function (btn) {
+            btn.onclick = function () {
+                const rows = wrapper.querySelectorAll('.r2s-product-row');
+                if (rows.length > 1) {
+                    const row = btn.closest('.r2s-product-row');
+                    const $sku = $(row).find('.r2s-sku-select');
+                    if ($sku.hasClass('select2-hidden-accessible')) {
+                        $sku.select2('destroy');
+                    }
+                    row.remove();
+                } else {
+                    alert('At least one row is required.');
+                }
+            };
+        });
+    }
+    r2sBindDeleteBtns();
+
+    $(document).on('change', '.r2s-sku-select', function () {
+        let selectedSku = $(this).val();
+        if (!selectedSku) return;
+        selectedSku = selectedSku.toUpperCase().trim().replace(/\s+/g, ' ');
+        const row = $(this).closest('.r2s-product-row');
+        const values = r2sProductValues[selectedSku];
+        if (!values || typeof values !== 'object') {
+            row.find('input[name="cbm[]"]').val('');
+            row.find('input[name="rate[]"]').val('');
+            row.find('input[name="unit[]"]').val('');
+            return;
+        }
+        row.find('input[name="cbm[]"]').val(values.cbm ?? '');
+        row.find('input[name="rate[]"]').val(values.cp ?? '');
+        row.find('input[name="unit[]"]').val(values.unit ? String(values.unit).toLowerCase().trim() : '');
+    });
+})();
 </script>
 @endsection

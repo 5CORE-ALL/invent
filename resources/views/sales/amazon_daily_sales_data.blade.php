@@ -110,7 +110,7 @@
                         <span class="badge fs-6 p-2" id="roi-percentage-badge" style="background-color: purple; color: white; font-weight: bold;">ROI %: 0%</span>
                         <span class="badge bg-warning fs-6 p-2" id="avg-price-badge" style="color: black; font-weight: bold;">Avg Price: $0.00</span>
                         <span class="badge bg-dark fs-6 p-2" id="pft-total-badge" style="color: white; font-weight: bold;">GPFT Total: $0.00</span>
-                        <span class="badge fs-6 p-2" id="sales-32-days-badge" style="background-color: #0d6efd; color: white; font-weight: bold;">Sales: ${{ number_format($sales32Days ?? 0, 2) }}</span>
+                        <span class="badge fs-6 p-2" id="sales-34-days-badge" style="background-color: #0d6efd; color: white; font-weight: bold;">34 Days Sales: ${{ number_format($sales34Days ?? 0, 2) }}</span>
                         <span class="badge bg-primary fs-6 p-2" id="total-cogs-badge" style="color: white; font-weight: bold;">Total COGS: $0.00</span>
                         <span class="badge fs-6 p-2" id="pt-spent-badge" style="background-color: #28a745; color: white; font-weight: bold;">PT Spent: ${{ number_format($ptSpent ?? 0, 0) }}</span>
                         <span class="badge fs-6 p-2" id="kw-spent-badge" style="background-color: #ffc107; color: black; font-weight: bold;">KW Spent: ${{ number_format($kwSpent ?? 0, 0) }}</span>

@@ -57,6 +57,14 @@ class User extends Authenticatable
     }
 
     /**
+     * Get the user's Role & Responsibility.
+     */
+    public function userRR()
+    {
+        return $this->hasOne(UserRR::class);
+    }
+
+    /**
      * Whether the user is a 5Core team member (internal support agent access).
      */
     public function is5CoreMember(): bool

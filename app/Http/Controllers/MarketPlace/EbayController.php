@@ -542,6 +542,7 @@ class EbayController extends Controller
             // eBay Metrics
             $row["eBay L30"] = $ebayMetric->ebay_l30 ?? 0;
             $row["eBay L60"] = $ebayMetric->ebay_l60 ?? 0;
+            $row["eBay L45"] = round((($row["eBay L30"] ?? 0) + ($row["eBay L60"] ?? 0)) / 2, 2);
             $row["eBay L7"] = $ebayMetric->ebay_l7 ?? 0;
             $row["eBay Price"] = $ebayMetric->ebay_price ?? 0;
             $row['eBay Stock'] = $ebayMetric->ebay_stock ?? 0;
@@ -781,10 +782,14 @@ class EbayController extends Controller
             $row["LP_productmaster"] = $lp;
             $row["Ship_productmaster"] = $ship;
 
-            // Calculate SCVR (CVR): (eBay L30 / views) * 100
+            // Calculate CVR 30 (SCVR): (eBay L30 / views) * 100; CVR 45, CVR 60 for L45/L60
             $views = floatval($row['views'] ?? 0);
             $ebayL30 = floatval($row["eBay L30"] ?? 0);
+            $ebayL45 = floatval($row["eBay L45"] ?? 0);
+            $ebayL60 = floatval($row["eBay L60"] ?? 0);
             $row['SCVR'] = $views > 0 ? round(($ebayL30 / $views) * 100, 2) : 0;
+            $row['CVR_45'] = $views > 0 ? round(($ebayL45 / $views) * 100, 2) : 0;
+            $row['CVR_60'] = $views > 0 ? round(($ebayL60 / $views) * 100, 2) : 0;
             $cvr = $row['SCVR']; // Use SCVR for SPRICE calculation
 
             // NR & Hide (load from database, but not SPRICE/SPFT/SROI/SGPFT)
@@ -915,6 +920,7 @@ class EbayController extends Controller
             $parentRow->{'B Link'} = '';
             $parentRow->{'S Link'} = '';
             $parentRow->{'eBay L30'} = array_sum(array_map(function ($c) { return (float) ($c->{'eBay L30'} ?? 0); }, $children));
+            $parentRow->{'eBay L45'} = array_sum(array_map(function ($c) { return (float) ($c->{'eBay L45'} ?? 0); }, $children));
             $parentRow->{'eBay L60'} = array_sum(array_map(function ($c) { return (float) ($c->{'eBay L60'} ?? 0); }, $children));
             $parentRow->{'eBay L7'} = array_sum(array_map(function ($c) { return (float) ($c->{'eBay L7'} ?? 0); }, $children));
             $parentRow->{'eBay Price'} = 0;
@@ -974,6 +980,12 @@ class EbayController extends Controller
             $childCount = count($children);
             $parentRow->SCVR = $childCount > 0
                 ? round(array_sum(array_map(function ($c) { return (float) ($c->SCVR ?? 0); }, $children)) / $childCount, 2)
+                : 0;
+            $parentRow->CVR_45 = $childCount > 0
+                ? round(array_sum(array_map(function ($c) { return (float) ($c->CVR_45 ?? 0); }, $children)) / $childCount, 2)
+                : 0;
+            $parentRow->CVR_60 = $childCount > 0
+                ? round(array_sum(array_map(function ($c) { return (float) ($c->CVR_60 ?? 0); }, $children)) / $childCount, 2)
                 : 0;
             $parentRow->NR = '';
             $parentRow->NRL = 'REQ';

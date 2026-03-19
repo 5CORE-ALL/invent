@@ -5,14 +5,31 @@ namespace App\Http\Controllers\PurchaseMaster;
 use App\Http\Controllers\Controller;
 use App\Models\InventoryWarehouse;
 use App\Models\TransitContainerDetail;
+use App\Models\TransitContainerHistory;
 use App\Models\Supplier;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
+use App\Models\ReadyToShip;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 class TransitContainerDetailsController extends Controller
 {
+    protected function logHistory(string $actionType, ?int $detailId = null, ?string $fromTab = null, ?string $toTab = null, ?string $ourSku = null, $details = null): void
+    {
+        TransitContainerHistory::create([
+            'action_type' => $actionType,
+            'transit_container_detail_id' => $detailId,
+            'from_tab' => $fromTab,
+            'to_tab' => $toTab,
+            'our_sku' => $ourSku,
+            'details' => is_array($details) || is_object($details) ? json_encode($details) : $details,
+            'user_id' => Auth::id(),
+        ]);
+    }
+
     public function index()
     {
         $allRecords = TransitContainerDetail::with('user')->where(function($q){
@@ -143,6 +160,8 @@ class TransitContainerDetailsController extends Controller
             'tab_name' => $tabName,
         ]);
 
+        $this->logHistory('tab_added', null, null, $tabName, null, ['tab_name' => $tabName]);
+
         return response()->json(['success' => true]);
     }
 
@@ -157,12 +176,20 @@ class TransitContainerDetailsController extends Controller
         if (!empty($data['id'])) {
             $row = TransitContainerDetail::find($data['id']);
             if ($row) {
+                $fromTab = $row->tab_name;
+                $toTab = $data['tab_name'] ?? $fromTab;
                 $row->update($data);
+                if ($fromTab !== $toTab) {
+                    $this->logHistory('row_moved', $row->id, $fromTab, $toTab, $row->our_sku, ['sku' => $row->our_sku, 'from' => $fromTab, 'to' => $toTab]);
+                } else {
+                    $this->logHistory('row_updated', $row->id, null, $toTab, $row->our_sku, null);
+                }
             } else {
                 return response()->json(['success' => false, 'message' => 'Row not found.']);
             }
         } else {
             $row = TransitContainerDetail::create($data);
+            $this->logHistory('row_created', $row->id, null, $row->tab_name, $row->our_sku, null);
         }
 
         return response()->json(['success' => true, 'id' => $row->id]);
@@ -229,34 +256,150 @@ class TransitContainerDetailsController extends Controller
                 $data
             );
         }
+        $this->logHistory('purchase_added', null, null, $request->tab_name, null, [
+            'tab_name' => $request->tab_name,
+            'count' => count($request->our_sku),
+            'skus' => $request->our_sku,
+        ]);
         return back()->with('success', 'Items saved successfully!');
+    }
+
+    /**
+     * When a transit line is removed, put that SKU back on Ready to Ship (undo mistaken add / wrong container).
+     */
+    protected function restoreReadyToShipAfterTransitLineDeleted(TransitContainerDetail $row): void
+    {
+        $normalizeSku = function ($s) {
+            if ($s === null || $s === '') {
+                return '';
+            }
+
+            return strtoupper(trim(preg_replace('/\s+/u', ' ', (string) $s)));
+        };
+        $skuNorm = $normalizeSku($row->our_sku);
+        if ($skuNorm === '') {
+            return;
+        }
+
+        $qty = (float) ($row->total_ctn ?? 0);
+        if ($qty <= 0) {
+            $noUnits = (float) ($row->no_of_units ?? 0);
+            $pcs = (float) ($row->pcs_qty ?? 0);
+            if ($noUnits > 0 && $pcs > 0) {
+                $qty = $noUnits > 0 ? round($pcs / $noUnits, 4) : $pcs;
+            }
+            if ($qty <= 0) {
+                $qty = 1;
+            }
+        }
+
+        $authName = auth()->check() ? auth()->user()->name : 'system';
+
+        $candidates = ReadyToShip::whereNull('deleted_at')
+            ->get()
+            ->filter(fn ($r) => $normalizeSku($r->sku) === $skuNorm);
+
+        $rtsInTransit = $candidates->where('transit_inv_status', 1)->sortByDesc('id')->first();
+
+        if ($rtsInTransit) {
+            $rtsInTransit->update([
+                'rec_qty' => $qty,
+                'qty' => (int) max(1, round($qty)),
+                'transit_inv_status' => 0,
+                'rate' => $rtsInTransit->rate ?? $row->rate,
+                'cbm' => $rtsInTransit->cbm ?? $row->cbm,
+                'parent' => $rtsInTransit->parent ?? $row->parent,
+                'supplier' => $rtsInTransit->supplier ?? $row->supplier_name,
+                'updated_at' => now(),
+            ]);
+
+            return;
+        }
+
+        $rtsOpen = $candidates->where('transit_inv_status', 0)->sortByDesc('updated_at')->first();
+        if ($rtsOpen) {
+            $prev = (float) ($rtsOpen->rec_qty ?? 0);
+            if ($prev <= 0 && $rtsOpen->qty !== null && $rtsOpen->qty !== '') {
+                $prev = (float) $rtsOpen->qty;
+            }
+            $newQty = $prev + $qty;
+            $rtsOpen->update([
+                'rec_qty' => $newQty,
+                'qty' => (int) max(1, round($newQty)),
+                'updated_at' => now(),
+            ]);
+
+            return;
+        }
+
+        ReadyToShip::create([
+            'sku' => trim((string) $row->our_sku),
+            'parent' => $row->parent,
+            'rec_qty' => $qty,
+            'qty' => (int) max(1, round($qty)),
+            'rate' => $row->rate,
+            'cbm' => $row->cbm,
+            'supplier' => $row->supplier_name,
+            'transit_inv_status' => 0,
+            'auth_user' => $authName,
+        ]);
     }
 
     public function deleteTransitItem(Request $request)
     {
         try {
             $ids = $request->ids;
+            if (! is_array($ids)) {
+                $ids = $ids !== null && $ids !== '' ? [(int) $ids] : [];
+            }
+            $ids = array_values(array_filter(array_map('intval', $ids), fn ($id) => $id > 0));
+
+            if (empty($ids)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'No rows selected.',
+                ], 422);
+            }
 
             $authUser = auth()->check() ? auth()->user()->name : 'system';
 
-            TransitContainerDetail::whereIn('id', $ids)->update([
-                'auth_user' => $authUser,
-            ]);
+            $rows = TransitContainerDetail::whereIn('id', $ids)->get();
 
-            TransitContainerDetail::whereIn('id', $ids)->delete();
+            DB::beginTransaction();
+            try {
+                foreach ($rows as $row) {
+                    $this->restoreReadyToShipAfterTransitLineDeleted($row);
+                    $this->logHistory('row_deleted', $row->id, $row->tab_name, null, $row->our_sku, [
+                        'tab' => $row->tab_name,
+                        'sku' => $row->our_sku,
+                        'restored_ready_to_ship' => true,
+                    ]);
+                }
+
+                TransitContainerDetail::whereIn('id', $ids)->update([
+                    'auth_user' => $authUser,
+                ]);
+
+                TransitContainerDetail::whereIn('id', $ids)->delete();
+                DB::commit();
+            } catch (\Throwable $e) {
+                DB::rollBack();
+                throw $e;
+            }
 
             return response()->json([
                 'success' => true,
-                'message' => 'Records deleted successfully by ' . $authUser,
+                'message' => 'Removed from transit. SKU(s) restored on Ready to Ship (where applicable).',
             ]);
         } catch (\Exception $e) {
+            Log::error('deleteTransitItem', ['error' => $e->getMessage()]);
+
             return response()->json([
                 'success' => false,
-                'message' => 'Error deleting records: ' . $e->getMessage(),
+                'message' => 'Error deleting records: '.$e->getMessage(),
             ], 500);
         }
     }
-
 
     //transit container changes
     public function transitContainerChanges(){
@@ -389,5 +532,42 @@ class TransitContainerDetailsController extends Controller
             'groupedData' => $groupedData
         ]);
     }
-    
+
+    /**
+     * Get history of all transit container actions (moves, adds, deletes, purchase, etc.)
+     */
+    public function getHistory(Request $request)
+    {
+        $query = TransitContainerHistory::with('user')
+            ->orderByDesc('created_at');
+
+        if ($request->filled('tab_name')) {
+            $query->where(function ($q) use ($request) {
+                $tab = trim($request->tab_name);
+                $q->where('to_tab', $tab)->orWhere('from_tab', $tab);
+            });
+        }
+        if ($request->filled('sku')) {
+            $query->where('our_sku', 'like', '%' . trim($request->sku) . '%');
+        }
+        if ($request->filled('action_type')) {
+            $query->where('action_type', $request->action_type);
+        }
+
+        $limit = min((int) $request->get('limit', 100), 500);
+        $items = $query->limit($limit)->get()->map(function ($h) {
+            return [
+                'id' => $h->id,
+                'action_type' => $h->action_type,
+                'from_tab' => $h->from_tab,
+                'to_tab' => $h->to_tab,
+                'our_sku' => $h->our_sku,
+                'details' => $h->details,
+                'user_name' => $h->user->name ?? '—',
+                'created_at' => $h->created_at->format('Y-m-d H:i:s'),
+            ];
+        });
+
+        return response()->json(['data' => $items]);
+    }
 }

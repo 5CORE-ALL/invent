@@ -1644,6 +1644,107 @@ class VerificationAdjustmentController extends Controller
         return response()->json(['data' => $activityLogs]);
     }
 
+    /**
+     * Returns Shopify Admin URL for this SKU's inventory adjustment history.
+     * Shopify does not expose adjustment rows via API; inventoryHistoryUrl is the supported link.
+     */
+    public function getShopifyInventoryHistoryUrl(Request $request)
+    {
+        $sku = trim((string) $request->input('sku', ''));
+        if ($sku === '') {
+            return response()->json(['success' => false, 'message' => 'SKU is required.'], 422);
+        }
+
+        $normalized = strtoupper(preg_replace('/\s+/u', ' ', $sku));
+        $row = ShopifySku::whereRaw('UPPER(TRIM(sku)) = ?', [$normalized])->first();
+        if (!$row || empty($row->variant_id)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'SKU not found in Shopify sync or variant ID missing. Run Shopify SKU sync first.',
+            ], 404);
+        }
+
+        $base = $this->shopifyDomain;
+        if (!str_starts_with($base, 'http')) {
+            $base = 'https://' . ltrim($base, '/');
+        }
+        $base = rtrim($base, '/');
+        $graphqlUrl = $base . '/admin/api/2025-01/graphql.json';
+
+        $variantGid = str_starts_with((string) $row->variant_id, 'gid://')
+            ? $row->variant_id
+            : 'gid://shopify/ProductVariant/' . $row->variant_id;
+
+        $query = <<<'GQL'
+query GetInventoryHistoryUrl($variantId: ID!) {
+  productVariant(id: $variantId) {
+    inventoryItem {
+      inventoryHistoryUrl
+    }
+  }
+}
+GQL;
+
+        $response = Http::timeout(20)->withHeaders([
+            'Content-Type' => 'application/json',
+            'X-Shopify-Access-Token' => $this->shopifyPassword,
+        ])->post($graphqlUrl, [
+            'query' => $query,
+            'variables' => ['variantId' => $variantGid],
+        ]);
+
+        $historyUrl = null;
+        if ($response->successful()) {
+            $json = $response->json();
+            if (!empty($json['errors'])) {
+                Log::warning('Shopify GraphQL inventoryHistoryUrl errors', ['errors' => $json['errors']]);
+            } else {
+                $historyUrl = data_get($json, 'data.productVariant.inventoryItem.inventoryHistoryUrl');
+            }
+        }
+
+        if (empty($historyUrl)) {
+            $vid = (string) $row->variant_id;
+            if (preg_match('/(\d+)\s*$/', $vid, $m)) {
+                $variantNumericId = $m[1];
+            } else {
+                $variantNumericId = preg_replace('/\D/', '', $vid);
+            }
+            $restVariant = Http::timeout(15)->withBasicAuth($this->shopifyApiKey, $this->shopifyPassword)
+                ->get($base . '/admin/api/2025-01/variants/' . $variantNumericId . '.json');
+            $invItemId = data_get($restVariant->json(), 'variant.inventory_item_id');
+            if ($invItemId) {
+                $itemGid = 'gid://shopify/InventoryItem/' . $invItemId;
+                $q2 = <<<'GQL'
+query GetInvHistory($id: ID!) {
+  inventoryItem(id: $id) {
+    inventoryHistoryUrl
+  }
+}
+GQL;
+                $r2 = Http::timeout(20)->withHeaders([
+                    'Content-Type' => 'application/json',
+                    'X-Shopify-Access-Token' => $this->shopifyPassword,
+                ])->post($graphqlUrl, [
+                    'query' => $q2,
+                    'variables' => ['id' => $itemGid],
+                ]);
+                if ($r2->successful()) {
+                    $j2 = $r2->json();
+                    $historyUrl = data_get($j2, 'data.inventoryItem.inventoryHistoryUrl');
+                }
+            }
+        }
+
+        if (empty($historyUrl)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Could not load Shopify adjustment history link. Check API token (read_inventory) and variant.',
+            ], 404);
+        }
+
+        return response()->json(['success' => true, 'url' => $historyUrl]);
+    }
 
     public function toggleHide(Request $request)
     {

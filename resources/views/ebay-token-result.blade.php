@@ -164,6 +164,14 @@
                         {{ is_string($response) ? $response : json_encode($response, JSON_PRETTY_PRINT) }}
                     </div>
                 @endif
+
+                @if(!empty($exceptionTrace))
+                    <details style="margin-top: 15px;">
+                        <summary style="cursor: pointer;">Stack trace</summary>
+                        <pre style="margin-top: 8px; padding: 10px; background: rgba(255,255,255,0.5); border-radius: 4px; font-size: 11px; overflow-x: auto; max-height: 300px; overflow-y: auto;">{{ $exceptionTrace }}</pre>
+                    </details>
+                @endif
+                <p style="margin-top: 10px; font-size: 12px; color: #666;">Check <code>storage/logs/laravel.log</code> on the server for full details.</p>
             </div>
         @endif
 

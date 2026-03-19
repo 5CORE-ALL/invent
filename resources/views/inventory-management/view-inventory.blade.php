@@ -1137,7 +1137,7 @@
                         <table class="custom-resizable-table" id="ebay-table">
                             <thead>
                                 <tr id="summaryRow">
-                                    <th colspan="4"></th> <!-- Skip SL No., Parent, SKU, R&A. Images -->
+                                    <th colspan="3"></th> <!-- Skip Images, Parent, SKU -->
                                     <th>
                                         <div class="metric-total" id="inv-total" style="font-weight: bold; color: #007bff;">0</div>
                                     </th>
@@ -1159,9 +1159,6 @@
                                     <th></th>
                                 </tr>
                                 <tr>
-
-                                    <th data-field="sl_no">SL No. <span class="sort-arrow">↓</span></th>
-
                                      <th data-field="images" style="vertical-align: middle; white-space: nowrap;">
                                         <div class="d-flex flex-column align-items-center">
                                             <div class="d-flex align-items-center sortable-header">
@@ -1262,6 +1259,7 @@
                                         <div class="d-flex flex-column align-items-center">
                                             <div class="d-flex align-items-center">
                                                 HISTORY<span class="sort-arrow">↓</span>
+                                                <div class="small text-muted fw-normal">(ours / Shopify)</div>
                                             </div>
                                         </div>
                                     </th>
@@ -2047,9 +2045,9 @@
                             }
                         });
 
-                        // Map over sheet data and merge fields from inventory data if SKU matches
+                        // Map over sheet data and merge fields from inventory data if SKU matches (API may send sku lowercase)
                         tableData = sheetDataRaw.map((item, index) => {
-                            const sku = (item.SKU || '').toUpperCase().trim();
+                            const sku = (item.SKU || item.sku || '').toUpperCase().trim();
                             const invItem = inventoryMap[sku] || {};
 
                             // Parse inventory and L30 values as floats (like your original)
@@ -2085,11 +2083,11 @@
                                 return months[index] || '';
                             }
 
-                            // Compose merged row object
+                            // Compose merged row object (API may send sku/parent lowercase)
                             return {
                                 sl_no: index + 1,
                                 Parent: item.Parent || item.parent || item.parent_asin || item.Parent_ASIN || '(No Parent)',
-                                SKU: item.SKU || '',
+                                SKU: item.SKU || item.sku || '',
                                 'R&A': invItem['R&A'] !== undefined ? invItem['R&A'] : (item['R&A'] !== undefined ? item['R&A'] : ''),
                                 TITLE: item.TITLE || '',
                                 IMAGE_URL: invItem.IMAGE_URL || item.IMAGE_URL || 'https://skala.or.id/wp-content/uploads/2024/01/dummy-post-square-1-1.jpg',
@@ -2111,8 +2109,8 @@
                                 LOSS_GAIN: item.LOSS_GAIN !== undefined ? Math.trunc(item.LOSS_GAIN) : null,
                                 APPROVED_AT: invItem.approved_at ? formatOhioTime(invItem.approved_at) : '',
                                 is_parent: (() => {
-                                        const sku = (item.SKU || '').toUpperCase();
-                                        const parent = (item.Parent || '').toUpperCase();
+                                        const sku = (item.SKU || item.sku || '').toUpperCase();
+                                        const parent = (item.Parent || item.parent || '').toUpperCase();
                                         return sku.startsWith('PARENT') || sku === parent;
                                     })(),
 
@@ -2122,6 +2120,10 @@
 
                         // Optional: filter if needed (your original filteredData logic)
                         filteredData = tableData.filter(row => row.ON_HAND !== "N/A");
+                        // Sort by Parent ascending by default
+                        filteredData.sort((a, b) => String(a.Parent || '').localeCompare(String(b.Parent || '')));
+                        currentSort.field = 'Parent';
+                        currentSort.direction = 1;
 
                         renderTable(filteredData);
                         hideLoader();
@@ -2140,19 +2142,19 @@
                 let zeroInvCount = 0;
 
                 if (isLoading) {
-                    $tbody.append('<tr><td colspan="15" class="text-center">Loading data...</td></tr>');
+                    $tbody.append('<tr><td colspan="11" class="text-center">Loading data...</td></tr>');
                     return;
                 }
 
                 if (filteredData.length === 0) {
-                    $tbody.append('<tr><td colspan="15" class="text-center">No matching records found</td></tr>');
+                    $tbody.append('<tr><td colspan="11" class="text-center">No matching records found</td></tr>');
                     return;
                 }
 
                 filteredData.forEach((item, rowIndex) => {
                     const $row = $('<tr>');
 
-                    if (item.SKU && item.SKU.toUpperCase().startsWith('PARENT')) {
+                    if ((item.SKU || item.sku) && (item.SKU || item.sku).toUpperCase().startsWith('PARENT')) {
                         $row.css({
                             backgroundColor: 'rgba(13, 110, 253, 0.2)',
                             fontWeight: '500'
@@ -2176,9 +2178,6 @@
                         return 'pink'; // 50 and above
                     };
 
-                    $row.append($('<td>').text(item.sl_no));
-                    
-
                     // $row.append($('<td>').html(`
                     //     <img src="${item.IMAGE_URL || 'https://skala.or.id/wp-content/uploads/2024/01/dummy-post-square-1-1.jpg'}" 
                     //         alt="Product Image" 
@@ -2201,7 +2200,7 @@
 
                     // SKU with hover content for links
                     const $skuCell = $('<td>').addClass('skuColumn').css('position', 'static');
-                    const sku = item.SKU || '';
+                    const sku = item.SKU || item.sku || '';
 
                     if (item.is_parent) {
                         $skuCell.html(`<strong>${sku}</strong><input type="hidden" class="sku-hidden" value="${sku}" />`);
@@ -2241,10 +2240,10 @@
                                 type: 'checkbox',
                                 checked: isChecked,
                                 class: 'ra-checkbox',
-                                'data-sku': item['SKU'],
+                                'data-sku': item.SKU || item.sku || '',
                                 disabled: isChecked 
                             }).data('original-value', item['R&A'])
-                            .data('sku', item.SKU); // Store original value
+                            .data('sku', item.SKU || item.sku || ''); // Store original value
 
                             // Edit/Save icon
                             const $editIcon = $('<i>').addClass('fas fa-pen edit-icon ml-2 text-primary')
@@ -2290,11 +2289,17 @@
                     $row.append($('<td>').text(item.AVAILABLE_TO_SELL));
 
                     const $historyIcon = $(`
-                        <td class="text-center">
-                            <i class="fas fa-external-link-alt text-primary view-history-icon" 
-                            data-sku="${item.SKU}" 
-                            title="View History" 
-                            style="cursor: pointer;"></i>
+                        <td class="text-center align-middle">
+                            <div class="d-flex gap-2 justify-content-center align-items-center flex-wrap">
+                                <i class="fas fa-eye text-primary view-history-icon"
+                                    data-sku="${item.SKU || item.sku || ''}"
+                                    title="Our approval history"
+                                    style="cursor: pointer;"></i>
+                                <i class="fas fa-external-link-alt text-success shopify-shop-history-icon"
+                                    data-sku="${item.SKU || item.sku || ''}"
+                                    title="Shopify adjustment history (opens Shopify Admin)"
+                                    style="cursor: pointer;"></i>
+                            </div>
                         </td>
                     `);
 
@@ -2384,6 +2389,32 @@
                 // Initialize tooltips
                 initTooltips();
             }
+
+            $(document).on('click', '.shopify-shop-history-icon', function (e) {
+                e.stopPropagation();
+                const sku = $(this).data('sku');
+                if (!sku) return;
+                const $i = $(this);
+                $i.removeClass('fa-external-link-alt').addClass('fa-spinner fa-spin');
+                $.ajax({
+                    url: '/shopify-inventory-history-url',
+                    type: 'GET',
+                    data: { sku: sku },
+                    success: function (res) {
+                        $i.removeClass('fa-spinner fa-spin').addClass('fa-external-link-alt');
+                        if (res.success && res.url) {
+                            window.open(res.url, '_blank', 'noopener,noreferrer');
+                        } else {
+                            alert(res.message || 'Could not get Shopify history link.');
+                        }
+                    },
+                    error: function (xhr) {
+                        $i.removeClass('fa-spinner fa-spin').addClass('fa-external-link-alt');
+                        const msg = (xhr.responseJSON && xhr.responseJSON.message) ? xhr.responseJSON.message : 'Could not load Shopify link.';
+                        alert(msg);
+                    }
+                });
+            });
 
             $(document).on('click', '.view-history-icon', function () {
                 const sku = $(this).data('sku');
@@ -2709,7 +2740,7 @@
                         },
                         {
                             title: 'SKU',
-                            content: dataToUse['(Child) sku']
+                            content: dataToUse['SKU'] || dataToUse['sku'] || ''
                         }
                     ];
 
@@ -3283,7 +3314,7 @@
                         const valB = b[dataField] || '';
 
                         // Numeric comparison for numeric fields
-                        if (dataField === 'sl_no' || dataField === 'INV' || dataField === 'L30') {
+                        if (dataField === 'INV' || dataField === 'L30') {
                             return (parseFloat(valA) - parseFloat(valB)) * currentSort.direction;
                         }
 
@@ -3629,7 +3660,7 @@
 
                 // Initialize both dropdowns
                 initEnhancedDropdown($parentSearch, $parentResults, 'Parent');
-                initEnhancedDropdown($skuSearch, $skuResults, '(Child) sku');
+                initEnhancedDropdown($skuSearch, $skuResults, 'SKU');
 
                 // Close dropdowns when clicking outside
                 $(document).on('click', function(e) {
@@ -3701,6 +3732,9 @@
 
                         timeout = setTimeout(() => {
                             updateDropdownResults($results, field, searchTerm);
+                            if (searchTerm === '') {
+                                filterByColumn(field, '');
+                            }
                         }, 300);
                     });
 

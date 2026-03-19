@@ -7,6 +7,8 @@ use Illuminate\Http\Request;
 use App\Models\ProductMaster;
 use App\Models\Warehouse;
 use App\Models\Inventory;
+use App\Models\OutgoingEditHistory;
+use App\Models\OutgoingReason;
 use App\Models\ShopifySku;
 use App\Models\AmazonDatasheet;
 use Illuminate\Support\Facades\Auth;
@@ -16,6 +18,7 @@ use Illuminate\Support\Facades\Log;
 use App\Http\Controllers\ApiController;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Schema;
 
 class OutgoingController extends Controller
 {
@@ -40,12 +43,40 @@ class OutgoingController extends Controller
     public function index()
     {
         $warehouses = Warehouse::select('id', 'name')->get();
-        // $skus = ProductMaster::select('id','parent','sku')->get();
         $skus = ProductMaster::select('product_master.id', 'product_master.parent', 'product_master.sku', 'shopify_skus.inv as available_quantity')
         ->leftJoin('shopify_skus', 'product_master.sku', '=', 'shopify_skus.sku')
         ->get();
 
-        return view('inventory-management.outgoing-view', compact('warehouses', 'skus'));
+        $reasons = OutgoingReason::orderBy('sort_order')->orderBy('name')->pluck('name')->toArray();
+
+        return view('inventory-management.outgoing-view', compact('warehouses', 'skus', 'reasons'));
+    }
+
+    public function getReasons()
+    {
+        $reasons = OutgoingReason::orderBy('sort_order')->orderBy('name')->pluck('name')->toArray();
+        return response()->json(['reasons' => $reasons]);
+    }
+
+    public function storeReason(Request $request)
+    {
+        $request->validate([
+            'name' => 'required|string|max:255',
+        ]);
+        $name = trim($request->name);
+        if ($name === '') {
+            return response()->json(['success' => false, 'message' => 'Reason name is required.'], 422);
+        }
+        $exists = OutgoingReason::where('name', $name)->exists();
+        if ($exists) {
+            return response()->json(['success' => false, 'message' => 'This reason already exists.'], 422);
+        }
+        $maxOrder = OutgoingReason::max('sort_order') ?? 0;
+        OutgoingReason::create([
+            'name' => $name,
+            'sort_order' => $maxOrder + 1,
+        ]);
+        return response()->json(['success' => true, 'reasons' => OutgoingReason::orderBy('sort_order')->orderBy('name')->pluck('name')->toArray()]);
     }
 
     /**
@@ -429,6 +460,105 @@ class OutgoingController extends Controller
     }
 
     /**
+     * Update reason and comment for an outgoing record and log history.
+     */
+    public function updateReasonAndComment(Request $request)
+    {
+        $request->validate([
+            'id' => 'required|integer|exists:inventories,id',
+            'reason' => 'required|string|max:255',
+            'comment' => 'nullable|string|max:80',
+        ]);
+
+        $inv = Inventory::where('id', $request->id)->where('type', 'outgoing')->first();
+        if (!$inv) {
+            return response()->json(['success' => false, 'message' => 'Record not found.'], 404);
+        }
+
+        $reason = trim($request->reason);
+        $comment = $request->filled('comment') ? trim($request->comment) : null;
+        $user = Auth::user()->name ?? 'N/A';
+        $now = Carbon::now('America/New_York');
+
+        if ($inv->reason !== $reason) {
+            OutgoingEditHistory::create([
+                'inventory_id' => $inv->id,
+                'sku' => $inv->sku,
+                'field' => 'reason',
+                'old_value' => $inv->reason,
+                'new_value' => $reason,
+                'updated_by' => $user,
+                'updated_at' => $now,
+            ]);
+            $inv->reason = $reason;
+        }
+
+        $currentComment = $inv->comment ?? $inv->remarks;
+        if ($currentComment !== $comment) {
+            OutgoingEditHistory::create([
+                'inventory_id' => $inv->id,
+                'sku' => $inv->sku,
+                'field' => 'comment',
+                'old_value' => $currentComment,
+                'new_value' => $comment,
+                'updated_by' => $user,
+                'updated_at' => $now,
+            ]);
+            $inv->comment = $comment;
+            if (Schema::hasColumn('inventories', 'remarks')) {
+                $inv->remarks = $comment;
+            }
+        }
+
+        $inv->save();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Updated.',
+            'record' => [
+                'id' => $inv->id,
+                'sku' => $inv->sku,
+                'reason' => $inv->reason,
+                'remarks' => $inv->comment ?? $inv->remarks,
+            ],
+        ]);
+    }
+
+    /**
+     * Get edit history for an outgoing record (by inventory id).
+     */
+    public function getHistory(Request $request, $id)
+    {
+        $id = (int) $id;
+        $inv = Inventory::where('id', $id)->where('type', 'outgoing')->first();
+        if (!$inv) {
+            return response()->json(['success' => false, 'message' => 'Record not found.'], 404);
+        }
+
+        $history = OutgoingEditHistory::where('inventory_id', $id)
+            ->orderByDesc('updated_at')
+            ->get()
+            ->map(function ($h) {
+                return [
+                    'field' => $h->field,
+                    'field_label' => $h->field === 'reason' ? 'Reason' : 'Comment',
+                    'old_value' => $h->old_value,
+                    'new_value' => $h->new_value,
+                    'updated_by' => $h->updated_by,
+                    'updated_at' => Carbon::parse($h->updated_at)->timezone('America/New_York')->format('m-d-Y H:i'),
+                ];
+            })
+            ->values()
+            ->all();
+
+        return response()->json([
+            'success' => true,
+            'sku' => $inv->sku,
+            'history' => $history,
+        ]);
+    }
+
+    /**
      * Update the specified resource in storage.
      */
     public function update(Request $request, string $id)
@@ -502,7 +632,7 @@ class OutgoingController extends Controller
             ];
         })->values()->all();
 
-        $reasons = Inventory::where('type', 'outgoing')->distinct()->pluck('reason')->filter()->values()->all();
+        $reasons = OutgoingReason::orderBy('sort_order')->orderBy('name')->pluck('name')->toArray();
         $persons = Inventory::where('type', 'outgoing')->distinct()->pluck('approved_by')->filter()->values()->all();
 
         return response()->json([

@@ -182,6 +182,9 @@
                     <button id="export-tab-excel" class="btn btn-sm btn-success">
                         <i class="fas fa-file-excel"></i> Export Excel
                     </button>
+                    <button type="button" class="btn btn-secondary btn-sm" id="arrived-history-btn" data-bs-toggle="modal" data-bs-target="#arrivedHistoryModal">
+                        <i class="fas fa-history me-1"></i> History
+                    </button>
 
                 </div>
 
@@ -220,6 +223,50 @@
   <img src="" style="max-height:250px; max-width:350px;">
 </div>
 
+<div class="modal fade" id="arrivedHistoryModal" tabindex="-1" aria-labelledby="arrivedHistoryModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title fw-bold" id="arrivedHistoryModalLabel">
+                    <i class="fas fa-history me-2"></i> Arrived Container History
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="d-flex flex-wrap gap-2 align-items-center mb-3">
+                    <select id="arrived-history-action-filter" class="form-select form-select-sm" style="width: auto;">
+                        <option value="">All actions</option>
+                        <option value="row_created">Row created</option>
+                        <option value="row_updated">Row updated</option>
+                        <option value="row_moved">Moved tab</option>
+                        <option value="pushed_from_transit">Pushed from transit</option>
+                    </select>
+                    <input type="text" id="arrived-history-tab-filter" class="form-control form-control-sm" placeholder="Tab name" style="width: 140px;">
+                    <input type="text" id="arrived-history-sku-filter" class="form-control form-control-sm" placeholder="SKU" style="width: 120px;">
+                    <button type="button" id="arrived-history-refresh-btn" class="btn btn-primary btn-sm"><i class="fas fa-sync-alt me-1"></i> Load</button>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-sm table-bordered table-striped">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Date</th>
+                                <th>Action</th>
+                                <th>From tab</th>
+                                <th>To tab</th>
+                                <th>SKU</th>
+                                <th>Details</th>
+                                <th>User</th>
+                            </tr>
+                        </thead>
+                        <tbody id="arrived-history-tbody">
+                            <tr><td colspan="7" class="text-center text-muted">Open modal or click Load to fetch history.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 
 @endsection
 
@@ -462,7 +509,7 @@ Object.entries(groupedData).forEach(([tabName, data], index) => {
             row.update({ amount: amount });
         }
 
-        fetch('/transit-container/save-row', {
+        fetch('/arrived/container/save-row', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -669,6 +716,64 @@ document.getElementById('search-input').addEventListener('input', function () {
     });
 
   });
+
+    function loadArrivedHistory() {
+        const params = new URLSearchParams();
+        const action = document.getElementById("arrived-history-action-filter").value;
+        const tab = document.getElementById("arrived-history-tab-filter").value.trim();
+        const sku = document.getElementById("arrived-history-sku-filter").value.trim();
+        if (action) params.set("action_type", action);
+        if (tab) params.set("tab_name", tab);
+        if (sku) params.set("sku", sku);
+        params.set("limit", "200");
+        const tbody = document.getElementById("arrived-history-tbody");
+        tbody.innerHTML = '<tr><td colspan="7" class="text-center">Loading...</td></tr>';
+        fetch("/arrived/container/history?" + params.toString())
+            .then(r => r.json())
+            .then(res => {
+                const data = res.data || [];
+                const actionLabels = {
+                    row_created: "Row created",
+                    row_updated: "Row updated",
+                    row_moved: "Moved tab",
+                    pushed_from_transit: "Pushed from transit"
+                };
+                if (data.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted">No history found.</td></tr>';
+                    return;
+                }
+                tbody.innerHTML = data.map(h => {
+                    const label = actionLabels[h.action_type] || h.action_type;
+                    let detailsStr = "—";
+                    if (h.details) {
+                        try {
+                            const parsed = typeof h.details === "string" && h.details.trim().startsWith("{") ? JSON.parse(h.details) : h.details;
+                            if (parsed && typeof parsed === "object") {
+                                if (parsed.from && parsed.to && !parsed.transit_container_id) detailsStr = parsed.from + " → " + parsed.to;
+                                else if (parsed.transit_container_id != null) detailsStr = "Transit ID " + parsed.transit_container_id + (parsed.sku ? " · " + parsed.sku : "");
+                                else {
+                                    const parts = [];
+                                    for (const k of Object.keys(parsed)) {
+                                        const v = parsed[k];
+                                        if (v && typeof v === "object" && "from" in v && "to" in v) {
+                                            parts.push(k + ": " + String(v.from) + " → " + String(v.to));
+                                        }
+                                    }
+                                    detailsStr = parts.length ? parts.join("; ") : JSON.stringify(parsed);
+                                }
+                            } else detailsStr = h.details;
+                        } catch (_) { detailsStr = h.details; }
+                    }
+                    return "<tr><td>" + h.created_at + "</td><td>" + label + "</td><td>" + (h.from_tab || "—") + "</td><td>" + (h.to_tab || "—") + "</td><td>" + (h.our_sku || "—") + "</td><td class=\"small\">" + detailsStr + "</td><td>" + (h.user_name || "—") + "</td></tr>";
+                }).join("");
+            })
+            .catch(() => {
+                tbody.innerHTML = '<tr><td colspan="7" class="text-center text-danger">Failed to load history.</td></tr>';
+            });
+    }
+    document.getElementById("arrived-history-btn")?.addEventListener("click", loadArrivedHistory);
+    document.getElementById("arrived-history-refresh-btn")?.addEventListener("click", loadArrivedHistory);
+    document.getElementById("arrivedHistoryModal")?.addEventListener("show.bs.modal", function() { loadArrivedHistory(); });
 
 
 document.body.style.zoom = "90%"; 

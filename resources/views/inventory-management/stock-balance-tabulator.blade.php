@@ -168,7 +168,7 @@
         <div class="card shadow-sm">
             <div class="card-body py-3">
                 <h4>Stock Balance Transfer</h4>
-                
+
                 <!-- Filters -->
                 <div class="d-flex align-items-center flex-wrap gap-2 mb-3">
                     <select id="parent-filter" class="form-select form-select-sm" style="width: auto;">
@@ -206,12 +206,23 @@
                         <i class="fas fa-history"></i> Show History
                     </button>
                 </div>
-            </div>
             
             <!-- History Table Container (Hidden by default) -->
             <div class="card-body" id="history-table-container" style="display: none; padding: 0;">
                 <div class="p-3 bg-light border-bottom">
-                    <h5><i class="fas fa-history"></i> Transfer History</h5>
+                    <div class="d-flex align-items-center flex-wrap gap-2" style="row-gap: 0.5rem;">
+                        <h5 class="mb-0 me-2"><i class="fas fa-history"></i> Transfer History</h5>
+                        <span class="d-none d-md-inline bg-secondary rounded" style="width: 1px; height: 24px; margin: 0 0.25rem;" aria-hidden="true"></span>
+                        <label class="mb-0 small text-muted align-middle me-1">From Parent:</label>
+                        <input type="text" id="history-search-from-parent" class="form-control form-control-sm align-middle" placeholder="From Parent" style="max-width: 120px; height: 31px;">
+                        <label class="mb-0 small text-muted align-middle me-1">To Parent:</label>
+                        <input type="text" id="history-search-to-parent" class="form-control form-control-sm align-middle" placeholder="To Parent" style="max-width: 120px; height: 31px;">
+                        <label class="mb-0 small text-muted align-middle me-1">From SKU:</label>
+                        <input type="text" id="history-search-from-sku" class="form-control form-control-sm align-middle" placeholder="From SKU" autocomplete="off" style="max-width: 140px; height: 31px;">
+                        <label class="mb-0 small text-muted align-middle me-1">To SKU:</label>
+                        <input type="text" id="history-search-to-sku" class="form-control form-control-sm align-middle" placeholder="To SKU" autocomplete="off" style="max-width: 140px; height: 31px;">
+                        <button type="button" id="history-search-clear" class="btn btn-outline-secondary btn-sm align-middle" style="height: 31px;">Clear</button>
+                    </div>
                 </div>
                 <div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
                     <table class="table table-bordered table-hover mb-0" id="history-table">
@@ -281,6 +292,7 @@
     let transferModeActive = false;
     let selectedSkus = new Set();
     let allTableData = [];
+    let serverSavedPreferences = {}; // FROM SKU & ratio per to_sku (synced across devices)
     
     // Toast notification (optional delay in ms; default 5000)
     function showToast(message, type = 'info', delayMs = 5000) {
@@ -473,24 +485,65 @@
             }
         });
         
+        let lastHistoryData = [];
+
         // Load history data
         function loadHistoryData() {
             $.ajax({
                 url: '/stock-balance-data-list',
                 method: 'GET',
                 success: function(response) {
-                    if (response.data && response.data.length > 0) {
-                        renderHistoryTable(response.data);
-                    } else {
-                        $('#history-table-body').html('<tr><td colspan="12" class="text-center">No transfer history found</td></tr>');
-                    }
+                    lastHistoryData = response.data || [];
+                    filterAndRenderHistoryTable();
                 },
                 error: function(xhr) {
+                    lastHistoryData = [];
                     $('#history-table-body').html('<tr><td colspan="12" class="text-center text-danger">Error loading history</td></tr>');
                     console.error('Error loading history:', xhr);
                 }
             });
         }
+
+        // Normalize string for search: trim, lowercase, collapse spaces
+        function normalizeForSearch(s) {
+            return String(s || '').toLowerCase().trim().replace(/\s+/g, ' ');
+        }
+
+        // Filter history by from/to parent and from/to SKU search, then render
+        function filterAndRenderHistoryTable() {
+            const fromParentVal = normalizeForSearch($('#history-search-from-parent').val());
+            const toParentVal = normalizeForSearch($('#history-search-to-parent').val());
+            const fromSkuVal = normalizeForSearch($('#history-search-from-sku').val());
+            const toSkuVal = normalizeForSearch($('#history-search-to-sku').val());
+            const filtered = lastHistoryData.filter(function(item) {
+                const fromParent = normalizeForSearch(item.from_parent_name);
+                const toParent = normalizeForSearch(item.to_parent_name);
+                const fromSku = normalizeForSearch(item.from_sku);
+                const toSku = normalizeForSearch(item.to_sku);
+                const matchFromParent = !fromParentVal || fromParent.indexOf(fromParentVal) !== -1;
+                const matchToParent = !toParentVal || toParent.indexOf(toParentVal) !== -1;
+                const matchFromSku = !fromSkuVal || fromSku.indexOf(fromSkuVal) !== -1;
+                const matchToSku = !toSkuVal || toSku.indexOf(toSkuVal) !== -1;
+                return matchFromParent && matchToParent && matchFromSku && matchToSku;
+            });
+            if (filtered.length > 0) {
+                renderHistoryTable(filtered);
+            } else {
+                $('#history-table-body').html('<tr><td colspan="12" class="text-center">' + (lastHistoryData.length === 0 ? 'No transfer history found' : 'No rows match the search') + '</td></tr>');
+            }
+        }
+
+        // Transfer History: search inputs (delegated so they work when panel is shown)
+        $(document).on('input', '#history-search-from-parent, #history-search-to-parent, #history-search-from-sku, #history-search-to-sku', function() {
+            filterAndRenderHistoryTable();
+        });
+        $(document).on('click', '#history-search-clear', function() {
+            $('#history-search-from-parent').val('');
+            $('#history-search-to-parent').val('');
+            $('#history-search-from-sku').val('');
+            $('#history-search-to-sku').val('');
+            filterAndRenderHistoryTable();
+        });
         
         // Render history table
         function renderHistoryTable(data) {
@@ -513,7 +566,7 @@
             });
             $('#history-table-body').html(html);
         }
-        
+
         // Transfer Mode Toggle (like BestBuy Decrease/Increase mode)
         $('#transfer-mode-btn').on('click', function() {
             transferModeActive = !transferModeActive;
@@ -670,11 +723,17 @@
             const fromSku = $select.val();
             
             if (fromSku) {
-                // Save FROM SKU specifically for this TO SKU
                 const savedData = JSON.parse(localStorage.getItem('transfer_' + toSku) || '{}');
                 savedData.fromSku = fromSku;
                 localStorage.setItem('transfer_' + toSku, JSON.stringify(savedData));
-                
+                serverSavedPreferences[toSku] = serverSavedPreferences[toSku] || {};
+                serverSavedPreferences[toSku].fromSku = fromSku;
+                $.post('/stock-balance-transfer-preferences', {
+                    _token: $('meta[name="csrf-token"]').attr('content'),
+                    to_sku: toSku,
+                    from_sku: fromSku,
+                    ratio: $row.find('.ratio-select').val() || '1:1'
+                });
                 const selectedOption = $select.find('option:selected');
                 const fromParent = selectedOption.attr('data-parent') || '';
                 const fromInv = selectedOption.attr('data-inv') || 0;
@@ -720,11 +779,17 @@
             const toSku = rowData.SKU; // Current row's SKU (TO SKU)
             const ratio = $select.val();
             
-            // Save Ratio specifically for this TO SKU
             const savedData = JSON.parse(localStorage.getItem('transfer_' + toSku) || '{}');
             savedData.ratio = ratio;
             localStorage.setItem('transfer_' + toSku, JSON.stringify(savedData));
-            
+            serverSavedPreferences[toSku] = serverSavedPreferences[toSku] || {};
+            serverSavedPreferences[toSku].ratio = ratio;
+            $.post('/stock-balance-transfer-preferences', {
+                _token: $('meta[name="csrf-token"]').attr('content'),
+                to_sku: toSku,
+                from_sku: $row.find('.to-sku-select').val() || '',
+                ratio: ratio
+            });
             // Recalculate TO Qty
             calculateToQty($row);
         });
@@ -861,6 +926,15 @@
             ajaxResponse: function(url, params, response) {
                 allTableData = response.data || [];
                 return response.data || [];
+            },
+            dataLoaded: function() {
+                // Fetch server-saved preferences so FROM SKU & ratio sync across devices
+                $.get('/stock-balance-transfer-preferences').done(function(res) {
+                    if (res.preferences && typeof res.preferences === 'object') {
+                        serverSavedPreferences = res.preferences;
+                        restoreSavedFromSku();
+                    }
+                });
             },
             layout: "fitDataStretch",
             pagination: true,
@@ -1229,7 +1303,7 @@
             applyAllFilters();
         });
         
-        // Restore saved FROM SKU and sync custom select display (combo-trf style, no Select2)
+        // Restore saved FROM SKU and ratio: server (cross-device) first, then localStorage, then LAST_UPDATE
         function restoreSavedFromSku() {
             $('.to-sku-select').each(function() {
                 const $select = $(this);
@@ -1238,12 +1312,21 @@
                 if (!row) return;
                 const rowData = row.getData();
                 const toSku = rowData.SKU;
+                const serverPref = serverSavedPreferences[toSku] || null;
                 const savedData = JSON.parse(localStorage.getItem('transfer_' + toSku) || '{}');
                 const savedFromSku = savedData.fromSku || null;
                 const savedRatio = savedData.ratio || '1:1';
-                $row.find('.ratio-select').val(savedRatio);
-                if (savedFromSku) {
-                    $select.val(savedFromSku).trigger('change');
+                const lastUpdate = rowData.LAST_UPDATE || null;
+                const lastUpdateFromSku = (lastUpdate && lastUpdate.direction === 'IN' && lastUpdate.other_sku) ? lastUpdate.other_sku : null;
+                const fromSkuToRestore = (serverPref && serverPref.fromSku) || savedFromSku || lastUpdateFromSku;
+                const ratioToRestore = (serverPref && serverPref.ratio) || savedRatio || '1:1';
+                $row.find('.ratio-select').val(ratioToRestore);
+                if (fromSkuToRestore) {
+                    $select.val(fromSkuToRestore).trigger('change');
+                    if (!savedFromSku && lastUpdateFromSku && !(serverPref && serverPref.fromSku)) {
+                        savedData.fromSku = lastUpdateFromSku;
+                        localStorage.setItem('transfer_' + toSku, JSON.stringify(savedData));
+                    }
                 }
                 syncDisplayFromSkuSingle($row);
             });

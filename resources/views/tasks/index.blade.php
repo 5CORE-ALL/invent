@@ -2,6 +2,8 @@
 
 @section('css')
     <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+    <link href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css" rel="stylesheet" />
     <style>
         /* ========================================
            MOBILE OPTIMIZED STYLES
@@ -79,7 +81,7 @@
             .stat-icon {
                 width: 55px !important;
                 height: 55px !important;
-                font-size: 26px !important;
+                font-size: 13px !important;
                 margin: 0 auto 10px auto !important;
                 border-radius: 14px !important;
                 display: flex !important;
@@ -96,24 +98,24 @@
             }
             
             .stat-label {
-                font-size: 11px !important;
-                margin-bottom: 6px !important;
-                font-weight: 700 !important;
-                letter-spacing: 0.5px !important;
+                font-size: 9px !important;
+                margin-bottom: 4px !important;
+                font-weight: 600 !important;
+                letter-spacing: 0.3px !important;
             }
             
             .stat-value {
-                font-size: 28px !important;
+                font-size: 18px !important;
                 margin-bottom: 2px !important;
-                font-weight: 800 !important;
-                line-height: 1 !important;
+                font-weight: 700 !important;
+                line-height: 1.2 !important;
             }
             
             .stat-unit {
-                font-size: 10px !important;
+                font-size: 8px !important;
                 font-weight: 600 !important;
                 color: #8094ae !important;
-                margin-top: 4px !important;
+                margin-top: 2px !important;
             }
             
             /* Hide desktop table on mobile */
@@ -549,68 +551,80 @@
             font-size: 14px;
         }
         
-        /* Statistics Cards */
+        /* Statistics Cards - Unified Design */
         .stat-card {
             background: white;
-            border-radius: 12px;
-            padding: 20px;
+            border-radius: 10px;
+            padding: 12px;
             margin-bottom: 20px;
-            box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
             display: flex;
             align-items: center;
-            transition: all 0.3s ease;
-            border-left: 4px solid;
+            transition: box-shadow 0.2s ease;
+            border-left: 3px solid;
+            min-height: 75px;
+            position: relative;
+            overflow: hidden;
         }
 
         .stat-card:hover {
-            transform: translateY(-4px);
-            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
         }
 
         .stat-icon {
-            width: 60px;
-            height: 60px;
-            border-radius: 12px;
+            width: 42px;
+            height: 42px;
+            border-radius: 8px;
             display: flex;
             align-items: center;
             justify-content: center;
-            margin-right: 16px;
-            font-size: 28px;
+            margin-right: 10px;
+            font-size: 18px;
             color: white;
+            flex-shrink: 0;
         }
 
         .stat-content {
             flex: 1;
+            min-width: 0;
         }
 
-        /* Keep all 6 stat cards in one line; scroll horizontally if needed */
+        /* Keep all stat cards in one line; no scrolling - flexible widths */
         .stats-row.flex-nowrap {
-            overflow-x: auto;
+            overflow-x: hidden;
             overflow-y: hidden;
+            gap: 8px;
         }
         .stats-row.flex-nowrap > .col {
-            min-width: 140px;
+            min-width: 0;
+            flex: 1 1 0;
+            padding-left: 4px;
+            padding-right: 4px;
         }
 
         .stat-label {
-            font-size: 11px;
+            font-size: 8px;
             font-weight: 600;
             color: #6c757d;
-            letter-spacing: 1px;
-            margin-bottom: 4px;
+            letter-spacing: 0.3px;
+            margin-bottom: 3px;
+            text-transform: uppercase;
+            line-height: 1.2;
         }
 
         .stat-value {
-            font-size: 28px;
+            font-size: 16px;
             font-weight: 700;
             color: #2c3e50;
-            line-height: 1;
+            line-height: 1.2;
+            margin-bottom: 2px;
         }
 
         .stat-unit {
-            font-size: 10px;
+            font-size: 7px;
             color: #6c757d;
-            margin-top: 2px;
+            margin-top: 1px;
+            line-height: 1.2;
         }
 
         /* Blue - Total */
@@ -657,12 +671,25 @@
         .stat-card-user-select {
             border-left-color: #6c757d;
         }
+        .stat-card-user-select:hover {
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1) !important;
+        }
         .stat-card-user-select .stat-icon-user {
+            width: 42px;
+            height: 42px;
+            border-radius: 8px;
             background: linear-gradient(135deg, #6c757d 0%, #495057 100%);
             color: #fff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-right: 10px;
+            font-size: 18px;
+            flex-shrink: 0;
         }
         .stat-card-user-select .stat-content {
             min-width: 0;
+            flex: 1;
         }
         .stat-card-user-select .stat-icon-user .user-select-avatar-img {
             border-radius: 12px;
@@ -672,13 +699,63 @@
             left: 50%;
             top: 50%;
             transform: translate(-50%, -50%);
+            font-size: 14px;
         }
         .stat-card-user-select select:focus {
             box-shadow: none;
             outline: none;
         }
 
-        /* R&R - Roles & Responsibilities (separate badge card, custom icon - larger icon) */
+        /* Select2 searchable user picker inside stat card */
+        .stat-card-user-select .select2-container {
+            min-width: 0;
+            flex: 1;
+        }
+        .stat-card-user-select .select2-container--bootstrap-5 .select2-selection {
+            min-height: 24px;
+            border: none !important;
+            background: transparent !important;
+            box-shadow: none !important;
+        }
+        .stat-card-user-select .select2-container--bootstrap-5 .select2-selection--single .select2-selection__rendered {
+            padding-left: 0;
+            padding-right: 1.25rem;
+            line-height: 22px;
+            font-size: 10px;
+            font-weight: 600;
+            color: #2c3e50;
+        }
+        .stat-card-user-select .select2-container--bootstrap-5 .select2-selection--single .select2-selection__arrow {
+            height: 22px;
+        }
+        .select2-container--bootstrap-5.select2-container--open .select2-dropdown {
+            border-color: #dee2e6;
+            box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.1);
+        }
+        .select2-container--bootstrap-5 .select2-search--dropdown .select2-search__field {
+            border-radius: 6px;
+        }
+        /* Large dropdown to show all users - increased height */
+        .select2-container--bootstrap-5.select2-container--open .select2-dropdown {
+            max-height: 500px !important;
+        }
+        .select2-container--bootstrap-5.select2-container--open .select2-results__options {
+            max-height: 450px !important;
+            overflow-y: auto !important;
+        }
+        /* Prevent Select2 tooltips/titles from appearing on hover */
+        .stat-card-user-select .select2-container .select2-selection--single {
+            cursor: pointer;
+        }
+        .stat-card-user-select .select2-container .select2-selection--single[title] {
+            cursor: pointer;
+        }
+        /* Prevent any hover effects on Select2 selection */
+        .stat-card-user-select .select2-container--bootstrap-5 .select2-selection:hover {
+            background: transparent !important;
+        }
+
+        /* R&R - Roles & Responsibilities (separate badge card, custom icon) */
         .stat-card-rr {
             border-left-color: #0d9488;
         }
@@ -686,11 +763,12 @@
             background: transparent;
         }
         .stat-card-rr .stat-icon.stat-icon-img {
-            width: 56px;
-            height: 56px;
-            min-width: 56px;
-            min-height: 56px;
+            width: 42px;
+            height: 42px;
+            min-width: 42px;
+            min-height: 42px;
             padding: 4px;
+            border-radius: 8px;
         }
         .stat-card-rr .stat-icon-image {
             width: 100%;
@@ -715,6 +793,14 @@
         }
         .stat-card-teal .stat-icon {
             background: linear-gradient(135deg, #0ba360 0%, #3cba92 100%);
+        }
+
+        /* Red Missed */
+        .stat-card-red-missed {
+            border-left-color: #dc3545;
+        }
+        .stat-card-red-missed .stat-icon {
+            background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
         }
 
         /* Orange - Done ETC */
@@ -1058,6 +1144,31 @@
             font-size: 24px;
         }
 
+        /* User Search in Page Title Area */
+        .user-search-wrapper {
+            flex-shrink: 0;
+        }
+        .user-search-wrapper .stat-card-user-select {
+            padding: 14px 16px;
+            min-height: auto;
+        }
+        .user-search-wrapper .stat-card-user-select .stat-icon-user {
+            width: 48px;
+            height: 48px;
+            font-size: 20px;
+            margin-right: 12px;
+        }
+        .user-search-wrapper .stat-card-user-select .stat-content {
+            flex: 1;
+        }
+        .user-search-wrapper .select2-container--bootstrap-5 .select2-selection {
+            min-height: 32px;
+        }
+        .user-search-wrapper .select2-container--bootstrap-5 .select2-selection--single .select2-selection__rendered {
+            line-height: 30px;
+            font-size: 14px;
+        }
+
         /* ID Column */
         .id-cell {
             font-weight: 600;
@@ -1110,6 +1221,111 @@
         .status-select option {
             padding: 10px;
         }
+
+        /* Contenteditable Editor Styling */
+        #rr-content-editor {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+
+        #rr-content-editor:focus {
+            outline: 2px solid #007bff;
+            outline-offset: -2px;
+        }
+
+        #rr-content-editor img {
+            max-width: 100%;
+            height: auto;
+            margin: 10px 0;
+        }
+
+        #rr-content-editor h1, #rr-content-editor h2, #rr-content-editor h3, #rr-content-editor h4 {
+            margin-top: 15px;
+            margin-bottom: 10px;
+            font-weight: 600;
+        }
+
+        #rr-content-editor ul, #rr-content-editor ol {
+            padding-left: 30px;
+            margin: 10px 0;
+        }
+
+        #rr-content-editor p {
+            margin: 8px 0;
+        }
+
+        /* R&R Tabs Styling - More Prominent */
+        #tasksRRTabs {
+            background: #fff;
+            padding: 0;
+            margin: 20px 0;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            display: flex !important;
+            visibility: visible !important;
+        }
+
+        #tasksRRTabs .nav-item {
+            flex: 1;
+        }
+
+        #tasksRRTabs .nav-link {
+            border: none !important;
+            border-bottom: 3px solid transparent !important;
+            color: #6c757d !important;
+            padding: 15px 25px !important;
+            transition: all 0.3s ease;
+            font-size: 15px !important;
+            font-weight: 600 !important;
+            cursor: pointer;
+            background: transparent;
+            text-align: center;
+            width: 100%;
+        }
+
+        #tasksRRTabs .nav-link:hover {
+            color: #007bff !important;
+            border-bottom-color: #dee2e6 !important;
+            background-color: #f8f9fa;
+        }
+
+        #tasksRRTabs .nav-link.active {
+            color: #007bff !important;
+            border-bottom-color: #007bff !important;
+            background-color: #f0f7ff !important;
+        }
+
+        #tasksRRTabs .nav-link i {
+            font-size: 18px !important;
+            margin-right: 8px;
+        }
+
+        /* R&R Container Styling */
+        #rr-container {
+            min-height: 400px;
+            padding: 20px;
+        }
+
+        #rr-loading-spinner {
+            margin: 20px auto;
+        }
+
+        /* Smooth fade-in for R&R content */
+        .rr-container {
+            animation: fadeIn 0.3s ease-in;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
     </style>
 @endsection
 
@@ -1118,42 +1334,56 @@
     <div class="container-fluid">
         
         <!-- start page title -->
-        <div class="row">
+        <div class="row mb-3">
             <div class="col-12">
-                <div class="page-title-box">
+                <div class="page-title-box d-flex align-items-center justify-content-between">
+                    <div class="d-flex align-items-center gap-3">
+                        <!-- User Search (moved before Task Manager) -->
+                        <div class="user-search-wrapper" style="width: 400px; flex-shrink: 0;">
+                            <div class="stat-card stat-card-user-select d-flex align-items-center" style="margin-bottom: 0;">
+                                <div class="stat-icon stat-icon-user position-relative">
+                                    <img id="user-select-avatar" src="" alt="" class="user-select-avatar-img" style="display: none; width: 100%; height: 100%; object-fit: cover; border-radius: inherit;">
+                                    <i id="user-select-icon" class="mdi mdi-account-search"></i>
+                                </div>
+                                <div class="stat-content flex-grow-1">
+                                    <select id="user-overdue-graph-select" class="form-select form-select-sm border-0 shadow-none bg-transparent p-0 fw-bold" style="font-size: 0.9rem; cursor: pointer;">
+                                        <option value="">-- Select user --</option>
+                                        @foreach($users ?? [] as $u)
+                                            <option value="{{ $u->name }}" 
+                                                    data-user-id="{{ $u->id }}"
+                                                    data-avatar="{{ $u->avatar ? asset('storage/' . $u->avatar) : '' }}"
+                                                    data-assignor="{{ $u->is_assignor ? '1' : '0' }}"
+                                                    data-assignee="{{ $u->is_assignee ? '1' : '0' }}">{{ $u->name }}</option>
+                                        @endforeach
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                        <h4 class="page-title mb-0">
+                            Task Manager
+                            @if(!empty($selectedUserName))
+                                <span class="badge bg-info ms-2" style="font-size: 0.75rem; font-weight: 600;">
+                                    <i class="mdi mdi-account me-1"></i>Filtered: {{ $selectedUserName }}
+                                    <button type="button" class="btn-close btn-close-white ms-2" style="font-size: 0.6rem;" onclick="clearUserFilter()" title="Clear filter"></button>
+                                </span>
+                            @endif
+                        </h4>
+                    </div>
                     <div class="page-title-right">
                         <ol class="breadcrumb m-0">
                             <li class="breadcrumb-item"><a href="{{ url('/') }}">Home</a></li>
                             <li class="breadcrumb-item active">Task Manager</li>
                         </ol>
                     </div>
-                    <h4 class="page-title">Task Manager</h4>
                 </div>
             </div>
         </div>     
         <!-- end page title --> 
 
-        <!-- Statistics Cards (Hidden on mobile) - all 6 in one line -->
+        <!-- Statistics Cards (Hidden on mobile) - all in one line -->
         <div class="row mb-4 stats-row d-none d-md-flex align-items-stretch flex-nowrap" style="flex-wrap: nowrap !important;">
-            <!-- Select user (icon-style before TOTAL) -->
-            <div class="col d-flex align-items-center" style="min-width: 0; flex: 1 1 0;">
-                <div class="stat-card stat-card-user-select flex-grow-1 d-flex align-items-center">
-                    <div class="stat-icon stat-icon-user position-relative">
-                        <img id="user-select-avatar" src="" alt="" class="user-select-avatar-img" style="display: none; width: 100%; height: 100%; object-fit: cover; border-radius: inherit;">
-                        <i id="user-select-icon" class="mdi mdi-account-search"></i>
-                    </div>
-                    <div class="stat-content flex-grow-1">
-                        <select id="user-overdue-graph-select" class="form-select form-select-sm border-0 shadow-none bg-transparent p-0 fw-bold" style="font-size: 0.85rem; cursor: pointer;">
-                            <option value="">-- Select user --</option>
-                            @foreach($users ?? [] as $u)
-                                <option value="{{ $u->name }}" data-avatar="{{ $u->avatar ? asset('storage/' . $u->avatar) : '' }}">{{ $u->name }}</option>
-                            @endforeach
-                        </select>
-                    </div>
-                </div>
-            </div>
             <!-- Total Tasks -->
-            <div class="col" style="min-width: 0; flex: 1 1 0;">
+            <div class="col" style="min-width: 0; flex: 1 1 0; padding-left: 4px; padding-right: 4px;">
                 <div class="stat-card stat-card-blue">
                     <div class="stat-icon">
                         <i class="mdi mdi-format-list-bulleted"></i>
@@ -1166,7 +1396,7 @@
             </div>
 
             <!-- Overdue Tasks -->
-            <div class="col" style="min-width: 0; flex: 1 1 0;">
+            <div class="col" style="min-width: 0; flex: 1 1 0; padding-left: 4px; padding-right: 4px;">
                 <div class="stat-card stat-card-red">
                     <div class="stat-icon">
                         <i class="mdi mdi-alert-circle"></i>
@@ -1179,7 +1409,7 @@
             </div>
 
             <!-- Total ETC -->
-            <div class="col" style="min-width: 0; flex: 1 1 0;">
+            <div class="col" style="min-width: 0; flex: 1 1 0; padding-left: 4px; padding-right: 4px;">
                 <div class="stat-card stat-card-yellow">
                     <div class="stat-icon">
                         <i class="mdi mdi-briefcase-clock"></i>
@@ -1193,7 +1423,7 @@
             </div>
 
             <!-- R&R (Roles & Responsibilities) - separate badge card -->
-            <div class="col" style="min-width: 0; flex: 1 1 0;">
+            <div class="col" style="min-width: 0; flex: 1 1 0; padding-left: 4px; padding-right: 4px;">
                 <div class="stat-card stat-card-rr">
                     <div class="stat-icon stat-icon-img">
                         <img src="{{ asset('images/roles-rr-icon.png') }}" alt="R&amp;R" class="stat-icon-image">
@@ -1207,7 +1437,7 @@
             </div>
 
             <!-- Total ATC -->
-            <div class="col" style="min-width: 0; flex: 1 1 0;">
+            <div class="col" style="min-width: 0; flex: 1 1 0; padding-left: 4px; padding-right: 4px;">
                 <div class="stat-card stat-card-teal">
                     <div class="stat-icon">
                         <i class="mdi mdi-timer"></i>
@@ -1217,6 +1447,64 @@
                         <div class="stat-value">{{ number_format($stats['atc_total'] / 60, 1) }}</div>
                         <div class="stat-unit">hours</div>
                     </div>
+                </div>
+            </div>
+
+            <!-- TAT Badge -->
+            <div class="col" style="min-width: 0; flex: 1 1 0; padding-left: 4px; padding-right: 4px;">
+                <div class="stat-card stat-card-teal">
+                    <div class="stat-icon">
+                        <i class="mdi mdi-clock-outline"></i>
+                    </div>
+                    <div class="stat-content d-flex align-items-center justify-content-between">
+                        <div style="min-width: 0; flex: 1;">
+                            <div class="stat-label">TAT</div>
+                            <div class="stat-value">{{ isset($stats['tat_avg_30']) && $stats['tat_avg_30'] !== null ? number_format($stats['tat_avg_30'], 1) : '-' }}</div>
+                            <div class="stat-unit">Avg last 30 days</div>
+                        </div>
+                        <button type="button" class="btn btn-sm btn-light border-0 p-1 rounded-circle" id="tat-chart-eye-btn" title="View TAT trend" style="width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-left: 4px;">
+                            <i class="mdi mdi-eye" style="font-size: 12px; color: #20c997;"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Missed Badge -->
+            <div class="col" style="min-width: 0; flex: 1 1 0; padding-left: 4px; padding-right: 4px;">
+                <div class="stat-card stat-card-red-missed">
+                    <div class="stat-icon">
+                        <i class="mdi mdi-alert-circle"></i>
+                    </div>
+                    <div class="stat-content d-flex align-items-center justify-content-between">
+                        <div style="min-width: 0; flex: 1;">
+                            <div class="stat-label">MISSED</div>
+                            <div class="stat-value">{{ $stats['missed_count_30'] ?? 0 }}</div>
+                            <div class="stat-unit">Last 30 days</div>
+                        </div>
+                        <button type="button" class="btn btn-sm btn-light border-0 p-1 rounded-circle" id="missed-chart-eye-btn" title="View Missed trend" style="width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-left: 4px;">
+                            <i class="mdi mdi-eye" style="font-size: 12px; color: #dc3545;"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tabs Navigation - Prominent Location -->
+        <div class="row mb-3">
+            <div class="col-12">
+                <div class="tabs-wrapper" style="background: #fff; padding: 0; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                    <ul class="nav nav-tabs" id="tasksRRTabs" role="tablist" style="border-bottom: 2px solid #e9ecef; margin: 0;">
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link active" id="tasks-tab" data-bs-toggle="tab" data-bs-target="#tasks-content" type="button" role="tab" aria-controls="tasks-content" aria-selected="true">
+                                <i class="mdi mdi-format-list-checks me-2"></i>Tasks
+                            </button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="rr-tab" data-bs-toggle="tab" data-bs-target="#rr-content" type="button" role="tab" aria-controls="rr-content" aria-selected="false">
+                                <i class="mdi mdi-account-tie me-2"></i>R&R
+                            </button>
+                        </li>
+                    </ul>
                 </div>
             </div>
         </div>
@@ -1371,6 +1659,7 @@
                                     <option value="Approved">Approved</option>
                                     <option value="Hold">Hold</option>
                                     <option value="Cancelled">Cancelled</option>
+                                    <option value="Missed" style="color: #dc3545; font-weight: 600;">Missed</option>
                                 </select>
                             </div>
                             
@@ -1386,40 +1675,46 @@
                             </div>
                         </div>
 
-                        <!-- User-wise overdue: date-wise line graph -->
-                        <div class="row mb-3">
-                            <div class="col-12">
-                                <div class="card border-danger border-opacity-25">
-                                    <div class="card-header py-2 bg-light d-flex flex-wrap align-items-center gap-2">
-                                        <i class="mdi mdi-chart-line text-danger me-1"></i>
-                                        <span class="fw-semibold">User-wise overdue (date-wise)</span>
-                                        <span class="ms-auto text-muted small">Use &quot;Select user&quot; above the stats to pick a user.</span>
+                        <!-- Tab Content -->
+                        <div class="tab-content" id="tasksRRTabContent">
+                            <!-- Tasks Tab -->
+                            <div class="tab-pane fade show active" id="tasks-content" role="tabpanel" aria-labelledby="tasks-tab">
+                                <div class="table-wrapper">
+                                    <div id="tasks-table"></div>
+                                </div>
+
+                                <!-- Mobile Tasks View -->
+                                <div id="mobile-tasks-view">
+                                    <div class="pull-to-refresh-hint d-md-none">
+                                        <i class="mdi mdi-chevron-down"></i> Pull down to refresh
                                     </div>
-                                    <div class="card-body py-2" id="user-overdue-graph-card-body">
-                                        <div id="user-overdue-graph-empty" class="text-muted small text-center py-1 mb-0">Select a user to see date-wise overdue graph.</div>
-                                        <div id="user-overdue-graph-wrap" style="display: none; height: 280px;">
-                                            <canvas id="user-overdue-line-chart"></canvas>
+                                    
+                                    <div id="mobile-tasks-container">
+                                        <!-- Tasks will be loaded here via JavaScript -->
+                                        <div class="mobile-loading">
+                                            <div class="mobile-loading-spinner"></div>
+                                            <p>Loading tasks...</p>
                                         </div>
                                     </div>
                                 </div>
                             </div>
-                        </div>
 
-                        <div class="table-wrapper">
-                            <div id="tasks-table"></div>
-                        </div>
-
-                        <!-- Mobile Tasks View -->
-                        <div id="mobile-tasks-view">
-                            <div class="pull-to-refresh-hint d-md-none">
-                                <i class="mdi mdi-chevron-down"></i> Pull down to refresh
-                            </div>
-                            
-                            <div id="mobile-tasks-container">
-                                <!-- Tasks will be loaded here via JavaScript -->
-                                <div class="mobile-loading">
-                                    <div class="mobile-loading-spinner"></div>
-                                    <p>Loading tasks...</p>
+                            <!-- R&R Tab -->
+                            <div class="tab-pane fade" id="rr-content" role="tabpanel" aria-labelledby="rr-tab">
+                                <div class="d-flex justify-content-between align-items-center mb-3">
+                                    <h5 class="mb-0">Role & Responsibility</h5>
+                                    <button type="button" class="btn btn-primary btn-sm" id="edit-rr-btn" style="display: none;">
+                                        <i class="mdi mdi-pencil me-1"></i>Edit R&R
+                                    </button>
+                                </div>
+                                <div id="rr-container">
+                                    <!-- R&R content will be loaded here via AJAX -->
+                                    <div class="text-center py-5">
+                                        <div class="spinner-border text-primary" role="status" id="rr-loading-spinner" style="display: none;">
+                                            <span class="visually-hidden">Loading...</span>
+                                        </div>
+                                        <p class="text-muted mt-3" id="rr-placeholder">Please select a user from the dropdown above to view their Role & Responsibility.</p>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -1822,12 +2117,103 @@
     </div>
 </div>
 
+<!-- TAT Line Graph Modal -->
+<div class="modal fade" id="tatChartModal" tabindex="-1" aria-labelledby="tatChartModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="tatChartModalLabel">
+                    <i class="mdi mdi-chart-line me-2"></i>TAT – Last 30 Days (Avg days)
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div style="height: 320px;">
+                    <canvas id="tat-line-chart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Missed Line Graph Modal -->
+<div class="modal fade" id="missedChartModal" tabindex="-1" aria-labelledby="missedChartModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="missedChartModalLabel">
+                    <i class="mdi mdi-chart-line me-2"></i>Missed Tasks – Last 30 Days (Count)
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div style="height: 320px;">
+                    <canvas id="missed-line-chart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Edit R&R Modal -->
+<div class="modal fade" id="editRRModal" tabindex="-1" aria-labelledby="editRRModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title" id="editRRModalLabel">
+                    <i class="mdi mdi-account-tie me-2"></i>Edit Role & Responsibility
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form id="rr-form">
+                <div class="modal-body">
+                    <input type="hidden" id="rr-user-id" name="user_id">
+                    <div class="mb-3">
+                        <label for="rr-content-editor" class="form-label fw-bold">Role & Responsibility Content</label>
+                        <small class="text-muted d-block mb-2">You can copy-paste formatted content with images and icons directly into this editor.</small>
+                        <div id="rr-content-editor" contenteditable="true" class="form-control" style="min-height: 400px; padding: 15px; overflow-y: auto; border: 1px solid #ced4da; border-radius: 0.375rem; background: white;">
+                        </div>
+                        <textarea id="rr-content-hidden" name="content" style="display: none;"></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="mdi mdi-content-save me-1"></i>Save R&R
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
 @endsection
 
 @section('script')
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <script>
+        var tatChartData = @json($tatChartData ?? []);
+        var tatLineChart = null;
+        var missedChartData = @json($missedChartData ?? []);
+        var missedLineChart = null;
+
+        // Clear user filter and reload page
+        function clearUserFilter() {
+            $.ajax({
+                url: '{{ route("tasks.setSelectedUser") }}',
+                method: 'POST',
+                data: {
+                    user_name: '',
+                    _token: '{{ csrf_token() }}'
+                },
+                success: function() {
+                    window.location.reload();
+                }
+            });
+        }
+
         $(document).ready(function() {
             var selectedTasks = [];
             var bulkActionType = '';
@@ -1835,6 +2221,130 @@
             var canDeleteAnyTask = {{ isset($canDeleteAnyTask) && $canDeleteAnyTask ? 'true' : 'false' }};
             var currentUserId = {{ Auth::id() }};
             var currentUserEmail = '{{ Auth::user()->email }}';
+            
+            // TAT badge eye icon: show line graph modal
+            $('#tat-chart-eye-btn').on('click', function() {
+                $('#tatChartModal').modal('show');
+                setTimeout(function() { renderTatLineChart(); }, 300);
+            });
+            $('#tatChartModal').on('hidden.bs.modal', function() {
+                if (tatLineChart) {
+                    tatLineChart.destroy();
+                    tatLineChart = null;
+                }
+            });
+
+            // Missed badge eye icon: show line graph modal
+            $('#missed-chart-eye-btn').on('click', function() {
+                $('#missedChartModal').modal('show');
+                setTimeout(function() { renderMissedLineChart(); }, 300);
+            });
+            $('#missedChartModal').on('hidden.bs.modal', function() {
+                if (missedLineChart) {
+                    missedLineChart.destroy();
+                    missedLineChart = null;
+                }
+            });
+
+            function renderTatLineChart() {
+                var ctx = document.getElementById('tat-line-chart');
+                if (!ctx) return;
+                if (tatLineChart) {
+                    tatLineChart.destroy();
+                    tatLineChart = null;
+                }
+                var labels = tatChartData.map(function(d) { return d.label; });
+                var values = tatChartData.map(function(d) { return d.avg != null ? d.avg : null; });
+                tatLineChart = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: 'Avg TAT (days)',
+                            data: values,
+                            borderColor: '#20c997',
+                            backgroundColor: 'rgba(32, 201, 151, 0.1)',
+                            fill: true,
+                            tension: 0.2,
+                            spanGaps: true
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        interaction: { mode: 'index', intersect: false },
+                        plugins: {
+                            legend: { display: true },
+                            tooltip: {
+                                callbacks: {
+                                    label: function(ctx) {
+                                        var v = ctx.raw;
+                                        return v != null ? v + ' days' : 'No data';
+                                    }
+                                }
+                            }
+                        },
+                        scales: {
+                            x: { display: true, title: { display: true, text: 'Date' } },
+                            y: {
+                                beginAtZero: true,
+                                title: { display: true, text: 'TAT (days)' },
+                                ticks: { stepSize: 1 }
+                            }
+                        }
+                    }
+                });
+            }
+
+            function renderMissedLineChart() {
+                var ctx = document.getElementById('missed-line-chart');
+                if (!ctx) return;
+                if (missedLineChart) {
+                    missedLineChart.destroy();
+                    missedLineChart = null;
+                }
+                var labels = missedChartData.map(function(d) { return d.label; });
+                var values = missedChartData.map(function(d) { return d.count || 0; });
+                missedLineChart = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: 'Missed Tasks (count)',
+                            data: values,
+                            borderColor: '#dc3545',
+                            backgroundColor: 'rgba(220, 53, 69, 0.1)',
+                            fill: true,
+                            tension: 0.2,
+                            spanGaps: false
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        interaction: { mode: 'index', intersect: false },
+                        plugins: {
+                            legend: { display: true },
+                            tooltip: {
+                                callbacks: {
+                                    label: function(ctx) {
+                                        var v = ctx.raw;
+                                        return v + ' task' + (v != 1 ? 's' : '');
+                                    }
+                                }
+                            }
+                        },
+                        scales: {
+                            x: { display: true, title: { display: true, text: 'Date' } },
+                            y: {
+                                beginAtZero: true,
+                                title: { display: true, text: 'Count' },
+                                ticks: { stepSize: 1 }
+                            }
+                        }
+                    }
+                });
+            }
             
             // ==========================================
             // MOBILE TASK CARDS RENDERER
@@ -2632,6 +3142,25 @@
                     console.log('Filter - Task:', taskValue);
                 }
                 
+                // User search filter: if user is selected from "Select user" dropdown, search in both assignor and assignee
+                var selectedUser = $('#user-overdue-graph-select').data('selected-user') || $('#user-overdue-graph-select').val() || '';
+                if (selectedUser) {
+                    // Filter tasks where user appears in either assignor_name OR assignee_name
+                    table.setFilter(function(data) {
+                        var assignorMatch = data.assignor_name && String(data.assignor_name).toLowerCase().indexOf(selectedUser.toLowerCase()) > -1;
+                        var assigneeMatch = data.assignee_name && String(data.assignee_name).toLowerCase().indexOf(selectedUser.toLowerCase()) > -1;
+                        return assignorMatch || assigneeMatch;
+                    });
+                    console.log('✓ User search filter: ' + selectedUser + ' (in assignor OR assignee)');
+                    // Update mobile view
+                    if (window.innerWidth < 768) {
+                        const filtered = table.getData('active');
+                        renderMobileTasks(filtered);
+                    }
+                    setTimeout(updateStatistics, 100);
+                    return; // Skip other assignor/assignee filters when user search is active
+                }
+
                 // Assignor filter (including NULL check)
                 var assignorValue = $('#filter-assignor').val();
                 if (assignorValue) {
@@ -2742,9 +3271,11 @@
             $('#filter-assignee').on('change', function() {
                 var v = $(this).val() || '';
                 if (v !== '__NULL__') {
-                    $('#user-overdue-graph-select').val(v);
+                    $('#user-overdue-graph-select').val(v).trigger('change');
+                    $('#user-overdue-graph-select').data('selected-user', v);
                 } else {
-                    $('#user-overdue-graph-select').val('');
+                    $('#user-overdue-graph-select').val('').trigger('change');
+                    $('#user-overdue-graph-select').data('selected-user', '');
                 }
                 applyFilters();
             });
@@ -2877,172 +3408,6 @@
                 }
             });
 
-            // User-wise overdue: date-wise line graph (overdue = past TID date, same as TID column and stats)
-            var userOverdueLineChart = null;
-            function isTaskOverdueForGraph(t) {
-                if (!t.start_date) return false;
-                var parts = (t.start_date + '').split(/[- :/]/);
-                if (parts.length < 3) return false;
-                var y = parseInt(parts[0], 10), m = parseInt(parts[1], 10), d = parseInt(parts[2], 10);
-                if (parts[0].length !== 4) { d = parseInt(parts[0], 10); m = parseInt(parts[1], 10); y = parseInt(parts[2], 10); }
-                var tidDate = new Date(y, m - 1, d);
-                tidDate.setHours(0, 0, 0, 0);
-                var now = new Date();
-                now.setHours(0, 0, 0, 0);
-                return now > tidDate;
-            }
-            function getDateKey(startDate) {
-                if (!startDate) return null;
-                var parts = (startDate + '').split(/[- :/]/);
-                if (parts.length < 3) return null;
-                var y = parts[0], m = parts[1], d = parts[2];
-                if (parts[0].length !== 4) { d = parts[0]; m = parts[1]; y = parts[2]; }
-                m = m.length === 1 ? '0' + m : m;
-                d = d.length === 1 ? '0' + d : d;
-                return y + '-' + m + '-' + d;
-            }
-            function formatDateLabel(dateStr) {
-                var parts = dateStr.split('-');
-                if (parts.length !== 3) return dateStr;
-                var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-                return (parseInt(parts[2],10)) + '-' + (months[parseInt(parts[1],10)-1] || parts[1]);
-            }
-            function renderUserOverdueGraph() {
-                var userName = ($('#user-overdue-graph-select').val() || '').trim();
-                if (!userName) {
-                    $('#user-overdue-graph-empty').html('Select a user to see date-wise overdue graph.').show();
-                    $('#user-overdue-graph-wrap').hide();
-                    if (userOverdueLineChart) { userOverdueLineChart.destroy(); userOverdueLineChart = null; }
-                    return;
-                }
-                var allData = table.getData('active').length ? table.getData('active') : table.getData();
-                var userTasks = allData.filter(function(t) {
-                    var an = (t.assignee_name || '').trim();
-                    if (!an) return false;
-                    var assignees = an.split(',').map(function(s) { return s.trim(); });
-                    return assignees.indexOf(userName) >= 0;
-                });
-                var overdueTasks = userTasks.filter(isTaskOverdueForGraph);
-                var byDateOverdue = {};
-                overdueTasks.forEach(function(t) {
-                    var key = getDateKey(t.start_date);
-                    if (key) { byDateOverdue[key] = (byDateOverdue[key] || 0) + 1; }
-                });
-                var byDateEtc = {}, byDateAtc = {}, byDateDone = {};
-                userTasks.forEach(function(t) {
-                    var key = getDateKey(t.start_date);
-                    if (!key) return;
-                    byDateEtc[key] = (byDateEtc[key] || 0) + (parseInt(t.eta_time) || 0);
-                    byDateAtc[key] = (byDateAtc[key] || 0) + (parseInt(t.etc_done) || 0);
-                });
-                userTasks.filter(function(t) { return t.status === 'Done'; }).forEach(function(t) {
-                    var key = getDateKey(t.completion_date || t.updated_at || t.start_date);
-                    if (key) { byDateDone[key] = (byDateDone[key] || 0) + 1; }
-                });
-                var allDates = {};
-                Object.keys(byDateOverdue).forEach(function(k) { allDates[k] = true; });
-                Object.keys(byDateEtc).forEach(function(k) { allDates[k] = true; });
-                Object.keys(byDateAtc).forEach(function(k) { allDates[k] = true; });
-                Object.keys(byDateDone).forEach(function(k) { allDates[k] = true; });
-                var sortedDates = Object.keys(allDates).sort();
-                var labels = sortedDates.map(formatDateLabel);
-                var totalOverdueCount = overdueTasks.length;
-                var overdueData = sortedDates.map(function(d) {
-                    var cumulative = 0;
-                    for (var i = 0; i < sortedDates.length; i++) {
-                        cumulative += byDateOverdue[sortedDates[i]] || 0;
-                        if (sortedDates[i] === d) break;
-                    }
-                    return cumulative;
-                });
-                var etcData = sortedDates.map(function(d) { return Math.round((byDateEtc[d] || 0) / 60 * 10) / 10; });
-                var atcData = sortedDates.map(function(d) { return Math.round((byDateAtc[d] || 0) / 60 * 10) / 10; });
-                var doneData = sortedDates.map(function(d) { return byDateDone[d] || 0; });
-                $('#user-overdue-graph-empty').toggle(sortedDates.length === 0);
-                $('#user-overdue-graph-wrap').toggle(sortedDates.length > 0);
-                if (sortedDates.length === 0) {
-                    $('#user-overdue-graph-empty').html('No data for <strong>' + userName + '</strong>. Select another user.');
-                    if (userOverdueLineChart) { userOverdueLineChart.destroy(); userOverdueLineChart = null; }
-                    return;
-                }
-                var ctx = document.getElementById('user-overdue-line-chart');
-                if (!ctx) return;
-                if (userOverdueLineChart) {
-                    userOverdueLineChart.data.labels = labels;
-                    userOverdueLineChart.data.datasets[0].data = overdueData;
-                    userOverdueLineChart.data.datasets[1].data = etcData;
-                    userOverdueLineChart.data.datasets[2].data = atcData;
-                    userOverdueLineChart.data.datasets[3].data = doneData;
-                    userOverdueLineChart.update('none');
-                    return;
-                }
-                userOverdueLineChart = new Chart(ctx, {
-                    type: 'line',
-                    data: {
-                        labels: labels,
-                        datasets: [
-                            {
-                                label: 'Overdue (count)',
-                                data: overdueData,
-                                borderColor: 'rgb(220, 53, 69)',
-                                backgroundColor: 'rgba(220, 53, 69, 0.1)',
-                                fill: true,
-                                tension: 0.2,
-                                yAxisID: 'y'
-                            },
-                            {
-                                label: 'ETC (hours)',
-                                data: etcData,
-                                borderColor: 'rgb(255, 193, 7)',
-                                backgroundColor: 'rgba(255, 193, 7, 0.1)',
-                                fill: true,
-                                tension: 0.2,
-                                yAxisID: 'y1'
-                            },
-                            {
-                                label: 'ATC (hours)',
-                                data: atcData,
-                                borderColor: 'rgb(32, 201, 151)',
-                                backgroundColor: 'rgba(32, 201, 151, 0.1)',
-                                fill: true,
-                                tension: 0.2,
-                                yAxisID: 'y1'
-                            },
-                            {
-                                label: 'Today done (count)',
-                                data: doneData,
-                                borderColor: 'rgb(13, 110, 253)',
-                                backgroundColor: 'rgba(13, 110, 253, 0.1)',
-                                fill: true,
-                                tension: 0.2,
-                                yAxisID: 'y'
-                            }
-                        ]
-                    },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        interaction: { mode: 'index', intersect: false },
-                        plugins: { legend: { display: true } },
-                        scales: {
-                            y: {
-                                type: 'linear',
-                                position: 'left',
-                                beginAtZero: true,
-                                title: { display: true, text: 'Overdue count' },
-                                ticks: { stepSize: 1 }
-                            },
-                            y1: {
-                                type: 'linear',
-                                position: 'right',
-                                beginAtZero: true,
-                                title: { display: true, text: 'ETC / ATC (hours)' },
-                                grid: { drawOnChartArea: false }
-                            }
-                        }
-                    }
-                });
-            }
             function updateUserSelectIcon() {
                 var sel = $('#user-overdue-graph-select');
                 var opt = sel.find('option:selected');
@@ -3057,13 +3422,370 @@
                     $icon.show();
                 }
             }
+
+            // Searchable user dropdown (type to filter list in real time)
+            $('#user-overdue-graph-select').select2({
+                theme: 'bootstrap-5',
+                width: '100%',
+                dropdownParent: $('body'),
+                placeholder: '-- Select user --',
+                allowClear: true,
+                minimumResultsForSearch: 0,
+                // Remove title attribute to prevent browser tooltips
+                templateResult: function(data) {
+                    if (data.loading) return data.text;
+                    return data.text;
+                },
+                templateSelection: function(data) {
+                    return data.text || data.id;
+                },
+                matcher: function(params, data) {
+                    // Search in both name and role data attributes (assignor/assignee)
+                    var term = params.term.toLowerCase();
+                    if (!term) {
+                        return data;
+                    }
+                    var text = data.text.toLowerCase();
+                    var isAssignor = $(data.element).data('assignor') === '1';
+                    var isAssignee = $(data.element).data('assignee') === '1';
+                    var roleText = '';
+                    if (isAssignor && isAssignee) {
+                        roleText = 'assignor assignee';
+                    } else if (isAssignor) {
+                        roleText = 'assignor';
+                    } else if (isAssignee) {
+                        roleText = 'assignee';
+                    }
+                    if (text.indexOf(term) > -1 || roleText.indexOf(term) > -1) {
+                        return data;
+                    }
+                    return null;
+                }
+            });
+
+            // Remove title attributes that might cause tooltips on hover
+            $('#user-overdue-graph-select').on('select2:open', function() {
+                $('.select2-container--bootstrap-5 .select2-selection--single').removeAttr('title');
+                // Calculate optimal height to show all users (max 500px, min 200px)
+                var userCount = $('#user-overdue-graph-select option').length - 1; // Exclude placeholder
+                var itemHeight = 38; // Approximate height per option
+                var searchHeight = 50; // Search box height
+                var optimalHeight = Math.min(500, Math.max(200, (userCount * itemHeight) + searchHeight + 20));
+                $('.select2-container--bootstrap-5.select2-container--open .select2-dropdown').css('max-height', optimalHeight + 'px');
+                $('.select2-container--bootstrap-5.select2-container--open .select2-results__options').css('max-height', (optimalHeight - searchHeight - 10) + 'px');
+            });
+            $('.stat-card-user-select .select2-container .select2-selection--single').removeAttr('title');
+
+            // Set selected user from session on page load
+            @if(!empty($selectedUserName))
+                $('#user-overdue-graph-select').val('{{ $selectedUserName }}').trigger('change');
+                $('#user-overdue-graph-select').data('selected-user', '{{ $selectedUserName }}');
+            @endif
+
+            // Function to load R&R data
+            function loadUserRR(userName) {
+                console.log('Loading R&R for user:', userName);
+                if (!userName) {
+                    $('#rr-container').html(
+                        '<div class="text-center py-5">' +
+                        '<p class="text-muted">Please select a user from the dropdown above to view their Role & Responsibility.</p>' +
+                        '</div>'
+                    );
+                    return;
+                }
+
+                // Show loading spinner
+                $('#rr-loading-spinner').show();
+                $('#rr-placeholder').hide();
+                $('#rr-container').html(
+                    '<div class="text-center py-5">' +
+                    '<div class="spinner-border text-primary" role="status">' +
+                    '<span class="visually-hidden">Loading...</span>' +
+                    '</div>' +
+                    '<p class="text-muted mt-3">Loading Role & Responsibility...</p>' +
+                    '</div>'
+                );
+
+                $.ajax({
+                    url: '{{ route("tasks.getUserRR") }}',
+                    method: 'GET',
+                    data: {
+                        user_name: userName
+                    },
+                    success: function(response) {
+                        console.log('R&R data loaded successfully');
+                        $('#rr-loading-spinner').hide();
+                        $('#rr-container').html(response.html);
+                        // Show Edit button if user is selected
+                        var selectedUser = $('#user-overdue-graph-select').val();
+                        if (selectedUser) {
+                            $('#edit-rr-btn').show();
+                        }
+                        // Trigger fade-in animation
+                        setTimeout(function() {
+                            $('.rr-container').css('opacity', '1');
+                        }, 50);
+                    },
+                    error: function(xhr, status, error) {
+                        console.error('Error loading R&R:', error, xhr);
+                        $('#rr-loading-spinner').hide();
+                        $('#rr-container').html(
+                            '<div class="alert alert-danger">' +
+                            '<i class="mdi mdi-alert-circle me-2"></i>' +
+                            'Error loading Role & Responsibility data. Please try again.<br>' +
+                            '<small>Error: ' + error + '</small>' +
+                            '</div>'
+                        );
+                    }
+                });
+            }
+
             $('#user-overdue-graph-select').on('change', function() {
                 var selectedUser = $(this).val() || '';
-                $('#filter-assignee').val(selectedUser);
+                // Store selected user for filtering (will search both assignor and assignee)
+                if (selectedUser) {
+                    $('#user-overdue-graph-select').data('selected-user', selectedUser);
+                } else {
+                    $('#user-overdue-graph-select').removeData('selected-user');
+                }
+                // Store in session for deleted page and refresh stats
+                $.ajax({
+                    url: '{{ route("tasks.setSelectedUser") }}',
+                    method: 'POST',
+                    data: {
+                        user_name: selectedUser,
+                        _token: '{{ csrf_token() }}'
+                    },
+                    success: function(response) {
+                        console.log('Selected user stored in session:', response.user_name);
+                        // Load R&R data if R&R tab is active
+                        if ($('#rr-tab').hasClass('active') || $('#rr-content').hasClass('active')) {
+                            loadUserRR(selectedUser);
+                            $('#edit-rr-btn').show();
+                        } else {
+                            $('#edit-rr-btn').hide();
+                        }
+                        // Reload page to update TAT and Missed badges with filtered data
+                        if (selectedUser || '{{ !empty($selectedUserName) }}' === '1') {
+                            window.location.reload();
+                        }
+                    }
+                });
                 updateUserSelectIcon();
                 applyFilters();
-                renderUserOverdueGraph();
             });
+
+            // Manual tab switching (fallback if Bootstrap tabs don't work)
+            function switchTab(tabName) {
+                // Hide all tab panes
+                $('.tab-pane').removeClass('show active');
+                $('.nav-link').removeClass('active').attr('aria-selected', 'false');
+                
+                if (tabName === 'tasks') {
+                    $('#tasks-tab').addClass('active').attr('aria-selected', 'true');
+                    $('#tasks-content').addClass('show active');
+                } else if (tabName === 'rr') {
+                    $('#rr-tab').addClass('active').attr('aria-selected', 'true');
+                    $('#rr-content').addClass('show active');
+                    
+                    // Load R&R data when switching to R&R tab
+                    var selectedUser = $('#user-overdue-graph-select').val() || '';
+                    if (selectedUser) {
+                        loadUserRR(selectedUser);
+                    } else {
+                        $('#rr-container').html(
+                            '<div class="text-center py-5">' +
+                            '<p class="text-muted">Please select a user from the dropdown above to view their Role & Responsibility.</p>' +
+                            '</div>'
+                        );
+                        $('#edit-rr-btn').hide();
+                    }
+                }
+            }
+
+            // Click handlers for tabs (manual + Bootstrap)
+            $('#tasks-tab').on('click', function(e) {
+                e.preventDefault();
+                console.log('Tasks tab clicked');
+                switchTab('tasks');
+                $('#edit-rr-btn').hide(); // Hide edit button on Tasks tab
+                // Also trigger Bootstrap tab if available
+                if (typeof bootstrap !== 'undefined' && bootstrap.Tab) {
+                    var tab = new bootstrap.Tab(this);
+                    tab.show();
+                }
+            });
+
+            $('#rr-tab').on('click', function(e) {
+                e.preventDefault();
+                console.log('R&R tab clicked');
+                switchTab('rr');
+                // Show edit button if user is selected
+                var selectedUser = $('#user-overdue-graph-select').val();
+                if (selectedUser) {
+                    $('#edit-rr-btn').show();
+                } else {
+                    $('#edit-rr-btn').hide();
+                }
+                // Also trigger Bootstrap tab if available
+                if (typeof bootstrap !== 'undefined' && bootstrap.Tab) {
+                    var tab = new bootstrap.Tab(this);
+                    tab.show();
+                }
+            });
+
+            // Ensure tabs are visible on page load
+            console.log('Tabs initialized. Tasks tab:', $('#tasks-tab').length, 'R&R tab:', $('#rr-tab').length);
+
+            // Bootstrap tab event handlers (if Bootstrap is loaded)
+            $('#rr-tab').on('shown.bs.tab', function() {
+                var selectedUser = $('#user-overdue-graph-select').val() || '';
+                if (selectedUser) {
+                    loadUserRR(selectedUser);
+                } else {
+                    $('#rr-container').html(
+                        '<div class="text-center py-5">' +
+                        '<p class="text-muted">Please select a user from the dropdown above to view their Role & Responsibility.</p>' +
+                        '</div>'
+                    );
+                }
+            });
+
+            // Load R&R on page load if R&R tab is active and user is selected
+            @if(!empty($selectedUserName))
+                // Check if R&R tab should be active on load
+                var urlParams = new URLSearchParams(window.location.search);
+                if (urlParams.get('tab') === 'rr' || $('#rr-tab').hasClass('active') || $('#rr-content').hasClass('active')) {
+                    loadUserRR('{{ $selectedUserName }}');
+                }
+            @endif
+
+            // Simple contenteditable editor - no external dependencies
+            // Native browser paste with images is supported automatically
+
+            // Edit R&R Button Click Handler
+            $('#edit-rr-btn').on('click', function() {
+                var selectedUser = $('#user-overdue-graph-select').val();
+                if (!selectedUser) {
+                    alert('Please select a user first');
+                    return;
+                }
+
+                // Get user ID from selected user option
+                var selectedOption = $('#user-overdue-graph-select option:selected');
+                var userId = selectedOption.data('user-id');
+
+                if (!userId) {
+                    alert('Could not find user ID. Please try again.');
+                    return;
+                }
+
+                // Load existing R&R data
+                $.ajax({
+                    url: '{{ route("tasks.getUserRRData") }}',
+                    method: 'GET',
+                    data: {
+                        user_id: userId
+                    },
+                    success: function(response) {
+                        $('#rr-user-id').val(response.user.id);
+                        
+                        // Store response data for later use
+                        var rrData = response.userRR || {};
+                        
+                        // Combine all content into one (for backward compatibility)
+                        var combinedContent = '';
+                        if (rrData.role) combinedContent += '<h3>Role</h3>' + rrData.role + '<br><br>';
+                        if (rrData.responsibilities) combinedContent += '<h3>Responsibilities</h3>' + rrData.responsibilities + '<br><br>';
+                        if (rrData.goals) combinedContent += '<h3>Goals</h3>' + rrData.goals;
+                        // If we have a combined content field, use that instead
+                        if (rrData.content) combinedContent = rrData.content;
+                        
+                        // Show modal and set content
+                        $('#editRRModal').modal('show');
+                        
+                        // Set content in contenteditable div after modal is shown
+                        $('#editRRModal').one('shown.bs.modal', function() {
+                            $('#rr-content-editor').html(combinedContent);
+                        });
+                    },
+                    error: function(xhr, status, error) {
+                        console.error('Error loading R&R data:', error);
+                        alert('Error loading R&R data. Please try again.');
+                    }
+                });
+            });
+
+            // R&R Form Submission
+            $('#rr-form').on('submit', function(e) {
+                e.preventDefault();
+
+                // Get content from contenteditable div
+                var content = $('#rr-content-editor').html();
+                var userId = $('#rr-user-id').val();
+
+                // Debug logging
+                console.log('Form submission - User ID:', userId);
+                console.log('Form submission - Content length:', content ? content.length : 0);
+                console.log('Form submission - Content preview:', content ? content.substring(0, 100) : 'empty');
+
+                // Validate content
+                if (!userId) {
+                    alert('User ID is missing. Please try again.');
+                    return;
+                }
+
+                // Store in hidden textarea for form submission
+                $('#rr-content-hidden').val(content);
+
+                var formData = {
+                    user_id: userId,
+                    content: content || '', // Ensure content is not undefined
+                    _token: '{{ csrf_token() }}'
+                };
+
+                console.log('Sending form data:', {
+                    user_id: formData.user_id,
+                    content_length: formData.content ? formData.content.length : 0,
+                    has_token: !!formData._token
+                });
+
+                $.ajax({
+                    url: '{{ route("tasks.storeUserRR") }}',
+                    method: 'POST',
+                    data: formData,
+                    dataType: 'json',
+                    success: function(response) {
+                        console.log('Save response:', response);
+                        if (response.success) {
+                            $('#editRRModal').modal('hide');
+                            // Reload R&R display
+                            var selectedUser = $('#user-overdue-graph-select').val();
+                            if (selectedUser) {
+                                loadUserRR(selectedUser);
+                            }
+                            // Show success message
+                            alert('Role & Responsibility saved successfully!');
+                        } else {
+                            alert('Failed to save: ' + (response.message || 'Unknown error'));
+                        }
+                    },
+                    error: function(xhr, status, error) {
+                        console.error('Error saving R&R:', error, xhr);
+                        console.error('Response text:', xhr.responseText);
+                        var errorMsg = 'Error saving R&R data. ';
+                        if (xhr.responseJSON && xhr.responseJSON.message) {
+                            errorMsg += xhr.responseJSON.message;
+                        } else if (xhr.responseText) {
+                            errorMsg += xhr.responseText;
+                        } else {
+                            errorMsg += 'Please try again.';
+                        }
+                        alert(errorMsg);
+                    }
+                });
+            });
+
             updateUserSelectIcon();
 
             // Show CSV Upload Modal

@@ -196,6 +196,9 @@ use App\Http\Controllers\PurchaseMaster\PurchaseController;
 use App\Http\Controllers\PurchaseMaster\TransitContainerDetailsController;
 use App\Http\Controllers\InventoryManagement\IncomingController;
 use App\Http\Controllers\InventoryManagement\OutgoingController;
+use App\Http\Controllers\InventoryManagement\RefundController;
+use App\Http\Controllers\CustomerCare\CustomerFollowupController;
+use App\Http\Controllers\CustomerCare\DARController;
 use App\Http\Controllers\InventoryManagement\StockAdjustmentController;
 use App\Http\Controllers\InventoryManagement\StockTransferController;
 use App\Http\Controllers\Channels\ChannelMovementAnalysisController;
@@ -449,6 +452,10 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/orders/push', [\App\Http\Controllers\MarketplaceController::class, 'pushOrderToShopify'])->name('marketplace.orders.push');
     });
 
+    // TopDawg Sales Dashboard (topdawg_order_metrics, margin 0.95, no ship)
+    Route::get('/topdawg/sales-dashboard', [\App\Http\Controllers\MarketPlace\TopDawgSyncController::class, 'salesDashboard'])->name('topdawg.sales.dashboard');
+    Route::get('/topdawg/sales-data', [\App\Http\Controllers\MarketPlace\TopDawgSyncController::class, 'getSalesData'])->name('topdawg.sales.data');
+
     // Route::get('/get-channel-sales-data', [ChannelMasterController::class, 'getChannelSalesData']);
     Route::get('/sales-trend-data', [ChannelMasterController::class, 'getSalesTrendData']);
     Route::get('/dashboard-metrics', [ChannelMasterController::class, 'getDashboardMetrics']);
@@ -585,6 +592,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/verified-stock-activity-log', [VerificationAdjustmentController::class, 'getVerifiedStockActivityLog']);
     Route::get('/view-inventory-data', [VerificationAdjustmentController::class, 'viewInventory'])->name('view-inventory');
     Route::get('/inventory-history', [VerificationAdjustmentController::class, 'getSkuWiseHistory']);
+    Route::get('/shopify-inventory-history-url', [VerificationAdjustmentController::class, 'getShopifyInventoryHistoryUrl']);
     Route::post('/row-hide-toggle', [VerificationAdjustmentController::class, 'toggleHide']);
     Route::get('/get-hidden-rows', [VerificationAdjustmentController::class, 'getHiddenRows']);
     Route::post('/unhide-multiple-rows', [VerificationAdjustmentController::class, 'unhideMultipleRows']);
@@ -595,6 +603,21 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     // Google Sheets export
     Route::post('/export-to-google-sheets', [VerificationAdjustmentController::class, 'exportToGoogleSheets']);
 
+    Route::get('/customer-care', function () {
+        return view('customer-care.index');
+    })->name('customer.care');
+    Route::get('/customer-care/refunds', [RefundController::class, 'index'])->name('customer.care.refunds');
+    Route::get('/customer-care/followups', [CustomerFollowupController::class, 'index'])->name('customer.care.followups');
+    Route::get('/customer-care/followups/data', [CustomerFollowupController::class, 'data'])->name('customer.care.followups.data');
+    Route::post('/customer-care/followups', [CustomerFollowupController::class, 'store'])->name('customer.care.followups.store');
+    Route::get('/customer-care/followups/{customer_followup}', [CustomerFollowupController::class, 'show'])->name('customer.care.followups.show');
+    Route::put('/customer-care/followups/{customer_followup}', [CustomerFollowupController::class, 'update'])->name('customer.care.followups.update');
+    Route::delete('/customer-care/followups/{customer_followup}', [CustomerFollowupController::class, 'destroy'])->name('customer.care.followups.destroy');
+
+    Route::get('/dar', [DARController::class, 'index'])->name('dar.index');
+    Route::post('/dar', [DARController::class, 'store'])->name('dar.store');
+    Route::get('/dar/window-status', [DARController::class, 'windowStatus'])->name('dar.window');
+
     //incoming
     Route::get('/incoming-view', [IncomingController::class, 'index'])->name('incoming.view');
     Route::post('/incoming-data-store', [IncomingController::class, 'store'])->name('incoming.store');
@@ -604,12 +627,29 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/incoming-orders-view', [IncomingController::class, 'incomingOrderIndex'])->name('incoming.orders.view');
     Route::post('/incoming-orders-store', [IncomingController::class, 'incomingOrderStore'])->name('incoming.orders.store');
     Route::get('/incoming-orders-list', [IncomingController::class, 'incomingOrderList']);
+    Route::get('/incoming-reasons', [IncomingController::class, 'getIncomingReasons']);
+    Route::post('/incoming-reasons', [IncomingController::class, 'storeIncomingReason']);
 
     //outgoing
     Route::get('/outgoing-view', [OutgoingController::class, 'index'])->name('outgoing.view');
     Route::post('/outgoing-data-store', [OutgoingController::class, 'store'])->name('outgoing.store');
     Route::get('/outgoing-data-list', [OutgoingController::class, 'list']);
+    Route::get('/outgoing-reasons', [OutgoingController::class, 'getReasons']);
+    Route::post('/outgoing-reasons', [OutgoingController::class, 'storeReason']);
+    Route::put('/outgoing-update-reason-comment', [OutgoingController::class, 'updateReasonAndComment']);
+    Route::get('/outgoing-history/{id}', [OutgoingController::class, 'getHistory']);
     Route::post('/outgoing-archive', [OutgoingController::class, 'archive']);
+
+    Route::get('/refunds-view', [RefundController::class, 'index'])->name('refunds.view');
+    Route::post('/refunds-data-store', [RefundController::class, 'store'])->name('refunds.store');
+    Route::get('/refunds-data-list', [RefundController::class, 'list']);
+    Route::get('/refunds-supplier-for-sku', [RefundController::class, 'supplierForSku'])->name('refunds.supplier-for-sku');
+    Route::get('/refunds-stats-30d', [RefundController::class, 'refundStatsLast30Days'])->name('refunds.stats-30d');
+    Route::get('/refunds-reasons', [RefundController::class, 'getReasons']);
+    Route::post('/refunds-reasons', [RefundController::class, 'storeReason']);
+    Route::put('/refunds-update-reason-comment', [RefundController::class, 'updateReasonAndComment']);
+    Route::get('/refunds-history/{id}', [RefundController::class, 'getHistory']);
+    Route::post('/refunds-archive', [RefundController::class, 'archive']);
 
 
 
@@ -637,6 +677,9 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/stock-balance-delete-relationship', [StockBalanceController::class, 'deleteRelationship']);
     Route::get('/stock-balance-get-skus-autocomplete', [StockBalanceController::class, 'getSkusForAutocomplete']);
     Route::get('/stock-balance-get-recent-history', [StockBalanceController::class, 'getRecentHistory']);
+    Route::get('/stock-balance-search-history', [StockBalanceController::class, 'searchHistory']);
+    Route::get('/stock-balance-transfer-preferences', [StockBalanceController::class, 'getTransferPreferences']);
+    Route::post('/stock-balance-transfer-preferences', [StockBalanceController::class, 'saveTransferPreference']);
     Route::get('/combo-trf', [StockBalanceController::class, 'comboTrfView'])->name('combo.trf');
     Route::post('/combo-trf-store', [StockBalanceController::class, 'storeComboTrf'])->name('combo.trf.store');
     Route::get('/combo-trf-inventory-data', [StockBalanceController::class, 'getComboTrfInventoryData']);
@@ -840,6 +883,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/reverb/zero-low-visibility/view-data', [ReverbLowVisibilityController::class, 'getViewReverbLowVisibilityData']);
     Route::get('/temu/view-data', [TemuController::class, 'getViewTemuData']);
     Route::post('/temu/upload-daily-data-chunk', [TemuController::class, 'uploadDailyDataChunk']);
+    Route::post('/temu/upload-daily-data-l60-chunk', [TemuController::class, 'uploadDailyDataL60Chunk']);
     Route::get('/temu/download-daily-data-sample', [TemuController::class, 'downloadDailyDataSample'])->name('temu.daily.sample');
     Route::get('/temu/daily-data', [TemuController::class, 'getDailyData'])->name('temu.daily.data');
     Route::get('/ebay/daily-sales-data', [EbaySalesController::class, 'getData'])->name('ebay.daily.sales.data');
@@ -978,6 +1022,18 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/tiktok-column-visibility', [\App\Http\Controllers\Sales\TikTokSalesController::class, 'getColumnVisibility']);
     Route::post('/tiktok-column-visibility', [\App\Http\Controllers\Sales\TikTokSalesController::class, 'saveColumnVisibility']);
 
+    // TikTok 2 Sales Routes (upload-based, margin 0.80)
+    Route::get('/tiktok-two/daily-sales', [\App\Http\Controllers\Sales\TikTokSalesController::class, 'indexTwo'])->name('tiktok.two.daily.sales');
+    Route::get('/tiktok-two/daily-sales-data', [\App\Http\Controllers\Sales\TikTokSalesController::class, 'getDataTwo'])->name('tiktok.two.daily.sales.data');
+    Route::post('/tiktok-two/upload', [\App\Http\Controllers\Sales\TikTokSalesController::class, 'uploadTwo'])->name('tiktok.two.upload');
+    Route::get('/tiktok-two-column-visibility', [\App\Http\Controllers\Sales\TikTokSalesController::class, 'getColumnVisibilityTwo']);
+    Route::post('/tiktok-two-column-visibility', [\App\Http\Controllers\Sales\TikTokSalesController::class, 'saveColumnVisibilityTwo']);
+
+    // Depop Sheet Routes (margin 0.87)
+    Route::get('/depop/sheet', [\App\Http\Controllers\Sales\DepopSalesController::class, 'index'])->name('depop.sheet');
+    Route::get('/depop/sheet-data', [\App\Http\Controllers\Sales\DepopSalesController::class, 'getData'])->name('depop.sheet.data');
+    Route::post('/depop/upload', [\App\Http\Controllers\Sales\DepopSalesController::class, 'upload'])->name('depop.upload');
+
     // Doba Sales Routes
     Route::get('/doba/daily-sales-data', [DobaSalesController::class, 'getData'])->name('doba.daily.sales.data');
     Route::get('/doba/daily-sales', [DobaSalesController::class, 'index'])->name('doba.daily.sales');
@@ -1105,6 +1161,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/amazon-column-visibility', [OverallAmazonController::class, 'saveAmazonColumnVisibility'])->name('amazon.column.visibility.save');
     Route::post('/amazon-badge-stats-save', [OverallAmazonController::class, 'saveAmazonBadgeStats']);
     Route::get('/amazon-badge-chart-data', [OverallAmazonController::class, 'getAmazonBadgeChartData']);
+    Route::get('/amazon-kw-last-sbid-chart-data', [OverallAmazonController::class, 'getAmazonKwLastSbidChartData']);
     Route::get('/amazon-data-json', action: [OverallAmazonController::class, 'amazonDataJson'])->name('amazon.data.json');
     Route::get('/amazon-campaign-data-by-sku', action: [OverallAmazonController::class, 'getCampaignDataBySku'])->name('amazon.campaign.data.by.sku');
     Route::post('/amazon/refresh-links', [OverallAmazonController::class, 'refreshAmazonLinks'])->name('amazon.refresh.links');
@@ -1445,6 +1502,14 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/temu-column-visibility', [TemuController::class, 'saveTemuColumnVisibility']);
     Route::get('/temu-column-visibility', [TemuController::class, 'getTemuColumnVisibility']);
 
+    // Temu 2 Tabulator View (separate tables: temu2_daily_data, temu2_daily_data_l60)
+    Route::get('/temu2-tabulator', [TemuController::class, 'temu2TabulatorView'])->name('temu2.tabulator');
+    Route::get('/temu2/daily-data', [TemuController::class, 'getTemu2DailyData'])->name('temu2.daily.data');
+    Route::post('/temu2/upload-daily-data-chunk', [TemuController::class, 'uploadDailyDataTemu2Chunk']);
+    Route::post('/temu2/upload-daily-data-l60-chunk', [TemuController::class, 'uploadDailyDataTemu2L60Chunk']);
+    Route::post('/temu2-column-visibility', [TemuController::class, 'saveTemu2ColumnVisibility']);
+    Route::get('/temu2-column-visibility', [TemuController::class, 'getTemu2ColumnVisibility']);
+
     // Temu Pricing Upload
     Route::post('/temu-pricing/upload', [TemuController::class, 'uploadTemuPricing'])->name('temu.pricing.upload');
     Route::get('/temu-pricing/sample', [TemuController::class, 'downloadTemuPricingSample'])->name('temu.pricing.sample');
@@ -1690,6 +1755,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/transit-container-new', [TransitContainerDetailsController::class, 'transitContainerNew'])->name('transit.container.new');
     Route::post('/transit-container/save', [TransitContainerDetailsController::class, 'transitContainerStoreItems']);
     Route::post('/transit-container/delete', [TransitContainerDetailsController::class, 'deleteTransitItem']);
+    Route::get('/transit-container/history', [TransitContainerDetailsController::class, 'getHistory']);
 
     Route::post('/inventory-warehouse/push', [InventoryWarehouseController::class, 'pushInventory'])->name('inventory.push');
     Route::post('/inventory-warehouse/push-single', [InventoryWarehouseController::class, 'pushSingleItem'])->name('inventory.push.single');
@@ -1700,6 +1766,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::controller(ArrivedContainerController::class)->group(function () {
         Route::get('/arrived/container', 'index')->name('arrived.container');
         Route::post('/arrived/container/push', 'pushArrivedContainer');
+        Route::post('/arrived/container/save-row', 'saveArrivedRow');
+        Route::get('/arrived/container/history', 'getHistory');
         Route::get('/arrived/container/summary', 'containerSummary')->name('container.summary');
     });
 
@@ -3109,6 +3177,11 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::delete('/tasks/automated/{id}', [\App\Http\Controllers\TaskController::class, 'automatedDestroy'])->name('tasks.automatedDestroy');
     Route::get('/tasks/deleted', [\App\Http\Controllers\TaskController::class, 'deletedIndex'])->name('tasks.deleted');
     Route::get('/tasks/deleted/data', [\App\Http\Controllers\TaskController::class, 'deletedData'])->name('tasks.deletedData');
+    Route::post('/tasks/set-selected-user', [\App\Http\Controllers\TaskController::class, 'setSelectedUser'])->name('tasks.setSelectedUser');
+    Route::get('/get-user-rr', [\App\Http\Controllers\TaskController::class, 'getUserRR'])->name('tasks.getUserRR');
+    Route::post('/tasks/store-user-rr', [\App\Http\Controllers\TaskController::class, 'storeUserRR'])->name('tasks.storeUserRR');
+    Route::get('/tasks/get-user-rr-data', [\App\Http\Controllers\TaskController::class, 'getUserRRData'])->name('tasks.getUserRRData');
+    Route::post('/tasks/upload-image', [\App\Http\Controllers\TaskController::class, 'uploadImage'])->name('tasks.uploadImage');
     Route::get('/tasks/users-list', [\App\Http\Controllers\TaskController::class, 'getUsersList'])->name('tasks.usersList');
     Route::get('/tasks/download-template', [\App\Http\Controllers\TaskController::class, 'downloadTemplate'])->name('tasks.downloadTemplate');
     Route::post('/tasks/import-csv', [\App\Http\Controllers\TaskController::class, 'importCsv'])->name('tasks.importCsv');

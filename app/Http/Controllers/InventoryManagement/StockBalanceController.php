@@ -12,6 +12,7 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Carbon\Carbon;
 use App\Models\StockBalance;
+use App\Models\StockBalanceTransferPreference;
 use App\Http\Controllers\ApiController;
 use App\Models\ShopifySku;
 use App\Models\SkuRelationship;
@@ -1464,5 +1465,101 @@ class StockBalanceController extends Controller
                 'details' => $e->getMessage()
             ], 500);
         }
+    }
+
+    /**
+     * Search transfer history with optional filters (from_sku, to_sku, date_from, date_to, transferred_by).
+     */
+    public function searchHistory(Request $request)
+    {
+        $query = StockBalance::query();
+
+        if ($request->filled('from_sku')) {
+            $query->where('from_sku', 'like', '%' . trim($request->from_sku) . '%');
+        }
+        if ($request->filled('to_sku')) {
+            $query->where('to_sku', 'like', '%' . trim($request->to_sku) . '%');
+        }
+        if ($request->filled('date_from')) {
+            $query->whereDate('transferred_at', '>=', $request->date_from);
+        }
+        if ($request->filled('date_to')) {
+            $query->whereDate('transferred_at', '<=', $request->date_to);
+        }
+        if ($request->filled('transferred_by')) {
+            $query->where('transferred_by', 'like', '%' . trim($request->transferred_by) . '%');
+        }
+
+        $data = $query->orderBy('transferred_at', 'desc')
+            ->orderBy('created_at', 'desc')
+            ->get()
+            ->map(function ($item) {
+                return [
+                    'from_parent_name'    => $item->from_parent_name,
+                    'from_sku'            => $item->from_sku,
+                    'from_dil_percent'    => $item->from_dil_percent,
+                    'from_available_qty'  => $item->from_available_qty,
+                    'from_adjust_qty'     => $item->from_adjust_qty,
+                    'to_parent_name'      => $item->to_parent_name,
+                    'to_sku'              => $item->to_sku,
+                    'to_dil_percent'      => $item->to_dil_percent,
+                    'to_available_qty'    => $item->to_available_qty,
+                    'to_adjust_qty'       => $item->to_adjust_qty,
+                    'transferred_by'      => $item->transferred_by,
+                    'transferred_at'      => $item->transferred_at
+                        ? Carbon::parse($item->transferred_at)->timezone('America/New_York')->format('m-d-Y H:i')
+                        : '',
+                ];
+            });
+
+        return response()->json(['data' => $data]);
+    }
+
+    /**
+     * Get transfer preferences (FROM SKU, ratio) for the current user, keyed by to_sku.
+     * Used so saved preferences sync across devices.
+     */
+    public function getTransferPreferences()
+    {
+        $user = Auth::user();
+        if (!$user) {
+            return response()->json(['preferences' => []]);
+        }
+        $rows = StockBalanceTransferPreference::where('user_id', $user->id)->get();
+        $preferences = [];
+        foreach ($rows as $row) {
+            $preferences[$row->to_sku] = [
+                'fromSku' => $row->from_sku,
+                'ratio' => $row->ratio ?? '1:1',
+            ];
+        }
+        return response()->json(['preferences' => $preferences]);
+    }
+
+    /**
+     * Save transfer preference for one to_sku (FROM SKU and ratio). Persists across devices.
+     */
+    public function saveTransferPreference(Request $request)
+    {
+        $request->validate([
+            'to_sku' => 'required|string',
+            'from_sku' => 'nullable|string',
+            'ratio' => 'nullable|string|max:20',
+        ]);
+        $user = Auth::user();
+        if (!$user) {
+            return response()->json(['error' => 'Unauthorized'], 401);
+        }
+        StockBalanceTransferPreference::updateOrCreate(
+            [
+                'user_id' => $user->id,
+                'to_sku' => trim($request->to_sku),
+            ],
+            [
+                'from_sku' => $request->filled('from_sku') ? trim($request->from_sku) : null,
+                'ratio' => $request->input('ratio', '1:1'),
+            ]
+        );
+        return response()->json(['success' => true]);
     }
 }

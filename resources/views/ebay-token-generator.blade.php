@@ -130,6 +130,13 @@
         @if(isset($error))
             <div class="error-box">
                 <strong>Error:</strong> {{ $error }}
+                <p style="margin-top: 8px; font-size: 12px; color: #666;">Check <code>storage/logs/laravel.log</code> on the server for full details.</p>
+                @if(!empty($exceptionTrace))
+                    <details style="margin-top: 10px;">
+                        <summary style="cursor: pointer;">Stack trace</summary>
+                        <pre style="margin-top: 8px; padding: 10px; background: #fff; border-radius: 4px; font-size: 11px; overflow-x: auto; max-height: 300px; overflow-y: auto;">{{ $exceptionTrace }}</pre>
+                    </details>
+                @endif
             </div>
         @endif
 

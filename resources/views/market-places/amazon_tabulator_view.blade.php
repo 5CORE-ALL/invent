@@ -254,7 +254,7 @@
             <div class="card-body py-3">
                 
                 <div class="d-flex align-items-center flex-wrap gap-2">
-                    <input type="text" id="sku-search" class="form-control form-control-sm" placeholder="Search SKU..." style="width: 150px; display: inline-block;">
+                    <input type="text" id="sku-search" class="form-control form-control-sm" placeholder="Search SKU / Campaign..." style="width: 180px; display: inline-block;">
 
                     <select id="inventory-filter" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;">
@@ -926,6 +926,43 @@
             </div>
         </div>
     </div>
+
+    <!-- KW Last SBID daily trend graph modal -->
+    <div class="modal fade" id="kwLastSbidChartModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg" style="max-width: 90vw; width: 90vw;">
+            <div class="modal-content">
+                <div class="modal-header py-2 px-3 bg-primary text-white">
+                    <h6 class="modal-title mb-0">
+                        <i class="fas fa-chart-line me-1"></i>
+                        <span id="kwLastSbidChartModalTitle">KW Last SBID (Daily)</span>
+                    </h6>
+                    <div class="d-flex align-items-center gap-2">
+                        <select id="kwLastSbidChartDays" class="form-select form-select-sm" style="width: 90px;">
+                            <option value="7">7 days</option>
+                            <option value="14">14 days</option>
+                            <option value="30" selected>30 days</option>
+                            <option value="60">60 days</option>
+                            <option value="90">90 days</option>
+                        </select>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                </div>
+                <div class="modal-body p-3">
+                    <div id="kwLastSbidChartLoading" class="text-center py-4">
+                        <div class="spinner-border spinner-border-sm text-primary"></div>
+                        <p class="mt-1 text-muted small mb-0">Loading KW Last SBID trend...</p>
+                    </div>
+                    <div id="kwLastSbidChartNoData" class="text-center py-4" style="display: none;">
+                        <i class="fas fa-exclamation-circle text-warning fa-2x mb-2"></i>
+                        <p class="text-muted small mb-0">No daily Last SBID data for this campaign.</p>
+                    </div>
+                    <div id="kwLastSbidChartContainer" style="display: none; height: 280px;">
+                        <canvas id="kwLastSbidChartCanvas"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 @endsection
 
 @section('script-bottom')
@@ -999,10 +1036,10 @@
         const amzDollarMetrics = ['l30_sales', 'ad_spend', 'kw_spend', 'hl_spend', 'pt_spend', 'total_pft', 'total_sales', 'total_spend'];
 
         // Section column lists (defined once for faster section switching)
-        const SECTION_KW_ADS_COLUMNS = ['(Child) sku', 'acos', 'l30_spend', 'l30_clicks', 'ad_cvr', 'rating', 'campaignBudgetAmount', 'sbgt', 'NRA', 'active_toggle', 'missing_ad', 'l30_sales', 'l30_purchases', 'INV', 'L30', 'E Dil%', 'A_L30', 'A DIL %', 'NRL', 'price', 'fba_price', 'campaign_info_icon', 'GPFT%', 'GROI%', 'l7_spend', 'l1_spend', 'avg_cpc', 'l7_cpc', 'l1_cpc', 'last_sbid', 'sbid', 'sbid_m', 'apr_bid', 'TPFT', 'campaignName'];
+        const SECTION_KW_ADS_COLUMNS = ['(Child) sku', 'acos', 'l30_spend', 'l30_clicks', 'ad_cvr', 'rating', 'campaignBudgetAmount', 'sbgt', 'NRA', 'active_toggle', 'missing_ad', 'l30_sales', 'l30_purchases', 'INV', 'L30', 'E Dil%', 'A_L30', 'A DIL %', 'NRL', 'price', 'fba_price', 'campaign_info_icon', 'GPFT%', 'GROI%', 'l7_spend', 'l1_spend', 'l2_spend', 'avg_cpc', 'l7_cpc', 'l1_cpc', 'l2_cpc', 'last_sbid', 'sbid', 'sbid_m', 'apr_bid', 'TPFT', 'campaignName'];
         const SECTION_PRICING_COLUMNS = ['(Child) sku', 'price', 'fba_price', 'campaign_info_icon', 'c_price', 'actual_cost', 'buy_box_price', 'GPFT%', 'PFT%', 'ROI_percentage', 'cost', 'margin', 'INV', 'A_L30'];
         const SECTION_MISSING_COLUMNS = ['image_path', '(Child) sku', 'NR', 'is_missing', 'inv_map', 'variation_dot'];
-        const SECTION_PT_ADS_COLUMNS = ['(Child) sku', 'pt_acos', 'pt_spend_L30', 'pt_clicks_L30', 'pt_ad_cvr', 'rating', 'INV', 'L30', 'E Dil%', 'A_L30', 'A DIL %', 'NRL', 'NRA', 'active_toggle', 'missing_ad', 'price', 'fba_price', 'campaign_info_icon', 'GPFT%', 'GROI%', 'pt_campaignBudgetAmount', 'pt_sbgt', 'pt_sales_L30', 'pt_sold_L30', 'pt_7ub', 'pt_1ub', 'pt_avg_cpc', 'pt_l7_cpc', 'pt_l1_cpc', 'pt_last_sbid', 'pt_sbid', 'pt_sbid_m', 'pt_apr_bid', 'pt_campaignName', 'TPFT'];
+        const SECTION_PT_ADS_COLUMNS = ['(Child) sku', 'pt_acos', 'pt_spend_L30', 'pt_clicks_L30', 'pt_ad_cvr', 'rating', 'INV', 'L30', 'E Dil%', 'A_L30', 'A DIL %', 'NRL', 'NRA', 'active_toggle', 'missing_ad', 'price', 'fba_price', 'campaign_info_icon', 'GPFT%', 'GROI%', 'pt_campaignBudgetAmount', 'pt_sbgt', 'pt_sales_L30', 'pt_sold_L30', 'pt_7ub', 'pt_1ub', 'pt_2ub', 'pt_avg_cpc', 'pt_l7_cpc', 'pt_l1_cpc', 'pt_l2_cpc', 'pt_last_sbid', 'pt_sbid', 'pt_sbid_m', 'pt_apr_bid', 'pt_campaignName', 'TPFT'];
         const SECTION_HL_ADS_COLUMNS = ['(Child) sku', 'hl_acos', 'hl_spend_L30', 'hl_clicks_L30', 'hl_ad_cvr', 'rating', 'INV', 'L30', 'E Dil%', 'A_L30', 'A DIL %', 'NRL', 'NRA', 'active_toggle', 'missing_ad', 'price', 'fba_price', 'campaign_info_icon', 'GPFT%', 'GROI%', 'hl_campaignBudgetAmount', 'hl_sbgt', 'hl_sales_L30', 'hl_sold_L30', 'hl_7ub', 'hl_1ub', 'hl_avg_cpc', 'hl_l7_cpc', 'hl_l1_cpc', 'hl_last_sbid', 'hl_sbid', 'hl_sbid_m', 'hl_apr_bid', 'hl_campaignName', 'TPFT'];
 
         function amzFmtVal(v) {
@@ -3271,8 +3308,7 @@
                         minWidth: 60,
                         mutator: function (value, data) {
                             var acos = parseFloat(data.acos || data.ACOS || 0);
-                            // ACOS-based SBGT rules (updated to match AutoUpdateAmazonBgtKw.php)
-                            if (acos > 35) return 1;
+                            // KW SBGT rules (match AutoUpdateAmazonBgtKw.php)
                             if (acos >= 30) return 3;
                             if (acos >= 25) return 5;
                             if (acos >= 20) return 10;
@@ -3604,6 +3640,41 @@
                         }
                     },
                     {
+                        title: "PT 2 UB%",
+                        field: "pt_2ub",
+                        hozAlign: "right",
+                        visible: false,
+                        minWidth: 72,
+                        formatter: function(cell) {
+                            var row = cell.getRow().getData();
+                            var hasCampaign = row.pt_campaignName || row.pt_spend_L30 > 0;
+                            if (!hasCampaign) return '-';
+                            var l2_spend = parseFloat(row.pt_spend_L2 || 0);
+                            var budget = parseFloat(row.pt_campaignBudgetAmount || 0);
+                            var ub2 = budget > 0 ? (l2_spend / budget) * 100 : 0;
+                            var td = cell.getElement();
+                            td.classList.remove('green-bg', 'pink-bg', 'red-bg');
+                            if (ub2 >= 66 && ub2 <= 99) td.classList.add('green-bg');
+                            else if (ub2 > 99) td.classList.add('pink-bg');
+                            else if (ub2 < 66) td.classList.add('red-bg');
+                            return ub2.toFixed(0) + "%";
+                        }
+                    },
+                    {
+                        title: "PT L2 CPC",
+                        field: "pt_l2_cpc",
+                        hozAlign: "center",
+                        visible: false,
+                        minWidth: 72,
+                        formatter: function(cell) {
+                            var row = cell.getRow().getData();
+                            var hasCampaign = row.pt_campaignName || row.pt_spend_L30 > 0;
+                            if (!hasCampaign) return '-';
+                            var l2_cpc = parseFloat(row.pt_l2_cpc || 0);
+                            return l2_cpc.toFixed(2);
+                        }
+                    },
+                    {
                         title: "PT Last SBID",
                         field: "pt_last_sbid",
                         hozAlign: "center",
@@ -3634,70 +3705,35 @@
                                 return '<span style="color: #999;">-</span>';
                             }
                             
-                            // Calculate SBID same as amazon-utilized-pt page
+                            // PT SBID by 2UB and 1UB only (same rules as KW)
                             var l1_cpc = parseFloat(row.pt_l1_cpc) || 0;
+                            var l2_cpc = parseFloat(row.pt_l2_cpc) || 0;
                             var l7_cpc = parseFloat(row.pt_l7_cpc) || 0;
-                            var avg_cpc = parseFloat(row.pt_avg_cpc) || 0;
                             var budget = parseFloat(row.pt_campaignBudgetAmount) || 0;
-                            var l7_spend = parseFloat(row.pt_spend_L7) || 0;
                             var l1_spend = parseFloat(row.pt_spend_L1) || 0;
-                            var price = parseFloat(row.price) || 0;
-                            
-                            var ub7 = budget > 0 ? (l7_spend / (budget * 7)) * 100 : 0;
+                            var l2_spend = parseFloat(row.pt_spend_L2) || 0;
                             var ub1 = budget > 0 ? (l1_spend / budget) * 100 : 0;
-                            
+                            var ub2 = budget > 0 ? (l2_spend / budget) * 100 : 0;
+                            var ub1Red = ub1 < 66;
+                            var ub1Pink = ub1 > 99;
+                            var ub2Red = ub2 < 66;
+                            var ub2Pink = ub2 > 99;
+
                             var sbid = 0;
-                            
-                            // Determine utilization type
-                            var rowUtilizationType = 'all';
-                            if (ub7 > 99 && ub1 > 99) {
-                                rowUtilizationType = 'over';
-                            } else if (ub7 < 66 && ub1 < 66) {
-                                rowUtilizationType = 'under';
-                            } else if (ub7 >= 66 && ub7 <= 99 && ub1 >= 66 && ub1 <= 99) {
-                                rowUtilizationType = 'correctly';
-                            }
-                            
-                            // Special case: If UB7 and UB1 = 0% (L1 and L7 both 0), use price-based default; price < 50 → 0.60
-                            if (ub7 === 0 && ub1 === 0) {
-                                if (price < 50) {
-                                    sbid = 0.60;
-                                } else if (price >= 50 && price < 100) {
-                                    sbid = 1.00;
-                                } else if (price >= 100 && price < 200) {
-                                    sbid = 1.50;
-                                } else {
-                                    sbid = 2.00;
-                                }
-                            } else if (rowUtilizationType === 'over') {
+                            if (ub2Red && ub1Red) {
                                 if (l1_cpc > 0) {
-                                    sbid = Math.floor(l1_cpc * 0.90 * 100) / 100;
-                                } else if (l7_cpc > 0) {
-                                    sbid = Math.floor(l7_cpc * 0.90 * 100) / 100;
-                                } else if (avg_cpc > 0) {
-                                    sbid = Math.floor(avg_cpc * 0.90 * 100) / 100;
-                                } else {
-                                    sbid = 1.00;
-                                }
-                            } else if (rowUtilizationType === 'under') {
-                                // L1 0.01–0.20 → +0.10; L1 0.201–0.30 → +0.05; L1=0 and L7 0.20–0.30 → +0.05; else 10%
-                                if (l1_cpc >= 0.01 && l1_cpc <= 0.20) {
-                                    sbid = Math.floor((l1_cpc + 0.10) * 100) / 100;
-                                } else if (l1_cpc >= 0.201 && l1_cpc <= 0.30) {
-                                    sbid = Math.floor((l1_cpc + 0.05) * 100) / 100;
-                                } else if (l1_cpc > 0) {
                                     sbid = Math.floor(l1_cpc * 1.10 * 100) / 100;
-                                } else if (l1_cpc === 0 && l7_cpc >= 0.20 && l7_cpc <= 0.30) {
-                                    sbid = Math.floor((l7_cpc + 0.05) * 100) / 100;
+                                } else if (l2_cpc > 0) {
+                                    sbid = Math.floor(l2_cpc * 1.10 * 100) / 100;
                                 } else if (l7_cpc > 0) {
                                     sbid = Math.floor(l7_cpc * 1.10 * 100) / 100;
-                                } else if (avg_cpc > 0) {
-                                    sbid = Math.floor(avg_cpc * 1.10 * 100) / 100;
                                 } else {
-                                    sbid = 1.00;
+                                    sbid = 0.60;
                                 }
+                            } else if (ub2Pink && ub1Pink) {
+                                sbid = Math.floor(l1_cpc * 0.90 * 100) / 100;
                             }
-                            
+
                             return sbid === 0 ? '-' : sbid.toFixed(2);
                         }
                     },
@@ -3707,6 +3743,7 @@
                         hozAlign: "center",
                         visible: false,
                         minWidth: 72,
+                        editor: "input",
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
                             if (parseFloat(row.INV) <= 0) return '-';
@@ -4064,6 +4101,7 @@
                         hozAlign: "center",
                         visible: false,
                         minWidth: 72,
+                        editor: "input",
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
                             if (parseFloat(row.INV) <= 0) return '-';
@@ -4482,6 +4520,41 @@
                         }
                     },
                     {
+                        title: "KW 2 UB%",
+                        field: "l2_spend",
+                        hozAlign: "right",
+                        visible: false,
+                        minWidth: 72,
+                        formatter: function(cell) {
+                            var row = cell.getRow().getData();
+                            var hasCampaign = row.hasCampaign !== undefined ? row.hasCampaign : (row.campaign_id && row.campaignName);
+                            if (!hasCampaign) return '-';
+                            var l2_spend = parseFloat(row.l2_spend) || 0;
+                            var budget = (row.utilization_budget != null && row.utilization_budget !== '') ? parseFloat(row.utilization_budget) : (parseFloat(row.campaignBudgetAmount) || 0);
+                            var ub2 = budget > 0 ? (l2_spend / budget) * 100 : 0;
+                            var td = cell.getElement();
+                            td.classList.remove('green-bg', 'pink-bg', 'red-bg');
+                            if (ub2 >= 66 && ub2 <= 99) td.classList.add('green-bg');
+                            else if (ub2 > 99) td.classList.add('pink-bg');
+                            else if (ub2 < 66) td.classList.add('red-bg');
+                            return ub2.toFixed(0) + "%";
+                        }
+                    },
+                    {
+                        title: "KW L2 Spend",
+                        field: "kw_l2_spend",
+                        hozAlign: "right",
+                        visible: false,
+                        minWidth: 88,
+                        formatter: function(cell) {
+                            var row = cell.getRow().getData();
+                            var hasCampaign = row.hasCampaign !== undefined ? row.hasCampaign : (row.campaign_id && row.campaignName);
+                            if (!hasCampaign) return '-';
+                            var val = parseFloat(row.l2_spend) || 0;
+                            return val > 0 ? '$' + val.toFixed(2) : '$0.00';
+                        }
+                    },
+                    {
                         title: "KW 1 UB%",
                         field: "l1_spend",
                         hozAlign: "right",
@@ -4534,6 +4607,21 @@
                             return l7_cpc.toFixed(2);
                         }
                     },
+
+                    {
+                        title: "KW L2 CPC",
+                        field: "l2_cpc",
+                        hozAlign: "center",
+                        visible: false,
+                        minWidth: 72,
+                        formatter: function(cell) {
+                            var row = cell.getRow().getData();
+                            var hasCampaign = row.hasCampaign !== undefined ? row.hasCampaign : (row.campaign_id && row.campaignName);
+                            if (!hasCampaign) return '-';
+                            var l2_cpc = parseFloat(row.l2_cpc) || 0;
+                            return l2_cpc.toFixed(2);
+                        }
+                    },
                     {
                         title: "KW L1 CPC",
                         field: "l1_cpc",
@@ -4548,20 +4636,24 @@
                             return l1_cpc.toFixed(2);
                         }
                     },
+                   
                     {
                         title: "KW Last SBID",
                         field: "last_sbid",
                         hozAlign: "center",
                         visible: false,
-                        minWidth: 72,
+                        minWidth: 88,
+                        sorter: "number",
+                        sorterParams: { alignEmptyValues: "bottom" },
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
                             if (parseFloat(row.INV) <= 0) return '-';
                             var value = cell.getValue();
-                            if (!value || value === '' || value === '0' || value === 0) {
-                                return '-';
-                            }
-                            return parseFloat(value).toFixed(2);
+                            var campaignId = row.campaign_id;
+                            var hasCampaign = !!(campaignId && (row.campaignName || row.campaign_id));
+                            var displayVal = (!value || value === '' || value === '0' || value === 0) ? '-' : parseFloat(value).toFixed(2);
+                            if (!hasCampaign) return displayVal;
+                            return displayVal + ' <a href="javascript:void(0)" class="kw-last-sbid-chart-trigger ms-1" data-campaign-id="' + (campaignId || '') + '" data-campaign-name="' + (row.campaignName || '').replace(/"/g, '&quot;') + '" data-current-value="' + (displayVal !== '-' ? displayVal : '') + '" title="View daily trend"><i class="fas fa-chart-line text-primary" style="font-size: 11px;"></i></a>';
                         }
                     },
                     {
@@ -4601,6 +4693,48 @@
                         hozAlign: "center",
                         visible: false,
                         minWidth: 72,
+                        sorter: function(a, b, aRow, bRow, column, dir, sorterParams) {
+                            var getSortVal = function(row) {
+                                if (!row || parseFloat(row.INV) <= 0) return -1;
+                                var currentSection = $('#section-filter').val();
+                                var hasCampaign = false;
+                                if (currentSection === 'kw-ads') {
+                                    hasCampaign = !!((row.campaign_id || row.campaignName) && (row.kw_campaign_status || '').toUpperCase() !== '');
+                                } else {
+                                    hasCampaign = row.hasCampaign !== undefined ? row.hasCampaign : (row.campaign_id && row.campaignName);
+                                }
+                                if (!hasCampaign) return -1;
+                                var kwStatus = (currentSection === 'kw-ads' ? (row.kw_campaign_status || '') : (row.kw_campaign_status || row.campaignStatus || '')).toUpperCase();
+                                if (kwStatus !== 'ENABLED') return -1;
+                                var l1Cpc = parseFloat(row.l1_cpc) || 0;
+                                var l2Cpc = parseFloat(row.l2_cpc) || 0;
+                                var l7Cpc = parseFloat(row.l7_cpc) || 0;
+                                var budget = (row.utilization_budget != null && row.utilization_budget !== '') ? parseFloat(row.utilization_budget) : (parseFloat(row.campaignBudgetAmount) || 0);
+                                var ub1 = budget > 0 ? (parseFloat(row.l1_spend) || 0) / budget * 100 : 0;
+                                var ub2 = budget > 0 ? (parseFloat(row.l2_spend) || 0) / budget * 100 : 0;
+                                var ub1Red = ub1 < 66;
+                                var ub1Pink = ub1 > 99;
+                                var ub2Red = ub2 < 66;
+                                var ub2Pink = ub2 > 99;
+                                var sbid = 0;
+                                if (ub2Red && ub1Red) {
+                                    if (l1Cpc > 0) sbid = Math.floor(l1Cpc * 1.10 * 100) / 100;
+                                    else if (l2Cpc > 0) sbid = Math.floor(l2Cpc * 1.10 * 100) / 100;
+                                    else if (l7Cpc > 0) sbid = Math.floor(l7Cpc * 1.10 * 100) / 100;
+                                    else sbid = 0.60;
+                                } else if (ub2Pink && ub1Pink) {
+                                    sbid = Math.floor(l1Cpc * 0.90 * 100) / 100;
+                                }
+                                return sbid <= 0 ? -1 : sbid;
+                            };
+                            var va = getSortVal(aRow.getData());
+                            var vb = getSortVal(bRow.getData());
+                            if (va === -1 && vb === -1) return 0;
+                            if (va === -1) return 1;
+                            if (vb === -1) return -1;
+                            return dir === 'asc' ? (va - vb) : (vb - va);
+                        },
+                        sorterParams: { alignEmptyValues: "bottom" },
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
                             if (parseFloat(row.INV) <= 0) return '-';
@@ -4620,61 +4754,37 @@
                                 return '<span style="color: #999;">-</span>';
                             }
                             
-                            // Prefer sbid from DB when available (job-updated bid)
-                            var sbidFromDb = parseFloat(row.sbid) || 0;
-                            if (sbidFromDb > 0) {
-                                return sbidFromDb.toFixed(2);
-                            }
-                            // Fallback: calculate SBID dynamically like KW page
+                            // KW SBID by 2UB and 1UB color only (formula takes precedence so display matches condition)
                             var l1Cpc = parseFloat(row.l1_cpc) || 0;
+                            var l2Cpc = parseFloat(row.l2_cpc) || 0;
                             var l7Cpc = parseFloat(row.l7_cpc) || 0;
-                            var avgCpc = parseFloat(row.avg_cpc) || 0;
-                            var price = parseFloat(row.price) || 0;
                             var budget = (row.utilization_budget != null && row.utilization_budget !== '') ? parseFloat(row.utilization_budget) : (parseFloat(row.campaignBudgetAmount) || 0);
-                            
-                            // Calculate UB7 and UB1
-                            var ub7 = 0, ub1 = 0;
-                            if (budget > 0) {
-                                ub7 = (parseFloat(row.l7_spend) || 0) / (budget * 7) * 100;
-                                ub1 = (parseFloat(row.l1_spend) || 0) / budget * 100;
-                            }
-                            
-                            // Determine utilization type
-                            var rowType = 'all';
-                            if (ub7 > 99 && ub1 > 99) {
-                                rowType = 'over';
-                            } else if (ub7 < 66 && ub1 < 66) {
-                                rowType = 'under';
-                            } else if (ub7 >= 66 && ub7 <= 99 && ub1 >= 66 && ub1 <= 99) {
-                                rowType = 'correctly';
-                            }
-                            
+                            var ub1 = budget > 0 ? (parseFloat(row.l1_spend) || 0) / budget * 100 : 0;
+                            var ub2 = budget > 0 ? (parseFloat(row.l2_spend) || 0) / budget * 100 : 0;
+                            // Red = < 66, Pink = > 99
+                            var ub1Red = ub1 < 66;
+                            var ub1Pink = ub1 > 99;
+                            var ub2Red = ub2 < 66;
+                            var ub2Pink = ub2 > 99;
+
                             var sbid = 0;
-                            
-                            if (rowType === 'over') {
-                                // Priority: L1 CPC → L7 CPC → AVG CPC → 1.00, then decrease by 10%
-                                if (l1Cpc > 0) {
-                                    sbid = Math.floor(l1Cpc * 0.90 * 100) / 100;
-                                } else if (l7Cpc > 0) {
-                                    sbid = Math.floor(l7Cpc * 0.90 * 100) / 100;
-                                } else if (avgCpc > 0) {
-                                    sbid = Math.floor(avgCpc * 0.90 * 100) / 100;
-                                } else {
-                                    sbid = 1.00;
-                                }
-                            } else if (rowType === 'under') {
-                                // Under-utilized: L1 CPC → L7 CPC → AVG CPC → 1.00, all increase by 10%
+                            // Case 1: KW 2UB = red AND KW 1UB = red → L1*1.1, else L2*1.1, else L7*1.1, else 0.60
+                            if (ub2Red && ub1Red) {
                                 if (l1Cpc > 0) {
                                     sbid = Math.floor(l1Cpc * 1.10 * 100) / 100;
+                                } else if (l2Cpc > 0) {
+                                    sbid = Math.floor(l2Cpc * 1.10 * 100) / 100;
                                 } else if (l7Cpc > 0) {
                                     sbid = Math.floor(l7Cpc * 1.10 * 100) / 100;
-                                } else if (avgCpc > 0) {
-                                    sbid = Math.floor(avgCpc * 1.10 * 100) / 100;
                                 } else {
-                                    sbid = 1.00;
+                                    sbid = 0.60;
                                 }
+                            } else if (ub2Pink && ub1Pink) {
+                                // Case 2: KW 2UB = pink AND KW 1UB = pink → L1*0.90
+                                sbid = Math.floor(l1Cpc * 0.90 * 100) / 100;
                             }
-                            
+                            // Else: conditions do not match → show "-"
+
                             if (sbid === 0) return '-';
                             return sbid.toFixed(2);
                         }
@@ -5066,6 +5176,82 @@
                     });
                     return;
                 }
+                if (field === 'pt_sbid_m') {
+                    var campaignId = data.pt_campaign_id;
+                    var sbidM = parseFloat(value) || 0;
+                    if (!campaignId) {
+                        showToast('error', 'No PT campaign for this row. Cannot save PT SBID M.');
+                        return;
+                    }
+                    if (sbidM <= 0) {
+                        showToast('error', 'PT SBID M must be greater than 0');
+                        return;
+                    }
+                    $.ajax({
+                        url: '/save-amazon-sbid-m',
+                        method: 'POST',
+                        headers: {
+                            'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                        },
+                        data: {
+                            campaign_id: campaignId,
+                            sbid_m: sbidM,
+                            campaign_type: 'PT',
+                            _token: '{{ csrf_token() }}'
+                        },
+                        success: function(response) {
+                            if (response.status === 200) {
+                                showToast('success', 'PT SBID M $' + sbidM.toFixed(2) + ' saved for campaign');
+                            } else {
+                                showToast('error', response.message || 'Failed to save PT SBID M');
+                            }
+                        },
+                        error: function(xhr) {
+                            var msg = xhr.responseJSON?.message || 'Error saving PT SBID M';
+                            showToast('error', msg);
+                            console.error('Save PT SBID M error:', xhr);
+                        }
+                    });
+                    return;
+                }
+                if (field === 'hl_sbid_m') {
+                    var campaignId = data.hl_campaign_id;
+                    var sbidM = parseFloat(value) || 0;
+                    if (!campaignId) {
+                        showToast('error', 'No HL campaign for this row. Cannot save HL SBID M.');
+                        return;
+                    }
+                    if (sbidM <= 0) {
+                        showToast('error', 'HL SBID M must be greater than 0');
+                        return;
+                    }
+                    $.ajax({
+                        url: '/save-amazon-sbid-m',
+                        method: 'POST',
+                        headers: {
+                            'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                        },
+                        data: {
+                            campaign_id: campaignId,
+                            sbid_m: sbidM,
+                            campaign_type: 'HL',
+                            _token: '{{ csrf_token() }}'
+                        },
+                        success: function(response) {
+                            if (response.status === 200) {
+                                showToast('success', 'HL SBID M $' + sbidM.toFixed(2) + ' saved for campaign');
+                            } else {
+                                showToast('error', response.message || 'Failed to save HL SBID M');
+                            }
+                        },
+                        error: function(xhr) {
+                            var msg = xhr.responseJSON?.message || 'Error saving HL SBID M';
+                            showToast('error', msg);
+                            console.error('Save HL SBID M error:', xhr);
+                        }
+                    });
+                    return;
+                }
                 if (field === 'bid_cap') {
                     const sku = data['(Child) sku'];
                     const bidCapValue = parseFloat(value) || 0;
@@ -5210,18 +5396,15 @@
                         if (parentFilterVal === 'skus' && isParent) return;
                     }
                     
-                    // Search filter
+                    // Search filter: SKU + KW / PT / HL campaign name (any of the three)
                     if (searchVal) {
                         var skuLower = sku.toLowerCase();
-                        var campName = '';
-                        if (currentSection === 'hl-ads') {
-                            campName = (row.hl_campaignName || '').toLowerCase();
-                        } else if (currentSection === 'pt-ads') {
-                            campName = (row.pt_campaignName || '').toLowerCase();
-                        } else {
-                            campName = (row.campaignName || '').toLowerCase();
-                        }
-                        if (skuLower.indexOf(searchVal) === -1 && campName.indexOf(searchVal) === -1) return;
+                        var kwCamp = (row.campaignName || '').toLowerCase();
+                        var ptCamp = (row.pt_campaignName || '').toLowerCase();
+                        var hlCamp = (row.hl_campaignName || '').toLowerCase();
+                        var matchSku = skuLower.indexOf(searchVal) !== -1;
+                        var matchCamp = kwCamp.indexOf(searchVal) !== -1 || ptCamp.indexOf(searchVal) !== -1 || hlCamp.indexOf(searchVal) !== -1;
+                        if (!matchSku && !matchCamp) return;
                     }
                     
                     // Inventory filter
@@ -5266,46 +5449,43 @@
                         }
                     }
                     
-                    // Now check utilization eligibility (campaign + ENABLED + budget)
-                    var hasCampaign, l7_spend, l1_spend, budget, campStatus;
+                    // Same eligibility as KW 2 UB% / KW 1 UB% columns: hasCampaign only (no ENABLED requirement)
+                    // Combo: 2UB+1UB for KW/PT, 7UB+1UB for HL
+                    var hasCampaign, l2_spend, l1_spend, l7_spend, budget;
                     
                     if (currentSection === 'hl-ads') {
                         hasCampaign = !!(row.has_own_hl_campaign && (row.hl_campaign_id || row.hl_campaignName));
                         if (!hasCampaign) return;
-                        campStatus = (row.hl_campaign_status || '').toUpperCase();
-                        if (campStatus !== 'ENABLED') return;
                         l7_spend = parseFloat(row.hl_spend_L7) || 0;
                         l1_spend = parseFloat(row.hl_spend_L1) || 0;
                         budget = parseFloat(row.hl_campaignBudgetAmount) || 0;
-                        } else if (currentSection === 'pt-ads') {
-                            hasCampaign = !!(row.has_own_pt_campaign && (row.pt_campaign_id || row.pt_campaignName));
-                            if (!hasCampaign) return;
-                            campStatus = (row.pt_campaign_status || '').toUpperCase();
-                            if (campStatus !== 'ENABLED') return;
-                            l7_spend = parseFloat(row.pt_spend_L7) || 0;
-                            l1_spend = parseFloat(row.pt_spend_L1) || 0;
-                            budget = parseFloat(row.pt_campaignBudgetAmount) || 0;
-                        } else {
-                            if (currentSection === 'kw-ads') {
-                                // KW Ads: any row with KW campaign (campaign_id/name + kw_campaign_status) is eligible
-                                hasCampaign = !!((row.campaign_id || row.campaignName) && (row.kw_campaign_status || '').toUpperCase() !== '');
-                                campStatus = (row.kw_campaign_status || '').toUpperCase();
-                            } else {
-                                hasCampaign = row.campaignName || row.campaign_id || (row.kw_campaign_status && row.kw_campaign_status !== '') || parseFloat(row.l7_spend) > 0 || parseFloat(row.l1_spend) > 0;
-                                campStatus = (row.kw_campaign_status || row.campaignStatus || '').toUpperCase();
-                            }
-                            if (!hasCampaign) return;
-                            if (campStatus !== 'ENABLED') return;
-                            l7_spend = parseFloat(row.l7_spend) || 0;
-                            l1_spend = parseFloat(row.l1_spend) || 0;
-                            budget = (row.utilization_budget != null && row.utilization_budget !== '') ? parseFloat(row.utilization_budget) : (parseFloat(row.campaignBudgetAmount) || 0);
-                        }
+                        l2_spend = 0;
+                    } else if (currentSection === 'pt-ads') {
+                        hasCampaign = !!(row.has_own_pt_campaign && (row.pt_campaign_id || row.pt_campaignName));
+                        if (!hasCampaign) return;
+                        l2_spend = parseFloat(row.pt_spend_L2) || 0;
+                        l1_spend = parseFloat(row.pt_spend_L1) || 0;
+                        budget = parseFloat(row.pt_campaignBudgetAmount) || 0;
+                        l7_spend = 0;
+                    } else {
+                        hasCampaign = !!(row.campaign_id || row.campaignName);
+                        if (!hasCampaign) return;
+                        l2_spend = parseFloat(row.l2_spend) || 0;
+                        l1_spend = parseFloat(row.l1_spend) || 0;
+                        budget = (row.utilization_budget != null && row.utilization_budget !== '') ? parseFloat(row.utilization_budget) : (parseFloat(row.campaignBudgetAmount) || 0);
+                        l7_spend = 0;
+                    }
                     
-                    if (!(budget > 0) || isNaN(budget)) return;
-                    
-                    var ub7 = (l7_spend / (budget * 7)) * 100;
-                    var ub1 = (l1_spend / budget) * 100;
-                    var combo = ubZone(ub7) + ubZone(ub1);
+                    if (budget === undefined || budget === null || isNaN(budget)) budget = 0;
+                    var ub2 = budget > 0 ? (l2_spend / budget) * 100 : 0;
+                    var ub1 = budget > 0 ? (l1_spend / budget) * 100 : 0;
+                    var combo;
+                    if (currentSection === 'hl-ads') {
+                        var ub7 = budget > 0 ? (l7_spend / (budget * 7)) * 100 : 0;
+                        combo = ubZone(ub7) + ubZone(ub1);
+                    } else {
+                        combo = ubZone(ub2) + ubZone(ub1);
+                    }
                     
                     if (comboCounts.hasOwnProperty(combo)) {
                         comboCounts[combo]++;
@@ -5618,14 +5798,16 @@
 
                 // Play / Pause filter is applied at top of applyFilters when isProductNavigationActive (early return)
 
-                // SKU Search filter (inside applyFilters so it stacks with Active/campaign status and other filters)
+                // SKU / Campaign search: match SKU (or Parent for parent rows) or any of KW, PT, HL campaign names
                 var searchVal = ($('#sku-search').val() || '').trim().toLowerCase();
                 if (searchVal) {
                     table.addFilter(function(data) {
-                        if (data.is_parent_summary) return true;
-                        var sku = ((data['(Child) sku'] || data.sku || '') + '').toLowerCase();
-                        var campName = (sectionFilter === 'hl-ads' ? (data.hl_campaignName || '') : sectionFilter === 'pt-ads' ? (data.pt_campaignName || '') : (data.campaignName || '')).toString().toLowerCase();
-                        return sku.indexOf(searchVal) !== -1 || campName.indexOf(searchVal) !== -1;
+                        var sku = (data.is_parent_summary ? (data.Parent || data['(Child) sku'] || data.sku || '') : (data['(Child) sku'] || data.sku || ''));
+                        sku = (sku + '').toLowerCase();
+                        var kwCamp = ((data.campaignName || '') + '').toLowerCase();
+                        var ptCamp = ((data.pt_campaignName || '') + '').toLowerCase();
+                        var hlCamp = ((data.hl_campaignName || '') + '').toLowerCase();
+                        return sku.indexOf(searchVal) !== -1 || kwCamp.indexOf(searchVal) !== -1 || ptCamp.indexOf(searchVal) !== -1 || hlCamp.indexOf(searchVal) !== -1;
                     });
                 }
 
@@ -5842,11 +6024,10 @@
                     });
                 }
 
-                // ACOS Slab filter - section-aware
-                if (acosSlabFilter && acosSlabFilter !== '') {
+                // ACOS Slab filter - section-aware; apply to ALL rows (parent + child) so table actually filters
+                if (acosSlabFilter && acosSlabFilter !== '' && (sectionFilter === 'kw-ads' || sectionFilter === 'pt-ads' || sectionFilter === 'hl-ads')) {
                     table.addFilter(function(data) {
-                        if (data.is_parent_summary) return true;
-                        var currentSection = $('#section-filter').val();
+                        var currentSection = sectionFilter;
                         var acos = 0;
                         var spend = 0;
                         if (currentSection === 'hl-ads') {
@@ -5925,11 +6106,10 @@
                     });
                 }
 
-                // ACOS Range filter - section-aware
-                if (acosRangeMin !== null || acosRangeMax !== null) {
+                // ACOS Range filter - section-aware; apply to ALL rows so table actually filters
+                if ((acosRangeMin !== null || acosRangeMax !== null) && (sectionFilter === 'kw-ads' || sectionFilter === 'pt-ads' || sectionFilter === 'hl-ads')) {
                     table.addFilter(function(data) {
-                        if (data.is_parent_summary) return true;
-                        var currentSection = $('#section-filter').val();
+                        var currentSection = sectionFilter;
                         var acos = 0;
                         if (currentSection === 'hl-ads') {
                             var hlSpend = parseFloat(data.hl_spend_L30 || 0);
@@ -5967,53 +6147,47 @@
                     });
                 }
 
-                // Utilization Type filter (7UB x 1UB combinations) - section-aware
-                // Applied LAST so counts reflect the correct numbers
-                if (utilizationTypeFilter && utilizationTypeFilter !== 'all') {
+                // Utilization Type filter: tied to KW 2 UB% and KW 1 UB% columns (same formula and zones)
+                // Only when an ads section is selected; apply to ALL rows (parent + child) so table actually filters
+                if (utilizationTypeFilter && utilizationTypeFilter !== 'all' && (sectionFilter === 'kw-ads' || sectionFilter === 'pt-ads' || sectionFilter === 'hl-ads')) {
                     table.addFilter(function(data) {
-                        if (data.is_parent_summary) return true;
-                        var currentSection = $('#section-filter').val();
-                        var hasCampaign, l7_spend, l1_spend, budget, campaignStatus;
-                        
+                        var currentSection = sectionFilter;
+                        var hasCampaign, l2_spend, l1_spend, l7_spend, budget;
+                        // Same logic as KW 2 UB% / KW 1 UB% column formatters: budget and hasCampaign
                         if (currentSection === 'hl-ads') {
                             hasCampaign = !!(data.has_own_hl_campaign && (data.hl_campaign_id || data.hl_campaignName));
                             if (!hasCampaign) return false;
-                            campaignStatus = (data.hl_campaign_status || '').toUpperCase();
-                            if (campaignStatus !== 'ENABLED') return false;
                             l7_spend = parseFloat(data.hl_spend_L7) || 0;
                             l1_spend = parseFloat(data.hl_spend_L1) || 0;
                             budget = parseFloat(data.hl_campaignBudgetAmount) || 0;
+                            l2_spend = 0;
                         } else if (currentSection === 'pt-ads') {
                             hasCampaign = !!(data.has_own_pt_campaign && (data.pt_campaign_id || data.pt_campaignName));
                             if (!hasCampaign) return false;
-                            campaignStatus = (data.pt_campaign_status || '').toUpperCase();
-                            if (campaignStatus !== 'ENABLED') return false;
-                            l7_spend = parseFloat(data.pt_spend_L7) || 0;
+                            l2_spend = parseFloat(data.pt_spend_L2) || 0;
                             l1_spend = parseFloat(data.pt_spend_L1) || 0;
                             budget = parseFloat(data.pt_campaignBudgetAmount) || 0;
+                            l7_spend = 0;
                         } else {
-                            // KW Ads: any row with KW campaign (campaign_id/name + kw_campaign_status) is eligible
-                            if (currentSection === 'kw-ads') {
-                                hasCampaign = !!((data.campaign_id || data.campaignName) && (data.kw_campaign_status || '').toUpperCase() !== '');
-                                campaignStatus = (data.kw_campaign_status || '').toUpperCase();
-                            } else {
-                                hasCampaign = data.campaignName || data.campaign_id || (data.kw_campaign_status && data.kw_campaign_status !== '') || parseFloat(data.l7_spend) > 0 || parseFloat(data.l1_spend) > 0;
-                                campaignStatus = (data.kw_campaign_status || data.campaignStatus || '').toUpperCase();
-                            }
+                            // KW: same as column formatter - hasCampaign = campaign_id || campaignName
+                            hasCampaign = !!(data.campaign_id || data.campaignName);
                             if (!hasCampaign) return false;
-                            if (campaignStatus !== 'ENABLED') return false;
-                            l7_spend = parseFloat(data.l7_spend) || 0;
+                            l2_spend = parseFloat(data.l2_spend) || 0;
                             l1_spend = parseFloat(data.l1_spend) || 0;
                             budget = (data.utilization_budget != null && data.utilization_budget !== '') ? parseFloat(data.utilization_budget) : (parseFloat(data.campaignBudgetAmount) || 0);
+                            l7_spend = 0;
                         }
-                        
-                        if (!(budget > 0) || isNaN(budget)) return false;
-                        
-                        var ub7 = (l7_spend / (budget * 7)) * 100;
-                        var ub1 = (l1_spend / budget) * 100;
-                        
-                        var combo = ubZone(ub7) + ubZone(ub1);
-                        
+                        // Same formula as columns: when budget 0 show 0% (red)
+                        if (budget === undefined || budget === null || isNaN(budget)) budget = 0;
+                        var ub2 = budget > 0 ? (l2_spend / budget) * 100 : 0;
+                        var ub1 = budget > 0 ? (l1_spend / budget) * 100 : 0;
+                        var combo;
+                        if (currentSection === 'hl-ads') {
+                            var ub7 = budget > 0 ? (l7_spend / (budget * 7)) * 100 : 0;
+                            combo = ubZone(ub7) + ubZone(ub1);
+                        } else {
+                            combo = ubZone(ub2) + ubZone(ub1);
+                        }
                         return combo === utilizationTypeFilter;
                     });
                 }
@@ -6316,9 +6490,11 @@
                     table.moveColumn("pt_avg_cpc", "pt_1ub", true);          // 27. PT AVG CPC
                     table.moveColumn("pt_l7_cpc", "pt_avg_cpc", true);       // 28. PT L7 CPC
                     table.moveColumn("pt_l1_cpc", "pt_l7_cpc", true);        // 29. PT L1 CPC
-                    table.moveColumn("pt_last_sbid", "pt_l1_cpc", true);     // 30. PT Last SBID
-                    table.moveColumn("pt_sbid", "pt_last_sbid", true);       // 31. PT SBID
-                    table.moveColumn("pt_sbid_m", "pt_sbid", true);          // 32. PT SBID M
+                    table.moveColumn("pt_2ub", "pt_l1_cpc", true);          // 30. PT 2 UB%
+                    table.moveColumn("pt_l2_cpc", "pt_2ub", true);           // 31. PT L2 CPC
+                    table.moveColumn("pt_last_sbid", "pt_l2_cpc", true);     // 32. PT Last SBID
+                    table.moveColumn("pt_sbid", "pt_last_sbid", true);       // 33. PT SBID
+                    table.moveColumn("pt_sbid_m", "pt_sbid", true);          // 34. PT SBID M
                     table.moveColumn("pt_apr_bid", "pt_sbid_m", true);       // 33. PT APR BID
                     
                     // 34-35: Campaign and TPFT at the end
@@ -6672,6 +6848,148 @@
                     trendChartAjax.abort();
                     trendChartAjax = null;
                 }
+            });
+
+            // KW Last SBID daily trend chart
+            var kwLastSbidChartInstance = null;
+            var kwLastSbidChartAjax = null;
+            var kwLastSbidCurrentCampaignId = null;
+
+            $(document).on('click', '.kw-last-sbid-chart-trigger', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                var campaignId = $(this).data('campaign-id');
+                var campaignName = $(this).data('campaign-name') || '';
+                var currentValue = $(this).data('current-value');
+                if (!campaignId) return;
+                kwLastSbidCurrentCampaignId = campaignId;
+                kwLastSbidCurrentValue = (currentValue !== undefined && currentValue !== '' && isNaN(parseFloat(currentValue)) === false) ? parseFloat(currentValue) : null;
+                $('#kwLastSbidChartModalTitle').text('KW Last SBID (Daily)' + (campaignName ? ' — ' + campaignName : ''));
+                $('#kwLastSbidChartDays').val(30);
+                var modalEl = document.getElementById('kwLastSbidChartModal');
+                var modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+                modal.show();
+                loadKwLastSbidChart(campaignId, 30);
+            });
+
+            var kwLastSbidCurrentValue = null;
+
+            $('#kwLastSbidChartDays').on('change', function() {
+                var days = parseInt($(this).val(), 10);
+                if (kwLastSbidCurrentCampaignId) loadKwLastSbidChart(kwLastSbidCurrentCampaignId, days);
+            });
+
+            function loadKwLastSbidChart(campaignId, days) {
+                if (kwLastSbidChartAjax) kwLastSbidChartAjax.abort();
+                $('#kwLastSbidChartLoading').show();
+                $('#kwLastSbidChartNoData').hide();
+                $('#kwLastSbidChartContainer').hide();
+                var ajaxData = { campaign_id: campaignId, days: days };
+                if (kwLastSbidCurrentValue !== null && !isNaN(kwLastSbidCurrentValue)) ajaxData.current_value = kwLastSbidCurrentValue;
+                kwLastSbidChartAjax = $.ajax({
+                    url: '/amazon-kw-last-sbid-chart-data',
+                    method: 'GET',
+                    data: ajaxData,
+                    success: function(resp) {
+                        kwLastSbidChartAjax = null;
+                        $('#kwLastSbidChartLoading').hide();
+                        if (resp.success && resp.data && resp.data.length > 0) {
+                            var withValues = resp.data.filter(function(d) { return d.value != null && d.value !== ''; });
+                            if (withValues.length > 0) {
+                                $('#kwLastSbidChartContainer').show();
+                                renderKwLastSbidChart(withValues);
+                            } else {
+                                $('#kwLastSbidChartNoData').show();
+                            }
+                        } else {
+                            $('#kwLastSbidChartNoData').show();
+                        }
+                    },
+                    error: function(xhr, status) {
+                        kwLastSbidChartAjax = null;
+                        if (status === 'abort') return;
+                        $('#kwLastSbidChartLoading').hide();
+                        $('#kwLastSbidChartNoData').show();
+                    }
+                });
+            }
+
+            function renderKwLastSbidChart(data) {
+                var ctx = document.getElementById('kwLastSbidChartCanvas');
+                if (!ctx) return;
+                if (kwLastSbidChartInstance) {
+                    kwLastSbidChartInstance.destroy();
+                    kwLastSbidChartInstance = null;
+                }
+                var labels = data.map(function(d) { return d.date; });
+                var values = data.map(function(d) { return parseFloat(d.value) || 0; });
+                var dataMin = values.length ? Math.min.apply(null, values) : 0;
+                var dataMax = values.length ? Math.max.apply(null, values) : 1;
+                var range = dataMax - dataMin || 1;
+                var yMin = Math.max(0, dataMin - range * 0.1);
+                var yMax = dataMax + range * 0.1;
+                var dotColors = values.map(function(v, i) {
+                    if (i === 0) return '#6c757d';
+                    return v > values[i - 1] ? '#198754' : v < values[i - 1] ? '#dc3545' : '#6c757d';
+                });
+                kwLastSbidChartInstance = new Chart(ctx.getContext('2d'), {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: 'Last SBID',
+                            data: values,
+                            borderColor: '#0d6efd',
+                            backgroundColor: 'rgba(13, 110, 253, 0.1)',
+                            borderWidth: 2,
+                            fill: true,
+                            tension: 0.3,
+                            pointRadius: 4,
+                            pointBackgroundColor: dotColors,
+                            pointBorderColor: dotColors,
+                            pointBorderWidth: 1
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        layout: { padding: { top: 10, left: 8, right: 8, bottom: 8 } },
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: {
+                                callbacks: {
+                                    label: function(context) {
+                                        return '$' + (context.raw != null ? parseFloat(context.raw).toFixed(2) : '-');
+                                    }
+                                }
+                            }
+                        },
+                        scales: {
+                            y: {
+                                min: yMin,
+                                max: yMax,
+                                ticks: { callback: function(v) { return '$' + v.toFixed(2); }, font: { size: 10 } },
+                                grid: { color: 'rgba(0,0,0,0.08)' }
+                            },
+                            x: {
+                                ticks: { maxRotation: 45, minRotation: 45, autoSkip: true, maxTicksLimit: 20, font: { size: 9 } },
+                                grid: { color: 'rgba(0,0,0,0.06)' }
+                            }
+                        }
+                    }
+                });
+            }
+
+            document.getElementById('kwLastSbidChartModal').addEventListener('hidden.bs.modal', function() {
+                if (kwLastSbidChartInstance) {
+                    kwLastSbidChartInstance.destroy();
+                    kwLastSbidChartInstance = null;
+                }
+                if (kwLastSbidChartAjax) {
+                    kwLastSbidChartAjax.abort();
+                    kwLastSbidChartAjax = null;
+                }
+                kwLastSbidCurrentCampaignId = null;
             });
 
             // Function to update range filter badge
@@ -7691,11 +8009,11 @@ $('#nmap-count').text(missingCount.toLocaleString());
             // Handle NRA/NRL dropdown changes - save to database
             document.addEventListener("change", function(e) {
                 if (e.target.classList.contains("editable-select")) {
-                    let sku = e.target.getAttribute("data-sku");
-                    let field = e.target.getAttribute("data-field");
-                    let value = e.target.value;
+                    let sku = (e.target.getAttribute("data-sku") || '').toString().trim();
+                    let field = (e.target.getAttribute("data-field") || '').toString().trim();
+                    let value = (e.target.value || '').toString().trim();
 
-                    if (!sku || !field) return;
+                    if (!sku || !field || (field !== 'NRL' && field !== 'NRA')) return;
 
                     // Update color immediately for NRA field
                     if (field === 'NRA') {
@@ -7738,12 +8056,18 @@ $('#nmap-count').text(missingCount.toLocaleString());
                     })
                     .then(function(data) {
                         if (data.success && typeof table !== 'undefined' && table) {
-                            var rows = table.searchRows('(Child) sku', '=', sku);
+                            var childSku = (sku || '').toString().trim();
+                            var rows = table.getRows().filter(function(r) {
+                                var d = r.getData();
+                                var rowSku = (d['(Child) sku'] || d.sku || '').toString().trim();
+                                return rowSku === childSku;
+                            });
                             if (rows.length > 0) {
+                                var row = rows[0];
                                 if (field === 'NRL') {
-                                    rows[0].update({ NRL: value, NR: value === 'NRL' ? 'NR' : 'REQ' });
+                                    row.update({ NRL: value, NR: value === 'NRL' ? 'NR' : 'REQ' });
                                 } else {
-                                    rows[0].update({[field]: value});
+                                    row.update({ NRA: value });
                                 }
                             }
                         }
@@ -7752,7 +8076,7 @@ $('#nmap-count').text(missingCount.toLocaleString());
                         }
                     })
                     .catch(function(err) {
-                        console.error('Error saving NRA:', err);
+                        console.error('Error saving NRL/NRA:', err);
                         alert("Failed to save: " + (err.message || "Network error"));
                     });
                 }

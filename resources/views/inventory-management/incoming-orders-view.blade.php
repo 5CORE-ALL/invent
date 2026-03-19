@@ -117,6 +117,9 @@
                             <button type="button" class="btn btn-primary" id="openAddWarehouseModal" data-bs-toggle="modal" data-bs-target="#addWarehouseModal">
                                 <i class="fas fa-plus me-1"></i> CREATE INCOMING ORDERS
                             </button>
+                            <button type="button" class="btn btn-outline-secondary ms-2" id="manageReasonsBtn" title="Add or manage reasons">
+                                <i class="fas fa-plus me-1"></i> Manage reasons
+                            </button>
                             <div class="dataTables_length ms-3"></div>
                         </div>
 
@@ -194,9 +197,9 @@
                                             <label for="reason" class="form-label fw-bold">Reason</label>
                                             <select class="form-select" id="reason" name="reason" required>
                                                 <option selected disabled>Select Reason</option>
-                                                <option value="Returns">Returns</option>
-                                                <option value="Purchase">Purchase</option>
-                                                <option value="Recovered">Recovered</option>
+                                                @foreach($reasons ?? [] as $r)
+                                                    <option value="{{ $r }}">{{ $r }}</option>
+                                                @endforeach
                                             </select>
                                         </div>
 
@@ -219,6 +222,34 @@
                         </div>
                     </div>
 
+                    <!-- Manage Reasons Modal -->
+                    <div id="manageReasonsModal" class="modal fade" tabindex="-1">
+                        <div class="modal-dialog">
+                            <div class="modal-content">
+                                <div class="modal-header">
+                                    <h5 class="modal-title">Manage Incoming Reasons</h5>
+                                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                </div>
+                                <div class="modal-body">
+                                    <div class="mb-3">
+                                        <label class="form-label">Add new reason</label>
+                                        <div class="d-flex gap-2">
+                                            <input type="text" id="newReasonName" class="form-control" placeholder="e.g. Transfer" maxlength="255">
+                                            <button type="button" id="addReasonBtn" class="btn btn-primary">Add</button>
+                                        </div>
+                                        <div id="newReasonError" class="text-danger small mt-1" style="display:none;"></div>
+                                    </div>
+                                    <hr>
+                                    <label class="form-label">Current reasons</label>
+                                    <ul id="reasonsList" class="list-group list-group-flush mb-0">
+                                        @foreach($reasons ?? [] as $r)
+                                            <li class="list-group-item d-flex justify-content-between align-items-center">{{ $r }}</li>
+                                        @endforeach
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
 
                     <!-- Progress Modal -->
                     <div id="progressModal" class="modal fade" tabindex="-1">
@@ -480,6 +511,59 @@
                     $('#addWarehouseModal').modal('show');
                 });
 
+                function refreshReasonsDropdowns(reasons) {
+                    if (!reasons) return;
+                    var $reason = $('#reason');
+                    var firstOpt = $reason.find('option:first');
+                    $reason.find('option:not(:first)').remove();
+                    reasons.forEach(function(r) { $reason.append($('<option></option>').val(r).text(r)); });
+                    var $list = $('#reasonsList');
+                    $list.empty();
+                    reasons.forEach(function(r) {
+                        $list.append($('<li class="list-group-item d-flex justify-content-between align-items-center"></li>').text(r));
+                    });
+                }
+
+                $(document).on('click', '#manageReasonsBtn', function() {
+                    $.get('/incoming-reasons', function(res) {
+                        if (res.reasons && res.reasons.length) {
+                            $('#reasonsList').empty();
+                            res.reasons.forEach(function(r) {
+                                $('#reasonsList').append($('<li class="list-group-item d-flex justify-content-between align-items-center"></li>').text(r));
+                            });
+                        }
+                    });
+                    $('#newReasonName').val('');
+                    $('#newReasonError').hide().text('');
+                    new bootstrap.Modal(document.getElementById('manageReasonsModal')).show();
+                });
+
+                $(document).on('click', '#addReasonBtn', function() {
+                    var name = ($('#newReasonName').val() || '').trim();
+                    var $err = $('#newReasonError');
+                    $err.hide().text('');
+                    if (!name) {
+                        $err.text('Please enter a reason name.').show();
+                        return;
+                    }
+                    $.ajax({
+                        url: '/incoming-reasons',
+                        method: 'POST',
+                        headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+                        contentType: 'application/json',
+                        data: JSON.stringify({ name: name }),
+                        success: function(res) {
+                            if (res.success && res.reasons) {
+                                refreshReasonsDropdowns(res.reasons);
+                                $('#newReasonName').val('');
+                            }
+                        },
+                        error: function(xhr) {
+                            var msg = (xhr.responseJSON && xhr.responseJSON.message) ? xhr.responseJSON.message : 'Could not add reason.';
+                            $err.text(msg).show();
+                        }
+                    });
+                });
             });
 
 

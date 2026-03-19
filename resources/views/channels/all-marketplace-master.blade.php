@@ -1333,7 +1333,7 @@
                             const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channelRaw}" data-metric="ads_pct" style="cursor:pointer;color:${dotColor};font-size:8px;" title="View Chart"></i>`;
 
                             let adsPercent = 0;
-                            if (channel === 'walmart' || channel === 'temu' || channel ===
+                            if (channel === 'walmart' || channel === 'temu' || channel === 'temu2' || channel === 'topdawg' || channel ===
                                 'shopifyb2c') {
                                 adsPercent = parseNumber(rowData['TACOS %'] || 0);
                             } else {
@@ -3421,7 +3421,7 @@
             }
 
             // Channels that have daily data
-            const channelsWithDailyData = ['amazon', 'amazonfba', 'ebay', 'ebaytwo', 'ebaythree', 'shopifyb2c', 'temu', 'walmart'];
+            const channelsWithDailyData = ['amazon', 'amazonfba', 'ebay', 'ebaytwo', 'ebaythree', 'shopifyb2c', 'temu', 'temu2', 'topdawg', 'walmart'];
             const adTypesForChannel = {
                 'amazon': ['kw', 'pt', 'hl'],
                 'amazonfba': ['kw', 'pt'],
@@ -3430,6 +3430,8 @@
                 'ebaythree': ['kw', 'pmt'],
                 'shopifyb2c': ['shopping', 'serp'],
                 'temu': ['kw'],
+                'temu2': ['kw'],
+                'topdawg': ['kw'],
                 'walmart': ['kw']
             };
 
