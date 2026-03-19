@@ -1983,6 +1983,50 @@
                             minWidth: 65
                         },
                         {
+                            title: "Rating<br>amz",
+                            field: "AMZ_Rating",
+                            hozAlign: "center",
+                            visible: true,
+                            formatter: function(cell) {
+                                const row = cell.getRow().getData();
+                                if (row.is_parent) return '';
+                                
+                                const rating = parseFloat(row['AMZ_Rating'] || 0);
+                                const reviews = parseInt(row['AMZ_Reviews'] || 0);
+                                
+                                if (!rating || rating === 0) {
+                                    return '<span style="color: #6c757d;">-</span>';
+                                }
+                                
+                                // Use same colors as rating filter
+                                let ratingColor = '';
+                                const ratingVal = parseFloat(rating);
+                                if (ratingVal < 3) ratingColor = '#a00211'; // red
+                                else if (ratingVal >= 3 && ratingVal <= 3.5) ratingColor = '#ffc107'; // yellow
+                                else if (ratingVal >= 3.51 && ratingVal <= 3.99) ratingColor = '#3591dc'; // blue
+                                else if (ratingVal >= 4 && ratingVal <= 4.5) ratingColor = '#28a745'; // green
+                                else ratingColor = '#e83e8c'; // pink (>4.5)
+                                
+                                const reviewColor = reviews < 4 ? '#a00211' : '#6c757d';
+                                const fontWeight = '600';
+                                
+                                return `<div style="display: flex; flex-direction: column; align-items: center; gap: 2px;">
+                                    <span style="color: ${ratingColor}; font-weight: ${fontWeight};">
+                                        <i class="fa fa-star"></i> ${rating.toFixed(1)}
+                                    </span>
+                                    <span style="font-size: 11px; color: ${reviewColor}; font-weight: ${fontWeight};">
+                                        ${reviews.toLocaleString()} reviews
+                                    </span>
+                                </div>`;
+                            },
+                            sorter: function(a, b, aRow, bRow) {
+                                const ratingA = parseFloat(aRow.getData()['AMZ_Rating'] || 0);
+                                const ratingB = parseFloat(bRow.getData()['AMZ_Rating'] || 0);
+                                return ratingA - ratingB;
+                            },
+                            minWidth: 80
+                        },
+                        {
                             title: "LMP ",
                             field: "lmp_1",
                             hozAlign: "center",

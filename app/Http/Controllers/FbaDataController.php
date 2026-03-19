@@ -18,6 +18,7 @@ use App\Models\FbaShipCalculation;
 use App\Models\FbaMetricsHistory;
 use App\Models\FbaSkuDailyData;
 use App\Models\AmazonSkuCompetitor;
+use App\Models\AmazonProductReview;
 use App\Models\MarketplacePercentage;
 use App\Services\ColorService;
 use App\Services\FbaManualDataService;
@@ -110,6 +111,11 @@ class FbaDataController extends Controller
       });
 
       $amazonDatasheet = AmazonDatasheet::all()->keyBy(function ($item) {
+         return strtoupper(trim($item->sku));
+      });
+
+      // Fetch Amazon Product Reviews (rating and review count) by SKU
+      $amazonReviews = AmazonProductReview::all()->keyBy(function ($item) {
          return strtoupper(trim($item->sku));
       });
 
@@ -227,7 +233,7 @@ class FbaDataController extends Controller
       $matchedSkus = $fbaData->keys()->toArray();
       $unmatchedSkus = array_diff($skus, $matchedSkus);
 
-      return compact('productData', 'shopifyData', 'fbaData', 'fbaPriceData', 'fbaReportsData', 'matchedSkus', 'unmatchedSkus', 'fbaMonthlySales', 'fbaManualData', 'fbaDispatchDates', 'fbaShipCalculations', 'amazonDatasheet', 'fbaShipments', 'amazonSpCampaignReportsL60', 'amazonSpCampaignReportsL30', 'amazonSpCampaignReportsL15', 'amazonSpCampaignReportsL7', 'amazonSpCampaignReportsL1', 'amazonLmpLookup');
+      return compact('productData', 'shopifyData', 'fbaData', 'fbaPriceData', 'fbaReportsData', 'matchedSkus', 'unmatchedSkus', 'fbaMonthlySales', 'fbaManualData', 'fbaDispatchDates', 'fbaShipCalculations', 'amazonDatasheet', 'amazonReviews', 'fbaShipments', 'amazonSpCampaignReportsL60', 'amazonSpCampaignReportsL30', 'amazonSpCampaignReportsL15', 'amazonSpCampaignReportsL7', 'amazonSpCampaignReportsL1', 'amazonLmpLookup');
    }
 
    public function fbaPageView()
@@ -587,6 +593,7 @@ class FbaDataController extends Controller
       $fbaDispatchDates = $data['fbaDispatchDates'];
       $fbaShipCalculations = $data['fbaShipCalculations'];
       $amazonDatasheet = $data['amazonDatasheet'];
+      $amazonReviews = $data['amazonReviews'];
       $fbaShipments = $data['fbaShipments'];
       $amazonLmpLookup = $data['amazonLmpLookup'];
       $productData = $data['productData']->keyBy(function ($p) {
@@ -694,7 +701,7 @@ class FbaDataController extends Controller
       $amazonPercentage = $amazonMarketplace ? ($amazonMarketplace->percentage / 100) : 0.80;
 
       // Prepare table data with repeated parent name for all child SKUs
-      $tableData = $fbaData->map(function ($fba, $sku) use ($fbaPriceData, $fbaReportsData, $shopifyData, $productData, $fbaMonthlySales, $fbaManualData, $fbaDispatchDates, $fbaShipCalculations, $amazonDatasheet, $fbaShipments, $adsKWDataBySku, $adsPTDataBySku, $overallAvgPrice, $fbaListingStatuses, $amazonLmpLookup, $amazonAdSpendBySku, $amazonPercentage) {
+      $tableData = $fbaData->map(function ($fba, $sku) use ($fbaPriceData, $fbaReportsData, $shopifyData, $productData, $fbaMonthlySales, $fbaManualData, $fbaDispatchDates, $fbaShipCalculations, $amazonDatasheet, $amazonReviews, $fbaShipments, $adsKWDataBySku, $adsPTDataBySku, $overallAvgPrice, $fbaListingStatuses, $amazonLmpLookup, $amazonAdSpendBySku, $amazonPercentage) {
          $fbaPriceInfo = $fbaPriceData->get($sku);
          $fbaReportsInfo = $fbaReportsData->get($sku);
          $shopifyInfo = $shopifyData->get($sku);
@@ -849,6 +856,16 @@ class FbaDataController extends Controller
          $amzSess60 = $amazonData ? ($amazonData->sessions_l60 ?? 0) : 0;
          $amzPrice = $amazonData ? round(($amazonData->price ?? 0), 2) : null;
          
+         // Get Amazon rating and reviews from AmazonProductReview table
+         $amazonReview = $amazonReviews->get($sku);
+         // If not found, try with normalized SKU (remove FBA suffix if present)
+         if (!$amazonReview) {
+            $baseSkuForAmazon = strtoupper(preg_replace('/\s*FBA\s*/i', '', trim($sku)));
+            $amazonReview = $amazonReviews->get($baseSkuForAmazon);
+         }
+         $amzRating = $amazonReview ? ($amazonReview->product_rating ?? null) : null;
+         $amzReviews = $amazonReview ? ($amazonReview->review_count ?? 0) : 0;
+         
          // Calculate Amazon GPFT, PFT, AD, NPFT (using LP and Ship from ProductMaster only for Amazon)
          $amzLP = 0;
          $amzShip = 0;
@@ -903,6 +920,8 @@ class FbaDataController extends Controller
             'AMZ_Sess30' => $amzSess30,
             'AMZ_Sess60' => $amzSess60,
             'AMZ_Price' => $amzPrice,
+            'AMZ_Rating' => $amzRating,
+            'AMZ_Reviews' => $amzReviews,
             'AMZ_GPFT' => $amzGPFT,
             'AMZ_AD' => $amzAD,
             'AMZ_NPFT' => $amzNPFT,
@@ -1239,6 +1258,8 @@ class FbaDataController extends Controller
             'AMZ_Sess30' => null,
             'AMZ_Sess60' => null,
             'AMZ_Price' => null,
+            'AMZ_Rating' => null,
+            'AMZ_Reviews' => null,
             'AMZ_GPFT' => null,
             'AMZ_AD' => null,
             'AMZ_NPFT' => null,
