@@ -946,7 +946,7 @@ class FbaDataController extends Controller
                 );
                 return $msl == 0 ? 1 : $msl;
             })(),
-            'Sugg_Send' => (function() use ($monthlySales, $fba, $manual) {
+            'Sugg_Send' => (function() use ($monthlySales, $fba) {
                 $msl = max(
                     ($monthlySales ? floatval($monthlySales->jan ?? 0) : 0),
                     ($monthlySales ? floatval($monthlySales->feb ?? 0) : 0),
@@ -963,7 +963,7 @@ class FbaDataController extends Controller
                 );
                 // If MSL is 0, use 1 as default
                 if ($msl == 0) $msl = 1;
-                return $msl - floatval($fba->quantity_available ?? 0) - floatval($manual ? ($manual->data['total_quantity_sent'] ?? 0) : 0);
+                return $msl - floatval($fba->getAttribute('quantity_available') ?? 0);
             })(),
             'SEND' => $manual ? ($manual->data['send'] ?? '') : '',
             'Correct_Cost' => $manual ? ($manual->data['correct_cost'] ?? false) : false,
