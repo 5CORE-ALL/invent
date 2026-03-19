@@ -18,6 +18,7 @@ use App\Models\FbaShipCalculation;
 use App\Models\FbaMetricsHistory;
 use App\Models\FbaSkuDailyData;
 use App\Models\AmazonSkuCompetitor;
+use App\Models\MarketplacePercentage;
 use App\Services\ColorService;
 use App\Services\FbaManualDataService;
 use App\Services\LmpaDataService;
@@ -662,7 +663,38 @@ class FbaDataController extends Controller
       }
       $overallAvgPrice = $totalL30 > 0 ? $totalPrice * $totalL30 / $totalL30 : 0;
 
+      // Pre-fetch Amazon ad spend data (L30) for all SKUs to avoid N+1 queries
+      $allSkus = $fbaData->keys()->toArray();
+      $amazonAdSpendBySku = [];
+      if (!empty($allSkus)) {
+         // Initialize all SKUs with 0
+         foreach ($allSkus as $sku) {
+            $amazonAdSpendBySku[strtoupper(trim($sku))] = 0;
+         }
+         
+         // Fetch all L30 campaigns
+         $amazonAdSpendData = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
+            ->where('report_date_range', 'L30')
+            ->get();
+         
+         // Match campaigns to SKUs and sum costs
+         foreach ($amazonAdSpendData as $campaign) {
+            $campaignName = $campaign->campaignName ?? '';
+            foreach ($allSkus as $sku) {
+               if (stripos($campaignName, $sku) !== false) {
+                  $normalizedSku = strtoupper(trim($sku));
+                  $amazonAdSpendBySku[$normalizedSku] += floatval($campaign->cost ?? 0);
+               }
+            }
+         }
+      }
+      
+      // Get Amazon marketplace percentage (once, outside the loop)
+      $amazonMarketplace = MarketplacePercentage::where('marketplace', 'Amazon')->first();
+      $amazonPercentage = $amazonMarketplace ? ($amazonMarketplace->percentage / 100) : 0.80;
+
       // Prepare table data with repeated parent name for all child SKUs
+      $tableData = $fbaData->map(function ($fba, $sku) use ($fbaPriceData, $fbaReportsData, $shopifyData, $productData, $fbaMonthlySales, $fbaManualData, $fbaDispatchDates, $fbaShipCalculations, $amazonDatasheet, $fbaShipments, $adsKWDataBySku, $adsPTDataBySku, $overallAvgPrice, $fbaListingStatuses, $amazonLmpLookup, $amazonAdSpendBySku, $amazonPercentage) {
       $tableData = $fbaData->map(function ($fba, $sku) use ($fbaPriceData, $fbaReportsData, $shopifyData, $productData, $fbaMonthlySales, $fbaManualData, $fbaDispatchDates, $fbaShipCalculations, $amazonDatasheet, $fbaShipments, $adsKWDataBySku, $adsPTDataBySku, $overallAvgPrice, $fbaListingStatuses, $amazonLmpLookup) {
          $fbaPriceInfo = $fbaPriceData->get($sku);
          $fbaReportsInfo = $fbaReportsData->get($sku);
@@ -807,6 +839,35 @@ class FbaDataController extends Controller
          // Calculate Amazon L30 data from Amazon Datasheet
          $amazonData = $amazonDatasheet->get($sku);
          $amzL30 = $amazonData ? ($amazonData->units_ordered_l30 ?? 0) : 0;
+         $amzPrice = $amazonData ? round(($amazonData->price ?? 0), 2) : null;
+         
+         // Calculate Amazon GPFT, PFT, AD, NPFT (using LP and Ship from ProductMaster only for Amazon)
+         $amzLP = 0;
+         $amzShip = 0;
+         if ($product) {
+            $values = $product->Values ?: [];
+            if (is_string($values)) {
+               $values = json_decode($values, true) ?? [];
+            }
+            foreach ($values as $k => $v) {
+               if (strtolower($k) === "lp") $amzLP = floatval($v);
+               if (strtolower($k) === "ship") $amzShip = floatval($v);
+            }
+         }
+         
+         // Calculate Amazon GPFT% = ((price × marketplace_percentage - ship - lp) / price) × 100
+         $amzGPFT = ($amzPrice && $amzPrice > 0) ? round((($amzPrice * $amazonPercentage - $amzShip - $amzLP) / $amzPrice) * 100, 2) : null;
+         
+         // Get Amazon ad spend from pre-fetched data
+         $normalizedSku = strtoupper(trim($sku));
+         $amzAdSpend = $amazonAdSpendBySku[$normalizedSku] ?? 0;
+         
+         // Calculate Amazon AD% = (AD_Spend / (price × A_L30)) × 100
+         $amzTotalRevenue = ($amzPrice && $amzL30 > 0) ? ($amzPrice * $amzL30) : 0;
+         $amzAD = ($amzTotalRevenue > 0) ? round(($amzAdSpend / $amzTotalRevenue) * 100, 2) : ($amzAdSpend > 0 ? 100 : 0);
+         
+         // Calculate Amazon NPFT% = If L30 == 0, then NPFT = GPFT, else NPFT = GPFT - AD%
+         $amzNPFT = ($amzGPFT !== null) ? ($amzL30 == 0 ? $amzGPFT : round($amzGPFT - $amzAD, 2)) : null;
 
          // Use separate dimension fields if available, otherwise split combined dimensions
          $length = $manual ? ($manual->data['length'] ?? '') : '';
@@ -828,18 +889,6 @@ class FbaDataController extends Controller
             'FBA_SKU' => $fba->seller_sku,
             'NRL_FBA' => $listingStatus ? ($listingStatus->status_value['status'] ?? 'FBA') : 'FBA',
             'FBA_Price' => $fbaPriceInfo ? round(($fbaPriceInfo->price ?? 0), 2) : 0,
-            // Get LMP data by matching base SKU (remove "FBA" suffix)
-            'LMP' => (function() use ($sku, $amazonLmpLookup) {
-               $baseSkuForLmp = strtoupper(preg_replace('/\s+/', ' ', trim($sku)));
-               $lmp = $amazonLmpLookup->get($baseSkuForLmp);
-               return ($lmp && isset($lmp->price) && is_numeric($lmp->price))
-                  ? round(floatval($lmp->price), 2) : null;
-            })(),
-            'LMP_Link' => (function() use ($sku, $amazonLmpLookup) {
-               $baseSkuForLmp = strtoupper(preg_replace('/\s+/', ' ', trim($sku)));
-               $lmp = $amazonLmpLookup->get($baseSkuForLmp);
-               return ($lmp && !empty($lmp->product_link)) ? $lmp->product_link : null;
-            })(),
             'l30_units' => $monthlySales ? ($monthlySales->l30_units ?? 0) : 0,
             'AMZ_L30' => $amzL30,
             'Shopify_OV_L30' => $shopifyInfo ? ($shopifyInfo->quantity ?? 0) : 0,
@@ -992,7 +1041,7 @@ class FbaDataController extends Controller
                 );
                 // If MSL is 0, use 1 as default
                 if ($msl == 0) $msl = 1;
-                return $msl - floatval($fba->getAttribute('quantity_available') ?? 0);
+                return $msl - floatval($fba->quantity_available ?? 0) - floatval($manual ? ($manual->data['total_quantity_sent'] ?? 0) : 0);
             })(),
             'SEND' => $manual ? ($manual->data['send'] ?? '') : '',
             'Correct_Cost' => $manual ? ($manual->data['correct_cost'] ?? false) : false,
@@ -1091,8 +1140,6 @@ class FbaDataController extends Controller
             'SKU' => $parentKey,
             'FBA_SKU' => '',
             'FBA_Price' => '',
-            'LMP' => null, // Parent rows don't show LMP
-            'LMP_Link' => null,
             'l30_units' => $children->sum('l30_units'),
             'l60_units' => $children->sum('l60_units'),
             'FBA_Quantity' => $children->sum('FBA_Quantity'),
