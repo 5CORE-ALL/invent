@@ -56,6 +56,7 @@ class Kernel extends ConsoleKernel
         \App\Console\Commands\AutoUpdateAmzUnderHlBids::class,
         \App\Console\Commands\AutoUpdateAmazonBgtKw::class,
         \App\Console\Commands\AutoUpdateAmazonBgtPt::class,
+        \App\Console\Commands\AutoUpdateAmazonBgtHl::class,
         \App\Console\Commands\EbayOverUtilzBidsAutoUpdate::class,
         \App\Console\Commands\Ebay2UtilizedBidsAutoUpdate::class,
         \App\Console\Commands\Ebay3UtilizedBidsAutoUpdate::class,

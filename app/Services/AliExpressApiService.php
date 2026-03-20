@@ -2,155 +2,204 @@
 
 namespace App\Services;
 
-use GuzzleHttp\Client;
-use GuzzleHttp\Psr7\Request;
-use Aws\Signature\SignatureV4;
-use Aws\Credentials\Credentials;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
-use App\Models\ProductStockMapping;
+
 class AliExpressApiService
 {
+    protected string $appKey;
+    protected string $appSecret;
+    protected ?string $accessToken;
+    protected string $apiBase;
 
-    public function getAccessToken(){
-
-// Replace these variables with your actual values
-$appKey = config('services.aliexpress.app_key');
-$appSecret = config('services.aliexpress.app_secret');
-$code = '0_2DL4DV3jcU1UOT7WGI1A4rY91'; // The code obtained from the authorization callback URL
-$uuid = ''; // Optional parameter
-$url = 'https://api-sg.aliexpress.com/rest/'; // The API endpoint
-
-// Prepare the data to send
-$data = array(
-    'app_key' => $appKey,
-    'timestamp' => time() * 1000, // in milliseconds
-    'sign_method' => 'sha256',
-    'sign' => $this->generateSignature($appKey, $appSecret, $code, $uuid, $url),
-    'code' => $code,
-    'uuid' => $uuid
-);
-
-// Initialize curl session
-$ch = curl_init();
-
-// Set curl options
-curl_setopt($ch, CURLOPT_URL, $url);
-curl_setopt($ch, CURLOPT_POST, true);
-curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($data));
-curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-curl_setopt($ch, CURLOPT_HTTPHEADER, array('Content-Type: application/x-www-form-urlencoded'));
-
-// Execute the request
-$response = curl_exec($ch);
-
-// Close curl session
-curl_close($ch);
-
-// Output the response
-echo $response;
-
+    public function __construct()
+    {
+        $this->appKey = (string) (config('services.aliexpress.app_key') ?: env('ALIEXPRESS_APP_KEY', ''));
+        $this->appSecret = (string) (config('services.aliexpress.app_secret') ?: env('ALIEXPRESS_APP_SECRET', ''));
+        $this->accessToken = config('services.aliexpress.access_token') ?: env('ALIEXPRESS_ACCESS_TOKEN');
+        $this->apiBase = rtrim((string) (config('services.aliexpress.api_base') ?: env('ALIEXPRESS_API_BASE', 'https://api-sg.aliexpress.com')), '/');
     }
 
-/**
- * Generate the signature for the API request
- */
-public function generateSignature($appKey, $appSecret, $code, $uuid, $url) {
-    // Concatenate the parameters in a specific order
-    $stringToSign = 'app_key=' . urlencode($appKey) . '&code=' . urlencode($code) . '&timestamp=' . time() * 1000 . '&uuid=' . urlencode($uuid);
-    $signature = hash_hmac('sha256', $stringToSign, $appSecret, true);
-    return bin2hex($signature);
-}
-
-
-public function getInventory2()
-{
-    $apiUrl = 'https://ship.5coremanagement.com/api/aliexpress/product-list';
-    $page=1;
-    $page_size=20;
-            $response = Http::withoutVerifying()->asForm()->post($apiUrl, [
-                'page' => $page,
-                'page_size' => $page_size,
-            ]);
-
-            return($response->body());
-}
-
-public function getInventory()
-{$apiUrl = 'https://api-sg.aliexpress.com/sync';
-
-    $appKey = '520170';
-    $appSecret = config('services.aliexpress.app_secret');
-    $accessToken = config('services.aliexpress.access_token');
-    $timestamp = round(microtime(true) * 1000); // current time in ms
-
-    $method = 'aliexpress.local.service.products.list';
-    $signMethod = 'sha256';
-
-    // Request parameters
-    $params = [
-        'app_key' => $appKey,
-        'timestamp' => $timestamp,
-        'access_token' => $accessToken,
-        'sign_method' => $signMethod,
-        'method' => $method,
-        'channel_seller_id' => '2678881002',
-        'channel' => 'AE_GLOBAL',
-        'page_size' => 20,
-        'current_page' => 1,
-        'search_condition_do' => json_encode([
-            "product_id" => null,
-            "product_status" => "ONLINE",
-            "update_before" => null,
-            "update_after" => null,
-            "create_before" => null,
-            "create_after" => null,
-            "leaf_category_id" => null
-        ])
-    ];
-
-    // Generate signature
-$paramsForSign = $params;
-unset($paramsForSign['sign']); // just to be sure
-ksort($paramsForSign);
-
-$signStr = $appSecret;
-foreach ($paramsForSign as $key => $val) {
-    if ($val !== null && $val !== '') {
-        $signStr .= $key . $val;
+    public function getAccessToken(): ?string
+    {
+        return $this->accessToken;
     }
-}
-$signStr .= $appSecret;
 
-$signature = strtoupper(hash_hmac('sha256', $signStr, $appSecret));
-$params['sign'] = $signature;
-    // Send POST request
-    $response = Http::withOptions([
-    'verify' => false,
-])->asForm()->post($apiUrl, $params);
+    public function getInventory(int $page = 1, int $pageSize = 20): array
+    {
+        return $this->callSync(
+            'aliexpress.solution.product.list.get',
+            [
+                'current_page' => $page,
+                'page_size' => $pageSize,
+            ]
+        );
+    }
 
-    if ($response->failed()) {
-        Log::error('AliExpress API Error', [
-            'response' => $response->body()
+    public function updateTitle(string $productId, string $title): array
+    {
+        return $this->callSync(
+            'aliexpress.solution.product.edit',
+            [
+                'product_id' => $productId,
+                'subject' => $title,
+            ]
+        );
+    }
+
+    /**
+     * Temporary debug helper:
+     * Returns exact request URL, raw body, signature source string and full response.
+     */
+    public function debugCallSync(string $method, array $bizParams = []): array
+    {
+        $params = $this->buildBaseParams($method);
+        $params = array_merge($params, $this->normalizeParams($bizParams));
+        $signSource = $this->buildSignSource($params, null); // /sync style: no apiPath prefix
+        $params['sign'] = $this->sign($signSource);
+
+        $url = $this->apiBase . '/sync';
+        $rawBody = http_build_query($params, '', '&', PHP_QUERY_RFC3986);
+
+        Log::debug('AliExpress debug request', [
+            'url' => $url,
+            'params' => $params,
+            'raw_body' => $rawBody,
+            'sign_source' => $signSource,
         ]);
-        return response()->json(['error' => 'Failed to fetch inventory', 'details' => $response->body()], 500);
+
+        $response = Http::withoutVerifying()
+            ->asForm()
+            ->withHeaders(['Content-Type' => 'application/x-www-form-urlencoded'])
+            ->post($url, $params);
+
+        $result = [
+            'request' => [
+                'url' => $url,
+                'params' => $params,
+                'raw_body' => $rawBody,
+                'sign_source' => $signSource,
+            ],
+            'response' => [
+                'status' => $response->status(),
+                'headers' => $response->headers(),
+                'body' => $response->body(),
+                'json' => $response->json(),
+            ],
+        ];
+
+        Log::debug('AliExpress debug response', $result['response']);
+
+        return $result;
     }
 
-    return $response->json();
-}
-
-private function generateAliExpressSignature($params, $appSecret)
-{
-    ksort($params);
-    $stringToSign = $appSecret;
-    foreach ($params as $key => $value) {
-        if ($value !== null && $value !== '') {
-            $stringToSign .= $key . $value;
+    private function callSync(string $method, array $bizParams = []): array
+    {
+        if (empty($this->appKey) || empty($this->appSecret)) {
+            return [
+                'success' => false,
+                'message' => 'AliExpress app credentials are missing.',
+            ];
         }
+
+        $params = $this->buildBaseParams($method);
+        $params = array_merge($params, $this->normalizeParams($bizParams));
+        $signSource = $this->buildSignSource($params, null); // /sync style
+        $params['sign'] = $this->sign($signSource);
+
+        $url = $this->apiBase . '/sync';
+
+        $response = Http::withoutVerifying()
+            ->asForm()
+            ->withHeaders(['Content-Type' => 'application/x-www-form-urlencoded'])
+            ->post($url, $params);
+
+        $json = $response->json();
+        $body = $response->body();
+
+        Log::info('AliExpress callSync', [
+            'method' => $method,
+            'status' => $response->status(),
+            'request_url' => $url,
+            'request_body' => http_build_query($params, '', '&', PHP_QUERY_RFC3986),
+            'response_body' => $body,
+        ]);
+
+        if ($response->failed()) {
+            return [
+                'success' => false,
+                'status' => $response->status(),
+                'message' => 'AliExpress HTTP request failed.',
+                'response' => $json ?: $body,
+            ];
+        }
+
+        // AliExpress business errors often come in code/message at top-level.
+        if (is_array($json) && isset($json['code']) && (string) $json['code'] !== '0') {
+            return [
+                'success' => false,
+                'status' => $response->status(),
+                'message' => $json['message'] ?? 'AliExpress API error.',
+                'response' => $json,
+            ];
+        }
+
+        return [
+            'success' => true,
+            'status' => $response->status(),
+            'data' => $json ?: $body,
+        ];
     }
-    $stringToSign .= $appSecret;
 
-    return strtoupper(hash_hmac('sha256', $stringToSign, $appSecret));
-}
+    private function buildBaseParams(string $method): array
+    {
+        $params = [
+            'app_key' => $this->appKey,
+            'timestamp' => (int) round(microtime(true) * 1000),
+            'sign_method' => 'sha256',
+            'method' => $method,
+        ];
 
+        if (!empty($this->accessToken)) {
+            $params['access_token'] = $this->accessToken;
+        }
+
+        return $params;
+    }
+
+    private function normalizeParams(array $params): array
+    {
+        $normalized = [];
+        foreach ($params as $key => $value) {
+            if ($value === null || $value === '') {
+                continue;
+            }
+            $normalized[$key] = is_array($value)
+                ? json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
+                : $value;
+        }
+        return $normalized;
+    }
+
+    private function buildSignSource(array $params, ?string $apiPath): string
+    {
+        unset($params['sign']);
+        ksort($params);
+
+        $source = '';
+        if (!empty($apiPath)) {
+            $source .= $apiPath;
+        }
+
+        foreach ($params as $key => $value) {
+            $source .= (string) $key . (string) $value;
+        }
+
+        return $source;
+    }
+
+    private function sign(string $source): string
+    {
+        return strtoupper(hash_hmac('sha256', $source, $this->appSecret));
+    }
 }

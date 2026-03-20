@@ -8298,18 +8298,13 @@ class ChannelMasterController extends Controller
                     }
                     $value = $sbidCount > 0 ? round($sbidSum / $sbidCount, 2) : 0;
                 } elseif ($metric === 'sbgt') {
-                    // SBGT = score 1-30 from ACOS (spend/sales*100), matching AutoUpdateAmazonBgtKw.php
+                    // SBGT from ACOS (spend/sales*100): <20 → 10, [20,30) → 5, ≥30 → 3 (matches AutoUpdateAmazonBgtKw / tabulator)
                     // dailyData has spend, dailyData2 has sales
                     $acos = $rolling30Sum2 > 0 ? ($rolling30Sum / $rolling30Sum2) * 100 : 0;
                     $value = match (true) {
-                        $acos > 35 => 1,
-                        $acos >= 30 => 3,
-                        $acos >= 25 => 5,
-                        $acos >= 20 => 10,
-                        $acos >= 15 => 15,
-                        $acos >= 10 => 20,
-                        $acos >= 5 => 25,
-                        default => 30,
+                        $acos < 20 => 10,
+                        $acos < 30 => 5,
+                        default => 3,
                     };
                 } else {
                     $value = round($rolling30Sum, 2);

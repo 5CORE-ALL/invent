@@ -5,20 +5,20 @@ namespace App\Console\Commands;
 use App\Http\Controllers\MarketPlace\ACOSControl\AmazonACOSController;
 use App\Models\AmazonDatasheet;
 use App\Models\AmazonDataView;
+use App\Models\AmazonSbCampaignReport;
 use Illuminate\Console\Command;
-use App\Models\AmazonSpCampaignReport;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
 
-
-class AutoUpdateAmazonBgtKw extends Command
+/**
+ * Sponsored Brands (HL / "HEAD") campaign budgets — same ACOS → SBGT rules as KW/PT tabulator.
+ */
+class AutoUpdateAmazonBgtHl extends Command
 {
-    protected $signature = 'amazon:auto-update-amz-bgt-kw {--dry-run : Run without updating Amazon (test only)}';
-    protected $description = 'Automatically update Amazon campaign bgt price';
+    protected $signature = 'amazon:auto-update-amz-bgt-hl {--dry-run : Run without updating Amazon (test only)}';
 
-    protected $profileId;
+    protected $description = 'Automatically update Amazon Sponsored Brands (HL) campaign daily budgets from ACOS-based SBGT';
 
     public function __construct()
     {
@@ -29,122 +29,113 @@ class AutoUpdateAmazonBgtKw extends Command
     {
         try {
             $dryRun = $this->option('dry-run');
-            $this->info($dryRun ? "Starting Amazon bgts auto-update (DRY RUN - no updates will be made)..." : "Starting Amazon bgts auto-update...");
+            $this->info($dryRun ? 'Starting Amazon HL (SB) bgts auto-update (DRY RUN - no updates will be made)...' : 'Starting Amazon HL (SB) bgts auto-update...');
 
-            // Check database connection (without creating persistent connection)
             try {
                 DB::connection()->getPdo();
-                $this->info("✓ Database connection OK");
-                // Immediately disconnect after check to prevent connection buildup
+                $this->info('✓ Database connection OK');
                 DB::connection()->disconnect();
             } catch (\Exception $e) {
-                $this->error("✗ Database connection failed: " . $e->getMessage());
+                $this->error('✗ Database connection failed: ' . $e->getMessage());
+
                 return 1;
             }
 
-            $updateKwBgts = new AmazonACOSController;
+            $controller = new AmazonACOSController;
 
-            $campaigns = $this->amazonAcosKwControlData();
+            $campaigns = $this->amazonAcosHlControlData();
 
-            // Close connection after data fetching
             DB::connection()->disconnect();
 
             if (empty($campaigns)) {
-                $this->warn("No campaigns matched filter conditions.");
+                $this->warn('No campaigns matched filter conditions.');
+
                 return 0;
             }
 
-            // Load bid caps from database
             $bidCapsData = \App\Models\AmazonBidCap::all()->keyBy('sku');
-
-            // Track campaigns skipped due to bid cap
             $skippedDueToCap = [];
 
-            // Filter out campaigns with empty/null campaign_id or invalid sbgt
-            // Also filter out if SBGT > Bid Cap (cap protection)
             $validCampaigns = collect($campaigns)->filter(function ($campaign) use ($bidCapsData, &$skippedDueToCap) {
                 if (empty($campaign->campaign_id) || !isset($campaign->sbgt) || $campaign->sbgt <= 0) {
                     return false;
                 }
-                
-                // Check if bid cap exists for this SKU
+
                 $sku = strtoupper($campaign->campaignName ?? '');
                 if ($bidCapsData->has($sku)) {
                     $bidCap = $bidCapsData[$sku]->bid_cap;
-                    // If SBGT exceeds bid cap, skip this campaign
                     if ($bidCap > 0 && $campaign->sbgt > $bidCap) {
                         $skippedDueToCap[] = [
                             'campaign' => $campaign->campaignName,
                             'sbgt' => $campaign->sbgt,
-                            'cap' => $bidCap
+                            'cap' => $bidCap,
                         ];
-                        return false; // Skip - SBGT exceeds cap
+
+                        return false;
                     }
                 }
-                
+
                 return true;
             })->values();
 
-            // Show campaigns skipped due to bid cap
             if (count($skippedDueToCap) > 0) {
                 $this->warn("\n⚠️  Campaigns SKIPPED due to Bid Cap protection:");
                 foreach ($skippedDueToCap as $skipped) {
                     $this->warn("  - {$skipped['campaign']}: SBGT \${$skipped['sbgt']} > Cap \${$skipped['cap']}");
                 }
-                $this->warn("");
+                $this->warn('');
             }
 
             if ($validCampaigns->isEmpty()) {
-                $this->warn("No valid campaigns found (all have empty campaign_id or invalid budget).");
+                $this->warn('No valid campaigns found (all have empty campaign_id or invalid budget).');
+
                 return 0;
             }
 
             $campaignIds = $validCampaigns->pluck('campaign_id')->toArray();
             $newBgts = $validCampaigns->pluck('sbgt')->toArray();
 
-            // Ensure both arrays have the same length
             if (count($campaignIds) !== count($newBgts)) {
-                $this->error("Error: Campaign IDs and budgets arrays have different lengths!");
+                $this->error('Error: Campaign IDs and budgets arrays have different lengths!');
+
                 return 1;
             }
 
             try {
-                // Show detailed campaign information for verification (before update)
                 $this->info("\n========================================");
-                $this->info($dryRun ? "CAMPAIGN BUDGET UPDATE SUMMARY (KW) [DRY RUN]" : "CAMPAIGN BUDGET UPDATE SUMMARY (KW)");
+                $this->info($dryRun ? 'CAMPAIGN BUDGET UPDATE SUMMARY (HL / SB) [DRY RUN]' : 'CAMPAIGN BUDGET UPDATE SUMMARY (HL / SB)');
                 $this->info("========================================\n");
-                
+
                 foreach ($validCampaigns as $campaign) {
-                    $this->info("Campaign: " . ($campaign->campaignName ?? 'N/A'));
-                    $this->info("  Price: $" . number_format($campaign->price ?? 0, 2));
-                    $this->info("  ACOS: " . number_format($campaign->acos_L30 ?? 0, 2) . "%");
-                    $this->info("  New Budget: $" . ($campaign->sbgt ?? 0));
-                    $this->info("  Campaign ID: " . ($campaign->campaign_id ?? 'N/A'));
-                    $this->info("---");
+                    $this->info('Campaign: ' . ($campaign->campaignName ?? 'N/A'));
+                    $this->info('  Price: $' . number_format($campaign->price ?? 0, 2));
+                    $this->info('  ACOS: ' . number_format($campaign->acos_L30 ?? 0, 2) . '%');
+                    $this->info('  New Budget: $' . ($campaign->sbgt ?? 0));
+                    $this->info('  Campaign ID: ' . ($campaign->campaign_id ?? 'N/A'));
+                    $this->info('---');
                 }
-                
+
                 $this->info("\nTotal Campaigns: " . count($campaignIds));
                 $this->info("========================================\n");
-                
+
                 if ($dryRun) {
-                    $this->warn("DRY RUN - No updates were made to Amazon.");
-                    $this->info("Run without --dry-run to apply budget updates.");
+                    $this->warn('DRY RUN - No updates were made to Amazon.');
+                    $this->info('Run without --dry-run to apply budget updates.');
                 } else {
-                    $result = $updateKwBgts->updateAutoAmazonCampaignBgt($campaignIds, $newBgts);
+                    $result = $controller->updateAutoAmazonSbCampaignBgt($campaignIds, $newBgts);
                     if (isset($result['status']) && $result['status'] !== 200) {
-                        $this->error("Budget update failed: " . ($result['message'] ?? 'Unknown error'));
+                        $this->error('Budget update failed: ' . ($result['message'] ?? 'Unknown error'));
+
                         return 1;
                     }
-                    $this->info("Successfully updated " . count($campaignIds) . " campaign budgets.");
+                    $this->info('Successfully updated ' . count($campaignIds) . ' SB campaign budgets.');
                 }
-                
             } catch (\Exception $e) {
-                $this->error("Error updating campaign budgets: " . $e->getMessage());
+                $this->error('Error updating campaign budgets: ' . $e->getMessage());
+
                 return 1;
             }
-
         } finally {
-            // Ensure connection is closed
             try {
                 DB::connection()->disconnect();
             } catch (\Exception $e) {
@@ -155,7 +146,7 @@ class AutoUpdateAmazonBgtKw extends Command
         return 0;
     }
 
-    public function amazonAcosKwControlData()
+    public function amazonAcosHlControlData()
     {
         try {
             $productMasters = ProductMaster::orderBy('parent', 'asc')
@@ -165,36 +156,32 @@ class AutoUpdateAmazonBgtKw extends Command
 
             $skus = $productMasters->pluck('sku')->filter()->unique()->values()->all();
 
-            // Return empty array if no SKUs found
             if (empty($skus)) {
                 DB::connection()->disconnect();
+
                 return [];
             }
 
             $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
 
             $nrValues = AmazonDataView::whereIn('sku', $skus)->pluck('value', 'sku');
-            
+
             $amazonDatasheetsBySku = AmazonDatasheet::whereIn('sku', $skus)->get()->keyBy(function ($item) {
                 return strtoupper($item->sku ?? '');
             });
 
-            $amazonSpCampaignReportsL30 = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
+            $amazonSbCampaignReportsL30 = AmazonSbCampaignReport::where('ad_type', 'SPONSORED_BRANDS')
                 ->where('report_date_range', 'L30')
                 ->where(function ($q) use ($skus) {
                     foreach ($skus as $sku) {
-                        $q->orWhere('campaignName', 'LIKE', '%' . $sku . '%');
+                        $q->orWhere('campaignName', 'LIKE', '%' . strtoupper($sku) . '%');
                     }
                 })
-                ->where('campaignName', 'NOT LIKE', '% PT')
-                ->where('campaignName', 'NOT LIKE', '% PT.')
                 ->whereRaw("UPPER(campaignStatus) = 'ENABLED'")
                 ->get();
 
-            // Disconnect after query
             DB::connection()->disconnect();
 
-            // For PARENT rows: INV = sum of child SKUs' INV (same as AmazonSpBudgetController)
             $childInvSumByParent = [];
             foreach ($productMasters as $pm) {
                 $norm = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $pm->sku ?? '');
@@ -215,7 +202,6 @@ class AutoUpdateAmazonBgtKw extends Command
                 $childInvSumByParent[$p] += $inv;
             }
 
-            // For PARENT rows: avg price = average of child SKUs' prices
             $childPricesByParent = [];
             foreach ($productMasters as $pm) {
                 $norm = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $pm->sku ?? '');
@@ -229,8 +215,8 @@ class AutoUpdateAmazonBgtKw extends Command
                     continue;
                 }
                 $amazonSheetChild = $amazonDatasheetsBySku[$skuUpper] ?? null;
-                $childPrice = ($amazonSheetChild && isset($amazonSheetChild->price) && (float)$amazonSheetChild->price > 0)
-                    ? (float)$amazonSheetChild->price
+                $childPrice = ($amazonSheetChild && isset($amazonSheetChild->price) && (float) $amazonSheetChild->price > 0)
+                    ? (float) $amazonSheetChild->price
                     : null;
                 if ($childPrice === null) {
                     $values = $pm->Values;
@@ -241,9 +227,9 @@ class AutoUpdateAmazonBgtKw extends Command
                     } elseif (!is_array($values)) {
                         $values = [];
                     }
-                    $childPrice = isset($values['msrp']) && (float)$values['msrp'] > 0
-                        ? (float)$values['msrp']
-                        : (isset($values['map']) && (float)$values['map'] > 0 ? (float)$values['map'] : null);
+                    $childPrice = isset($values['msrp']) && (float) $values['msrp'] > 0
+                        ? (float) $values['msrp']
+                        : (isset($values['map']) && (float) $values['map'] > 0 ? (float) $values['map'] : null);
                 }
                 if ($childPrice !== null && $childPrice > 0) {
                     $normParent = strtoupper(trim(preg_replace('/\s+/', ' ', str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $p ?? ''))));
@@ -260,46 +246,39 @@ class AutoUpdateAmazonBgtKw extends Command
             }
 
             $result = [];
-            $totalSpend = 0;
-            $totalSales = 0;
-            $validCampaignsForTotal = []; // Store valid campaigns for total ACOS calculation
+            $validCampaignsForTotal = [];
 
-            // Single pass: collect all valid campaigns and calculate totals
             foreach ($productMasters as $pm) {
                 $sku = strtoupper($pm->sku ?? '');
 
                 $amazonSheet = $amazonDatasheetsBySku[$sku] ?? null;
                 $shopify = $shopifyData[$pm->sku] ?? null;
 
-                $matchedCampaignL30 = $amazonSpCampaignReportsL30->first(function ($item) use ($sku) {
-                    $campaignName = strtoupper(trim(rtrim($item->campaignName ?? '', '.')));
-                    $cleanSku = strtoupper(trim(rtrim($sku, '.')));
-                    // Match campaign with or without " KW" suffix (like PT matches " PT")
-                    return $campaignName === $cleanSku || $campaignName === $cleanSku . ' KW';
+                $matchedCampaignL30 = $amazonSbCampaignReportsL30->first(function ($item) use ($sku) {
+                    $cleanName = preg_replace('/\s+/', ' ', strtoupper(trim($item->campaignName ?? '')));
+                    $cleanSku = preg_replace('/\s+/', ' ', strtoupper(trim($sku)));
+
+                    return $cleanName === $cleanSku || $cleanName === $cleanSku . ' HEAD';
                 });
 
                 if (!$matchedCampaignL30) {
                     continue;
                 }
 
-                // INV: for PARENT rows use sum of children's INV; for child rows use shopify inv
                 $inv = (stripos($sku, 'PARENT') !== false)
                     ? (int) ($childInvSumByParent[$pm->parent ?? $pm->sku ?? ''] ?? 0)
                     : (($shopify && isset($shopify->inv)) ? (int) $shopify->inv : 0);
 
-                // Skip if INV = 0
                 if ($inv == 0) {
                     continue;
                 }
 
-                // Skip if campaign_id is empty
                 if (empty($matchedCampaignL30->campaign_id)) {
                     continue;
                 }
 
                 $row = [];
-                $price = ($amazonSheet && isset($amazonSheet->price)) ? (float)$amazonSheet->price : 0;
-                // For PARENT rows: use avg price from children when direct price is 0
+                $price = ($amazonSheet && isset($amazonSheet->price)) ? (float) $amazonSheet->price : 0;
                 if (($price === 0 || $price === null) && stripos($sku, 'PARENT') !== false) {
                     $normSku = strtoupper(trim(preg_replace('/\s+/', ' ', str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $sku))));
                     $normParentKey = rtrim($normSku, '.');
@@ -309,13 +288,12 @@ class AutoUpdateAmazonBgtKw extends Command
                 $row['campaign_id'] = $matchedCampaignL30->campaign_id ?? '';
                 $row['campaignName'] = $matchedCampaignL30->campaignName ?? '';
 
-                // Skip if campaignName is empty (matching frontend filter)
                 if (empty($row['campaignName'])) {
                     continue;
                 }
 
-                $sales = $matchedCampaignL30->sales30d ?? 0;
-                $spend = $matchedCampaignL30->spend ?? 0;
+                $sales = (float) ($matchedCampaignL30->sales ?? 0);
+                $spend = (float) ($matchedCampaignL30->cost ?? 0);
                 $row['spend'] = $spend;
                 $row['units_ordered_l30'] = $amazonSheet->units_ordered_l30 ?? 0;
 
@@ -326,12 +304,14 @@ class AutoUpdateAmazonBgtKw extends Command
                 } else {
                     $row['acos_L30'] = 0;
                 }
-                
+
                 $tpft = 0;
                 $nra = '';
                 if (isset($nrValues[$pm->sku])) {
                     $raw = $nrValues[$pm->sku];
-                    if (!is_array($raw)) $raw = json_decode($raw, true);
+                    if (!is_array($raw)) {
+                        $raw = json_decode($raw, true);
+                    }
                     if (is_array($raw)) {
                         $tpft = isset($raw['TPFT']) ? (int) floor($raw['TPFT']) : 0;
                         $nra = $raw['NRA'] ?? '';
@@ -339,26 +319,17 @@ class AutoUpdateAmazonBgtKw extends Command
                 }
                 $row['TPFT'] = $tpft;
 
-                // Skip if NRA === 'NRA' (matching frontend filter)
                 if ($nra === 'NRA') {
                     continue;
                 }
 
-                // Add to totals calculation (only campaigns that pass all filters)
-                $totalSpend += $spend;
-                $totalSales += $sales;
                 $validCampaignsForTotal[] = $row;
             }
 
-            // Calculate total ACOS from valid campaigns only (matching frontend logic)
-            $totalACOS = $totalSales > 0 ? ($totalSpend / $totalSales) * 100 : 0;
-
-            // Now calculate sbgt for each valid campaign using the calculated total ACOS
             foreach ($validCampaignsForTotal as $row) {
                 $acos = (float) ($row['acos_L30'] ?? 0);
-                $price = (float) ($row['price'] ?? 0);
 
-                // ACOS-based SBGT (match amazon_tabulator_view KW SBGT): <20 → 10, [20,30) → 5, ≥30 → 3
+                // ACOS-based SBGT (match amazon_tabulator_view HL SBGT): <20 → 10, [20,30) → 5, ≥30 → 3
                 if ($acos < 20) {
                     $row['sbgt'] = 10;
                 } elseif ($acos < 30) {
@@ -371,17 +342,18 @@ class AutoUpdateAmazonBgtKw extends Command
             }
 
             DB::connection()->disconnect();
+
             return $result;
         } catch (\Exception $e) {
-            $this->error("Error in amazonAcosKwControlData: " . $e->getMessage());
-            $this->info("Error trace: " . $e->getTraceAsString());
+            $this->error('Error in amazonAcosHlControlData: ' . $e->getMessage());
+            $this->info('Error trace: ' . $e->getTraceAsString());
             try {
                 DB::connection()->disconnect();
             } catch (\Exception $ex) {
                 // Ignore disconnect errors
             }
+
             return [];
         }
     }
-
 }

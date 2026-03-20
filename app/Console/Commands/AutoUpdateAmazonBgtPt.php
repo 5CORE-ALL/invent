@@ -368,23 +368,13 @@ class AutoUpdateAmazonBgtPt extends Command
 
                 $price = (float) ($row['price'] ?? 0);
 
-                // ACOS-based SBGT rules
-                if ($acos > 35) {
-                    $row['sbgt'] = 1;
-                } elseif ($acos >= 30) {
-                    $row['sbgt'] = 3;
-                } elseif ($acos >= 25) {
-                    $row['sbgt'] = 5;
-                } elseif ($acos >= 20) {
+                // ACOS-based SBGT (match amazon_tabulator_view PT SBGT): <20 → 10, [20,30) → 5, ≥30 → 3
+                if ($acos < 20) {
                     $row['sbgt'] = 10;
-                } elseif ($acos >= 15) {
-                    $row['sbgt'] = 15;
-                } elseif ($acos >= 10) {
-                    $row['sbgt'] = 20;
-                } elseif ($acos >= 5) {
-                    $row['sbgt'] = 25;
+                } elseif ($acos < 30) {
+                    $row['sbgt'] = 5;
                 } else {
-                    $row['sbgt'] = 30; // Less than 5
+                    $row['sbgt'] = 3;
                 }
 
                 $result[] = (object) $row;
