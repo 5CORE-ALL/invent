@@ -15,8 +15,12 @@ use App\Services\AmazonSpApiService;
 use App\Services\Ebay2ApiService;
 use App\Services\EbayApiService;
 use App\Services\EbayThreeApiService;
+use App\Services\FaireService;
+use App\Services\MacysApiService;
 use App\Services\ReverbApiService;
+use App\Services\ShopifyApiService;
 use App\Services\TemuApiService;
+use App\Services\WalmartService;
 use App\Services\WayfairApiService;
 use App\Models\ShopifySku;
 use App\Models\User;
@@ -2409,6 +2413,135 @@ PROMPT;
     }
 
     /**
+     * Generate 4 Title 60 options (55-60 chars) for Macy's/Faire.
+     */
+    public function generateTitle60WithAI(Request $request)
+        $request->validate([
+            'sku' => 'nullable|string',
+            'title_150' => 'required|string',
+            'current_title_60' => 'nullable|string',
+            'marketplace' => 'nullable|string|in:macy,faire',
+            'category' => 'nullable|string',
+        ]);
+
+        $apiKey = config('services.anthropic.key');
+        if (! $apiKey) {
+            Log::warning('AI generate title 60: ANTHROPIC_API_KEY not configured');
+            return response()->json([
+                'success' => false,
+                'message' => 'ANTHROPIC_API_KEY is not configured.',
+            ], 503);
+        }
+
+        $title150 = trim($request->input('title_150', ''));
+        $currentTitle60 = trim($request->input('current_title_60', ''));
+        $sku = $request->input('sku', '');
+        $marketplace = $request->input('marketplace', 'macy');
+        $category = $request->input('category', '');
+
+        $model = 'claude-sonnet-4-20250514';
+        $minLen = 55;
+        $maxLen = 60;
+
+        $prompt = <<<PROMPT
+Generate 4 marketplace product titles that are between 55-60 characters.
+
+Original title: "{$title150}"
+SKU: {$sku}
+Marketplace: {$marketplace} (Macy's or Faire)
+Category: {$category}
+Existing Title 60 (if any): "{$currentTitle60}"
+
+REQUIREMENTS:
+- Length: MUST be between 55-60 characters
+- Include brand "5 Core" at beginning or naturally near beginning
+- Focus on key features for {$marketplace}
+- Include important keywords
+- No promotional text
+- Return 4 distinct variations
+
+For each title, provide a success score out of 100 (based on: character count 55-60, brand inclusion, keyword density, marketplace best practices).
+
+Technical requirement: Return ONLY a JSON array of exactly 4 objects. No markdown, no code block, no explanations. Each object must have "title" (string) and "score" (integer 1-100).
+Example format: [{"title":"5 Core ...","score":95}, {"title":"5 Core ...","score":91}, {"title":"5 Core ...","score":89}, {"title":"5 Core ...","score":93}]
+PROMPT;
+
+        try {
+            Log::info('🤖 AI Title 60 generation started', ['sku' => $sku, 'marketplace' => $marketplace]);
+
+            $response = Http::timeout(90)
+                ->withHeaders([
+                    'x-api-key' => $apiKey,
+                    'anthropic-version' => '2023-06-01',
+                    'content-type' => 'application/json',
+                ])
+                ->post('https://api.anthropic.com/v1/messages', [
+                    'model' => $model,
+                    'max_tokens' => 1024,
+                    'messages' => [['role' => 'user', 'content' => $prompt]],
+                ]);
+
+            if (! $response->successful()) {
+                $bodyJson = $response->json();
+                $errorMsg = $bodyJson['error']['message'] ?? $response->body();
+                return response()->json([
+                    'success' => false,
+                    'message' => 'AI service error: '.$errorMsg,
+                ], 502);
+            }
+
+            $body = $response->json();
+            $text = trim($body['content'][0]['text'] ?? '');
+            $text = preg_replace('/^```\w*\s*|\s*```$/m', '', $text);
+            $arr = json_decode($text, true);
+
+            if (! is_array($arr) || count($arr) < 4) {
+                Log::warning('AI generate title 60: invalid response format', ['preview' => mb_substr($text, 0, 300)]);
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Invalid AI response: expected 4 titles with scores.',
+                ], 422);
+            }
+
+            $validItems = [];
+            $invalidCount = 0;
+            for ($i = 0; $i < 4; $i++) {
+                $raw = $arr[$i] ?? null;
+                $t = is_array($raw) && ! empty($raw['title'])
+                    ? trim((string) $raw['title'])
+                    : trim(is_string($raw) ? $raw : (string) ($raw ?? ''));
+                $len = mb_strlen($t);
+                if ($len < $minLen || $len > $maxLen) {
+                    $invalidCount++;
+                    continue;
+                }
+                $scoreFromAi = (is_array($raw) && isset($raw['score'])) ? max(1, min(100, (int) $raw['score'])) : 90;
+                $validItems[] = ['title' => $t, 'score' => $scoreFromAi];
+            }
+
+            if (count($validItems) === 0) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'All 4 titles were out of range (55-60 characters). Please click Regenerate to try again.',
+                ], 422);
+            }
+
+            Log::info('✅ AI Title 60 generation success', ['sku' => $sku, 'titles' => count($validItems)]);
+            return response()->json([
+                'success' => true,
+                'titles' => $validItems,
+                'invalid_count' => $invalidCount,
+            ]);
+        } catch (\Exception $e) {
+            Log::error('AI generate title 60: exception', ['message' => $e->getMessage()]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Error: '.$e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
      * Push Title 150 to Amazon for a single SKU via SP-API Listings Items API.
      */
     public function pushTitleToAmazon(Request $request)
@@ -2684,8 +2817,8 @@ PROMPT;
     {
         $request->validate([
             'sku' => 'required|string|max:255',
-            'marketplace' => 'required|string|in:amazon,temu,reverb,wayfair,shopify,doba,ebay1,ebay2,ebay3',
-            'title_type' => 'required|string|in:150,100,80',
+            'marketplace' => 'required|string|in:amazon,temu,reverb,wayfair,walmart,shopify,shopify_main,shopify_pls,doba,ebay1,ebay2,ebay3,macy,faire',
+            'title_type' => 'required|string|in:150,100,80,60',
             'title' => 'nullable|string|max:2000',
         ]);
 
@@ -2696,22 +2829,28 @@ PROMPT;
         $userId = auth()->id();
 
         // Guard against invalid marketplace / title_type combos
-        if ($titleType === '150' && ! in_array($marketplace, ['amazon', 'temu', 'reverb', 'wayfair'], true)) {
+        if ($titleType === '150' && ! in_array($marketplace, ['amazon', 'temu', 'reverb', 'wayfair', 'walmart'], true)) {
             return response()->json([
                 'success' => false,
-                'message' => 'Title 150 is only valid for Amazon, Temu, Reverb, Wayfair.',
+                'message' => 'Title 150 is only valid for Amazon, Temu, Reverb, Wayfair, Walmart.',
             ], 422);
         }
-        if ($titleType === '100' && ! in_array($marketplace, ['shopify', 'doba'], true)) {
+        if ($titleType === '100' && ! in_array($marketplace, ['shopify', 'shopify_main', 'shopify_pls', 'doba'], true)) {
             return response()->json([
                 'success' => false,
-                'message' => 'Title 100 is only valid for Shopify and Doba.',
+                'message' => 'Title 100 is only valid for Shopify Main, Shopify PLS and Doba.',
             ], 422);
         }
         if ($titleType === '80' && ! in_array($marketplace, ['ebay1', 'ebay2', 'ebay3'], true)) {
             return response()->json([
                 'success' => false,
                 'message' => 'Title 80 is only valid for eBay 1, eBay 2, eBay 3.',
+            ], 422);
+        }
+        if ($titleType === '60' && ! in_array($marketplace, ['macy', 'faire'], true)) {
+            return response()->json([
+                'success' => false,
+                'message' => "Title 60 is only valid for Macy's and Faire.",
             ], 422);
         }
 
@@ -2726,6 +2865,8 @@ PROMPT;
                     $title = $product->title150 ?? $product->amazon_title ?? '';
                 } elseif ($titleType === '80') {
                     $title = $product->title80 ?? '';
+                } elseif ($titleType === '60') {
+                    $title = $product->title60 ?? '';
                 } else {
                     $title = $product->title100 ?? '';
                 }
@@ -2792,9 +2933,27 @@ PROMPT;
                     $message = $res['message'] ?? ($success ? 'OK' : 'Unknown error');
                     break;
 
+                case 'walmart':
+                    $endpoint = 'WalmartService::updateTitle';
+                    $service = app(WalmartService::class);
+                    $res = $service->updateTitle($sku, $title);
+                    $success = $res['success'] ?? false;
+                    $message = $res['message'] ?? ($success ? 'OK' : 'Unknown error');
+                    break;
+
                 case 'shopify':
-                    $endpoint = 'ProductMasterController::updateShopifyTitle';
-                    $success = $this->updateShopifyTitle($sku, $title);
+                case 'shopify_main':
+                    Log::info('🖱️ Push to Main Shopify', ['sku' => $sku, 'title_type' => $titleType]);
+                    $endpoint = 'ShopifyApiService::updateTitle';
+                    $service = app(ShopifyApiService::class);
+                    $success = $service->updateTitle($sku, $title);
+                    $message = $success ? 'OK' : 'Update failed, see logs.';
+                    break;
+
+                case 'shopify_pls':
+                    Log::info('🖱️ Push to ProLight Shopify', ['sku' => $sku, 'title_type' => $titleType]);
+                    $endpoint = 'ProductMasterController::updateShopifyPLSTitle';
+                    $success = $this->updateShopifyPLSTitle($sku, $title);
                     $message = $success ? 'OK' : 'Update failed, see logs.';
                     break;
 
@@ -2863,6 +3022,24 @@ PROMPT;
                         }
                     }
                     break;
+
+                case 'macy':
+                    $endpoint = 'MacysApiService::updateTitle';
+                    Log::info('🖱️ Macy (60) push clicked', ['sku' => $sku, 'title_preview' => mb_substr($title, 0, 30)]);
+                    $service = app(MacysApiService::class);
+                    $res = $service->updateTitle($sku, $title);
+                    $success = $res['success'] ?? false;
+                    $message = $res['message'] ?? ($success ? 'OK' : 'Unknown error');
+                    break;
+
+                case 'faire':
+                    $endpoint = 'FaireService::updateTitle';
+                    Log::info('🖱️ Faire (60) push clicked', ['sku' => $sku, 'title_preview' => mb_substr($title, 0, 30)]);
+                    $service = app(FaireService::class);
+                    $res = $service->updateTitle($sku, $title);
+                    $success = $res['success'] ?? false;
+                    $message = $res['message'] ?? ($success ? 'OK' : 'Unknown error');
+                    break;
             }
         } catch (\Throwable $e) {
             $success = false;
@@ -2887,9 +3064,11 @@ PROMPT;
             ]);
         }
 
-        // Log to marketplace_push_logs (map Shopify to shopify_pls only if needed later)
+        // Log to marketplace_push_logs with explicit store naming for Shopify accounts.
         $mpForLog = $marketplace;
-        if ($marketplace === 'shopify') {
+        if ($marketplace === 'shopify' || $marketplace === 'shopify_main') {
+            $mpForLog = 'shopify_main';
+        } elseif ($marketplace === 'shopify_pls') {
             $mpForLog = 'shopify_pls';
         }
         $this->logMarketplacePush(
@@ -3314,7 +3493,7 @@ PROMPT;
     private function updateShopifyTitle($sku, $title)
     {
         try {
-            Log::info("Starting Shopify title update for SKU: {$sku}, Title: {$title}");
+            Log::info('🖱️ Push to Main Shopify', ['sku' => $sku, 'title_preview' => mb_substr((string) $title, 0, 80)]);
 
             // Get Shopify credentials from env - try multiple variable names
             $shopifyDomain = config('services.shopify.domain') ?? config('services.shopify.store_url') ?? config('services.shopify_5core.domain');
@@ -3459,6 +3638,7 @@ PROMPT;
     private function updateShopifyPLSTitle($sku, $title)
     {
         try {
+            Log::info('🖱️ Push to ProLight Shopify', ['sku' => $sku, 'title_preview' => mb_substr((string) $title, 0, 80)]);
             $service = app(\App\Services\ShopifyPLSApiService::class);
 
             return $service->updateTitle($sku, $title);
@@ -3487,17 +3667,19 @@ PROMPT;
             $platformTitleMap = [
                 'amazon' => 'title150',
                 'shopify' => 'title100',
+                'shopify_main' => 'title100',
                 'shopify_pls' => 'title100',
                 'ebay1' => 'title80',
                 'ebay2' => 'title80',
                 'ebay3' => 'title80',
-                'walmart' => 'title80',
+                'walmart' => 'title150',
                 'temu' => 'title150',
                 'doba' => 'title100',
                 'shein' => 'title150',
                 'wayfair' => 'title150',
                 'reverb' => 'title150',
-                'faire' => 'title150',
+                'macy' => 'title60',
+                'faire' => 'title60',
                 'aliexpress' => 'title150',
                 'tiktok' => 'title150',
             ];
@@ -3555,7 +3737,7 @@ PROMPT;
                     }
 
                     // Rate limiting delay - Shopify needs more time (2 calls per product)
-                    if (in_array($platform, ['shopify', 'shopify_pls'])) {
+                    if (in_array($platform, ['shopify', 'shopify_main', 'shopify_pls'])) {
                         sleep(5); // 5 seconds for Shopify to safely clear rate limit
                     } else {
                         sleep(1); // 1 second for other platforms
@@ -3598,6 +3780,7 @@ PROMPT;
                     return $this->updateAmazonTitle($sku, $title);
 
                 case 'shopify':
+                case 'shopify_main':
                     return $this->updateShopifyTitle($sku, $title);
 
                 case 'shopify_pls':
@@ -3627,6 +3810,9 @@ PROMPT;
 
                 case 'reverb':
                     return $this->updateReverbTitle($sku, $title);
+
+                case 'macy':
+                    return $this->updateMacyTitle($sku, $title);
 
                 case 'faire':
                     return $this->updateFaireTitle($sku, $title);
@@ -3922,102 +4108,11 @@ PROMPT;
     private function updateWalmartTitle($sku, $title)
     {
         try {
-            Log::info("Starting Walmart title update for SKU: {$sku}, Title: {$title}");
-
-            $clientId = config('services.walmart.client_id');
-            $clientSecret = config('services.walmart.client_secret');
-            $channelType = config('services.walmart.channel_type');
-            $baseUrl = config('services.walmart.api_endpoint');
-
-            if (! $clientId || ! $clientSecret) {
-                Log::warning('Walmart credentials not configured in .env file');
-
-                return false;
-            }
-
-            // Get OAuth access token
-            $accessToken = $this->getWalmartAccessToken($clientId, $clientSecret);
-
-            if (! $accessToken) {
-                Log::error("✗ Failed to get Walmart access token for SKU {$sku}");
-
-                return false;
-            }
-
-            Log::info('✓ Successfully obtained Walmart access token');
-
-            // Build MP_ITEM feed XML for title update with processMode=UPDATE
-            $feedXml = '<?xml version="1.0" encoding="UTF-8"?>
-<MPItemFeed xmlns="http://walmart.com/">
-    <MPItemFeedHeader>
-        <version>1.4</version>
-        <requestId>'.uniqid().'</requestId>
-        <requestBatchId>'.uniqid().'</requestBatchId>
-    </MPItemFeedHeader>
-    <MPItem>
-        <processMode>UPDATE</processMode>
-        <Item>
-            <sku>'.htmlspecialchars($sku, ENT_XML1).'</sku>
-            <productName>'.htmlspecialchars($title, ENT_XML1).'</productName>
-        </Item>
-    </MPItem>
-</MPItemFeed>';
-
-            Log::info('Walmart MP_ITEM Feed XML: '.$feedXml);
-
-            sleep(2);
-
-            // Submit feed using MP_ITEM feedType for content updates
-            $feedsEndpoint = $baseUrl.'/v3/feeds?feedType=MP_ITEM';
-
-            $response = \Illuminate\Support\Facades\Http::withoutVerifying()
-                ->withHeaders([
-                    'WM_SEC.ACCESS_TOKEN' => $accessToken,
-                    'WM_QOS.CORRELATION_ID' => uniqid(),
-                    'WM_SVC.NAME' => 'Walmart Marketplace',
-                    'WM_CONSUMER.CHANNEL.TYPE' => $channelType,
-                    'Content-Type' => 'multipart/form-data',
-                    'Accept' => 'application/xml',
-                ])
-                ->attach('file', $feedXml, 'feed.xml')
-                ->timeout(60)
-                ->post($feedsEndpoint);
-
-            Log::info('Walmart MP_ITEM Feed response status: '.$response->status());
-            Log::info('Walmart MP_ITEM Feed response: '.$response->body());
-
-            // Walmart Feeds API returns 202 Accepted for async processing
-            if ($response->status() === 202) {
-                $responseBody = $response->body();
-
-                // Parse feedId from XML response
-                preg_match('/<feedId>(.*?)<\/feedId>/', $responseBody, $matches);
-                $feedId = $matches[1] ?? null;
-
-                if ($feedId) {
-                    Log::info("✓ Walmart feed submitted successfully. FeedId: {$feedId}");
-                    Log::info("⏳ Feed is processing asynchronously (15-60 min). Poll status: GET /v3/feeds/{$feedId}");
-
-                    // Optionally poll feed status after a delay
-                    // You can implement polling logic here or return success
-                    return true;
-                } else {
-                    Log::warning('⚠ Feed submitted (202) but no feedId found in response');
-
-                    return true; // Still consider it successful since it was accepted
-                }
-            } elseif ($response->successful()) {
-                Log::info('✓ Walmart title feed submitted successfully');
-
-                return true;
-            } else {
-                Log::error("✗ Failed to submit Walmart MP_ITEM feed for SKU {$sku}. Status: {$response->status()}, Error: {$response->body()}");
-
-                return false;
-            }
-        } catch (\Exception $e) {
-            Log::error("✗ Exception updating Walmart title for SKU {$sku}: ".$e->getMessage());
-
+            $service = app(WalmartService::class);
+            $res = $service->updateTitle((string) $sku, (string) $title);
+            return (bool) ($res['success'] ?? false);
+        } catch (\Throwable $e) {
+            Log::error("❌ Walmart title update failed - SKU: {$sku}, Error: ".$e->getMessage());
             return false;
         }
     }
@@ -4770,9 +4865,27 @@ GRAPHQL;
         }
     }
 
+    private function updateMacyTitle($sku, $newTitle)
+    {
+        try {
+            $service = app(MacysApiService::class);
+            $res = $service->updateTitle((string) $sku, (string) $newTitle);
+            return (bool) ($res['success'] ?? false);
+        } catch (\Throwable $e) {
+            Log::error('❌ Macy push failed', ['sku' => $sku, 'error' => $e->getMessage()]);
+            return false;
+        }
+    }
+
     private function updateFaireTitle($sku, $newTitle)
     {
         try {
+            $service = app(FaireService::class);
+            $res = $service->updateTitle((string) $sku, (string) $newTitle);
+            if (($res['success'] ?? false) === true) {
+                return true;
+            }
+            Log::warning('Faire service update failed, trying legacy flow', ['sku' => $sku, 'message' => $res['message'] ?? null]);
             Log::info("Starting Faire title update for SKU: {$sku}, New Title: {$newTitle}");
 
             // Get Faire credentials from .env

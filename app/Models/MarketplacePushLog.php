@@ -24,7 +24,7 @@ class MarketplacePushLog extends Model
         'response_data' => 'array',
     ];
 
-    public const MARKETPLACES = ['amazon', 'temu', 'reverb', 'wayfair', 'shopify_pls', 'doba', 'ebay1', 'ebay2', 'ebay3'];
+    public const MARKETPLACES = ['amazon', 'temu', 'reverb', 'wayfair', 'walmart', 'shopify_main', 'shopify_pls', 'doba', 'ebay1', 'ebay2', 'ebay3', 'macy', 'faire'];
     public const STATUS_SUCCESS = 'success';
     public const STATUS_FAILED = 'failed';
     public const STATUS_PENDING = 'pending';

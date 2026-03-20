@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use SimpleXMLElement;
 use ZipArchive;
+use App\Models\Ebay2Metric;
 use App\Models\ProductStockMapping;
 
 class Ebay2ApiService
@@ -252,26 +253,189 @@ class Ebay2ApiService
     }
 
     /**
+     * Get item details from eBay Trading API (same pattern as eBay 1 / eBay 3).
+     */
+    public function getItem($itemId)
+    {
+        try {
+            $xml = new SimpleXMLElement('<?xml version="1.0" encoding="utf-8"?><GetItemRequest xmlns="urn:ebay:apis:eBLBaseComponents"/>');
+            $credentials = $xml->addChild('RequesterCredentials');
+
+            $authToken = $this->generateBearerToken();
+            $credentials->addChild('eBayAuthToken', $authToken ?? '');
+
+            $xml->addChild('ItemID', $itemId);
+            $xml->addChild('DetailLevel', 'ReturnAll');
+
+            $xmlBody = $xml->asXML();
+
+            $headers = [
+                'X-EBAY-API-COMPATIBILITY-LEVEL' => $this->compatLevel,
+                'X-EBAY-API-DEV-NAME'            => $this->devId,
+                'X-EBAY-API-APP-NAME'            => $this->appId,
+                'X-EBAY-API-CERT-NAME'           => $this->certId,
+                'X-EBAY-API-CALL-NAME'           => 'GetItem',
+                'X-EBAY-API-SITEID'              => $this->siteId,
+                'Content-Type'                   => 'text/xml',
+            ];
+
+            $response = Http::withHeaders($headers)
+                ->withBody($xmlBody, 'text/xml')
+                ->post($this->endpoint);
+
+            $body = $response->body();
+            libxml_use_internal_errors(true);
+            $xmlResp = simplexml_load_string($body);
+
+            if ($xmlResp === false) {
+                Log::warning('eBay2 GetItem: failed to parse XML response', ['itemId' => $itemId, 'body' => substr($body, 0, 1000)]);
+
+                return null;
+            }
+
+            $responseArray = json_decode(json_encode($xmlResp), true);
+            $ack           = $responseArray['Ack'] ?? 'Failure';
+
+            if ($ack === 'Success' || $ack === 'Warning') {
+                Log::debug('eBay2 GetItem success', ['itemId' => $itemId]);
+
+                return $responseArray;
+            }
+
+            $errors = $responseArray['Errors'] ?? [];
+            $errors = is_array($errors) ? $errors : [$errors];
+            $errMsg = '';
+            foreach ($errors as $err) {
+                $errMsg .= ($errMsg ? '; ' : '') . ($this->parseEbayError(is_array($err) ? $err : ['ShortMessage' => (string) $err]));
+            }
+            Log::warning('eBay2 GetItem failed', ['itemId' => $itemId, 'ack' => $ack, 'errors' => $errors, 'parsed' => $errMsg]);
+
+            return null;
+        } catch (\Exception $e) {
+            Log::warning('eBay2 GetItem exception', ['itemId' => $itemId, 'error' => $e->getMessage()]);
+
+            return null;
+        }
+    }
+
+    /**
+     * Parse eBay API errors into a clear message (LongMessage, ShortMessage, ErrorCode, ErrorParameters).
+     */
+    private function parseEbayError(array $error): string
+    {
+        $long   = $error['LongMessage'] ?? null;
+        $short  = $error['ShortMessage'] ?? null;
+        $code   = $error['ErrorCode'] ?? null;
+        $params = $error['ErrorParameters'] ?? [];
+        $parts  = [];
+        if ($long && $long !== $short) {
+            $parts[] = $long;
+        } elseif ($short) {
+            $parts[] = $short;
+        }
+        if ($code) {
+            $parts[] = "(eBay code: {$code})";
+        }
+        if (is_array($params)) {
+            foreach ($params as $p) {
+                if (is_array($p) && isset($p['Value'])) {
+                    $val = is_string($p['Value']) ? strip_tags($p['Value']) : json_encode($p['Value']);
+                    if (trim($val) !== '') {
+                        $parts[] = $val;
+                    }
+                }
+            }
+        }
+
+        return implode(' ', $parts) ?: 'Unknown error';
+    }
+
+    /**
      * Update listing title via ReviseItem (eBay title max 80 chars).
+     * Fetches item details first and includes required fields (SKU, ListingType, Country, Currency, ConditionID).
+     * Mirrors EbayThreeApiService::updateTitle().
      */
     public function updateTitle($itemId, $title)
     {
-        $title = trim((string) $title);
-        $title = mb_substr($title, 0, 80);
+        $itemId = trim((string) $itemId);
+        $title  = trim((string) $title);
+        $title  = mb_substr($title, 0, 80);
+
+        if ($itemId === '') {
+            Log::warning('eBay2 updateTitle: empty item ID');
+
+            return ['success' => false, 'message' => 'Item ID is required.'];
+        }
         if ($title === '') {
             Log::warning('eBay2 updateTitle: empty title', ['itemId' => $itemId]);
+
             return ['success' => false, 'message' => 'Title cannot be empty.'];
         }
+
+        $metric = Ebay2Metric::where('item_id', $itemId)->first();
+        if (! $metric) {
+            Log::warning('eBay2 updateTitle: item_id not found in Ebay2Metric', ['itemId' => $itemId]);
+
+            return [
+                'success' => false,
+                'message' => "Item ID {$itemId} not found in eBay 2 metrics. Ensure the listing exists and is synced.",
+            ];
+        }
+
         try {
+            $authToken = $this->generateBearerToken();
+            Log::info('eBay2 updateTitle: token generated, fetching item details', ['itemId' => $itemId]);
+
+            $itemDetails = $this->getItem($itemId);
+            if (! $itemDetails || ! isset($itemDetails['Item'])) {
+                Log::error('eBay2 updateTitle: GetItem failed or returned no item', [
+                    'itemId'          => $itemId,
+                    'getItemResult'   => $itemDetails ? 'partial' : 'null',
+                ]);
+
+                return [
+                    'success' => false,
+                    'message' => 'Could not fetch item details from eBay. The item may not exist or the token may lack Trading API access.',
+                ];
+            }
+
+            $existingItem = $itemDetails['Item'];
+            Log::info('eBay2 updateTitle: item details fetched', [
+                'itemId'      => $itemId,
+                'listingType' => $existingItem['ListingType'] ?? null,
+                'country'     => $existingItem['Country'] ?? null,
+                'currency'    => $existingItem['Currency'] ?? null,
+                'conditionId' => $existingItem['ConditionID'] ?? null,
+                'sku'         => isset($existingItem['SKU']) ? substr((string) $existingItem['SKU'], 0, 20).'...' : null,
+            ]);
+
             $xml = new SimpleXMLElement('<?xml version="1.0" encoding="utf-8"?><ReviseItemRequest xmlns="urn:ebay:apis:eBLBaseComponents"/>');
             $credentials = $xml->addChild('RequesterCredentials');
-            $authToken = $this->generateBearerToken();
             $credentials->addChild('eBayAuthToken', $authToken ?? '');
             $xml->addChild('ErrorLanguage', 'en_US');
             $xml->addChild('WarningLevel', 'High');
+            $xml->addChild('DetailLevel', 'ReturnAll');
+
             $item = $xml->addChild('Item');
             $item->addChild('ItemID', $itemId);
             $item->addChild('Title', $title);
+
+            if (isset($existingItem['SKU']) && $existingItem['SKU'] !== '' && $existingItem['SKU'] !== null) {
+                $item->addChild('SKU', (string) $existingItem['SKU']);
+            }
+            if (isset($existingItem['ListingType'])) {
+                $item->addChild('ListingType', (string) $existingItem['ListingType']);
+            }
+            if (isset($existingItem['Country'])) {
+                $item->addChild('Country', (string) $existingItem['Country']);
+            }
+            if (isset($existingItem['Currency'])) {
+                $item->addChild('Currency', (string) $existingItem['Currency']);
+            }
+            if (isset($existingItem['ConditionID'])) {
+                $item->addChild('ConditionID', (string) $existingItem['ConditionID']);
+            }
+
             $xmlBody = $xml->asXML();
             $headers = [
                 'X-EBAY-API-COMPATIBILITY-LEVEL' => $this->compatLevel,
@@ -282,27 +446,69 @@ class Ebay2ApiService
                 'X-EBAY-API-SITEID'              => $this->siteId,
                 'Content-Type'                   => 'text/xml',
             ];
+
+            Log::info('eBay2 updateTitle: ReviseItem request', [
+                'itemId' => $itemId,
+                'title'  => substr($title, 0, 80),
+                'xml'    => $xmlBody,
+            ]);
+
             $response = Http::withHeaders($headers)->withBody($xmlBody, 'text/xml')->post($this->endpoint);
-            $body = $response->body();
+            $body     = $response->body();
+            $rlogId   = $response->header('rlogid') ?? $response->header('X-EBAY-API-SERVER-LOG-ID') ?? null;
+
+            Log::info('eBay2 updateTitle: ReviseItem response', [
+                'itemId'       => $itemId,
+                'statusCode'   => $response->status(),
+                'rlogId'       => $rlogId,
+                'responseBody' => $body,
+            ]);
+
             libxml_use_internal_errors(true);
             $xmlResp = simplexml_load_string($body);
             if ($xmlResp === false) {
-                Log::error('eBay2 updateTitle: invalid XML response', ['itemId' => $itemId]);
-                return ['success' => false, 'message' => 'Invalid API response.'];
+                Log::error('eBay2 updateTitle: invalid XML response', [
+                    'itemId' => $itemId,
+                    'body'   => substr($body, 0, 1000),
+                    'rlogId' => $rlogId,
+                ]);
+
+                return ['success' => false, 'message' => 'Invalid API response from eBay.'];
             }
+
             $responseArray = json_decode(json_encode($xmlResp), true);
-            $ack = $responseArray['Ack'] ?? 'Failure';
+            $ack           = $responseArray['Ack'] ?? 'Failure';
+
             if ($ack === 'Success' || $ack === 'Warning') {
                 Log::info('✅ eBay2 title updated', ['item_id' => $itemId]);
+
                 return ['success' => true, 'message' => 'Title updated successfully.'];
             }
-            $errors = $responseArray['Errors'] ?? [];
-            if (!is_array($errors)) $errors = [$errors];
-            $msg = $errors[0]['LongMessage'] ?? $errors[0]['ShortMessage'] ?? 'Unknown error';
-            Log::error('❌ eBay2 updateTitle failed', ['itemId' => $itemId, 'error' => $msg]);
+
+            $errors   = $responseArray['Errors'] ?? [];
+            $errors   = is_array($errors) ? $errors : [$errors];
+            $messages = [];
+            foreach ($errors as $err) {
+                $messages[] = $this->parseEbayError(is_array($err) ? $err : ['ShortMessage' => (string) $err]);
+            }
+            $msg = implode('; ', $messages) ?: 'Unknown error';
+
+            Log::error('❌ eBay2 updateTitle failed', [
+                'itemId'    => $itemId,
+                'ack'       => $ack,
+                'rlogId'    => $rlogId,
+                'errors'    => $errors,
+                'parsedMsg' => $msg,
+            ]);
+
             return ['success' => false, 'message' => $msg];
         } catch (\Throwable $e) {
-            Log::error('❌ eBay2 updateTitle exception', ['itemId' => $itemId, 'error' => $e->getMessage()]);
+            Log::error('❌ eBay2 updateTitle exception', [
+                'itemId' => $itemId,
+                'error'  => $e->getMessage(),
+                'trace'  => $e->getTraceAsString(),
+            ]);
+
             return ['success' => false, 'message' => $e->getMessage()];
         }
     }
