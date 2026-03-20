@@ -161,6 +161,9 @@
                             <a href="{{ route('roles') }}">Roles</a>
                         </li>
                         <li>
+                            <a href="{{ route('users.add') }}">Add User</a>
+                        </li>
+                        <li>
                             <a href="{{ route('permissions') }}" class="text-danger bg-light"><i
                                     class="ri-error-warning-line text-danger"></i> Reset Permission</a>
                         </li>

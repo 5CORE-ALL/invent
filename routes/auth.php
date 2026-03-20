@@ -10,6 +10,7 @@ use App\Http\Controllers\Auth\PermissionController;
 use App\Http\Controllers\Auth\RegisteredUserController;
 use App\Http\Controllers\Auth\RoleController;
 use App\Http\Controllers\Auth\SocialiteController;
+use App\Http\Controllers\Auth\UserController;
 use App\Http\Controllers\Auth\UserProfileController;
 use App\Http\Controllers\Auth\VerifyEmailController;
 use App\Http\Controllers\NewPermissionController;

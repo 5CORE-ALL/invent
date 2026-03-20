@@ -35,6 +35,12 @@ class SocialiteController extends Controller
                 ->first();
 
             if ($user) {
+                if (! $user->is_active) {
+                    return redirect()
+                        ->route('login')
+                        ->withErrors(['email' => 'This account is inactive. Contact an administrator.']);
+                }
+
                 // Update Google ID if missing (for existing users)
                 if (empty($user->google_id)) {
                     $user->update(['google_id' => $googleUser->id]);

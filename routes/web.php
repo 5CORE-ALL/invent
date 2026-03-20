@@ -136,6 +136,7 @@ use App\Http\Controllers\SkuMatchController;
 use Illuminate\Foundation\Console\RouteCacheCommand;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\RoutingController;
+use App\Http\Controllers\Auth\UserController;
 use App\Http\Controllers\MarketPlace\ReverbController;
 use App\Http\Controllers\MarketPlace\ReverbZeroController;
 use App\Http\Controllers\MarketPlace\CvrMasterController;
@@ -3199,6 +3200,24 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::put('/tasks/{id}', [\App\Http\Controllers\TaskController::class, 'update'])->name('tasks.update');
     Route::delete('/tasks/{id}', [\App\Http\Controllers\TaskController::class, 'destroy'])->name('tasks.destroy');
     Route::post('/tasks/{id}/update-status', [\App\Http\Controllers\TaskController::class, 'updateStatus'])->name('tasks.updateStatus');
+
+    // User management routes
+    Route::get('/users/add', [UserController::class, 'index'])
+        ->middleware('auth')
+        ->name('users.add');
+
+    Route::put('/users/{user}', [UserController::class, 'update'])
+        ->middleware('auth')
+        ->name('users.update');
+
+    Route::delete('/users/{user}', [UserController::class, 'destroy'])
+        ->middleware('auth')
+        ->name('users.destroy');
+
+    Route::post('/users/{id}/restore', [UserController::class, 'restore'])
+        ->middleware('auth')
+        ->whereNumber('id')
+        ->name('users.restore');
 
     Route::get('', [RoutingController::class, 'index'])->name('root');
     Route::get('{first}/{second}', [RoutingController::class, 'secondLevel'])->name('second');
