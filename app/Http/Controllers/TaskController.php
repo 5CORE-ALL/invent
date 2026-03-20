@@ -77,7 +77,10 @@ class TaskController extends Controller
         $stats['etc_rr'] = $stats['rr']; // Alias for backward compatibility
 
         // Get all users for filter dropdowns (include email, avatar for user-select card)
-        $users = User::select('id', 'name', 'email', 'avatar')->orderBy('name')->get();
+        $users = User::where('is_active', true)
+            ->select('id', 'name', 'email', 'avatar')
+            ->orderBy('name')
+            ->get();
 
         // Assignor/assignee roles from visible tasks (for "Select user" dropdown labels)
         // Use original query without user filter for dropdown
@@ -1134,7 +1137,10 @@ class TaskController extends Controller
 
     public function getUsersList()
     {
-        $users = User::select('id', 'name')->get();
+        $users = User::where('is_active', true)
+            ->select('id', 'name')
+            ->orderBy('name')
+            ->get();
         return response()->json($users);
     }
 
