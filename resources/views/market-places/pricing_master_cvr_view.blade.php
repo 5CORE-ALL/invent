@@ -24,6 +24,8 @@
             font-size: 11px;
             font-weight: 600;
         }
+
+
         
         .tabulator .tabulator-header .tabulator-col {
             height: 80px !important;
@@ -959,11 +961,48 @@
         // OV L30 Info Icon Click Handler (SKU-wise)
         $(document).on('click', '.ovl30-info-icon', function(e) {
             e.stopPropagation();
-            const sku = $(this).data('sku');
-            const imagePath = $(this).data('image') || '';
-            const inv = $(this).data('inv') || 0;
-            const l30 = $(this).data('l30') || 0;
-            const dil = $(this).data('dil') || 0;
+            e.preventDefault();
+            
+            const $icon = $(this);
+            const sku = $icon.data('sku');
+            
+            // Validate that we have a valid SKU (prevents wrong row issue)
+            if (!sku || sku.trim() === '') {
+                console.error('Invalid SKU in click handler');
+                return;
+            }
+            
+            // Get data from the icon's data attributes (set in formatter)
+            const imagePath = $icon.data('image') || '';
+            const inv = parseInt($icon.data('inv')) || 0;
+            const l30 = parseInt($icon.data('l30')) || 0;
+            const dil = parseFloat($icon.data('dil')) || 0;
+            
+            // Double-check by getting row data from Tabulator if possible
+            try {
+                const $row = $icon.closest('.tabulator-row');
+                if ($row.length && typeof table !== 'undefined') {
+                    const tabulatorRow = table.getRowFromElement($row[0]);
+                    if (tabulatorRow) {
+                        const rowData = tabulatorRow.getData();
+                        // Use row data if available and valid (ensures correct row)
+                        if (rowData && rowData.sku && !rowData.is_parent_summary) {
+                            loadMarketplaceBreakdown(
+                                rowData.sku,
+                                rowData.image_path || imagePath,
+                                rowData.inventory ?? rowData.inv ?? inv,
+                                parseFloat(rowData.overall_l30 || 0),
+                                rowData.dil_percent || dil
+                            );
+                            return;
+                        }
+                    }
+                }
+            } catch (err) {
+                // If we can't get row data, continue with icon data attributes
+                console.warn('Could not get row data from Tabulator, using icon data:', err);
+            }
+            
             loadMarketplaceBreakdown(sku, imagePath, inv, l30, dil);
         });
         
@@ -1468,6 +1507,10 @@
             $('#modal-total-price').text('$' + avgPrice.toFixed(2));
             $('#modal-total-views').text(totalViews.toLocaleString());
             $('#modal-total-l30').text(totalL30.toLocaleString());
+            
+            // Update header L30 to match the calculated total from breakdown (fixes L30 diff issue)
+            $('#modal-header-l30').text(totalL30.toLocaleString());
+            
             $('#modal-avg-cvr').html(`<span style="${styleForCellColor(cvrColorTotal)}">${avgCVR.toFixed(1)}%</span>`);
             $('#modal-avg-gpft').html(`<span style="${styleForCellColor(gpftColorTotal)}">${avgGPFT.toFixed(1)}%</span>`);
             $('#modal-avg-ad').html(`<span style="${styleForCellColor(adColorTotal)}">${avgAD.toFixed(1)}%</span>`);
