@@ -3,19 +3,110 @@
 namespace App\Services;
 
 use App\Models\ProductStockMapping;
+use App\Models\ShopifySku;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use App\Models\ProductMaster;
 
 class ShopifyApiService
 {
+    protected $shopifyApiKey;
+    protected $shopifyPassword;
+    protected $shopifyStoreUrl;
+    protected $shopifyStoreUrlName;
+    protected $shopifyAccessToken;
+
     public function __construct()
     {
         $this->shopifyApiKey = config('services.shopify.api_key');
         $this->shopifyPassword = config('services.shopify.password');
         $this->shopifyStoreUrl = str_replace(['https://', 'http://'], '', config('services.shopify.store_url'));
         $this->shopifyStoreUrlName = config('services.shopify.store');
-        $this->shopifyAccessToken = config('services.shopify.password');
+        $this->shopifyAccessToken = config('services.shopify.access_token') ?: config('services.shopify.password');
+    }
+
+    /**
+     * Update product title for the given SKU on Main Shopify store (5-core.myshopify.com).
+     */
+    public function updateTitle(string $sku, string $title): bool
+    {
+        Log::info('🖱️ Push to Main Shopify', ['sku' => $sku]);
+
+        try {
+            $domain = config('services.shopify.store_url') ?: config('services.shopify.domain');
+            $token = config('services.shopify.access_token') ?: config('services.shopify.password');
+
+            if (! $domain || ! $token) {
+                Log::warning('Main Shopify credentials not configured', ['sku' => $sku]);
+                return false;
+            }
+
+            $domain = preg_replace('#^https?://#', '', $domain);
+            $domain = rtrim($domain, '/');
+
+            $shopifySku = ShopifySku::where('sku', $sku)
+                ->orWhere('sku', strtoupper($sku))
+                ->orWhere('sku', strtolower($sku))
+                ->first();
+
+            if (! $shopifySku || ! $shopifySku->variant_id) {
+                Log::warning('Main Shopify: variant mapping not found for SKU', ['sku' => $sku]);
+                return false;
+            }
+
+            sleep(3);
+
+            $variantUrl = "https://{$domain}/admin/api/2024-01/variants/{$shopifySku->variant_id}.json";
+            $variantRes = Http::withHeaders([
+                'X-Shopify-Access-Token' => $token,
+                'Content-Type' => 'application/json',
+            ])->timeout(30)->get($variantUrl);
+
+            if (! $variantRes->successful()) {
+                Log::error('❌ Push to Main Shopify - Variant lookup failed', [
+                    'sku' => $sku,
+                    'variant_id' => $shopifySku->variant_id,
+                    'status' => $variantRes->status(),
+                    'body' => $variantRes->body(),
+                ]);
+                return false;
+            }
+
+            $productId = $variantRes->json('variant.product_id');
+            if (! $productId) {
+                Log::error('❌ Push to Main Shopify - Product ID missing in variant response', ['sku' => $sku]);
+                return false;
+            }
+
+            sleep(3);
+
+            $productUrl = "https://{$domain}/admin/api/2024-01/products/{$productId}.json";
+            $updateRes = Http::withHeaders([
+                'X-Shopify-Access-Token' => $token,
+                'Content-Type' => 'application/json',
+            ])->timeout(30)->put($productUrl, [
+                'product' => [
+                    'id' => $productId,
+                    'title' => $title,
+                ],
+            ]);
+
+            if ($updateRes->successful()) {
+                Log::info('✅ Push to Main Shopify - Success', ['sku' => $sku, 'product_id' => $productId]);
+                return true;
+            }
+
+            Log::error('❌ Push to Main Shopify - Failed', [
+                'sku' => $sku,
+                'product_id' => $productId,
+                'status' => $updateRes->status(),
+                'body' => $updateRes->body(),
+            ]);
+            return false;
+        } catch (\Throwable $e) {
+            Log::error('❌ Push to Main Shopify - Exception', ['sku' => $sku, 'error' => $e->getMessage()]);
+            return false;
+        }
     }
 
     public function getInventory()

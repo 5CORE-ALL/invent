@@ -39,13 +39,14 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Shopify - Reverb push uses ShopifyStoreSelector (SHOPIFY_ACTIVE_STORE, default: prolightsounds)
+    | Shopify Main Store (5-core.myshopify.com)
     |--------------------------------------------------------------------------
     */
     'shopify' => [
         'api_key' => env('SHOPIFY_API_KEY'),
         'password' => env('SHOPIFY_PASSWORD'),
         'store_url' => env('SHOPIFY_STORE_URL'),
+        'access_token' => env('SHOPIFY_ACCESS_TOKEN', env('SHOPIFY_PASSWORD')),
         'inventory_location_id' => env('SHOPIFY_INVENTORY_LOCATION_ID'),
         'webhook_secret' => env('SHOPIFY_WEBHOOK_SECRET'),
     ],

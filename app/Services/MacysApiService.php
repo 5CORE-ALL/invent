@@ -36,7 +36,7 @@ class MacysApiService
             $request=Http::withoutVerifying()->withToken($token);
             $response = $request->get($url);
             if (!$response->successful()) {
-                $this->error('Product fetch failed: ' . $response->body());
+                Log::error('Product fetch failed: ' . $response->body());
                 return;
             }
             $json = $response->json();
@@ -72,5 +72,68 @@ class MacysApiService
              ProductStockMapping::where('sku', $sku)->update(['inventory_macy' => (int) $quantity]);    
         }
         return $allProducts;
+    }
+
+    /**
+     * Update Macy's product title by SKU.
+     *
+     * @return array{success:bool,message:string,response?:mixed}
+     */
+    public function updateTitle(string $sku, string $title): array
+    {
+        Log::info('🚀 Macy title update started', ['sku' => $sku]);
+
+        try {
+            $token = $this->getAccessToken();
+            if (! $token) {
+                Log::error('❌ Macy push failed', ['sku' => $sku, 'error' => 'Access token not available']);
+                return ['success' => false, 'message' => 'Macy access token not available'];
+            }
+
+            // Mirakl Connect style product endpoint.
+            $baseUrl = 'https://miraklconnect.com/api/products';
+            $productPayload = [
+                'id' => $sku,
+                'attributes' => [
+                    'productName' => $title,
+                    'title' => $title,
+                ],
+            ];
+
+            $headers = [
+                'Accept' => 'application/json',
+                'Content-Type' => 'application/json',
+            ];
+            $channelId = config('services.macy.company_id');
+            if (! empty($channelId)) {
+                $headers['channel_id'] = $channelId;
+            }
+
+            $request = Http::withoutVerifying()->withToken($token)->withHeaders($headers)->timeout(45);
+
+            // Try documented upsert pattern first, then direct PATCH/PUT fallback.
+            $response = $request->post($baseUrl, ['products' => [$productPayload]]);
+            if (! $response->successful()) {
+                $response = $request->patch("{$baseUrl}/{$sku}", $productPayload);
+            }
+            if (! $response->successful()) {
+                $response = $request->put("{$baseUrl}/{$sku}", $productPayload);
+            }
+
+            if (! $response->successful()) {
+                Log::error('❌ Macy push failed', [
+                    'sku' => $sku,
+                    'status' => $response->status(),
+                    'error' => $response->body(),
+                ]);
+                return ['success' => false, 'message' => 'Macy update failed: ' . $response->body()];
+            }
+
+            Log::info('✅ Macy title updated', ['sku' => $sku]);
+            return ['success' => true, 'message' => 'Macy title updated', 'response' => $response->json()];
+        } catch (\Throwable $e) {
+            Log::error('❌ Macy push failed', ['sku' => $sku, 'error' => $e->getMessage()]);
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
     }
 }
