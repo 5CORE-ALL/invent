@@ -55,6 +55,7 @@ class User extends Authenticatable
         'password' => 'hashed',
         'is_active' => 'boolean',
         'deactivated_at' => 'datetime',
+        'deleted_at' => 'datetime',
     ];
 
     public function permission()

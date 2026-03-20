@@ -3308,14 +3308,10 @@
                         minWidth: 60,
                         mutator: function (value, data) {
                             var acos = parseFloat(data.acos || data.ACOS || 0);
-                            // KW SBGT rules (match AutoUpdateAmazonBgtKw.php)
-                            if (acos >= 30) return 3;
-                            if (acos >= 25) return 5;
-                            if (acos >= 20) return 10;
-                            if (acos >= 15) return 15;
-                            if (acos >= 10) return 20;
-                            if (acos >= 5) return 25;
-                            return 30; // Less than 5
+                            if (isNaN(acos)) acos = 0;
+                            if (acos < 20) return 10;
+                            if (acos < 30) return 5;
+                            return 3;
                         },
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
