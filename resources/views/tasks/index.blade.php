@@ -1176,6 +1176,7 @@
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
             display: flex !important;
             visibility: visible !important;
+            min-height: auto;
         }
 
         #tasksRRTabs .nav-item {
@@ -1186,7 +1187,7 @@
             border: none !important;
             border-bottom: 3px solid transparent !important;
             color: #6c757d !important;
-            padding: 15px 25px !important;
+            padding: 8px 20px !important;
             transition: all 0.3s ease;
             font-size: 15px !important;
             font-weight: 600 !important;
@@ -1257,6 +1258,48 @@
             background-color: #0d6efd !important;
             color: white !important;
             border-color: #0d6efd;
+        }
+        /* Play/Pause buttons - larger and colored */
+        .task-playback-group #task-play-auto-assignor,
+        .task-playback-group #task-play-auto-assignee,
+        .task-playback-group #task-play-pause-assignor,
+        .task-playback-group #task-play-pause-assignee {
+            width: 32px !important;
+            height: 32px !important;
+            background-color: #28a745 !important;
+            color: white !important;
+            border-color: #28a745 !important;
+        }
+        .task-playback-group #task-play-pause-assignor,
+        .task-playback-group #task-play-pause-assignee {
+            background-color: #ffc107 !important;
+            border-color: #ffc107 !important;
+        }
+        .task-playback-group #task-play-auto-assignor:hover,
+        .task-playback-group #task-play-auto-assignee:hover,
+        .task-playback-group #task-play-pause-assignor:hover,
+        .task-playback-group #task-play-pause-assignee:hover {
+            background-color: #218838 !important;
+            transform: scale(1.1);
+        }
+        .task-playback-group #task-play-pause-assignor:hover,
+        .task-playback-group #task-play-pause-assignee:hover {
+            background-color: #e0a800 !important;
+        }
+        /* Skip buttons - colored */
+        .task-playback-group #task-play-backward-assignor:not(:disabled),
+        .task-playback-group #task-play-backward-assignee:not(:disabled),
+        .task-playback-group #task-play-forward-assignor:not(:disabled),
+        .task-playback-group #task-play-forward-assignee:not(:disabled) {
+            background-color: #6c757d !important;
+            color: white !important;
+            border-color: #6c757d !important;
+        }
+        .task-playback-group #task-play-backward-assignor:not(:disabled):hover,
+        .task-playback-group #task-play-backward-assignee:not(:disabled):hover,
+        .task-playback-group #task-play-forward-assignor:not(:disabled):hover,
+        .task-playback-group #task-play-forward-assignee:not(:disabled):hover {
+            background-color: #5a6268 !important;
         }
     </style>
 @endsection
@@ -1412,6 +1455,38 @@
                                         <button type="button" class="btn btn-info ms-2" id="bulk-actions-btn">
                                             <i class="mdi mdi-format-list-checks me-2"></i> Bulk
                                         </button>
+                                        
+                                        <!-- Playback Controls - Assignor -->
+                                        <div class="btn-group task-playback-group task-playback-assignor ms-2" role="group" aria-label="Assignor playback">
+                                            <button type="button" id="task-play-backward-assignor" class="btn btn-light btn-sm rounded-circle p-0" style="width:32px;height:32px;" title="Previous assignor" disabled>
+                                                <i class="mdi mdi-skip-previous" style="font-size:16px;"></i>
+                                            </button>
+                                            <button type="button" id="task-play-pause-assignor" class="btn btn-light btn-sm rounded-circle p-0" style="width:32px;height:32px; display:none;" title="Show all">
+                                                <i class="mdi mdi-pause" style="font-size:16px;"></i>
+                                            </button>
+                                            <button type="button" id="task-play-auto-assignor" class="btn btn-light btn-sm rounded-circle p-0" style="width:32px;height:32px;" title="Step through assignors">
+                                                <i class="mdi mdi-play" style="font-size:16px;"></i>
+                                            </button>
+                                            <button type="button" id="task-play-forward-assignor" class="btn btn-light btn-sm rounded-circle p-0" style="width:32px;height:32px;" title="Next assignor" disabled>
+                                                <i class="mdi mdi-skip-next" style="font-size:16px;"></i>
+                                            </button>
+                                        </div>
+                                        
+                                        <!-- Playback Controls - Assignee -->
+                                        <div class="btn-group task-playback-group task-playback-assignee ms-2" role="group" aria-label="Assignee playback">
+                                            <button type="button" id="task-play-backward-assignee" class="btn btn-light btn-sm rounded-circle p-0" style="width:32px;height:32px;" title="Previous assignee" disabled>
+                                                <i class="mdi mdi-skip-previous" style="font-size:16px;"></i>
+                                            </button>
+                                            <button type="button" id="task-play-pause-assignee" class="btn btn-light btn-sm rounded-circle p-0" style="width:32px;height:32px; display:none;" title="Show all">
+                                                <i class="mdi mdi-pause" style="font-size:16px;"></i>
+                                            </button>
+                                            <button type="button" id="task-play-auto-assignee" class="btn btn-light btn-sm rounded-circle p-0" style="width:32px;height:32px;" title="Step through assignees">
+                                                <i class="mdi mdi-play" style="font-size:16px;"></i>
+                                            </button>
+                                            <button type="button" id="task-play-forward-assignee" class="btn btn-light btn-sm rounded-circle p-0" style="width:32px;height:32px;" title="Next assignee" disabled>
+                                                <i class="mdi mdi-skip-next" style="font-size:16px;"></i>
+                                            </button>
+                                        </div>
                                     </div>
                                     
                                     <div>
@@ -1487,69 +1562,23 @@
                             </div>
                         </div>
 
-                        <!-- Playback Controls Row - Above Gray Filter Section -->
-                        <div class="row mb-2 d-none d-md-flex">
-                            <div class="col-md-2 offset-md-6">
-                                <div class="d-flex align-items-center gap-1 flex-wrap">
-                                    <div class="btn-group task-playback-group task-playback-assignor" role="group" aria-label="Assignor playback">
-                                        <button type="button" id="task-play-backward-assignor" class="btn btn-light btn-sm rounded-circle p-0" style="width:26px;height:26px;" title="Previous assignor" disabled>
-                                            <i class="mdi mdi-skip-previous" style="font-size:12px;"></i>
-                                        </button>
-                                        <button type="button" id="task-play-pause-assignor" class="btn btn-light btn-sm rounded-circle p-0" style="width:26px;height:26px; display:none;" title="Show all">
-                                            <i class="mdi mdi-pause" style="font-size:12px;"></i>
-                                        </button>
-                                        <button type="button" id="task-play-auto-assignor" class="btn btn-light btn-sm rounded-circle p-0" style="width:26px;height:26px;" title="Step through assignors">
-                                            <i class="mdi mdi-play" style="font-size:12px;"></i>
-                                        </button>
-                                        <button type="button" id="task-play-forward-assignor" class="btn btn-light btn-sm rounded-circle p-0" style="width:26px;height:26px;" title="Next assignor" disabled>
-                                            <i class="mdi mdi-skip-next" style="font-size:12px;"></i>
-                                        </button>
-                                    </div>
-                                    <span id="task-playback-label-assignor" class="text-muted small" style="font-size:11px; display:none;"></span>
-                                </div>
-                            </div>
-                            <div class="col-md-2">
-                                <div class="d-flex align-items-center gap-1 flex-wrap">
-                                    <div class="btn-group task-playback-group task-playback-assignee" role="group" aria-label="Assignee playback">
-                                        <button type="button" id="task-play-backward-assignee" class="btn btn-light btn-sm rounded-circle p-0" style="width:26px;height:26px;" title="Previous assignee" disabled>
-                                            <i class="mdi mdi-skip-previous" style="font-size:12px;"></i>
-                                        </button>
-                                        <button type="button" id="task-play-pause-assignee" class="btn btn-light btn-sm rounded-circle p-0" style="width:26px;height:26px; display:none;" title="Show all">
-                                            <i class="mdi mdi-pause" style="font-size:12px;"></i>
-                                        </button>
-                                        <button type="button" id="task-play-auto-assignee" class="btn btn-light btn-sm rounded-circle p-0" style="width:26px;height:26px;" title="Step through assignees">
-                                            <i class="mdi mdi-play" style="font-size:12px;"></i>
-                                        </button>
-                                        <button type="button" id="task-play-forward-assignee" class="btn btn-light btn-sm rounded-circle p-0" style="width:26px;height:26px;" title="Next assignee" disabled>
-                                            <i class="mdi mdi-skip-next" style="font-size:12px;"></i>
-                                        </button>
-                                    </div>
-                                    <span id="task-playback-label-assignee" class="text-muted small" style="font-size:11px; display:none;"></span>
-                                </div>
-                            </div>
-                        </div>
-
                         <!-- Search/Filter Bar -->
                         <div class="row mb-3 p-3 filter-section" style="background: #f8f9fa; border-radius: 8px;">
                             <!-- Desktop: All Filters -->
                             <div class="col-md-2 mb-2 d-none d-md-block">
-                                <label class="form-label fw-bold">Search</label>
-                                <input type="text" id="filter-search" class="form-control form-control-sm" placeholder="Search all" autocomplete="off" onkeydown="if(event.key === 'Enter') { event.preventDefault(); return false; }">
+                                <input type="text" id="filter-search" class="form-control form-control-sm" placeholder="Search" autocomplete="off" onkeydown="if(event.key === 'Enter') { event.preventDefault(); return false; }">
                             </div>
-                            <div class="col-md-2 mb-2 d-none d-md-block">
-                                <label class="form-label fw-bold">Group</label>
-                                <input type="text" id="filter-group" class="form-control form-control-sm" placeholder="Enter Group" autocomplete="off" onkeydown="if(event.key === 'Enter') { event.preventDefault(); return false; }">
+                            <div class="col-md-1 mb-2 d-none d-md-block">
+                                <input type="text" id="filter-group" class="form-control form-control-sm" placeholder="Group" autocomplete="off" onkeydown="if(event.key === 'Enter') { event.preventDefault(); return false; }">
                             </div>
-                            <div class="col-md-2 mb-2 d-none d-md-block">
-                                <label class="form-label fw-bold">Task</label>
-                                <input type="text" id="filter-task" class="form-control form-control-sm" placeholder="Enter Task" autocomplete="off" onkeydown="if(event.key === 'Enter') { event.preventDefault(); return false; }">
+                            <div class="col-md-1 mb-2 d-none d-md-block">
+                                <input type="text" id="filter-task" class="form-control form-control-sm" placeholder="Task" autocomplete="off" onkeydown="if(event.key === 'Enter') { event.preventDefault(); return false; }">
                             </div>
                             
                             <!-- Mobile & Desktop: Essential Filters -->
                             <div class="col-md-2 col-12 mb-2">
-                                <label class="form-label fw-bold">Assignor</label>
                                 <select id="filter-assignor" class="form-select form-select-sm">
-                                    <option value="">All Assignors</option>
+                                    <option value="">Assignor</option>
                                     <option value="__NULL__" style="color: #dc3545; font-weight: bold;">🔴 No Assignor</option>
                                     @foreach($users ?? [] as $user)
                                         <option value="{{ $user->name }}">{{ $user->name }}</option>
@@ -1557,19 +1586,17 @@
                                 </select>
                             </div>
                             <div class="col-md-2 col-12 mb-2">
-                                <label class="form-label fw-bold">Assignee</label>
                                 <select id="filter-assignee" class="form-select form-select-sm">
-                                    <option value="">All Assignees</option>
+                                    <option value="">Assignee</option>
                                     <option value="__NULL__" style="color: #dc3545; font-weight: bold;">🔴 No Assignee</option>
                                     @foreach($users ?? [] as $user)
                                         <option value="{{ $user->name }}" data-user-id="{{ $user->id }}">{{ $user->name }}</option>
                                     @endforeach
                                 </select>
                             </div>
-                            <div class="col-md-1 col-12 mb-2">
-                                <label class="form-label fw-bold">Status</label>
+                            <div class="col-md-2 col-12 mb-2">
                                 <select id="filter-status" class="form-select form-select-sm">
-                                    <option value="">All</option>
+                                    <option value="">Status</option>
                                     <option value="Todo">Todo</option>
                                     <option value="Working">Working</option>
                                     <option value="Done">Done</option>
@@ -1585,10 +1612,9 @@
                             </div>
                             
                             <!-- Desktop only: Priority -->
-                            <div class="col-md-1 mb-2 d-none d-md-block">
-                                <label class="form-label fw-bold">Priority</label>
+                            <div class="col-md-2 mb-2 d-none d-md-block">
                                 <select id="filter-priority" class="form-select form-select-sm">
-                                    <option value="">All</option>
+                                    <option value="">Priority</option>
                                     <option value="low">Low</option>
                                     <option value="normal">Normal</option>
                                     <option value="high">High</option>
@@ -2556,15 +2582,15 @@
                         row.getElement().style.borderLeft = "";
                     }
                 },
-                layout: "fitData",
+                layout: "fitColumns",
                 pagination: true,
                 paginationSize: 25,
                 paginationSizeSelector: [10, 25, 50, 100],
-                responsiveLayout: false,
+                responsiveLayout: "hide",
                 placeholder: "No Tasks Found",
                 height: "600px",
                 layoutColumnsOnNewData: true,
-                horizontalScroll: true,
+                horizontalScroll: false,
                 autoResize: true,
                 initialSort: [
                     {column: "start_date", dir: "asc"},
@@ -2623,7 +2649,8 @@
                     cols.push({
                         title: "GROUP", 
                         field: "group", 
-                        minWidth: 120,
+                        widthGrow: 1,
+                        minWidth: 80,
                         hozAlign: "left",
                         formatter: function(cell) {
                             var value = cell.getValue();
@@ -2635,7 +2662,8 @@
                     cols.push({
                         title: "TASK", 
                         field: "title", 
-                        width: 560,
+                        widthGrow: 3,
+                        minWidth: 200,
                         hozAlign: "left",
                         formatter: function(cell) {
                             var rowData = cell.getRow().getData();
