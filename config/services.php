@@ -336,6 +336,8 @@ return [
         'app_key' => env('ALIEXPRESS_APP_KEY'),
         'app_secret' => env('ALIEXPRESS_APP_SECRET'),
         'access_token' => env('ALIEXPRESS_ACCESS_TOKEN'),
+        'refresh_token' => env('ALIEXPRESS_REFRESH_TOKEN'),
+        'api_base' => env('ALIEXPRESS_API_BASE', 'https://api-sg.aliexpress.com'),
     ],
 
     /*
