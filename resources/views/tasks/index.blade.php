@@ -2916,6 +2916,77 @@
                     return false;
                 }).length;
                 
+                // TAT calculation: Average days from start_date to completion_date for Done tasks completed in last 30 days
+                var thirtyDaysAgo = new Date();
+                thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+                thirtyDaysAgo.setHours(0, 0, 0, 0); // Set to start of day
+                
+                var last30DoneTasks = filteredData.filter(function(t) {
+                    if (t.status !== 'Done' || !t.start_date) return false;
+                    
+                    // Get completion date (prefer completion_date, fallback to updated_at)
+                    var completionDate = null;
+                    if (t.completion_date && t.completion_date !== '0000-00-00' && t.completion_date !== null) {
+                        completionDate = new Date(t.completion_date);
+                    } else if (t.updated_at) {
+                        completionDate = new Date(t.updated_at);
+                    }
+                    
+                    if (!completionDate || isNaN(completionDate.getTime())) return false;
+                    completionDate.setHours(0, 0, 0, 0);
+                    
+                    return completionDate >= thirtyDaysAgo;
+                });
+                
+                var tatValues = [];
+                last30DoneTasks.forEach(function(t) {
+                    var start = new Date(t.start_date);
+                    if (isNaN(start.getTime())) return;
+                    start.setHours(0, 0, 0, 0);
+                    
+                    var completion = null;
+                    if (t.completion_date && t.completion_date !== '0000-00-00' && t.completion_date !== null) {
+                        completion = new Date(t.completion_date);
+                    } else if (t.updated_at) {
+                        completion = new Date(t.updated_at);
+                    } else {
+                        completion = start; // Fallback to start date
+                    }
+                    
+                    if (isNaN(completion.getTime())) return;
+                    completion.setHours(0, 0, 0, 0);
+                    
+                    var days = Math.abs(completion.getTime() - start.getTime()) / (1000 * 60 * 60 * 24);
+                    tatValues.push(Math.round(days * 10) / 10); // Round to 1 decimal
+                });
+                
+                stats.tat_avg_30 = tatValues.length > 0 
+                    ? Math.round((tatValues.reduce((a, b) => a + b, 0) / tatValues.length) * 10) / 10 
+                    : null;
+                
+                // MISSED calculation: Count of tasks with start_date in last 30 days that are not Done/Archived
+                // Matches server logic: start_date >= 30 days ago AND status NOT IN ('Done', 'Archived')
+                var missedTasks = filteredData.filter(function(t) {
+                    if (!t.start_date) return false;
+                    
+                    var startDate = new Date(t.start_date);
+                    if (isNaN(startDate.getTime())) return false;
+                    startDate.setHours(0, 0, 0, 0);
+                    
+                    // Must have start_date in last 30 days
+                    if (startDate < thirtyDaysAgo) return false;
+                    
+                    // Status must NOT be Done or Archived
+                    if (['Done', 'Archived'].includes(t.status)) {
+                        return false;
+                    }
+                    
+                    // Not Done/Archived and in last 30 days - count as missed
+                    return true;
+                });
+                
+                stats.missed_count_30 = missedTasks.length;
+                
                 // Update stat cards (find by stat-value divs in each card)
                 $('.stat-card').each(function() {
                     var label = $(this).find('.stat-label').text().trim();
@@ -2935,19 +3006,25 @@
                             valueEl.text(stats.done);
                             break;
                         case 'ETC':
-                            valueEl.text(Math.round(stats.etc_total / 60));
+                            valueEl.text(Math.round(stats.etc_total / 60 * 10) / 10);
                             break;
                         case 'R&R':
                             valueEl.text(stats.rr != null ? Math.round(stats.rr / 60) : (stats.etc_rr != null ? Math.round(stats.etc_rr / 60) : '-'));
                             break;
                         case 'ATC':
-                            valueEl.text(Math.round(stats.atc_total / 60));
+                            valueEl.text(Math.round(stats.atc_total / 60 * 10) / 10);
                             break;
                         case 'DONE ETC':
                             valueEl.text(Math.round(stats.done_etc / 60));
                             break;
                         case 'DONE ATC':
                             valueEl.text(Math.round(stats.done_atc / 60));
+                            break;
+                        case 'TAT':
+                            valueEl.text(stats.tat_avg_30 !== null ? stats.tat_avg_30.toFixed(1) : '-');
+                            break;
+                        case 'MISSED':
+                            valueEl.text(stats.missed_count_30);
                             break;
                     }
                 });
