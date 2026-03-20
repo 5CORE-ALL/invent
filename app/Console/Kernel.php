@@ -95,6 +95,7 @@ class Kernel extends ConsoleKernel
         \App\Console\Commands\UpdateAmazonSkuCompetitorPrices::class,
         \App\Console\Commands\SyncAmazonProducts::class,
         \App\Console\Commands\AmazonDebugSku::class,
+        \App\Console\Commands\AliExpressApiTestCommand::class,
     ];
 
     /**

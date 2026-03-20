@@ -5,15 +5,29 @@ namespace App\Services;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
+/**
+ * AliExpress Open Platform — Solution API via POST https://api-sg.aliexpress.com/rest
+ *
+ * Test (tinker):
+ *   app(\App\Services\AliExpressApiService::class)->getInventory(1, 5);
+ *   app(\App\Services\AliExpressApiService::class)->updateTitle('1000005237852', 'New title');
+ *
+ * Artisan:
+ *   php artisan aliexpress:test list
+ *   php artisan aliexpress:test edit --product-id=ID --title="New title"
+ */
 class AliExpressApiService
 {
-    protected string $appKey;
-    protected string $appSecret;
-    protected ?string $accessToken;
-    protected string $apiBase;
+    /** REST path prefix for HMAC string (official IOP /rest protocol). */
+    protected const REST_SIGN_PREFIX = '/rest';
 
-    /** API identity: ISV (third-party app) or SELLER — required by AliExpress or "Source must not be null". */
-    protected string $source;
+    protected string $appKey;
+
+    protected string $appSecret;
+
+    protected ?string $accessToken;
+
+    protected string $apiBase;
 
     public function __construct()
     {
@@ -21,9 +35,6 @@ class AliExpressApiService
         $this->appSecret = (string) (config('services.aliexpress.app_secret') ?: env('ALIEXPRESS_APP_SECRET', ''));
         $this->accessToken = config('services.aliexpress.access_token') ?: env('ALIEXPRESS_ACCESS_TOKEN');
         $this->apiBase = rtrim((string) (config('services.aliexpress.api_base') ?: env('ALIEXPRESS_API_BASE', 'https://api-sg.aliexpress.com')), '/');
-        $src = config('services.aliexpress.source') ?: env('ALIEXPRESS_SOURCE', 'ISV');
-        $src = strtoupper((string) $src);
-        $this->source = in_array($src, ['ISV', 'SELLER'], true) ? $src : 'ISV';
     }
 
     public function getAccessToken(): ?string
@@ -32,17 +43,18 @@ class AliExpressApiService
     }
 
     /**
-     * Product list (solution API). Response is normalized in {@see parseSolutionProductListResponse()}.
+     * Product list — method aliexpress.solution.product.list.get with product_list_get_request (JSON).
      */
-    public function getInventory(int $page = 1, int $pageSize = 20): array
+    public function getInventory(int $page = 1, int $pageSize = 20, array $extraListParams = []): array
     {
-        $raw = $this->callSync(
-            'aliexpress.solution.product.list.get',
-            [
-                'current_page' => $page,
-                'page_size' => $pageSize,
-            ]
-        );
+        $listRequest = $this->buildProductListRequest(array_merge([
+            'current_page' => $page,
+            'page_size' => $pageSize,
+        ], $extraListParams));
+
+        $raw = $this->callRest('aliexpress.solution.product.list.get', [
+            'product_list_get_request' => $this->encodeRequestPayload($listRequest),
+        ]);
 
         if (empty($raw['success'])) {
             return $raw;
@@ -56,39 +68,72 @@ class AliExpressApiService
             'status' => $raw['status'] ?? 200,
             'data' => $parsed,
             'raw' => $payload,
+            'request_id' => $raw['request_id'] ?? null,
         ];
     }
 
-    public function updateTitle(string $productId, string $title): array
+    /**
+     * Update title — method aliexpress.solution.product.edit with edit_product_request (JSON).
+     */
+    public function updateTitle(string $productId, string $title, ?string $language = 'en'): array
     {
-        return $this->callSync(
-            'aliexpress.solution.product.edit',
-            [
-                'product_id' => $productId,
-                'subject' => $title,
-            ]
-        );
+        $editRequest = $this->buildEditProductRequest($productId, $title, $language);
+
+        return $this->callRest('aliexpress.solution.product.edit', [
+            'edit_product_request' => $this->encodeRequestPayload($editRequest),
+        ]);
     }
 
     /**
-     * Temporary debug helper:
-     * Returns exact request URL, raw body, signature source string and full response.
+     * Build body for edit_product_request (multi-language title per official docs).
      */
-    public function debugCallSync(string $method, array $bizParams = []): array
+    public function buildEditProductRequest(string $productId, string $title, ?string $language = 'en'): array
+    {
+        return [
+            'product_id' => (string) $productId,
+            'multi_language_subject_list' => [
+                [
+                    'subject' => $title,
+                    'language' => $language ?: 'en',
+                ],
+            ],
+        ];
+    }
+
+    /**
+     * Build body for product_list_get_request.
+     *
+     * @param  array<string, mixed>  $params  e.g. current_page, page_size, optional filters from docs
+     */
+    public function buildProductListRequest(array $params): array
+    {
+        return array_merge([
+            'current_page' => 1,
+            'page_size' => 20,
+        ], $params);
+    }
+
+    /**
+     * Debug: same signing and URL as production REST calls.
+     *
+     * @param  array<string, string|int>  $restParams  Already-encoded business params (e.g. product_list_get_request => json string)
+     */
+    public function debugCallRest(string $method, array $restParams = []): array
     {
         $params = $this->buildBaseParams($method);
-        $params = array_merge($params, $this->normalizeParams($bizParams));
-        $signSource = $this->buildSignSource($params, null); // /sync style: no apiPath prefix
+        foreach ($restParams as $k => $v) {
+            $params[$k] = $v;
+        }
+        $signSource = $this->buildSignSource($params, self::REST_SIGN_PREFIX);
         $params['sign'] = $this->sign($signSource);
 
-        $url = $this->apiBase . '/sync';
+        $url = $this->apiBase . '/rest';
         $rawBody = http_build_query($params, '', '&', PHP_QUERY_RFC3986);
 
-        Log::debug('AliExpress debug request', [
+        Log::debug('AliExpress REST debug', [
             'url' => $url,
-            'params' => $params,
-            'raw_body' => $rawBody,
             'sign_source' => $signSource,
+            'params_keys' => array_keys($params),
         ]);
 
         $response = Http::withoutVerifying()
@@ -96,7 +141,7 @@ class AliExpressApiService
             ->withHeaders(['Content-Type' => 'application/x-www-form-urlencoded'])
             ->post($url, $params);
 
-        $result = [
+        return [
             'request' => [
                 'url' => $url,
                 'params' => $params,
@@ -105,32 +150,43 @@ class AliExpressApiService
             ],
             'response' => [
                 'status' => $response->status(),
-                'headers' => $response->headers(),
                 'body' => $response->body(),
                 'json' => $response->json(),
             ],
         ];
-
-        Log::debug('AliExpress debug response', $result['response']);
-
-        return $result;
     }
 
-    private function callSync(string $method, array $bizParams = []): array
+    /**
+     * @param  array<string, mixed>  $businessParams  Top-level REST keys (e.g. edit_product_request => JSON string)
+     */
+    private function callRest(string $method, array $businessParams = []): array
     {
-        if (empty($this->appKey) || empty($this->appSecret)) {
+        if ($this->appKey === '' || $this->appSecret === '') {
             return [
                 'success' => false,
-                'message' => 'AliExpress app credentials are missing.',
+                'message' => 'AliExpress app_key / app_secret are missing.',
+            ];
+        }
+
+        if (empty($this->accessToken)) {
+            return [
+                'success' => false,
+                'message' => 'AliExpress access_token is missing.',
             ];
         }
 
         $params = $this->buildBaseParams($method);
-        $params = array_merge($params, $this->normalizeParams($bizParams));
-        $signSource = $this->buildSignSource($params, null); // /sync style
+        foreach ($businessParams as $key => $value) {
+            if ($value === null || $value === '') {
+                continue;
+            }
+            $params[$key] = is_array($value) ? $this->encodeRequestPayload($value) : (string) $value;
+        }
+
+        $signSource = $this->buildSignSource($params, self::REST_SIGN_PREFIX);
         $params['sign'] = $this->sign($signSource);
 
-        $url = $this->apiBase . '/sync';
+        $url = $this->apiBase . '/rest';
 
         $response = Http::withoutVerifying()
             ->asForm()
@@ -140,12 +196,11 @@ class AliExpressApiService
         $json = $response->json();
         $body = $response->body();
 
-        Log::info('AliExpress callSync', [
+        Log::info('AliExpress REST call', [
             'method' => $method,
             'status' => $response->status(),
             'request_url' => $url,
-            'request_body' => http_build_query($params, '', '&', PHP_QUERY_RFC3986),
-            'response_body' => $body,
+            'response_body' => mb_substr((string) $body, 0, 4000),
         ]);
 
         if ($response->failed()) {
@@ -157,39 +212,48 @@ class AliExpressApiService
             ];
         }
 
-        // error_response wrapper (common for sync API)
-        if (is_array($json) && isset($json['error_response'])) {
+        if (!is_array($json)) {
+            return [
+                'success' => false,
+                'status' => $response->status(),
+                'message' => 'Invalid JSON response.',
+                'response' => $body,
+            ];
+        }
+
+        if (isset($json['error_response'])) {
             $err = $json['error_response'];
-            $msg = is_array($err)
-                ? ($err['msg'] ?? $err['message'] ?? $err['sub_msg'] ?? json_encode($err))
-                : (string) $err;
 
             return [
                 'success' => false,
                 'status' => $response->status(),
-                'message' => $msg,
+                'message' => is_array($err)
+                    ? ($err['msg'] ?? $err['message'] ?? $err['sub_msg'] ?? json_encode($err))
+                    : (string) $err,
                 'response' => $json,
             ];
         }
 
-        // Top-level ISV-style errors (type/code/message)
-        if (is_array($json) && isset($json['type'], $json['code']) && ($json['type'] ?? '') === 'ISV') {
+        $json = $this->unwrapSolutionEnvelope($json);
+
+        if (isset($json['type'], $json['code']) && ($json['type'] ?? '') === 'ISV') {
             return [
                 'success' => false,
                 'status' => $response->status(),
-                'message' => $json['message'] ?? 'AliExpress API error.',
+                'message' => $json['message'] ?? 'AliExpress ISV error.',
                 'response' => $json,
             ];
         }
 
-        // AliExpress business errors: code !== '0' or !== 0
-        if (is_array($json) && array_key_exists('code', $json)) {
+        // Success: code "0" (string) or 0
+        if (array_key_exists('code', $json)) {
             $code = $json['code'];
             if ((string) $code !== '0' && $code !== 0) {
                 return [
                     'success' => false,
                     'status' => $response->status(),
-                    'message' => $json['message'] ?? 'AliExpress API error.',
+                    'message' => $json['message'] ?? $json['msg'] ?? 'AliExpress API error.',
+                    'code' => $code,
                     'response' => $json,
                 ];
             }
@@ -198,51 +262,42 @@ class AliExpressApiService
         return [
             'success' => true,
             'status' => $response->status(),
-            'data' => $json ?: $body,
+            'data' => $json,
+            'result' => $json['result'] ?? null,
+            'request_id' => $json['request_id'] ?? null,
         ];
     }
 
     private function buildBaseParams(string $method): array
     {
-        $params = [
+        return [
             'app_key' => $this->appKey,
             'timestamp' => (int) round(microtime(true) * 1000),
             'sign_method' => 'sha256',
             'method' => $method,
-            'source' => $this->source,
+            'access_token' => $this->accessToken,
         ];
-
-        if (!empty($this->accessToken)) {
-            $params['access_token'] = $this->accessToken;
-        }
-
-        return $params;
     }
 
-    private function normalizeParams(array $params): array
+    /**
+     * JSON for *_request parameters; compact and stable for signing.
+     *
+     * @param  array<string, mixed>  $payload
+     */
+    private function encodeRequestPayload(array $payload): string
     {
-        $normalized = [];
-        foreach ($params as $key => $value) {
-            if ($value === null || $value === '') {
-                continue;
-            }
-            $normalized[$key] = is_array($value)
-                ? json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
-                : $value;
-        }
-        return $normalized;
+        return json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     }
 
-    private function buildSignSource(array $params, ?string $apiPath): string
+    /**
+     * IOP REST: sign string = "/rest" + sorted key1val1key2val2... (no app_secret wrapping).
+     */
+    private function buildSignSource(array $params, string $apiPathPrefix): string
     {
         unset($params['sign']);
         ksort($params);
 
-        $source = '';
-        if (!empty($apiPath)) {
-            $source .= $apiPath;
-        }
-
+        $source = $apiPathPrefix;
         foreach ($params as $key => $value) {
             $source .= (string) $key . (string) $value;
         }
@@ -256,7 +311,33 @@ class AliExpressApiService
     }
 
     /**
-     * Normalize aliexpress.solution.product.list.get JSON (nested keys vary by API version).
+     * Unwrap single-key nested response like aliexpress_solution_product_edit_response.
+     */
+    private function unwrapSolutionEnvelope(array $json): array
+    {
+        if (count($json) !== 1) {
+            return $json;
+        }
+        $first = reset($json);
+        if (!is_array($first)) {
+            return $json;
+        }
+        $key = key($json);
+        if (!is_string($key)) {
+            return $json;
+        }
+        if (
+            str_contains(strtolower($key), 'response')
+            || str_contains(strtolower($key), 'aliexpress_')
+        ) {
+            return $first;
+        }
+
+        return $json;
+    }
+
+    /**
+     * Normalize product list JSON after successful REST call.
      */
     private function parseSolutionProductListResponse($payload): array
     {
@@ -269,22 +350,9 @@ class AliExpressApiService
             ];
         }
 
-        // Typical: { "aliexpress_solution_product_list_get_response": { "result": { ... } } }
-        $inner = $payload;
-        if (count($payload) === 1) {
-            $first = reset($payload);
-            if (is_array($first)) {
-                $inner = $first;
-            }
-        }
-        foreach ($payload as $k => $v) {
-            if (is_string($k) && str_contains(strtolower($k), 'product_list') && is_array($v)) {
-                $inner = $v;
-                break;
-            }
-        }
+        $payload = $this->unwrapSolutionEnvelope($payload);
 
-        $result = $inner['result'] ?? $inner['aeop_product_list_result'] ?? $inner;
+        $result = $payload['result'] ?? $payload;
 
         if (!is_array($result)) {
             $result = [];
@@ -300,7 +368,6 @@ class AliExpressApiService
             $products = [];
         }
 
-        // Single object → list
         if ($products !== [] && !isset($products[0]) && isset($products['product_id'])) {
             $products = [$products];
         }
@@ -310,7 +377,6 @@ class AliExpressApiService
             'total_count' => $result['total_count'] ?? $result['total_item'] ?? $result['totalCount'] ?? null,
             'current_page' => $result['current_page'] ?? $result['currentPage'] ?? null,
             'page_size' => $result['page_size'] ?? $result['pageSize'] ?? null,
-            'success' => $result['success'] ?? null,
         ];
     }
 }

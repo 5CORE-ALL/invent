@@ -336,9 +336,8 @@ return [
         'app_key' => env('ALIEXPRESS_APP_KEY'),
         'app_secret' => env('ALIEXPRESS_APP_SECRET'),
         'access_token' => env('ALIEXPRESS_ACCESS_TOKEN'),
+        /** POST base; requests go to {api_base}/rest */
         'api_base' => env('ALIEXPRESS_API_BASE', 'https://api-sg.aliexpress.com'),
-        /** Required by solution APIs: ISV (app) or SELLER */
-        'source' => env('ALIEXPRESS_SOURCE', 'ISV'),
     ],
 
     /*
