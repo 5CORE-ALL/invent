@@ -8,6 +8,7 @@ use App\Models\EbayOrder;
 use App\Models\Ebay2Order;
 use App\Models\TemuDailyData;
 use App\Models\TemuAdData;
+use App\Models\TemuCampaignReport;
 use App\Models\Temu2DailyData;
 use App\Models\TopDawgOrderMetric;
 use App\Models\SheinDailyData;
@@ -102,6 +103,17 @@ class UpdateMarketplaceDailyMetrics extends Command
         $endOfDay = $datePacific->copy()->endOfDay();
         $startOfDay = $datePacific->copy()->subDays(33)->startOfDay();
 
+        // Calculate total revenue from order totals (matches Amazon's "Ordered Product Sales" report)
+        // This ensures accuracy and matches the controller calculation
+        $totalRevenue = (float) DB::table('amazon_orders')
+            ->where('order_date', '>=', $startOfDay)
+            ->where('order_date', '<=', $endOfDay)
+            ->where(function ($q) {
+                $q->whereNull('status')->orWhere('status', '!=', 'Canceled');
+            })
+            ->sum('total_amount');
+
+        // Get order rows for item-level metrics (COGS, profit, etc.)
         $orderRows = DB::table('amazon_orders as o')
             ->join('amazon_order_items as i', 'o.id', '=', 'i.amazon_order_id')
             ->where('o.order_date', '>=', $startOfDay)
@@ -127,7 +139,6 @@ class UpdateMarketplaceDailyMetrics extends Command
 
         $totalOrders = $orderRows->pluck('amazon_order_id')->unique()->count();
         $totalQuantity = 0;
-        $totalRevenue = 0;
         $totalCogs = 0;
         $totalPft = 0;
         $totalWeightedPrice = 0;
@@ -139,15 +150,14 @@ class UpdateMarketplaceDailyMetrics extends Command
         $adUpdates = $marketplaceData ? $marketplaceData->ad_updates : 0;
         $margin = ($percentage - $adUpdates) / 100;
 
-        // Process each order line: sales = line price from amazon_order_items
+        // Process each order line for item-level metrics (COGS, profit calculations)
+        // Note: totalRevenue is already calculated from order totals above
         foreach ($orderRows as $row) {
             $quantity = (int) $row->quantity;
             $linePrice = (float) $row->line_price;
             $unitPrice = $quantity > 0 ? $linePrice / $quantity : 0;
-            $totalPrice = $linePrice;
 
             $totalQuantity += $quantity;
-            $totalRevenue += $totalPrice;
 
             if ($quantity > 0 && $unitPrice > 0) {
                 $totalWeightedPrice += $unitPrice * $quantity;
@@ -823,8 +833,35 @@ class UpdateMarketplaceDailyMetrics extends Command
             return $sku;
         };
 
-        // Get Temu daily data
-        $data = TemuDailyData::all();
+        // Get ProductMaster SKUs (excluding PARENT) - same universe as temu-tabulator
+        $productMasterSkus = ProductMaster::orderBy('parent', 'asc')
+            ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
+            ->orderBy('sku', 'asc')
+            ->pluck('sku')
+            ->filter(function ($sku) {
+                return stripos($sku, 'PARENT') === false;
+            })
+            ->unique()
+            ->values()
+            ->all();
+
+        $normalizedPmSet = collect($productMasterSkus)->mapWithKeys(function ($s) use ($normalizeSku) {
+            return [$normalizeSku($s) => true];
+        })->all();
+
+        // Include orders whose contribution_sku normalizes to a ProductMaster SKU (match temu-tabulator logic)
+        $allowedRawSkus = TemuDailyData::select('contribution_sku')->distinct()
+            ->get()
+            ->filter(function ($r) use ($normalizeSku, $normalizedPmSet) {
+                return isset($normalizedPmSet[$normalizeSku($r->contribution_sku ?? '')]);
+            })
+            ->pluck('contribution_sku')
+            ->unique()
+            ->values()
+            ->all();
+
+        // Get Temu daily data filtered to only include allowed SKUs (match temu-tabulator)
+        $data = TemuDailyData::whereIn('contribution_sku', $allowedRawSkus)->get();
 
         if ($data->isEmpty()) {
             return null;
@@ -846,7 +883,8 @@ class UpdateMarketplaceDailyMetrics extends Command
         $totalQuantityForPrice = 0;
 
         foreach ($data as $row) {
-            if (!$row->contribution_sku || trim((string) $row->contribution_sku) === '') {
+            // Skip rows with empty SKU or order_id (match temu-tabulator logic)
+            if (!$row->contribution_sku || trim((string) $row->contribution_sku) === '' || !$row->order_id || trim((string) $row->order_id) === '') {
                 continue;
             }
 
@@ -913,9 +951,11 @@ class UpdateMarketplaceDailyMetrics extends Command
         $pftPercentage = $totalL30Sales > 0 ? ($totalPft / $totalL30Sales) * 100 : 0;
         $roiPercentage = $totalCogs > 0 ? ($totalPft / $totalCogs) * 100 : 0;
 
-        // Calculate Temu Ad Spend (from temu_ad_data table)
-        // The table contains L30 data and is truncated/refreshed on each upload
-        $temuSpent = TemuAdData::sum('spend') ?? 0;
+        // Calculate Temu Ad Spend (from temu_campaign_reports table, L30)
+        // Match the logic used in getTemuDecreaseData and fetchAdMetricsFromTables
+        $temuSpent = TemuCampaignReport::where('report_range', 'L30')
+            ->selectRaw('SUM(spend) as total_spend')
+            ->value('total_spend') ?? 0;
 
         // Calculate TACOS %: (Temu Spent / Total Sales) * 100
         $tacosPercentage = $totalL30Sales > 0 ? ($temuSpent / $totalL30Sales) * 100 : 0;

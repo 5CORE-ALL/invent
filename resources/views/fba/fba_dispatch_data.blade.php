@@ -886,15 +886,47 @@
                                 const dot = e.target.closest('.send-toggle-dot');
                                 if (!dot) return;
 
+                                let newValue;
                                 if (dot.classList.contains('red')) {
                                     dot.classList.remove('red');
                                     dot.classList.add('green');
+                                    newValue = 1;
                                     cell.setValue(1, true);
                                 } else {
                                     dot.classList.remove('green');
                                     dot.classList.add('red');
+                                    newValue = 0;
                                     cell.setValue(0, true);
                                 }
+
+                                // Save to database immediately
+                                $.ajax({
+                                    url: '/update-fba-manual-data',
+                                    method: 'POST',
+                                    data: {
+                                        sku: rowData.FBA_SKU || rowData.SKU,
+                                        field: 'send_toggle',
+                                        value: newValue,
+                                        _token: '{{ csrf_token() }}'
+                                    },
+                                    success: function(response) {
+                                        console.log('Send toggle saved successfully:', response);
+                                    },
+                                    error: function(xhr) {
+                                        console.error('Error saving send toggle:', xhr.responseText);
+                                        // Revert the toggle on error
+                                        if (newValue === 1) {
+                                            dot.classList.remove('green');
+                                            dot.classList.add('red');
+                                            cell.setValue(0, true);
+                                        } else {
+                                            dot.classList.remove('red');
+                                            dot.classList.add('green');
+                                            cell.setValue(1, true);
+                                        }
+                                        alert('Failed to save send toggle. Please try again.');
+                                    }
+                                });
                             }
                         },
 
@@ -1015,6 +1047,180 @@
                                 return `<span style="color: ${color}; font-weight: 600;">${pct.toFixed(1)}%</span>`;
                             },
                             minWidth: 70
+                        },
+                        {
+                            title: "CVR<br>L60<br>amz",
+                            field: "CVR_L60_amz",
+                            hozAlign: "center",
+                            visible: true,
+                            formatter: function(cell) {
+                                const row = cell.getRow().getData();
+                                if (row.is_parent) return '';
+                                
+                                const aL60 = parseFloat(row['AMZ_L60'] || 0);
+                                const sess60 = parseFloat(row['AMZ_Sess60'] || 0);
+                                
+                                if (sess60 === 0) return '<span style="color: #a00211; font-weight: 600;">0.0%</span>';
+                                
+                                const cvr = (aL60 / sess60) * 100;
+                                let color = '';
+                                if (cvr <= 4) color = '#a00211'; // red
+                                else if (cvr > 4 && cvr <= 7) color = '#ffc107'; // yellow
+                                else if (cvr > 7 && cvr <= 10) color = '#28a745'; // green
+                                else color = '#e83e8c'; // pink
+                                
+                                return `<span style="color: ${color}; font-weight: 600;">${cvr.toFixed(1)}%</span>`;
+                            },
+                            sorter: function(a, b, aRow, bRow) {
+                                const calcCVR = (row) => {
+                                    const aL60 = parseFloat(row['AMZ_L60'] || 0);
+                                    const sess60 = parseFloat(row['AMZ_Sess60'] || 0);
+                                    return sess60 === 0 ? 0 : (aL60 / sess60) * 100;
+                                };
+                                return calcCVR(aRow.getData()) - calcCVR(bRow.getData());
+                            },
+                            minWidth: 65
+                        },
+                        {
+                            title: "CVR<br>L45<br>amz",
+                            field: "CVR_L45_amz",
+                            hozAlign: "center",
+                            visible: true,
+                            formatter: function(cell) {
+                                const row = cell.getRow().getData();
+                                if (row.is_parent) return '';
+                                
+                                // 45-day: use average of L30 and L60 (sold and views) for 45-day approximation
+                                const aL30 = parseFloat(row['AMZ_L30'] || 0);
+                                const sess30 = parseFloat(row['AMZ_Sess30'] || 0);
+                                const aL60 = parseFloat(row['AMZ_L60'] || 0);
+                                const sess60 = parseFloat(row['AMZ_Sess60'] || 0);
+                                const aL45 = (aL30 + aL60) / 2;
+                                const sess45 = (sess30 + sess60) / 2;
+                                
+                                if (sess45 === 0) return '<span style="color: #a00211; font-weight: 600;">0.0%</span>';
+                                
+                                const cvr = (aL45 / sess45) * 100;
+                                let color = '';
+                                if (cvr <= 4) color = '#a00211'; // red
+                                else if (cvr > 4 && cvr <= 7) color = '#ffc107'; // yellow
+                                else if (cvr > 7 && cvr <= 10) color = '#28a745'; // green
+                                else color = '#e83e8c'; // pink
+                                
+                                return `<span style="color: ${color}; font-weight: 600;">${cvr.toFixed(1)}%</span>`;
+                            },
+                            sorter: function(a, b, aRow, bRow) {
+                                const calcCVR = (row) => {
+                                    const aL30 = parseFloat(row['AMZ_L30'] || 0);
+                                    const sess30 = parseFloat(row['AMZ_Sess30'] || 0);
+                                    const aL60 = parseFloat(row['AMZ_L60'] || 0);
+                                    const sess60 = parseFloat(row['AMZ_Sess60'] || 0);
+                                    const aL45 = (aL30 + aL60) / 2;
+                                    const sess45 = (sess30 + sess60) / 2;
+                                    return sess45 === 0 ? 0 : (aL45 / sess45) * 100;
+                                };
+                                return calcCVR(aRow.getData()) - calcCVR(bRow.getData());
+                            },
+                            minWidth: 65
+                        },
+                        {
+                            title: "CVR<br>L30<br>amz",
+                            field: "CVR_L30_amz",
+                            hozAlign: "center",
+                            visible: true,
+                            formatter: function(cell) {
+                                const row = cell.getRow().getData();
+                                if (row.is_parent) return '';
+                                
+                                const sku = row['SKU'] || '';
+                                const aL30 = parseFloat(row['AMZ_L30'] || 0);
+                                const sess30 = parseFloat(row['AMZ_Sess30'] || 0);
+                                const aL60 = parseFloat(row['AMZ_L60'] || 0);
+                                const sess60 = parseFloat(row['AMZ_Sess60'] || 0);
+                                const cvrL30 = sess30 === 0 ? 0 : (aL30 / sess30) * 100;
+                                const cvrL60 = sess60 === 0 ? 0 : (aL60 / sess60) * 100;
+                                const tol = 0.1;
+                                
+                                let arrowHtml = '';
+                                if (sku) {
+                                    let arrowColor = '#6c757d';
+                                    let arrowIcon = 'fa-minus';
+                                    if (cvrL30 > cvrL60 + tol) {
+                                        arrowColor = '#28a745';
+                                        arrowIcon = 'fa-arrow-up';
+                                    } else if (cvrL30 < cvrL60 - tol) {
+                                        arrowColor = '#a00211';
+                                        arrowIcon = 'fa-arrow-down';
+                                    }
+                                    arrowHtml = `<i class="fas ${arrowIcon}" style="color: ${arrowColor}; font-size: 12px; margin-left: 4px;"></i>`;
+                                }
+                                
+                                if (sess30 === 0) {
+                                    return `<span style="color: #a00211; font-weight: 600;">0.0%</span>${arrowHtml}`.trim();
+                                }
+                                
+                                const cvr = cvrL30;
+                                let color = '';
+                                if (cvr <= 4) color = '#a00211';
+                                else if (cvr > 4 && cvr <= 7) color = '#ffc107';
+                                else if (cvr > 7 && cvr <= 10) color = '#28a745';
+                                else color = '#e83e8c';
+                                
+                                return `<span style="color: ${color}; font-weight: 600;">${cvr.toFixed(1)}%</span>${arrowHtml}`.trim();
+                            },
+                            sorter: function(a, b, aRow, bRow) {
+                                const calcCVR = (row) => {
+                                    const aL30 = parseFloat(row['AMZ_L30'] || 0);
+                                    const sess30 = parseFloat(row['AMZ_Sess30'] || 0);
+                                    return sess30 === 0 ? 0 : (aL30 / sess30) * 100;
+                                };
+                                return calcCVR(aRow.getData()) - calcCVR(bRow.getData());
+                            },
+                            minWidth: 65
+                        },
+                        {
+                            title: "Rating<br>amz",
+                            field: "AMZ_Rating",
+                            hozAlign: "center",
+                            visible: true,
+                            formatter: function(cell) {
+                                const row = cell.getRow().getData();
+                                if (row.is_parent) return '';
+                                
+                                const rating = parseFloat(row['AMZ_Rating'] || 0);
+                                const reviews = parseInt(row['AMZ_Reviews'] || 0);
+                                
+                                if (!rating || rating === 0) {
+                                    return '<span style="color: #6c757d;">-</span>';
+                                }
+                                
+                                // Use same colors as rating filter
+                                let ratingColor = '';
+                                const ratingVal = parseFloat(rating);
+                                if (ratingVal < 3) ratingColor = '#a00211'; // red
+                                else if (ratingVal >= 3 && ratingVal <= 3.5) ratingColor = '#ffc107'; // yellow
+                                else if (ratingVal >= 3.51 && ratingVal <= 3.99) ratingColor = '#3591dc'; // blue
+                                else if (ratingVal >= 4 && ratingVal <= 4.5) ratingColor = '#28a745'; // green
+                                else ratingColor = '#e83e8c'; // pink (>4.5)
+                                
+                                const reviewColor = reviews < 4 ? '#a00211' : '#6c757d';
+                                const fontWeight = '600';
+                                
+                                return `<div style="display: flex; flex-direction: column; align-items: center; gap: 2px;">
+                                    <span style="color: ${ratingColor}; font-weight: ${fontWeight};">
+                                        <i class="fa fa-star"></i> ${rating.toFixed(1)}
+                                    </span>
+                                    <span style="font-size: 11px; color: ${reviewColor}; font-weight: ${fontWeight};">
+                                        ${reviews.toLocaleString()} reviews
+                                    </span>
+                                </div>`;
+                            },
+                            sorter: function(a, b, aRow, bRow) {
+                                const ratingA = parseFloat(aRow.getData()['AMZ_Rating'] || 0);
+                                const ratingB = parseFloat(bRow.getData()['AMZ_Rating'] || 0);
+                                return ratingA - ratingB;
+                            },
+                            minWidth: 80
                         },
 
                         {

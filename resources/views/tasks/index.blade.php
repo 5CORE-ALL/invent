@@ -554,32 +554,38 @@
         /* Statistics Cards - Unified Design */
         .stat-card {
             background: white;
-            border-radius: 10px;
-            padding: 12px;
-            margin-bottom: 20px;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+            border-radius: 12px;
+            padding: 16px 14px;
+            margin-bottom: 0;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
             display: flex;
             align-items: center;
-            transition: box-shadow 0.2s ease;
-            border-left: 3px solid;
-            min-height: 75px;
+            transition: all 0.2s ease;
+            border-left: 3px solid !important;
+            border-right: none !important;
+            border-top: none !important;
+            border-bottom: none !important;
+            min-height: 85px;
             position: relative;
             overflow: hidden;
+            width: 100%;
+            height: 100%;
         }
 
         .stat-card:hover {
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1), 0 2px 4px rgba(0, 0, 0, 0.06);
+            transform: translateY(-1px);
         }
 
         .stat-icon {
-            width: 42px;
-            height: 42px;
-            border-radius: 8px;
+            width: 48px;
+            height: 48px;
+            border-radius: 10px;
             display: flex;
             align-items: center;
             justify-content: center;
-            margin-right: 10px;
-            font-size: 18px;
+            margin-right: 12px;
+            font-size: 20px;
             color: white;
             flex-shrink: 0;
         }
@@ -587,44 +593,60 @@
         .stat-content {
             flex: 1;
             min-width: 0;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
         }
 
-        /* Keep all stat cards in one line; no scrolling - flexible widths */
+        /* Keep all stat cards in one line; no scrolling - uniform widths */
         .stats-row.flex-nowrap {
             overflow-x: hidden;
             overflow-y: hidden;
-            gap: 8px;
+            gap: 0;
+            margin-left: -10px;
+            margin-right: -10px;
         }
         .stats-row.flex-nowrap > .col {
             min-width: 0;
             flex: 1 1 0;
-            padding-left: 4px;
-            padding-right: 4px;
+            padding-left: 10px;
+            padding-right: 10px;
+            display: flex;
+        }
+        
+        /* Ensure all stat cards have consistent styling and equal height */
+        .stats-row.flex-nowrap > .col > .stat-card {
+            width: 100%;
+            border-left: 3px solid !important;
+            border-right: none !important;
+            border-top: none !important;
+            border-bottom: none !important;
         }
 
         .stat-label {
-            font-size: 8px;
+            font-size: 10px;
             font-weight: 600;
             color: #6c757d;
-            letter-spacing: 0.3px;
-            margin-bottom: 3px;
+            letter-spacing: 0.5px;
+            margin-bottom: 5px;
             text-transform: uppercase;
-            line-height: 1.2;
+            line-height: 1.3;
         }
 
         .stat-value {
-            font-size: 16px;
+            font-size: 22px;
             font-weight: 700;
             color: #2c3e50;
-            line-height: 1.2;
-            margin-bottom: 2px;
+            line-height: 1.3;
+            margin-bottom: 3px;
         }
 
         .stat-unit {
-            font-size: 7px;
+            font-size: 10px;
             color: #6c757d;
-            margin-top: 1px;
-            line-height: 1.2;
+            margin-top: 3px;
+            line-height: 1.3;
+            font-weight: 500;
         }
 
         /* Blue - Total */
@@ -668,92 +690,6 @@
         }
 
         /* Select user - icon before TOTAL */
-        .stat-card-user-select {
-            border-left-color: #6c757d;
-        }
-        .stat-card-user-select:hover {
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1) !important;
-        }
-        .stat-card-user-select .stat-icon-user {
-            width: 42px;
-            height: 42px;
-            border-radius: 8px;
-            background: linear-gradient(135deg, #6c757d 0%, #495057 100%);
-            color: #fff;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            margin-right: 10px;
-            font-size: 18px;
-            flex-shrink: 0;
-        }
-        .stat-card-user-select .stat-content {
-            min-width: 0;
-            flex: 1;
-        }
-        .stat-card-user-select .stat-icon-user .user-select-avatar-img {
-            border-radius: 12px;
-        }
-        .stat-card-user-select .stat-icon-user .mdi {
-            position: absolute;
-            left: 50%;
-            top: 50%;
-            transform: translate(-50%, -50%);
-            font-size: 14px;
-        }
-        .stat-card-user-select select:focus {
-            box-shadow: none;
-            outline: none;
-        }
-
-        /* Select2 searchable user picker inside stat card */
-        .stat-card-user-select .select2-container {
-            min-width: 0;
-            flex: 1;
-        }
-        .stat-card-user-select .select2-container--bootstrap-5 .select2-selection {
-            min-height: 24px;
-            border: none !important;
-            background: transparent !important;
-            box-shadow: none !important;
-        }
-        .stat-card-user-select .select2-container--bootstrap-5 .select2-selection--single .select2-selection__rendered {
-            padding-left: 0;
-            padding-right: 1.25rem;
-            line-height: 22px;
-            font-size: 10px;
-            font-weight: 600;
-            color: #2c3e50;
-        }
-        .stat-card-user-select .select2-container--bootstrap-5 .select2-selection--single .select2-selection__arrow {
-            height: 22px;
-        }
-        .select2-container--bootstrap-5.select2-container--open .select2-dropdown {
-            border-color: #dee2e6;
-            box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.1);
-        }
-        .select2-container--bootstrap-5 .select2-search--dropdown .select2-search__field {
-            border-radius: 6px;
-        }
-        /* Large dropdown to show all users - increased height */
-        .select2-container--bootstrap-5.select2-container--open .select2-dropdown {
-            max-height: 500px !important;
-        }
-        .select2-container--bootstrap-5.select2-container--open .select2-results__options {
-            max-height: 450px !important;
-            overflow-y: auto !important;
-        }
-        /* Prevent Select2 tooltips/titles from appearing on hover */
-        .stat-card-user-select .select2-container .select2-selection--single {
-            cursor: pointer;
-        }
-        .stat-card-user-select .select2-container .select2-selection--single[title] {
-            cursor: pointer;
-        }
-        /* Prevent any hover effects on Select2 selection */
-        .stat-card-user-select .select2-container--bootstrap-5 .select2-selection:hover {
-            background: transparent !important;
-        }
 
         /* R&R - Roles & Responsibilities (separate badge card, custom icon) */
         .stat-card-rr {
@@ -1144,30 +1080,6 @@
             font-size: 24px;
         }
 
-        /* User Search in Page Title Area */
-        .user-search-wrapper {
-            flex-shrink: 0;
-        }
-        .user-search-wrapper .stat-card-user-select {
-            padding: 14px 16px;
-            min-height: auto;
-        }
-        .user-search-wrapper .stat-card-user-select .stat-icon-user {
-            width: 48px;
-            height: 48px;
-            font-size: 20px;
-            margin-right: 12px;
-        }
-        .user-search-wrapper .stat-card-user-select .stat-content {
-            flex: 1;
-        }
-        .user-search-wrapper .select2-container--bootstrap-5 .select2-selection {
-            min-height: 32px;
-        }
-        .user-search-wrapper .select2-container--bootstrap-5 .select2-selection--single .select2-selection__rendered {
-            line-height: 30px;
-            font-size: 14px;
-        }
 
         /* ID Column */
         .id-cell {
@@ -1338,36 +1250,7 @@
             <div class="col-12">
                 <div class="page-title-box d-flex align-items-center justify-content-between">
                     <div class="d-flex align-items-center gap-3">
-                        <!-- User Search (moved before Task Manager) -->
-                        <div class="user-search-wrapper" style="width: 400px; flex-shrink: 0;">
-                            <div class="stat-card stat-card-user-select d-flex align-items-center" style="margin-bottom: 0;">
-                                <div class="stat-icon stat-icon-user position-relative">
-                                    <img id="user-select-avatar" src="" alt="" class="user-select-avatar-img" style="display: none; width: 100%; height: 100%; object-fit: cover; border-radius: inherit;">
-                                    <i id="user-select-icon" class="mdi mdi-account-search"></i>
-                                </div>
-                                <div class="stat-content flex-grow-1">
-                                    <select id="user-overdue-graph-select" class="form-select form-select-sm border-0 shadow-none bg-transparent p-0 fw-bold" style="font-size: 0.9rem; cursor: pointer;">
-                                        <option value="">-- Select user --</option>
-                                        @foreach($users ?? [] as $u)
-                                            <option value="{{ $u->name }}" 
-                                                    data-user-id="{{ $u->id }}"
-                                                    data-avatar="{{ $u->avatar ? asset('storage/' . $u->avatar) : '' }}"
-                                                    data-assignor="{{ $u->is_assignor ? '1' : '0' }}"
-                                                    data-assignee="{{ $u->is_assignee ? '1' : '0' }}">{{ $u->name }}</option>
-                                        @endforeach
-                                    </select>
-                                </div>
-                            </div>
-                        </div>
-                        <h4 class="page-title mb-0">
-                            Task Manager
-                            @if(!empty($selectedUserName))
-                                <span class="badge bg-info ms-2" style="font-size: 0.75rem; font-weight: 600;">
-                                    <i class="mdi mdi-account me-1"></i>Filtered: {{ $selectedUserName }}
-                                    <button type="button" class="btn-close btn-close-white ms-2" style="font-size: 0.6rem;" onclick="clearUserFilter()" title="Clear filter"></button>
-                                </span>
-                            @endif
-                        </h4>
+                        <h4 class="page-title mb-0">Task Manager</h4>
                     </div>
                     <div class="page-title-right">
                         <ol class="breadcrumb m-0">
@@ -1383,7 +1266,7 @@
         <!-- Statistics Cards (Hidden on mobile) - all in one line -->
         <div class="row mb-4 stats-row d-none d-md-flex align-items-stretch flex-nowrap" style="flex-wrap: nowrap !important;">
             <!-- Total Tasks -->
-            <div class="col" style="min-width: 0; flex: 1 1 0; padding-left: 4px; padding-right: 4px;">
+            <div class="col">
                 <div class="stat-card stat-card-blue">
                     <div class="stat-icon">
                         <i class="mdi mdi-format-list-bulleted"></i>
@@ -1396,7 +1279,7 @@
             </div>
 
             <!-- Overdue Tasks -->
-            <div class="col" style="min-width: 0; flex: 1 1 0; padding-left: 4px; padding-right: 4px;">
+            <div class="col">
                 <div class="stat-card stat-card-red">
                     <div class="stat-icon">
                         <i class="mdi mdi-alert-circle"></i>
@@ -1409,7 +1292,7 @@
             </div>
 
             <!-- Total ETC -->
-            <div class="col" style="min-width: 0; flex: 1 1 0; padding-left: 4px; padding-right: 4px;">
+            <div class="col">
                 <div class="stat-card stat-card-yellow">
                     <div class="stat-icon">
                         <i class="mdi mdi-briefcase-clock"></i>
@@ -1422,22 +1305,8 @@
                 </div>
             </div>
 
-            <!-- R&R (Roles & Responsibilities) - separate badge card -->
-            <div class="col" style="min-width: 0; flex: 1 1 0; padding-left: 4px; padding-right: 4px;">
-                <div class="stat-card stat-card-rr">
-                    <div class="stat-icon stat-icon-img">
-                        <img src="{{ asset('images/roles-rr-icon.png') }}" alt="R&amp;R" class="stat-icon-image">
-                    </div>
-                    <div class="stat-content">
-                        <div class="stat-label">R&amp;R</div>
-                        <div class="stat-value">{{ isset($stats['rr']) ? number_format($stats['rr'] / 60, 1) : (isset($stats['etc_rr']) ? number_format($stats['etc_rr'] / 60, 1) : '-') }}</div>
-                        <div class="stat-unit">hours</div>
-                    </div>
-                </div>
-            </div>
-
             <!-- Total ATC -->
-            <div class="col" style="min-width: 0; flex: 1 1 0; padding-left: 4px; padding-right: 4px;">
+            <div class="col">
                 <div class="stat-card stat-card-teal">
                     <div class="stat-icon">
                         <i class="mdi mdi-timer"></i>
@@ -1451,39 +1320,29 @@
             </div>
 
             <!-- TAT Badge -->
-            <div class="col" style="min-width: 0; flex: 1 1 0; padding-left: 4px; padding-right: 4px;">
+            <div class="col">
                 <div class="stat-card stat-card-teal">
                     <div class="stat-icon">
                         <i class="mdi mdi-clock-outline"></i>
                     </div>
-                    <div class="stat-content d-flex align-items-center justify-content-between">
-                        <div style="min-width: 0; flex: 1;">
-                            <div class="stat-label">TAT</div>
-                            <div class="stat-value">{{ isset($stats['tat_avg_30']) && $stats['tat_avg_30'] !== null ? number_format($stats['tat_avg_30'], 1) : '-' }}</div>
-                            <div class="stat-unit">Avg last 30 days</div>
-                        </div>
-                        <button type="button" class="btn btn-sm btn-light border-0 p-1 rounded-circle" id="tat-chart-eye-btn" title="View TAT trend" style="width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-left: 4px;">
-                            <i class="mdi mdi-eye" style="font-size: 12px; color: #20c997;"></i>
-                        </button>
+                    <div class="stat-content">
+                        <div class="stat-label">TAT</div>
+                        <div class="stat-value">{{ isset($stats['tat_avg_30']) && $stats['tat_avg_30'] !== null ? number_format($stats['tat_avg_30'], 1) : '-' }}</div>
+                        <div class="stat-unit">Avg last 30 days</div>
                     </div>
                 </div>
             </div>
 
             <!-- Missed Badge -->
-            <div class="col" style="min-width: 0; flex: 1 1 0; padding-left: 4px; padding-right: 4px;">
+            <div class="col">
                 <div class="stat-card stat-card-red-missed">
                     <div class="stat-icon">
                         <i class="mdi mdi-alert-circle"></i>
                     </div>
-                    <div class="stat-content d-flex align-items-center justify-content-between">
-                        <div style="min-width: 0; flex: 1;">
-                            <div class="stat-label">MISSED</div>
-                            <div class="stat-value">{{ $stats['missed_count_30'] ?? 0 }}</div>
-                            <div class="stat-unit">Last 30 days</div>
-                        </div>
-                        <button type="button" class="btn btn-sm btn-light border-0 p-1 rounded-circle" id="missed-chart-eye-btn" title="View Missed trend" style="width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-left: 4px;">
-                            <i class="mdi mdi-eye" style="font-size: 12px; color: #dc3545;"></i>
-                        </button>
+                    <div class="stat-content">
+                        <div class="stat-label">MISSED</div>
+                        <div class="stat-value">{{ $stats['missed_count_30'] ?? 0 }}</div>
+                        <div class="stat-unit">Last 30 days</div>
                     </div>
                 </div>
             </div>
@@ -1613,15 +1472,15 @@
                             <!-- Desktop: All Filters -->
                             <div class="col-md-2 mb-2 d-none d-md-block">
                                 <label class="form-label fw-bold">Search</label>
-                                <input type="text" id="filter-search" class="form-control form-control-sm" placeholder="Search all">
+                                <input type="text" id="filter-search" class="form-control form-control-sm" placeholder="Search all" autocomplete="off" onkeydown="if(event.key === 'Enter') { event.preventDefault(); return false; }">
                             </div>
                             <div class="col-md-2 mb-2 d-none d-md-block">
                                 <label class="form-label fw-bold">Group</label>
-                                <input type="text" id="filter-group" class="form-control form-control-sm" placeholder="Enter Group">
+                                <input type="text" id="filter-group" class="form-control form-control-sm" placeholder="Enter Group" autocomplete="off" onkeydown="if(event.key === 'Enter') { event.preventDefault(); return false; }">
                             </div>
                             <div class="col-md-2 mb-2 d-none d-md-block">
                                 <label class="form-label fw-bold">Task</label>
-                                <input type="text" id="filter-task" class="form-control form-control-sm" placeholder="Enter Task">
+                                <input type="text" id="filter-task" class="form-control form-control-sm" placeholder="Enter Task" autocomplete="off" onkeydown="if(event.key === 'Enter') { event.preventDefault(); return false; }">
                             </div>
                             
                             <!-- Mobile & Desktop: Essential Filters -->
@@ -1641,7 +1500,7 @@
                                     <option value="">All Assignees</option>
                                     <option value="__NULL__" style="color: #dc3545; font-weight: bold;">🔴 No Assignee</option>
                                     @foreach($users ?? [] as $user)
-                                        <option value="{{ $user->name }}">{{ $user->name }}</option>
+                                        <option value="{{ $user->name }}" data-user-id="{{ $user->id }}">{{ $user->name }}</option>
                                     @endforeach
                                 </select>
                             </div>
@@ -2221,30 +2080,6 @@
             var canDeleteAnyTask = {{ isset($canDeleteAnyTask) && $canDeleteAnyTask ? 'true' : 'false' }};
             var currentUserId = {{ Auth::id() }};
             var currentUserEmail = '{{ Auth::user()->email }}';
-            
-            // TAT badge eye icon: show line graph modal
-            $('#tat-chart-eye-btn').on('click', function() {
-                $('#tatChartModal').modal('show');
-                setTimeout(function() { renderTatLineChart(); }, 300);
-            });
-            $('#tatChartModal').on('hidden.bs.modal', function() {
-                if (tatLineChart) {
-                    tatLineChart.destroy();
-                    tatLineChart = null;
-                }
-            });
-
-            // Missed badge eye icon: show line graph modal
-            $('#missed-chart-eye-btn').on('click', function() {
-                $('#missedChartModal').modal('show');
-                setTimeout(function() { renderMissedLineChart(); }, 300);
-            });
-            $('#missedChartModal').on('hidden.bs.modal', function() {
-                if (missedLineChart) {
-                    missedLineChart.destroy();
-                    missedLineChart = null;
-                }
-            });
 
             function renderTatLineChart() {
                 var ctx = document.getElementById('tat-line-chart');
@@ -3081,6 +2916,77 @@
                     return false;
                 }).length;
                 
+                // TAT calculation: Average days from start_date to completion_date for Done tasks completed in last 30 days
+                var thirtyDaysAgo = new Date();
+                thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+                thirtyDaysAgo.setHours(0, 0, 0, 0); // Set to start of day
+                
+                var last30DoneTasks = filteredData.filter(function(t) {
+                    if (t.status !== 'Done' || !t.start_date) return false;
+                    
+                    // Get completion date (prefer completion_date, fallback to updated_at)
+                    var completionDate = null;
+                    if (t.completion_date && t.completion_date !== '0000-00-00' && t.completion_date !== null) {
+                        completionDate = new Date(t.completion_date);
+                    } else if (t.updated_at) {
+                        completionDate = new Date(t.updated_at);
+                    }
+                    
+                    if (!completionDate || isNaN(completionDate.getTime())) return false;
+                    completionDate.setHours(0, 0, 0, 0);
+                    
+                    return completionDate >= thirtyDaysAgo;
+                });
+                
+                var tatValues = [];
+                last30DoneTasks.forEach(function(t) {
+                    var start = new Date(t.start_date);
+                    if (isNaN(start.getTime())) return;
+                    start.setHours(0, 0, 0, 0);
+                    
+                    var completion = null;
+                    if (t.completion_date && t.completion_date !== '0000-00-00' && t.completion_date !== null) {
+                        completion = new Date(t.completion_date);
+                    } else if (t.updated_at) {
+                        completion = new Date(t.updated_at);
+                    } else {
+                        completion = start; // Fallback to start date
+                    }
+                    
+                    if (isNaN(completion.getTime())) return;
+                    completion.setHours(0, 0, 0, 0);
+                    
+                    var days = Math.abs(completion.getTime() - start.getTime()) / (1000 * 60 * 60 * 24);
+                    tatValues.push(Math.round(days * 10) / 10); // Round to 1 decimal
+                });
+                
+                stats.tat_avg_30 = tatValues.length > 0 
+                    ? Math.round((tatValues.reduce((a, b) => a + b, 0) / tatValues.length) * 10) / 10 
+                    : null;
+                
+                // MISSED calculation: Count of tasks with start_date in last 30 days that are not Done/Archived
+                // Matches server logic: start_date >= 30 days ago AND status NOT IN ('Done', 'Archived')
+                var missedTasks = filteredData.filter(function(t) {
+                    if (!t.start_date) return false;
+                    
+                    var startDate = new Date(t.start_date);
+                    if (isNaN(startDate.getTime())) return false;
+                    startDate.setHours(0, 0, 0, 0);
+                    
+                    // Must have start_date in last 30 days
+                    if (startDate < thirtyDaysAgo) return false;
+                    
+                    // Status must NOT be Done or Archived
+                    if (['Done', 'Archived'].includes(t.status)) {
+                        return false;
+                    }
+                    
+                    // Not Done/Archived and in last 30 days - count as missed
+                    return true;
+                });
+                
+                stats.missed_count_30 = missedTasks.length;
+                
                 // Update stat cards (find by stat-value divs in each card)
                 $('.stat-card').each(function() {
                     var label = $(this).find('.stat-label').text().trim();
@@ -3100,19 +3006,25 @@
                             valueEl.text(stats.done);
                             break;
                         case 'ETC':
-                            valueEl.text(Math.round(stats.etc_total / 60));
+                            valueEl.text(Math.round(stats.etc_total / 60 * 10) / 10);
                             break;
                         case 'R&R':
                             valueEl.text(stats.rr != null ? Math.round(stats.rr / 60) : (stats.etc_rr != null ? Math.round(stats.etc_rr / 60) : '-'));
                             break;
                         case 'ATC':
-                            valueEl.text(Math.round(stats.atc_total / 60));
+                            valueEl.text(Math.round(stats.atc_total / 60 * 10) / 10);
                             break;
                         case 'DONE ETC':
                             valueEl.text(Math.round(stats.done_etc / 60));
                             break;
                         case 'DONE ATC':
                             valueEl.text(Math.round(stats.done_atc / 60));
+                            break;
+                        case 'TAT':
+                            valueEl.text(stats.tat_avg_30 !== null ? stats.tat_avg_30.toFixed(1) : '-');
+                            break;
+                        case 'MISSED':
+                            valueEl.text(stats.missed_count_30);
                             break;
                     }
                 });
@@ -3142,24 +3054,6 @@
                     console.log('Filter - Task:', taskValue);
                 }
                 
-                // User search filter: if user is selected from "Select user" dropdown, search in both assignor and assignee
-                var selectedUser = $('#user-overdue-graph-select').data('selected-user') || $('#user-overdue-graph-select').val() || '';
-                if (selectedUser) {
-                    // Filter tasks where user appears in either assignor_name OR assignee_name
-                    table.setFilter(function(data) {
-                        var assignorMatch = data.assignor_name && String(data.assignor_name).toLowerCase().indexOf(selectedUser.toLowerCase()) > -1;
-                        var assigneeMatch = data.assignee_name && String(data.assignee_name).toLowerCase().indexOf(selectedUser.toLowerCase()) > -1;
-                        return assignorMatch || assigneeMatch;
-                    });
-                    console.log('✓ User search filter: ' + selectedUser + ' (in assignor OR assignee)');
-                    // Update mobile view
-                    if (window.innerWidth < 768) {
-                        const filtered = table.getData('active');
-                        renderMobileTasks(filtered);
-                    }
-                    setTimeout(updateStatistics, 100);
-                    return; // Skip other assignor/assignee filters when user search is active
-                }
 
                 // Assignor filter (including NULL check)
                 var assignorValue = $('#filter-assignor').val();
@@ -3263,24 +3157,57 @@
                 }, 100);
             }
 
-            // Filter functionality
-            $('#filter-search').on('keyup', applyFilters);
-            $('#filter-group').on('keyup', applyFilters);
-            $('#filter-task').on('keyup', applyFilters);
+            // Filter functionality - prevent form submission on Enter key
+            $('#filter-search, #filter-group, #filter-task').on('keydown', function(e) {
+                if (e.key === 'Enter' || e.keyCode === 13) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    e.stopImmediatePropagation();
+                    return false;
+                }
+            });
+            
+            $('#filter-search').on('keyup', function(e) {
+                // Don't apply filters if Enter was just pressed
+                if (e.keyCode !== 13) {
+                    applyFilters();
+                }
+            });
+            $('#filter-group').on('keyup', function(e) {
+                if (e.keyCode !== 13) {
+                    applyFilters();
+                }
+            });
+            $('#filter-task').on('keyup', function(e) {
+                if (e.keyCode !== 13) {
+                    applyFilters();
+                }
+            });
+            
             $('#filter-assignor').on('change', applyFilters);
             $('#filter-assignee').on('change', function() {
-                var v = $(this).val() || '';
-                if (v !== '__NULL__') {
-                    $('#user-overdue-graph-select').val(v).trigger('change');
-                    $('#user-overdue-graph-select').data('selected-user', v);
-                } else {
-                    $('#user-overdue-graph-select').val('').trigger('change');
-                    $('#user-overdue-graph-select').data('selected-user', '');
-                }
+                // Apply filters independently
                 applyFilters();
             });
             $('#filter-status').on('change', applyFilters);
             $('#filter-priority').on('change', applyFilters);
+            
+            // Prevent any form submission in filter section
+            $('.filter-section').on('submit', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                return false;
+            });
+            
+            // Global prevention for Enter key in filter inputs
+            $(document).on('keydown', '#filter-search, #filter-group, #filter-task', function(e) {
+                if (e.key === 'Enter' || e.keyCode === 13) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    e.stopImmediatePropagation();
+                    return false;
+                }
+            });
             
             // ==========================================
             // MOBILE ACTION BUTTONS
@@ -3408,79 +3335,6 @@
                 }
             });
 
-            function updateUserSelectIcon() {
-                var sel = $('#user-overdue-graph-select');
-                var opt = sel.find('option:selected');
-                var avatarUrl = opt.data('avatar') || '';
-                var $img = $('#user-select-avatar');
-                var $icon = $('#user-select-icon');
-                if (avatarUrl && avatarUrl.length > 0) {
-                    $img.attr('src', avatarUrl).attr('alt', opt.text()).show();
-                    $icon.hide();
-                } else {
-                    $img.attr('src', '').hide();
-                    $icon.show();
-                }
-            }
-
-            // Searchable user dropdown (type to filter list in real time)
-            $('#user-overdue-graph-select').select2({
-                theme: 'bootstrap-5',
-                width: '100%',
-                dropdownParent: $('body'),
-                placeholder: '-- Select user --',
-                allowClear: true,
-                minimumResultsForSearch: 0,
-                // Remove title attribute to prevent browser tooltips
-                templateResult: function(data) {
-                    if (data.loading) return data.text;
-                    return data.text;
-                },
-                templateSelection: function(data) {
-                    return data.text || data.id;
-                },
-                matcher: function(params, data) {
-                    // Search in both name and role data attributes (assignor/assignee)
-                    var term = params.term.toLowerCase();
-                    if (!term) {
-                        return data;
-                    }
-                    var text = data.text.toLowerCase();
-                    var isAssignor = $(data.element).data('assignor') === '1';
-                    var isAssignee = $(data.element).data('assignee') === '1';
-                    var roleText = '';
-                    if (isAssignor && isAssignee) {
-                        roleText = 'assignor assignee';
-                    } else if (isAssignor) {
-                        roleText = 'assignor';
-                    } else if (isAssignee) {
-                        roleText = 'assignee';
-                    }
-                    if (text.indexOf(term) > -1 || roleText.indexOf(term) > -1) {
-                        return data;
-                    }
-                    return null;
-                }
-            });
-
-            // Remove title attributes that might cause tooltips on hover
-            $('#user-overdue-graph-select').on('select2:open', function() {
-                $('.select2-container--bootstrap-5 .select2-selection--single').removeAttr('title');
-                // Calculate optimal height to show all users (max 500px, min 200px)
-                var userCount = $('#user-overdue-graph-select option').length - 1; // Exclude placeholder
-                var itemHeight = 38; // Approximate height per option
-                var searchHeight = 50; // Search box height
-                var optimalHeight = Math.min(500, Math.max(200, (userCount * itemHeight) + searchHeight + 20));
-                $('.select2-container--bootstrap-5.select2-container--open .select2-dropdown').css('max-height', optimalHeight + 'px');
-                $('.select2-container--bootstrap-5.select2-container--open .select2-results__options').css('max-height', (optimalHeight - searchHeight - 10) + 'px');
-            });
-            $('.stat-card-user-select .select2-container .select2-selection--single').removeAttr('title');
-
-            // Set selected user from session on page load
-            @if(!empty($selectedUserName))
-                $('#user-overdue-graph-select').val('{{ $selectedUserName }}').trigger('change');
-                $('#user-overdue-graph-select').data('selected-user', '{{ $selectedUserName }}');
-            @endif
 
             // Function to load R&R data
             function loadUserRR(userName) {
@@ -3488,7 +3342,7 @@
                 if (!userName) {
                     $('#rr-container').html(
                         '<div class="text-center py-5">' +
-                        '<p class="text-muted">Please select a user from the dropdown above to view their Role & Responsibility.</p>' +
+                        '<p class="text-muted">Please select a user from the Assignee filter above to view their Role & Responsibility.</p>' +
                         '</div>'
                     );
                     return;
@@ -3516,9 +3370,9 @@
                         console.log('R&R data loaded successfully');
                         $('#rr-loading-spinner').hide();
                         $('#rr-container').html(response.html);
-                        // Show Edit button if user is selected
-                        var selectedUser = $('#user-overdue-graph-select').val();
-                        if (selectedUser) {
+                        // Show Edit button if assignee filter is set
+                        var assigneeValue = $('#filter-assignee').val();
+                        if (assigneeValue && assigneeValue !== '__NULL__') {
                             $('#edit-rr-btn').show();
                         }
                         // Trigger fade-in animation
@@ -3540,40 +3394,6 @@
                 });
             }
 
-            $('#user-overdue-graph-select').on('change', function() {
-                var selectedUser = $(this).val() || '';
-                // Store selected user for filtering (will search both assignor and assignee)
-                if (selectedUser) {
-                    $('#user-overdue-graph-select').data('selected-user', selectedUser);
-                } else {
-                    $('#user-overdue-graph-select').removeData('selected-user');
-                }
-                // Store in session for deleted page and refresh stats
-                $.ajax({
-                    url: '{{ route("tasks.setSelectedUser") }}',
-                    method: 'POST',
-                    data: {
-                        user_name: selectedUser,
-                        _token: '{{ csrf_token() }}'
-                    },
-                    success: function(response) {
-                        console.log('Selected user stored in session:', response.user_name);
-                        // Load R&R data if R&R tab is active
-                        if ($('#rr-tab').hasClass('active') || $('#rr-content').hasClass('active')) {
-                            loadUserRR(selectedUser);
-                            $('#edit-rr-btn').show();
-                        } else {
-                            $('#edit-rr-btn').hide();
-                        }
-                        // Reload page to update TAT and Missed badges with filtered data
-                        if (selectedUser || '{{ !empty($selectedUserName) }}' === '1') {
-                            window.location.reload();
-                        }
-                    }
-                });
-                updateUserSelectIcon();
-                applyFilters();
-            });
 
             // Manual tab switching (fallback if Bootstrap tabs don't work)
             function switchTab(tabName) {
@@ -3588,14 +3408,14 @@
                     $('#rr-tab').addClass('active').attr('aria-selected', 'true');
                     $('#rr-content').addClass('show active');
                     
-                    // Load R&R data when switching to R&R tab
-                    var selectedUser = $('#user-overdue-graph-select').val() || '';
-                    if (selectedUser) {
-                        loadUserRR(selectedUser);
+                    // Load R&R data when switching to R&R tab - use assignee filter
+                    var assigneeValue = $('#filter-assignee').val();
+                    if (assigneeValue && assigneeValue !== '__NULL__') {
+                        loadUserRR(assigneeValue);
                     } else {
                         $('#rr-container').html(
                             '<div class="text-center py-5">' +
-                            '<p class="text-muted">Please select a user from the dropdown above to view their Role & Responsibility.</p>' +
+                            '<p class="text-muted">Please select a user from the Assignee filter above to view their Role & Responsibility.</p>' +
                             '</div>'
                         );
                         $('#edit-rr-btn').hide();
@@ -3620,9 +3440,9 @@
                 e.preventDefault();
                 console.log('R&R tab clicked');
                 switchTab('rr');
-                // Show edit button if user is selected
-                var selectedUser = $('#user-overdue-graph-select').val();
-                if (selectedUser) {
+                // Show edit button if assignee filter is set
+                var assigneeValue = $('#filter-assignee').val();
+                if (assigneeValue && assigneeValue !== '__NULL__') {
                     $('#edit-rr-btn').show();
                 } else {
                     $('#edit-rr-btn').hide();
@@ -3639,40 +3459,31 @@
 
             // Bootstrap tab event handlers (if Bootstrap is loaded)
             $('#rr-tab').on('shown.bs.tab', function() {
-                var selectedUser = $('#user-overdue-graph-select').val() || '';
-                if (selectedUser) {
-                    loadUserRR(selectedUser);
+                var assigneeValue = $('#filter-assignee').val();
+                if (assigneeValue && assigneeValue !== '__NULL__') {
+                    loadUserRR(assigneeValue);
                 } else {
                     $('#rr-container').html(
                         '<div class="text-center py-5">' +
-                        '<p class="text-muted">Please select a user from the dropdown above to view their Role & Responsibility.</p>' +
+                        '<p class="text-muted">Please select a user from the Assignee filter above to view their Role & Responsibility.</p>' +
                         '</div>'
                     );
                 }
             });
-
-            // Load R&R on page load if R&R tab is active and user is selected
-            @if(!empty($selectedUserName))
-                // Check if R&R tab should be active on load
-                var urlParams = new URLSearchParams(window.location.search);
-                if (urlParams.get('tab') === 'rr' || $('#rr-tab').hasClass('active') || $('#rr-content').hasClass('active')) {
-                    loadUserRR('{{ $selectedUserName }}');
-                }
-            @endif
 
             // Simple contenteditable editor - no external dependencies
             // Native browser paste with images is supported automatically
 
             // Edit R&R Button Click Handler
             $('#edit-rr-btn').on('click', function() {
-                var selectedUser = $('#user-overdue-graph-select').val();
-                if (!selectedUser) {
-                    alert('Please select a user first');
+                var assigneeValue = $('#filter-assignee').val();
+                if (!assigneeValue || assigneeValue === '__NULL__') {
+                    alert('Please select a user from the Assignee filter first');
                     return;
                 }
 
-                // Get user ID from selected user option
-                var selectedOption = $('#user-overdue-graph-select option:selected');
+                // Get user ID from assignee filter option
+                var selectedOption = $('#filter-assignee option:selected');
                 var userId = selectedOption.data('user-id');
 
                 if (!userId) {
@@ -3760,9 +3571,9 @@
                         if (response.success) {
                             $('#editRRModal').modal('hide');
                             // Reload R&R display
-                            var selectedUser = $('#user-overdue-graph-select').val();
-                            if (selectedUser) {
-                                loadUserRR(selectedUser);
+                            var assigneeValue = $('#filter-assignee').val();
+                            if (assigneeValue && assigneeValue !== '__NULL__') {
+                                loadUserRR(assigneeValue);
                             }
                             // Show success message
                             alert('Role & Responsibility saved successfully!');
@@ -3786,7 +3597,6 @@
                 });
             });
 
-            updateUserSelectIcon();
 
             // Show CSV Upload Modal
             $('#upload-csv-btn').on('click', function() {

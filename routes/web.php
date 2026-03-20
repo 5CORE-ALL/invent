@@ -259,6 +259,7 @@ use App\Http\Controllers\FacebookAdsController;
 use App\Http\Controllers\PurchaseMaster\UpComingContainerController;
 use App\Http\Controllers\Sales\EbaySalesController;
 use App\Http\Controllers\Sales\AmazonSalesController;
+use App\Http\Controllers\Sales\AmazonSalesDataTestController;
 use App\Http\Controllers\Sales\DobaSalesController;
 use App\Http\Controllers\Sales\MercariController;
 use App\Http\Controllers\Sales\BestBuySalesController;
@@ -1015,6 +1016,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/amazon-column-visibility', [AmazonSalesController::class, 'getColumnVisibility']);
     Route::post('/amazon-column-visibility', [AmazonSalesController::class, 'saveColumnVisibility']);
     Route::get('/amazon/debug-data', [AmazonSalesController::class, 'debugData'])->name('amazon.debug.data');
+    Route::get('/amazon/test-data', [AmazonSalesDataTestController::class, 'testData'])->name('amazon.test.data');
+    Route::get('/amazon/test-data/{date}', [AmazonSalesDataTestController::class, 'getDateDetails'])->name('amazon.test.data.date');
 
     // TikTok Sales Routes
     Route::get('/tiktok/daily-sales', [\App\Http\Controllers\Sales\TikTokSalesController::class, 'index'])->name('tiktok.daily.sales');

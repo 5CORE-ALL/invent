@@ -57,26 +57,27 @@ class AmazonSalesController extends Controller
         $todayPacific = Carbon::now('America/Los_Angeles');
         $endToday = $todayPacific->copy()->endOfDay();
         $start34 = $todayPacific->copy()->subDays(33)->startOfDay(); // 34 calendar days
+        
+        // Use order totals instead of item prices to match Amazon's "Ordered Product Sales" report
+        // This includes shipping and discounts properly
         $sales34Days = (float) DB::table('amazon_orders as o')
-            ->join('amazon_order_items as i', 'o.id', '=', 'i.amazon_order_id')
             ->where('o.order_date', '>=', $start34)
             ->where('o.order_date', '<=', $endToday)
             ->where(function ($q) {
                 $q->whereNull('o.status')->orWhere('o.status', '!=', 'Canceled');
             })
-            ->sum('i.price');
+            ->sum('o.total_amount');
 
         // 8 Feb to today (separate badge, fixed start)
         $start8Feb = Carbon::createFromDate(now()->year, 2, 8)->startOfDay();
         $daysFrom8Feb = $start8Feb->isFuture() ? 0 : $start8Feb->diffInDays($endToday) + 1;
         $salesFrom8Feb = $start8Feb->isFuture() ? 0.0 : (float) DB::table('amazon_orders as o')
-            ->join('amazon_order_items as i', 'o.id', '=', 'i.amazon_order_id')
             ->where('o.order_date', '>=', $start8Feb)
             ->where('o.order_date', '<=', $endToday)
             ->where(function ($q) {
                 $q->whereNull('o.status')->orWhere('o.status', '!=', 'Canceled');
             })
-            ->sum('i.price');
+            ->sum('o.total_amount');
 
         return view('sales.amazon_daily_sales_data', [
             'kwSpent' => (float) $kwSpent,

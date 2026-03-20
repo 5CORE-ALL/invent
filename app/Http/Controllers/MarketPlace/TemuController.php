@@ -26,6 +26,7 @@ use App\Models\TemuListingStatus;
 use App\Models\TemuCampaignReport;
 use App\Models\TemuBadgeDailyData;
 use App\Models\EbayMetric;
+use App\Models\MarketplaceDailyMetric;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
@@ -2251,7 +2252,12 @@ class TemuController extends Controller
                 $qty = (int)($row->quantity_purchased ?? 0);
                 $base = (float)($row->base_price_total ?? 0);
                 $salesTotalQuantity += $qty;
-                $salesTotalRevenue += $base * $qty;
+                
+                // Calculate fbPrice same as temu-tabulator and UpdateMarketplaceDailyMetrics
+                // fbPrice = (basePrice * quantity < 27) ? basePrice + 2.99 : basePrice
+                $total = $base * $qty;
+                $fbPrice = $total < 27 ? $base + 2.99 : $base;
+                $salesTotalRevenue += $fbPrice * $qty;
             }
             $salesSummary = [
                 'total_orders' => $salesTotalOrders,
@@ -2613,10 +2619,49 @@ class TemuController extends Controller
                 ->unique()
                 ->count();
 
+            // Get exact total_sales from marketplace_daily_metrics (same as all-marketplace-master uses)
+            $metrics = MarketplaceDailyMetric::where('channel', 'Temu')->latest('date')->first();
+            $totalSalesFromMetrics = $metrics ? ($metrics->total_sales ?? 0) : 0;
+            
+            // Get total ad spend from temu_campaign_reports (same as fetchTotalAdSpendFromTables for Temu)
+            // Sum spend_l30 from all rows (matches fetchAdMetricsFromTables logic)
+            $goodsIds = $processedData->pluck('goods_id')->filter()->unique()->values()->all();
+            $totalAdSpend = TemuCampaignReport::whereIn('goods_id', $goodsIds)
+                ->where('report_range', 'L30')
+                ->selectRaw('SUM(spend) as total_spend')
+                ->value('total_spend') ?? 0;
+            $totalAdSpend = round((float) $totalAdSpend, 2);
+            
+            // Calculate exact Ads% same as all-marketplace-master
+            $aggregateAdsPercent = $totalSalesFromMetrics > 0 ? ($totalAdSpend / $totalSalesFromMetrics) * 100 : 0;
+
+            // Recalculate NPFT% and NROI% for all rows using aggregate Ads% (not per-row ads_percent)
+            // Formula: NPFT% = GPFT% - Aggregate ADS%
+            $processedData = $processedData->map(function($row) use ($aggregateAdsPercent) {
+                $profitPercent = (float) ($row['profit_percent'] ?? 0);
+                $roiPercent = (float) ($row['roi_percent'] ?? 0);
+                
+                // Use aggregate Ads% for NPFT calculation (matches all-marketplace-master)
+                // Only exception: if per-row ads_percent is 100% (spent but no sales), keep original
+                $rowAdsPercent = (float) ($row['ads_percent'] ?? 0);
+                if ($rowAdsPercent == 100) {
+                    // Keep original calculation if per-row ads is 100%
+                    $row['npft_percent'] = $row['npft_percent'] ?? ($profitPercent - $rowAdsPercent);
+                    $row['nroi_percent'] = $row['nroi_percent'] ?? ($roiPercent - $rowAdsPercent);
+                } else {
+                    // Use aggregate Ads% for all other rows
+                    $row['npft_percent'] = round($profitPercent - $aggregateAdsPercent, 2);
+                    $row['nroi_percent'] = round($roiPercent - $aggregateAdsPercent, 2);
+                }
+                
+                return $row;
+            });
+
             return response()->json([
                 'data' => $processedData,
                 'total_campaign_count' => $totalCampaignCount,
                 'sales_summary' => $salesSummary,
+                'aggregate_ads_percent' => $aggregateAdsPercent, // Exact Ads% from marketplace_daily_metrics (matches all-marketplace-master)
             ]);
         } catch (\Exception $e) {
             Log::error('Error fetching Temu decrease data: ' . $e->getMessage());

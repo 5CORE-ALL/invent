@@ -239,128 +239,114 @@ class ProductMasterController extends Controller
      */
     public function getTitleMasterData(Request $request)
     {
-        try {
-            $listings = AmazonListingRaw::orderBy('seller_sku')->get();
-            $pmBySku = ProductMaster::orderBy('parent')->orderBy('sku')->get()->keyBy(function ($p) {
-                return str_replace("\u{00a0}", ' ', $p->sku);
-            });
-            $shopifySkus = ShopifySku::all()->keyBy(function ($item) {
-                return str_replace("\u{00a0}", ' ', $item->sku);
-            });
+        $listings = AmazonListingRaw::orderBy('seller_sku')->get();
+        $pmBySku = ProductMaster::orderBy('parent')->orderBy('sku')->get()->keyBy(function ($p) {
+            return str_replace("\u{00a0}", ' ', $p->sku);
+        });
+        $shopifySkus = ShopifySku::all()->keyBy(function ($item) {
+            return str_replace("\u{00a0}", ' ', $item->sku);
+        });
 
-            $result = [];
-            foreach ($listings as $listing) {
-                $sku = $listing->seller_sku;
-                if (empty($sku)) {
-                    continue;
-                }
-                $amazonTitle = null;
-                $rawData = $listing->raw_data ? (is_string($listing->raw_data) ? json_decode($listing->raw_data, true) : $listing->raw_data) : null;
-                if ($rawData && is_array($rawData)) {
-                    $possibleKeys = ['item-name', 'item_name', 'product-title', 'title', 'Item Name', 'itemName'];
-                    foreach ($possibleKeys as $key) {
-                        if (! empty($rawData[$key]) && is_string($rawData[$key])) {
-                            $amazonTitle = trim($rawData[$key]);
-                            break;
-                        }
+        $result = [];
+        foreach ($listings as $listing) {
+            $sku = $listing->seller_sku;
+            if (empty($sku)) {
+                continue;
+            }
+            $amazonTitle = null;
+            $rawData = $listing->raw_data ? (is_string($listing->raw_data) ? json_decode($listing->raw_data, true) : $listing->raw_data) : null;
+            if ($rawData && is_array($rawData)) {
+                $possibleKeys = ['item-name', 'item_name', 'product-title', 'title', 'Item Name', 'itemName'];
+                foreach ($possibleKeys as $key) {
+                    if (! empty($rawData[$key]) && is_string($rawData[$key])) {
+                        $amazonTitle = trim($rawData[$key]);
+                        break;
                     }
                 }
-
-                if (empty($amazonTitle) && ! empty($listing->item_name)) {
-                    $amazonTitle = trim($listing->item_name);
-                }
-
-                $normalizedSku = str_replace("\u{00a0}", ' ', $sku);
-                $product = $pmBySku->get($normalizedSku);
-
-                if ($product) {
-                    $row = [
-                        'id' => $product->id,
-                        'Parent' => $product->parent,
-                        'SKU' => $product->sku,
-                        'amazon_title' => $amazonTitle,
-                        'title150' => $product->title150,
-                        'title100' => $product->title100,
-                        'title80' => $product->title80,
-                        'title60' => $product->title60,
-                        'bullet1' => $product->bullet1,
-                        'bullet2' => $product->bullet2,
-                        'bullet3' => $product->bullet3,
-                        'bullet4' => $product->bullet4,
-                        'bullet5' => $product->bullet5,
-                        'product_description' => $product->product_description,
-                        'feature1' => $product->feature1,
-                        'feature2' => $product->feature2,
-                        'feature3' => $product->feature3,
-                        'feature4' => $product->feature4,
-                        'main_image' => $product->main_image,
-                        'main_image_brand' => $product->main_image_brand,
-                        'image1' => $product->image1,
-                        'image2' => $product->image2,
-                        'image3' => $product->image3,
-                        'image4' => $product->image4,
-                        'image5' => $product->image5,
-                        'image6' => $product->image6,
-                        'image7' => $product->image7,
-                        'image8' => $product->image8,
-                        'image9' => $product->image9,
-                        'image10' => $product->image10,
-                        'image11' => $product->image11,
-                        'image12' => $product->image12,
-                    ];
-                    if (is_array($product->Values)) {
-                        $row = array_merge($row, $product->Values);
-                    } elseif (is_string($product->Values)) {
-                        $values = json_decode($product->Values, true);
-                        if (is_array($values)) {
-                            $row = array_merge($row, $values);
-                        }
-                    }
-                    $shopifyData = $shopifySkus->get($normalizedSku);
-                    $shopifyImage = $shopifyData->image_src ?? null;
-                    $localImage = isset($row['image_path']) && $row['image_path'] ? $row['image_path'] : null;
-                    if ($localImage && (strpos($localImage, 'storage/') !== false || strpos($localImage, '/storage/') !== false)) {
-                        $row['image_path'] = '/'.ltrim($localImage, '/');
-                    } elseif ($shopifyImage) {
-                        $row['image_path'] = $shopifyImage;
-                    } elseif ($localImage) {
-                        $row['image_path'] = '/'.ltrim($localImage, '/');
-                    } else {
-                        $row['image_path'] = $row['image_path'] ?? $product->main_image ?? null;
-                    }
-                } else {
-                    $row = [
-                        'id' => null,
-                        'Parent' => null,
-                        'SKU' => $sku,
-                        'amazon_title' => $amazonTitle,
-                        'title150' => null,
-                        'title100' => null,
-                        'title80' => null,
-                        'title60' => null,
-                        'image_path' => null,
-                    ];
-                }
-                $result[] = $row;
+            }
+            if (empty($amazonTitle) && ! empty($listing->item_name)) {
+                $amazonTitle = trim($listing->item_name);
             }
 
-            return response()->json([
-                'message' => 'Title Master data (Amazon listings + PM join)',
-                'data' => $result,
-                'status' => 200,
-            ]);
-        } catch (\Throwable $e) {
-            Log::error('getTitleMasterData failed', [
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
-            ]);
+            $normalizedSku = str_replace("\u{00a0}", ' ', $sku);
+            $product = $pmBySku->get($normalizedSku);
 
-            return response()->json([
-                'message' => 'Failed to load title master data.',
-                'error' => $e->getMessage(),
-                'status' => 500,
-            ], 500);
+            if ($product) {
+                $row = [
+                    'id' => $product->id,
+                    'Parent' => $product->parent,
+                    'SKU' => $product->sku,
+                    'amazon_title' => $amazonTitle,
+                    'title150' => $product->title150,
+                    'title100' => $product->title100,
+                    'title80' => $product->title80,
+                    'title60' => $product->title60,
+                    'bullet1' => $product->bullet1,
+                    'bullet2' => $product->bullet2,
+                    'bullet3' => $product->bullet3,
+                    'bullet4' => $product->bullet4,
+                    'bullet5' => $product->bullet5,
+                    'product_description' => $product->product_description,
+                    'feature1' => $product->feature1,
+                    'feature2' => $product->feature2,
+                    'feature3' => $product->feature3,
+                    'feature4' => $product->feature4,
+                    'main_image' => $product->main_image,
+                    'main_image_brand' => $product->main_image_brand,
+                    'image1' => $product->image1,
+                    'image2' => $product->image2,
+                    'image3' => $product->image3,
+                    'image4' => $product->image4,
+                    'image5' => $product->image5,
+                    'image6' => $product->image6,
+                    'image7' => $product->image7,
+                    'image8' => $product->image8,
+                    'image9' => $product->image9,
+                    'image10' => $product->image10,
+                    'image11' => $product->image11,
+                    'image12' => $product->image12,
+                ];
+                if (is_array($product->Values)) {
+                    $row = array_merge($row, $product->Values);
+                } elseif (is_string($product->Values)) {
+                    $values = json_decode($product->Values, true);
+                    if (is_array($values)) {
+                        $row = array_merge($row, $values);
+                    }
+                }
+                $shopifyData = $shopifySkus->get($normalizedSku);
+                $shopifyImage = $shopifyData->image_src ?? null;
+                $localImage = isset($row['image_path']) && $row['image_path'] ? $row['image_path'] : null;
+                if ($localImage && (strpos($localImage, 'storage/') !== false || strpos($localImage, '/storage/') !== false)) {
+                    $row['image_path'] = '/'.ltrim($localImage, '/');
+                } elseif ($shopifyImage) {
+                    $row['image_path'] = $shopifyImage;
+                } elseif ($localImage) {
+                    $row['image_path'] = '/'.ltrim($localImage, '/');
+                } else {
+                    $row['image_path'] = $row['image_path'] ?? $product->main_image ?? null;
+                }
+            } else {
+                $row = [
+                    'id' => null,
+                    'Parent' => null,
+                    'SKU' => $sku,
+                    'amazon_title' => $amazonTitle,
+                    'title150' => null,
+                    'title100' => null,
+                    'title80' => null,
+                    'title60' => null,
+                    'image_path' => null,
+                ];
+            }
+            $result[] = $row;
         }
+
+        return response()->json([
+            'message' => 'Title Master data (Amazon listings + PM join)',
+            'data' => $result,
+            'status' => 200,
+        ]);
     }
 
     public function getProductBySku(Request $request)
@@ -2430,7 +2416,6 @@ PROMPT;
      * Generate 4 Title 60 options (55-60 chars) for Macy's/Faire.
      */
     public function generateTitle60WithAI(Request $request)
-    {
         $request->validate([
             'sku' => 'nullable|string',
             'title_150' => 'required|string',

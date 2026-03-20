@@ -115,9 +115,9 @@
                     <a href="{{ url('/fba-manual-sample') }}" class="btn btn-sm btn-info">
                         <i class="fa fa-download"></i> Sample Template
                     </a>
-                    <button type="button" class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#exportModal">
+                    <a href="{{ url('/fba-manual-export') }}" class="btn btn-sm btn-success">
                         <i class="fa fa-file-excel"></i>
-                    </button>
+                    </a>
                     <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal"
                         data-bs-target="#importModal">
                         <i class="fa fa-upload"></i>
@@ -313,36 +313,6 @@
             </div>
         </div>
 
-    <!-- Export Column Selection Modal -->
-    <div class="modal fade" id="exportModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-lg">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">Select Columns to Export</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <div class="mb-3">
-                        <button type="button" class="btn btn-sm btn-primary" id="select-all-export-columns">
-                            <i class="fa fa-check-square"></i> Select All
-                        </button>
-                        <button type="button" class="btn btn-sm btn-secondary" id="deselect-all-export-columns">
-                            <i class="fa fa-square"></i> Deselect All
-                        </button>
-                    </div>
-                    <div id="export-columns-list" style="max-height: 400px; overflow-y: auto; border: 1px solid #ddd; padding: 10px;">
-                        <!-- Columns will be populated by JavaScript -->
-                    </div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="button" class="btn btn-success" id="confirm-export-btn">
-                        <i class="fa fa-file-excel"></i> Export Selected Columns
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
     @endsection
 
     @section('script-bottom')
@@ -1883,6 +1853,180 @@
                             minWidth: 70
                         },
                         {
+                            title: "CVR<br>L60<br>amz",
+                            field: "CVR_L60_amz",
+                            hozAlign: "center",
+                            visible: true,
+                            formatter: function(cell) {
+                                const row = cell.getRow().getData();
+                                if (row.is_parent) return '';
+                                
+                                const aL60 = parseFloat(row['AMZ_L60'] || 0);
+                                const sess60 = parseFloat(row['AMZ_Sess60'] || 0);
+                                
+                                if (sess60 === 0) return '<span style="color: #a00211; font-weight: 600;">0.0%</span>';
+                                
+                                const cvr = (aL60 / sess60) * 100;
+                                let color = '';
+                                if (cvr <= 4) color = '#a00211'; // red
+                                else if (cvr > 4 && cvr <= 7) color = '#ffc107'; // yellow
+                                else if (cvr > 7 && cvr <= 10) color = '#28a745'; // green
+                                else color = '#e83e8c'; // pink
+                                
+                                return `<span style="color: ${color}; font-weight: 600;">${cvr.toFixed(1)}%</span>`;
+                            },
+                            sorter: function(a, b, aRow, bRow) {
+                                const calcCVR = (row) => {
+                                    const aL60 = parseFloat(row['AMZ_L60'] || 0);
+                                    const sess60 = parseFloat(row['AMZ_Sess60'] || 0);
+                                    return sess60 === 0 ? 0 : (aL60 / sess60) * 100;
+                                };
+                                return calcCVR(aRow.getData()) - calcCVR(bRow.getData());
+                            },
+                            minWidth: 65
+                        },
+                        {
+                            title: "CVR<br>L45<br>amz",
+                            field: "CVR_L45_amz",
+                            hozAlign: "center",
+                            visible: true,
+                            formatter: function(cell) {
+                                const row = cell.getRow().getData();
+                                if (row.is_parent) return '';
+                                
+                                // 45-day: use average of L30 and L60 (sold and views) for 45-day approximation
+                                const aL30 = parseFloat(row['AMZ_L30'] || 0);
+                                const sess30 = parseFloat(row['AMZ_Sess30'] || 0);
+                                const aL60 = parseFloat(row['AMZ_L60'] || 0);
+                                const sess60 = parseFloat(row['AMZ_Sess60'] || 0);
+                                const aL45 = (aL30 + aL60) / 2;
+                                const sess45 = (sess30 + sess60) / 2;
+                                
+                                if (sess45 === 0) return '<span style="color: #a00211; font-weight: 600;">0.0%</span>';
+                                
+                                const cvr = (aL45 / sess45) * 100;
+                                let color = '';
+                                if (cvr <= 4) color = '#a00211'; // red
+                                else if (cvr > 4 && cvr <= 7) color = '#ffc107'; // yellow
+                                else if (cvr > 7 && cvr <= 10) color = '#28a745'; // green
+                                else color = '#e83e8c'; // pink
+                                
+                                return `<span style="color: ${color}; font-weight: 600;">${cvr.toFixed(1)}%</span>`;
+                            },
+                            sorter: function(a, b, aRow, bRow) {
+                                const calcCVR = (row) => {
+                                    const aL30 = parseFloat(row['AMZ_L30'] || 0);
+                                    const sess30 = parseFloat(row['AMZ_Sess30'] || 0);
+                                    const aL60 = parseFloat(row['AMZ_L60'] || 0);
+                                    const sess60 = parseFloat(row['AMZ_Sess60'] || 0);
+                                    const aL45 = (aL30 + aL60) / 2;
+                                    const sess45 = (sess30 + sess60) / 2;
+                                    return sess45 === 0 ? 0 : (aL45 / sess45) * 100;
+                                };
+                                return calcCVR(aRow.getData()) - calcCVR(bRow.getData());
+                            },
+                            minWidth: 65
+                        },
+                        {
+                            title: "CVR<br>L30<br>amz",
+                            field: "CVR_L30_amz",
+                            hozAlign: "center",
+                            visible: true,
+                            formatter: function(cell) {
+                                const row = cell.getRow().getData();
+                                if (row.is_parent) return '';
+                                
+                                const sku = row['SKU'] || '';
+                                const aL30 = parseFloat(row['AMZ_L30'] || 0);
+                                const sess30 = parseFloat(row['AMZ_Sess30'] || 0);
+                                const aL60 = parseFloat(row['AMZ_L60'] || 0);
+                                const sess60 = parseFloat(row['AMZ_Sess60'] || 0);
+                                const cvrL30 = sess30 === 0 ? 0 : (aL30 / sess30) * 100;
+                                const cvrL60 = sess60 === 0 ? 0 : (aL60 / sess60) * 100;
+                                const tol = 0.1;
+                                
+                                let arrowHtml = '';
+                                if (sku) {
+                                    let arrowColor = '#6c757d';
+                                    let arrowIcon = 'fa-minus';
+                                    if (cvrL30 > cvrL60 + tol) {
+                                        arrowColor = '#28a745';
+                                        arrowIcon = 'fa-arrow-up';
+                                    } else if (cvrL30 < cvrL60 - tol) {
+                                        arrowColor = '#a00211';
+                                        arrowIcon = 'fa-arrow-down';
+                                    }
+                                    arrowHtml = `<i class="fas ${arrowIcon}" style="color: ${arrowColor}; font-size: 12px; margin-left: 4px;"></i>`;
+                                }
+                                
+                                if (sess30 === 0) {
+                                    return `<span style="color: #a00211; font-weight: 600;">0.0%</span>${arrowHtml}`.trim();
+                                }
+                                
+                                const cvr = cvrL30;
+                                let color = '';
+                                if (cvr <= 4) color = '#a00211';
+                                else if (cvr > 4 && cvr <= 7) color = '#ffc107';
+                                else if (cvr > 7 && cvr <= 10) color = '#28a745';
+                                else color = '#e83e8c';
+                                
+                                return `<span style="color: ${color}; font-weight: 600;">${cvr.toFixed(1)}%</span>${arrowHtml}`.trim();
+                            },
+                            sorter: function(a, b, aRow, bRow) {
+                                const calcCVR = (row) => {
+                                    const aL30 = parseFloat(row['AMZ_L30'] || 0);
+                                    const sess30 = parseFloat(row['AMZ_Sess30'] || 0);
+                                    return sess30 === 0 ? 0 : (aL30 / sess30) * 100;
+                                };
+                                return calcCVR(aRow.getData()) - calcCVR(bRow.getData());
+                            },
+                            minWidth: 65
+                        },
+                        {
+                            title: "Rating<br>amz",
+                            field: "AMZ_Rating",
+                            hozAlign: "center",
+                            visible: true,
+                            formatter: function(cell) {
+                                const row = cell.getRow().getData();
+                                if (row.is_parent) return '';
+                                
+                                const rating = parseFloat(row['AMZ_Rating'] || 0);
+                                const reviews = parseInt(row['AMZ_Reviews'] || 0);
+                                
+                                if (!rating || rating === 0) {
+                                    return '<span style="color: #6c757d;">-</span>';
+                                }
+                                
+                                // Use same colors as rating filter
+                                let ratingColor = '';
+                                const ratingVal = parseFloat(rating);
+                                if (ratingVal < 3) ratingColor = '#a00211'; // red
+                                else if (ratingVal >= 3 && ratingVal <= 3.5) ratingColor = '#ffc107'; // yellow
+                                else if (ratingVal >= 3.51 && ratingVal <= 3.99) ratingColor = '#3591dc'; // blue
+                                else if (ratingVal >= 4 && ratingVal <= 4.5) ratingColor = '#28a745'; // green
+                                else ratingColor = '#e83e8c'; // pink (>4.5)
+                                
+                                const reviewColor = reviews < 4 ? '#a00211' : '#6c757d';
+                                const fontWeight = '600';
+                                
+                                return `<div style="display: flex; flex-direction: column; align-items: center; gap: 2px;">
+                                    <span style="color: ${ratingColor}; font-weight: ${fontWeight};">
+                                        <i class="fa fa-star"></i> ${rating.toFixed(1)}
+                                    </span>
+                                    <span style="font-size: 11px; color: ${reviewColor}; font-weight: ${fontWeight};">
+                                        ${reviews.toLocaleString()} reviews
+                                    </span>
+                                </div>`;
+                            },
+                            sorter: function(a, b, aRow, bRow) {
+                                const ratingA = parseFloat(aRow.getData()['AMZ_Rating'] || 0);
+                                const ratingB = parseFloat(bRow.getData()['AMZ_Rating'] || 0);
+                                return ratingA - ratingB;
+                            },
+                            minWidth: 80
+                        },
+                        {
                             title: "LMP ",
                             field: "lmp_1",
                             hozAlign: "center",
@@ -3363,101 +3507,5 @@
                 console.log('Modal shown');
             }
 
-            // Export column mapping (field -> display name)
-            const exportColumnMapping = {
-                'Parent': 'Parent',
-                'SKU': 'Child SKU',
-                'FBA_SKU': 'FBA SKU',
-                'FBA_Quantity': 'FBA INV',
-                'l60_units': 'L60 Units',
-                'l30_units': 'L30 Units',
-                'FBA_Dil': 'FBA Dil',
-                'FBA_Price': 'FBA Price',
-                'GPFT%': 'GPFT%',
-                'GROI%': 'GROI%',
-                'TCOS_Percentage': 'TACOS',
-                'TPFT': 'PRFT%',
-                'ROI': 'ROI%',
-                'S_Price': 'S Price',
-                'SPFT': 'SPft%',
-                'SROI%': 'SROI%',
-                'SGPFT%': 'SGPFT%',
-                'LP': 'LP',
-                'FBA_Ship_Calculation': 'FBA Ship',
-                'FBA_CVR': 'FBA CVR',
-                'Current_Month_Views': 'Views',
-                'Inv_age': 'Inv age',
-                'lmp_1': 'LMP',
-                'Fulfillment_Fee': 'FBA Fee',
-                'FBA_Fee_Manual': 'FBA Fee M',
-                'Send_Cost': 'Send Cost',
-                'Commission_Percentage': 'Comm %',
-                'Ratings': 'Ratings'
-            };
-
-            // Build export columns list
-            function buildExportColumnsList() {
-                const container = document.getElementById('export-columns-list');
-                container.innerHTML = '';
-                
-                const columns = table.getColumns().filter(col => {
-                    const field = col.getField();
-                    return field && exportColumnMapping[field] && field !== '_select' && field !== '_accept';
-                });
-
-                columns.forEach(col => {
-                    const field = col.getField();
-                    const displayName = exportColumnMapping[field];
-                    
-                    const div = document.createElement('div');
-                    div.className = 'form-check mb-2';
-                    div.innerHTML = `
-                        <input class="form-check-input export-column-checkbox" type="checkbox" 
-                               value="${field}" id="export-col-${field}" checked>
-                        <label class="form-check-label" for="export-col-${field}">
-                            ${displayName}
-                        </label>
-                    `;
-                    container.appendChild(div);
-                });
-            }
-
-            // Select all export columns
-            $('#select-all-export-columns').on('click', function() {
-                $('.export-column-checkbox').prop('checked', true);
-            });
-
-            // Deselect all export columns
-            $('#deselect-all-export-columns').on('click', function() {
-                $('.export-column-checkbox').prop('checked', false);
-            });
-
-            // Confirm export
-            $('#confirm-export-btn').on('click', function() {
-                const selectedColumns = [];
-                $('.export-column-checkbox:checked').each(function() {
-                    selectedColumns.push($(this).val());
-                });
-
-                if (selectedColumns.length === 0) {
-                    showToast('error', 'Please select at least one column to export');
-                    return;
-                }
-
-                // Build export URL with selected columns
-                const columnsParam = encodeURIComponent(JSON.stringify(selectedColumns));
-                const exportUrl = `/fba-manual-export?columns=${columnsParam}`;
-                
-                // Close modal and trigger download
-                $('#exportModal').modal('hide');
-                window.location.href = exportUrl;
-            });
-
-            // When export modal is shown, build the columns list
-            $('#exportModal').on('show.bs.modal', function() {
-                if (table) {
-                    buildExportColumnsList();
-                }
-            });
         </script>
     @endsection

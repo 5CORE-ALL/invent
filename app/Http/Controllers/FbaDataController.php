@@ -18,6 +18,7 @@ use App\Models\FbaShipCalculation;
 use App\Models\FbaMetricsHistory;
 use App\Models\FbaSkuDailyData;
 use App\Models\AmazonSkuCompetitor;
+use App\Models\AmazonProductReview;
 use App\Models\MarketplacePercentage;
 use App\Services\ColorService;
 use App\Services\FbaManualDataService;
@@ -110,6 +111,11 @@ class FbaDataController extends Controller
       });
 
       $amazonDatasheet = AmazonDatasheet::all()->keyBy(function ($item) {
+         return strtoupper(trim($item->sku));
+      });
+
+      // Fetch Amazon Product Reviews (rating and review count) by SKU
+      $amazonReviews = AmazonProductReview::all()->keyBy(function ($item) {
          return strtoupper(trim($item->sku));
       });
 
@@ -227,7 +233,7 @@ class FbaDataController extends Controller
       $matchedSkus = $fbaData->keys()->toArray();
       $unmatchedSkus = array_diff($skus, $matchedSkus);
 
-      return compact('productData', 'shopifyData', 'fbaData', 'fbaPriceData', 'fbaReportsData', 'matchedSkus', 'unmatchedSkus', 'fbaMonthlySales', 'fbaManualData', 'fbaDispatchDates', 'fbaShipCalculations', 'amazonDatasheet', 'fbaShipments', 'amazonSpCampaignReportsL60', 'amazonSpCampaignReportsL30', 'amazonSpCampaignReportsL15', 'amazonSpCampaignReportsL7', 'amazonSpCampaignReportsL1', 'amazonLmpLookup');
+      return compact('productData', 'shopifyData', 'fbaData', 'fbaPriceData', 'fbaReportsData', 'matchedSkus', 'unmatchedSkus', 'fbaMonthlySales', 'fbaManualData', 'fbaDispatchDates', 'fbaShipCalculations', 'amazonDatasheet', 'amazonReviews', 'fbaShipments', 'amazonSpCampaignReportsL60', 'amazonSpCampaignReportsL30', 'amazonSpCampaignReportsL15', 'amazonSpCampaignReportsL7', 'amazonSpCampaignReportsL1', 'amazonLmpLookup');
    }
 
    public function fbaPageView()
@@ -587,6 +593,7 @@ class FbaDataController extends Controller
       $fbaDispatchDates = $data['fbaDispatchDates'];
       $fbaShipCalculations = $data['fbaShipCalculations'];
       $amazonDatasheet = $data['amazonDatasheet'];
+      $amazonReviews = $data['amazonReviews'];
       $fbaShipments = $data['fbaShipments'];
       $amazonLmpLookup = $data['amazonLmpLookup'];
       $productData = $data['productData']->keyBy(function ($p) {
@@ -694,7 +701,7 @@ class FbaDataController extends Controller
       $amazonPercentage = $amazonMarketplace ? ($amazonMarketplace->percentage / 100) : 0.80;
 
       // Prepare table data with repeated parent name for all child SKUs
-      $tableData = $fbaData->map(function ($fba, $sku) use ($fbaPriceData, $fbaReportsData, $shopifyData, $productData, $fbaMonthlySales, $fbaManualData, $fbaDispatchDates, $fbaShipCalculations, $amazonDatasheet, $fbaShipments, $adsKWDataBySku, $adsPTDataBySku, $overallAvgPrice, $fbaListingStatuses, $amazonLmpLookup, $amazonAdSpendBySku, $amazonPercentage) {
+      $tableData = $fbaData->map(function ($fba, $sku) use ($fbaPriceData, $fbaReportsData, $shopifyData, $productData, $fbaMonthlySales, $fbaManualData, $fbaDispatchDates, $fbaShipCalculations, $amazonDatasheet, $amazonReviews, $fbaShipments, $adsKWDataBySku, $adsPTDataBySku, $overallAvgPrice, $fbaListingStatuses, $amazonLmpLookup, $amazonAdSpendBySku, $amazonPercentage) {
          $fbaPriceInfo = $fbaPriceData->get($sku);
          $fbaReportsInfo = $fbaReportsData->get($sku);
          $shopifyInfo = $shopifyData->get($sku);
@@ -836,9 +843,28 @@ class FbaDataController extends Controller
          $lp_amt = $LP * $l30Units;
 
          // Calculate Amazon L30 data from Amazon Datasheet
+         // Try exact SKU match first, then try base SKU (without FBA) if needed
          $amazonData = $amazonDatasheet->get($sku);
+         // If not found, try with normalized SKU (remove FBA suffix if present)
+         if (!$amazonData) {
+            $baseSkuForAmazon = strtoupper(preg_replace('/\s*FBA\s*/i', '', trim($sku)));
+            $amazonData = $amazonDatasheet->get($baseSkuForAmazon);
+         }
          $amzL30 = $amazonData ? ($amazonData->units_ordered_l30 ?? 0) : 0;
+         $amzL60 = $amazonData ? ($amazonData->units_ordered_l60 ?? 0) : 0;
+         $amzSess30 = $amazonData ? ($amazonData->sessions_l30 ?? 0) : 0;
+         $amzSess60 = $amazonData ? ($amazonData->sessions_l60 ?? 0) : 0;
          $amzPrice = $amazonData ? round(($amazonData->price ?? 0), 2) : null;
+         
+         // Get Amazon rating and reviews from AmazonProductReview table
+         $amazonReview = $amazonReviews->get($sku);
+         // If not found, try with normalized SKU (remove FBA suffix if present)
+         if (!$amazonReview) {
+            $baseSkuForAmazon = strtoupper(preg_replace('/\s*FBA\s*/i', '', trim($sku)));
+            $amazonReview = $amazonReviews->get($baseSkuForAmazon);
+         }
+         $amzRating = $amazonReview ? ($amazonReview->product_rating ?? null) : null;
+         $amzReviews = $amazonReview ? ($amazonReview->review_count ?? 0) : 0;
          
          // Calculate Amazon GPFT, PFT, AD, NPFT (using LP and Ship from ProductMaster only for Amazon)
          $amzLP = 0;
@@ -888,24 +914,17 @@ class FbaDataController extends Controller
             'FBA_SKU' => $fba->seller_sku,
             'NRL_FBA' => $listingStatus ? ($listingStatus->status_value['status'] ?? 'FBA') : 'FBA',
             'FBA_Price' => $fbaPriceInfo ? round(($fbaPriceInfo->price ?? 0), 2) : 0,
-            // Get LMP data by matching base SKU (remove "FBA" suffix)
-            'LMP' => (function() use ($sku, $amazonLmpLookup) {
-               $baseSkuForLmp = strtoupper(preg_replace('/\s+/', ' ', trim($sku)));
-               $lmp = $amazonLmpLookup->get($baseSkuForLmp);
-               return ($lmp && isset($lmp->price) && is_numeric($lmp->price))
-                  ? round(floatval($lmp->price), 2) : null;
-            })(),
-            'LMP_Link' => (function() use ($sku, $amazonLmpLookup) {
-               $baseSkuForLmp = strtoupper(preg_replace('/\s+/', ' ', trim($sku)));
-               $lmp = $amazonLmpLookup->get($baseSkuForLmp);
-               return ($lmp && !empty($lmp->product_link)) ? $lmp->product_link : null;
-            })(),
+            'l30_units' => $monthlySales ? ($monthlySales->l30_units ?? 0) : 0,
+            'AMZ_L30' => $amzL30,
+            'AMZ_L60' => $amzL60,
+            'AMZ_Sess30' => $amzSess30,
+            'AMZ_Sess60' => $amzSess60,
             'AMZ_Price' => $amzPrice,
+            'AMZ_Rating' => $amzRating,
+            'AMZ_Reviews' => $amzReviews,
             'AMZ_GPFT' => $amzGPFT,
             'AMZ_AD' => $amzAD,
             'AMZ_NPFT' => $amzNPFT,
-            'l30_units' => $monthlySales ? ($monthlySales->l30_units ?? 0) : 0,
-            'AMZ_L30' => $amzL30,
             'Shopify_OV_L30' => $shopifyInfo ? ($shopifyInfo->quantity ?? 0) : 0,
             'Shopify_INV' => $shopifyInfo ? ($shopifyInfo->inv ?? 0) : 0,
             'l60_units' => $monthlySales ? ($monthlySales->l60_units ?? 0) : 0,
@@ -1061,6 +1080,7 @@ class FbaDataController extends Controller
                 return $msl - $fbaQuantity - $inboundQuantity;
             })(),
             'SEND' => $manual ? ($manual->data['send'] ?? '') : '',
+            'send_toggle' => $manual ? ($manual->data['send_toggle'] ?? 0) : 0,
             'Correct_Cost' => $manual ? ($manual->data['correct_cost'] ?? false) : false,
             'Zero_Stock' => $manual ? ($manual->data['zero_stock'] ?? false) : false,
             '0-to-90-days' => $manual ? ($manual->data['0-to-90-days'] ?? '') : '',
@@ -1157,12 +1177,6 @@ class FbaDataController extends Controller
             'SKU' => $parentKey,
             'FBA_SKU' => '',
             'FBA_Price' => '',
-            'LMP' => null, // Parent rows don't show LMP
-            'LMP_Link' => null,
-            'AMZ_Price' => null, // Parent rows don't show AMZ Price
-            'AMZ_GPFT' => null, // Parent rows don't show AMZ GPFT
-            'AMZ_AD' => null, // Parent rows don't show AMZ AD
-            'AMZ_NPFT' => null, // Parent rows don't show AMZ NPFT
             'l30_units' => $children->sum('l30_units'),
             'l60_units' => $children->sum('l60_units'),
             'FBA_Quantity' => $children->sum('FBA_Quantity'),
@@ -1237,6 +1251,18 @@ class FbaDataController extends Controller
             'SROI%' => '',
             'lmp_1' => '',
             'lmp_data' => [],
+            'LMP' => null,
+            'LMP_Link' => null,
+            'AMZ_L30' => null,
+            'AMZ_L60' => null,
+            'AMZ_Sess30' => null,
+            'AMZ_Sess60' => null,
+            'AMZ_Price' => null,
+            'AMZ_Rating' => null,
+            'AMZ_Reviews' => null,
+            'AMZ_GPFT' => null,
+            'AMZ_AD' => null,
+            'AMZ_NPFT' => null,
             'ACTION_ACTION' => '',
             'REV_COUNT' => '',
             'RATING' => '',
