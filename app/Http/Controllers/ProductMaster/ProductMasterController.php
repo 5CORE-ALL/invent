@@ -2416,6 +2416,7 @@ PROMPT;
      * Generate 4 Title 60 options (55-60 chars) for Macy's/Faire.
      */
     public function generateTitle60WithAI(Request $request)
+    {
         $request->validate([
             'sku' => 'nullable|string',
             'title_150' => 'required|string',
