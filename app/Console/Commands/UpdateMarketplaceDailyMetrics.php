@@ -103,6 +103,17 @@ class UpdateMarketplaceDailyMetrics extends Command
         $endOfDay = $datePacific->copy()->endOfDay();
         $startOfDay = $datePacific->copy()->subDays(33)->startOfDay();
 
+        // Calculate total revenue from order totals (matches Amazon's "Ordered Product Sales" report)
+        // This ensures accuracy and matches the controller calculation
+        $totalRevenue = (float) DB::table('amazon_orders')
+            ->where('order_date', '>=', $startOfDay)
+            ->where('order_date', '<=', $endOfDay)
+            ->where(function ($q) {
+                $q->whereNull('status')->orWhere('status', '!=', 'Canceled');
+            })
+            ->sum('total_amount');
+
+        // Get order rows for item-level metrics (COGS, profit, etc.)
         $orderRows = DB::table('amazon_orders as o')
             ->join('amazon_order_items as i', 'o.id', '=', 'i.amazon_order_id')
             ->where('o.order_date', '>=', $startOfDay)
@@ -128,7 +139,6 @@ class UpdateMarketplaceDailyMetrics extends Command
 
         $totalOrders = $orderRows->pluck('amazon_order_id')->unique()->count();
         $totalQuantity = 0;
-        $totalRevenue = 0;
         $totalCogs = 0;
         $totalPft = 0;
         $totalWeightedPrice = 0;
@@ -140,15 +150,14 @@ class UpdateMarketplaceDailyMetrics extends Command
         $adUpdates = $marketplaceData ? $marketplaceData->ad_updates : 0;
         $margin = ($percentage - $adUpdates) / 100;
 
-        // Process each order line: sales = line price from amazon_order_items
+        // Process each order line for item-level metrics (COGS, profit calculations)
+        // Note: totalRevenue is already calculated from order totals above
         foreach ($orderRows as $row) {
             $quantity = (int) $row->quantity;
             $linePrice = (float) $row->line_price;
             $unitPrice = $quantity > 0 ? $linePrice / $quantity : 0;
-            $totalPrice = $linePrice;
 
             $totalQuantity += $quantity;
-            $totalRevenue += $totalPrice;
 
             if ($quantity > 0 && $unitPrice > 0) {
                 $totalWeightedPrice += $unitPrice * $quantity;

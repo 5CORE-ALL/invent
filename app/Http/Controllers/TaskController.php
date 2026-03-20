@@ -34,11 +34,28 @@ class TaskController extends Controller
             });
         }
 
-        // Calculate statistics based on filtered tasks
+        // Get selected user from session (set from user selection) - CHECK THIS FIRST
+        $selectedUserName = Session::get('selected_user_name', '');
+        $selectedUserEmail = null;
+        if ($selectedUserName) {
+            $selectedUser = User::where('name', $selectedUserName)->first();
+            $selectedUserEmail = $selectedUser ? $selectedUser->email : null;
+        }
+
+        // Filter tasks query by selected user if set (for all stats cards)
+        if ($selectedUserEmail) {
+            $tasksQuery->where(function($query) use ($selectedUserEmail) {
+                $query->where('assignor', $selectedUserEmail)
+                      ->orWhere('assign_to', 'LIKE', '%' . $selectedUserEmail . '%');
+            });
+        }
+
+        // Calculate statistics based on filtered tasks (with user filter if selected)
         $overdueQuery = (clone $tasksQuery)->whereNotNull('start_date')
                            ->whereRaw('DATE_ADD(start_date, INTERVAL 10 DAY) < NOW()')
                            ->whereNotIn('status', ['Done', 'Archived']);
 
+        // Calculate statistics based on filtered tasks (with user filter if selected)
         $stats = [
             'total' => (clone $tasksQuery)->count(),
             'pending' => (clone $tasksQuery)->where('status', 'Todo')->count(),
@@ -50,13 +67,30 @@ class TaskController extends Controller
             'done_atc' => (clone $tasksQuery)->where('status', 'Done')->sum('etc_done') ?? 0,
         ];
 
+        // Calculate R&R hours (tasks with group containing "R&R" or "R&R" in group name)
+        $rrQuery = (clone $tasksQuery)->where(function($q) {
+            $q->where('group', 'LIKE', '%R&R%')
+              ->orWhere('group', 'LIKE', '%R and R%')
+              ->orWhere('group', 'LIKE', '%Roles%Responsibilities%');
+        });
+        $stats['rr'] = $rrQuery->sum('eta_time') ?? 0;
+        $stats['etc_rr'] = $stats['rr']; // Alias for backward compatibility
+
         // Get all users for filter dropdowns (include email, avatar for user-select card)
         $users = User::select('id', 'name', 'email', 'avatar')->orderBy('name')->get();
 
         // Assignor/assignee roles from visible tasks (for "Select user" dropdown labels)
-        $assignorEmails = (clone $tasksQuery)->whereNotNull('assignor')->where('assignor', '!=', '')
+        // Use original query without user filter for dropdown
+        $baseTasksQuery = Task::query();
+        if (!$isAdmin) {
+            $baseTasksQuery->where(function($query) use ($user) {
+                $query->where('assignor', $user->email)
+                      ->orWhere('assign_to', 'LIKE', '%' . $user->email . '%');
+            });
+        }
+        $assignorEmails = (clone $baseTasksQuery)->whereNotNull('assignor')->where('assignor', '!=', '')
             ->distinct()->pluck('assignor')->values()->all();
-        $assigneeEmails = (clone $tasksQuery)->whereNotNull('assign_to')->where('assign_to', '!=', '')
+        $assigneeEmails = (clone $baseTasksQuery)->whereNotNull('assign_to')->where('assign_to', '!=', '')
             ->pluck('assign_to')
             ->flatMap(function ($assignTo) {
                 return array_map('trim', explode(',', $assignTo));
@@ -68,14 +102,6 @@ class TaskController extends Controller
         foreach ($users as $u) {
             $u->is_assignor = in_array($u->email, $assignorEmails, true);
             $u->is_assignee = in_array($u->email, $assigneeEmails, true);
-        }
-
-        // Get selected user from session (set from user selection)
-        $selectedUserName = Session::get('selected_user_name', '');
-        $selectedUserEmail = null;
-        if ($selectedUserName) {
-            $selectedUser = User::where('name', $selectedUserName)->first();
-            $selectedUserEmail = $selectedUser ? $selectedUser->email : null;
         }
 
         // TAT badge: average TAT (days from start_date to completion_date) for Done tasks completed in last 30 days
