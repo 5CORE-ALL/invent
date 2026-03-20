@@ -158,6 +158,48 @@
             color: white !important;
             border-color: #0d6efd;
         }
+        /* Play/Pause buttons - larger and colored */
+        .task-playback-group #task-play-auto-assignor,
+        .task-playback-group #task-play-auto-assignee,
+        .task-playback-group #task-play-pause-assignor,
+        .task-playback-group #task-play-pause-assignee {
+            width: 32px !important;
+            height: 32px !important;
+            background-color: #28a745 !important;
+            color: white !important;
+            border-color: #28a745 !important;
+        }
+        .task-playback-group #task-play-pause-assignor,
+        .task-playback-group #task-play-pause-assignee {
+            background-color: #ffc107 !important;
+            border-color: #ffc107 !important;
+        }
+        .task-playback-group #task-play-auto-assignor:hover,
+        .task-playback-group #task-play-auto-assignee:hover,
+        .task-playback-group #task-play-pause-assignor:hover,
+        .task-playback-group #task-play-pause-assignee:hover {
+            background-color: #218838 !important;
+            transform: scale(1.1);
+        }
+        .task-playback-group #task-play-pause-assignor:hover,
+        .task-playback-group #task-play-pause-assignee:hover {
+            background-color: #e0a800 !important;
+        }
+        /* Skip buttons - colored */
+        .task-playback-group #task-play-backward-assignor:not(:disabled),
+        .task-playback-group #task-play-backward-assignee:not(:disabled),
+        .task-playback-group #task-play-forward-assignor:not(:disabled),
+        .task-playback-group #task-play-forward-assignee:not(:disabled) {
+            background-color: #6c757d !important;
+            color: white !important;
+            border-color: #6c757d !important;
+        }
+        .task-playback-group #task-play-backward-assignor:not(:disabled):hover,
+        .task-playback-group #task-play-backward-assignee:not(:disabled):hover,
+        .task-playback-group #task-play-forward-assignor:not(:disabled):hover,
+        .task-playback-group #task-play-forward-assignee:not(:disabled):hover {
+            background-color: #5a6268 !important;
+        }
         
         /* Clean Table Styling */
         #tasks-table {
@@ -644,17 +686,17 @@
                                 </select>
                                 <div class="d-flex align-items-center gap-1 mt-1 flex-wrap">
                                     <div class="btn-group task-playback-group task-playback-assignor" role="group" aria-label="Assignor playback">
-                                        <button type="button" id="task-play-backward-assignor" class="btn btn-light btn-sm rounded-circle p-0" style="width:26px;height:26px;" title="Previous assignor" disabled>
-                                            <i class="mdi mdi-skip-previous" style="font-size:12px;"></i>
+                                        <button type="button" id="task-play-backward-assignor" class="btn btn-light btn-sm rounded-circle p-0" style="width:32px;height:32px;" title="Previous assignor" disabled>
+                                            <i class="mdi mdi-skip-previous" style="font-size:16px;"></i>
                                         </button>
-                                        <button type="button" id="task-play-pause-assignor" class="btn btn-light btn-sm rounded-circle p-0" style="width:26px;height:26px; display:none;" title="Show all">
-                                            <i class="mdi mdi-pause" style="font-size:12px;"></i>
+                                        <button type="button" id="task-play-pause-assignor" class="btn btn-light btn-sm rounded-circle p-0" style="width:32px;height:32px; display:none;" title="Show all">
+                                            <i class="mdi mdi-pause" style="font-size:16px;"></i>
                                         </button>
-                                        <button type="button" id="task-play-auto-assignor" class="btn btn-light btn-sm rounded-circle p-0" style="width:26px;height:26px;" title="Step through assignors">
-                                            <i class="mdi mdi-play" style="font-size:12px;"></i>
+                                        <button type="button" id="task-play-auto-assignor" class="btn btn-light btn-sm rounded-circle p-0" style="width:32px;height:32px;" title="Step through assignors">
+                                            <i class="mdi mdi-play" style="font-size:16px;"></i>
                                         </button>
-                                        <button type="button" id="task-play-forward-assignor" class="btn btn-light btn-sm rounded-circle p-0" style="width:26px;height:26px;" title="Next assignor" disabled>
-                                            <i class="mdi mdi-skip-next" style="font-size:12px;"></i>
+                                        <button type="button" id="task-play-forward-assignor" class="btn btn-light btn-sm rounded-circle p-0" style="width:32px;height:32px;" title="Next assignor" disabled>
+                                            <i class="mdi mdi-skip-next" style="font-size:16px;"></i>
                                         </button>
                                     </div>
                                     <span id="task-playback-label-assignor" class="text-muted small" style="font-size:11px; display:none;"></span>
@@ -671,17 +713,17 @@
                                 </select>
                                 <div class="d-flex align-items-center gap-1 mt-1 flex-wrap">
                                     <div class="btn-group task-playback-group task-playback-assignee" role="group" aria-label="Assignee playback">
-                                        <button type="button" id="task-play-backward-assignee" class="btn btn-light btn-sm rounded-circle p-0" style="width:26px;height:26px;" title="Previous assignee" disabled>
-                                            <i class="mdi mdi-skip-previous" style="font-size:12px;"></i>
+                                        <button type="button" id="task-play-backward-assignee" class="btn btn-light btn-sm rounded-circle p-0" style="width:32px;height:32px;" title="Previous assignee" disabled>
+                                            <i class="mdi mdi-skip-previous" style="font-size:16px;"></i>
                                         </button>
-                                        <button type="button" id="task-play-pause-assignee" class="btn btn-light btn-sm rounded-circle p-0" style="width:26px;height:26px; display:none;" title="Show all">
-                                            <i class="mdi mdi-pause" style="font-size:12px;"></i>
+                                        <button type="button" id="task-play-pause-assignee" class="btn btn-light btn-sm rounded-circle p-0" style="width:32px;height:32px; display:none;" title="Show all">
+                                            <i class="mdi mdi-pause" style="font-size:16px;"></i>
                                         </button>
-                                        <button type="button" id="task-play-auto-assignee" class="btn btn-light btn-sm rounded-circle p-0" style="width:26px;height:26px;" title="Step through assignees">
-                                            <i class="mdi mdi-play" style="font-size:12px;"></i>
+                                        <button type="button" id="task-play-auto-assignee" class="btn btn-light btn-sm rounded-circle p-0" style="width:32px;height:32px;" title="Step through assignees">
+                                            <i class="mdi mdi-play" style="font-size:16px;"></i>
                                         </button>
-                                        <button type="button" id="task-play-forward-assignee" class="btn btn-light btn-sm rounded-circle p-0" style="width:26px;height:26px;" title="Next assignee" disabled>
-                                            <i class="mdi mdi-skip-next" style="font-size:12px;"></i>
+                                        <button type="button" id="task-play-forward-assignee" class="btn btn-light btn-sm rounded-circle p-0" style="width:32px;height:32px;" title="Next assignee" disabled>
+                                            <i class="mdi mdi-skip-next" style="font-size:16px;"></i>
                                         </button>
                                     </div>
                                     <span id="task-playback-label-assignee" class="text-muted small" style="font-size:11px; display:none;"></span>
@@ -971,15 +1013,15 @@
                         row.getElement().style.backgroundColor = "#fffbea";
                     }
                 },
-                layout: "fitData",
+                layout: "fitColumns",
                 pagination: true,
                 paginationSize: 25,
                 paginationSizeSelector: [10, 25, 50, 100],
-                responsiveLayout: false,
+                responsiveLayout: "hide",
                 placeholder: "No Tasks Found",
                 height: "600px",
                 layoutColumnsOnNewData: true,
-                horizontalScroll: true,
+                horizontalScroll: false,
                 autoResize: true,
                 columns: (function() {
                     var cols = [];

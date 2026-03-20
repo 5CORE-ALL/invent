@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Task Deletion Record', 'sidenav' => 'condensed'])
+@extends('layouts.vertical', ['title' => 'Archived Tasks', 'sidenav' => 'condensed'])
 
 @section('css')
     <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
@@ -52,7 +52,7 @@
             line-height: 1;
         }
 
-        /* Red theme for deleted tasks */
+        /* Red theme for archived tasks */
         .stat-card-red {
             border-left-color: #dc3545;
         }
@@ -183,11 +183,11 @@
                         <ol class="breadcrumb m-0">
                             <li class="breadcrumb-item"><a href="{{ url('/') }}">Home</a></li>
                             <li class="breadcrumb-item"><a href="{{ route('tasks.index') }}">Task Manager</a></li>
-                            <li class="breadcrumb-item active">Task Deletion Record</li>
+                            <li class="breadcrumb-item active">Archived Tasks</li>
                         </ol>
                     </div>
                     <h4 class="page-title">
-                        Task Deletion Record
+                        Archived Tasks
                         @if(!empty($selectedUserName))
                             <span class="badge bg-info ms-2" style="font-size: 0.75rem; font-weight: 600;">
                                 <i class="mdi mdi-account me-1"></i>Filtered: {{ $selectedUserName }}
@@ -324,7 +324,7 @@
             </div>
         </div>
 
-        <!-- Deleted Tasks Table -->
+        <!-- Archived Tasks Table -->
         <div class="row">
             <div class="col-12">
                 <div class="card task-card">
@@ -536,7 +536,7 @@
                 paginationSize: 25,
                 paginationSizeSelector: [10, 25, 50, 100],
                 responsiveLayout: false,
-                placeholder: "No Deleted Tasks Found",
+                placeholder: "No Archived Tasks Found",
                 height: "600px",
                 layoutColumnsOnNewData: true,
                 rowFormatter: function(row) {
@@ -685,7 +685,7 @@
                         }
                     },
                     {
-                        title: "DELETED BY", 
+                        title: "ARCHIVED BY", 
                         field: "deleted_by_name", 
                         width: 120,
                         formatter: function(cell) {
@@ -698,7 +698,7 @@
                         }
                     },
                     {
-                        title: "DELETED DATE", 
+                        title: "ARCHIVED DATE", 
                         field: "deleted_at", 
                         width: 150,
                         formatter: function(cell) {

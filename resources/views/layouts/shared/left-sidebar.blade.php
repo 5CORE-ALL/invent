@@ -197,7 +197,7 @@
                         </li>
                         <li>
                             <a href="{{ url('tasks/deleted') }}">
-                                <i class="ri-delete-bin-line me-2"></i>Deleted Tasks
+                                <i class="ri-delete-bin-line me-2"></i>Archived Tasks
                             </a>
                         </li>
                     </ul>
