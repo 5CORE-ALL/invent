@@ -3308,14 +3308,10 @@
                         minWidth: 60,
                         mutator: function (value, data) {
                             var acos = parseFloat(data.acos || data.ACOS || 0);
-                            // KW SBGT rules (match AutoUpdateAmazonBgtKw.php)
-                            if (acos >= 30) return 3;
-                            if (acos >= 25) return 5;
-                            if (acos >= 20) return 10;
-                            if (acos >= 15) return 15;
-                            if (acos >= 10) return 20;
-                            if (acos >= 5) return 25;
-                            return 30; // Less than 5
+                            if (isNaN(acos)) acos = 0;
+                            if (acos < 20) return 10;
+                            if (acos < 30) return 5;
+                            return 3;
                         },
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
@@ -3455,18 +3451,11 @@
                         visible: false,
                         minWidth: 60,
                         mutator: function (value, data) {
-                            var spend = parseFloat(data.pt_spend_L30 || 0);
-                            var sales = parseFloat(data.pt_sales_L30 || 0);
-                            var acos = sales > 0 ? (spend / sales) * 100 : 0;
-                            // ACOS-based SBGT rules (updated to match AutoUpdateAmazonBgtKw.php)
-                            if (acos > 35) return 1;
-                            if (acos >= 30) return 3;
-                            if (acos >= 25) return 5;
-                            if (acos >= 20) return 10;
-                            if (acos >= 15) return 15;
-                            if (acos >= 10) return 20;
-                            if (acos >= 5) return 25;
-                            return 30; // Less than 5
+                            var acos = parseFloat(data.pt_acos || data.PT_ACOS || 0);
+                            if (isNaN(acos)) acos = 0;
+                            if (acos < 20) return 10;
+                            if (acos < 30) return 5;
+                            return 3;
                         },
                         formatter: function(cell) {
                             return cell.getValue();
@@ -3820,19 +3809,11 @@
                         visible: false,
                         minWidth: 60,
                         mutator: function (value, data) {
-                            var spend = parseFloat(data.hl_spend_L30 || 0);
-                            var sales = parseFloat(data.hl_sales_L30 || 0);
-                            // Match HL utilized page: spend > 0 && sales == 0 → ACOS = 100%
-                            var acos = (spend > 0 && sales > 0) ? (spend / sales) * 100 : (spend > 0 ? 100 : 0);
-                            // ACOS-based SBGT rules (updated to match AutoUpdateAmazonBgtKw.php)
-                            if (acos > 35) return 2;
-                            if (acos >= 30) return 6;
-                            if (acos >= 25) return 10;
-                            if (acos >= 20) return 20;
-                            if (acos >= 15) return 30;
-                            if (acos >= 10) return 40;
-                            if (acos >= 5) return 50;
-                            return 60; // Less than 5
+                            var acos = parseFloat(data.hl_acos || data.HL_ACOS || 0);
+                            if (isNaN(acos)) acos = 0;
+                            if (acos < 20) return 10;
+                            if (acos < 30) return 5;
+                            return 3;
                         },
                         formatter: function(cell) {
                             return cell.getValue();
