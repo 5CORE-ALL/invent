@@ -291,6 +291,9 @@
                     <button type="button" class="btn btn-sm btn-success" id="export-btn">
                         <i class="fa fa-download"></i> Export
                     </button>
+                    <button type="button" class="btn btn-sm btn-info" id="export-l7-btn" title="Export L7 data from temu_daily_data_l7">
+                        <i class="fa fa-download"></i> Export L7
+                    </button>
                     <a href="{{ route('temu.tabulator') }}" class="btn btn-sm btn-outline-primary" title="View order-level sales data (Order ID, status, line items)">
                         <i class="fa fa-list-alt"></i> Order Data
                     </a>
@@ -4678,6 +4681,65 @@
         // Export functionality
         $('#export-btn').on('click', function() {
             table.download("csv", "temu_decrease_data.csv");
+        });
+
+        // Export L7 - fetch from temu-decrease-data-l7 and download as CSV
+        $('#export-l7-btn').on('click', function() {
+            const $btn = $(this);
+            const originalHtml = $btn.html();
+            $btn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Loading...');
+            $.ajax({
+                url: '{{ url("/temu-decrease-data-l7") }}',
+                method: 'GET',
+                headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}', 'Accept': 'application/json' },
+                success: function(response) {
+                    if (response && response.data && response.data.length > 0) {
+                        const data = response.data;
+                        const headers = Object.keys(data[0]);
+                        const escapeCell = function(val) {
+                            if (val === null || val === undefined) return '';
+                            if (typeof val === 'object') val = JSON.stringify(val);
+                            let s = String(val).replace(/"/g, '""');
+                            if (s.includes(',') || s.includes('\n') || s.includes('"')) {
+                                return '"' + s + '"';
+                            }
+                            return s;
+                        };
+                        let csv = headers.join(',') + '\n';
+                        data.forEach(function(row) {
+                            const values = headers.map(function(header) {
+                                return escapeCell(row[header]);
+                            });
+                            csv += values.join(',') + '\n';
+                        });
+                        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+                        const url = window.URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = 'temu_l7_data.csv';
+                        document.body.appendChild(a);
+                        a.click();
+                        document.body.removeChild(a);
+                        window.URL.revokeObjectURL(url);
+                        if (typeof showToast === 'function') {
+                            showToast('Exported ' + data.length + ' L7 records', 'success');
+                        }
+                    } else {
+                        if (typeof showToast === 'function') {
+                            showToast('No L7 data available to export', 'warning');
+                        }
+                    }
+                },
+                error: function(xhr) {
+                    const err = (xhr.responseJSON && xhr.responseJSON.error) ? xhr.responseJSON.error : 'Unknown error';
+                    if (typeof showToast === 'function') {
+                        showToast('Failed to export L7 data: ' + err, 'error');
+                    }
+                },
+                complete: function() {
+                    $btn.prop('disabled', false).html(originalHtml);
+                }
+            });
         });
 
         // Single-badge history modal: click on a badge opens history for that metric
