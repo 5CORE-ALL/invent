@@ -274,10 +274,10 @@
                         <span class="badge bg-primary fs-6 p-2 badge-chart-link" data-metric="cvr" style="color: white; font-weight: bold; cursor:pointer;" title="CVR % = Orders / Total Views">
                             CVR %: <span id="cvr-pct-badge">0%</span>
                         </span>
-                        <span class="badge bg-success fs-6 p-2 badge-chart-link" data-metric="pft" style="color: white; font-weight: bold; cursor:pointer;" title="Net profit $ = sum(L30×Gprofit% − Ad spend); same as L30 Sales × (G% − Ad Spend/Sales)">
+                        <span class="badge bg-warning fs-6 p-2 badge-chart-link" data-metric="pft" style="color: black; font-weight: bold; cursor:pointer;" title="Net profit $ = sum(L30×Gprofit% − Ad spend); same as L30 Sales × (G% − Ad Spend/Sales)">
                             NPFT: <span id="total-pft">$0</span>
                         </span>
-                        <span class="badge bg-dark fs-6 p-2 badge-chart-link" data-metric="npft" style="color: white; font-weight: bold; cursor:pointer;" title="View trend">
+                        <span class="badge bg-warning fs-6 p-2 badge-chart-link" data-metric="npft" style="color: black; font-weight: bold; cursor:pointer;" title="View trend">
                             NPFT: <span id="avg-npft">0%</span>
                         </span>
                         <span class="badge bg-primary fs-6 p-2 badge-chart-link" data-metric="nroi" style="color: white; font-weight: bold; cursor:pointer;" title="View trend">
