@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\PerformanceReview;
 use App\Models\Task;
 use App\Models\User;
 use App\Models\UserRR;
@@ -10,6 +11,7 @@ use App\Policies\TaskPolicy;
 use App\Services\TaskWhatsAppNotificationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Session;
 
 class TaskController extends Controller
@@ -208,6 +210,21 @@ class TaskController extends Controller
 
         // Special permission: Jasmine, Ritu mam, Joy sir can delete/modify any task
         $canDeleteAnyTask = TaskPolicy::userHasSpecialTaskPermission($user);
+
+        // AVG SCORE: always the logged-in user's performance average (not task "selected user" filter)
+        $stats['average_score'] = null;
+        $viewerId = (int) $user->id;
+        if ($viewerId > 0 && Schema::hasTable('performance_reviews')) {
+            try {
+                $avgNorm = PerformanceReview::query()
+                    ->where('employee_id', $viewerId)
+                    ->where('is_completed', true)
+                    ->avg('normalized_score');
+                $stats['average_score'] = $avgNorm !== null ? round((float) $avgNorm, 2) : null;
+            } catch (\Throwable $e) {
+                $stats['average_score'] = null;
+            }
+        }
 
         return view('tasks.index', compact('stats', 'isAdmin', 'users', 'canDeleteAnyTask', 'tatChartData', 'missedChartData', 'selectedUserName'));
     }

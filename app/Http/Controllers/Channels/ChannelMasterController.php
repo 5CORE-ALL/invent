@@ -6811,7 +6811,7 @@ class ChannelMasterController extends Controller
                 'gprofit' => 'gprofit_percent',
                 'groi' => 'groi_percent',
                 'ads_pct' => 'tcos_percent',
-                'pft' => null,       // computed: total profit amount from gprofit%
+                'pft' => null,       // computed: net profit $ = (gprofit%/100)*l30_sales - total_ad_spend
                 'npft' => 'npft_percent',
                 'nroi' => null,      // computed: npft / tcos * 100
                 'missing_l' => 'miss_count',
@@ -6892,7 +6892,7 @@ class ChannelMasterController extends Controller
                         $channelGprofit = floatval($sd['gprofit_percent'] ?? 0);
 
                         $channelCogs = floatval($sd['cogs'] ?? 0);
-                        // Always derive profit from gprofit% (matches badge calculation exactly)
+                        // Gross profit $ from gprofit%; net NPFT $ subtracts ad spend (matches badge)
                         $channelPft = ($channelGprofit / 100) * $channelL30Sales;
 
                         if ($metric === 'acos' || $metric === 'ad_sales') {
@@ -6943,8 +6943,8 @@ class ChannelMasterController extends Controller
                         // Weighted avg: total profit / total sales * 100
                         $value = $totalSales > 0 ? round(($totalPft / $totalSales) * 100, 1) : 0;
                     } elseif ($metric === 'pft') {
-                        // Total Pft amount (sum of all profit)
-                        $value = round($totalPft, 2);
+                        // Net profit $ (gross from G%×sales, minus ad spend)
+                        $value = round($totalPft - $totalSpend, 2);
                     } elseif ($metric === 'npft') {
                         // N PFT = G PFT% - Ads%
                         $gpft = $totalSales > 0 ? ($totalPft / $totalSales) * 100 : 0;
@@ -7003,10 +7003,10 @@ class ChannelMasterController extends Controller
                         $views = floatval($summaryData['total_views'] ?? 0);
                         $value = $views > 0 ? round(($orders / $views) * 100, 1) : 0;
                     } elseif ($metric === 'pft') {
-                        // Calculate profit amount from gprofit%
                         $gprofitPercent = floatval($summaryData['gprofit_percent'] ?? 0);
                         $sales = floatval($summaryData['l30_sales'] ?? 0);
-                        $value = round(($gprofitPercent / 100) * $sales, 2);
+                        $adSpend = floatval($summaryData['total_ad_spend'] ?? 0);
+                        $value = round(($gprofitPercent / 100) * $sales - $adSpend, 2);
                     } elseif ($metric === 'nroi') {
                         // N ROI = GROI% - TCOS%
                         $groi = floatval($summaryData['groi_percent'] ?? 0);
@@ -7304,7 +7304,9 @@ class ChannelMasterController extends Controller
                 'l30_sales' => (float) ($mdm->total_sales ?? 0),
                 'l30_orders' => (float) ($mdm->total_orders ?? 0),
                 'qty' => (float) ($mdm->total_quantity ?? 0),
-                'pft' => (float) ($mdm->total_pft ?? 0),
+                'pft' => (float) ($mdm->total_sales ?? 0)
+                    * ((float) ($mdm->pft_percentage ?? 0) - (float) ($mdm->tacos_percentage ?? 0))
+                    / 100,
                 default => null,
             };
             if ($val !== null) $total += $val;
@@ -7392,7 +7394,12 @@ class ChannelMasterController extends Controller
             'ads_pct' => (float) $mdm->tacos_percentage,
             'npft' => (float) $mdm->n_pft,
             'nroi' => $mdm->n_roi !== null ? (float) $mdm->n_roi : null,
-            'pft' => $mdm->total_pft !== null ? (float) $mdm->total_pft : null,
+            'pft' => round(
+                (float) ($mdm->total_sales ?? 0)
+                    * ((float) ($mdm->pft_percentage ?? 0) - (float) ($mdm->tacos_percentage ?? 0))
+                    / 100,
+                2
+            ),
             'missing_l' => null, // not critical for matching
             'nmap' => null,
             default => null,

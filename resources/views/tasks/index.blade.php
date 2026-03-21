@@ -1414,7 +1414,7 @@
                     <div class="stat-content">
                         <div class="stat-label">AVG SCORE</div>
                         <div class="stat-value">{{ isset($stats['average_score']) && $stats['average_score'] !== null ? number_format($stats['average_score'], 2) : '-' }}</div>
-                        <div class="stat-unit" title="Average normalized score from completed reviews (out of 5)">Reviews · avg / 5</div>
+                        <div class="stat-unit" title="Your average score from completed performance reviews (out of 5). Not affected by task filters.">Your avg / 5</div>
                     </div>
                 </div>
             </div>

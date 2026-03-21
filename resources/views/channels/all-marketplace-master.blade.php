@@ -256,8 +256,11 @@
                         <span class="badge bg-primary fs-6 p-2 badge-chart-link" data-metric="qty" style="color: white; font-weight: bold; cursor:pointer;" title="View trend">
                             Qty items: <span id="total-qty">0</span>
                         </span>
-                        <span class="badge bg-warning fs-6 p-2 badge-chart-link" data-metric="gprofit" style="color: black; font-weight: bold; cursor:pointer;" title="View trend">
+                        <span class="badge bg-warning fs-6 p-2 badge-chart-link" data-metric="gprofit" style="color: black; font-weight: bold; cursor:pointer;" title="Blended Gprofit% = sum(L30×G%) / sum(L30); matches GPFT% column footer">
                             GPFT%: <span id="avg-gprofit">0%</span>
+                        </span>
+                        <span class="badge bg-warning fs-6 p-2" style="color: black; font-weight: bold; border: 1px solid rgba(0,0,0,.25);" title="Gross profit $ = sum of L30 Sales × Gprofit% per channel; matches Gross PFT column (show column to verify)">
+                            GPFT: <span id="total-gross-pft">$0</span>
                         </span>
                         <span class="badge bg-danger fs-6 p-2 badge-chart-link" data-metric="groi" style="color: white; font-weight: bold; cursor:pointer;" title="View trend">
                             G ROI: <span id="avg-groi">0%</span>
@@ -271,7 +274,7 @@
                         <span class="badge bg-primary fs-6 p-2 badge-chart-link" data-metric="cvr" style="color: white; font-weight: bold; cursor:pointer;" title="CVR % = Orders / Total Views">
                             CVR %: <span id="cvr-pct-badge">0%</span>
                         </span>
-                        <span class="badge bg-success fs-6 p-2 badge-chart-link" data-metric="pft" style="color: white; font-weight: bold; cursor:pointer;" title="View trend">
+                        <span class="badge bg-success fs-6 p-2 badge-chart-link" data-metric="pft" style="color: white; font-weight: bold; cursor:pointer;" title="Net profit $ = sum(L30×Gprofit% − Ad spend); same as L30 Sales × (G% − Ad Spend/Sales)">
                             NPFT: <span id="total-pft">$0</span>
                         </span>
                         <span class="badge bg-dark fs-6 p-2 badge-chart-link" data-metric="npft" style="color: white; font-weight: bold; cursor:pointer;" title="View trend">
@@ -1287,6 +1290,41 @@
                                 e.stopPropagation();
                                 var cv = cell.getElement().querySelector('span'); cv = cv ? parseFloat(cv.textContent.replace(/[$,%,\s]/g, '')) : null; showMetricChart($(e.target).data('channel'), $(e.target).data('metric'), cv);
                             }
+                        },
+                        bottomCalc: function(values, data) {
+                            let gpDollars = 0, totalL30 = 0;
+                            data.forEach(function(row) {
+                                const l30 = parseNumber(row['L30 Sales'] || 0);
+                                const gp = parseNumber(row['Gprofit%'] || 0);
+                                gpDollars += (gp / 100) * l30;
+                                totalL30 += l30;
+                            });
+                            return totalL30 > 0 ? (gpDollars / totalL30) * 100 : 0;
+                        },
+                        bottomCalcFormatter: function(cell) {
+                            const v = parseNumber(cell.getValue());
+                            return `<strong>${v.toFixed(1)}%</strong>`;
+                        }
+                    },
+                    {
+                        title: "Gross PFT",
+                        field: "_gross_pft",
+                        visible: false,
+                        hozAlign: "center",
+                        sorter: "number",
+                        mutator: function(value, data) {
+                            const l30 = parseNumber(data['L30 Sales'] || 0);
+                            const gp = parseNumber(data['Gprofit%'] || 0);
+                            return (gp / 100) * l30;
+                        },
+                        formatter: function(cell) {
+                            const v = parseNumber(cell.getValue());
+                            return `<span>$${Math.round(v).toLocaleString('en-US')}</span>`;
+                        },
+                        bottomCalc: "sum",
+                        bottomCalcFormatter: function(cell) {
+                            const value = cell.getValue();
+                            return `<strong>$${Math.round(parseNumber(value)).toLocaleString('en-US')}</strong>`;
                         }
                     },
                     {
@@ -2889,13 +2927,15 @@
                 $('#total-qty').text(Math.round(totalQty).toLocaleString('en-US'));
                 $('#total-clicks').text(Math.round(totalClicks).toLocaleString('en-US'));
                 $('#avg-gprofit').text(avgGprofit.toFixed(1) + '%');
+                $('#total-gross-pft').text('$' + Math.round(totalPft).toLocaleString('en-US'));
                 $('#avg-groi').text(Math.round(avgGroi) + '%');
                 $('#total-ad-spend').text('$' + Math.round(totalAdSpend).toLocaleString('en-US'));
                 $('#total-views-badge').text(Math.round(totalViews).toLocaleString('en-US'));
                 // CVR % = Orders / Total Views (overall)
                 const cvrPct = totalViews > 0 ? (totalL30Orders / totalViews) * 100 : null;
                 $('#cvr-pct-badge').text(cvrPct !== null ? cvrPct.toFixed(1) + '%' : '-');
-                $('#total-pft').text('$' + Math.round(totalPft).toLocaleString('en-US'));
+                // NPFT $ = gross profit $ − total ad spend (= L30 × (G% − Ad Spend/Sales) in aggregate)
+                $('#total-pft').text('$' + Math.round(netProfit).toLocaleString('en-US'));
                 $('#avg-npft').text(avgNpft.toFixed(1) + '%');
                 $('#avg-nroi').text(avgNroi.toFixed(1) + '%');
                 $('#total-map').text(Math.round(totalMap).toLocaleString('en-US'));
@@ -2996,7 +3036,7 @@
                 'all': 'ALL', // Show all columns
                 'ads': ['L30 Sales', 'Total Ad Spend', 'Total Views', 'CVR', 'KW Spent', 'PT Spent', 'HL Spent', 'PMT Spent', 'KW ACOS', 'PT ACOS', 'HL ACOS', 'PMT ACOS', 'Shopping Spent', 'SERP Spent', 'clicks', 'KW Clicks', 'PT Clicks', 'HL Clicks', 'PMT Clicks', 'Shopping Clicks', 'SERP Clicks', 'Ad Sales', 'KW Sales', 'PT Sales', 'HL Sales', 'PMT Sales', 'Shopping Sales', 'SERP Sales', 'ad_sold', 'KW Sold', 'PT Sold', 'HL Sold', 'PMT Sold', 'Shopping Sold', 'SERP Sold', 'ACOS', 'Shopping ACOS', 'SERP ACOS', 'Ads CVR', 'KW CVR', 'PT CVR', 'HL CVR', 'PMT CVR', 'Shopping CVR', 'SERP CVR', 'TAcos %', 'Missing Ads'],
                 'inv': ['Avl', 'Res', 'Inb', 'Unf', 'Wrk', 'Total Inv', 'Allocated'],
-                'margins': ['G PFT%', 'G ROI%', 'N PFT%', 'N ROI%', 'COGS', 'Total Ad Spend', 'TAcos %'],
+                'margins': ['G PFT%', 'G ROI%', 'N PFT%', 'N ROI%', 'COGS', 'Total Ad Spend', 'TAcos %', '_gross_pft'],
                 'movement': ['L30 Sales', 'L30 Orders', 'Qty items', 'Velocity'],
                 'returns': ['Return Rate', 'Return Units', 'Return Value'],
                 'ah': ['AH Score', 'Policy Violations', 'Customer Complaints', 'Shipping Health', 'CC Health', 'Returns %', 'A2Z Claims', 'Ratings & Reviews', 'Seller Rating & Reviews'],
