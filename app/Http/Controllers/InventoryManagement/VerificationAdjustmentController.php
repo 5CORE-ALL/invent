@@ -19,6 +19,8 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Cache;
 use App\Models\ShopifyInventoryLog;
 use App\Jobs\UpdateShopifyInventoryJob;
+use App\Models\LostGainAqHistory;
+use Illuminate\Support\Str;
 
 
 class VerificationAdjustmentController extends Controller
@@ -1465,6 +1467,7 @@ class VerificationAdjustmentController extends Controller
             ->get()
             ->map(function ($item) {
                 return [
+                    'id' => $item->id,
                     'sku' => $item->sku,
                     'verified_stock' => $item->verified_stock,
                     'to_adjust' => $item->to_adjust,
@@ -1508,12 +1511,24 @@ class VerificationAdjustmentController extends Controller
         
         $productData = $productMasters->map(function ($product) {
             $values = is_array($product->Values) ? $product->Values : (is_string($product->Values) ? json_decode($product->Values, true) : []);
+            if (!is_array($values)) {
+                $values = [];
+            }
             $lp = $values['lp'] ?? $product->lp ?? 0;
-            
+
+            // Unit lives in Values JSON (e.g. "Pair"); fall back to product_master.unit column.
+            $unit = $values['unit'] ?? $product->unit ?? null;
+            if ($unit !== null && $unit !== '' && is_scalar($unit)) {
+                $unit = (string) $unit;
+            } else {
+                $unit = null;
+            }
+
             return [
                 'sku' => $product->sku,
                 'parent' => $product->parent ?? '(No Parent)',
                 'lp' => floatval($lp),
+                'unit' => $unit,
             ];
         });
         
@@ -2011,5 +2026,127 @@ GQL;
         }
     }
 
-    
+    /**
+     * Apply Adjust Quantity (AQ) updates from the Lost/Gain screen: net positive to_adjust against negatives up to total positive.
+     */
+    public function adjustLostGainQuantities(Request $request)
+    {
+        $user = Auth::user();
+        if (!$user || !in_array($user->email, ['inventory@5core.com', 'president@5core.com', 'software2@5core.com'])) {
+            abort(404, 'Page not available');
+        }
+
+        $validated = $request->validate([
+            'updates' => 'required|array|min:1',
+            'updates.*.inventory_id' => 'required|integer|exists:inventories,id',
+            'updates.*.to_adjust' => 'required|numeric',
+            'updates.*.loss_gain' => 'nullable|numeric',
+        ]);
+
+        $batchUuid = (string) Str::uuid();
+        $userId = Auth::id();
+        $updated = 0;
+
+        try {
+            DB::beginTransaction();
+
+            foreach ($validated['updates'] as $u) {
+                $inv = Inventory::where('id', $u['inventory_id'])
+                    ->whereNull('type')
+                    ->where('is_approved', true)
+                    ->lockForUpdate()
+                    ->first();
+
+                if (!$inv) {
+                    DB::rollBack();
+
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Inventory not found or not eligible for adjustment (ID '.$u['inventory_id'].'). Reload and try again.',
+                    ], 422);
+                }
+
+                $oldTo = (int) $inv->to_adjust;
+                $oldLoss = $inv->loss_gain;
+                $newTo = (int) round((float) $u['to_adjust']);
+                $newLoss = array_key_exists('loss_gain', $u) && $u['loss_gain'] !== null
+                    ? round((float) $u['loss_gain'], 2)
+                    : $inv->loss_gain;
+
+                if ($oldTo === $newTo && (string) $oldLoss === (string) $newLoss) {
+                    continue;
+                }
+
+                LostGainAqHistory::create([
+                    'batch_uuid' => $batchUuid,
+                    'user_id' => $userId,
+                    'inventory_id' => $inv->id,
+                    'sku' => $inv->sku,
+                    'old_to_adjust' => $oldTo,
+                    'new_to_adjust' => $newTo,
+                    'old_loss_gain' => $oldLoss,
+                    'new_loss_gain' => $newLoss,
+                ]);
+
+                $inv->to_adjust = $newTo;
+                $inv->loss_gain = $newLoss;
+                $inv->save();
+                $updated++;
+            }
+
+            DB::commit();
+
+            return response()->json([
+                'success' => true,
+                'message' => "Updated {$updated} record(s).",
+                'batch_uuid' => $batchUuid,
+                'updated' => $updated,
+            ]);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('adjustLostGainQuantities failed', ['error' => $e->getMessage()]);
+
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    public function getLostGainAqHistory(Request $request)
+    {
+        $user = Auth::user();
+        if (!$user || !in_array($user->email, ['inventory@5core.com', 'president@5core.com', 'software2@5core.com'])) {
+            abort(404, 'Page not available');
+        }
+
+        // Allow large lists for the History panel (newest first). Hard-capped for safety.
+        $limit = min(10000, max(1, (int) $request->input('limit', 500)));
+
+        $rows = LostGainAqHistory::query()
+            ->with(['user' => function ($q) {
+                $q->select('id', 'email');
+            }])
+            ->orderByDesc('created_at')
+            ->limit($limit)
+            ->get()
+            ->map(function ($h) {
+                return [
+                    'batch_uuid' => $h->batch_uuid,
+                    'sku' => $h->sku,
+                    'inventory_id' => $h->inventory_id,
+                    'old_to_adjust' => $h->old_to_adjust,
+                    'new_to_adjust' => $h->new_to_adjust,
+                    'old_loss_gain' => $h->old_loss_gain,
+                    'new_loss_gain' => $h->new_loss_gain,
+                    'user_email' => $h->user ? $h->user->email : null,
+                    'created_at' => $h->created_at
+                        ? Carbon::parse($h->created_at)->timezone('America/New_York')->format('d M Y, h:i A')
+                        : '-',
+                ];
+            });
+
+        return response()->json(['data' => $rows]);
+    }
+
 }
