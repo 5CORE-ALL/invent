@@ -6,11 +6,10 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
 /**
- * AliExpress Open Platform — Solution API via POST https://api-sg.aliexpress.com/rest
+ * AliExpress dropshipping / Solution API — POST https://api-sg.aliexpress.com/sync
  *
- * Signature matches official IOP SDK: ksort, concat key+value, HMAC-SHA256 (no /rest prefix for
- * method names without "/"). Uses `session` + `format` + `simplify` + `partner_id` like IOP.
- * See docs/aliexpress-iop-signature.md
+ * Sign string: `/sync` + sorted `key`+`value` for all public params (HMAC-SHA256, uppercase hex).
+ * Token is sent as `session` (not `access_token`) for this gateway.
  *
  * Test (tinker):
  *   app(\App\Services\AliExpressApiService::class)->getInventory(1, 5);
@@ -28,12 +27,13 @@ class AliExpressApiService
 
     protected ?string $accessToken;
 
+    /** Full POST URL including path, e.g. https://api-sg.aliexpress.com/sync */
     protected string $apiBase;
 
-    /** Prepended to sign string (IOP: only non-empty for path APIs like /auth/...; default ''). */
-    protected string $signPrefix;
+    /** Leading path used as prefix in sign string (e.g. /sync); must match dropshipping API path. */
+    protected string $signPath;
 
-    /** `session` (IOP default) or `access_token` — must match what the gateway expects. */
+    /** `session` (dropshipping /sync) or `access_token` if your gateway requires it. */
     protected string $tokenParam;
 
     protected string $partnerId;
@@ -54,8 +54,11 @@ class AliExpressApiService
         $this->appKey = (string) (config('services.aliexpress.app_key') ?: env('ALIEXPRESS_APP_KEY', ''));
         $this->appSecret = (string) (config('services.aliexpress.app_secret') ?: env('ALIEXPRESS_APP_SECRET', ''));
         $this->accessToken = config('services.aliexpress.access_token') ?: env('ALIEXPRESS_ACCESS_TOKEN');
-        $this->apiBase = rtrim((string) (config('services.aliexpress.api_base') ?: env('ALIEXPRESS_API_BASE', 'https://api-sg.aliexpress.com')), '/');
-        $this->signPrefix = (string) (config('services.aliexpress.sign_prefix') ?? env('ALIEXPRESS_SIGN_PREFIX', ''));
+        $this->apiBase = $this->normalizeSyncApiBase(
+            (string) (config('services.aliexpress.api_base') ?: env('ALIEXPRESS_API_BASE', 'https://api-sg.aliexpress.com/sync'))
+        );
+        $sp = (string) (config('services.aliexpress.sign_path') ?? env('ALIEXPRESS_SIGN_PATH', '/sync'));
+        $this->signPath = ($sp !== '' && $sp[0] === '/') ? $sp : '/'.$sp;
         $tp = strtolower((string) (config('services.aliexpress.token_param') ?: env('ALIEXPRESS_TOKEN_PARAM', 'session')));
         $this->tokenParam = in_array($tp, ['session', 'access_token'], true) ? $tp : 'session';
         $this->partnerId = (string) (config('services.aliexpress.partner_id') ?: env('ALIEXPRESS_PARTNER_ID', 'iop-sdk-php'));
@@ -83,7 +86,7 @@ class AliExpressApiService
             'page_size' => $pageSize,
         ], $extraListParams));
 
-        $raw = $this->callRest('aliexpress.solution.product.list.get', [
+        $raw = $this->callSync('aliexpress.solution.product.list.get', [
             'product_list_get_request' => $this->encodeRequestPayload($listRequest),
         ]);
 
@@ -110,7 +113,7 @@ class AliExpressApiService
     {
         $editRequest = $this->buildEditProductRequest($productId, $title, $language);
 
-        return $this->callRest('aliexpress.solution.product.edit', [
+        return $this->callSync('aliexpress.solution.product.edit', [
             'edit_product_request' => $this->encodeRequestPayload($editRequest),
         ]);
     }
@@ -145,7 +148,7 @@ class AliExpressApiService
     }
 
     /**
-     * Debug: same signing and URL as production REST calls.
+     * Debug: same signing and URL as production /sync calls.
      *
      * @param  array<string, string|int>  $restParams  Already-encoded business params (e.g. product_list_get_request => json string)
      */
@@ -174,7 +177,7 @@ class AliExpressApiService
         ];
 
         if ($this->transport === 'iop') {
-            $queryUrl = $this->apiBase.'/rest?'.http_build_query($system, '', '&', PHP_QUERY_RFC3986);
+            $queryUrl = $this->apiBase.'?'.http_build_query($system, '', '&', PHP_QUERY_RFC3986);
             $requestDebug['request_url'] = $queryUrl;
             $requestDebug['api_multipart_keys'] = array_keys($api);
 
@@ -188,7 +191,7 @@ class AliExpressApiService
                 ? $pending->post($queryUrl)
                 : $pending->post($queryUrl, $multipart);
         } else {
-            $url = $this->apiBase.'/rest';
+            $url = $this->apiBase;
             $merged = array_merge($api, $system);
             $requestDebug['request_url'] = $url;
             $requestDebug['raw_body'] = http_build_query($merged, '', '&', PHP_QUERY_RFC3986);
@@ -198,7 +201,7 @@ class AliExpressApiService
                 ->post($url, $merged);
         }
 
-        Log::debug('AliExpress REST debug', $requestDebug);
+        Log::debug('AliExpress sync debug', $requestDebug);
 
         return [
             'request' => $requestDebug,
@@ -211,9 +214,11 @@ class AliExpressApiService
     }
 
     /**
-     * @param  array<string, mixed>  $businessParams  Top-level REST keys (e.g. edit_product_request => JSON string)
+     * POST to dropshipping `/sync` endpoint with IOP-style transport (query + multipart).
+     *
+     * @param  array<string, mixed>  $businessParams  Top-level API keys (e.g. edit_product_request => JSON string)
      */
-    private function callRest(string $method, array $businessParams = []): array
+    private function callSync(string $method, array $businessParams = []): array
     {
         if ($this->appKey === '' || $this->appSecret === '') {
             return [
@@ -244,7 +249,7 @@ class AliExpressApiService
         $system['sign'] = $sign;
 
         if ($this->transport === 'iop') {
-            $queryUrl = $this->apiBase.'/rest?'.http_build_query($system, '', '&', PHP_QUERY_RFC3986);
+            $queryUrl = $this->apiBase.'?'.http_build_query($system, '', '&', PHP_QUERY_RFC3986);
             $multipart = [];
             foreach ($api as $name => $contents) {
                 $multipart[] = ['name' => $name, 'contents' => $contents];
@@ -258,13 +263,13 @@ class AliExpressApiService
             $response = Http::withoutVerifying()
                 ->asForm()
                 ->withHeaders(['Content-Type' => 'application/x-www-form-urlencoded'])
-                ->post($this->apiBase.'/rest', $merged);
+                ->post($this->apiBase, $merged);
         }
 
         $json = $response->json();
         $body = $response->body();
 
-        Log::info('AliExpress REST call', [
+        Log::info('AliExpress sync call', [
             'method' => $method,
             'transport' => $this->transport,
             'status' => $response->status(),
@@ -380,20 +385,36 @@ class AliExpressApiService
     }
 
     /**
-     * IOP: sign string = optional sign_prefix + sorted key1val1key2val2... then HMAC-SHA256.
-     * For solution methods, sign_prefix is empty (do not use /rest — that was causing IncompleteSignature).
+     * Dropshipping /sync: sign string = API path + sorted key1val1key2val2... then HMAC-SHA256 (uppercase).
      */
     private function buildSignSource(array $params): string
     {
         unset($params['sign']);
         ksort($params);
 
-        $source = $this->signPrefix;
+        $source = $this->signPath;
         foreach ($params as $key => $value) {
-            $source .= (string) $key . (string) $value;
+            $source .= (string) $key.(string) $value;
         }
 
         return $source;
+    }
+
+    /**
+     * Ensure POST URL is the sync endpoint (migrate host-only or legacy /rest URLs).
+     */
+    private function normalizeSyncApiBase(string $raw): string
+    {
+        $raw = rtrim($raw, '/');
+        $lower = strtolower($raw);
+        if (str_ends_with($lower, '/rest')) {
+            return substr($raw, 0, -strlen('/rest')).'/sync';
+        }
+        if (! str_ends_with($lower, '/sync')) {
+            return $raw.'/sync';
+        }
+
+        return $raw;
     }
 
     private function sign(string $source): string
