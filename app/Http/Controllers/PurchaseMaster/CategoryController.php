@@ -7,6 +7,8 @@ use App\Models\Category;
 use App\Models\ProductGroup;
 use App\Models\ProductCategory;
 use App\Models\ProductMaster;
+use App\Models\FbaShipCalculation;
+use App\Models\FbaTable;
 use App\Models\ShopifySku;
 use App\Models\EbayMetric;
 use App\Models\Ebay2Metric;
@@ -607,6 +609,7 @@ class CategoryController extends Controller
                 'product_id' => 'required|integer',
                 'sku' => 'required|string',
                 'parent' => 'nullable|string',
+                'wt_act_kg' => 'nullable|numeric',
                 'wt_act' => 'nullable|numeric',
                 'wt_decl' => 'nullable|numeric',
                 'l' => 'nullable|numeric',
@@ -626,6 +629,11 @@ class CategoryController extends Controller
                 'ctn_gwt' => 'nullable|numeric',
                 'ctn_weight_kg' => 'nullable|numeric',
                 'ctn_weight_lb' => 'nullable|numeric',
+                'ship' => 'nullable|numeric',
+                'temu_ship' => 'nullable|numeric',
+                'ebay2_ship' => 'nullable|numeric',
+                'fba_ship_calculation' => 'nullable|numeric',
+                'fba_manual_ship' => 'nullable|numeric',
             ]);
 
             // Find the product
@@ -708,9 +716,20 @@ class CategoryController extends Controller
                 $values['ctn_weight_lb'] = $validated['ctn_weight_lb'];
             }
 
+            foreach (['ship', 'temu_ship', 'ebay2_ship'] as $shipField) {
+                if (array_key_exists($shipField, $validated)) {
+                    $v = $validated[$shipField];
+                    $values[$shipField] = ($v !== null && $v !== '') ? (float) $v : null;
+                }
+            }
+
             // Save the updated Values
             $product->Values = $values;
             $product->save();
+
+            if (array_key_exists('fba_ship_calculation', $validated) || array_key_exists('fba_manual_ship', $validated)) {
+                $this->syncFbaShipCalculationFromShippingMaster($product, $validated);
+            }
 
             return response()->json([
                 'success' => true,
@@ -724,6 +743,60 @@ class CategoryController extends Controller
                 'message' => 'Error updating data: ' . $e->getMessage()
             ], 500);
         }
+    }
+
+    /**
+     * Persist FBA ship / manual ship to fba_ship_calculations (not ProductMaster.Values).
+     * Rows are keyed by base SKU (FBA suffix stripped), matching getShippingMasterData().
+     */
+    protected function syncFbaShipCalculationFromShippingMaster(ProductMaster $product, array $validated): void
+    {
+        $normalizedSku = str_replace("\u{00a0}", ' ', (string) $product->sku);
+        $baseSku = trim(preg_replace('/\s*FBA\s*/i', '', $normalizedSku));
+        if ($baseSku === '') {
+            return;
+        }
+
+        $baseKey = strtoupper($baseSku);
+        $exactKey = strtoupper(trim($normalizedSku));
+
+        $calc = FbaShipCalculation::whereRaw('UPPER(TRIM(sku)) = ?', [$baseKey])->first()
+            ?? FbaShipCalculation::whereRaw('UPPER(TRIM(sku)) = ?', [$exactKey])->first();
+
+        $needsCreate = ! $calc
+            && (
+                (array_key_exists('fba_ship_calculation', $validated) && $validated['fba_ship_calculation'] !== null && $validated['fba_ship_calculation'] !== '')
+                || (array_key_exists('fba_manual_ship', $validated) && $validated['fba_manual_ship'] !== null && $validated['fba_manual_ship'] !== '')
+            );
+
+        if (! $calc && $needsCreate) {
+            $calc = new FbaShipCalculation();
+            $calc->sku = $baseSku;
+            $calc->fba_ship_calculation = 0;
+            $calc->fba_fee_manual = 0;
+            $calc->send_cost = 0;
+        }
+
+        if (! $calc) {
+            return;
+        }
+
+        if (array_key_exists('fba_ship_calculation', $validated)) {
+            $v = $validated['fba_ship_calculation'];
+            $calc->fba_ship_calculation = ($v !== null && $v !== '') ? (float) $v : 0;
+        }
+
+        if (array_key_exists('fba_manual_ship', $validated)) {
+            $v = $validated['fba_manual_ship'];
+            $sendCost = (float) ($calc->send_cost ?? 0);
+            if ($v !== null && $v !== '') {
+                $calc->fba_fee_manual = max(0, round((float) $v - $sendCost, 2));
+            } else {
+                $calc->fba_fee_manual = 0;
+            }
+        }
+
+        $calc->save();
     }
 
     public function shippingMaster()
@@ -744,6 +817,18 @@ class CategoryController extends Controller
             // Normalize SKU: replace non-breaking spaces (\u00a0) with regular spaces
             return str_replace("\u{00a0}", ' ', $item->sku);
         });
+
+        $fbaShipCalcs = FbaShipCalculation::all()->keyBy(function ($row) {
+            return strtoupper(trim($row->sku));
+        });
+
+        $fbaSellerByBaseSku = FbaTable::whereRaw("seller_sku LIKE '%FBA%' OR seller_sku LIKE '%fba%'")
+            ->get()
+            ->keyBy(function ($item) {
+                $base = preg_replace('/\s*FBA\s*/i', '', $item->seller_sku ?? '');
+
+                return strtoupper(trim($base));
+            });
 
         // Prepare data in the same format as your sheet (flatten Values)
         $result = [];
@@ -807,7 +892,7 @@ class CategoryController extends Controller
                 $shopifyImage = null;
             }
 
-            $shopifyImage = $shopifySkus[$normalizedSku]->image_src ?? null;
+            $shopifyImage = isset($shopifySkus[$normalizedSku]) ? ($shopifySkus[$normalizedSku]->image_src ?? null) : null;
             // image_path is inside $row (from Values JSON)
             $localImage = isset($row['image_path']) && $row['image_path'] ? $row['image_path'] : null;
             if ($shopifyImage) {
@@ -817,6 +902,21 @@ class CategoryController extends Controller
             } else {
                 $row['image_path'] = null;
             }
+
+            $baseSkuKey = strtoupper(trim(preg_replace('/\s*FBA\s*/i', '', $normalizedSku)));
+            $exactSkuKey = strtoupper(trim($normalizedSku));
+            $fbaCalc = $fbaShipCalcs->get($baseSkuKey) ?? $fbaShipCalcs->get($exactSkuKey);
+            $fbaRow = $fbaSellerByBaseSku->get($baseSkuKey);
+
+            $row['fba_sku'] = ($fbaCalc && $fbaCalc->fba_sku)
+                ? $fbaCalc->fba_sku
+                : ($fbaRow ? $fbaRow->seller_sku : null);
+            $row['fba_ship'] = $fbaCalc && $fbaCalc->fba_ship_calculation !== null
+                ? (float) $fbaCalc->fba_ship_calculation
+                : null;
+            $row['fba_manual_ship'] = $fbaCalc
+                ? round((float) $fbaCalc->fba_fee_manual + (float) $fbaCalc->send_cost, 2)
+                : null;
 
             $result[] = $row;
         }

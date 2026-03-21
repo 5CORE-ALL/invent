@@ -51,6 +51,44 @@
                 </a>
             </li>
 
+            {{-- Warehouse Management System (WMS) --}}
+            <li class="side-nav-item">
+                <a data-bs-toggle="collapse" href="#sidebarWms" aria-expanded="{{ request()->routeIs('wms.*') ? 'true' : 'false' }}" aria-controls="sidebarWms"
+                    class="side-nav-link {{ request()->routeIs('wms.*') ? 'active' : '' }}">
+                    <i class="ri-building-4-line"></i>
+                    <span>Warehouse (WMS)</span>
+                    <span class="menu-arrow"></span>
+                </a>
+                <div class="collapse {{ request()->routeIs('wms.*') ? 'show' : '' }}" id="sidebarWms">
+                    <ul class="side-nav-second-level">
+                        <li>
+                            <a href="{{ route('wms.dashboard') }}" class="{{ request()->routeIs('wms.dashboard') ? 'active' : '' }}">Dashboard</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('wms.structure') }}" class="{{ request()->routeIs('wms.structure') ? 'active' : '' }}">Structure</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('wms.inventory') }}" class="{{ request()->routeIs('wms.inventory') ? 'active' : '' }}">By location</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('wms.scan') }}" class="{{ request()->routeIs('wms.scan') ? 'active' : '' }}">Scan</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('wms.pick') }}" class="{{ request()->routeIs('wms.pick') ? 'active' : '' }}">Pick</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('wms.putaway') }}" class="{{ request()->routeIs('wms.putaway') ? 'active' : '' }}">Putaway</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('wms.locate') }}" class="{{ request()->routeIs('wms.locate') ? 'active' : '' }}">Locate</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('wms.movements') }}" class="{{ request()->routeIs('wms.movements') ? 'active' : '' }}">History</a>
+                        </li>
+                    </ul>
+                </div>
+            </li>
+
             {{-- Listing Master --}}
             <li class="side-nav-item">
                 <a data-bs-toggle="collapse" href="#sidebarListingMaster" aria-expanded="false" aria-controls="sidebarListingMaster" class="side-nav-link">
@@ -396,6 +434,9 @@
                         </li>
                         <li>
                             <a href="{{ route('dim.wt.master') }}">Dimensions & Weight Master</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('shipping.master') }}">Shipping Master</a>
                         </li>
                         <li>
                             <a href="{{ route('general.specific.master') }}">General Specific Masters</a>

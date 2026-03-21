@@ -1,6 +1,11 @@
-const CACHE_NAME = 'invent-v1';
+const CACHE_NAME = 'invent-v2';
 const urlsToCache = [
-  '/'
+  '/',
+  '/wms',
+  '/wms/scan',
+  '/wms/pick',
+  '/wms/putaway',
+  '/js/wms-core.js'
 ];
 
 // Install service worker with error handling
