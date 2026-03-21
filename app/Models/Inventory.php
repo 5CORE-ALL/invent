@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Wms\Bin;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
@@ -9,7 +10,7 @@ class Inventory extends Model
 {
     use HasFactory;
 
-    protected $table = 'inventories'; 
+    protected $table = 'inventories';
 
     protected $fillable = [
         'sku',
@@ -33,6 +34,8 @@ class Inventory extends Model
         'type',
         'is_archived',
         'warehouse_id',
+        'bin_id',
+        'pick_locked_qty',
         'to_warehouse',
         'adjustment',
         'is_verified',
@@ -42,9 +45,18 @@ class Inventory extends Model
         'combo_action',
     ];
 
+    protected $casts = [
+        'pick_locked_qty' => 'integer',
+    ];
+
     public function warehouse()
     {
         return $this->belongsTo(Warehouse::class, 'warehouse_id');
+    }
+
+    public function bin()
+    {
+        return $this->belongsTo(Bin::class, 'bin_id');
     }
 
     public function warehouseTo()

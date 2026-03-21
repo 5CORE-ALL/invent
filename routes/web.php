@@ -3268,6 +3268,46 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         });
     });
 
+    // Warehouse Management System (WMS) — register before generic {first}/{second} routes
+    Route::prefix('wms')->middleware(['auth', 'wms.portal'])->name('wms.')->group(function () {
+        Route::get('/', [\App\Http\Controllers\Wms\WmsPortalController::class, 'dashboard'])->name('dashboard');
+        Route::get('/structure', [\App\Http\Controllers\Wms\WmsPortalController::class, 'structure'])->name('structure');
+        Route::get('/inventory-by-location', [\App\Http\Controllers\Wms\WmsPortalController::class, 'inventoryByLocation'])->name('inventory');
+        Route::get('/scan', [\App\Http\Controllers\Wms\WmsPortalController::class, 'scan'])->name('scan');
+        Route::get('/movements', [\App\Http\Controllers\Wms\WmsPortalController::class, 'movements'])->name('movements');
+        Route::get('/pick', [\App\Http\Controllers\Wms\WmsPortalController::class, 'pick'])->name('pick');
+        Route::get('/putaway', [\App\Http\Controllers\Wms\WmsPortalController::class, 'putaway'])->name('putaway');
+        Route::get('/locate', [\App\Http\Controllers\Wms\WmsPortalController::class, 'locate'])->name('locate');
+
+        Route::prefix('data')->name('data.')->group(function () {
+            $c = \App\Http\Controllers\Wms\WmsWebDataController::class;
+            Route::put('/warehouse/{id}', [$c, 'updateWarehouse'])->name('warehouse.update');
+            Route::post('/zones', [$c, 'storeZone'])->name('zones.store');
+            Route::put('/zones/{id}', [$c, 'updateZone'])->name('zones.update');
+            Route::delete('/zones/{id}', [$c, 'destroyZone'])->name('zones.destroy');
+            Route::post('/racks', [$c, 'storeRack'])->name('racks.store');
+            Route::put('/racks/{id}', [$c, 'updateRack'])->name('racks.update');
+            Route::delete('/racks/{id}', [$c, 'destroyRack'])->name('racks.destroy');
+            Route::post('/shelves', [$c, 'storeShelf'])->name('shelves.store');
+            Route::put('/shelves/{id}', [$c, 'updateShelf'])->name('shelves.update');
+            Route::delete('/shelves/{id}', [$c, 'destroyShelf'])->name('shelves.destroy');
+            Route::post('/bins', [$c, 'storeBin'])->name('bins.store');
+            Route::put('/bins/{id}', [$c, 'updateBin'])->name('bins.update');
+            Route::delete('/bins/{id}', [$c, 'destroyBin'])->name('bins.destroy');
+            Route::get('/zones-by-warehouse/{warehouseId}', [$c, 'zonesByWarehouse'])->name('zones.by-warehouse');
+            Route::get('/racks-by-zone/{zoneId}', [$c, 'racksByZone'])->name('racks.by-zone');
+            Route::get('/shelves-by-rack/{rackId}', [$c, 'shelvesByRack'])->name('shelves.by-rack');
+            Route::get('/bins-by-shelf/{shelfId}', [$c, 'binsByShelf'])->name('bins.by-shelf');
+            Route::get('/inventory-rows', [$c, 'inventoryRows'])->name('inventory.rows');
+            Route::get('/movements', [$c, 'movements'])->name('movements');
+            Route::get('/locate', [$c, 'locate'])->name('locate');
+            Route::post('/stock/move', [$c, 'stockMove'])->name('stock.move');
+            Route::post('/stock/lock', [$c, 'pickLock'])->name('stock.lock');
+            Route::post('/stock/unlock', [$c, 'pickUnlock'])->name('stock.unlock');
+            Route::get('/scan-lookup', [$c, 'scanLookup'])->name('scan.lookup');
+        });
+    });
+
     Route::get('', [RoutingController::class, 'index'])->name('root');
     Route::get('{first}/{second}', [RoutingController::class, 'secondLevel'])->name('second');
     Route::get('/.well-known/{file}', function ($file) {

@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('atoz_claims_rate')) {
+            return;
+        }
+
         Schema::create('atoz_claims_rate', function (Blueprint $table) {
             $table->id();
             $table->integer('channel_id')->nullable();

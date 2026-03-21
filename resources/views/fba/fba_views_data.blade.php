@@ -1640,6 +1640,21 @@
                                 return `${fbaSku}${ratingDisplay} <button class="btn btn-sm ms-1 view-sku-chart" data-sku="${sku}" title="View Metrics Chart" style="border: none; background: none; color: #87CEEB; padding: 2px 6px;"><i class="fa fa-info-circle"></i></button>`;
                             }
                         },
+                        {
+                            title: "Product<br>SKU",
+                            field: "SKU",
+                            headerFilter: "input",
+                            headerFilterPlaceholder: "CP / base SKU...",
+                            cssClass: "text-secondary",
+                            tooltip: true,
+                            frozen: true,
+                            formatter: function(cell) {
+                                const sku = cell.getValue();
+                                if (!sku || cell.getRow().getData().is_parent) return sku || '';
+                                return `<span>${sku}</span>
+                                    <i class="fa fa-copy text-secondary copy-sku-btn" style="cursor: pointer; margin-left: 8px; font-size: 14px;" data-sku="${sku}" title="Copy Product SKU"></i>`;
+                            }
+                        },
                        
                         // {
                         //     title: "Shopify INV",

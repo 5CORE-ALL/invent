@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('voilance_rate')) {
+            return;
+        }
+
         Schema::create('voilance_rate', function (Blueprint $table) {
             $table->id();
             $table->integer('channel_id')->nullable();

@@ -15,6 +15,7 @@ class ProductMaster extends Model
     protected $fillable = [
         'parent',
         'sku',
+        'barcode',
         'group_id',
         'category_id',
         'group',
@@ -105,6 +106,11 @@ class ProductMaster extends Model
     public function productCategory()
     {
         return $this->belongsTo(ProductCategory::class, 'category_id');
+    }
+
+    public function stockMovements()
+    {
+        return $this->hasMany(\App\Models\Wms\StockMovement::class, 'product_id');
     }
 }
 

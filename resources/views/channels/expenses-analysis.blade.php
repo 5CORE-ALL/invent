@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Expences Analysis', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
+@extends('layouts.vertical', ['title' => 'Return Analysis', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
 
 @section('css')
     @vite(['node_modules/admin-resources/rwd-table/rwd-table.min.css'])

@@ -91,3 +91,21 @@ Route::post('/webhooks/reverb', [App\Http\Controllers\ReverbWebhookController::c
 
 // Shopify Inventory Webhook - sync updated inventory to Reverb when Shopify fires
 Route::post('/webhooks/shopify/inventory-update', [App\Http\Controllers\ShopifyWebhookController::class, 'inventoryUpdate'])->name('webhooks.shopify.inventory-update');
+
+/*
+|--------------------------------------------------------------------------
+| WMS REST API (Laravel Sanctum personal access tokens)
+|--------------------------------------------------------------------------
+| Create a token: $user->createToken('wms')->plainTextToken
+*/
+Route::middleware(['auth:sanctum', 'wms.api.log'])->group(function () {
+    Route::get('/products', [\App\Http\Controllers\Api\Wms\WmsProductApiController::class, 'index']);
+    Route::get('/bin/{id}/products', [\App\Http\Controllers\Api\Wms\WmsLocationApiController::class, 'binProducts'])->whereNumber('id');
+    Route::get('/product/{barcode}', [\App\Http\Controllers\Api\Wms\WmsProductApiController::class, 'showByBarcode']);
+    Route::post('/stock/move', [\App\Http\Controllers\Api\Wms\WmsStockApiController::class, 'move']);
+    Route::post('/stock/lock', [\App\Http\Controllers\Api\Wms\WmsStockApiController::class, 'lock']);
+    Route::post('/stock/unlock', [\App\Http\Controllers\Api\Wms\WmsStockApiController::class, 'unlock']);
+    Route::get('/locations', [\App\Http\Controllers\Api\Wms\WmsLocationApiController::class, 'tree']);
+    Route::get('/wms/fast-moving', [\App\Http\Controllers\Api\Wms\WmsLocationApiController::class, 'fastMoving']);
+    Route::get('/wms/suggest-bin', [\App\Http\Controllers\Api\Wms\WmsLocationApiController::class, 'suggestNearestBin']);
+});
