@@ -335,9 +335,28 @@ return [
     'aliexpress' => [
         'app_key' => env('ALIEXPRESS_APP_KEY'),
         'app_secret' => env('ALIEXPRESS_APP_SECRET'),
+        /** OAuth token (sent as `session` by default — see IOP SDK) */
         'access_token' => env('ALIEXPRESS_ACCESS_TOKEN'),
         /** POST base; requests go to {api_base}/rest */
         'api_base' => env('ALIEXPRESS_API_BASE', 'https://api-sg.aliexpress.com'),
+        /** IOP public params included in signature: session | access_token */
+        'token_param' => env('ALIEXPRESS_TOKEN_PARAM', 'session'),
+        'partner_id' => env('ALIEXPRESS_PARTNER_ID', 'iop-sdk-php'),
+        'format' => env('ALIEXPRESS_FORMAT', 'json'),
+        /** String "true"/"false" in form body */
+        'simplify' => env('ALIEXPRESS_SIMPLIFY', 'true'),
+        /**
+         * Prepended to sign string only for path-style APIs (e.g. /auth/token/create).
+         * Solution methods use empty string — do NOT use /rest here.
+         */
+        'sign_prefix' => env('ALIEXPRESS_SIGN_PREFIX', ''),
+        /**
+         * Official IOP SDK sends system params on the URL query and API params as multipart POST body.
+         * Use "form" only if your gateway explicitly expects application/x-www-form-urlencoded body only.
+         */
+        'transport' => env('ALIEXPRESS_TRANSPORT', 'iop'),
+        /** "iop" = time()."000" like SDK msectime(); "ms" = round(microtime(true)*1000) */
+        'timestamp_style' => env('ALIEXPRESS_TIMESTAMP_STYLE', 'iop'),
     ],
 
     /*

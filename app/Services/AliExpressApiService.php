@@ -8,6 +8,10 @@ use Illuminate\Support\Facades\Log;
 /**
  * AliExpress Open Platform — Solution API via POST https://api-sg.aliexpress.com/rest
  *
+ * Signature matches official IOP SDK: ksort, concat key+value, HMAC-SHA256 (no /rest prefix for
+ * method names without "/"). Uses `session` + `format` + `simplify` + `partner_id` like IOP.
+ * See docs/aliexpress-iop-signature.md
+ *
  * Test (tinker):
  *   app(\App\Services\AliExpressApiService::class)->getInventory(1, 5);
  *   app(\App\Services\AliExpressApiService::class)->updateTitle('1000005237852', 'New title');
@@ -18,9 +22,6 @@ use Illuminate\Support\Facades\Log;
  */
 class AliExpressApiService
 {
-    /** REST path prefix for HMAC string (official IOP /rest protocol). */
-    protected const REST_SIGN_PREFIX = '/rest';
-
     protected string $appKey;
 
     protected string $appSecret;
@@ -29,12 +30,42 @@ class AliExpressApiService
 
     protected string $apiBase;
 
+    /** Prepended to sign string (IOP: only non-empty for path APIs like /auth/...; default ''). */
+    protected string $signPrefix;
+
+    /** `session` (IOP default) or `access_token` — must match what the gateway expects. */
+    protected string $tokenParam;
+
+    protected string $partnerId;
+
+    protected string $format;
+
+    /** String "true" / "false" for form + signature. */
+    protected string $simplify;
+
+    /** Official IOP: query + multipart. Legacy: single x-www-form-urlencoded body. */
+    protected string $transport;
+
+    /** Matches IOP SDK msectime() vs true millisecond timestamp. */
+    protected string $timestampStyle;
+
     public function __construct()
     {
         $this->appKey = (string) (config('services.aliexpress.app_key') ?: env('ALIEXPRESS_APP_KEY', ''));
         $this->appSecret = (string) (config('services.aliexpress.app_secret') ?: env('ALIEXPRESS_APP_SECRET', ''));
         $this->accessToken = config('services.aliexpress.access_token') ?: env('ALIEXPRESS_ACCESS_TOKEN');
         $this->apiBase = rtrim((string) (config('services.aliexpress.api_base') ?: env('ALIEXPRESS_API_BASE', 'https://api-sg.aliexpress.com')), '/');
+        $this->signPrefix = (string) (config('services.aliexpress.sign_prefix') ?? env('ALIEXPRESS_SIGN_PREFIX', ''));
+        $tp = strtolower((string) (config('services.aliexpress.token_param') ?: env('ALIEXPRESS_TOKEN_PARAM', 'session')));
+        $this->tokenParam = in_array($tp, ['session', 'access_token'], true) ? $tp : 'session';
+        $this->partnerId = (string) (config('services.aliexpress.partner_id') ?: env('ALIEXPRESS_PARTNER_ID', 'iop-sdk-php'));
+        $this->format = (string) (config('services.aliexpress.format') ?: env('ALIEXPRESS_FORMAT', 'json'));
+        $sim = config('services.aliexpress.simplify') ?? env('ALIEXPRESS_SIMPLIFY', 'true');
+        $this->simplify = is_bool($sim) ? ($sim ? 'true' : 'false') : (string) $sim;
+        $tr = strtolower((string) (config('services.aliexpress.transport') ?: env('ALIEXPRESS_TRANSPORT', 'iop')));
+        $this->transport = in_array($tr, ['iop', 'form'], true) ? $tr : 'iop';
+        $ts = strtolower((string) (config('services.aliexpress.timestamp_style') ?: env('ALIEXPRESS_TIMESTAMP_STYLE', 'iop')));
+        $this->timestampStyle = in_array($ts, ['iop', 'ms'], true) ? $ts : 'iop';
     }
 
     public function getAccessToken(): ?string
@@ -120,34 +151,57 @@ class AliExpressApiService
      */
     public function debugCallRest(string $method, array $restParams = []): array
     {
-        $params = $this->buildBaseParams($method);
+        $system = $this->buildBaseParams($method);
+        $api = [];
         foreach ($restParams as $k => $v) {
-            $params[$k] = $v;
+            if ($v === null || $v === '') {
+                continue;
+            }
+            $api[$k] = is_array($v) ? $this->encodeRequestPayload($v) : (string) $v;
         }
-        $signSource = $this->buildSignSource($params, self::REST_SIGN_PREFIX);
-        $params['sign'] = $this->sign($signSource);
 
-        $url = $this->apiBase . '/rest';
-        $rawBody = http_build_query($params, '', '&', PHP_QUERY_RFC3986);
+        $forSign = array_merge($api, $system);
+        $signSource = $this->buildSignSource($forSign);
+        $sign = $this->sign($signSource);
+        $system['sign'] = $sign;
 
-        Log::debug('AliExpress REST debug', [
-            'url' => $url,
+        $requestDebug = [
+            'transport' => $this->transport,
             'sign_source' => $signSource,
-            'params_keys' => array_keys($params),
-        ]);
+            'sign' => $sign,
+            'system_params' => $system,
+            'api_params' => $api,
+        ];
 
-        $response = Http::withoutVerifying()
-            ->asForm()
-            ->withHeaders(['Content-Type' => 'application/x-www-form-urlencoded'])
-            ->post($url, $params);
+        if ($this->transport === 'iop') {
+            $queryUrl = $this->apiBase.'/rest?'.http_build_query($system, '', '&', PHP_QUERY_RFC3986);
+            $requestDebug['request_url'] = $queryUrl;
+            $requestDebug['api_multipart_keys'] = array_keys($api);
+
+            $multipart = [];
+            foreach ($api as $name => $contents) {
+                $multipart[] = ['name' => $name, 'contents' => $contents];
+            }
+
+            $pending = Http::withoutVerifying()->asMultipart();
+            $response = $multipart === []
+                ? $pending->post($queryUrl)
+                : $pending->post($queryUrl, $multipart);
+        } else {
+            $url = $this->apiBase.'/rest';
+            $merged = array_merge($api, $system);
+            $requestDebug['request_url'] = $url;
+            $requestDebug['raw_body'] = http_build_query($merged, '', '&', PHP_QUERY_RFC3986);
+            $response = Http::withoutVerifying()
+                ->asForm()
+                ->withHeaders(['Content-Type' => 'application/x-www-form-urlencoded'])
+                ->post($url, $merged);
+        }
+
+        Log::debug('AliExpress REST debug', $requestDebug);
 
         return [
-            'request' => [
-                'url' => $url,
-                'params' => $params,
-                'raw_body' => $rawBody,
-                'sign_source' => $signSource,
-            ],
+            'request' => $requestDebug,
             'response' => [
                 'status' => $response->status(),
                 'body' => $response->body(),
@@ -171,35 +225,49 @@ class AliExpressApiService
         if (empty($this->accessToken)) {
             return [
                 'success' => false,
-                'message' => 'AliExpress access_token is missing.',
+                'message' => 'AliExpress OAuth token is missing (set ALIEXPRESS_ACCESS_TOKEN; sent as '.$this->tokenParam.').',
             ];
         }
 
-        $params = $this->buildBaseParams($method);
+        $system = $this->buildBaseParams($method);
+        $api = [];
         foreach ($businessParams as $key => $value) {
             if ($value === null || $value === '') {
                 continue;
             }
-            $params[$key] = is_array($value) ? $this->encodeRequestPayload($value) : (string) $value;
+            $api[$key] = is_array($value) ? $this->encodeRequestPayload($value) : (string) $value;
         }
 
-        $signSource = $this->buildSignSource($params, self::REST_SIGN_PREFIX);
-        $params['sign'] = $this->sign($signSource);
+        $forSign = array_merge($api, $system);
+        $signSource = $this->buildSignSource($forSign);
+        $sign = $this->sign($signSource);
+        $system['sign'] = $sign;
 
-        $url = $this->apiBase . '/rest';
-
-        $response = Http::withoutVerifying()
-            ->asForm()
-            ->withHeaders(['Content-Type' => 'application/x-www-form-urlencoded'])
-            ->post($url, $params);
+        if ($this->transport === 'iop') {
+            $queryUrl = $this->apiBase.'/rest?'.http_build_query($system, '', '&', PHP_QUERY_RFC3986);
+            $multipart = [];
+            foreach ($api as $name => $contents) {
+                $multipart[] = ['name' => $name, 'contents' => $contents];
+            }
+            $pending = Http::withoutVerifying()->asMultipart();
+            $response = $multipart === []
+                ? $pending->post($queryUrl)
+                : $pending->post($queryUrl, $multipart);
+        } else {
+            $merged = array_merge($api, $system);
+            $response = Http::withoutVerifying()
+                ->asForm()
+                ->withHeaders(['Content-Type' => 'application/x-www-form-urlencoded'])
+                ->post($this->apiBase.'/rest', $merged);
+        }
 
         $json = $response->json();
         $body = $response->body();
 
         Log::info('AliExpress REST call', [
             'method' => $method,
+            'transport' => $this->transport,
             'status' => $response->status(),
-            'request_url' => $url,
             'response_body' => mb_substr((string) $body, 0, 4000),
         ]);
 
@@ -268,15 +336,37 @@ class AliExpressApiService
         ];
     }
 
+    /**
+     * IOP SDK {@see IopClient::msectime()} uses second + "000", not true ms; must match what you send.
+     */
+    private function buildTimestampForSign(): string
+    {
+        if ($this->timestampStyle === 'ms') {
+            return (string) (int) round(microtime(true) * 1000);
+        }
+
+        return time().'000';
+    }
+
     private function buildBaseParams(string $method): array
     {
-        return [
+        $params = [
             'app_key' => $this->appKey,
-            'timestamp' => (int) round(microtime(true) * 1000),
-            'sign_method' => 'sha256',
+            'format' => $this->format,
             'method' => $method,
-            'access_token' => $this->accessToken,
+            'partner_id' => $this->partnerId,
+            'sign_method' => 'sha256',
+            'simplify' => $this->simplify,
+            'timestamp' => $this->buildTimestampForSign(),
         ];
+
+        if ($this->tokenParam === 'access_token') {
+            $params['access_token'] = $this->accessToken;
+        } else {
+            $params['session'] = $this->accessToken;
+        }
+
+        return $params;
     }
 
     /**
@@ -290,14 +380,15 @@ class AliExpressApiService
     }
 
     /**
-     * IOP REST: sign string = "/rest" + sorted key1val1key2val2... (no app_secret wrapping).
+     * IOP: sign string = optional sign_prefix + sorted key1val1key2val2... then HMAC-SHA256.
+     * For solution methods, sign_prefix is empty (do not use /rest — that was causing IncompleteSignature).
      */
-    private function buildSignSource(array $params, string $apiPathPrefix): string
+    private function buildSignSource(array $params): string
     {
         unset($params['sign']);
         ksort($params);
 
-        $source = $apiPathPrefix;
+        $source = $this->signPrefix;
         foreach ($params as $key => $value) {
             $source .= (string) $key . (string) $value;
         }
