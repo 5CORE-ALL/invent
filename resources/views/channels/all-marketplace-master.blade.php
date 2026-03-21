@@ -960,7 +960,7 @@
                         field: "Miss",
                         hozAlign: "center",
                         sorter: "number",
-                        visible: false,
+                       
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
                             const rowData = cell.getRow().getData();
@@ -1014,7 +1014,7 @@
                         field: "NMap",
                         hozAlign: "center",
                         sorter: "number",
-                        visible: false,
+                        
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
                             const channel = (cell.getRow().getData()['Channel '] || '').trim();
