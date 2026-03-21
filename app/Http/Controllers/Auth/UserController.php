@@ -98,6 +98,27 @@ class UserController extends Controller
         ]);
     }
 
+    /**
+     * Get active users for API
+     */
+    public function getActiveUsers()
+    {
+        $users = User::where('is_active', true)
+            ->select('id', 'name', 'email', 'designation')
+            ->orderBy('name')
+            ->get()
+            ->map(function($user) {
+                return [
+                    'id' => $user->id,
+                    'name' => $user->name,
+                    'email' => $user->email,
+                    'designation' => $user->designation,
+                ];
+            });
+
+        return response()->json($users);
+    }
+
     public function restore(int $id)
     {
         if (auth()->user()->email !== 'president@5core.com') {

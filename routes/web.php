@@ -3219,6 +3219,55 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         ->whereNumber('id')
         ->name('users.restore');
 
+    // API endpoint for active users
+    Route::get('/api/users/active', [UserController::class, 'getActiveUsers'])
+        ->middleware('auth')
+        ->name('api.users.active');
+
+    // Performance Management Routes
+    Route::prefix('performance')->middleware('auth')->name('performance.')->group(function () {
+        // Dashboard Routes
+        Route::get('/dashboard', [\App\Http\Controllers\PerformanceManagement\PerformanceDashboardController::class, 'employeeDashboard'])->name('dashboard');
+        Route::get('/manager-dashboard', [\App\Http\Controllers\PerformanceManagement\PerformanceDashboardController::class, 'managerDashboard'])->name('manager.dashboard');
+        Route::get('/admin-dashboard', [\App\Http\Controllers\PerformanceManagement\PerformanceDashboardController::class, 'adminDashboard'])->name('admin.dashboard');
+        Route::get('/create-review', [\App\Http\Controllers\PerformanceManagement\PerformanceDashboardController::class, 'createReview'])->name('create.review');
+        Route::get('/chart-data/{employeeId}', [\App\Http\Controllers\PerformanceManagement\PerformanceDashboardController::class, 'getChartData'])->name('chart.data');
+
+        // Designation Management (Admin Only)
+        Route::prefix('designations')->name('designations.')->group(function () {
+            Route::get('/', [\App\Http\Controllers\PerformanceManagement\DesignationController::class, 'index'])->name('index');
+            Route::post('/', [\App\Http\Controllers\PerformanceManagement\DesignationController::class, 'store'])->name('store');
+            Route::put('/{designation}', [\App\Http\Controllers\PerformanceManagement\DesignationController::class, 'update'])->name('update');
+            Route::delete('/{designation}', [\App\Http\Controllers\PerformanceManagement\DesignationController::class, 'destroy'])->name('destroy');
+        });
+
+        // Checklist Management (Admin Only)
+        Route::prefix('checklist')->name('checklist.')->group(function () {
+            Route::get('/{designationId}', [\App\Http\Controllers\PerformanceManagement\ChecklistController::class, 'getChecklist'])->name('get');
+            Route::get('/category/{category}', [\App\Http\Controllers\PerformanceManagement\ChecklistController::class, 'getCategory'])->name('category.get');
+            Route::post('/category', [\App\Http\Controllers\PerformanceManagement\ChecklistController::class, 'storeCategory'])->name('category.store');
+            Route::put('/category/{category}', [\App\Http\Controllers\PerformanceManagement\ChecklistController::class, 'updateCategory'])->name('category.update');
+            Route::delete('/category/{category}', [\App\Http\Controllers\PerformanceManagement\ChecklistController::class, 'destroyCategory'])->name('category.destroy');
+            Route::get('/item/{item}', [\App\Http\Controllers\PerformanceManagement\ChecklistController::class, 'getItem'])->name('item.get');
+            Route::post('/item', [\App\Http\Controllers\PerformanceManagement\ChecklistController::class, 'storeItem'])->name('item.store');
+            Route::put('/item/{item}', [\App\Http\Controllers\PerformanceManagement\ChecklistController::class, 'updateItem'])->name('item.update');
+            Route::delete('/item/{item}', [\App\Http\Controllers\PerformanceManagement\ChecklistController::class, 'destroyItem'])->name('item.destroy');
+            Route::post('/reorder-categories', [\App\Http\Controllers\PerformanceManagement\ChecklistController::class, 'reorderCategories'])->name('reorder.categories');
+            Route::post('/reorder-items', [\App\Http\Controllers\PerformanceManagement\ChecklistController::class, 'reorderItems'])->name('reorder.items');
+            Route::get('/export/{designationIdOrName}', [\App\Http\Controllers\PerformanceManagement\ChecklistController::class, 'exportCsv'])->name('export');
+            Route::post('/import/{designationIdOrName}', [\App\Http\Controllers\PerformanceManagement\ChecklistController::class, 'importCsv'])->name('import');
+        });
+
+        // Performance Review Routes (specific routes before {id} to avoid conflicts)
+        Route::prefix('reviews')->name('reviews.')->group(function () {
+            Route::get('/', [\App\Http\Controllers\PerformanceManagement\PerformanceReviewController::class, 'index'])->name('index');
+            Route::get('/create', [\App\Http\Controllers\PerformanceManagement\PerformanceReviewController::class, 'create'])->name('create');
+            Route::get('/employee/{employeeId}/stats', [\App\Http\Controllers\PerformanceManagement\PerformanceReviewController::class, 'getEmployeeStats'])->name('employee.stats');
+            Route::post('/', [\App\Http\Controllers\PerformanceManagement\PerformanceReviewController::class, 'store'])->name('store');
+            Route::get('/{id}', [\App\Http\Controllers\PerformanceManagement\PerformanceReviewController::class, 'show'])->name('show')->where('id', '[0-9]+');
+        });
+    });
+
     Route::get('', [RoutingController::class, 'index'])->name('root');
     Route::get('{first}/{second}', [RoutingController::class, 'secondLevel'])->name('second');
     Route::get('/.well-known/{file}', function ($file) {

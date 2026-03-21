@@ -204,6 +204,25 @@
                 </div>
             </li>
 
+            {{-- User Management --}}
+            <li class="side-nav-item">
+                <a data-bs-toggle="collapse" href="#userManagement" aria-expanded="false" aria-controls="userManagement"
+                    class="side-nav-link">
+                    <i class="ri-user-settings-line"></i>
+                    <span>User Management</span>
+                    <span class="menu-arrow"></span>
+                </a>
+                <div class="collapse" id="userManagement">
+                    <ul class="side-nav-second-level">
+                        <li>
+                            <a href="{{ route('users.add') }}">
+                                <i class="ri-user-add-line me-2"></i>Users
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+            </li>
+
             <li class="side-nav-item">
                 <a href="{{ url('/pricing-master-cvr') }}" class="side-nav-link">
                     <i class="ri-file-line"></i>

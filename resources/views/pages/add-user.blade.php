@@ -1,14 +1,70 @@
-@extends('layouts.vertical', ['title' => 'Add User'])
+@extends('layouts.vertical', ['title' => 'User Management'])
+
+@section('css')
+    <link href="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.css" rel="stylesheet">
+    <style>
+        .performance-tab-content {
+            display: none;
+        }
+        .performance-tab-content.active {
+            display: block;
+        }
+        .stat-card-performance {
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            transition: transform 0.2s;
+        }
+        .stat-card-performance:hover {
+            transform: translateY(-2px);
+        }
+        .performance-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        .badge-excellent { background: #10b981; color: white; }
+        .badge-good { background: #3b82f6; color: white; }
+        .badge-average { background: #f59e0b; color: white; }
+        .badge-needs-improvement { background: #ef4444; color: white; }
+        .bg-gradient-primary { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
+        .bg-gradient-info { background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); }
+        .bg-gradient-success { background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%); }
+        .bg-gradient-warning { background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); }
+    </style>
+@endsection
 
 @section('content')
     <div class="container mt-4">
         <!-- Page Header -->
         <div class="d-flex justify-content-between align-items-center mb-4">
             <div>
-                <h2 class="text-primary fw-bold mb-1">Add User</h2>
-                <p class="text-muted">View and manage users</p>
+                <h2 class="text-primary fw-bold mb-1">User Management</h2>
+                <p class="text-muted">View and manage users & performance</p>
             </div>
         </div>
+
+        <!-- Tabs Navigation -->
+        <ul class="nav nav-tabs mb-4" id="userManagementTabs" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="users-tab" data-bs-toggle="tab" data-bs-target="#users-content" type="button" role="tab">
+                    <i class="ri-user-line me-2"></i>Users
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="performance-tab" data-bs-toggle="tab" data-bs-target="#performance-content" type="button" role="tab">
+                    <i class="ri-bar-chart-line me-2"></i>Performance Management
+                </button>
+            </li>
+        </ul>
+
+        <!-- Tab Content -->
+        <div class="tab-content" id="userManagementTabContent">
+            <!-- Users Tab -->
+            <div class="tab-pane fade show active" id="users-content" role="tabpanel">
 
         <!-- Users Table Section -->
         <div class="card shadow-sm">
@@ -694,4 +750,21 @@
             }, 3000);
         }
     </script>
+            </div>
+            <!-- End Users Tab -->
+
+            <!-- Performance Management Tab -->
+            <div class="tab-pane fade" id="performance-content" role="tabpanel">
+                @include('pages.performance-management')
+            </div>
+            <!-- End Performance Management Tab -->
+        </div>
+        <!-- End Tab Content -->
+    </div>
+@endsection
+
+{{-- Performance Management: scripts must be on this view so @yield('script') receives them (sections in @include are unreliable) --}}
+@section('script')
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="{{ asset('js/performance-management.js') }}"></script>
 @endsection

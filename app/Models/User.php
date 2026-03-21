@@ -78,4 +78,28 @@ class User extends Authenticatable
     {
         return str_ends_with(strtolower($this->email ?? ''), '@5core.com');
     }
+
+    /**
+     * Get performance reviews where this user is the employee
+     */
+    public function performanceReviews()
+    {
+        return $this->hasMany(PerformanceReview::class, 'employee_id');
+    }
+
+    /**
+     * Get performance reviews where this user is the reviewer
+     */
+    public function reviewedPerformanceReviews()
+    {
+        return $this->hasMany(PerformanceReview::class, 'reviewer_id');
+    }
+
+    /**
+     * Get the user's designation model (if designation field matches)
+     */
+    public function designationModel()
+    {
+        return $this->belongsTo(Designation::class, 'designation', 'name');
+    }
 }
