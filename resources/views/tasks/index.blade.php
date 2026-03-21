@@ -551,11 +551,11 @@
             font-size: 14px;
         }
         
-        /* Statistics Cards - Unified Design */
+        /* Statistics Cards - slim compact row (desktop) */
         .stat-card {
             background: white;
-            border-radius: 12px;
-            padding: 16px 14px;
+            border-radius: 8px;
+            padding: 8px 10px;
             margin-bottom: 0;
             box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
             display: flex;
@@ -565,7 +565,7 @@
             border-right: none !important;
             border-top: none !important;
             border-bottom: none !important;
-            min-height: 85px;
+            min-height: 0;
             position: relative;
             overflow: hidden;
             width: 100%;
@@ -578,14 +578,14 @@
         }
 
         .stat-icon {
-            width: 48px;
-            height: 48px;
-            border-radius: 10px;
+            width: 34px;
+            height: 34px;
+            border-radius: 8px;
             display: flex;
             align-items: center;
             justify-content: center;
-            margin-right: 12px;
-            font-size: 20px;
+            margin-right: 8px;
+            font-size: 16px;
             color: white;
             flex-shrink: 0;
         }
@@ -596,6 +596,7 @@
             display: flex;
             flex-direction: column;
             justify-content: center;
+            gap: 0;
         }
 
         /* Keep all stat cards in one line; no scrolling - uniform widths */
@@ -624,28 +625,28 @@
         }
 
         .stat-label {
-            font-size: 10px;
+            font-size: 8px;
             font-weight: 600;
             color: #6c757d;
-            letter-spacing: 0.5px;
-            margin-bottom: 5px;
+            letter-spacing: 0.35px;
+            margin-bottom: 1px;
             text-transform: uppercase;
-            line-height: 1.3;
+            line-height: 1.15;
         }
 
         .stat-value {
-            font-size: 22px;
+            font-size: 17px;
             font-weight: 700;
             color: #2c3e50;
-            line-height: 1.3;
-            margin-bottom: 3px;
+            line-height: 1.15;
+            margin-bottom: 0;
         }
 
         .stat-unit {
-            font-size: 10px;
+            font-size: 8px;
             color: #6c757d;
-            margin-top: 3px;
-            line-height: 1.3;
+            margin-top: 1px;
+            line-height: 1.2;
             font-weight: 500;
         }
 
@@ -729,6 +730,14 @@
         }
         .stat-card-teal .stat-icon {
             background: linear-gradient(135deg, #0ba360 0%, #3cba92 100%);
+        }
+
+        /* Performance average score (distinct from stat-card-purple / Done ATC) */
+        .stat-card-perf-score {
+            border-left-color: #5b21b6;
+        }
+        .stat-card-perf-score .stat-icon {
+            background: linear-gradient(135deg, #7c3aed 0%, #a855f7 100%);
         }
 
         /* Red Missed */
@@ -1070,7 +1079,7 @@
         }
 
         .task-card .card-body {
-            padding: 25px;
+            padding: 12px 14px 14px;
         }
 
         /* Page Title */
@@ -1171,7 +1180,7 @@
         #tasksRRTabs {
             background: #fff;
             padding: 0;
-            margin: 20px 0;
+            margin: 0;
             border-radius: 8px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
             display: flex !important;
@@ -1187,9 +1196,9 @@
             border: none !important;
             border-bottom: 3px solid transparent !important;
             color: #6c757d !important;
-            padding: 8px 20px !important;
+            padding: 6px 14px !important;
             transition: all 0.3s ease;
-            font-size: 15px !important;
+            font-size: 14px !important;
             font-weight: 600 !important;
             cursor: pointer;
             background: transparent;
@@ -1210,14 +1219,14 @@
         }
 
         #tasksRRTabs .nav-link i {
-            font-size: 18px !important;
-            margin-right: 8px;
+            font-size: 16px !important;
+            margin-right: 6px;
         }
 
         /* R&R Container Styling */
         #rr-container {
             min-height: 400px;
-            padding: 20px;
+            padding: 12px 4px 16px;
         }
 
         #rr-loading-spinner {
@@ -1309,9 +1318,9 @@
     <div class="container-fluid">
         
         <!-- start page title -->
-        <div class="row mb-3">
+        <div class="row mb-2">
             <div class="col-12">
-                <div class="page-title-box d-flex align-items-center justify-content-between">
+                <div class="page-title-box d-flex align-items-center justify-content-between py-1">
                     <div class="d-flex align-items-center gap-3">
                         <h4 class="page-title mb-0">Task Manager</h4>
                     </div>
@@ -1327,7 +1336,7 @@
         <!-- end page title --> 
 
         <!-- Statistics Cards (Hidden on mobile) - all in one line -->
-        <div class="row mb-4 stats-row d-none d-md-flex align-items-stretch flex-nowrap" style="flex-wrap: nowrap !important;">
+        <div class="row mb-2 stats-row d-none d-md-flex align-items-stretch flex-nowrap" style="flex-wrap: nowrap !important;">
             <!-- Total Tasks -->
             <div class="col">
                 <div class="stat-card stat-card-blue">
@@ -1391,7 +1400,21 @@
                     <div class="stat-content">
                         <div class="stat-label">TAT</div>
                         <div class="stat-value">{{ isset($stats['tat_avg_30']) && $stats['tat_avg_30'] !== null ? number_format($stats['tat_avg_30'], 1) : '-' }}</div>
-                        <div class="stat-unit">Avg last 30 days</div>
+                        <div class="stat-unit" title="Average turnaround (days) for tasks completed in the last 30 days">30-day avg</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Performance: average review score (5-point scale) -->
+            <div class="col">
+                <div class="stat-card stat-card-perf-score">
+                    <div class="stat-icon">
+                        <i class="mdi mdi-chart-areaspline"></i>
+                    </div>
+                    <div class="stat-content">
+                        <div class="stat-label">AVG SCORE</div>
+                        <div class="stat-value">{{ isset($stats['average_score']) && $stats['average_score'] !== null ? number_format($stats['average_score'], 2) : '-' }}</div>
+                        <div class="stat-unit" title="Average normalized score from completed reviews (out of 5)">Reviews · avg / 5</div>
                     </div>
                 </div>
             </div>
@@ -1405,16 +1428,16 @@
                     <div class="stat-content">
                         <div class="stat-label">MISSED</div>
                         <div class="stat-value">{{ $stats['missed_count_30'] ?? 0 }}</div>
-                        <div class="stat-unit">Last 30 days</div>
+                        <div class="stat-unit" title="Missed / not done tasks with start date in the last 30 days">Last 30 days</div>
                     </div>
                 </div>
             </div>
         </div>
 
         <!-- Tabs Navigation - Prominent Location -->
-        <div class="row mb-3">
+        <div class="row mb-2">
             <div class="col-12">
-                <div class="tabs-wrapper" style="background: #fff; padding: 0; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                <div class="tabs-wrapper" style="background: #fff; padding: 0; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.08);">
                     <ul class="nav nav-tabs" id="tasksRRTabs" role="tablist" style="border-bottom: 2px solid #e9ecef; margin: 0;">
                         <li class="nav-item" role="presentation">
                             <button class="nav-link active" id="tasks-tab" data-bs-toggle="tab" data-bs-target="#tasks-content" type="button" role="tab" aria-controls="tasks-content" aria-selected="true">
@@ -1435,7 +1458,7 @@
             <div class="col-12">
                 <div class="card task-card">
                     <div class="card-body">
-                        <div class="row mb-3">
+                        <div class="row mb-2">
                             <div class="col-sm-12">
                                 <!-- Desktop Action Buttons -->
                                 <div class="d-none d-md-flex justify-content-between align-items-center">
@@ -1563,7 +1586,7 @@
                         </div>
 
                         <!-- Search/Filter Bar -->
-                        <div class="row mb-3 p-3 filter-section" style="background: #f8f9fa; border-radius: 8px;">
+                        <div class="row mb-2 py-2 px-2 filter-section" style="background: #f8f9fa; border-radius: 8px;">
                             <!-- Desktop: All Filters -->
                             <div class="col-md-2 mb-2 d-none d-md-block">
                                 <input type="text" id="filter-search" class="form-control form-control-sm" placeholder="Search" autocomplete="off" onkeydown="if(event.key === 'Enter') { event.preventDefault(); return false; }">
@@ -1648,7 +1671,7 @@
 
                             <!-- R&R Tab -->
                             <div class="tab-pane fade" id="rr-content" role="tabpanel" aria-labelledby="rr-tab">
-                                <div class="d-flex justify-content-between align-items-center mb-3">
+                                <div class="d-flex justify-content-between align-items-center mb-2">
                                     <h5 class="mb-0">Role & Responsibility</h5>
                                     <button type="button" class="btn btn-primary btn-sm" id="edit-rr-btn" style="display: none;">
                                         <i class="mdi mdi-pencil me-1"></i>Edit R&R
@@ -2145,6 +2168,8 @@
         var tatLineChart = null;
         var missedChartData = @json($missedChartData ?? []);
         var missedLineChart = null;
+        /** From performance reviews (not recalculated from task filters) */
+        var performanceAverageScore = @json($stats['average_score'] ?? null);
 
         // Clear user filter and reload page
         function clearUserFilter() {
@@ -3112,6 +3137,14 @@
                             break;
                         case 'TAT':
                             valueEl.text(stats.tat_avg_30 !== null ? stats.tat_avg_30.toFixed(1) : '-');
+                            break;
+                        case 'AVG SCORE':
+                            if (performanceAverageScore !== null && performanceAverageScore !== undefined && performanceAverageScore !== '') {
+                                var n = typeof performanceAverageScore === 'number' ? performanceAverageScore : parseFloat(performanceAverageScore);
+                                valueEl.text(isNaN(n) ? '-' : n.toFixed(2));
+                            } else {
+                                valueEl.text('-');
+                            }
                             break;
                         case 'MISSED':
                             valueEl.text(stats.missed_count_30);
