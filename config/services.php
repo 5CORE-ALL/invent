@@ -335,21 +335,24 @@ return [
     'aliexpress' => [
         'app_key' => env('ALIEXPRESS_APP_KEY'),
         'app_secret' => env('ALIEXPRESS_APP_SECRET'),
-        /** OAuth token (sent as `session` by default — see IOP SDK) */
+        /** OAuth token value (sent as `session` for dropshipping /sync API) */
         'access_token' => env('ALIEXPRESS_ACCESS_TOKEN'),
-        /** POST base; requests go to {api_base}/rest */
-        'api_base' => env('ALIEXPRESS_API_BASE', 'https://api-sg.aliexpress.com'),
-        /** IOP public params included in signature: session | access_token */
+        /**
+         * Dropshipping API POST URL (must end with /sync).
+         * Default: https://api-sg.aliexpress.com/sync
+         */
+        'api_base' => env('ALIEXPRESS_API_BASE', 'https://api-sg.aliexpress.com/sync'),
+        /** Public param name for the token: dropshipping uses `session` */
         'token_param' => env('ALIEXPRESS_TOKEN_PARAM', 'session'),
         'partner_id' => env('ALIEXPRESS_PARTNER_ID', 'iop-sdk-php'),
         'format' => env('ALIEXPRESS_FORMAT', 'json'),
         /** String "true"/"false" in form body */
         'simplify' => env('ALIEXPRESS_SIMPLIFY', 'true'),
         /**
-         * Prepended to sign string only for path-style APIs (e.g. /auth/token/create).
-         * Solution methods use empty string — do NOT use /rest here.
+         * First segment of the HMAC sign string (before sorted key+value pairs).
+         * Must match the API path: /sync for dropshipping.
          */
-        'sign_prefix' => env('ALIEXPRESS_SIGN_PREFIX', ''),
+        'sign_path' => env('ALIEXPRESS_SIGN_PATH', '/sync'),
         /**
          * Official IOP SDK sends system params on the URL query and API params as multipart POST body.
          * Use "form" only if your gateway explicitly expects application/x-www-form-urlencoded body only.
