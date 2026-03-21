@@ -93,9 +93,28 @@
                         <i class="fa fa-eye"></i> Show All
                     </button>
 
-                    <button type="button" class="btn btn-sm btn-success" id="export-btn">
-                        <i class="fa fa-file-excel"></i> Export
-                    </button>
+                    <div class="dropdown d-inline-block">
+                        <button class="btn btn-sm btn-success dropdown-toggle" type="button"
+                            id="exportDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+                            <i class="fa fa-file-excel"></i> Export
+                        </button>
+                        <ul class="dropdown-menu" aria-labelledby="exportDropdown">
+                            <li>
+                                <a class="dropdown-item export-l30" href="#" data-action="l30">
+                                    <i class="fa fa-download me-1"></i> Export L30 Data
+                                </a>
+                            </li>
+                            <li>
+                                <a class="dropdown-item export-l7" href="#" data-action="l7">
+                                    <i class="fa fa-download me-1"></i> Export L7 Data
+                                </a>
+                            </li>
+                        </ul>
+                    </div>
+                    <span id="export-loading" class="ms-2" style="display: none;">
+                        <span class="spinner-border spinner-border-sm text-success" role="status"></span>
+                        <span class="ms-1">Loading L7 data...</span>
+                    </span>
                     <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#uploadDailyDataModal">
                         <i class="fa fa-upload"></i> Upload Daily Data
                     </button>
@@ -598,8 +617,64 @@
             saveColumnVisibilityToServer();
         });
 
-        $('#export-btn').on('click', function() {
-            table.download("csv", "temu2_daily_data.csv");
+        // Export L30 Data - uses current table data
+        $(document).on('click', '.export-l30', function(e) {
+            e.preventDefault();
+            table.download("csv", "temu2_l30_daily_data.csv");
+        });
+
+        // Export L7 Data - fetches from L7 endpoint and downloads as CSV
+        $(document).on('click', '.export-l7', function(e) {
+            e.preventDefault();
+            const $loading = $('#export-loading');
+            $loading.show();
+            $.ajax({
+                url: '{{ url("/temu2/daily-data-l7") }}',
+                method: 'GET',
+                headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}', 'Accept': 'application/json' },
+                success: function(data) {
+                    if (!Array.isArray(data)) {
+                        showToast('Invalid response from L7 endpoint', 'error');
+                        return;
+                    }
+                    const columns = ['Parent', 'order_id', 'contribution_sku', 'product_name_by_customer_order', 'variation',
+                        'quantity_purchased', 'quantity_shipped', 'quantity_to_ship', 'base_price_total', 'fb_price',
+                        'lp', 'temu_ship', 'pft', 'l30_sales', 'order_status', 'fulfillment_mode', 'tracking_number', 'carrier', 'created_at'];
+                    const headers = columns.join(',');
+                    const escapeCsv = function(val) {
+                        if (val === null || val === undefined) return '""';
+                        const s = String(val);
+                        if (s.includes(',') || s.includes('"') || s.includes('\n')) {
+                            return '"' + s.replace(/"/g, '""') + '"';
+                        }
+                        return '"' + s + '"';
+                    };
+                    const rows = data.map(function(row) {
+                        const qty = parseInt(row.quantity_purchased) || 0;
+                        const fbPrice = parseFloat(row.fb_price) || 0;
+                        const l7Sales = (qty * fbPrice).toFixed(2);
+                        const rowData = { ...row, l30_sales: l7Sales };
+                        return columns.map(function(col) {
+                            return escapeCsv(rowData[col] ?? '');
+                        }).join(',');
+                    });
+                    const csv = [headers, ...rows].join('\n');
+                    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+                    const link = document.createElement('a');
+                    link.href = URL.createObjectURL(blob);
+                    link.download = 'temu2_l7_daily_data.csv';
+                    link.click();
+                    URL.revokeObjectURL(link.href);
+                    showToast('L7 data exported successfully', 'success');
+                },
+                error: function(xhr) {
+                    const msg = xhr.responseJSON && xhr.responseJSON.error ? xhr.responseJSON.error : 'Failed to fetch L7 data';
+                    showToast(msg, 'error');
+                },
+                complete: function() {
+                    $loading.hide();
+                }
+            });
         });
 
         // Upload Daily Data (same endpoints and DB tables as Temu)

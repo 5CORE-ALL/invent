@@ -93,8 +93,11 @@
                         <i class="fa fa-eye"></i> Show All
                     </button>
 
-                    <button type="button" class="btn btn-sm btn-success" id="export-btn">
-                        <i class="fa fa-file-excel"></i> Export
+                    <button type="button" class="btn btn-sm btn-primary" id="export-l30-btn">
+                        <i class="fa fa-download"></i> Export L30
+                    </button>
+                    <button type="button" class="btn btn-sm btn-info" id="export-l7-btn">
+                        <i class="fa fa-download"></i> Export L7
                     </button>
                     <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#uploadDailyDataModal">
                         <i class="fa fa-upload"></i> Upload Daily Data
@@ -756,9 +759,65 @@
             saveColumnVisibilityToServer();
         });
 
-        // Export functionality
-        $('#export-btn').on('click', function() {
-            table.download("csv", "temu_daily_data.csv");
+        // Export L30 (current table data)
+        $('#export-l30-btn').on('click', function() {
+            table.download("csv", "temu_l30_data.csv");
+            showToast('Exporting L30 data...', 'info');
+        });
+
+        // Export L7 data from API
+        $('#export-l7-btn').on('click', function() {
+            const $btn = $(this);
+            const originalHtml = $btn.html();
+            $btn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Loading...');
+
+            $.ajax({
+                url: '{{ url("/temu-decrease-data-l7") }}',
+                method: 'GET',
+                headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}', 'Accept': 'application/json' },
+                success: function(response) {
+                    if (response && response.data && response.data.length > 0) {
+                        const data = response.data;
+                        const headers = Object.keys(data[0]);
+                        const escapeCell = function(val) {
+                            if (val === null || val === undefined) return '';
+                            if (typeof val === 'object') val = JSON.stringify(val);
+                            let s = String(val).replace(/"/g, '""');
+                            if (s.includes(',') || s.includes('\n') || s.includes('"')) {
+                                return '"' + s + '"';
+                            }
+                            return s;
+                        };
+                        let csv = headers.join(',') + '\n';
+                        data.forEach(function(row) {
+                            const values = headers.map(function(header) {
+                                return escapeCell(row[header]);
+                            });
+                            csv += values.join(',') + '\n';
+                        });
+                        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+                        const url = window.URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = 'temu_l7_data.csv';
+                        document.body.appendChild(a);
+                        a.click();
+                        document.body.removeChild(a);
+                        window.URL.revokeObjectURL(url);
+                        showToast('Exported ' + data.length + ' L7 records', 'success');
+                    } else {
+                        showToast('No L7 data available to export', 'warning');
+                    }
+                },
+                error: function(xhr) {
+                    const err = (xhr.responseJSON && xhr.responseJSON.error) ? xhr.responseJSON.error : 'Unknown error';
+                    console.error('Export L7 error:', xhr);
+                    showToast('Failed to export L7 data: ' + err, 'error');
+                },
+                complete: function() {
+                    $btn.prop('disabled', false).html(originalHtml);
+                }
+            });
         });
 
         // Upload Daily Data Handler

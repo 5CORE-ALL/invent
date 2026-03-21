@@ -889,6 +889,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/temu/view-data', [TemuController::class, 'getViewTemuData']);
     Route::post('/temu/upload-daily-data-chunk', [TemuController::class, 'uploadDailyDataChunk']);
     Route::post('/temu/upload-daily-data-l60-chunk', [TemuController::class, 'uploadDailyDataL60Chunk']);
+    Route::post('/temu/upload-daily-data-l7-chunk', [TemuController::class, 'uploadDailyDataL7Chunk']);
     Route::get('/temu/download-daily-data-sample', [TemuController::class, 'downloadDailyDataSample'])->name('temu.daily.sample');
     Route::get('/temu/daily-data', [TemuController::class, 'getDailyData'])->name('temu.daily.data');
     Route::get('/ebay/daily-sales-data', [EbaySalesController::class, 'getData'])->name('ebay.daily.sales.data');
@@ -1513,6 +1514,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     // Temu 2 Tabulator View (separate tables: temu2_daily_data, temu2_daily_data_l60)
     Route::get('/temu2-tabulator', [TemuController::class, 'temu2TabulatorView'])->name('temu2.tabulator');
     Route::get('/temu2/daily-data', [TemuController::class, 'getTemu2DailyData'])->name('temu2.daily.data');
+    Route::get('/temu2/daily-data-l7', [TemuController::class, 'getTemu2DailyDataL7'])->name('temu2.daily.data.l7');
     Route::post('/temu2/upload-daily-data-chunk', [TemuController::class, 'uploadDailyDataTemu2Chunk']);
     Route::post('/temu2/upload-daily-data-l60-chunk', [TemuController::class, 'uploadDailyDataTemu2L60Chunk']);
     Route::post('/temu2-column-visibility', [TemuController::class, 'saveTemu2ColumnVisibility']);
@@ -1537,6 +1539,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     // Temu Decrease Page
     Route::get('/temu-decrease', [TemuController::class, 'temuDecreaseView'])->name('temu.decrease');
     Route::get('/temu-decrease-data', [TemuController::class, 'getTemuDecreaseData']);
+    Route::get('/temu-decrease-data-l7', [TemuController::class, 'getTemuDecreaseDataL7'])->name('temu.decrease.l7');
+    Route::get('/temu-decrease-data-l70', [TemuController::class, 'getTemuDecreaseDataL70'])->name('temu.decrease.l70');
     Route::get('/temu-badge-history', [TemuController::class, 'getTemuBadgeHistory']);
     Route::post('/temu-pricing/update-price', [TemuController::class, 'updateTemuPrice']);
     Route::post('/temu-pricing/save-sprice', [TemuController::class, 'saveTemuSprice']);

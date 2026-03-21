@@ -289,7 +289,10 @@
                     </div>
 
                     <button type="button" class="btn btn-sm btn-success" id="export-btn">
-                        <i class="fa fa-download"></i> Export
+                        <i class="fa fa-download"></i> Export L30
+                    </button>
+                    <button type="button" class="btn btn-sm btn-info" id="export-l7-btn" title="Export L7 data from temu_daily_data_l7">
+                        <i class="fa fa-download"></i> Export L7
                     </button>
                     <a href="{{ route('temu.tabulator') }}" class="btn btn-sm btn-outline-primary" title="View order-level sales data (Order ID, status, line items)">
                         <i class="fa fa-list-alt"></i> Order Data
@@ -359,10 +362,15 @@
                     </div>
                     <div class="d-flex align-items-center gap-2 mt-2 pt-2 border-top">
                         <label class="form-label mb-0 me-1 text-nowrap" style="font-size: 0.8rem;"><i class="fa-solid fa-upload me-1"></i>Sales:</label>
+                        <input type="file" id="temu-l7-sales-upload-file" accept=".xlsx,.xls,.csv" class="form-control form-control-sm d-none" style="width: 0;">
+                        <button type="button" id="temu-l7-sales-upload-btn" class="btn btn-sm btn-info" title="Upload L7 Sales (temu_daily_data_l7, same format as L30)" style="font-size: 0.75rem;">
+                            <i class="fa-solid fa-upload me-1"></i>L7 Sales
+                        </button>
                         <input type="file" id="temu-l60-sales-upload-file" accept=".xlsx,.xls,.csv" class="form-control form-control-sm d-none" style="width: 0;">
                         <button type="button" id="temu-l60-sales-upload-btn" class="btn btn-sm btn-success" title="Upload L60 Sales (order data, same format as L30)" style="font-size: 0.75rem;">
                             <i class="fa-solid fa-upload me-1"></i>L60 Sales
                         </button>
+                        <span id="temu-l7-sales-upload-status" class="ms-1" style="font-size: 0.7rem;"></span>
                         <span id="temu-l60-sales-upload-status" class="ms-2" style="font-size: 0.7rem;"></span>
                     </div>
                 </div>
@@ -4675,9 +4683,98 @@
             }
         });
 
-        // Export functionality
+        // Export L30 — same as Tabulator (visible columns, formatters; respects Ads Section / column visibility)
         $('#export-btn').on('click', function() {
             table.download("csv", "temu_decrease_data.csv");
+        });
+
+        // Export L7 — same JSON + columns as L30; load L7 endpoint, then Tabulator CSV (respects Ads Section toggle)
+        $('#export-l7-btn').on('click', function() {
+            console.log('Export L7: /temu-decrease-data-l7, adsSection=' + (typeof adsColumnsVisible !== 'undefined' && adsColumnsVisible));
+            const $btn = $(this);
+            const originalHtml = $btn.html();
+            $btn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Loading...');
+
+            suppressDataLoadedHandler = true;
+            table.setData('/temu-decrease-data-l7').then(function() {
+                applyFilters();
+                table.download("csv", "temu_l7_data.csv");
+                // Allow full dataLoaded on L30 restore so fullDataset and summary refresh
+                suppressDataLoadedHandler = false;
+                return table.setData('/temu-decrease-data');
+            }).then(function() {
+                applyFilters();
+                if (typeof showToast === 'function') {
+                    showToast('L7 export completed (same format as L30)', 'success');
+                }
+            }).catch(function(err) {
+                console.error('Export L7 error', err);
+                suppressDataLoadedHandler = false;
+                return table.setData('/temu-decrease-data').then(function() {
+                    applyFilters();
+                }).then(function() {
+                    if (typeof showToast === 'function') {
+                        showToast('Failed to export L7 data', 'error');
+                    }
+                });
+            }).finally(function() {
+                $btn.prop('disabled', false).html(originalHtml);
+            });
+        });
+
+        // L7 Sales upload (same format as L30, stored in temu_daily_data_l7)
+        $('#temu-l7-sales-upload-btn').on('click', function() {
+            $('#temu-l7-sales-upload-file').off('change').on('change', function() {
+                const file = this.files[0];
+                if (!file) return;
+                const $status = $('#temu-l7-sales-upload-status');
+                $status.text('Uploading...').css('color', '');
+                const totalChunks = 5;
+                const uploadId = 'temu_l7_' + Date.now();
+                let currentChunk = 0;
+                let totalImported = 0;
+
+                function uploadNextChunk() {
+                    const formData = new FormData();
+                    formData.append('file', file);
+                    formData.append('chunk', currentChunk);
+                    formData.append('totalChunks', totalChunks);
+                    formData.append('uploadId', uploadId);
+                    formData.append('_token', '{{ csrf_token() }}');
+
+                    $.ajax({
+                        url: '/temu/upload-daily-data-l7-chunk',
+                        type: 'POST',
+                        data: formData,
+                        processData: false,
+                        contentType: false,
+                        success: function(response) {
+                            if (response.success) {
+                                totalImported += response.imported || 0;
+                                $status.text('Chunk ' + (currentChunk + 1) + '/' + totalChunks + '...');
+                                if (currentChunk < totalChunks - 1) {
+                                    currentChunk++;
+                                    setTimeout(uploadNextChunk, 300);
+                                } else {
+                                    $status.text('Done. ' + totalImported + ' rows.').css('color', 'green');
+                                    showToast('L7 Sales upload completed. ' + totalImported + ' records.', 'success');
+                                    if (table) table.setData('/temu-decrease-data');
+                                }
+                            } else {
+                                $status.text('Error').css('color', 'red');
+                                showToast(response.message || 'Upload failed', 'error');
+                            }
+                        },
+                        error: function(xhr) {
+                            const msg = xhr.responseJSON && xhr.responseJSON.message ? xhr.responseJSON.message : 'Upload failed';
+                            $status.text('Error').css('color', 'red');
+                            showToast(msg, 'error');
+                        }
+                    });
+                }
+                uploadNextChunk();
+            });
+            $('#temu-l7-sales-upload-file')[0].click();
         });
 
         // Single-badge history modal: click on a badge opens history for that metric
