@@ -2200,9 +2200,9 @@ class TemuController extends Controller
     }
 
     /**
-     * Get Temu Decrease Data (JSON)
+     * Get Temu Decrease Data (JSON). Optional L7 mode: when $purchaseDateFrom is set, sales are filtered to last 7 days.
      */
-    public function getTemuDecreaseData()
+    protected function buildTemuDecreaseData(?\DateTimeInterface $purchaseDateFrom = null)
     {
         try {
             // Get Temu marketplace percentage from marketplace_percentages table
@@ -2293,7 +2293,11 @@ class TemuController extends Controller
                     $noSpaceToNormalized[$noSpace] = $nk;
                 }
             }
-            $orderRows = TemuDailyData::select('contribution_sku', 'quantity_purchased')->get();
+            $orderQuery = TemuDailyData::select('contribution_sku', 'quantity_purchased');
+            if ($purchaseDateFrom) {
+                $orderQuery->where('purchase_date', '>=', $purchaseDateFrom);
+            }
+            $orderRows = $orderQuery->get();
             foreach ($orderRows as $row) {
                 $raw = trim((string) ($row->contribution_sku ?? ''));
                 if ($raw === '') {
@@ -2339,7 +2343,11 @@ class TemuController extends Controller
             $normalizedPmSet = collect($skus)->mapWithKeys(function ($s) use ($normalizeSku) {
                 return [$normalizeSku($s) => true];
             })->all();
-            $allowedRawSkus = TemuDailyData::select('contribution_sku')->distinct()->get()
+            $allowedRawSkusQuery = TemuDailyData::select('contribution_sku')->distinct();
+            if ($purchaseDateFrom) {
+                $allowedRawSkusQuery->where('purchase_date', '>=', $purchaseDateFrom);
+            }
+            $allowedRawSkus = $allowedRawSkusQuery->get()
                 ->filter(function ($r) use ($normalizeSku, $normalizedPmSet) {
                     return isset($normalizedPmSet[$normalizeSku($r->contribution_sku ?? '')]);
                 })
@@ -2347,8 +2355,11 @@ class TemuController extends Controller
                 ->unique()
                 ->values()
                 ->all();
-            $salesOrderRows = TemuDailyData::whereIn('contribution_sku', $allowedRawSkus)
-                ->get(['contribution_sku', 'order_id', 'quantity_purchased', 'base_price_total']);
+            $salesOrderRowsQuery = TemuDailyData::whereIn('contribution_sku', $allowedRawSkus);
+            if ($purchaseDateFrom) {
+                $salesOrderRowsQuery->where('purchase_date', '>=', $purchaseDateFrom);
+            }
+            $salesOrderRows = $salesOrderRowsQuery->get(['contribution_sku', 'order_id', 'quantity_purchased', 'base_price_total']);
             $salesTotalOrders = 0;
             $salesTotalQuantity = 0;
             $salesTotalRevenue = 0.0;
@@ -2784,39 +2795,21 @@ class TemuController extends Controller
     }
 
     /**
-     * L7 daily data for export (temu_daily_data_l7).
+     * Get Temu Decrease Data (JSON) - L30 sales from temu_daily_data.
+     */
+    public function getTemuDecreaseData()
+    {
+        return $this->buildTemuDecreaseData(null);
+    }
+
+    /**
+     * L7 data for export - same structure as main table but sales from last 7 days.
+     * Calculated from temu_daily_data (purchase_date >= 7 days ago). Uses same full structure as L30.
      */
     public function getTemuDecreaseDataL7(Request $request)
     {
         try {
-            if (! Schema::hasTable('temu_daily_data_l7')) {
-                Log::warning('temu_daily_data_l7 table missing; run migrations.');
-
-                return response()->json(['data' => []]);
-            }
-
-            $data = DB::table('temu_daily_data_l7')
-                ->selectRaw('
-                    contribution_sku as sku,
-                    quantity_purchased as temu_l30,
-                    base_price_total as base_price,
-                    temu_ship,
-                    lp,
-                    order_id,
-                    product_name_by_customer_order,
-                    variation,
-                    quantity_shipped,
-                    quantity_to_ship,
-                    order_status,
-                    fulfillment_mode,
-                    tracking_number,
-                    carrier,
-                    parent
-                ')
-                ->orderBy('created_at', 'desc')
-                ->get();
-
-            return response()->json(['data' => $data]);
+            return $this->buildTemuDecreaseData(Carbon::now()->subDays(7));
         } catch (\Exception $e) {
             Log::error('Temu L7 data error: '.$e->getMessage(), ['trace' => $e->getTraceAsString()]);
 

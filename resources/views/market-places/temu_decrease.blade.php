@@ -4683,8 +4683,9 @@
             table.download("csv", "temu_decrease_data.csv");
         });
 
-        // Export L7 - fetch from temu-decrease-data-l7 and download as CSV
+        // Export L7 - fetch from temu-decrease-data-l7 (L7 = last 7 days from temu_daily_data)
         $('#export-l7-btn').on('click', function() {
+            console.log('Fetching L7 data from: /temu-decrease-data-l7');
             const $btn = $(this);
             const originalHtml = $btn.html();
             $btn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Loading...');
