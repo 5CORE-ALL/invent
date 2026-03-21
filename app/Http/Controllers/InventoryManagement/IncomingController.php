@@ -18,6 +18,8 @@ use App\Models\IncomingOrder;
 use App\Models\IncomingReason;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Storage;
 
 
 
@@ -45,9 +47,47 @@ class IncomingController extends Controller
     public function index()
     {
         $warehouses = Warehouse::select('id', 'name')->get();
-        $skus = ProductMaster::select('id','parent','sku')->get();
 
-        return view('inventory-management.incoming-view', compact('warehouses', 'skus'));
+        return view('inventory-management.incoming-view', compact('warehouses'));
+    }
+
+    /**
+     * Resolve SKU / barcode to product master row (mobile scanner + optional auto-fill).
+     */
+    public function lookupSku(Request $request)
+    {
+        $q = trim((string) $request->query('sku', ''));
+        if ($q === '') {
+            return response()->json(['found' => false, 'message' => 'SKU or barcode is required'], 422);
+        }
+
+        $needle = strtolower($q);
+
+        $pm = ProductMaster::query()
+            ->where(function ($w) use ($needle) {
+                $w->whereRaw('LOWER(TRIM(sku)) = ?', [$needle])
+                    ->orWhere(function ($w2) use ($needle) {
+                        $w2->whereNotNull('barcode')
+                            ->where('barcode', '!=', '')
+                            ->whereRaw('LOWER(TRIM(barcode)) = ?', [$needle]);
+                    });
+            })
+            ->first();
+
+        if (! $pm) {
+            return response()->json([
+                'found' => false,
+                'message' => 'No product found for this SKU or barcode.',
+            ]);
+        }
+
+        return response()->json([
+            'found' => true,
+            'sku' => $pm->sku,
+            'parent' => $pm->parent,
+            'title' => $pm->title150 ?? $pm->title100 ?? $pm->sku,
+            'product_master_id' => $pm->id,
+        ]);
     }
 
     /**
@@ -240,15 +280,18 @@ class IncomingController extends Controller
         // Set execution time limit to 90 seconds to handle slow API responses
         set_time_limit(90);
         ini_set('max_execution_time', 90);
-        
+
+        $storedImagePaths = [];
+
         try {
-            // Validate input
+            // Validate input (date is always server-side now; images optional)
             $validated = $request->validate([
-                'sku' => 'required|string',
+                'sku' => 'required|string|max:255',
                 'qty' => 'required|integer|min:1',
-                'warehouse_id' => 'required|integer',
-                'reason' => 'required|string',
-                'date' => 'nullable|date',
+                'warehouse_id' => 'required|integer|exists:warehouses,id',
+                'reason' => 'required|string|max:255',
+                'images' => 'nullable|array|max:20',
+                'images.*' => 'file|image|mimes:jpeg,png,jpg,gif,webp|max:10240',
             ]);
 
             $sku = trim($validated['sku']);
@@ -648,12 +691,31 @@ class IncomingController extends Controller
             }
 
             /** -----------------------------------------------------------------
-             * Store locally in database
+             * Optional photo uploads (public disk) — after Shopify OK
+             * ----------------------------------------------------------------- */
+            if ($request->hasFile('images')) {
+                foreach ($request->file('images') as $file) {
+                    if ($file && $file->isValid()) {
+                        $storedImagePaths[] = $file->store('incoming/'.date('Y/m'), 'public');
+                    }
+                }
+            }
+
+            $productMaster = ProductMaster::query()
+                ->whereRaw('LOWER(TRIM(sku)) = ?', [strtolower($sku)])
+                ->first();
+
+            /** -----------------------------------------------------------------
+             * Store locally in database (timestamp + parent from product master)
              * ----------------------------------------------------------------- */
             try {
                 DB::beginTransaction();
-                
-                DB::table('inventories')->insert([
+
+                $incomingImagesJson = count($storedImagePaths) > 0
+                    ? json_encode(array_values($storedImagePaths))
+                    : null;
+
+                $insert = [
                     'sku' => $sku,
                     'verified_stock' => $qty,
                     'to_adjust' => $qty,
@@ -665,7 +727,13 @@ class IncomingController extends Controller
                     'warehouse_id' => $validated['warehouse_id'],
                     'created_at' => now(),
                     'updated_at' => now(),
-                ]);
+                ];
+
+                if (Schema::hasColumn('inventories', 'incoming_images')) {
+                    $insert['incoming_images'] = $incomingImagesJson;
+                }
+
+                DB::table('inventories')->insert($insert);
 
                 DB::commit();
 
@@ -674,13 +742,18 @@ class IncomingController extends Controller
                 return response()->json([
                     'success' => true,
                     'message' => "✓ Incoming stock for {$sku} added successfully! Quantity: {$qty} units.",
-                    'new_stock_level' => $qty
+                    'new_stock_level' => $qty,
+                    'parent' => $productMaster->parent ?? null,
+                    'recorded_at' => Carbon::now('America/New_York')->toIso8601String(),
                 ], 200);
 
             } catch (\Exception $dbException) {
                 DB::rollBack();
+                foreach ($storedImagePaths as $path) {
+                    Storage::disk('public')->delete($path);
+                }
                 Log::error("Failed to save to database after successful Shopify update", ['sku' => $sku, 'error' => $dbException->getMessage()]);
-                
+
                 return response()->json([
                     'error' => 'Database Error',
                     'details' => 'Shopify was updated but database record could not be created. Please contact support.',

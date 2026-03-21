@@ -43,10 +43,12 @@ class Inventory extends Model
         'is_doubtful',
         'action',
         'combo_action',
+        'incoming_images',
     ];
 
     protected $casts = [
         'pick_locked_qty' => 'integer',
+        'incoming_images' => 'array',
     ];
 
     public function warehouse()

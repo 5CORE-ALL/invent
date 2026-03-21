@@ -2041,7 +2041,10 @@ GQL;
             'updates.*.inventory_id' => 'required|integer|exists:inventories,id',
             'updates.*.to_adjust' => 'required|numeric',
             'updates.*.loss_gain' => 'nullable|numeric',
+            'kind' => 'nullable|in:aq,av',
         ]);
+
+        $kind = $validated['kind'] ?? 'aq';
 
         $batchUuid = (string) Str::uuid();
         $userId = Auth::id();
@@ -2079,6 +2082,7 @@ GQL;
 
                 LostGainAqHistory::create([
                     'batch_uuid' => $batchUuid,
+                    'kind' => $kind,
                     'user_id' => $userId,
                     'inventory_id' => $inv->id,
                     'sku' => $inv->sku,
@@ -2133,6 +2137,7 @@ GQL;
             ->map(function ($h) {
                 return [
                     'batch_uuid' => $h->batch_uuid,
+                    'kind' => $h->kind ?? 'aq',
                     'sku' => $h->sku,
                     'inventory_id' => $h->inventory_id,
                     'old_to_adjust' => $h->old_to_adjust,

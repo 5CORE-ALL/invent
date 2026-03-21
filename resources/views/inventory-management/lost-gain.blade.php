@@ -323,12 +323,12 @@
         </div>
     </div>
 
-    <div class="row mt-3 d-none" id="aqHistoryPanel" role="region" aria-label="Adjust Quantity history">
+    <div class="row mt-3 d-none" id="aqHistoryPanel" role="region" aria-label="AQ and AV adjustment history">
         <div class="col-12">
             <div class="card">
                 <div class="card-body">
                     <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
-                        <h5 class="card-title mb-0">Adjust Quantity history</h5>
+                        <h5 class="card-title mb-0">Adjustment history (AQ &amp; AV)</h5>
                         <span class="text-muted small" id="aqHistoryCountWrap"><span id="aqHistoryCount">—</span></span>
                     </div>
                     <div class="mb-2">
@@ -339,6 +339,10 @@
                         <button type="button" class="btn btn-link btn-sm p-0 small" id="aqHistoryToggleColFilters" aria-expanded="false">Column filters</button>
                     </div>
                     <div id="aqHistoryColFiltersRow" class="row g-2 mb-3 d-none">
+                        <div class="col-6 col-md">
+                            <label class="visually-hidden" for="aqHistColKind">Filter Type</label>
+                            <input type="text" id="aqHistColKind" class="form-control form-control-sm aq-hist-col-filter" placeholder="Type (AQ/AV)" autocomplete="off">
+                        </div>
                         <div class="col-6 col-md">
                             <label class="visually-hidden" for="aqHistColWhen">Filter When</label>
                             <input type="text" id="aqHistColWhen" class="form-control form-control-sm aq-hist-col-filter" placeholder="When (ET)" autocomplete="off">
@@ -364,6 +368,7 @@
                         <table class="table table-bordered table-sm text-center mb-0" id="aqHistoryTable">
                             <thead class="table-light" style="position: sticky; top: 0; z-index: 1;">
                                 <tr>
+                                    <th>Type</th>
                                     <th>When (ET)</th>
                                     <th>User</th>
                                     <th>SKU</th>
@@ -372,7 +377,7 @@
                                 </tr>
                             </thead>
                             <tbody>
-                                <tr><td colspan="5" class="text-center text-muted">Open History to load.</td></tr>
+                                <tr><td colspan="6" class="text-center text-muted">Open History to load.</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -472,6 +477,29 @@
                 return lpVal ? Math.round(newTa * lpVal * 100) / 100 : 0;
             }
 
+            /** After AV: derive new Adjusted Qty from old pair and new Loss/Gain. */
+            function derivedToAdjustFromLossGain(oldTa, oldLg, newLg, lp) {
+                const ota = parseFloat(oldTa) || 0;
+                const olg = parseFloat(oldLg) || 0;
+                const nlg = parseFloat(newLg) || 0;
+                const lpVal = parseFloat(lp) || 0;
+                if (Math.abs(olg) > 1e-6) {
+                    return Math.round(ota * (nlg / olg));
+                }
+                if (lpVal > 1e-6) {
+                    return Math.round(nlg / lpVal);
+                }
+                return Math.round(ota);
+            }
+
+            function lgMoneyToCents(x) {
+                return Math.round((parseFloat(x) || 0) * 100);
+            }
+
+            function lgCentsToMoney(c) {
+                return Math.round(c) / 100;
+            }
+
             function formatLossGainCell(lossGainValue) {
                 const n = parseFloat(lossGainValue);
                 if (!Number.isFinite(n) || n === 0) {
@@ -482,6 +510,13 @@
                     return '-$' + Math.abs(t);
                 }
                 return '$' + t;
+            }
+
+            function lostGainEscapeAttr(s) {
+                return String(s ?? '')
+                    .replace(/&/g, '&amp;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/</g, '&lt;');
             }
 
             /**
@@ -575,7 +610,101 @@
                 return { updates };
             }
 
+            /**
+             * Net positive loss_gain (dollar value) against negatives, capped by total positive value.
+             * Same allocation order as AQ: most-negative Loss/Gain first, then reduce positives in row order.
+             * Updates to_adjust from the new loss_gain using lp / proportionality.
+             */
+            function buildAvPlan(indicesUnique) {
+                for (let k = 0; k < indicesUnique.length; k++) {
+                    const i = indicesUnique[k];
+                    const r = tableRows[i];
+                    if (!r) {
+                        continue;
+                    }
+                    const lg = parseFloat(r.loss_gain) || 0;
+                    if (Math.abs(lg) > 1e-9 && !r.inventory_id) {
+                        return { error: 'A selected row is missing inventory id. Reload the page and try again.' };
+                    }
+                }
+                const entries = indicesUnique.map(i => ({ index: i, row: tableRows[i] }))
+                    .filter(e => e.row && e.row.inventory_id);
+                if (entries.length === 0) {
+                    return { error: 'Selected rows are missing inventory ids. Reload the page and try again.' };
+                }
+                const pos = entries.filter(e => (parseFloat(e.row.loss_gain) || 0) > 0)
+                    .sort((a, b) => a.index - b.index);
+                const neg = entries.filter(e => (parseFloat(e.row.loss_gain) || 0) < 0);
+                if (neg.length === 0) {
+                    return { error: 'Include at least one row with negative Loss/Gain.' };
+                }
+                if (pos.length === 0) {
+                    return { error: 'Include at least one row with positive Loss/Gain to offset negatives.' };
+                }
+                let pool = pos.reduce((s, e) => s + lgMoneyToCents(e.row.loss_gain), 0);
+                if (pool <= 0) {
+                    return { error: 'No positive Loss/Gain value available in the selection.' };
+                }
+                const initialPool = pool;
+                const newCents = {};
+                indicesUnique.forEach(i => {
+                    const r = tableRows[i];
+                    if (r) {
+                        newCents[i] = lgMoneyToCents(r.loss_gain);
+                    }
+                });
+                const negSorted = [...neg].sort((a, b) =>
+                    lgMoneyToCents(a.row.loss_gain) - lgMoneyToCents(b.row.loss_gain)
+                );
+                for (const e of negSorted) {
+                    let cur = newCents[e.index];
+                    if (cur >= 0) {
+                        continue;
+                    }
+                    const need = -cur;
+                    const apply = Math.min(need, pool);
+                    newCents[e.index] = cur + apply;
+                    pool -= apply;
+                }
+                let deduct = initialPool - pool;
+                for (const e of pos) {
+                    let cur = newCents[e.index];
+                    const take = Math.min(Math.max(0, cur), deduct);
+                    newCents[e.index] = cur - take;
+                    deduct -= take;
+                }
+                const updates = [];
+                for (const i of indicesUnique) {
+                    if (newCents[i] === undefined) {
+                        continue;
+                    }
+                    const row = tableRows[i];
+                    const oldLg = parseFloat(row.loss_gain) || 0;
+                    const newLg = lgCentsToMoney(newCents[i]);
+                    if (lgMoneyToCents(oldLg) === lgMoneyToCents(newLg)) {
+                        continue;
+                    }
+                    const oldTa = parseFloat(row.to_adjust) || 0;
+                    const newTa = derivedToAdjustFromLossGain(oldTa, oldLg, newLg, row.lp);
+                    updates.push({
+                        inventory_id: row.inventory_id,
+                        to_adjust: newTa,
+                        loss_gain: newLg,
+                        rowIndex: i,
+                        oldTa,
+                        newTa,
+                        newLg,
+                    });
+                }
+                if (updates.length === 0) {
+                    return { error: 'Nothing to change for the current selection.' };
+                }
+                return { updates };
+            }
+
             function aqHistoryRowCells(h) {
+                const kindRaw = (h.kind || 'aq').toString().toLowerCase();
+                const typeLabel = kindRaw === 'av' ? 'AV' : 'AQ';
                 const u = h.user_email || '—';
                 const oa = h.old_to_adjust != null ? h.old_to_adjust : '—';
                 const na = h.new_to_adjust != null ? h.new_to_adjust : '—';
@@ -584,7 +713,7 @@
                 const when = h.created_at || '—';
                 const adjText = `${oa} → ${na}`;
                 const lgText = `${olg} → ${nlg}`;
-                return { when, u, sku: h.sku || '', adjText, lgText };
+                return { typeLabel, when, u, sku: h.sku || '', adjText, lgText };
             }
 
             function renderAqHistoryTable() {
@@ -592,6 +721,7 @@
                 tbody.empty();
 
                 const qAll = ($('#aqHistorySearchAll').val() || '').trim().toLowerCase();
+                const fKind = ($('#aqHistColKind').val() || '').trim().toLowerCase();
                 const fWhen = ($('#aqHistColWhen').val() || '').trim().toLowerCase();
                 const fUser = ($('#aqHistColUser').val() || '').trim().toLowerCase();
                 const fSku = ($('#aqHistColSku').val() || '').trim().toLowerCase();
@@ -600,8 +730,11 @@
 
                 const filtered = (aqHistoryData || []).filter(h => {
                     const c = aqHistoryRowCells(h);
-                    const hay = [c.when, c.u, c.sku, c.adjText, c.lgText].join(' ').toLowerCase();
+                    const hay = [c.typeLabel, c.when, c.u, c.sku, c.adjText, c.lgText].join(' ').toLowerCase();
                     if (qAll && !hay.includes(qAll)) {
+                        return false;
+                    }
+                    if (fKind && !String(c.typeLabel).toLowerCase().includes(fKind)) {
                         return false;
                     }
                     if (fWhen && !String(c.when).toLowerCase().includes(fWhen)) {
@@ -624,7 +757,7 @@
 
                 if (aqHistoryLoading) {
                     $('#aqHistoryCount').text('Loading…');
-                    tbody.append('<tr><td colspan="5" class="text-center text-muted">Loading…</td></tr>');
+                    tbody.append('<tr><td colspan="6" class="text-center text-muted">Loading…</td></tr>');
                     return;
                 }
                 const total = aqHistoryData.length;
@@ -634,17 +767,18 @@
                     $('#aqHistoryCount').text(filtered.length + ' of ' + total + ' rows');
                 }
                 if (!aqHistoryData.length) {
-                    tbody.append('<tr><td colspan="5" class="text-center text-muted">No history yet.</td></tr>');
+                    tbody.append('<tr><td colspan="6" class="text-center text-muted">No history yet.</td></tr>');
                     return;
                 }
                 if (!filtered.length) {
-                    tbody.append('<tr><td colspan="5" class="text-center text-muted">No rows match filters.</td></tr>');
+                    tbody.append('<tr><td colspan="6" class="text-center text-muted">No rows match filters.</td></tr>');
                     return;
                 }
                 filtered.forEach(h => {
                     const c = aqHistoryRowCells(h);
                     tbody.append(`
                         <tr>
+                            <td class="text-nowrap small fw-semibold">${c.typeLabel}</td>
                             <td class="text-nowrap small">${c.when}</td>
                             <td class="small text-break">${c.u}</td>
                             <td>${c.sku}</td>
@@ -675,7 +809,7 @@
                     error: function() {
                         aqHistoryLoading = false;
                         aqHistoryData = [];
-                        $('#aqHistoryTable tbody').html('<tr><td colspan="5" class="text-center text-danger">Failed to load history.</td></tr>');
+                        $('#aqHistoryTable tbody').html('<tr><td colspan="6" class="text-center text-danger">Failed to load history.</td></tr>');
                         $('#aqHistoryCount').text('Failed to load');
                         $('#aqHistoryCountWrap').addClass('text-danger');
                     }
@@ -715,7 +849,7 @@
                 $(this).attr('aria-expanded', nowHidden ? 'true' : 'false');
             });
 
-            $('#aqHistorySearchAll, #aqHistColWhen, #aqHistColUser, #aqHistColSku, #aqHistColAdj, #aqHistColLg').on('keyup input', function() {
+            $('#aqHistorySearchAll, #aqHistColKind, #aqHistColWhen, #aqHistColUser, #aqHistColSku, #aqHistColAdj, #aqHistColLg').on('keyup input', function() {
                 if (!$('#aqHistoryPanel').hasClass('d-none') && !aqHistoryLoading) {
                     renderAqHistoryTable();
                 }
@@ -746,6 +880,7 @@
                     method: 'POST',
                     data: {
                         updates: payload,
+                        kind: 'aq',
                         _token: $('meta[name="csrf-token"]').attr('content')
                     },
                     success: function(res) {
@@ -780,6 +915,74 @@
                     },
                     error: function(xhr) {
                         let msg = 'Adjust Quantity request failed.';
+                        if (xhr.responseJSON && xhr.responseJSON.message) {
+                            msg = xhr.responseJSON.message;
+                        }
+                        alert(msg);
+                    }
+                });
+            }
+
+            function runAdjustValue(triggerRowIndex) {
+                const checked = [];
+                $('.row-checkbox:checked').each(function() {
+                    checked.push(parseInt($(this).data('row-index'), 10));
+                });
+                let indices = checked.length ? checked : [triggerRowIndex];
+                indices = [...new Set(indices)].filter(i => Number.isFinite(i) && tableRows[i]);
+                if (indices.length === 0) {
+                    return;
+                }
+                const plan = buildAvPlan(indices);
+                if (plan.error) {
+                    alert(plan.error);
+                    return;
+                }
+                const payload = plan.updates.map(u => ({
+                    inventory_id: u.inventory_id,
+                    to_adjust: u.newTa,
+                    loss_gain: u.newLg,
+                }));
+                $.ajax({
+                    url: '/lost-gain-adjust-quantity',
+                    method: 'POST',
+                    data: {
+                        updates: payload,
+                        kind: 'av',
+                        _token: $('meta[name="csrf-token"]').attr('content')
+                    },
+                    success: function(res) {
+                        if (!res.success) {
+                            alert(res.message || 'Adjust Value failed.');
+                            return;
+                        }
+                        plan.updates.forEach(u => {
+                            const row = tableRows[u.rowIndex];
+                            if (!row) {
+                                return;
+                            }
+                            row.to_adjust = u.newTa;
+                            row.loss_gain = u.newLg;
+                            row.formatted_loss_gain = formatLossGainCell(u.newLg);
+                            if (u.newTa === 0) {
+                                row.aqHidden = true;
+                            }
+                        });
+                        autoMarkZeroAdjustAsIA(function() {
+                            renderTableRows(tableRows);
+                            updateTotals();
+                            applyFilters();
+                            aqHistoryStale = true;
+                            if (!$('#aqHistoryPanel').hasClass('d-none')) {
+                                loadAqHistory();
+                            }
+                            $('.row-checkbox').prop('checked', false);
+                            $('#selectAllCheckbox').prop('checked', false);
+                            updateBulkButtonState();
+                        });
+                    },
+                    error: function(xhr) {
+                        let msg = 'Adjust Value request failed.';
                         if (xhr.responseJSON && xhr.responseJSON.message) {
                             msg = xhr.responseJSON.message;
                         }
@@ -957,12 +1160,12 @@
                     }
                     
                     const iaChecked = row.isIA ? 'checked' : '';
-                    const iaClass = row.isIA ? 'btn-warning' : 'btn-outline-secondary';
                     // Apply red color for negative loss/gain values
                     const lossGainClass = row.loss_gain < 0 ? 'text-danger fw-bold' : '';
                     const lossGainDisplay = row.formatted_loss_gain !== '-' 
                         ? `<span class="${lossGainClass}">${row.formatted_loss_gain}</span>` 
                         : row.formatted_loss_gain;
+                    const skuEsc = lostGainEscapeAttr(row.sku);
                     tableBody.append(`
                         <tr data-row-index="${index}" ${row.isIA ? 'class="table-warning"' : ''}>
                             <td class="text-center">
@@ -979,11 +1182,17 @@
                             <td>${row.approved_at}</td>
                             <td>${row.remarks}</td>
                             <td class="text-center text-nowrap">
-                                <button type="button" class="btn btn-sm ia-btn ${iaClass}" data-row-index="${index}" title="Ignore & Archive">
+                                <button type="button" class="btn btn-sm ia-btn btn-warning text-dark" data-row-index="${index}" title="Ignore & Archive">
                                     I&A
                                 </button>
                                 <button type="button" class="btn btn-sm btn-primary aq-btn ms-1" data-row-index="${index}" title="Adjust Quantity">
                                     AQ
+                                </button>
+                                <button type="button" class="btn btn-sm btn-warning text-dark av-btn ms-1" data-row-index="${index}" title="Adjust Value (net Loss/Gain dollars)">
+                                    AV
+                                </button>
+                                <button type="button" class="btn btn-sm btn-outline-success shopify-inventory-history-btn ms-1" data-sku="${skuEsc}" title="Open Shopify inventory adjustment history for this SKU">
+                                    <i class="fab fa-shopify" aria-hidden="true"></i>
                                 </button>
                             </td>
                         </tr>
@@ -1001,6 +1210,13 @@
                     e.stopPropagation();
                     const rowIndex = parseInt($(this).data('row-index'), 10);
                     runAdjustQuantity(rowIndex);
+                });
+
+                $('.av-btn').off('click').on('click', function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const rowIndex = parseInt($(this).data('row-index'), 10);
+                    runAdjustValue(rowIndex);
                 });
                 
                 // Attach checkbox handlers
@@ -1304,6 +1520,38 @@
                     adjustedToolbarBadge.removeClass('btn-danger').addClass('btn-dark');
                 }
             }
+
+            $('#lostGainTable').on('click', '.shopify-inventory-history-btn', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                const sku = $(this).data('sku');
+                if (!sku || sku === '-') {
+                    return;
+                }
+                const $icon = $(this).find('i');
+                $icon.removeClass('fab fa-shopify').addClass('fas fa-spinner fa-spin');
+                $.ajax({
+                    url: '/shopify-inventory-history-url',
+                    type: 'GET',
+                    data: { sku: sku },
+                    success: function(res) {
+                        $icon.removeClass('fas fa-spinner fa-spin').addClass('fab fa-shopify');
+                        if (res.success && res.url) {
+                            window.open(res.url, '_blank', 'noopener,noreferrer');
+                        } else {
+                            alert(res.message || 'Could not get Shopify adjustment history link.');
+                        }
+                    },
+                    error: function(xhr) {
+                        $icon.removeClass('fas fa-spinner fa-spin').addClass('fab fa-shopify');
+                        let msg = 'Could not load Shopify link.';
+                        if (xhr.responseJSON && xhr.responseJSON.message) {
+                            msg = xhr.responseJSON.message;
+                        }
+                        alert(msg);
+                    }
+                });
+            });
 
             // Search functionality
             $('#lostGainSearch').on('keyup', function() {

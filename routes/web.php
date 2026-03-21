@@ -624,6 +624,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
     //incoming
     Route::get('/incoming-view', [IncomingController::class, 'index'])->name('incoming.view');
+    Route::get('/incoming-sku-lookup', [IncomingController::class, 'lookupSku'])->name('incoming.sku.lookup');
     Route::post('/incoming-data-store', [IncomingController::class, 'store'])->name('incoming.store');
     Route::get('/incoming-data-list', [IncomingController::class, 'list']);
 

@@ -11,6 +11,7 @@ class LostGainAqHistory extends Model
 
     protected $fillable = [
         'batch_uuid',
+        'kind',
         'user_id',
         'inventory_id',
         'sku',

@@ -11,8 +11,7 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <!-- Font Awesome -->
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
-    <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
-
+    <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js" defer></script>
 
     <style>
         /* Your existing styles */
@@ -139,6 +138,76 @@
             padding: 0.75rem 2rem;
         }
 
+        /* Mobile-first incoming form */
+        @media (max-width: 767.98px) {
+            body.incoming-pwa-page {
+                zoom: 1 !important;
+            }
+        }
+
+        .incoming-mobile .form-label {
+            font-size: 0.95rem;
+        }
+
+        .incoming-mobile .btn-touch {
+            min-height: 48px;
+            font-size: 1.05rem;
+            padding: 0.65rem 1rem;
+            border-radius: 10px;
+        }
+
+        .incoming-mobile .form-control,
+        .incoming-mobile .form-select {
+            min-height: 48px;
+            font-size: 1rem;
+        }
+
+        #incoming-photo-thumbs {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 10px;
+        }
+
+        .incoming-thumb-wrap {
+            position: relative;
+            width: 72px;
+            height: 72px;
+        }
+
+        .incoming-thumb-wrap img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            border-radius: 8px;
+            border: 1px solid #dee2e6;
+        }
+
+        .incoming-thumb-wrap button {
+            position: absolute;
+            top: -6px;
+            right: -6px;
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            padding: 0;
+            line-height: 1;
+            font-size: 14px;
+        }
+
+        #barcodeScannerModal .modal-body {
+            min-height: 280px;
+        }
+
+        #barcode-reader video {
+            border-radius: 8px;
+        }
+
+        .incoming-product-hint {
+            font-size: 0.875rem;
+            color: #6c757d;
+        }
+
     </style>
 @endsection
 
@@ -147,6 +216,15 @@
         'page_title' => 'Incoming Inventory',
         'sub_title' => 'Incoming',
     ])
+
+    <div class="toast-container position-fixed top-0 end-0 p-3" style="z-index: 11000;">
+        <div id="incomingToast" class="toast align-items-center text-bg-success border-0" role="alert" aria-live="assertive" aria-atomic="true">
+            <div class="d-flex">
+                <div class="toast-body" id="incomingToastBody"></div>
+                <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+            </div>
+        </div>
+    </div>
 
     <div class="row">
         <div class="col-12">
@@ -183,12 +261,12 @@
                         </button>
                     </div> -->
 
-                    <!-- Incoming Modal -->
+                    <!-- Incoming Modal (full-screen on small viewports) -->
                     <div class="modal fade" id="addWarehouseModal" tabindex="-1" aria-labelledby="incomingModalLabel" aria-hidden="true">
-                        <div class="modal-dialog modal-xl">
-                            <form id="incomingForm">
+                        <div class="modal-dialog modal-fullscreen-sm-down modal-lg modal-dialog-scrollable">
+                            <form id="incomingForm" enctype="multipart/form-data">
                                 @csrf
-                                <div class="modal-content">
+                                <div class="modal-content incoming-mobile">
 
                                     <div class="modal-header bg-primary text-white">
                                         <h5 class="modal-title" id="incomingModalLabel">Add Incoming</h5>
@@ -196,69 +274,93 @@
                                     </div>
 
                                     <div class="modal-body">
+                                        <div id="incoming-offline-banner" class="alert alert-warning d-none mb-3" role="alert">
+                                            <i class="fas fa-wifi-slash me-2"></i>You are offline. Connect to the internet to submit (camera upload requires a connection).
+                                        </div>
                                         <div id="incoming-errors" class="mb-2 text-danger"></div>
 
-                                        <!-- SKU Dropdown -->
                                         <div class="mb-3">
                                             <label for="sku" class="form-label fw-bold">SKU</label>
-                                            <select class="form-select" id="sku" name="sku" required>
-                                                <option selected disabled>Select SKU</option>
-                                                @foreach($skus as $item)
-                                                    <option value="{{ $item->sku }}" data-parent="{{ $item->parent }}">{{ $item->sku }}</option>
-                                                @endforeach
-                                            </select>
+                                            <div class="d-flex flex-column flex-sm-row gap-2">
+                                                <input type="text" class="form-control flex-grow-1" id="sku" name="sku" required autocomplete="off" placeholder="Scan or type SKU" inputmode="text">
+                                                <button type="button" class="btn btn-outline-primary btn-touch" id="btnScanBarcode">
+                                                    <i class="fas fa-barcode me-1"></i> Scan Barcode
+                                                </button>
+                                            </div>
+                                            <div id="sku-product-hint" class="incoming-product-hint mt-2 d-none"></div>
                                         </div>
 
-                                        <!-- Auto-filled Parent -->
-                                        <div class="mb-3">
-                                            <label for="parent" class="form-label fw-bold">Parent</label>
-                                            <input type="text" class="form-control" id="parent" name="parent" readonly>
-                                        </div>
-
-                                        <!-- Qty -->
                                         <div class="mb-3">
                                             <label for="qty" class="form-label fw-bold">Quantity</label>
-                                            <input type="number" class="form-control" id="qty" name="qty" required>
+                                            <input type="number" class="form-control" id="qty" name="qty" required min="1" step="1" inputmode="numeric">
                                         </div>
 
-                                        <!-- Warehouse Dropdown -->
                                         <div class="mb-3">
                                             <label for="warehouse_id" class="form-label fw-bold">Warehouse</label>
                                             <select class="form-select" id="warehouse_id" name="warehouse_id" required>
-                                                <option selected disabled>Select Warehouse</option>
+                                                <option selected disabled value="">Select Warehouse</option>
                                                 @foreach($warehouses as $warehouse)
                                                     <option value="{{ $warehouse->id }}">{{ $warehouse->name }}</option>
                                                 @endforeach
                                             </select>
                                         </div>
 
-                                        <!-- Reason Dropdown -->
                                         <div class="mb-3">
                                             <label for="reason" class="form-label fw-bold">Reason</label>
                                             <select class="form-select" id="reason" name="reason" required>
-                                                <option selected disabled>Select Reason</option>
+                                                <option selected disabled value="">Select Reason</option>
                                                 <option value="Returns">Returns</option>
                                                 <option value="Purchase">Purchase</option>
                                                 <option value="Recovered">Recovered</option>
                                             </select>
                                         </div>
 
-                                        <!-- Auto Date -->
                                         <div class="mb-3">
-                                            <label for="date" class="form-label fw-bold">Date</label>
-                                            <input type="text" class="form-control" id="date" name="date" readonly>
+                                            <label class="form-label fw-bold">Photos <span class="text-muted fw-normal">(optional)</span></label>
+                                            <div class="d-flex flex-column gap-2">
+                                                <input type="file" id="incoming-photo-input" class="d-none" accept="image/*" capture="environment" multiple>
+                                                <button type="button" class="btn btn-outline-secondary btn-touch" id="btnAddPhotos">
+                                                    <i class="fas fa-camera me-2"></i>Add Photos
+                                                </button>
+                                            </div>
+                                            <div id="incoming-photo-thumbs" class="mt-2"></div>
+                                            <small class="text-muted d-block mt-1">Camera access works on HTTPS. If the camera is unavailable, you can still choose images from your gallery.</small>
                                         </div>
+
+                                        <p class="small text-muted mb-0">
+                                            <i class="fas fa-clock me-1"></i>Date and time are saved automatically when you submit.
+                                        </p>
                                     </div>
 
-                                    <!-- type -->
-                                    <input type="hidden" name="type" value="incoming"> 
+                                    <input type="hidden" name="type" value="incoming">
 
-                                    <div class="modal-footer">
-                                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                                        <button type="submit" class="btn btn-success">Save Incoming</button>
+                                    <div class="modal-footer flex-column flex-sm-row gap-2">
+                                        <button type="button" class="btn btn-secondary btn-touch w-100 w-sm-auto" data-bs-dismiss="modal">Cancel</button>
+                                        <button type="submit" class="btn btn-success btn-touch w-100 w-sm-auto" id="incomingSubmitBtn">
+                                            <i class="fas fa-save me-1"></i> Save Incoming
+                                        </button>
                                     </div>
                                 </div>
                             </form>
+                        </div>
+                    </div>
+
+                    <!-- Barcode scanner (camera) -->
+                    <div class="modal fade" id="barcodeScannerModal" tabindex="-1" aria-labelledby="barcodeScannerLabel" aria-hidden="true" data-bs-backdrop="static">
+                        <div class="modal-dialog modal-dialog-centered modal-lg">
+                            <div class="modal-content">
+                                <div class="modal-header">
+                                    <h5 class="modal-title" id="barcodeScannerLabel">Scan barcode</h5>
+                                    <button type="button" class="btn-close" id="barcodeScannerClose" data-bs-dismiss="modal" aria-label="Close"></button>
+                                </div>
+                                <div class="modal-body">
+                                    <div id="barcode-reader" class="w-100"></div>
+                                    <p id="barcode-scan-status" class="small text-muted mt-2 mb-0"></p>
+                                </div>
+                                <div class="modal-footer">
+                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                                </div>
+                            </div>
                         </div>
                     </div>
 
@@ -461,7 +563,6 @@
 @section('script')
     <!-- Load jQuery -->
     <script src="https://code.jquery.com/jquery-3.6.4.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
     <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
 
 
@@ -469,8 +570,14 @@
 
 
         document.addEventListener('DOMContentLoaded', function() {
-            // Set zoom level
-            document.body.style.zoom = "75%";
+            document.body.classList.add('incoming-pwa-page');
+            if (window.matchMedia('(min-width: 768px)').matches) {
+                document.body.style.zoom = "75%";
+            }
+
+            if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
+                navigator.serviceWorker.register(@json(asset('service-worker-incoming.js'))).catch(function () { /* optional PWA */ });
+            }
 
             // Show loader immediately
             document.getElementById('rainbow-loader').style.display = 'block';
@@ -598,8 +705,8 @@
 
             $(document).ready(function () {
 
-                // Helper function for AJAX with retry logic
-                function ajaxWithRetry(url, method, data, maxRetries = 4) {
+                // Helper: AJAX with retry (supports FormData via extraAjaxSettings)
+                function ajaxWithRetry(url, method, data, maxRetries = 4, extraAjaxSettings = {}) {
                     return new Promise((resolve, reject) => {
                         let attempt = 0;
 
@@ -607,11 +714,11 @@
                             attempt++;
                             console.log(`[Attempt ${attempt}/${maxRetries}] ${method} ${url}`);
 
-                            $.ajax({
+                            const base = {
                                 url: url,
                                 method: method,
                                 data: data,
-                                timeout: 95000, // Increased to 95 seconds to match backend timeout
+                                timeout: 95000,
                                 success: function (response) {
                                     console.log(`✓ Success on attempt ${attempt}`, response);
                                     resolve(response);
@@ -638,7 +745,8 @@
                                         });
                                     }
                                 }
-                            });
+                            };
+                            $.ajax(Object.assign(base, extraAjaxSettings));
                         }
 
                         makeRequest();
@@ -675,26 +783,178 @@
                     }
                 }
 
+                const incomingLookupUrl = @json(route('incoming.sku.lookup'));
+                const csrfToken = $('meta[name="csrf-token"]').attr('content');
+                let incomingPhotoFiles = [];
+                let html5QrCodeInstance = null;
+
+                function updateOfflineBanner() {
+                    const offline = typeof navigator !== 'undefined' && navigator.onLine === false;
+                    $('#incoming-offline-banner').toggleClass('d-none', !offline);
+                }
+                updateOfflineBanner();
+                window.addEventListener('online', updateOfflineBanner);
+                window.addEventListener('offline', updateOfflineBanner);
+
+                function clearIncomingPhotos() {
+                    incomingPhotoFiles.forEach(function (f) {
+                        if (f._url) URL.revokeObjectURL(f._url);
+                    });
+                    incomingPhotoFiles = [];
+                    $('#incoming-photo-thumbs').empty();
+                    $('#incoming-photo-input').val('');
+                }
+
+                function renderIncomingPhotoThumbs() {
+                    const wrap = $('#incoming-photo-thumbs');
+                    wrap.empty();
+                    incomingPhotoFiles.forEach(function (file, idx) {
+                        if (!file._url) file._url = URL.createObjectURL(file);
+                        const div = $('<div class="incoming-thumb-wrap"/>');
+                        div.append($('<img/>').attr('src', file._url).attr('alt', ''));
+                        const rm = $('<button type="button" class="btn btn-danger btn-sm" aria-label="Remove"/>').html('&times;');
+                        rm.on('click', function () {
+                            if (file._url) URL.revokeObjectURL(file._url);
+                            incomingPhotoFiles.splice(idx, 1);
+                            renderIncomingPhotoThumbs();
+                        });
+                        div.append(rm);
+                        wrap.append(div);
+                    });
+                }
+
+                $('#btnAddPhotos').on('click', function () {
+                    $('#incoming-photo-input').trigger('click');
+                });
+
+                $('#incoming-photo-input').on('change', function () {
+                    const files = Array.from(this.files || []);
+                    files.forEach(function (f) {
+                        if (f.type.indexOf('image/') === 0) incomingPhotoFiles.push(f);
+                    });
+                    $(this).val('');
+                    renderIncomingPhotoThumbs();
+                });
+
+                function showIncomingToast(msg) {
+                    const el = document.getElementById('incomingToast');
+                    const body = document.getElementById('incomingToastBody');
+                    if (!el || !body || !window.bootstrap) return;
+                    body.textContent = msg;
+                    const t = bootstrap.Toast.getOrCreateInstance(el, { delay: 4000 });
+                    t.show();
+                }
+
+                function fetchLookupForSku(raw) {
+                    const q = (raw || '').trim();
+                    const hint = $('#sku-product-hint');
+                    if (!q) {
+                        hint.addClass('d-none').text('');
+                        return;
+                    }
+                    $.get(incomingLookupUrl, { sku: q })
+                        .done(function (res) {
+                            if (res.found) {
+                                $('#sku').val(res.sku);
+                                hint.removeClass('d-none').html(
+                                    '<i class="fas fa-check-circle text-success me-1"></i>' +
+                                    escapeHtml(res.title || res.sku) +
+                                    (res.parent ? ' · Parent: ' + escapeHtml(res.parent) : '')
+                                );
+                            } else {
+                                hint.removeClass('d-none').html(
+                                    '<i class="fas fa-info-circle me-1"></i>' + escapeHtml(res.message || 'SKU not in product master (will still try Shopify).')
+                                );
+                            }
+                        })
+                        .fail(function () {
+                            hint.addClass('d-none').text('');
+                        });
+                }
+
+                let skuLookupTimer = null;
+                $('#sku').on('input blur', function () {
+                    clearTimeout(skuLookupTimer);
+                    skuLookupTimer = setTimeout(function () {
+                        fetchLookupForSku($('#sku').val());
+                    }, 400);
+                });
+
+                function stopBarcodeScanner() {
+                    if (!html5QrCodeInstance) return;
+                    const instance = html5QrCodeInstance;
+                    html5QrCodeInstance = null;
+                    instance.stop().then(function () {
+                        instance.clear();
+                    }).catch(function () {
+                        try { instance.clear(); } catch (e) { /* ignore */ }
+                    });
+                }
+
+                $('#barcodeScannerModal').on('hidden.bs.modal', function () {
+                    stopBarcodeScanner();
+                    $('#barcode-scan-status').text('');
+                });
+
+                $('#btnScanBarcode').on('click', function () {
+                    if (typeof Html5Qrcode === 'undefined') {
+                        $('#incoming-errors').html('<div class="alert alert-warning mb-0">Barcode scanner library did not load. Refresh the page or type the SKU manually.</div>');
+                        return;
+                    }
+                    $('#incoming-errors').html('');
+                    $('#barcode-scan-status').text('Starting camera…');
+                    const modalEl = document.getElementById('barcodeScannerModal');
+                    const bsScanModal = bootstrap.Modal.getOrCreateInstance(modalEl);
+                    $(modalEl).one('shown.bs.modal', function () {
+                        const regionId = 'barcode-reader';
+                        html5QrCodeInstance = new Html5Qrcode(regionId);
+                        const config = { fps: 10, qrbox: function (vw, vh) {
+                            const w = Math.min(280, vw * 0.9);
+                            const h = Math.min(160, vh * 0.35);
+                            return { width: w, height: h };
+                        }};
+                        html5QrCodeInstance.start(
+                            { facingMode: 'environment' },
+                            config,
+                            function (decodedText) {
+                                const text = (decodedText || '').trim();
+                                if (!text) return;
+                                $('#sku').val(text);
+                                fetchLookupForSku(text);
+                                bsScanModal.hide();
+                            },
+                            function () { /* frame — ignore */ }
+                        ).then(function () {
+                            $('#barcode-scan-status').text('Point the camera at a barcode.');
+                        }).catch(function (err) {
+                            $('#barcode-scan-status').text(
+                                'Camera unavailable (' + (err && err.message ? err.message : 'permission or HTTPS') + '). Type the SKU or allow camera access.'
+                            );
+                        });
+                    });
+                    bsScanModal.show();
+                });
+
                 // Prevent duplicate form submissions
                 let isSubmitting = false;
-                
-                // Remove any existing submit handlers to prevent duplicates
+
                 $('#incomingForm').off('submit').on('submit', function (e) {
                     e.preventDefault();
 
-                    // Prevent multiple submissions
                     if (isSubmitting) {
                         console.log('Form submission already in progress, ignoring duplicate request');
                         return false;
                     }
 
+                    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+                        $('#incoming-errors').html('<div class="alert alert-danger mb-0">You are offline. Connect to the internet to submit incoming stock.</div>');
+                        return false;
+                    }
+
                     $('.error-message').remove();
-                    $('input, select').removeClass('is-invalid');
+                    $('#incomingForm input, #incomingForm select').removeClass('is-invalid');
 
-                    const formData = $(this).serialize();
                     let hasError = false;
-
-                     // Validate each required field
                     const fields = [
                         { id: '#sku', name: 'SKU' },
                         { id: '#qty', name: 'Quantity' },
@@ -702,26 +962,31 @@
                         { id: '#reason', name: 'Reason' },
                     ];
 
-                    fields.forEach(f => {
+                    fields.forEach(function (f) {
                         const el = $(f.id);
-                        if (!el.val() || el.val() === 'Select SKU' || el.val() === 'Select Warehouse' || el.val() === 'Select Reason') {
+                        const v = (el.val() || '').trim();
+                        if (!v || v === 'Select Warehouse' || v === 'Select Reason') {
                             hasError = true;
                             el.addClass('is-invalid');
-                            el.after(`<div class="text-danger error-message">${f.name} is required.</div>`);
+                            el.after('<div class="text-danger error-message">' + f.name + ' is required.</div>');
                         }
                     });
 
-                    if (hasError) return; // stop if validation fails
+                    if (hasError) return;
 
-                    // Set submitting flag and disable submit button
                     isSubmitting = true;
                     const submitBtn = $(this).find('button[type="submit"]');
                     const originalBtnText = submitBtn.html();
                     submitBtn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin me-1"></i> Processing...');
 
-                    // Create overlay loader dynamically
-                    const overlay = document.createElement("div");
-                    overlay.id = "processing-overlay";
+                    const fd = new FormData(this);
+                    fd.set('_token', csrfToken);
+                    incomingPhotoFiles.forEach(function (file) {
+                        fd.append('images[]', file, file.name);
+                    });
+
+                    const overlay = document.createElement('div');
+                    overlay.id = 'processing-overlay';
                     overlay.innerHTML = `
                         <div style="
                             position:fixed;
@@ -744,26 +1009,30 @@
                         </div>`;
                     document.body.appendChild(overlay);
 
-                    // Use retry-enabled AJAX
-                    ajaxWithRetry('{{ route("incoming.store") }}', 'POST', formData, 4)
+                    ajaxWithRetry('{{ route("incoming.store") }}', 'POST', fd, 4, {
+                        processData: false,
+                        contentType: false,
+                        headers: {
+                            'X-CSRF-TOKEN': csrfToken,
+                            'Accept': 'application/json',
+                            'X-Requested-With': 'XMLHttpRequest',
+                        },
+                    })
                         .then(function (response) {
-                            document.getElementById("processing-overlay")?.remove();
-                            
-                            // Show green success popup (centered modal with OK button)
+                            document.getElementById('processing-overlay')?.remove();
+
                             const message = response.message || 'Incoming inventory stored and updated in Shopify successfully!';
-                            
-                            // Clear form and close incoming modal first
+
                             $('#incoming-errors').html('');
                             $('#addWarehouseModal').modal('hide');
                             $('#incomingForm')[0].reset();
-                            $('#parent').val('');
-                            $('#sku').val(null).trigger('change'); // Reset select2
-                            
-                            // Reset submit button
+                            $('#sku-product-hint').addClass('d-none').text('');
+                            clearIncomingPhotos();
+
                             submitBtn.prop('disabled', false).html(originalBtnText);
                             isSubmitting = false;
-                            
-                            // Show success modal - page will reload only when OK is clicked
+
+                            showIncomingToast(message);
                             showSuccessPopup(message);
                         })
                         .catch(function (error) {
@@ -799,53 +1068,17 @@
                         });
                 });
 
-                $('#sku').select2({
-                    dropdownParent: $('#addWarehouseModal'),
-                    placeholder: "Select SKU",
-                    allowClear: true
-                });
-                
-                // Auto-fill Parent when select sku
-                $('#sku').on('change', function () {
-                    const parent = $(this).find('option:selected').data('parent');
-                    $('#parent').val(parent || '');
-                });
-
-               
-
-               
                 $(document).on('click', '#openAddWarehouseModal', function () {
-                    $('#incomingForm')[0].reset(); // Only resets for add
+                    $('#incomingForm')[0].reset();
                     $('#warehouseId').val('');
                     $('#warehouseModalLabel').text('Create Incoming');
-                    $('#incoming-errors').html(''); // Clear any error messages
-                    // Reset submission flag when opening modal
+                    $('#incoming-errors').html('');
+                    $('#sku-product-hint').addClass('d-none').text('');
+                    clearIncomingPhotos();
                     isSubmitting = false;
-                    // Reset submit button state
                     const submitBtn = $('#incomingForm').find('button[type="submit"]');
-                    submitBtn.prop('disabled', false).html('Save Incoming');
-                    // $('#warehouseGroup').val('').trigger('change');
-
-                    // Auto-fill PO number and date when modal is shown
-                    // const today = new Date();
-                    // const formattedDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-                    const ohioTime = new Date(
-                        new Intl.DateTimeFormat('en-US', {
-                            timeZone: 'America/New_York',
-                            year: 'numeric',
-                            month: '2-digit',
-                            day: '2-digit',
-                        }).format(new Date())
-                    );
-
-                    // Format to YYYY-MM-DD for input field
-                    const yyyy = ohioTime.getFullYear();
-                    const mm = String(ohioTime.getMonth() + 1).padStart(2, '0');
-                    const dd = String(ohioTime.getDate()).padStart(2, '0');
-                    const formattedDate = `${yyyy}-${mm}-${dd}`;
-
-                    $('#date').val(formattedDate);
-
+                    submitBtn.prop('disabled', false).html('<i class="fas fa-save me-1"></i> Save Incoming');
+                    updateOfflineBanner();
                     $('#addWarehouseModal').modal('show');
                 });
 
@@ -853,7 +1086,7 @@
                 $('#addWarehouseModal').on('hidden.bs.modal', function () {
                     isSubmitting = false;
                     const submitBtn = $('#incomingForm').find('button[type="submit"]');
-                    submitBtn.prop('disabled', false).html('Save Incoming');
+                    submitBtn.prop('disabled', false).html('<i class="fas fa-save me-1"></i> Save Incoming');
                     $('#incoming-errors').html('');
                 });
 
@@ -888,7 +1121,7 @@
                 tbody.innerHTML = '';
 
                 if (data.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="5" class="text-center">No records found</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="6" class="text-center">No records found</td></tr>';
                     return;
                 }
 
@@ -1281,10 +1514,13 @@
                     // Add click handler to OK button - reload page when clicked
                     newOkButton.addEventListener('click', function() {
                         modal.hide();
-                        // Reload page after modal is hidden
-                        setTimeout(() => {
-                            location.reload();
-                        }, 300);
+                        setTimeout(function () {
+                            if (typeof loadData === 'function') {
+                                loadData();
+                            } else {
+                                location.reload();
+                            }
+                        }, 200);
                     });
                     
                     // Show the modal
