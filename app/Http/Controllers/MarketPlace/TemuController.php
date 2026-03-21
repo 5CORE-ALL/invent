@@ -15,6 +15,7 @@ use App\Models\TemuMetric;
 use App\Models\TemuProductSheet;
 use App\Models\TemuDailyData;
 use App\Models\TemuDailyDataL60;
+use App\Models\TemuDailyDataL7;
 use App\Models\TemuDailyDataL70;
 use App\Models\Temu2DailyData;
 use App\Models\Temu2DailyDataL60;
@@ -967,6 +968,143 @@ class TemuController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Error: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Upload L7 sales daily data (same format as L30, stored in temu_daily_data_l7).
+     */
+    public function uploadDailyDataL7Chunk(Request $request)
+    {
+        try {
+            $request->validate([
+                'file' => 'required|file|mimes:xlsx,xls,csv',
+                'chunk' => 'required|integer|min:0',
+                'totalChunks' => 'required|integer|min:1',
+            ]);
+
+            $file = $request->file('file');
+            $chunk = (int) $request->input('chunk');
+            $totalChunks = (int) $request->input('totalChunks');
+
+            $uploadId = $request->input('uploadId', uniqid('temu_l7_'));
+            $tempPath = storage_path('app/temp');
+            if (! file_exists($tempPath)) {
+                mkdir($tempPath, 0755, true);
+            }
+
+            $fileName = $uploadId.'_'.$file->getClientOriginalName();
+            $filePath = $tempPath.'/'.$fileName;
+
+            if ($chunk == 0) {
+                $file->move($tempPath, $fileName);
+                DB::statement('SET FOREIGN_KEY_CHECKS=0;');
+                TemuDailyDataL7::truncate();
+                DB::statement('SET FOREIGN_KEY_CHECKS=1;');
+                Log::info('Temu L7 daily data table truncated before import');
+            }
+
+            $spreadsheet = IOFactory::load($filePath);
+            $sheet = $spreadsheet->getActiveSheet();
+            $rows = $sheet->toArray();
+
+            $rawHeaders = $rows[0];
+            $headers = [];
+            foreach ($rawHeaders as $index => $header) {
+                $headers[] = $this->normalizeHeader($header);
+            }
+            unset($rows[0]);
+
+            $totalRows = count($rows);
+            $chunkSize = ceil($totalRows / $totalChunks);
+            $startRow = $chunk * $chunkSize;
+            $endRow = min(($chunk + 1) * $chunkSize, $totalRows);
+            $chunkRows = array_slice($rows, $startRow, $endRow - $startRow, true);
+
+            $imported = 0;
+            $skipped = 0;
+
+            DB::beginTransaction();
+            try {
+                foreach ($chunkRows as $index => $row) {
+                    if (empty($row[0])) {
+                        $skipped++;
+                        continue;
+                    }
+
+                    $rowData = array_pad(array_slice($row, 0, count($headers)), count($headers), null);
+                    $data = array_combine($headers, $rowData);
+
+                    $insertData = [
+                        'order_id' => isset($data['order_id']) && $data['order_id'] !== '' ? trim($data['order_id']) : null,
+                        'order_status' => isset($data['order_status']) && $data['order_status'] !== '' ? trim($data['order_status']) : null,
+                        'fulfillment_mode' => isset($data['fulfillment_mode']) && $data['fulfillment_mode'] !== '' ? trim($data['fulfillment_mode']) : null,
+                        'logistics_service_suggestion' => isset($data['logistics_service_suggestion']) && $data['logistics_service_suggestion'] !== '' ? trim($data['logistics_service_suggestion']) : null,
+                        'order_item_id' => isset($data['order_item_id']) && $data['order_item_id'] !== '' ? trim($data['order_item_id']) : null,
+                        'order_item_status' => isset($data['order_item_status']) && $data['order_item_status'] !== '' ? trim($data['order_item_status']) : null,
+                        'product_name_by_customer_order' => isset($data['product_name_by_customer_order']) && $data['product_name_by_customer_order'] !== '' ? trim($data['product_name_by_customer_order']) : null,
+                        'product_name' => isset($data['product_name']) && $data['product_name'] !== '' ? trim($data['product_name']) : null,
+                        'variation' => isset($data['variation']) && $data['variation'] !== '' ? trim($data['variation']) : null,
+                        'contribution_sku' => isset($data['contribution_sku']) && $data['contribution_sku'] !== '' ? trim($data['contribution_sku']) : null,
+                        'sku_id' => isset($data['sku_id']) && $data['sku_id'] !== '' ? trim($data['sku_id']) : null,
+                        'quantity_purchased' => isset($data['quantity_purchased']) && $data['quantity_purchased'] !== '' ? (int) $data['quantity_purchased'] : null,
+                        'quantity_shipped' => isset($data['quantity_shipped']) && $data['quantity_shipped'] !== '' ? (int) $data['quantity_shipped'] : null,
+                        'quantity_to_ship' => isset($data['quantity_to_ship']) && $data['quantity_to_ship'] !== '' ? (int) $data['quantity_to_ship'] : null,
+                        'recipient_name' => isset($data['recipient_name']) && $data['recipient_name'] !== '' ? trim($data['recipient_name']) : null,
+                        'recipient_first_name' => isset($data['recipient_first_name']) && $data['recipient_first_name'] !== '' ? trim($data['recipient_first_name']) : null,
+                        'recipient_last_name' => isset($data['recipient_last_name']) && $data['recipient_last_name'] !== '' ? trim($data['recipient_last_name']) : null,
+                        'recipient_phone_number' => isset($data['recipient_phone_number']) && $data['recipient_phone_number'] !== '' ? trim($data['recipient_phone_number']) : null,
+                        'ship_address_1' => isset($data['ship_address_1']) && $data['ship_address_1'] !== '' ? trim($data['ship_address_1']) : null,
+                        'ship_address_2' => isset($data['ship_address_2']) && $data['ship_address_2'] !== '' ? trim($data['ship_address_2']) : null,
+                        'ship_address_3' => isset($data['ship_address_3']) && $data['ship_address_3'] !== '' ? trim($data['ship_address_3']) : null,
+                        'district' => isset($data['district']) && $data['district'] !== '' ? trim($data['district']) : null,
+                        'ship_city' => isset($data['ship_city']) && $data['ship_city'] !== '' ? trim($data['ship_city']) : null,
+                        'ship_state' => isset($data['ship_state']) && $data['ship_state'] !== '' ? trim($data['ship_state']) : null,
+                        'ship_postal_code' => isset($data['ship_postal_code']) && $data['ship_postal_code'] !== '' ? trim($data['ship_postal_code']) : null,
+                        'ship_country' => isset($data['ship_country']) && $data['ship_country'] !== '' ? trim($data['ship_country']) : null,
+                        'purchase_date' => isset($data['purchase_date']) ? $this->parseDate($data['purchase_date']) : null,
+                        'latest_shipping_time' => isset($data['latest_shipping_time']) ? $this->parseDate($data['latest_shipping_time']) : null,
+                        'latest_delivery_time' => isset($data['latest_delivery_time']) ? $this->parseDate($data['latest_delivery_time']) : null,
+                        'iphone_serial_number' => isset($data['iphone_serial_number']) && $data['iphone_serial_number'] !== '' ? trim($data['iphone_serial_number']) : null,
+                        'virtual_email' => isset($data['virtual_email']) && $data['virtual_email'] !== '' ? trim($data['virtual_email']) : null,
+                        'activity_goods_base_price' => isset($data['activity_goods_base_price']) ? $this->sanitizePrice($data['activity_goods_base_price']) : null,
+                        'base_price_total' => isset($data['base_price_total']) ? $this->sanitizePrice($data['base_price_total']) : null,
+                        'tracking_number' => isset($data['tracking_number']) && $data['tracking_number'] !== '' ? trim($data['tracking_number']) : null,
+                        'carrier' => isset($data['carrier']) && $data['carrier'] !== '' ? trim($data['carrier']) : null,
+                        'order_settlement_status' => isset($data['order_settlement_status']) && $data['order_settlement_status'] !== '' ? trim($data['order_settlement_status']) : null,
+                        'keep_proof_of_shipment_before_delivery' => isset($data['keep_proof_of_shipment_before_delivery']) && $data['keep_proof_of_shipment_before_delivery'] !== '' ? trim($data['keep_proof_of_shipment_before_delivery']) : null,
+                    ];
+
+                    TemuDailyDataL7::create($insertData);
+                    $imported++;
+                }
+
+                DB::commit();
+            } catch (\Exception $e) {
+                DB::rollBack();
+                throw $e;
+            }
+
+            if ($chunk == $totalChunks - 1 && file_exists($filePath)) {
+                unlink($filePath);
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => "L7 chunk $chunk processed successfully",
+                'chunk' => $chunk,
+                'totalChunks' => $totalChunks,
+                'imported' => $imported,
+                'skipped' => $skipped,
+                'progress' => round((($chunk + 1) / $totalChunks) * 100, 2),
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error uploading Temu L7 daily data chunk: '.$e->getMessage());
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Error: '.$e->getMessage(),
             ], 500);
         }
     }
@@ -2293,11 +2431,20 @@ class TemuController extends Controller
                     $noSpaceToNormalized[$noSpace] = $nk;
                 }
             }
-            $orderQuery = TemuDailyData::select('contribution_sku', 'quantity_purchased');
-            if ($purchaseDateFrom) {
-                $orderQuery->where('purchase_date', '>=', $purchaseDateFrom);
+            // L7 mode: prefer dedicated L7 upload table when populated; else last 7 days from temu_daily_data
+            $useL7UploadTable = $purchaseDateFrom
+                && Schema::hasTable('temu_daily_data_l7')
+                && TemuDailyDataL7::query()->exists();
+
+            if ($useL7UploadTable) {
+                $orderRows = TemuDailyDataL7::select('contribution_sku', 'quantity_purchased')->get();
+            } else {
+                $orderQuery = TemuDailyData::select('contribution_sku', 'quantity_purchased');
+                if ($purchaseDateFrom) {
+                    $orderQuery->where('purchase_date', '>=', $purchaseDateFrom);
+                }
+                $orderRows = $orderQuery->get();
             }
-            $orderRows = $orderQuery->get();
             foreach ($orderRows as $row) {
                 $raw = trim((string) ($row->contribution_sku ?? ''));
                 if ($raw === '') {
@@ -2343,23 +2490,36 @@ class TemuController extends Controller
             $normalizedPmSet = collect($skus)->mapWithKeys(function ($s) use ($normalizeSku) {
                 return [$normalizeSku($s) => true];
             })->all();
-            $allowedRawSkusQuery = TemuDailyData::select('contribution_sku')->distinct();
-            if ($purchaseDateFrom) {
-                $allowedRawSkusQuery->where('purchase_date', '>=', $purchaseDateFrom);
+            if ($useL7UploadTable) {
+                $allowedRawSkus = TemuDailyDataL7::select('contribution_sku')->distinct()->get()
+                    ->filter(function ($r) use ($normalizeSku, $normalizedPmSet) {
+                        return isset($normalizedPmSet[$normalizeSku($r->contribution_sku ?? '')]);
+                    })
+                    ->pluck('contribution_sku')
+                    ->unique()
+                    ->values()
+                    ->all();
+                $salesOrderRows = TemuDailyDataL7::whereIn('contribution_sku', $allowedRawSkus)
+                    ->get(['contribution_sku', 'order_id', 'quantity_purchased', 'base_price_total']);
+            } else {
+                $allowedRawSkusQuery = TemuDailyData::select('contribution_sku')->distinct();
+                if ($purchaseDateFrom) {
+                    $allowedRawSkusQuery->where('purchase_date', '>=', $purchaseDateFrom);
+                }
+                $allowedRawSkus = $allowedRawSkusQuery->get()
+                    ->filter(function ($r) use ($normalizeSku, $normalizedPmSet) {
+                        return isset($normalizedPmSet[$normalizeSku($r->contribution_sku ?? '')]);
+                    })
+                    ->pluck('contribution_sku')
+                    ->unique()
+                    ->values()
+                    ->all();
+                $salesOrderRowsQuery = TemuDailyData::whereIn('contribution_sku', $allowedRawSkus);
+                if ($purchaseDateFrom) {
+                    $salesOrderRowsQuery->where('purchase_date', '>=', $purchaseDateFrom);
+                }
+                $salesOrderRows = $salesOrderRowsQuery->get(['contribution_sku', 'order_id', 'quantity_purchased', 'base_price_total']);
             }
-            $allowedRawSkus = $allowedRawSkusQuery->get()
-                ->filter(function ($r) use ($normalizeSku, $normalizedPmSet) {
-                    return isset($normalizedPmSet[$normalizeSku($r->contribution_sku ?? '')]);
-                })
-                ->pluck('contribution_sku')
-                ->unique()
-                ->values()
-                ->all();
-            $salesOrderRowsQuery = TemuDailyData::whereIn('contribution_sku', $allowedRawSkus);
-            if ($purchaseDateFrom) {
-                $salesOrderRowsQuery->where('purchase_date', '>=', $purchaseDateFrom);
-            }
-            $salesOrderRows = $salesOrderRowsQuery->get(['contribution_sku', 'order_id', 'quantity_purchased', 'base_price_total']);
             $salesTotalOrders = 0;
             $salesTotalQuantity = 0;
             $salesTotalRevenue = 0.0;

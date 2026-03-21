@@ -888,6 +888,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/temu/view-data', [TemuController::class, 'getViewTemuData']);
     Route::post('/temu/upload-daily-data-chunk', [TemuController::class, 'uploadDailyDataChunk']);
     Route::post('/temu/upload-daily-data-l60-chunk', [TemuController::class, 'uploadDailyDataL60Chunk']);
+    Route::post('/temu/upload-daily-data-l7-chunk', [TemuController::class, 'uploadDailyDataL7Chunk']);
     Route::get('/temu/download-daily-data-sample', [TemuController::class, 'downloadDailyDataSample'])->name('temu.daily.sample');
     Route::get('/temu/daily-data', [TemuController::class, 'getDailyData'])->name('temu.daily.data');
     Route::get('/ebay/daily-sales-data', [EbaySalesController::class, 'getData'])->name('ebay.daily.sales.data');
