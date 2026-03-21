@@ -298,6 +298,10 @@ return [
         'secret_key' => env('SHEIN_SECRET_KEY'),
         'app_s' => env('SHEIN_APP_S'),
         'base_url' => env('SHEIN_BASE_URL', 'https://openapi.sheincorp.com'),
+        /** Product title update — POST JSON body (skuCode + productName) */
+        'product_update_path' => env('SHEIN_PRODUCT_UPDATE_PATH', '/open-api/openapi-business-backend/product/update'),
+        /** Max characters sent for productName (SHEIN uses short titles; default 80) */
+        'title_max_length' => (int) env('SHEIN_TITLE_MAX_LENGTH', 80),
     ],
 
     /*

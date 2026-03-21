@@ -18,6 +18,7 @@ use App\Services\EbayThreeApiService;
 use App\Services\FaireService;
 use App\Services\MacysApiService;
 use App\Services\ReverbApiService;
+use App\Services\SheinApiService;
 use App\Services\ShopifyApiService;
 use App\Services\TemuApiService;
 use App\Services\WalmartService;
@@ -4413,58 +4414,15 @@ PROMPT;
 
             Log::info("Found Shein product for SKU: {$sku}");
 
-            // Generate signature for the update endpoint
-            $endpoint = '/open-api/openapi-business-backend/product/update';
-            $timestamp = round(microtime(true) * 1000);
-            $random = \Illuminate\Support\Str::random(5);
-
-            // IMPORTANT: Shein API signature requires SHEIN_OPEN_KEY_ID and SHEIN_SECRET_KEY
-            // These are DIFFERENT from SHEIN_APP_ID and SHEIN_APP_SECRET
-            // Check if we have the correct credentials for signature
-            $signatureOpenKeyId = config('services.shein.open_key_id');
-            $signatureSecretKey = config('services.shein.secret_key');
-
-            // If we don't have OPEN_KEY_ID, try using APP_ID (they might be the same value)
-            // But this will likely fail - user needs to add SHEIN_OPEN_KEY_ID to .env
-            if (! $signatureOpenKeyId) {
-                $signatureOpenKeyId = $openKeyId; // Use APP_ID as fallback
-                Log::warning('⚠️ SHEIN_OPEN_KEY_ID not found, using SHEIN_APP_ID for signature.');
-                Log::warning('⚠️ This will likely cause signature errors. Please add SHEIN_OPEN_KEY_ID to .env file.');
-            }
-
-            if (! $signatureSecretKey) {
-                $signatureSecretKey = $secretKey; // Use APP_SECRET as fallback
-                Log::warning('⚠️ SHEIN_SECRET_KEY not found, using SHEIN_APP_SECRET for signature.');
-                Log::warning('⚠️ This will likely cause signature errors. Please add SHEIN_SECRET_KEY to .env file.');
-            }
-
-            // Generate signature using the credentials
-            // Signature format: randomKey + base64(hmac_sha256(openKeyId & timestamp & path, secretKey + randomKey))
-            // Note: The path should be the endpoint path without query parameters
-            $value = $signatureOpenKeyId.'&'.$timestamp.'&'.$endpoint;
-            $key = $signatureSecretKey.$random;
-            $hmacResult = hash_hmac('sha256', $value, $key, false); // false means return hexadecimal
-            $base64Signature = base64_encode($hmacResult);
-            $signature = $random.$base64Signature;
-
-            Log::info('Generated Shein signature - OpenKeyId: '.substr($signatureOpenKeyId, 0, 10).'... (Using: '.(config('services.shein.open_key_id') ? 'OPEN_KEY_ID' : 'APP_ID fallback').')');
-
-            $baseUrl = config('services.shein.base_url');
-            $url = $baseUrl.$endpoint;
-
-            // Log all available fields from SheinDataView for debugging
             $sheinProductArray = $sheinProduct->toArray();
             Log::info("SheinDataView fields for SKU {$sku}: ".json_encode($sheinProductArray));
 
-            // Check if value field contains product data
             $valueData = $sheinProduct->value ?? [];
             if (is_string($valueData)) {
                 $valueData = json_decode($valueData, true) ?? [];
             }
             Log::info('SheinDataView value data: '.json_encode($valueData));
 
-            // Get product identifier - Shein uses SKU code (sellerSku) for updates
-            // Try multiple possible field names
             $skuCode = $sheinProduct->sku_code
                 ?? $sheinProduct->seller_sku
                 ?? $sheinProduct->sellerSku
@@ -4481,100 +4439,21 @@ PROMPT;
                 ?? $valueData['spu']
                 ?? null;
 
-            Log::info("Using SKU Code: {$skuCode}, SPU Code: ".($spuCode ?? 'null'));
+            Log::info('Using SKU Code: '.$skuCode.', SPU Code: '.($spuCode ?? 'null'));
 
-            // Shein API payload structure - try different formats
-            // Format 1: Using skuCode (most common)
-            $payload = [
-                'skuCode' => $skuCode,
-                'productName' => $title,
-            ];
+            sleep(2);
 
-            // If we have SPU code, also include it (some endpoints require both)
-            if ($spuCode) {
-                $payload['spuCode'] = $spuCode;
+            $result = app(SheinApiService::class)->updateTitle($skuCode, $title, $spuCode);
+
+            if (! empty($result['success'])) {
+                Log::info("✓ Successfully updated Shein title for SKU: {$sku}");
+
+                return true;
             }
 
-            Log::info("Shein API call - Endpoint: {$endpoint}, SKU: {$sku}, SKU Code: {$skuCode}");
-            Log::info('Shein API payload: '.json_encode($payload));
+            Log::error('✗ Shein update failed: '.($result['message'] ?? 'Unknown error'));
 
-            sleep(2); // Gentle rate limiting
-
-            // Use the signature OpenKeyId in the header (must match what was used for signature)
-            $headerOpenKeyId = $signatureOpenKeyId ?? $openKeyId;
-
-            Log::info('Sending request with headers - OpenKeyId: '.substr($headerOpenKeyId, 0, 10).'...');
-
-            $response = \Illuminate\Support\Facades\Http::withoutVerifying()
-                ->withHeaders([
-                    'Language' => 'en-us',
-                    'x-lt-openKeyId' => $headerOpenKeyId,
-                    'x-lt-timestamp' => $timestamp,
-                    'x-lt-signature' => $signature,
-                    'Content-Type' => 'application/json',
-                ])
-                ->timeout(30)
-                ->post($url, $payload);
-
-            $status = $response->status();
-            $body = $response->body();
-
-            Log::info("Shein API response status: {$status}");
-            Log::info("Shein API response body: {$body}");
-
-            if ($response->successful()) {
-                $responseData = $response->json();
-                Log::info('Shein API response data: '.json_encode($responseData));
-
-                // Check for success indicators in Shein API response
-                // Shein API typically returns: { "code": 0, "message": "success", "data": {...} }
-                $code = $responseData['code'] ?? $responseData['errorCode'] ?? $responseData['status'] ?? null;
-                $message = $responseData['message'] ?? $responseData['errorMsg'] ?? $responseData['msg'] ?? '';
-
-                // Check if there's an info object with status
-                if (isset($responseData['info'])) {
-                    $infoCode = $responseData['info']['code'] ?? null;
-                    $infoMsg = $responseData['info']['message'] ?? '';
-                    if ($infoCode !== null) {
-                        $code = $infoCode;
-                        $message = $infoMsg;
-                    }
-                }
-
-                // Success codes: 0, 200, or success status
-                if ($code === 0 || $code === 200 || $code === '0' ||
-                    (isset($responseData['success']) && $responseData['success']) ||
-                    (isset($responseData['info']['success']) && $responseData['info']['success'])) {
-                    Log::info("✓ Successfully updated Shein title for SKU: {$sku}");
-
-                    return true;
-                } else {
-                    Log::error("✗ Shein update failed - Code: {$code}, Message: {$message}");
-                    Log::error('Full response: '.json_encode($responseData, JSON_PRETTY_PRINT));
-
-                    return false;
-                }
-            } else {
-                Log::error("✗ HTTP failure updating Shein title for SKU {$sku}. Status: {$status}, Body: {$body}");
-
-                if ($status == 401) {
-                    $errorMsg = 'Authentication failed (401). This usually means:';
-                    $errorMsg .= "\n1. Signature verification failed - The signature was generated incorrectly";
-                    $errorMsg .= "\n2. Wrong credentials - SHEIN_OPEN_KEY_ID and SHEIN_SECRET_KEY are required for API calls";
-                    $errorMsg .= "\n3. SHEIN_APP_ID and SHEIN_APP_SECRET are DIFFERENT from SHEIN_OPEN_KEY_ID and SHEIN_SECRET_KEY";
-                    $errorMsg .= "\n\nPlease check:";
-                    $errorMsg .= "\n- Do you have SHEIN_OPEN_KEY_ID in .env? (Required for signature)";
-                    $errorMsg .= "\n- Do you have SHEIN_SECRET_KEY in .env? (Required for signature)";
-                    $errorMsg .= "\n- These are different from SHEIN_APP_ID and SHEIN_APP_SECRET";
-                    Log::error($errorMsg);
-                } elseif ($status == 403) {
-                    Log::error('Missing permissions - check API permissions in Shein Seller Center');
-                } elseif ($status == 429) {
-                    Log::error('Rate limited - wait and retry');
-                }
-
-                return false;
-            }
+            return false;
         } catch (\Exception $e) {
             Log::error("✗ Exception updating Shein title for SKU {$sku}: ".$e->getMessage());
             Log::error('Stack trace: '.$e->getTraceAsString());

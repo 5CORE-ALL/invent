@@ -5,6 +5,7 @@ namespace App\Services;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use SimpleXMLElement;
 use ZipArchive;
 use Illuminate\Support\Str;
@@ -13,17 +14,258 @@ use App\Models\SheinMetric;
 class SheinApiService
 {
 
-      protected $appId;
+    protected $appId;
+
     protected $appSecret;
+
     protected $baseUrl = 'https://openapi.sheincorp.com'; // or sandbox: openapi-test01.sheincorp.cn
+
+    /** Counters set during listAllProducts() DB persistence */
+    protected int $lastMetricCreated = 0;
+
+    protected int $lastMetricUpdated = 0;
 
     public function __construct()
     {
-        $this->appId     = config('services.shein.app_id');
+        $this->appId = config('services.shein.app_id');
         $this->appSecret = config('services.shein.app_secret');
+        $this->baseUrl = rtrim((string) (config('services.shein.base_url') ?: 'https://openapi.sheincorp.com'), '/');
     }
 
-  function generateSheinSignature($path, $timestamp, $randomKey)
+    /**
+     * SHEIN seller Open API does not use a long-lived OAuth bearer for these calls.
+     * Each request is signed with open key + secret (see generateSheinSignature).
+     */
+    public function getAccessToken(): ?string
+    {
+        return null;
+    }
+
+    /**
+     * Update product title on SHEIN (seller backend).
+     *
+     * Endpoint (documented in SHEIN Open Platform — Product Management): POST
+     * `{base_url}/open-api/openapi-business-backend/product/update`
+     * Body: `skuCode` (seller SKU), `productName` (new title); optional `spuCode` when required by listing.
+     *
+     * @param  string  $sku  SHEIN seller SKU / skuCode (not your internal PM SKU unless they match)
+     * @param  string|null  $spuCode  Optional SPU from listing (some accounts require it)
+     * @return array{success: bool, message: string, title?: string}
+     */
+    public function updateTitle(string $sku, string $title, ?string $spuCode = null): array
+    {
+        $sku = trim($sku);
+        if ($sku === '') {
+            return ['success' => false, 'message' => 'SKU (seller skuCode) is required.'];
+        }
+
+        $openKeyId = config('services.shein.open_key_id');
+        $secretKey = config('services.shein.secret_key');
+        if (empty($openKeyId) || empty($secretKey)) {
+            Log::error('Shein updateTitle: missing SHEIN_OPEN_KEY_ID or SHEIN_SECRET_KEY');
+
+            return ['success' => false, 'message' => 'Configure SHEIN_OPEN_KEY_ID and SHEIN_SECRET_KEY in .env.'];
+        }
+
+        $maxLen = (int) config('services.shein.title_max_length', 80);
+        if ($maxLen < 1) {
+            $maxLen = 80;
+        }
+
+        $normalized = mb_substr(trim($title), 0, $maxLen);
+        if ($normalized === '') {
+            return ['success' => false, 'message' => 'Title is empty after trimming.'];
+        }
+
+        $endpoint = (string) config(
+            'services.shein.product_update_path',
+            '/open-api/openapi-business-backend/product/update'
+        );
+        $url = $this->baseUrl.$endpoint;
+
+        $timestamp = (int) round(microtime(true) * 1000);
+        $random = Str::random(5);
+        $signature = $this->generateSheinSignature($endpoint, $timestamp, $random);
+
+        $payload = [
+            'skuCode' => $sku,
+            'productName' => $normalized,
+        ];
+
+        if ($spuCode !== null && $spuCode !== '') {
+            $payload['spuCode'] = $spuCode;
+        } else {
+            $metric = $this->safeSheinMetricFindBySku($sku);
+            if ($metric && ! empty($metric->spu_name)) {
+                $payload['spuCode'] = $metric->spu_name;
+            }
+        }
+
+        try {
+            Log::info('Shein updateTitle request', [
+                'sku' => $sku,
+                'title_length' => mb_strlen($normalized),
+                'endpoint' => $endpoint,
+            ]);
+
+            $response = Http::withoutVerifying()
+                ->timeout(45)
+                ->withHeaders([
+                    'Language' => 'en-us',
+                    'x-lt-openKeyId' => $openKeyId,
+                    'x-lt-timestamp' => (string) $timestamp,
+                    'x-lt-signature' => $signature,
+                    'Content-Type' => 'application/json',
+                ])
+                ->post($url, $payload);
+
+            $body = $response->body();
+            $json = is_array($response->json()) ? $response->json() : null;
+
+            if (! $response->successful()) {
+                Log::error('Shein updateTitle HTTP failure', [
+                    'status' => $response->status(),
+                    'body' => mb_substr($body, 0, 2000),
+                ]);
+
+                return [
+                    'success' => false,
+                    'message' => 'HTTP '.$response->status().': '.mb_substr($body, 0, 400),
+                ];
+            }
+
+            if ($this->sheinResponseIndicatesSuccess($json)) {
+                $this->safeSheinMetricUpdateTitle($sku, $normalized);
+
+                Log::info('Shein updateTitle success', ['sku' => $sku]);
+
+                return [
+                    'success' => true,
+                    'message' => 'Title updated.',
+                    'title' => $normalized,
+                ];
+            }
+
+            $message = $this->sheinExtractErrorMessage($json);
+            Log::error('Shein updateTitle API error', ['response' => $json]);
+
+            return ['success' => false, 'message' => $message];
+        } catch (\Throwable $e) {
+            Log::error('Shein updateTitle exception', ['error' => $e->getMessage()]);
+
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>|null  $json
+     */
+    private function sheinResponseIndicatesSuccess(?array $json): bool
+    {
+        if ($json === null) {
+            return false;
+        }
+
+        $code = $json['code'] ?? $json['errorCode'] ?? $json['status'] ?? null;
+
+        if (isset($json['info']) && is_array($json['info'])) {
+            $info = $json['info'];
+            if (array_key_exists('code', $info)) {
+                $code = $info['code'];
+            }
+        }
+
+        if ($code === 0 || $code === 200 || $code === '0' || $code === '200') {
+            return true;
+        }
+
+        if (! empty($json['success']) || (! empty($json['info']['success']))) {
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * @param  array<string, mixed>|null  $json
+     */
+    private function sheinExtractErrorMessage(?array $json): string
+    {
+        if ($json === null) {
+            return 'Invalid or empty JSON response.';
+        }
+
+        $parts = [];
+        foreach (['message', 'msg', 'errorMsg', 'sub_msg'] as $k) {
+            if (! empty($json[$k])) {
+                $parts[] = (string) $json[$k];
+            }
+        }
+        if (isset($json['info']) && is_array($json['info'])) {
+            foreach (['message', 'msg'] as $k) {
+                if (! empty($json['info'][$k])) {
+                    $parts[] = (string) $json['info'][$k];
+                }
+            }
+        }
+
+        return $parts !== [] ? implode(' — ', $parts) : json_encode($json);
+    }
+
+    public function metricsTableExists(): bool
+    {
+        try {
+            return Schema::hasTable('shein_metrics');
+        } catch (\Throwable $e) {
+            Log::warning('shein_metrics table check failed', ['error' => $e->getMessage()]);
+
+            return false;
+        }
+    }
+
+    /**
+     * @return \App\Models\SheinMetric|null
+     */
+    private function safeSheinMetricFindBySku(string $sku)
+    {
+        if (! $this->metricsTableExists()) {
+            return null;
+        }
+
+        try {
+            return SheinMetric::query()->where('sku', $sku)->first();
+        } catch (\Throwable $e) {
+            Log::warning('SheinMetric find failed (table or connection issue)', [
+                'sku' => $sku,
+                'error' => $e->getMessage(),
+            ]);
+
+            return null;
+        }
+    }
+
+    private function safeSheinMetricUpdateTitle(string $sku, string $normalizedTitle): void
+    {
+        if (! $this->metricsTableExists()) {
+            Log::info('Shein updateTitle: shein_metrics missing; API update succeeded but local row not updated.');
+
+            return;
+        }
+
+        try {
+            SheinMetric::query()->where('sku', $sku)->update([
+                'product_name' => $normalizedTitle,
+                'last_synced_at' => now(),
+            ]);
+        } catch (\Throwable $e) {
+            Log::warning('Shein updateTitle: could not update shein_metrics (non-fatal)', [
+                'sku' => $sku,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    function generateSheinSignature($path, $timestamp, $randomKey)
     {
         $openKeyId = config('services.shein.open_key_id');
         $secretKey = config('services.shein.secret_key');
@@ -74,10 +316,13 @@ class SheinApiService
         return $data["info"] ?? [];
     }
 
-     public function listAllProducts()
+    public function listAllProducts()
     {
-        $endpoint  = "/open-api/openapi-business-backend/product/query";
-        $pageSize  = 400;
+        $this->lastMetricCreated = 0;
+        $this->lastMetricUpdated = 0;
+
+        $endpoint = '/open-api/openapi-business-backend/product/query';
+        $pageSize = 400;
         $allProducts = [];
 
         // Loop max 1000 pages (safe upper bound)
@@ -128,81 +373,79 @@ class SheinApiService
 
 $spuNames = array_filter($spuNames); // remove nulls if any
 
-    $result = $this->getStock($spuNames);
-    
-    $createdCount = 0;
-    $updatedCount = 0;
-    
-    foreach($result as $item){
-        $sku = $item['sku'] ?? null;
-        
-        if (!$sku) {
-            Log::warning('Missing SKU in Shein inventory data', $item);
-            continue;
-        }
-        
-        // Prepare data for shein_metrics table
-        $metricData = [
-            'sku' => $sku,
-            'inventory' => $item['quantity'] ?? 0,
-            'price' => $item['price'] ?? null,
-            'retail_price' => $item['retail_price'] ?? null,
-            'views' => $item['views'] ?? 0,
-            'rating' => $item['rating'] ?? null,
-            'review_count' => $item['review_count'] ?? 0,
-            'last_synced_at' => now(),
-        ];
-        
-        // Add raw data if available
-        if (isset($item['raw_data'])) {
-            $metricData['raw_data'] = $item['raw_data'];
-        }
-        
-        // Add additional fields if available
-        if (isset($item['product_name'])) {
-            $metricData['product_name'] = $item['product_name'];
-        }
-        
-        if (isset($item['spu_name'])) {
-            $metricData['spu_name'] = $item['spu_name'];
-        }
-        
-        if (isset($item['status'])) {
-            $metricData['status'] = $item['status'];
-        }
-        
-        if (isset($item['description'])) {
-            $metricData['description'] = $item['description'];
-        }
-        
-        if (isset($item['image_url'])) {
-            $metricData['image_url'] = $item['image_url'];
-        }
-        
-        if (isset($item['category'])) {
-            $metricData['category'] = $item['category'];
-        }
-        
-        // Update or create record in shein_metrics table
-        $metric = SheinMetric::updateOrCreate(
-            ['sku' => $sku],
-            $metricData
-        );
-        
-        if ($metric->wasRecentlyCreated) {
-            $createdCount++;
+        $result = $this->getStock($spuNames);
+
+        if (! $this->metricsTableExists()) {
+            Log::warning('shein_metrics table missing; skipping DB persistence. Run migrations to create shein_metrics.');
         } else {
-            $updatedCount++;
+            try {
+                foreach ($result as $item) {
+                    $sku = $item['sku'] ?? null;
+
+                    if (! $sku) {
+                        Log::warning('Missing SKU in Shein inventory data', $item);
+
+                        continue;
+                    }
+
+                    $metricData = [
+                        'sku' => $sku,
+                        'inventory' => $item['quantity'] ?? 0,
+                        'price' => $item['price'] ?? null,
+                        'retail_price' => $item['retail_price'] ?? null,
+                        'views' => $item['views'] ?? 0,
+                        'rating' => $item['rating'] ?? null,
+                        'review_count' => $item['review_count'] ?? 0,
+                        'last_synced_at' => now(),
+                    ];
+
+                    if (isset($item['raw_data'])) {
+                        $metricData['raw_data'] = $item['raw_data'];
+                    }
+                    if (isset($item['product_name'])) {
+                        $metricData['product_name'] = $item['product_name'];
+                    }
+                    if (isset($item['spu_name'])) {
+                        $metricData['spu_name'] = $item['spu_name'];
+                    }
+                    if (isset($item['status'])) {
+                        $metricData['status'] = $item['status'];
+                    }
+                    if (isset($item['description'])) {
+                        $metricData['description'] = $item['description'];
+                    }
+                    if (isset($item['image_url'])) {
+                        $metricData['image_url'] = $item['image_url'];
+                    }
+                    if (isset($item['category'])) {
+                        $metricData['category'] = $item['category'];
+                    }
+
+                    $metric = SheinMetric::updateOrCreate(
+                        ['sku' => $sku],
+                        $metricData
+                    );
+
+                    if ($metric->wasRecentlyCreated) {
+                        $this->lastMetricCreated++;
+                    } else {
+                        $this->lastMetricUpdated++;
+                    }
+                }
+            } catch (\Throwable $e) {
+                Log::error('Shein listAllProducts: shein_metrics persistence failed (API data still returned)', [
+                    'error' => $e->getMessage(),
+                ]);
+            }
         }
-    }
-    
-    Log::info('Shein Data Sync Complete', [
-        'total_items' => count($result),
-        'created_records' => $createdCount,
-        'updated_records' => $updatedCount
-    ]);
-    
-    return $result;
+
+        Log::info('Shein Data Sync Complete', [
+            'total_items' => count($result),
+            'created_records' => $this->lastMetricCreated,
+            'updated_records' => $this->lastMetricUpdated,
+        ]);
+
+        return $result;
     }
 
 
@@ -506,12 +749,20 @@ public function getStock(array $skuCodes)
                 'raw_data' => $item, // Store full response for debugging
             ];
             
-            // Save to shein_metrics table
-            SheinMetric::updateOrCreate(
-                ['sku' => $productDetails['sku']],
-                array_merge($productDetails, ['last_synced_at' => now()])
-            );
-            
+            if ($this->metricsTableExists()) {
+                try {
+                    SheinMetric::updateOrCreate(
+                        ['sku' => $productDetails['sku']],
+                        array_merge($productDetails, ['last_synced_at' => now()])
+                    );
+                } catch (\Throwable $e) {
+                    Log::warning('Shein getProductDetails: could not save to shein_metrics', [
+                        'sku' => $sku,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+            }
+
             Log::info('Shein Product Details Fetched', ['sku' => $sku, 'details' => $productDetails]);
             
             return $productDetails;
@@ -525,23 +776,30 @@ public function getStock(array $skuCodes)
      * Sync all product data to database
      * Updates: Price, Views, Rating, Inventory
      */
-    public function syncAllProductData()
+    public function syncAllProductData(): array
     {
         Log::info('Starting Shein Product Data Sync...');
-        
+
         try {
             $result = $this->listAllProducts();
-            
+            $tableOk = $this->metricsTableExists();
+
             return [
                 'success' => true,
                 'total_products' => count($result),
-                'message' => 'Shein product data synced successfully'
+                'message' => $tableOk
+                    ? 'Shein product data synced successfully.'
+                    : 'Shein API data fetched; shein_metrics table missing — run migrations to persist rows.',
+                'db_persisted' => $tableOk,
+                'db_created' => $this->lastMetricCreated,
+                'db_updated' => $this->lastMetricUpdated,
             ];
-        } catch (\Exception $e) {
-            Log::error('Shein Sync Failed: ' . $e->getMessage());
+        } catch (\Throwable $e) {
+            Log::error('Shein Sync Failed: '.$e->getMessage());
+
             return [
                 'success' => false,
-                'message' => $e->getMessage()
+                'message' => $e->getMessage(),
             ];
         }
     }
