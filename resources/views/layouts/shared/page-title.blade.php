@@ -9,7 +9,10 @@
                     <li class="breadcrumb-item active">{{ $page_title }}</li>
                 </ol>
             </div>
-            <h4 class="page-title">{{ $page_title }}</h4>
+            <div class="d-flex align-items-center flex-wrap gap-2">
+                <h4 class="page-title mb-0">{{ $page_title }}</h4>
+                @stack('page-title-after')
+            </div>
         </div>
     </div>
 </div>
