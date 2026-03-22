@@ -23,6 +23,7 @@ class Ebay2Metric extends Model
         'views',
         'l7_views',
         'report_range',
-        'ebay_stock'
+        'ebay_stock',
+        'bullet_points',
     ];
 }

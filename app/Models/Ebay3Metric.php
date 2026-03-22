@@ -26,6 +26,7 @@ class Ebay3Metric extends Model
         'price_lmpa',
         'lmp_link',
         'lmp_data',
+        'bullet_points',
     ];
 
     protected $casts = [

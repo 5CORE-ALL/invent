@@ -27,6 +27,7 @@ class EbayMetric extends Model
         'report_date',
         'listing_status',
         'ebay_stock',
+        'bullet_points',
     ];
 
 }

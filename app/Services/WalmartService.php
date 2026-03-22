@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\ProductMaster;
 use App\Models\ProductStockMapping;
 use Exception;
 use Illuminate\Support\Facades\Cache;
@@ -167,6 +168,96 @@ class WalmartService
             Log::error("❌ Walmart title update failed - SKU: {$sku}, Error: {$e->getMessage()}");
             return ['success' => false, 'message' => $e->getMessage()];
         }
+    }
+
+    /**
+     * Update bullet points for a Walmart item (150 char limit).
+     * Uses MP_ITEM feed with shortDescription.
+     *
+     * @return array{success: bool, message: string}
+     */
+    public function updateBulletPoints(string $sku, string $bulletPoints): array
+    {
+        $sku = trim($sku);
+        $bulletPoints = mb_substr(trim($bulletPoints), 0, 150);
+        if ($bulletPoints === '') {
+            return ['success' => false, 'message' => 'Bullet points cannot be empty.'];
+        }
+
+        try {
+            $product = ProductMaster::where('sku', $sku)->orWhere('SKU', $sku)->first();
+            $productName = $product?->parent ?? $product?->sku ?? $sku;
+
+            $accessToken = $this->getAccessToken();
+            if (! $accessToken) {
+                return ['success' => false, 'message' => 'Failed to get Walmart access token.'];
+            }
+
+            $feedXml = $this->buildItemFeedXmlWithBullets($sku, $productName, $bulletPoints);
+            $response = Http::withoutVerifying()->withHeaders([
+                'WM_SEC.ACCESS_TOKEN' => $accessToken,
+                'WM_QOS.CORRELATION_ID' => (string) Str::uuid(),
+                'WM_SVC.NAME' => 'Walmart Marketplace',
+                'WM_MARKET_ID' => $this->marketplaceId,
+                'WM_CONSUMER.CHANNEL.TYPE' => config('services.walmart.channel_type'),
+                'Accept' => 'application/json',
+            ])->attach('file', $feedXml, 'mp-item-feed.xml')->post($this->baseUrl . '/v3/feeds', [
+                'feedType' => 'MP_ITEM',
+            ]);
+
+            if (! $response->successful() && $response->status() !== 202) {
+                return ['success' => false, 'message' => 'Feed submission failed: ' . $response->body()];
+            }
+
+            $payload = $response->json() ?? [];
+            $feedId = $payload['feedId'] ?? $payload['id'] ?? null;
+            if (! $feedId && preg_match('/"feedId"\s*:\s*"?(?<id>[^",\s]+)"?/', (string) $response->body(), $m)) {
+                $feedId = $m['id'];
+            }
+            if (! $feedId) {
+                return ['success' => false, 'message' => 'Feed accepted but feedId missing.'];
+            }
+
+            $statusResult = $this->pollFeedStatus((string) $feedId, $accessToken);
+            $finalStatus = strtoupper((string) ($statusResult['feedStatus'] ?? $statusResult['feed_status'] ?? 'UNKNOWN'));
+
+            if (in_array($finalStatus, ['PROCESSED', 'COMPLETED', 'DONE'], true)) {
+                return ['success' => true, 'message' => 'Bullet points updated successfully.'];
+            }
+
+            return ['success' => false, 'message' => 'Feed status: ' . $finalStatus];
+        } catch (\Throwable $e) {
+            Log::error('Walmart updateBulletPoints exception', ['sku' => $sku, 'error' => $e->getMessage()]);
+
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    private function buildItemFeedXmlWithBullets(string $sku, string $productName, string $bulletPoints): string
+    {
+        $escapedSku = htmlspecialchars($sku, ENT_XML1);
+        $escapedName = htmlspecialchars($productName, ENT_XML1);
+        $escapedBullets = htmlspecialchars($bulletPoints, ENT_XML1);
+
+        return '<?xml version="1.0" encoding="UTF-8"?>
+<MPItemFeed xmlns="http://walmart.com/" xmlns:ns2="http://walmart.com/mp/orders" xmlns:ns3="http://walmart.com/">
+  <MPItemFeedHeader>
+    <mart>US</mart>
+    <sellingChannel>marketplace</sellingChannel>
+    <processMode>REPLACE</processMode>
+    <subset>EXTERNAL</subset>
+    <locale>en</locale>
+    <version>4.8</version>
+  </MPItemFeedHeader>
+  <MPItem>
+    <Orderable>
+      <sku>' . $escapedSku . '</sku>
+      <productName>' . $escapedName . '</productName>
+      <shelfDescription>' . $escapedBullets . '</shelfDescription>
+      <productType>Item</productType>
+    </Orderable>
+  </MPItem>
+</MPItemFeed>';
     }
 
     private function buildItemFeedXml(string $sku, string $title): string

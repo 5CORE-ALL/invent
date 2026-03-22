@@ -482,10 +482,10 @@
                             <a href="{{ route('title.master') }}">Title Master</a>
                         </li>
                         <li>
-                            <a href="{{ route('videos.master') }}">Videos</a>
+                            <a href="{{ route('bullet.points') }}">Bullet Points Master</a>
                         </li>
                         <li>
-                            <a href="{{ route('bullet.points') }}">Bullet Points</a>
+                            <a href="{{ route('videos.master') }}">Videos</a>
                         </li>
                         <li>
                             <a href="{{ route('product.description') }}">Product Description</a>

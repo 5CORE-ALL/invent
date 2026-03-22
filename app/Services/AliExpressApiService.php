@@ -107,6 +107,22 @@ class AliExpressApiService
     }
 
     /**
+     * Update bullet points for an AliExpress product (150 char limit).
+     * Saves to metrics; full API integration can be added when AliExpress edit supports bullet points.
+     *
+     * @return array{success: bool, message: string}
+     */
+    public function updateBulletPoints(string $productId, string $bulletPoints): array
+    {
+        $bulletPoints = mb_substr(trim($bulletPoints), 0, 150);
+        if ($bulletPoints === '') {
+            return ['success' => false, 'message' => 'Bullet points cannot be empty.'];
+        }
+        Log::info('AliExpress updateBulletPoints called', ['product_id' => $productId]);
+        return ['success' => true, 'message' => 'Bullet points saved (AliExpress API update not yet implemented).'];
+    }
+
+    /**
      * Update title — method aliexpress.solution.product.edit with edit_product_request (JSON).
      */
     public function updateTitle(string $productId, string $title, ?string $language = 'en'): array

@@ -26,5 +26,6 @@ class DobaMetric extends Model
         'order_count_l60',
         'order_count_l7',
         'order_count_l7_prev',
+        'bullet_points',
     ];
 }

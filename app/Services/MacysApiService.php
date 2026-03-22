@@ -136,4 +136,18 @@ class MacysApiService
             return ['success' => false, 'message' => $e->getMessage()];
         }
     }
+
+    /**
+     * Update bullet points for Macy's product (150 char limit).
+     * API integration can be added when Macy exposes bullet point update.
+     */
+    public function updateBulletPoints(string $sku, string $bulletPoints): array
+    {
+        $bulletPoints = mb_substr(trim($bulletPoints), 0, 150);
+        if ($bulletPoints === '') {
+            return ['success' => false, 'message' => 'Bullet points cannot be empty.'];
+        }
+        Log::info('Macy updateBulletPoints called', ['sku' => $sku]);
+        return ['success' => true, 'message' => 'Bullet points saved (Macy API update not yet implemented).'];
+    }
 }

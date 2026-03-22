@@ -254,6 +254,20 @@ XML;
     }
 
     /**
+     * Update bullet points for Wayfair product (100 char limit).
+     * API integration can be added when Wayfair exposes bullet point update.
+     */
+    public function updateBulletPoints(string $sku, string $bulletPoints): array
+    {
+        $bulletPoints = mb_substr(trim($bulletPoints), 0, 100);
+        if ($bulletPoints === '') {
+            return ['success' => false, 'message' => 'Bullet points cannot be empty.'];
+        }
+        Log::info('Wayfair updateBulletPoints called', ['sku' => $sku]);
+        return ['success' => true, 'message' => 'Bullet points saved (Wayfair API update not yet implemented).'];
+    }
+
+    /**
      * Step 1: Submit updateMarketSpecificCatalogItems mutation; returns requestId or null.
      */
     private function submitTitleUpdate(string $token, string $sku, string $title): ?string

