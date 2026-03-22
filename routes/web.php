@@ -114,6 +114,7 @@ use App\Http\Controllers\MarketPlace\ZeroViewMarketPlace\WalmartZeroController;
 use App\Http\Controllers\MarketPlace\ZeroViewMarketPlace\YamibuyZeroController;
 use App\Http\Controllers\MarketPlace\ZeroViewMarketPlace\ZendropZeroController;
 use App\Http\Controllers\ProductMaster\PrAnalysisController;
+use App\Http\Controllers\ProductMaster\BulletPointMasterController;
 use App\Http\Controllers\ProductMaster\ProductMasterController;
 use App\Http\Controllers\Catalouge\CatalougeManagerController;
 use App\Http\Controllers\Channels\AccountHealthMasterController;
@@ -1094,6 +1095,10 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/product-master', [ProductMasterController::class, 'product_master_index'])
         ->name('product.master');
     Route::get('/title-master', fn() => view('title-master'))->name('title.master');
+    Route::get('/bullet-point-master', [BulletPointMasterController::class, 'index'])->name('bullet.point.master');
+    Route::get('/bullet-point-master-data', [BulletPointMasterController::class, 'getData'])->name('bullet.point.master.data');
+    Route::get('/bullet-point-master-combined-data', [BulletPointMasterController::class, 'getCombinedData'])->name('bullet.point.master.combined.data');
+    Route::post('/bullet-point-master/update', [BulletPointMasterController::class, 'update'])->name('bullet.point.master.update');
     Route::get('/title-master-data', [ProductMasterController::class, 'getTitleMasterData'])->name('title.master.data');
     Route::post('/title-master/save', [ProductMasterController::class, 'saveTitleData'])->name('title.master.save');
     Route::post('/title-master/ai/generate-titles', [ProductMasterController::class, 'generateTitlesWithAI'])->name('title.master.ai.generate');
@@ -1111,7 +1116,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/title-master/update-platforms', [ProductMasterController::class, 'updateTitlesToPlatforms'])->name('title.master.update.platforms');
     Route::get('/videos-master', fn() => view('videos-master'))->name('videos.master');
     Route::post('/videos-master/save', [ProductMasterController::class, 'saveVideosData'])->name('videos.master.save');
-    Route::get('/bullet-points', fn() => view('bullet-points'))->name('bullet.points');
+    Route::get('/bullet-points', [BulletPointMasterController::class, 'index'])->name('bullet.points');
     Route::post('/bullet-points/save', [ProductMasterController::class, 'saveBulletData'])->name('bullet.points.save');
     Route::get('/product-description', fn() => view('product-description'))->name('product.description');
     Route::post('/product-description/save', [ProductMasterController::class, 'saveDescriptionData'])->name('product.description.save');

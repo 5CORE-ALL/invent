@@ -12,7 +12,7 @@ class AliexpressMetric extends Model
 {
     use HasFactory;
 
-    protected $table = 'aliexpress_metric';
+    protected $table = 'aliexpress_metrics';
 
     protected $fillable = [
         'product_id',
@@ -21,7 +21,8 @@ class AliexpressMetric extends Model
         'l30',
         'l60',
         'order_dates',
-        'last_order_date'
+        'last_order_date',
+        'bullet_points',
     ];
 
     protected $casts = [

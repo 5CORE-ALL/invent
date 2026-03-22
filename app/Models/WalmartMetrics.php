@@ -18,5 +18,6 @@ class WalmartMetrics extends Model
         'l60_amt',
         'price',
         'stock',
+        'bullet_points',
     ];
 }

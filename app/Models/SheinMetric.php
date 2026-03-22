@@ -28,6 +28,7 @@ class SheinMetric extends Model
         'category',
         'last_synced_at',
         'raw_data',
+        'bullet_points',
     ];
 
     protected $casts = [
