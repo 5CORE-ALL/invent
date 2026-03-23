@@ -614,6 +614,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/customer-care/refunds', [RefundController::class, 'index'])->name('customer.care.refunds');
     Route::get('/customer-care/followups', [CustomerFollowupController::class, 'index'])->name('customer.care.followups');
     Route::get('/customer-care/followups/data', [CustomerFollowupController::class, 'data'])->name('customer.care.followups.data');
+    Route::get('/customer-care/followups/skus', [CustomerFollowupController::class, 'searchProductSkus'])->name('customer.care.followups.skus');
     Route::post('/customer-care/followups', [CustomerFollowupController::class, 'store'])->name('customer.care.followups.store');
     Route::get('/customer-care/followups/{customer_followup}', [CustomerFollowupController::class, 'show'])->name('customer.care.followups.show');
     Route::put('/customer-care/followups/{customer_followup}', [CustomerFollowupController::class, 'update'])->name('customer.care.followups.update');

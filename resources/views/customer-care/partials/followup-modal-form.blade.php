@@ -16,6 +16,14 @@
         </div>
         <x-followup.input-field label="Order ID" name="order_id" />
         <div class="col-md-6 mb-3">
+            <label for="sku" class="form-label">SKU</label>
+            <input type="text" name="sku" id="sku" class="form-control" list="followup_sku_datalist"
+                maxlength="128" placeholder="Type to search product master" autocomplete="off">
+            <datalist id="followup_sku_datalist"></datalist>
+            <small class="text-muted d-block mt-1">Suggestions load from <strong>Product Master</strong> as you type.</small>
+            <div class="invalid-feedback" data-error-for="sku"></div>
+        </div>
+        <div class="col-md-6 mb-3">
             <label for="channel_master_id" class="form-label">Channel</label>
             <select name="channel_master_id" id="channel_master_id" class="form-select">
                 <option value="">— Select —</option>
@@ -70,13 +78,32 @@
             <label for="next_followup_at" class="form-label">Next follow-up (date &amp; time)</label>
             <input type="datetime-local" name="next_followup_at" id="next_followup_at" class="form-control">
         </div>
-        <x-followup.input-field label="Assigned executive" name="assigned_executive" />
+        <div class="col-md-6 mb-3">
+            <label for="assigned_executive" class="form-label">Assigned executive</label>
+            <div class="input-group">
+                <input type="text" name="assigned_executive" id="assigned_executive" class="form-control"
+                    list="assigned_executive_datalist" autocomplete="off"
+                    placeholder="Choose, type, or add with +">
+                <button type="button" class="btn btn-outline-primary px-3" id="btnAddExecutiveToList"
+                    title="Add this name to the executive list" aria-label="Add executive to list">
+                    <i class="mdi mdi-plus"></i>
+                </button>
+            </div>
+            <datalist id="assigned_executive_datalist">
+                @foreach ($defaultExecutives ?? [] as $ex)
+                    <option value="{{ $ex }}"></option>
+                @endforeach
+            </datalist>
+            <small class="text-muted d-block mt-1">Type a new name, then tap <i class="mdi mdi-plus"
+                    aria-hidden="true"></i> to keep it in the list and filters.</small>
+            <div class="invalid-feedback" data-error-for="assigned_executive"></div>
+        </div>
     </div>
 
     <h6 class="text-muted text-uppercase small mb-3">Communication</h6>
     <div class="row">
         <div class="col-12 mb-3">
-            <label for="comments" class="form-label">Comments / notes</label>
+            <label for="comments" class="form-label">Notes</label>
             <textarea name="comments" id="comments" class="form-control" rows="2"></textarea>
         </div>
         <div class="col-12 mb-3">

@@ -9,7 +9,7 @@ use Illuminate\Support\Str;
 class CustomerFollowup extends Model
 {
     protected $fillable = [
-        'ticket_id', 'order_id', 'channel_master_id', 'customer_name', 'email', 'phone',
+        'ticket_id', 'order_id', 'sku', 'channel_master_id', 'customer_name', 'email', 'phone',
         'issue_type', 'status', 'priority', 'followup_date', 'followup_time',
         'next_followup_at', 'assigned_executive', 'comments', 'internal_remarks', 'reference_link',
     ];

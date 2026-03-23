@@ -10,7 +10,7 @@
         }
 
         .followup-table-shell {
-            min-width: 960px;
+            min-width: 1180px;
         }
 
         .followup-table-header {
@@ -22,8 +22,15 @@
         .followup-table-body table {
             table-layout: fixed;
             width: 100%;
-            min-width: 960px;
+            min-width: 1180px;
             margin-bottom: 0;
+        }
+
+        .followup-notes-cell {
+            max-width: 11rem;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
 
         .followup-table-header thead th {
@@ -129,7 +136,7 @@
                     <div class="col-md-3">
                         <label class="form-label small mb-0">Search</label>
                         <input type="text" class="form-control" id="filterSearch"
-                            placeholder="Ticket ID, customer, order ID">
+                            placeholder="Ticket ID, order ID, SKU, customer, notes">
                     </div>
                     <div class="col-md-2">
                         <label class="form-label small mb-0">Channel</label>
@@ -164,9 +171,24 @@
                     </div>
                     <div class="col-md-3">
                         <label class="form-label small mb-0">Executive</label>
-                        <select class="form-select" id="filterExecutive">
-                            <option value="">All</option>
-                        </select>
+                        <div class="input-group">
+                            <select class="form-select" id="filterExecutive">
+                                <option value="">All</option>
+                            </select>
+                            <button type="button" class="btn btn-outline-primary px-2" id="btnFilterAddExecutive"
+                                data-bs-toggle="collapse" data-bs-target="#filterExecutiveAddPanel"
+                                aria-expanded="false" aria-controls="filterExecutiveAddPanel"
+                                title="Add executive to list" aria-label="Add executive">
+                                <i class="mdi mdi-plus"></i>
+                            </button>
+                        </div>
+                        <div class="collapse" id="filterExecutiveAddPanel">
+                            <div class="input-group input-group-sm mt-2">
+                                <input type="text" class="form-control" id="filterNewExecutiveName"
+                                    placeholder="New executive name" autocomplete="off" maxlength="255">
+                                <button type="button" class="btn btn-primary" id="btnFilterSaveNewExecutive">Add</button>
+                            </div>
+                        </div>
                     </div>
                     <div class="col-md-2">
                         <label class="form-label small mb-0">From</label>
@@ -193,15 +215,18 @@
                     <div class="followup-table-header">
                         <table class="table align-middle mb-0">
                             <colgroup>
-                                <col style="width:9%"><col style="width:7%"><col style="width:10%"><col
-                                    style="width:14%"><col style="width:7%"><col style="width:8%"><col
-                                    style="width:7%"><col style="width:11%"><col style="width:11%"><col
-                                    style="width:9%"><col style="width:7%">
+                                <col style="width:8%"><col style="width:8%"><col style="width:7%"><col
+                                    style="width:10%"><col style="width:10%"><col style="width:12%"><col
+                                    style="width:6%"><col style="width:7%"><col style="width:6%"><col
+                                    style="width:9%"><col style="width:9%"><col style="width:8%"><col
+                                    style="width:6%">
                             </colgroup>
                             <thead>
                                 <tr>
                                     <th scope="col">Ticket ID</th>
                                     <th scope="col">Order ID</th>
+                                    <th scope="col">SKU</th>
+                                    <th scope="col">Notes</th>
                                     <th scope="col">Channel</th>
                                     <th scope="col">Customer</th>
                                     <th scope="col">Issue</th>
@@ -218,14 +243,15 @@
                     <div class="followup-table-body">
                         <table class="table table-hover mb-0 align-middle">
                             <colgroup>
-                                <col style="width:9%"><col style="width:7%"><col style="width:10%"><col
-                                    style="width:14%"><col style="width:7%"><col style="width:8%"><col
-                                    style="width:7%"><col style="width:11%"><col style="width:11%"><col
-                                    style="width:9%"><col style="width:7%">
+                                <col style="width:8%"><col style="width:8%"><col style="width:7%"><col
+                                    style="width:10%"><col style="width:10%"><col style="width:12%"><col
+                                    style="width:6%"><col style="width:7%"><col style="width:6%"><col
+                                    style="width:9%"><col style="width:9%"><col style="width:8%"><col
+                                    style="width:6%">
                             </colgroup>
                             <tbody id="followupTableBody">
                                 <tr>
-                                    <td colspan="11" class="text-center py-4 text-muted">Loading…</td>
+                                    <td colspan="13" class="text-center py-4 text-muted">Loading…</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -276,13 +302,141 @@
             const dataUrl = @json(route('customer.care.followups.data'));
             const storeUrl = @json(route('customer.care.followups.store'));
             const followupBase = @json(url('/customer-care/followups'));
+            const skuSearchUrl = @json(route('customer.care.followups.skus'));
+            const defaultExecutives = @json($defaultExecutives ?? []);
+            const EXEC_LS_KEY = 'invent_customer_followup_executives_v1';
             const csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+            let lastApiExecutives = [];
 
             function escapeHtml(s) {
                 if (s == null) return '';
                 const d = document.createElement('div');
                 d.textContent = s;
                 return d.innerHTML;
+            }
+
+            function escapeAttr(s) {
+                return String(s ?? '')
+                    .replace(/&/g, '&amp;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/</g, '&lt;');
+            }
+
+            function notesCellHtml(raw) {
+                if (raw == null || String(raw).trim() === '') {
+                    return '<td class="text-muted">—</td>';
+                }
+                const t = String(raw).replace(/\s+/g, ' ').trim();
+                return '<td class="followup-notes-cell" title="' + escapeAttr(t) + '">' + escapeHtml(t) +
+                    '</td>';
+            }
+
+            let skuSearchTimer = null;
+
+            async function refreshSkuDatalist(query) {
+                const dl = document.getElementById('followup_sku_datalist');
+                if (!dl) return;
+                const q = (query || '').trim();
+                if (q.length < 1) {
+                    dl.innerHTML = '';
+                    return;
+                }
+                try {
+                    const res = await fetch(skuSearchUrl + '?q=' + encodeURIComponent(q), {
+                        headers: {
+                            'Accept': 'application/json',
+                            'X-Requested-With': 'XMLHttpRequest'
+                        }
+                    });
+                    const j = await res.json();
+                    const list = j.skus || [];
+                    dl.innerHTML = list.map(s => {
+                        const sku = s.sku != null ? String(s.sku) : '';
+                        const parent = s.parent != null ? String(s.parent) : '';
+                        const label = parent ? (parent + ' · ' + sku) : sku;
+                        return '<option value="' + escapeAttr(sku) + '" label="' + escapeAttr(label) +
+                            '"></option>';
+                    }).join('');
+                } catch (err) {
+                    dl.innerHTML = '';
+                }
+            }
+
+            function bindSkuProductMasterAutocomplete() {
+                const inp = document.getElementById('sku');
+                if (!inp || inp.dataset.pmSkuBound === '1') return;
+                inp.dataset.pmSkuBound = '1';
+                inp.addEventListener('input', () => {
+                    clearTimeout(skuSearchTimer);
+                    skuSearchTimer = setTimeout(() => refreshSkuDatalist(inp.value), 220);
+                });
+                inp.addEventListener('focus', () => {
+                    clearTimeout(skuSearchTimer);
+                    refreshSkuDatalist(inp.value);
+                });
+            }
+
+            bindSkuProductMasterAutocomplete();
+
+            function getStoredExtraExecutives() {
+                try {
+                    const raw = localStorage.getItem(EXEC_LS_KEY);
+                    if (!raw) return [];
+                    const arr = JSON.parse(raw);
+                    if (!Array.isArray(arr)) return [];
+                    return [...new Set(arr.map(x => String(x).trim()).filter(Boolean))];
+                } catch (e) {
+                    return [];
+                }
+            }
+
+            function setStoredExtraExecutives(names) {
+                const uniq = [...new Set(names.map(n => String(n).trim()).filter(Boolean))].sort((a, b) =>
+                    a.localeCompare(b));
+                localStorage.setItem(EXEC_LS_KEY, JSON.stringify(uniq));
+            }
+
+            function addStoredExecutive(name) {
+                const t = String(name || '').trim();
+                if (!t) return false;
+                const cur = getStoredExtraExecutives();
+                if (cur.includes(t)) return true;
+                setStoredExtraExecutives([...cur, t]);
+                return true;
+            }
+
+            function getMergedExecutiveNames(apiNames) {
+                const set = new Set();
+                (defaultExecutives || []).forEach(e => {
+                    if (e && String(e).trim()) set.add(String(e).trim());
+                });
+                (apiNames || []).forEach(e => {
+                    if (e && String(e).trim()) set.add(String(e).trim());
+                });
+                getStoredExtraExecutives().forEach(e => set.add(e));
+                return [...set].sort((a, b) => a.localeCompare(b));
+            }
+
+            function syncExecutiveDatalist(apiNames) {
+                const dl = document.getElementById('assigned_executive_datalist');
+                if (!dl) return;
+                const names = getMergedExecutiveNames(apiNames);
+                dl.innerHTML = names.map(e => '<option value="' + escapeAttr(e) + '"></option>').join('');
+            }
+
+            function rebuildExecutiveFilterSelect(selectEl, apiNames, previousValue) {
+                const names = getMergedExecutiveNames(apiNames);
+                const htmlOpts = ['<option value="">All</option>'].concat(names.map(e =>
+                    '<option value="' + escapeAttr(e) + '">' + escapeHtml(e) + '</option>'));
+                selectEl.innerHTML = htmlOpts.join('');
+                if (previousValue && names.includes(previousValue)) selectEl.value = previousValue;
+            }
+
+            function refreshExecutivePickers(preferredFilterValue) {
+                const execSel = document.getElementById('filterExecutive');
+                const prev = preferredFilterValue !== undefined ? preferredFilterValue : execSel.value;
+                rebuildExecutiveFilterSelect(execSel, lastApiExecutives, prev);
+                syncExecutiveDatalist(lastApiExecutives);
             }
 
             function statusBadgeHtml(status) {
@@ -348,32 +502,22 @@
 
                     const execSel = document.getElementById('filterExecutive');
                     const cur = execSel.value;
-                    const opts = new Set();
-                    (json.executives || []).forEach(e => {
-                        if (e) opts.add(e);
-                    });
-                    const htmlOpts = ['<option value="">All</option>'];
-                    [...opts].sort().forEach(e => htmlOpts.push('<option value="' + escapeHtml(e) + '">' +
-                        escapeHtml(e) + '</option>'));
-                    execSel.innerHTML = htmlOpts.join('');
-                    if ([...opts].includes(cur)) execSel.value = cur;
+                    lastApiExecutives = json.executives || [];
+                    refreshExecutivePickers(cur);
 
                     if (!json.data.length) {
                         tbody.innerHTML =
-                            '<tr><td colspan="11" class="text-center py-4 text-muted">No records match filters.</td></tr>';
+                            '<tr><td colspan="13" class="text-center py-4 text-muted">No records match filters.</td></tr>';
                         return;
                     }
 
                     tbody.innerHTML = json.data.map(row => {
                         const overdue = row.overdue ? ' followup-row-overdue' : '';
-                        let ref = '—';
-                        if (row.reference_link) {
-                            ref = '<a href="' + escapeHtml(row.reference_link) +
-                                '" target="_blank" rel="noopener noreferrer">Open</a>';
-                        }
                         return '<tr class="' + overdue.trim() + '" data-id="' + row.id + '">' +
                             '<td>' + escapeHtml(row.ticket_id) + '</td>' +
                             '<td>' + escapeHtml(row.order_id) + '</td>' +
+                            '<td>' + escapeHtml(row.sku) + '</td>' +
+                            notesCellHtml(row.notes) +
                             '<td>' + escapeHtml(row.channel_name) + '</td>' +
                             '<td>' + escapeHtml(row.customer_name) + '</td>' +
                             '<td>' + escapeHtml(row.issue_type) + '</td>' +
@@ -398,7 +542,7 @@
                     document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el => new bootstrap.Tooltip(el));
                 } catch (e) {
                     tbody.innerHTML =
-                        '<tr><td colspan="11" class="text-center text-danger py-4">Failed to load data.</td></tr>';
+                        '<tr><td colspan="13" class="text-center text-danger py-4">Failed to load data.</td></tr>';
                 }
             }
 
@@ -441,6 +585,7 @@
                 const payload = {
                     ticket_id: fd.get('ticket_id'),
                     order_id: fd.get('order_id') || null,
+                    sku: fd.get('sku') || null,
                     channel_master_id: ch ? parseInt(ch, 10) : null,
                     customer_name: fd.get('customer_name'),
                     email: fd.get('email') || null,
@@ -471,6 +616,53 @@
                 document.getElementById('filterDateFrom').value = '';
                 document.getElementById('filterDateTo').value = '';
                 loadTable();
+            });
+
+            document.getElementById('btnAddExecutiveToList').addEventListener('click', () => {
+                const inp = document.getElementById('assigned_executive');
+                const name = (inp && inp.value || '').trim();
+                if (!name) {
+                    inp.focus();
+                    inp.classList.add('is-invalid');
+                    setTimeout(() => inp.classList.remove('is-invalid'), 1200);
+                    return;
+                }
+                addStoredExecutive(name);
+                refreshExecutivePickers();
+            });
+
+            const filterExecutiveAddPanel = document.getElementById('filterExecutiveAddPanel');
+            filterExecutiveAddPanel.addEventListener('shown.bs.collapse', () => {
+                document.getElementById('filterNewExecutiveName').focus();
+            });
+
+            function hideFilterExecutiveAddPanel() {
+                const inst = bootstrap.Collapse.getInstance(filterExecutiveAddPanel);
+                if (inst) inst.hide();
+            }
+
+            function saveFilterNewExecutive() {
+                const inp = document.getElementById('filterNewExecutiveName');
+                const name = (inp.value || '').trim();
+                if (!name) {
+                    inp.focus();
+                    inp.classList.add('is-invalid');
+                    setTimeout(() => inp.classList.remove('is-invalid'), 1200);
+                    return;
+                }
+                addStoredExecutive(name);
+                refreshExecutivePickers(name);
+                inp.value = '';
+                inp.classList.remove('is-invalid');
+                hideFilterExecutiveAddPanel();
+            }
+
+            document.getElementById('btnFilterSaveNewExecutive').addEventListener('click', saveFilterNewExecutive);
+            document.getElementById('filterNewExecutiveName').addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    saveFilterNewExecutive();
+                }
             });
 
             document.getElementById('btnAddFollowup').addEventListener('click', () => {
@@ -558,7 +750,9 @@
                         '<dl class="row mb-0">' +
                         '<dt class="col-sm-4">Ticket</dt><dd class="col-sm-8">' + escapeHtml(d.ticket_id) +
                         '</dd>' +
-                        '<dt class="col-sm-4">Order</dt><dd class="col-sm-8">' + escapeHtml(d.order_id || '—') +
+                        '<dt class="col-sm-4">Order ID</dt><dd class="col-sm-8">' + escapeHtml(d.order_id || '—') +
+                        '</dd>' +
+                        '<dt class="col-sm-4">SKU</dt><dd class="col-sm-8">' + escapeHtml(d.sku || '—') +
                         '</dd>' +
                         '<dt class="col-sm-4">Customer</dt><dd class="col-sm-8">' + escapeHtml(d.customer_name) +
                         '</dd>' +
@@ -570,7 +764,7 @@
                         '</dd>' +
                         '<dt class="col-sm-4">Priority</dt><dd class="col-sm-8">' + priorityBadgeHtml(d.priority) +
                         '</dd>' +
-                        '<dt class="col-sm-4">Comments</dt><dd class="col-sm-8">' + escapeHtml(d.comments || '—')
+                        '<dt class="col-sm-4">Notes</dt><dd class="col-sm-8">' + escapeHtml(d.comments || '—')
                         .replace(/\n/g, '<br>') + '</dd>' +
                         '<dt class="col-sm-4">Internal</dt><dd class="col-sm-8">' + escapeHtml(d.internal_remarks ||
                             '—').replace(/\n/g, '<br>') + '</dd>' +
@@ -592,6 +786,7 @@
                     document.getElementById('ticket_id_hint').textContent = 'Ticket ID cannot be changed.';
                     document.getElementById('ticket_id_hint').classList.remove('d-none');
                     document.getElementById('order_id').value = d.order_id || '';
+                    document.getElementById('sku').value = d.sku || '';
                     document.getElementById('channel_master_id').value = d.channel_master_id || '';
                     document.getElementById('customer_name').value = d.customer_name;
                     document.getElementById('email').value = d.email || '';
@@ -611,6 +806,7 @@
                 }
             });
 
+            refreshExecutivePickers(document.getElementById('filterExecutive').value);
             loadTable();
 
             // TODO: Replace static data with API integration (single endpoint for list + stats).
@@ -622,7 +818,7 @@
         $channels = \App\Models\ChannelMaster::whereRaw('LOWER(TRIM(status)) = ?', ['active'])->orderBy('type')->orderBy('id')->get(['id','channel']);
     Dummy row shape from /customer-care/followups/data:
         {"id":1,"ticket_id":"TKT-DEMO-001","order_id":"ORD-1001","channel_name":"Amazon",
-         "customer_name":"Sample Customer","issue_type":"Refund","status":"Pending",
+         "customecr_name":"Sample Customer","issue_type":"Refund","status":"Pending",
          "priority":"High","followup_display":"03-17-2026 10:00","next_followup":"03-18-2026 10:00",
          "executive":"Executive A","reference_link":"https://...","overdue":false}
     --}}

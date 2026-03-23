@@ -5,12 +5,16 @@ namespace App\Http\Controllers\CustomerCare;
 use App\Http\Controllers\Controller;
 use App\Models\ChannelMaster;
 use App\Models\CustomerFollowup;
+use App\Models\ProductMaster;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 
 class CustomerFollowupController extends Controller
 {
+    /** Shown in filters and as suggestions; users may still assign any name via free text. */
+    private const DEFAULT_EXECUTIVES = ['Hritiksha', 'Jasmine', 'Suman'];
+
     /** Active marketplaces — same filter as /all-marketplace-master (getViewChannelData). */
     private static function activeChannelsQuery()
     {
@@ -40,7 +44,41 @@ class CustomerFollowupController extends Controller
             ]);
         }
 
-        return view('customer-care.customer_followups', compact('channels'));
+        $defaultExecutives = self::DEFAULT_EXECUTIVES;
+
+        return view('customer-care.customer_followups', compact('channels', 'defaultExecutives'));
+    }
+
+    /**
+     * SKU suggestions from product_master (same source as Product Master table), for follow-up form autocomplete.
+     */
+    public function searchProductSkus(Request $request)
+    {
+        $q = trim((string) $request->query('q', ''));
+        $limit = min(40, max(1, (int) $request->query('limit', 25)));
+
+        if ($q === '') {
+            return response()->json(['skus' => []]);
+        }
+
+        $like = '%' . addcslashes($q, '%_\\') . '%';
+
+        $rows = ProductMaster::query()
+            ->select(['sku', 'parent'])
+            ->where(function ($qq) use ($like) {
+                $qq->where('sku', 'like', $like)
+                    ->orWhere('parent', 'like', $like);
+            })
+            ->orderBy('sku')
+            ->limit($limit)
+            ->get();
+
+        return response()->json([
+            'skus' => $rows->map(fn ($r) => [
+                'sku' => $r->sku,
+                'parent' => $r->parent,
+            ])->values(),
+        ]);
     }
 
     /** // TODO: Replace static data with API integration */
@@ -53,7 +91,9 @@ class CustomerFollowupController extends Controller
             $q->where(function ($qq) use ($s) {
                 $qq->where('ticket_id', 'like', $s)
                     ->orWhere('order_id', 'like', $s)
-                    ->orWhere('customer_name', 'like', $s);
+                    ->orWhere('sku', 'like', $s)
+                    ->orWhere('customer_name', 'like', $s)
+                    ->orWhere('comments', 'like', $s);
             });
         }
         if ($request->filled('channel_id')) {
@@ -97,10 +137,15 @@ class CustomerFollowupController extends Controller
                 : '—';
             $followupDt = $f->followup_date->format('m-d-Y') . ($time ? ' ' . $time : '');
 
+            $notes = $f->comments;
+            $notesStr = $notes !== null && $notes !== '' ? (string) $notes : '';
+
             return [
                 'id' => $f->id,
                 'ticket_id' => $f->ticket_id,
-                'order_id' => $f->order_id ?? '—',
+                'order_id' => $f->order_id !== null && $f->order_id !== '' ? $f->order_id : '—',
+                'sku' => $f->sku !== null && $f->sku !== '' ? $f->sku : '—',
+                'notes' => $notesStr,
                 'channel_name' => $f->channelMaster?->channel ?? '—',
                 'customer_name' => $f->customer_name,
                 'issue_type' => $f->issue_type,
@@ -114,12 +159,20 @@ class CustomerFollowupController extends Controller
             ];
         });
 
-        $executives = CustomerFollowup::query()
+        $fromDb = CustomerFollowup::query()
             ->whereNotNull('assigned_executive')
             ->where('assigned_executive', '!=', '')
             ->distinct()
             ->pluck('assigned_executive')
             ->filter()
+            ->values();
+
+        $executives = collect(self::DEFAULT_EXECUTIVES)
+            ->merge($fromDb)
+            ->map(fn ($e) => is_string($e) ? trim($e) : $e)
+            ->filter()
+            ->unique()
+            ->sort()
             ->values()
             ->all();
 
@@ -150,6 +203,7 @@ class CustomerFollowupController extends Controller
     {
         $validated = $request->validate([
             'order_id' => 'nullable|string|max:64',
+            'sku' => 'nullable|string|max:128',
             'channel_master_id' => 'nullable|integer',
             'customer_name' => 'required|string|max:255',
             'email' => 'nullable|email|max:255',
@@ -198,6 +252,7 @@ class CustomerFollowupController extends Controller
             'id' => $f->id,
             'ticket_id' => $f->ticket_id,
             'order_id' => $f->order_id,
+            'sku' => $f->sku,
             'channel_master_id' => $f->channel_master_id,
             'customer_name' => $f->customer_name,
             'email' => $f->email,
@@ -220,6 +275,7 @@ class CustomerFollowupController extends Controller
         $validated = $request->validate([
             'ticket_id' => ['required', 'string', 'max:64', Rule::unique('customer_followups', 'ticket_id')->ignore($customer_followup->id)],
             'order_id' => 'nullable|string|max:64',
+            'sku' => 'nullable|string|max:128',
             'channel_master_id' => 'nullable|integer',
             'customer_name' => 'required|string|max:255',
             'email' => 'nullable|email|max:255',
