@@ -18,6 +18,8 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Carbon\Carbon;
 use PhpOffice\PhpSpreadsheet\IOFactory;
+use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
+use App\Support\TemuGoodsIdHelper;
 
 class TemuAdsController extends Controller
 {
@@ -433,96 +435,104 @@ class TemuAdsController extends Controller
 
             $file = $request->file('file');
             $reportRange = $request->input('report_range');
-            
+
             $spreadsheet = IOFactory::load($file->getPathName());
             $sheet = $spreadsheet->getActiveSheet();
-            $rows = $sheet->toArray();
+            $headerRow = $sheet->rangeToArray('A1:'.$sheet->getHighestColumn().'1', null, true, false)[0] ?? [];
+            $headers = array_map(function ($h) {
+                return is_string($h) ? trim($h) : $h;
+            }, $headerRow);
 
-            // Get headers from first row
-            $headers = $rows[0];
-            unset($rows[0]); // Remove header row
-            
-            $totalRowsBeforeFilter = count($rows);
-            $totalRowsRemoved = 0;
-            
-            // Skip rows that contain "Total" in first column (summary rows)
-            // Only skip if first column contains "Total" and it's likely a summary row
-            foreach ($rows as $key => $row) {
-                $firstCell = trim($row[0] ?? '');
-                // Check if first cell contains "Total" (case insensitive) - this is likely a summary row
-                if (!empty($firstCell) && stripos($firstCell, 'Total') !== false) {
-                    unset($rows[$key]);
-                    $totalRowsRemoved++;
-                }
+            $goodsIdColIdx = array_search('Goods ID', $headers, true);
+            if ($goodsIdColIdx === false) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Excel must contain a column named exactly "Goods ID".',
+                ], 422);
             }
-            
-            $totalRowsAfterFilter = count($rows);
+
+            $parseCurrency = function ($value) {
+                if (empty($value) || $value === '∞') {
+                    return null;
+                }
+
+                return floatval(str_replace(['$', ','], '', $value));
+            };
+            $parsePercent = function ($value) {
+                if (empty($value) || $value === '∞') {
+                    return null;
+                }
+
+                return floatval(str_replace('%', '', $value));
+            };
 
             $imported = 0;
             $skipped = 0;
+            $highestRow = (int) $sheet->getHighestDataRow();
+            $numCols = count($headers);
 
             DB::beginTransaction();
             try {
-                // Delete existing data for this report_range before inserting new data
                 TemuCampaignReport::where('report_range', $reportRange)->delete();
-                
-                foreach ($rows as $index => $row) {
-                    // Skip empty rows
-                    if (empty(array_filter($row))) {
+
+                for ($rowNum = 2; $rowNum <= $highestRow; $rowNum++) {
+                    $firstCell = $sheet->getCell(Coordinate::stringFromColumnIndex(1).$rowNum)->getValue();
+                    if ($firstCell !== null && $firstCell !== '' && stripos((string) $firstCell, 'Total') !== false) {
                         $skipped++;
+
                         continue;
                     }
 
-                    // Ensure row has same number of elements as headers
-                    if (count($row) !== count($headers)) {
-                        // Pad row or trim to match header count
-                        $row = array_slice(array_pad($row, count($headers), null), 0, count($headers));
+                    $row = [];
+                    for ($c = 1; $c <= $numCols; $c++) {
+                        $row[] = $sheet->getCell(Coordinate::stringFromColumnIndex($c).$rowNum)->getValue();
                     }
-
-                    $rowData = array_combine($headers, $row);
-                    
-                    // Skip if goods_id is empty (required field)
-                    if (empty($rowData['Goods ID'] ?? null)) {
+                    if (empty(array_filter($row, fn ($v) => $v !== null && $v !== ''))) {
                         $skipped++;
+
                         continue;
                     }
-                    
-                    // Helper function to parse currency values
-                    $parseCurrency = function($value) {
-                        if (empty($value) || $value === '∞') return null;
-                        return floatval(str_replace(['$', ','], '', $value));
-                    };
-                    
-                    // Helper function to parse percentage values
-                    $parsePercent = function($value) {
-                        if (empty($value) || $value === '∞') return null;
-                        return floatval(str_replace('%', '', $value));
-                    };
+
+                    $rowData = @array_combine($headers, array_pad(array_slice($row, 0, $numCols), $numCols, null));
+                    if (! is_array($rowData)) {
+                        $skipped++;
+
+                        continue;
+                    }
+
+                    $goodsCell = $sheet->getCell(Coordinate::stringFromColumnIndex($goodsIdColIdx + 1).$rowNum);
+                    $goodsIdNormalized = TemuGoodsIdHelper::fromSpreadsheetCell($goodsCell);
+                    if (! $goodsIdNormalized) {
+                        $skipped++;
+                        Log::warning("Temu campaign report upload ({$reportRange}): skipped row {$rowNum} — missing Goods ID");
+
+                        continue;
+                    }
 
                     try {
                         $campaignData = [
                             'goods_name' => $rowData['Goods name'] ?? null,
-                            'goods_id' => trim($rowData['Goods ID'] ?? ''),
+                            'goods_id' => $goodsIdNormalized,
                             'report_range' => $reportRange,
                             'spend' => $parseCurrency($rowData['Spend'] ?? null),
                             'base_price_sales' => $parseCurrency($rowData['Base price sales'] ?? null),
                             'roas' => floatval($rowData['ROAS'] ?? 0),
                             'acos_ad' => $parsePercent($rowData['ACOS(AD)'] ?? null),
                             'cost_per_transaction' => $parseCurrency($rowData['Cost per transaction'] ?? null),
-                            'sub_orders' => !empty($rowData['Sub-Orders']) ? (int)$rowData['Sub-Orders'] : 0,
-                            'items' => !empty($rowData['Items']) ? (int)$rowData['Items'] : 0,
+                            'sub_orders' => ! empty($rowData['Sub-Orders']) ? (int) $rowData['Sub-Orders'] : 0,
+                            'items' => ! empty($rowData['Items']) ? (int) $rowData['Items'] : 0,
                             'net_total_cost' => $parseCurrency($rowData['Net total cost'] ?? null),
                             'net_declared_sales' => $parseCurrency($rowData['Net declared sales'] ?? null),
                             'net_roas' => floatval($rowData['Net advertising return on investment (ROAS)'] ?? 0),
                             'net_acos_ad' => $parsePercent($rowData['Net advertising cost ratio (advertising)'] ?? null),
                             'net_cost_per_transaction' => $parseCurrency($rowData['Net cost per transaction'] ?? null),
-                            'net_orders' => !empty($rowData['Net Orders']) ? (int)$rowData['Net Orders'] : 0,
-                            'net_number_pieces' => !empty($rowData['Net number of pieces']) ? (int)$rowData['Net number of pieces'] : 0,
-                            'impressions' => !empty($rowData['Impressions']) ? (int)str_replace(',', '', $rowData['Impressions']) : 0,
-                            'clicks' => !empty($rowData['Clicks']) ? (int)str_replace(',', '', $rowData['Clicks']) : 0,
+                            'net_orders' => ! empty($rowData['Net Orders']) ? (int) $rowData['Net Orders'] : 0,
+                            'net_number_pieces' => ! empty($rowData['Net number of pieces']) ? (int) $rowData['Net number of pieces'] : 0,
+                            'impressions' => ! empty($rowData['Impressions']) ? (int) str_replace(',', '', $rowData['Impressions']) : 0,
+                            'clicks' => ! empty($rowData['Clicks']) ? (int) str_replace(',', '', $rowData['Clicks']) : 0,
                             'ctr' => $parsePercent($rowData['CTR'] ?? null),
                             'cvr' => $parsePercent($rowData['Conversion Rate (CVR)'] ?? null),
-                            'add_to_cart_number' => !empty($rowData['Add-to-cart number']) ? (int)str_replace(',', '', $rowData['Add-to-cart number']) : 0,
+                            'add_to_cart_number' => ! empty($rowData['Add-to-cart number']) ? (int) str_replace(',', '', $rowData['Add-to-cart number']) : 0,
                             'weekly_roas' => floatval($rowData['Weekly ROAS'] ?? 0),
                             'target' => floatval($rowData['Target'] ?? 0),
                         ];
@@ -531,7 +541,8 @@ class TemuAdsController extends Controller
                         $imported++;
                     } catch (\Exception $e) {
                         $skipped++;
-                        Log::warning("Failed to import row: " . ($rowData['Goods ID'] ?? 'unknown') . " - " . $e->getMessage());
+                        Log::warning("Failed to import campaign row {$rowNum}: ".$e->getMessage());
+
                         continue;
                     }
                 }

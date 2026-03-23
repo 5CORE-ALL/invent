@@ -5,9 +5,6 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
-/**
- * L7 sales upload table — same schema as temu_daily_data / temu_daily_data_l60.
- */
 class TemuDailyDataL7 extends Model
 {
     use HasFactory;
