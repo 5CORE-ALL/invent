@@ -629,6 +629,16 @@
             font-weight: 700;
             line-height: 1;
         }
+
+        /* DIL % — same visual weight as Forecast Analysis DIL column */
+        .productmaster-dil-pct {
+            font-weight: 700;
+            font-size: 0.95rem;
+            background: none !important;
+            border: none !important;
+            padding: 0;
+            border-radius: 0;
+        }
     </style>
 @endsection
 
@@ -1401,8 +1411,9 @@
                                     </th>
                                     <th>UPC</th>
                                     <th>Status</th>
-                                    <th>INV</th>
+                                    <th>Inventory</th>
                                     <th>OV L30</th>
+                                    <th>DIL</th>
                                     <th>Unit</th>
                                     <th>LP</th>
                                     <th>CP$</th>
@@ -1507,7 +1518,8 @@
                 document.querySelectorAll('.missing-data-filter').forEach(filter => {
                     const columnName = filter.getAttribute('data-column');
                     if (columnName && filter.value !== 'all') {
-                        currentFilterValues[columnName] = filter.value;
+                        const key = columnName === 'INV' ? 'Inventory' : columnName;
+                        currentFilterValues[key] = filter.value;
                     }
                 });
                 
@@ -1591,7 +1603,7 @@
                 tbody.innerHTML = '';
 
                 if (data.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="17" class="text-center">No products found</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="18" class="text-center">No products found</td></tr>';
                     return;
                 }
 
@@ -1604,7 +1616,7 @@
 
                 // All available columns
                 const allColumns = [
-                    "Image", "Parent", "SKU", "UPC", "Status", "INV", "OV L30", "Unit", "LP", "CP$",
+                    "Image", "Parent", "SKU", "UPC", "Status", "Inventory", "OV L30", "DIL", "Unit", "LP", "CP$",
                     "FRGHT", "SHIP", "TEMU SHIP", "MOQ", "EBAY2 SHIP", "Label QTY", "WT ACT", "WT DECL", "Length", "Width", "Height",
                     "CBM", "Url", "Verified", "Action"
                 ];
@@ -1715,12 +1727,26 @@
                                     cell.className = 'text-center';
                                     cell.textContent = formatNumber(item.upc, 0);
                                     break;
-                                case "INV":
+                                case "Inventory":
                                     cell.innerHTML = `<b>${totals.inv}</b>`;
                                     break;
                                 case "OV L30":
                                     cell.innerHTML = `<b>${totals.ovl30}</b>`;
                                     break;
+                                case "DIL": {
+                                    const ovl = totals.ovl30 || 0;
+                                    const inv = totals.inv || 0;
+                                    cell.className = 'text-center';
+                                    if (inv === 0) {
+                                        cell.innerHTML = '<b>-</b>';
+                                    } else {
+                                        const ratio = ovl / inv;
+                                        const col = getDilTextColor(ratio);
+                                        const pct = Math.round(ratio * 100);
+                                        cell.innerHTML = `<span class="productmaster-dil-pct" style="color:${col};">${pct}%</span>`;
+                                    }
+                                    break;
+                                }
                                 case "STATUS":
                                     cell.innerHTML = getStatusDot(item.status);
                                     break;
@@ -1924,7 +1950,7 @@
                                     }
                                 }
                                 break;
-                            case "INV":
+                            case "Inventory":
                                 if (item.shopify_inv === 0 || item.shopify_inv === "0") {
                                     cell.textContent = "0";
                                 } else if (item.shopify_inv === null || item.shopify_inv === undefined || item.shopify_inv === "") {
@@ -1944,6 +1970,26 @@
                                     cell.textContent = escapeHtml(item.shopify_quantity);
                                 }
                                 break;
+                            case "DIL": {
+                                const invMissing = item.shopify_inv === null || item.shopify_inv === undefined || item.shopify_inv === "";
+                                const ovlMissing = item.shopify_quantity === null || item.shopify_quantity === undefined || item.shopify_quantity === "";
+                                if (invMissing || ovlMissing) {
+                                    cell.innerHTML = '<span class="missing-data-indicator" title="Missing Data">M</span>';
+                                } else {
+                                    const inv = Number(item.shopify_inv) || 0;
+                                    const ovl = Number(item.shopify_quantity) || 0;
+                                    cell.className = 'text-center';
+                                    if (inv === 0) {
+                                        cell.textContent = '-';
+                                    } else {
+                                        const ratio = ovl / inv;
+                                        const col = getDilTextColor(ratio);
+                                        const pct = Math.round(ratio * 100);
+                                        cell.innerHTML = `<span class="productmaster-dil-pct" style="color:${col};">${pct}%</span>`;
+                                    }
+                                }
+                                break;
+                            }
                             case "STATUS":
                                 isMissing = isDataMissing(item.status);
                                 cellContent = getStatusDot(item.status);
@@ -2761,12 +2807,16 @@
                 document.querySelectorAll('.missing-data-filter').forEach(filter => {
                     const columnName = filter.getAttribute('data-column');
                     if (columnName) {
-                        // Use global value if available, otherwise use current DOM value
-                        if (!existingFilterValues[columnName]) {
-                            existingFilterValues[columnName] = filter.value;
+                        const key = columnName === 'INV' ? 'Inventory' : columnName;
+                        if (!existingFilterValues[key]) {
+                            existingFilterValues[key] = filter.value;
                         }
                     }
                 });
+                if (existingFilterValues['INV'] !== undefined && existingFilterValues['Inventory'] === undefined) {
+                    existingFilterValues['Inventory'] = existingFilterValues['INV'];
+                    delete existingFilterValues['INV'];
+                }
                 // Update global filter values
                 currentFilterValues = {...existingFilterValues};
 
@@ -2789,7 +2839,7 @@
 
                 // All available columns
                 const allColumns = [
-                    "Images", "Parent", "SKU", "UPC","STATUS", "INV", "OV L30", "Unit", "LP", "CP$",
+                    "Images", "Parent", "SKU", "UPC","STATUS", "Inventory", "OV L30", "DIL", "Unit", "LP", "CP$",
                     "FRGHT", "SHIP", "TEMU SHIP", "MOQ", "EBAY2 SHIP", "Label QTY", "WT ACT", "WT DECL", "Length", "Width", "Height",
                     "CBM", "Url", "Verified", "Action"
                 ];
@@ -2807,7 +2857,7 @@
                     </div>
                     <input type="text" id="${colName.toLowerCase()}Search" class="form-control-sm" placeholder="Search ${colName}">
                 `;
-                        } else if (colName === "Action" || colName === "Verified") {
+                        } else if (colName === "Action" || colName === "Verified" || colName === "DIL") {
                             th.textContent = colName;
                         } else if (colName === "STATUS") {
                             // Special handling for STATUS column with all status options
@@ -2823,6 +2873,16 @@
                         <option value="DC" ${savedFilterValue === 'DC' ? 'selected' : ''}>🔴 DC</option>
                         <option value="upcoming" ${savedFilterValue === 'upcoming' ? 'selected' : ''}>🟡 Upcoming</option>
                         <option value="2BDC" ${savedFilterValue === '2BDC' ? 'selected' : ''}>🔵 2BDC</option>
+                    </select>
+                `;
+                        } else if (colName === "Inventory") {
+                            const filterId = `filter${colName.replace(/\s+/g, '').replace(/[()]/g, '')}`;
+                            const invSaved = existingFilterValues && existingFilterValues[colName] ? existingFilterValues[colName] : 'all';
+                            th.innerHTML = `
+                    <div style="font-size: 9px;">${colName}</div>
+                    <select id="${filterId}" class="form-control form-control-sm mt-1 missing-data-filter" style="font-size: 9px; padding: 2px 4px;" data-column="${colName}">
+                        <option value="all" ${invSaved === 'all' ? 'selected' : ''}>All</option>
+                        <option value="0" ${invSaved === '0' ? 'selected' : ''}>0</option>
                     </select>
                 `;
                         } else {
@@ -2947,7 +3007,8 @@
 
             // Update filter styling based on selected value
             function updateFilterStyling(filter) {
-                if (filter.value === 'missing') {
+                const col = filter.getAttribute('data-column');
+                if (filter.value === 'missing' || (filter.value === '0' && col === 'Inventory')) {
                     filter.style.backgroundColor = '#fecaca';
                     filter.style.color = '#dc2626';
                     filter.style.fontWeight = 'bold';
@@ -3214,16 +3275,17 @@
                     );
                 }
 
-                // Check if any missing data filter is active
-                let hasMissingDataFilter = false;
+                let excludeParentRowsForColumnFilter = false;
                 document.querySelectorAll('.missing-data-filter').forEach(filter => {
                     if (filter.value === 'missing') {
-                        hasMissingDataFilter = true;
+                        excludeParentRowsForColumnFilter = true;
+                    }
+                    if (filter.value === '0' && filter.getAttribute('data-column') === 'Inventory') {
+                        excludeParentRowsForColumnFilter = true;
                     }
                 });
 
-                // Exclude parent rows when any missing data filter is active
-                if (hasMissingDataFilter) {
+                if (excludeParentRowsForColumnFilter) {
                     filteredData = filteredData.filter(item => {
                         // Exclude parent rows (SKU contains 'PARENT')
                         return !(item.SKU && item.SKU.toUpperCase().includes('PARENT'));
@@ -3235,6 +3297,15 @@
                     const filterValue = filter.value;
                     const columnName = filter.getAttribute('data-column');
                     if (!columnName || filterValue === 'all') return; // Skip if no column name or 'all' selected
+
+                    if (columnName === 'Inventory' && filterValue === '0') {
+                        filteredData = filteredData.filter(item => {
+                            const v = item.shopify_inv;
+                            if (v === null || v === undefined || v === '') return false;
+                            return Number(v) === 0;
+                        });
+                        return;
+                    }
                     
                     const fieldName = getFieldNameFromColumn(columnName);
                     
@@ -3274,6 +3345,14 @@
                             return value && String(value).toLowerCase() === String(filterValue).toLowerCase();
                         });
                     } else if (filterValue === 'missing') {
+                        if (columnName === 'DIL') {
+                            filteredData = filteredData.filter(item => {
+                                const invMissing = item.shopify_inv === null || item.shopify_inv === undefined || item.shopify_inv === "";
+                                const ovlMissing = item.shopify_quantity === null || item.shopify_quantity === undefined || item.shopify_quantity === "";
+                                const inv = Number(item.shopify_inv) || 0;
+                                return invMissing || ovlMissing || inv === 0;
+                            });
+                        } else {
                         // Original missing data filter logic
                         filteredData = filteredData.filter(item => {
                             let value = null;
@@ -3305,7 +3384,7 @@
                             }
                             
                             // Determine if numeric based on column
-                            const numericColumns = ['LP', 'CP$', 'FRGHT', 'SHIP', 'TEMU SHIP', 'MOQ', 'EBAY2 SHIP', 'Label QTY', 'WT ACT', 'WT DECL', 'Length', 'Width', 'Height', 'CBM', 'UPC', 'INV', 'OV L30'];
+                            const numericColumns = ['LP', 'CP$', 'FRGHT', 'SHIP', 'TEMU SHIP', 'MOQ', 'EBAY2 SHIP', 'Label QTY', 'WT ACT', 'WT DECL', 'Length', 'Width', 'Height', 'CBM', 'UPC', 'Inventory', 'OV L30'];
                             const isNumeric = numericColumns.includes(columnName);
                             
                             // Special handling for dimensions and weights - treat 0 as missing
@@ -3316,6 +3395,7 @@
                             
                             return isDataMissing(value, isNumeric);
                         });
+                        }
                     }
                 });
 
@@ -3370,8 +3450,7 @@
                 const defaultHiddenColumns = [...alwaysHiddenColumns];
 
                 if (currentUserEmail && emailColumnMap[currentUserEmail]) {
-                    // Merge user-specific hidden columns with always hidden columns
-                    const userHiddenColumns = emailColumnMap[currentUserEmail];
+                    const userHiddenColumns = (emailColumnMap[currentUserEmail] || []).map(c => c === 'INV' ? 'Inventory' : c);
                     return [...new Set([...alwaysHiddenColumns, ...userHiddenColumns])];
                 }
 
@@ -3385,7 +3464,7 @@
                     downloadExcelBtn.addEventListener('click', function() {
                     const hiddenColumns = getUserHiddenColumns();
                     const allColumns = [
-                        "Parent", "SKU", "UPC", "INV", "OV L30", "STATUS", "Unit", "LP", "CP$",
+                        "Parent", "SKU", "UPC", "Inventory", "OV L30", "DIL", "STATUS", "Unit", "LP", "CP$",
                         "FRGHT", "SHIP", "TEMU SHIP", "MOQ", "EBAY2 SHIP", "Label QTY", "WT ACT", "WT DECL", "Length", "Width", "Height",
                         "CBM", "Image", "Url", "Verified", "DC", "Pcs/Box", "B", "H1", "Weight", "MSRP", "MAP"
                     ];
@@ -3404,7 +3483,7 @@
                         "UPC": {
                             key: "upc"
                         },
-                        "INV": {
+                        "Inventory": {
                             key: "shopify_inv"
                         },
                         "OV L30": {
@@ -3508,6 +3587,18 @@
                             tableData.forEach(item => {
                                 const row = [];
                                 visibleColumns.forEach(col => {
+                                    if (col === 'DIL') {
+                                        const invMissing = item.shopify_inv === null || item.shopify_inv === undefined || item.shopify_inv === '';
+                                        const ovlMissing = item.shopify_quantity === null || item.shopify_quantity === undefined || item.shopify_quantity === '';
+                                        let dilVal = '';
+                                        if (!invMissing && !ovlMissing) {
+                                            const inv = Number(item.shopify_inv) || 0;
+                                            const ovl = Number(item.shopify_quantity) || 0;
+                                            if (inv !== 0) dilVal = `${Math.round((ovl / inv) * 100)}%`;
+                                        }
+                                        row.push(dilVal);
+                                        return;
+                                    }
                                     const colDef = columnDefs[col];
                                     if (colDef) {
                                         const key = colDef.key;
@@ -4820,28 +4911,46 @@
                     );
                 }
 
-                // Check if any missing data filter is active
-                let hasMissingDataFilter = false;
+                let excludeParentRowsForColumnFilter = false;
                 document.querySelectorAll('.missing-data-filter').forEach(filter => {
                     if (filter.value === 'missing') {
-                        hasMissingDataFilter = true;
+                        excludeParentRowsForColumnFilter = true;
+                    }
+                    if (filter.value === '0' && filter.getAttribute('data-column') === 'Inventory') {
+                        excludeParentRowsForColumnFilter = true;
                     }
                 });
 
-                // Exclude parent rows when any missing data filter is active
-                if (hasMissingDataFilter) {
+                if (excludeParentRowsForColumnFilter) {
                     filteredData = filteredData.filter(item => {
-                        // Exclude parent rows (SKU contains 'PARENT')
                         return !(item.SKU && item.SKU.toUpperCase().includes('PARENT'));
                     });
                 }
 
-                // Apply missing data filters for each column
+                // Apply column filters (Inventory = 0, missing data, etc.)
                 document.querySelectorAll('.missing-data-filter').forEach(filter => {
                     const filterValue = filter.value;
+                    const columnName = filter.getAttribute('data-column');
+                    if (!columnName || filterValue === 'all') return;
+
+                    if (columnName === 'Inventory' && filterValue === '0') {
+                        filteredData = filteredData.filter(item => {
+                            const v = item.shopify_inv;
+                            if (v === null || v === undefined || v === '') return false;
+                            return Number(v) === 0;
+                        });
+                        return;
+                    }
+
                     if (filterValue === 'missing') {
-                        const columnName = filter.getAttribute('data-column');
-                        if (!columnName) return; // Skip if no column name
+                        if (columnName === 'DIL') {
+                            filteredData = filteredData.filter(item => {
+                                const invMissing = item.shopify_inv === null || item.shopify_inv === undefined || item.shopify_inv === "";
+                                const ovlMissing = item.shopify_quantity === null || item.shopify_quantity === undefined || item.shopify_quantity === "";
+                                const inv = Number(item.shopify_inv) || 0;
+                                return invMissing || ovlMissing || inv === 0;
+                            });
+                        } else {
                         const fieldName = getFieldNameFromColumn(columnName);
                         
                         filteredData = filteredData.filter(item => {
@@ -4874,7 +4983,7 @@
                             }
                             
                             // Determine if numeric based on column
-                            const numericColumns = ['LP', 'CP$', 'FRGHT', 'SHIP', 'TEMU SHIP', 'MOQ', 'EBAY2 SHIP', 'Label QTY', 'WT ACT', 'WT DECL', 'Length', 'Width', 'Height', 'CBM', 'UPC', 'INV', 'OV L30'];
+                            const numericColumns = ['LP', 'CP$', 'FRGHT', 'SHIP', 'TEMU SHIP', 'MOQ', 'EBAY2 SHIP', 'Label QTY', 'WT ACT', 'WT DECL', 'Length', 'Width', 'Height', 'CBM', 'UPC', 'Inventory', 'OV L30'];
                             const isNumeric = numericColumns.includes(columnName);
                             
                             // Special handling for dimensions and weights - treat 0 as missing
@@ -4885,6 +4994,7 @@
                             
                             return isDataMissing(value, isNumeric);
                         });
+                        }
                     }
                 });
 
@@ -5622,6 +5732,15 @@
             }
 
             // Utility functions
+            /** DIL % text color — same rules as Forecast Analysis `getDilTextColor` (ov_l30 / inv as decimal). */
+            function getDilTextColor(ratio) {
+                const percent = parseFloat(ratio) * 100;
+                if (isNaN(percent)) return '#6c757d';
+                if (percent < 16.66) return '#b71c1c';
+                if (percent < 50) return '#1b5e20';
+                return '#ad1457';
+            }
+
             function escapeHtml(str) {
                 if (!str) return '';
                 return String(str)
@@ -5668,7 +5787,7 @@
                     "Parent": "Parent",
                     "SKU": "SKU",
                     "UPC": "upc",
-                    "INV": "shopify_inv",
+                    "Inventory": "shopify_inv",
                     "OV L30": "shopify_quantity",
                     "Unit": "unit",
                     "LP": "lp",
@@ -5698,7 +5817,7 @@
                     "Parent": "Parent",
                     "SKU": "SKU",
                     "upc": "UPC",
-                    "shopify_inv": "INV",
+                    "shopify_inv": "Inventory",
                     "shopify_quantity": "OV L30",
                     "unit": "Unit",
                     "lp": "LP",
