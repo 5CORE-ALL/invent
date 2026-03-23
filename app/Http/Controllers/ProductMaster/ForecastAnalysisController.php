@@ -568,30 +568,35 @@ class ForecastAnalysisController extends Controller
             }
 
             // Stage from pipeline qtys: Transit → R2S → MIP → 2 Order; none → Select (empty)
+            // Never auto-overwrite appr_req / all_good — those are set from the grid and must survive refresh.
             if (! $item->is_parent) {
-                $qtyTransit = (float) ($item->transit ?? 0);
-                $qtyR2s = (float) ($item->readyToShipQty ?? 0);
-                $qtyMip = (float) ($item->order_given ?? 0);
-                // 2 Order column = to_order_analysis approved qty only (not Appr.req MOQ)
-                $qtyTwoOrder = (float) ($toOrderApprovedBySku->get($sheetSku, 0));
-                if ($qtyTransit > 0) {
-                    $derivedStage = 'transit';
-                } elseif ($qtyR2s > 0) {
-                    $derivedStage = 'r2s';
-                } elseif ($qtyMip > 0) {
-                    $derivedStage = 'mip';
-                } elseif ($qtyTwoOrder > 0) {
-                    $derivedStage = 'to_order_analysis';
-                } else {
-                    $derivedStage = '';
-                }
                 $currentStage = strtolower(trim((string) ($item->stage ?? '')));
-                if ($currentStage !== $derivedStage) {
-                    DB::table('forecast_analysis')
-                        ->whereRaw('TRIM(LOWER(sku)) = ?', [strtolower($sheetSku)])
-                        ->update(['stage' => $derivedStage, 'updated_at' => now()]);
+                $manualStages = ['appr_req', 'all_good'];
+
+                if (! in_array($currentStage, $manualStages, true)) {
+                    $qtyTransit = (float) ($item->transit ?? 0);
+                    $qtyR2s = (float) ($item->readyToShipQty ?? 0);
+                    $qtyMip = (float) ($item->order_given ?? 0);
+                    // 2 Order column = to_order_analysis approved qty only (not Appr.req MOQ)
+                    $qtyTwoOrder = (float) ($toOrderApprovedBySku->get($sheetSku, 0));
+                    if ($qtyTransit > 0) {
+                        $derivedStage = 'transit';
+                    } elseif ($qtyR2s > 0) {
+                        $derivedStage = 'r2s';
+                    } elseif ($qtyMip > 0) {
+                        $derivedStage = 'mip';
+                    } elseif ($qtyTwoOrder > 0) {
+                        $derivedStage = 'to_order_analysis';
+                    } else {
+                        $derivedStage = '';
+                    }
+                    if ($currentStage !== $derivedStage) {
+                        DB::table('forecast_analysis')
+                            ->whereRaw('TRIM(LOWER(sku)) = ?', [strtolower($sheetSku)])
+                            ->update(['stage' => $derivedStage, 'updated_at' => now()]);
+                    }
+                    $item->stage = $derivedStage;
                 }
-                $item->stage = $derivedStage;
             }
 
             $item->product_master_moq = $productMasterMoq;

@@ -129,6 +129,19 @@
             border-radius: 0;
         }
 
+        /* Table fills one screen: height set in JS from viewport; slightly tighter rows */
+        #forecast-table-wrap {
+            width: 100%;
+            min-height: 220px;
+        }
+        #forecast-table-wrap .tabulator .tabulator-cell {
+            padding-top: 3px;
+            padding-bottom: 3px;
+        }
+        #forecast-table-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-content {
+            padding: 5px 4px;
+        }
+
     </style>
 @endsection
 
@@ -141,7 +154,7 @@
     <div class="row">
         <div class="col-12">
             <div class="card shadow-sm">
-                <div class="card-body">
+                <div class="card-body pb-2 d-flex flex-column">
                     <div class="mb-3 d-flex align-items-center gap-3">
                         <!-- Play/Pause Controls -->
                         <div class="d-flex align-items-center me-3">
@@ -170,9 +183,10 @@
 
                         <div class="d-flex align-items-center flex-wrap gap-2">
                             <!-- Stage Filter (before Column) -->
-                            <select id="stage-filter" class="form-select-sm border border-primary" style="width: 118px;">
+                            <select id="stage-filter" class="form-select-sm border border-primary" style="width: 132px;">
                                 <option value="">All</option>
                                 <option value="__blank__">sel</option>
+                                <option value="appr_req">Appr Req</option>
                                 <option value="mip">MIP</option>
                                 <option value="r2s">R2S</option>
                                 <option value="transit">Trn</option>
@@ -336,8 +350,9 @@
                             </button>
                             <ul class="dropdown-menu" aria-labelledby="bulkEditStageBtn">
                                 <li class="px-3 py-2">
-                                    <select id="bulk-stage-select" class="form-select form-select-sm" style="min-width: 140px;">
+                                    <select id="bulk-stage-select" class="form-select form-select-sm" style="min-width: 160px;">
                                         <option value="">Select stage...</option>
+                                        <option value="appr_req">Appr Req</option>
                                         <option value="mip">MIP</option>
                                         <option value="r2s">R2S</option>
                                         <option value="transit">Trn</option>
@@ -385,7 +400,9 @@
                             </ul>
                         </div>
                     </div>
-                    <div id="forecast-table"></div>
+                    <div id="forecast-table-wrap" class="flex-grow-1" style="min-height: 0;">
+                        <div id="forecast-table"></div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -585,7 +602,7 @@
             paginationCounter: "rows",
             movableColumns: false,
             resizableColumns: true,
-            height: "650px",
+            height: 400,
             index: "SKU",
             editTriggerEvent: "dblclick",
             selectableRows: true,
@@ -810,6 +827,97 @@
                     formatter: function(cell) {
                         const value = cell.getValue() || 0;
                         return `<div style="text-align:center; font-weight:bold;">${value.toFixed(0)}</div>`;
+                    }
+                },
+                {
+                    title: "Stage",
+                    field: "stage",
+                    minWidth: 86,
+                    width: 92,
+                    maxWidth: 110,
+                    accessor: function(row) {
+                        const stageValue = row?.["stage"] ?? '';
+                        return stageValue ? String(stageValue).trim().toLowerCase() : '';
+                    },
+                    headerSort: false,
+                    titleFormatter: function() {
+                        const wrap = document.createElement("span");
+                        wrap.className = "d-inline-flex align-items-center justify-content-center gap-1";
+                        const icon = document.createElement("i");
+                        icon.className = "bi bi-funnel-fill";
+                        icon.setAttribute("title", "Stage filter");
+                        wrap.appendChild(icon);
+                        wrap.appendChild(document.createTextNode(" Stage"));
+                        return wrap;
+                    },
+                    headerFilter: "list",
+                    headerFilterParams: {
+                        values: {
+                            "": "All",
+                            "__blank__": "sel",
+                            "appr_req": "Appr Req",
+                            "mip": "MIP",
+                            "r2s": "R2S",
+                            "transit": "Trn",
+                            "to_order_analysis": "Ord"
+                        },
+                        clearable: false,
+                        listOnEmpty: true
+                    },
+                    headerFilterEmptyCheck: function(value) {
+                        return value === "" || value === null || value === undefined;
+                    },
+                    headerFilterFunc: function() {
+                        return true;
+                    },
+                    formatter: function(cell) {
+                        let value = cell.getValue() ?? '';
+                        value = String(value).trim().toLowerCase();
+                        const rowData = cell.getRow().getData();
+
+                        const allGoodLegacy = value === 'all_good'
+                            ? '<option value="all_good" selected>😊 All Good</option>'
+                            : '';
+                        return `
+                        <select class="form-select form-select-sm editable-select"
+                            data-type="Stage"
+                            data-sku='${rowData["SKU"]}'
+                            data-parent='${rowData["Parent"]}'
+                            style="width: 100%; max-width: 100%; min-width: 0; padding: 4px 20px 4px 6px;
+                                font-size: 0.8rem; border-radius: 4px; border: 1px solid #dee2e6;
+                                background-color: #fff;">
+                            <option value="">sel</option>
+                            ${allGoodLegacy}
+                            <option value="appr_req" ${value === 'appr_req' ? 'selected' : ''}>Appr Req</option>
+                            <option value="mip" ${value === 'mip' ? 'selected' : ''}>MIP</option>
+                            <option value="r2s" ${value === 'r2s' ? 'selected' : ''}>R2S</option>
+                            <option value="transit" ${value === 'transit' ? 'selected' : ''}>Trn</option>
+                            <option value="to_order_analysis" ${value === 'to_order_analysis' ? 'selected' : ''}>Ord</option>
+                        </select>
+                    `;
+                    },
+                    cellCreated: function(cell) {
+                        const selectEl = cell.getElement().querySelector('select');
+                        if (selectEl) {
+                            let value = cell.getValue() ?? '';
+                            value = String(value).trim().toLowerCase();
+                            selectEl.value = value;
+                        }
+                    }
+                },
+                {
+                    title: "Appr Req",
+                    field: "appr_req_qty",
+                    accessor: row => (row ? row.appr_req_qty : null),
+                    sorter: "number",
+                    headerSort: true,
+                    hozAlign: "center",
+                    formatter: function(cell) {
+                        const v = parseFloat(cell.getValue());
+                        if (!v || isNaN(v)) {
+                            return '<div style="text-align:center;" class="text-muted">—</div>';
+                        }
+                        return `<div style="text-align:center;font-weight:bold;">${Number.isInteger(v) ? v : v.toFixed(2).replace(/\.?0+$/, '')}</div>`;
                     }
                 },
                 {
@@ -1402,87 +1510,6 @@
                     }
                 },
                 {
-                    title: "Stage",
-                    field: "stage",
-                    minWidth: 86,
-                    width: 92,
-                    maxWidth: 110,
-                    accessor: function(row) {
-                        const stageValue = row?.["stage"] ?? '';
-                        // Normalize stage value: trim and convert to lowercase
-                        return stageValue ? String(stageValue).trim().toLowerCase() : '';
-                    },
-                    headerSort: false,
-                    titleFormatter: function() {
-                        const wrap = document.createElement("span");
-                        wrap.className = "d-inline-flex align-items-center justify-content-center gap-1";
-                        const icon = document.createElement("i");
-                        icon.className = "bi bi-funnel-fill";
-                        icon.setAttribute("title", "Stage filter");
-                        wrap.appendChild(icon);
-                        wrap.appendChild(document.createTextNode(" Stage"));
-                        return wrap;
-                    },
-                    headerFilter: "list",
-                    headerFilterParams: {
-                        values: {
-                            "": "All",
-                            "__blank__": "sel",
-                            "mip": "MIP",
-                            "r2s": "R2S",
-                            "transit": "Trn",
-                            "to_order_analysis": "Ord"
-                        },
-                        clearable: false,
-                        listOnEmpty: true
-                    },
-                    headerFilterEmptyCheck: function(value) {
-                        return value === "" || value === null || value === undefined;
-                    },
-                    headerFilterFunc: function() {
-                        return true;
-                    },
-                    formatter: function(cell) {
-                        let value = cell.getValue() ?? '';
-                        // Ensure value is normalized (should already be from accessor, but double-check)
-                        value = String(value).trim().toLowerCase();
-                        const rowData = cell.getRow().getData();
-
-                        const apprLegacy = value === 'appr_req'
-                            ? '<option value="appr_req" selected>Appr. Req</option>'
-                            : '';
-                        const allGoodLegacy = value === 'all_good'
-                            ? '<option value="all_good" selected>😊 All Good</option>'
-                            : '';
-                        return `
-                        <select class="form-select form-select-sm editable-select"
-                            data-type="Stage"
-                            data-sku='${rowData["SKU"]}'
-                            data-parent='${rowData["Parent"]}'
-                            style="width: 100%; max-width: 100%; min-width: 0; padding: 4px 20px 4px 6px;
-                                font-size: 0.8rem; border-radius: 4px; border: 1px solid #dee2e6;
-                                background-color: #fff;">
-                            <option value="">sel</option>
-                            ${apprLegacy}
-                            ${allGoodLegacy}
-                            <option value="mip" ${value === 'mip' ? 'selected' : ''}>MIP</option>
-                            <option value="r2s" ${value === 'r2s' ? 'selected' : ''}>R2S</option>
-                            <option value="transit" ${value === 'transit' ? 'selected' : ''}>Trn</option>
-                            <option value="to_order_analysis" ${value === 'to_order_analysis' ? 'selected' : ''}>Ord</option>
-                        </select>
-                    `;
-                    },
-                    cellCreated: function(cell) {
-                        // Ensure the select element has the correct value set after creation
-                        const selectEl = cell.getElement().querySelector('select');
-                        if (selectEl) {
-                            let value = cell.getValue() ?? '';
-                            value = String(value).trim().toLowerCase();
-                            selectEl.value = value;
-                        }
-                    }
-                },
-                {
                     title: "NRP",
                     field: "nr",
                     minWidth: 52,
@@ -2047,8 +2074,10 @@
                     const r2sCount = allData.filter(row => notParent(row) && (parseFloat(row.readyToShipQty) || 0) > 0).length;
                     const transitCount = allData.filter(row => notParent(row) && (parseFloat(row.transit) || 0) > 0).length;
                     const twoOrderStageCount = allData.filter(row => notParent(row) && (parseFloat(row.two_order_qty) || 0) > 0).length;
+                    const apprReqStageCount = allData.filter(row => notParent(row) && (parseFloat(row.appr_req_qty) || 0) > 0).length;
                     table.updateColumnDefinition("msl", { title: "MSL (" + mslCount + ")" });
                     table.updateColumnDefinition("to_order", { title: "2 Ord (" + toOrderCount + ")" });
+                    table.updateColumnDefinition("appr_req_qty", { title: "Appr Req (" + apprReqStageCount + ")" });
                     table.updateColumnDefinition("two_order_qty", { title: "Order (" + twoOrderStageCount + ")" });
                     table.updateColumnDefinition("order_given", { title: "MIP (" + mipCount + ")" });
                     table.updateColumnDefinition("readyToShipQty", { title: "R2S (" + r2sCount + ")" });
@@ -2061,6 +2090,24 @@
                 console.error("Error loading data:", textStatus);
             },
         });
+
+        (function bindForecastTableViewportHeight() {
+            function applyForecastTableHeight() {
+                const wrap = document.getElementById('forecast-table-wrap');
+                if (!wrap || typeof table === 'undefined' || !table) return;
+                const top = wrap.getBoundingClientRect().top;
+                const px = Math.max(220, Math.floor(window.innerHeight - top - 12));
+                wrap.style.height = px + 'px';
+                if (typeof table.setHeight === 'function') {
+                    table.setHeight(px);
+                }
+            }
+            window.addEventListener('resize', function() { requestAnimationFrame(applyForecastTableHeight); });
+            table.on('tableBuilt', function() { requestAnimationFrame(applyForecastTableHeight); });
+            table.on('dataLoaded', function() { requestAnimationFrame(applyForecastTableHeight); });
+            window.addEventListener('load', function() { requestAnimationFrame(applyForecastTableHeight); });
+            requestAnimationFrame(applyForecastTableHeight);
+        })();
 
         window.forecastSuppliersList = [];
         function loadForecastSuppliers(callback) {

@@ -37,6 +37,18 @@
         #image-hover-preview {
             transition: opacity 0.2s ease;
         }
+
+        #forecast-table-wrap {
+            width: 100%;
+            min-height: 220px;
+        }
+        #forecast-table-wrap .tabulator .tabulator-cell {
+            padding-top: 3px;
+            padding-bottom: 3px;
+        }
+        #forecast-table-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-content {
+            padding: 5px 4px;
+        }
     </style>
 @endsection
 
@@ -53,7 +65,7 @@
     <div class="row">
         <div class="col-12">
             <div class="card shadow-sm">
-                <div class="card-body">
+                <div class="card-body pb-2 d-flex flex-column">
                     <div class="mb-3 d-flex align-items-center gap-3">
                         <!-- Play/Pause Controls -->
                         <div class="d-flex align-items-center me-3">
@@ -225,7 +237,9 @@
                         </div>
                     </div>
 
-                    <div id="forecast-table"></div>
+                    <div id="forecast-table-wrap" class="flex-grow-1" style="min-height: 0;">
+                        <div id="forecast-table"></div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -385,7 +399,7 @@
             paginationCounter: "rows",
             movableColumns: false,
             resizableColumns: true,
-            height: "650px",
+            height: 400,
             index: "SKU",
             rowFormatter: function(row) {
                 const data = row.getData();
@@ -757,6 +771,36 @@
                             <span style="font-weight:600;">${transit}</span><br>
                             <small class="text-info">${containerName}</small>
                         </div>`;
+                    }
+                },
+                {
+                    title: "Appr Req",
+                    field: "appr_req_qty",
+                    accessor: row => (row ? row.appr_req_qty : null),
+                    sorter: "number",
+                    headerSort: true,
+                    hozAlign: "center",
+                    formatter: function(cell) {
+                        const v = parseFloat(cell.getValue());
+                        if (!v || isNaN(v)) {
+                            return '<div style="text-align:center;" class="text-muted">—</div>';
+                        }
+                        return `<div style="text-align:center;font-weight:bold;">${Number.isInteger(v) ? v : v.toFixed(2).replace(/\.?0+$/, '')}</div>`;
+                    }
+                },
+                {
+                    title: "Order",
+                    field: "two_order_qty",
+                    accessor: row => (row ? row.two_order_qty : null),
+                    sorter: "number",
+                    headerSort: true,
+                    hozAlign: "center",
+                    formatter: function(cell) {
+                        const v = parseFloat(cell.getValue());
+                        if (!v || isNaN(v)) {
+                            return '<div style="text-align:center;" class="text-muted">—</div>';
+                        }
+                        return `<div style="text-align:center;font-weight:bold;">${Number.isInteger(v) ? v : v.toFixed(2).replace(/\.?0+$/, '')}</div>`;
                     }
                 },
 
@@ -1151,6 +1195,12 @@
 
                     const toOrder = Math.round(msl - inv - transit - orderGiven - r2s);
 
+                    const itemStage = item.stage || '';
+                    const stageNorm = String(itemStage || '').trim().toLowerCase();
+                    const moqNum = parseFloat(item.MOQ ?? item['Approved QTY']) || 0;
+                    const twoOrderQty = stageNorm === 'to_order_analysis' ? moqNum : 0;
+                    const apprReqQty = stageNorm === 'appr_req' ? moqNum : 0;
+
                     // if (toOrder == 0) {
                     //     return false;
                     // }
@@ -1180,6 +1230,8 @@
                         MSL_C: msl_c,
                         MSL_SP: msl_sp,
                         to_order: toOrder,
+                        two_order_qty: twoOrderQty,
+                        appr_req_qty: apprReqQty,
                         parentKey: parentKey,
                         s_msl: s_msl_val,
                         is_parent: isParent,
@@ -1212,6 +1264,35 @@
                 console.error("Error loading data:", textStatus);
             },
         });
+
+        (function bindApprovalTableViewportHeight() {
+            function applyApprovalTableHeight() {
+                const wrap = document.getElementById('forecast-table-wrap');
+                if (!wrap || typeof table === 'undefined' || !table) return;
+                const top = wrap.getBoundingClientRect().top;
+                const px = Math.max(220, Math.floor(window.innerHeight - top - 12));
+                wrap.style.height = px + 'px';
+                if (typeof table.setHeight === 'function') {
+                    table.setHeight(px);
+                }
+            }
+            window.addEventListener('resize', function() { requestAnimationFrame(applyApprovalTableHeight); });
+            table.on('tableBuilt', function() { requestAnimationFrame(applyApprovalTableHeight); });
+            table.on('dataLoaded', function() { requestAnimationFrame(applyApprovalTableHeight); });
+            window.addEventListener('load', function() { requestAnimationFrame(applyApprovalTableHeight); });
+            requestAnimationFrame(applyApprovalTableHeight);
+        })();
+
+        function approvalSyncPipelineQtys(row) {
+            if (!row) return;
+            const d = row.getData();
+            const st = String(d.stage || '').trim().toLowerCase();
+            const moqNum = parseFloat(d.MOQ) || 0;
+            row.update({
+                two_order_qty: st === 'to_order_analysis' ? moqNum : 0,
+                appr_req_qty: st === 'appr_req' ? moqNum : 0
+            }, true);
+        }
 
         let currentParentFilter = null;
         let currentColorFilter = 'yellow'; // Default to yellow filter
@@ -2068,7 +2149,10 @@
                             r.getData().SKU === sku && r.getData().Parent === parent
                         );
 
-                        if (row) row.update({ "MOQ": newValue });
+                        if (row) {
+                            row.update({ "MOQ": newValue });
+                            approvalSyncPipelineQtys(row);
+                        }
 
                         updateForecastField({
                             sku,
@@ -2191,10 +2275,10 @@
                                     r.getData().SKU === sku && r.getData().Parent === parent
                                 );
                                 if (row) {
-                                    // Update the row data - this will automatically trigger formatter
                                     row.update({
                                         stage: newValue
                                     }, true);
+                                    approvalSyncPipelineQtys(row);
                                 }
                             }
                         },
@@ -2246,11 +2330,13 @@
                         value: 'to_order_analysis'
                     },
                     function() {
-                        // Update the row data - formatter will automatically update button text to "2Order"
+                        const moqNum = parseFloat(row.getData().MOQ) || 0;
                         row.update({
-                            stage: 'to_order_analysis'
+                            stage: 'to_order_analysis',
+                            two_order_qty: moqNum,
+                            appr_req_qty: 0
                         }, true);
-                        
+
                         setCombinedFilters();
                     },
                     function() {
