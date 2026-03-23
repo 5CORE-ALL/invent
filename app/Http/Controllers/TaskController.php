@@ -109,6 +109,11 @@ class TaskController extends Controller
             $u->is_assignee = in_array($u->email, $assigneeEmails, true);
         }
 
+        $assignorOnTasksUsers = $users->filter(fn ($u) => $u->is_assignor)->sortBy('name')->values();
+        $assignorOtherUsers = $users->filter(fn ($u) => ! $u->is_assignor)->sortBy('name')->values();
+        $assigneeOnTasksUsers = $users->filter(fn ($u) => $u->is_assignee)->sortBy('name')->values();
+        $assigneeOtherUsers = $users->filter(fn ($u) => ! $u->is_assignee)->sortBy('name')->values();
+
         // TAT badge: average TAT (days from start_date to completion_date) for Done tasks completed in last 30 days
         $last30DoneQuery = (clone $tasksQuery)
             ->where('status', 'Done')
@@ -226,7 +231,19 @@ class TaskController extends Controller
             }
         }
 
-        return view('tasks.index', compact('stats', 'isAdmin', 'users', 'canDeleteAnyTask', 'tatChartData', 'missedChartData', 'selectedUserName'));
+        return view('tasks.index', compact(
+            'stats',
+            'isAdmin',
+            'users',
+            'canDeleteAnyTask',
+            'tatChartData',
+            'missedChartData',
+            'selectedUserName',
+            'assignorOnTasksUsers',
+            'assignorOtherUsers',
+            'assigneeOnTasksUsers',
+            'assigneeOtherUsers'
+        ));
     }
 
     public function getData()

@@ -343,6 +343,37 @@
                 padding: 15px !important;
             }
         }
+
+        /* Assignor / assignee filter: Select2 aligned with form-select-sm */
+        .filter-section .task-filter-user-select + .select2-container--bootstrap-5 .select2-selection {
+            min-height: calc(1.5em + 0.5rem + 2px);
+            padding: 0.25rem 0.5rem;
+            font-size: 0.875rem;
+            border-radius: 0.25rem;
+        }
+        .filter-section .select2-container--bootstrap-5 .select2-selection--single .select2-selection__rendered {
+            line-height: 1.5;
+            padding-left: 0;
+        }
+        .filter-section .select2-container--bootstrap-5 .select2-selection--single .select2-selection__arrow {
+            height: 100%;
+        }
+        .select2-container--bootstrap-5.select2-container--open {
+            z-index: 1060;
+        }
+
+        /* Filter bar: equal column widths on desktop, aligned row */
+        .filter-section.filter-section-eq {
+            align-items: center;
+        }
+        @media (min-width: 768px) {
+            .filter-section-eq > .col-12 {
+                flex: 1 1 0;
+                min-width: 0;
+                max-width: none;
+                width: auto;
+            }
+        }
         
         /* Mobile Task Cards */
         #mobile-tasks-view {
@@ -1478,6 +1509,10 @@
                                         <button type="button" class="btn btn-info ms-2" id="bulk-actions-btn">
                                             <i class="mdi mdi-format-list-checks me-2"></i> Bulk
                                         </button>
+
+                                        <button type="button" class="btn btn-warning text-dark ms-2" id="tasks-refresh-table-btn" title="Reload tasks from server (keeps your filters)">
+                                            <i class="mdi mdi-refresh me-2"></i> Refresh
+                                        </button>
                                         
                                         <!-- Playback Controls - Assignor -->
                                         <div class="btn-group task-playback-group task-playback-assignor ms-2" role="group" aria-label="Assignor playback">
@@ -1540,6 +1575,11 @@
                                         <i class="mdi mdi-format-list-checks"></i>
                                         <span>Bulk</span>
                                     </button>
+
+                                    <button type="button" class="mobile-action-btn btn-warning text-dark" id="tasks-refresh-table-btn-mobile" title="Reload tasks (keeps filters)">
+                                        <i class="mdi mdi-refresh"></i>
+                                        <span>Refresh</span>
+                                    </button>
                                 </div>
                             </div>
                         </div>
@@ -1586,38 +1626,60 @@
                         </div>
 
                         <!-- Search/Filter Bar -->
-                        <div class="row mb-2 py-2 px-2 filter-section" style="background: #f8f9fa; border-radius: 8px;">
+                        <div class="row g-2 mb-2 py-2 px-2 filter-section filter-section-eq align-items-center" style="background: #f8f9fa; border-radius: 8px;">
                             <!-- Desktop: All Filters -->
-                            <div class="col-md-2 mb-2 d-none d-md-block">
+                            <div class="col-12 mb-2 d-none d-md-block">
                                 <input type="text" id="filter-search" class="form-control form-control-sm" placeholder="Search" autocomplete="off" onkeydown="if(event.key === 'Enter') { event.preventDefault(); return false; }">
                             </div>
-                            <div class="col-md-1 mb-2 d-none d-md-block">
+                            <div class="col-12 mb-2 d-none d-md-block">
                                 <input type="text" id="filter-group" class="form-control form-control-sm" placeholder="Group" autocomplete="off" onkeydown="if(event.key === 'Enter') { event.preventDefault(); return false; }">
                             </div>
-                            <div class="col-md-1 mb-2 d-none d-md-block">
+                            <div class="col-12 mb-2 d-none d-md-block">
                                 <input type="text" id="filter-task" class="form-control form-control-sm" placeholder="Task" autocomplete="off" onkeydown="if(event.key === 'Enter') { event.preventDefault(); return false; }">
                             </div>
                             
-                            <!-- Mobile & Desktop: Essential Filters -->
-                            <div class="col-md-2 col-12 mb-2">
-                                <select id="filter-assignor" class="form-select form-select-sm">
-                                    <option value="">Assignor</option>
-                                    <option value="__NULL__" style="color: #dc3545; font-weight: bold;">🔴 No Assignor</option>
-                                    @foreach($users ?? [] as $user)
-                                        <option value="{{ $user->name }}">{{ $user->name }}</option>
-                                    @endforeach
+                            <!-- Mobile & Desktop: Assignor / Assignee (searchable) -->
+                            <div class="col-12 mb-2">
+                                <select id="filter-assignor" class="form-select form-select-sm task-filter-user-select" title="Search by name or email">
+                                    <option value=""></option>
+                                    <option value="__NULL__" data-email="">No assignor</option>
+                                    @if(isset($assignorOnTasksUsers) && $assignorOnTasksUsers->isNotEmpty())
+                                        <optgroup label="On visible tasks">
+                                            @foreach($assignorOnTasksUsers as $u)
+                                                <option value="{{ $u->name }}" data-email="{{ $u->email }}">{{ $u->name }}</option>
+                                            @endforeach
+                                        </optgroup>
+                                    @endif
+                                    @if(isset($assignorOtherUsers) && $assignorOtherUsers->isNotEmpty())
+                                        <optgroup label="All users">
+                                            @foreach($assignorOtherUsers as $u)
+                                                <option value="{{ $u->name }}" data-email="{{ $u->email }}">{{ $u->name }}</option>
+                                            @endforeach
+                                        </optgroup>
+                                    @endif
                                 </select>
                             </div>
-                            <div class="col-md-2 col-12 mb-2">
-                                <select id="filter-assignee" class="form-select form-select-sm">
-                                    <option value="">Assignee</option>
-                                    <option value="__NULL__" style="color: #dc3545; font-weight: bold;">🔴 No Assignee</option>
-                                    @foreach($users ?? [] as $user)
-                                        <option value="{{ $user->name }}" data-user-id="{{ $user->id }}">{{ $user->name }}</option>
-                                    @endforeach
+                            <div class="col-12 mb-2">
+                                <select id="filter-assignee" class="form-select form-select-sm task-filter-user-select" title="Search by name or email">
+                                    <option value=""></option>
+                                    <option value="__NULL__" data-email="">No assignee</option>
+                                    @if(isset($assigneeOnTasksUsers) && $assigneeOnTasksUsers->isNotEmpty())
+                                        <optgroup label="On visible tasks">
+                                            @foreach($assigneeOnTasksUsers as $u)
+                                                <option value="{{ $u->name }}" data-email="{{ $u->email }}" data-user-id="{{ $u->id }}">{{ $u->name }}</option>
+                                            @endforeach
+                                        </optgroup>
+                                    @endif
+                                    @if(isset($assigneeOtherUsers) && $assigneeOtherUsers->isNotEmpty())
+                                        <optgroup label="All users">
+                                            @foreach($assigneeOtherUsers as $u)
+                                                <option value="{{ $u->name }}" data-email="{{ $u->email }}" data-user-id="{{ $u->id }}">{{ $u->name }}</option>
+                                            @endforeach
+                                        </optgroup>
+                                    @endif
                                 </select>
                             </div>
-                            <div class="col-md-2 col-12 mb-2">
+                            <div class="col-12 mb-2">
                                 <select id="filter-status" class="form-select form-select-sm">
                                     <option value="">Status</option>
                                     <option value="Todo">Todo</option>
@@ -1635,7 +1697,7 @@
                             </div>
                             
                             <!-- Desktop only: Priority -->
-                            <div class="col-md-2 mb-2 d-none d-md-block">
+                            <div class="col-12 mb-2 d-none d-md-block">
                                 <select id="filter-priority" class="form-select form-select-sm">
                                     <option value="">Priority</option>
                                     <option value="low">Low</option>
@@ -2193,6 +2255,53 @@
             var canDeleteAnyTask = {{ isset($canDeleteAnyTask) && $canDeleteAnyTask ? 'true' : 'false' }};
             var currentUserId = {{ Auth::id() }};
             var currentUserEmail = '{{ Auth::user()->email }}';
+            var suppressAssignFilterApply = false;
+
+            function taskFilterUserMatcher(params, data) {
+                if ($.trim(params.term || '') === '') {
+                    return data;
+                }
+                if (data.children && data.children.length > 0) {
+                    var filteredChildren = [];
+                    $.each(data.children, function (_i, child) {
+                        var m = taskFilterUserMatcher(params, child);
+                        if (m != null) {
+                            filteredChildren.push(m);
+                        }
+                    });
+                    if (filteredChildren.length) {
+                        var mod = $.extend({}, data, true);
+                        mod.children = filteredChildren;
+                        return mod;
+                    }
+                    return null;
+                }
+                if (data.element === undefined) {
+                    return null;
+                }
+                var term = String(params.term || '').toLowerCase();
+                var text = String(data.text || '').toLowerCase();
+                var email = String($(data.element).data('email') || '').toLowerCase();
+                if (text.indexOf(term) > -1 || email.indexOf(term) > -1) {
+                    return data;
+                }
+                return null;
+            }
+
+            $('#filter-assignor').select2({
+                theme: 'bootstrap-5',
+                width: '100%',
+                allowClear: true,
+                placeholder: 'Assignor',
+                matcher: taskFilterUserMatcher
+            });
+            $('#filter-assignee').select2({
+                theme: 'bootstrap-5',
+                width: '100%',
+                allowClear: true,
+                placeholder: 'Assignee',
+                matcher: taskFilterUserMatcher
+            });
 
             function renderTatLineChart() {
                 var ctx = document.getElementById('tat-line-chart');
@@ -3307,13 +3416,36 @@
                 }
             });
             
-            $('#filter-assignor').on('change', applyFilters);
-            $('#filter-assignee').on('change', function() {
-                // Apply filters independently
+            $('#filter-assignor, #filter-assignee').on('change', function () {
+                if (suppressAssignFilterApply) return;
                 applyFilters();
             });
             $('#filter-status').on('change', applyFilters);
             $('#filter-priority').on('change', applyFilters);
+
+            // Reload table from server only; keep filter inputs and reapply Tabulator filters
+            $('#tasks-refresh-table-btn, #tasks-refresh-table-btn-mobile').on('click', function () {
+                var $btn = $(this);
+                var $icon = $btn.find('i.mdi-refresh').first();
+                $btn.prop('disabled', true);
+                if ($icon.length) {
+                    $icon.addClass('mdi-spin');
+                }
+                table.replaceData()
+                    .then(function () {
+                        applyFilters();
+                        setTimeout(updateStatistics, 100);
+                    })
+                    .catch(function (err) {
+                        console.error('Refresh table failed:', err);
+                    })
+                    .finally(function () {
+                        $btn.prop('disabled', false);
+                        if ($icon.length) {
+                            $icon.removeClass('mdi-spin');
+                        }
+                    });
+            });
 
             // Assignor playback (step through assignors - next to Bulk button)
             var taskPlaybackListAssignor = [];
@@ -3322,9 +3454,10 @@
 
             function getTaskPlaybackListAssignor() {
                 var list = [];
-                $('#filter-assignor').find('option').each(function(i) {
-                    if (i === 0) return;
-                    list.push({ value: $(this).val(), text: $(this).text().trim() });
+                $('#filter-assignor').find('option').each(function() {
+                    var v = $(this).val();
+                    if (v === '' || v === undefined || v === null) return;
+                    list.push({ value: v, text: $(this).text().trim() });
                 });
                 return list;
             }
@@ -3334,7 +3467,9 @@
                 if (taskPlaybackListAssignor.length === 0) return;
                 isTaskPlaybackActiveAssignor = true;
                 currentTaskPlaybackIndexAssignor = 0;
-                $('#filter-assignor').val(taskPlaybackListAssignor[0].value);
+                suppressAssignFilterApply = true;
+                $('#filter-assignor').val(taskPlaybackListAssignor[0].value).trigger('change');
+                suppressAssignFilterApply = false;
                 applyFilters();
                 $('#task-play-auto-assignor').hide();
                 $('#task-play-pause-assignor').show();
@@ -3344,7 +3479,9 @@
             function taskStopNavigationAssignor() {
                 isTaskPlaybackActiveAssignor = false;
                 currentTaskPlaybackIndexAssignor = -1;
-                $('#filter-assignor').val('');
+                suppressAssignFilterApply = true;
+                $('#filter-assignor').val('').trigger('change');
+                suppressAssignFilterApply = false;
                 applyFilters();
                 $('#task-play-pause-assignor').hide();
                 $('#task-play-auto-assignor').show();
@@ -3355,7 +3492,9 @@
             function taskNextAssignor() {
                 if (!isTaskPlaybackActiveAssignor || currentTaskPlaybackIndexAssignor >= taskPlaybackListAssignor.length - 1) return;
                 currentTaskPlaybackIndexAssignor++;
-                $('#filter-assignor').val(taskPlaybackListAssignor[currentTaskPlaybackIndexAssignor].value);
+                suppressAssignFilterApply = true;
+                $('#filter-assignor').val(taskPlaybackListAssignor[currentTaskPlaybackIndexAssignor].value).trigger('change');
+                suppressAssignFilterApply = false;
                 applyFilters();
                 updateTaskPlaybackButtonStatesAssignor();
             }
@@ -3363,7 +3502,9 @@
             function taskPreviousAssignor() {
                 if (!isTaskPlaybackActiveAssignor || currentTaskPlaybackIndexAssignor <= 0) return;
                 currentTaskPlaybackIndexAssignor--;
-                $('#filter-assignor').val(taskPlaybackListAssignor[currentTaskPlaybackIndexAssignor].value);
+                suppressAssignFilterApply = true;
+                $('#filter-assignor').val(taskPlaybackListAssignor[currentTaskPlaybackIndexAssignor].value).trigger('change');
+                suppressAssignFilterApply = false;
                 applyFilters();
                 updateTaskPlaybackButtonStatesAssignor();
             }
@@ -3394,9 +3535,10 @@
 
             function getTaskPlaybackListAssignee() {
                 var list = [];
-                $('#filter-assignee').find('option').each(function(i) {
-                    if (i === 0) return;
-                    list.push({ value: $(this).val(), text: $(this).text().trim() });
+                $('#filter-assignee').find('option').each(function() {
+                    var v = $(this).val();
+                    if (v === '' || v === undefined || v === null) return;
+                    list.push({ value: v, text: $(this).text().trim() });
                 });
                 return list;
             }
@@ -3406,7 +3548,9 @@
                 if (taskPlaybackListAssignee.length === 0) return;
                 isTaskPlaybackActiveAssignee = true;
                 currentTaskPlaybackIndexAssignee = 0;
-                $('#filter-assignee').val(taskPlaybackListAssignee[0].value);
+                suppressAssignFilterApply = true;
+                $('#filter-assignee').val(taskPlaybackListAssignee[0].value).trigger('change');
+                suppressAssignFilterApply = false;
                 applyFilters();
                 $('#task-play-auto-assignee').hide();
                 $('#task-play-pause-assignee').show();
@@ -3416,7 +3560,9 @@
             function taskStopNavigationAssignee() {
                 isTaskPlaybackActiveAssignee = false;
                 currentTaskPlaybackIndexAssignee = -1;
-                $('#filter-assignee').val('');
+                suppressAssignFilterApply = true;
+                $('#filter-assignee').val('').trigger('change');
+                suppressAssignFilterApply = false;
                 applyFilters();
                 $('#task-play-pause-assignee').hide();
                 $('#task-play-auto-assignee').show();
@@ -3427,7 +3573,9 @@
             function taskNextAssignee() {
                 if (!isTaskPlaybackActiveAssignee || currentTaskPlaybackIndexAssignee >= taskPlaybackListAssignee.length - 1) return;
                 currentTaskPlaybackIndexAssignee++;
-                $('#filter-assignee').val(taskPlaybackListAssignee[currentTaskPlaybackIndexAssignee].value);
+                suppressAssignFilterApply = true;
+                $('#filter-assignee').val(taskPlaybackListAssignee[currentTaskPlaybackIndexAssignee].value).trigger('change');
+                suppressAssignFilterApply = false;
                 applyFilters();
                 updateTaskPlaybackButtonStatesAssignee();
             }
@@ -3435,7 +3583,9 @@
             function taskPreviousAssignee() {
                 if (!isTaskPlaybackActiveAssignee || currentTaskPlaybackIndexAssignee <= 0) return;
                 currentTaskPlaybackIndexAssignee--;
-                $('#filter-assignee').val(taskPlaybackListAssignee[currentTaskPlaybackIndexAssignee].value);
+                suppressAssignFilterApply = true;
+                $('#filter-assignee').val(taskPlaybackListAssignee[currentTaskPlaybackIndexAssignee].value).trigger('change');
+                suppressAssignFilterApply = false;
                 applyFilters();
                 updateTaskPlaybackButtonStatesAssignee();
             }
@@ -3503,7 +3653,8 @@
                 
                 // Apply filter
                 console.log('🔍 Quick filter clicked:', filterType);
-                
+
+                suppressAssignFilterApply = true;
                 switch(filterType) {
                     case 'all':
                         $('#filter-status').val('');
@@ -3562,8 +3713,9 @@
                         console.log('✓ Filtering: High Priority');
                         break;
                 }
-                
-                // Manually trigger applyFilters (don't trigger change to avoid recursion)
+                $('#filter-assignor, #filter-assignee').trigger('change');
+                suppressAssignFilterApply = false;
+
                 applyFilters();
                 
                 // Haptic feedback if available
