@@ -1162,28 +1162,42 @@ class ChannelMasterController extends Controller
     {
         $result = [];
 
-        // 34 days sales/orders from actual orders (California Pacific, ending today) — same as amazon/daily-sales page
+        // 35 days ending today (Pacific), same window as AmazonSalesController / Daily Sales page
         $todayPacific = Carbon::now('America/Los_Angeles');
         $endToday = $todayPacific->copy()->endOfDay();
-        $start34 = $todayPacific->copy()->subDays(33)->startOfDay();
-        $orderAgg = DB::table('amazon_orders as o')
-            ->join('amazon_order_items as i', 'o.id', '=', 'i.amazon_order_id')
-            ->where('o.order_date', '>=', $start34)
+        $start35 = $todayPacific->copy()->subDays(34)->startOfDay();
+
+        $activeAmazonOrders = function ($q) {
+            $q->where(function ($w) {
+                $w->whereNull('o.status')->orWhere('o.status', '!=', 'Canceled');
+            });
+        };
+
+        // Sales + order count from order totals (matches Amazon Daily Sales badge)
+        $orderHead = DB::table('amazon_orders as o')
+            ->where('o.order_date', '>=', $start35)
             ->where('o.order_date', '<=', $endToday)
-            ->where(function ($q) {
-                $q->whereNull('o.status')->orWhere('o.status', '!=', 'Canceled');
-            })
-            ->selectRaw('COUNT(DISTINCT o.amazon_order_id) as order_count, COALESCE(SUM(i.quantity), 0) as total_qty, COALESCE(SUM(i.price), 0) as total_sales')
+            ->where($activeAmazonOrders)
+            ->selectRaw('COUNT(DISTINCT o.amazon_order_id) as order_count, COALESCE(SUM(o.total_amount), 0) as total_sales')
             ->first();
-        $l30SalesFromOrders = (float) ($orderAgg->total_sales ?? 0);
-        $l30OrdersFromOrders = (int) ($orderAgg->order_count ?? 0);
-        $totalQuantityFromOrders = (int) ($orderAgg->total_qty ?? 0);
+
+        // Line quantities only (item join)
+        $qtyAgg = DB::table('amazon_orders as o')
+            ->join('amazon_order_items as i', 'o.id', '=', 'i.amazon_order_id')
+            ->where('o.order_date', '>=', $start35)
+            ->where('o.order_date', '<=', $endToday)
+            ->where($activeAmazonOrders)
+            ->selectRaw('COALESCE(SUM(i.quantity), 0) as total_qty')
+            ->first();
+
+        $l30SalesFromOrders = (float) ($orderHead->total_sales ?? 0);
+        $l30OrdersFromOrders = (int) ($orderHead->order_count ?? 0);
+        $totalQuantityFromOrders = (int) ($qtyAgg->total_qty ?? 0);
 
         // Get other metrics from marketplace_daily_metrics (PFT%, ROI, TACOS, ad spend, etc.)
         $metrics = MarketplaceDailyMetric::where('channel', 'Amazon')->latest('date')->first();
         
-        // Amazon shows 31 days of L30 data - L60 data disabled
-        // Set L60 values to 0 (no historical comparison beyond 31 days)
+        // L60 data disabled (ShipHub) — growth vs prior period not available here
         $l60Orders = 0;
         $l60Sales = 0;
         

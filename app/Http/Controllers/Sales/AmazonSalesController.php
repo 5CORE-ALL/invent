@@ -53,15 +53,15 @@ class AmazonSalesController extends Controller
         
         $hlSpent = $hlSpentData->sum('max_cost') ?? 0;
 
-        // Last 34 days ending today (California Pacific) — rolling window
+        // Last 35 days ending today (California Pacific) — rolling window
         $todayPacific = Carbon::now('America/Los_Angeles');
         $endToday = $todayPacific->copy()->endOfDay();
-        $start34 = $todayPacific->copy()->subDays(33)->startOfDay(); // 34 calendar days
+        $start35 = $todayPacific->copy()->subDays(34)->startOfDay(); // 35 calendar days
         
         // Use order totals instead of item prices to match Amazon's "Ordered Product Sales" report
         // This includes shipping and discounts properly
-        $sales34Days = (float) DB::table('amazon_orders as o')
-            ->where('o.order_date', '>=', $start34)
+        $sales35Days = (float) DB::table('amazon_orders as o')
+            ->where('o.order_date', '>=', $start35)
             ->where('o.order_date', '<=', $endToday)
             ->where(function ($q) {
                 $q->whereNull('o.status')->orWhere('o.status', '!=', 'Canceled');
@@ -83,7 +83,7 @@ class AmazonSalesController extends Controller
             'kwSpent' => (float) $kwSpent,
             'ptSpent' => (float) $ptSpent,
             'hlSpent' => (float) $hlSpent,
-            'sales34Days' => $sales34Days,
+            'sales35Days' => $sales35Days,
             'salesFrom8Feb' => $salesFrom8Feb,
             'daysFrom8Feb' => $daysFrom8Feb,
         ]);
@@ -92,18 +92,18 @@ class AmazonSalesController extends Controller
     public function getData(Request $request)
     {
         // ============================================================
-        // Last 34 days ending today (California Pacific) — same as main badge
+        // Last 35 days ending today (California Pacific) — same as main badge
         // ============================================================
 
         $todayPacific = Carbon::now('America/Los_Angeles');
         $endToday = $todayPacific->copy()->endOfDay();
-        $start34 = $todayPacific->copy()->subDays(33)->startOfDay();
-        $startDateStr = $start34->format('Y-m-d');
+        $start35 = $todayPacific->copy()->subDays(34)->startOfDay();
+        $startDateStr = $start35->format('Y-m-d');
         $endDateStr = $endToday->format('Y-m-d');
 
         $orderRows = DB::table('amazon_orders as o')
             ->join('amazon_order_items as i', 'o.id', '=', 'i.amazon_order_id')
-            ->where('o.order_date', '>=', $start34)
+            ->where('o.order_date', '>=', $start35)
             ->where('o.order_date', '<=', $endToday)
             ->where(function ($q) {
                 $q->whereNull('o.status')->orWhere('o.status', '!=', 'Canceled');
@@ -138,7 +138,7 @@ class AmazonSalesController extends Controller
                 'status'      => $row->status,
                 'total_amount'=> $linePrice,
                 'currency'    => $row->currency ?? 'USD',
-                'period'      => 'L34',
+                'period'      => 'L35',
                 'asin'        => $row->asin,
                 'sku'         => $row->sku,
                 'title'       => $row->title ?? '',
@@ -270,7 +270,7 @@ class AmazonSalesController extends Controller
                 'currency' => $item->currency,
                 'order_date' => $item->order_date,
                 'status' => $item->status,
-                'period' => 'L34',
+                'period' => 'L35',
                 'lp' => round($lp, 2),
                 'ship' => round($ship, 2),
                 't_weight' => round($tWeight, 2),

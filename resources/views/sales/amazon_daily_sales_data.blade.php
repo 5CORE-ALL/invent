@@ -71,7 +71,7 @@
 @section('content')
     @include('layouts.shared.page-title', [
         'page_title' => 'Amazon Daily Sales Data',
-        'sub_title' => 'Amazon Daily Sales Data (Last 32 Days, California)',
+        'sub_title' => 'Amazon Daily Sales Data (Last 35 Days, California)',
     ])
     <div class="toast-container"></div>
     <div class="row">
@@ -105,7 +105,7 @@
                     <div class="d-flex flex-wrap gap-2">
                         <span class="badge bg-primary fs-6 p-2" id="total-orders-badge" style="color: white; font-weight: bold;">Total Orders: 0</span>
                         <span class="badge bg-success fs-6 p-2" id="total-quantity-badge" style="color: white; font-weight: bold;">Total Quantity: 0</span>
-                        <span class="badge fs-6 p-2" id="sales-34-days-badge" style="background-color: #0d6efd; color: white; font-weight: bold;"> Total Sales: ${{ number_format($sales34Days ?? 0, 2) }}</span>
+                        <span class="badge fs-6 p-2" id="sales-35-days-badge" style="background-color: #0d6efd; color: white; font-weight: bold;"> Total Sales: ${{ number_format($sales35Days ?? 0, 2) }}</span>
                         <span class="badge bg-danger fs-6 p-2" id="pft-percentage-badge" style="color: white; font-weight: bold;">GPFT %: 0%</span>
                         <span class="badge fs-6 p-2" id="roi-percentage-badge" style="background-color: purple; color: white; font-weight: bold;">ROI %: 0%</span>
                         <span class="badge bg-warning fs-6 p-2" id="avg-price-badge" style="color: black; font-weight: bold;">Avg Price: $0.00</span>
