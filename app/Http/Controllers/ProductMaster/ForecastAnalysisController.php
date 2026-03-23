@@ -722,25 +722,51 @@ class ForecastAnalysisController extends Controller
 
     public function updateForcastSheet(Request $request)
     {        
-        $sku = trim($request->input('sku'));
-        $parent = trim($request->input('parent'));
-        $column = trim($request->input('column'));
-        $value = trim($request->input('value')); // Trim the value to remove whitespace
+        $sku = trim((string) $request->input('sku'));
+        $parent = trim((string) $request->input('parent'));
+        $column = trim((string) $request->input('column'));
+        $value = trim((string) $request->input('value', '')); // Avoid trim(null) on numeric-only posts
 
         // Handle MOQ updates: save to forecast_analysis.approved_qty and to_order_analysis so forecast and to-order show same value
         if (strtoupper($column) === 'MOQ') {
             $skuUpper = strtoupper(trim($sku));
+            $parentNorm = strtoupper(trim($parent));
             $valueNum = is_numeric($value) ? (int) $value : null;
 
-            // Update forecast_analysis.approved_qty (by SKU)
-            $faUpdated = DB::table('forecast_analysis')
-                ->whereRaw('TRIM(UPPER(sku)) = ?', [$skuUpper])
-                ->update(['approved_qty' => $valueNum, 'updated_at' => now()]);
+            $faUpdated = 0;
+            if ($parentNorm !== '') {
+                $faUpdated = (int) DB::table('forecast_analysis')
+                    ->whereRaw('TRIM(UPPER(sku)) = ?', [$skuUpper])
+                    ->whereRaw('TRIM(UPPER(COALESCE(parent, \'\'))) = ?', [$parentNorm])
+                    ->update(['approved_qty' => $valueNum, 'updated_at' => now()]);
+            }
+            if ($faUpdated === 0) {
+                $faUpdated = (int) DB::table('forecast_analysis')
+                    ->whereRaw('TRIM(UPPER(sku)) = ?', [$skuUpper])
+                    ->update(['approved_qty' => $valueNum, 'updated_at' => now()]);
+            }
+            if ($faUpdated === 0 && $sku !== '') {
+                DB::table('forecast_analysis')->insert([
+                    'sku' => $sku,
+                    'parent' => $parent !== '' ? $parent : null,
+                    'approved_qty' => $valueNum,
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+            }
 
-            // Sync to to_order_analysis so to-order page shows same MOQ
-            DB::table('to_order_analysis')
-                ->whereRaw('TRIM(UPPER(sku)) = ?', [$skuUpper])
-                ->update(['approved_qty' => $valueNum]);
+            $toUpdated = 0;
+            if ($parentNorm !== '') {
+                $toUpdated = (int) DB::table('to_order_analysis')
+                    ->whereRaw('TRIM(UPPER(sku)) = ?', [$skuUpper])
+                    ->whereRaw('TRIM(UPPER(COALESCE(parent, \'\'))) = ?', [$parentNorm])
+                    ->update(['approved_qty' => $valueNum]);
+            }
+            if ($toUpdated === 0) {
+                $toUpdated = (int) DB::table('to_order_analysis')
+                    ->whereRaw('TRIM(UPPER(sku)) = ?', [$skuUpper])
+                    ->update(['approved_qty' => $valueNum]);
+            }
 
             // Optionally keep product_master.Values['moq'] in sync
             $product = ProductMaster::whereRaw('TRIM(LOWER(sku)) = ?', [strtolower($sku)])->first();

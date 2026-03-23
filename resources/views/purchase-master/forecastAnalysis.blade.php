@@ -518,6 +518,28 @@
             }
             debounceTimers[key] = setTimeout(callback, delay);
         }
+
+        /** POST inline forecast updates (used by Tabulator MOQ editor and other handlers). */
+        function updateForecastField(data, onSuccess, onFail) {
+            onSuccess = typeof onSuccess === 'function' ? onSuccess : function() {};
+            onFail = typeof onFail === 'function' ? onFail : function() {};
+            $.post('/update-forecast-data', {
+                ...data,
+                _token: $('meta[name="csrf-token"]').attr('content')
+            }).done(function(res) {
+                if (res.success) {
+                    if (res.message) console.log('Saved:', res.message);
+                    onSuccess();
+                } else {
+                    console.warn('Not saved:', res.message);
+                    onFail();
+                }
+            }).fail(function(err) {
+                console.error('AJAX failed:', err);
+                alert('Error saving data.');
+                onFail();
+            });
+        }
         
         /** DIL % display: text color only (red / dark green / magenta). */
         const getDilTextColor = (ratio) => {
@@ -565,6 +587,7 @@
             resizableColumns: true,
             height: "650px",
             index: "SKU",
+            editTriggerEvent: "dblclick",
             selectableRows: true,
             selectableCheck: function(row) {
                 const sku = (row.getData().SKU || '').toString().toLowerCase();
@@ -982,37 +1005,180 @@
                     field: "MOQ",
                     accessor: row => row["MOQ"],
                     headerSort: false,
+                    hozAlign: "center",
+                    editable: function(cell) {
+                        const d = cell.getRow().getData();
+                        return !d.is_parent && !d.isParent;
+                    },
+                    editor: "number",
+                    editorParams: {
+                        min: 0,
+                        verticalNavigation: "editor",
+                    },
+                    cellEditing: function(cell) {
+                        cell.getRow().forecastMoqEditStart = cell.getValue();
+                    },
+                    cellEditCancelled: function(cell) {
+                        delete cell.getRow().forecastMoqEditStart;
+                    },
                     formatter: function(cell) {
                         const value = cell.getValue();
                         const rowData = cell.getRow().getData();
+                        const esc = function(s) {
+                            return String(s === null || s === undefined ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                        };
+                        const disp = esc(value);
 
-                        const sku = rowData.SKU ?? '';
-                        const parent = rowData.Parent ?? '';
+                        if (rowData.is_parent || rowData.isParent) {
+                            return `<div 
+                                style="outline:none; min-width:40px; text-align:center; font-weight:bold;color:#6c757d;"
+                                title="Total MOQ for this parent (edit MOQ on each SKU row below)">
+                                ${disp}
+                            </div>`;
+                        }
 
                         let moqColor = '#212529';
-                        if (!rowData.is_parent && !rowData.isParent) {
-                            const moq = parseFloat(value);
-                            const msl = parseFloat(rowData.msl);
-                            if (Number.isFinite(moq) && Number.isFinite(msl) && msl > 0) {
-                                if (moq < msl) {
-                                    moqColor = '#1b5e20';
-                                } else if (moq > msl) {
-                                    moqColor = '#b71c1c';
-                                }
+                        const moq = parseFloat(value);
+                        const msl = parseFloat(rowData.msl);
+                        if (Number.isFinite(moq) && Number.isFinite(msl) && msl > 0) {
+                            if (moq < msl) {
+                                moqColor = '#1b5e20';
+                            } else if (moq > msl) {
+                                moqColor = '#b71c1c';
                             }
                         }
 
-                        return `<div 
-                        class="editable-qty" 
-                        contenteditable="true"
-                        data-field="MOQ" 
-                        data-original="${value ?? ''}" 
-                        data-sku='${sku}' 
-                        data-parent='${parent}' 
-                        style="outline:none; min-width:40px; text-align:center; font-weight:bold;color:${moqColor};"
-                        title="${Number.isFinite(parseFloat(rowData.msl)) && parseFloat(rowData.msl) > 0 ? 'Green: MOQ < MSL · Red: MOQ > MSL' : ''}">
-                        ${value ?? ''}
-                    </div>`;
+                        return `<span class="forecast-moq-cell" style="display:block;outline:none;min-width:40px;text-align:center;font-weight:bold;color:${moqColor};cursor:text;"
+                            title="${Number.isFinite(parseFloat(rowData.msl)) && parseFloat(rowData.msl) > 0 ? 'Green: MOQ &lt; MSL · Red: MOQ &gt; MSL · Double-click to edit' : 'Double-click to edit MOQ'}">${disp}</span>`;
+                    },
+                    cellEdited: function(cell) {
+                        const row = cell.getRow();
+                        const d = row.getData();
+                        if (d.is_parent || d.isParent) return;
+
+                        const rawNew = cell.getValue();
+                        const oldVal = row.forecastMoqEditStart;
+                        delete row.forecastMoqEditStart;
+                        if (rawNew === '' || rawNew === null || rawNew === undefined) {
+                            cell.setValue(oldVal);
+                            alert('Please enter a valid number.');
+                            return;
+                        }
+                        const newValue = Number(rawNew);
+                        if (Number.isNaN(newValue)) {
+                            cell.setValue(oldVal);
+                            alert('Please enter a valid number.');
+                            return;
+                        }
+                        const origNum = Number(oldVal);
+                        if (!Number.isNaN(origNum) && origNum === newValue) return;
+
+                        const sku = d.SKU;
+                        const parent = d.Parent || '';
+                        updateForecastField(
+                            { sku: sku, parent: parent, column: 'MOQ', value: newValue },
+                            function() {
+                                const st = String(d.stage || '').trim().toLowerCase();
+                                const moqNum = parseFloat(newValue) || 0;
+                                const twoq = st === 'to_order_analysis' ? moqNum : 0;
+                                const apprq = st === 'appr_req' ? moqNum : 0;
+                                const rawNext = Object.assign({}, d.raw_data || {}, { MOQ: newValue });
+                                row.update({ two_order_qty: twoq, appr_req_qty: apprq, raw_data: rawNext }, true);
+                                syncParentStageQtyColumns(d.Parent || d.parentKey);
+                                refreshParentMoqFromChildren(d.Parent || d.parentKey);
+                                ['MOQ', 'two_order_qty', 'appr_req_qty', 'TAT', 'eff_roi_pct'].forEach(function(f) {
+                                    const c = row.getCells().find(function(x) { return x.getField() === f; });
+                                    if (c) c.reformat();
+                                });
+                                const today = new Date();
+                                const currentDate = today.getFullYear() + '-' + String(today.getMonth() + 1).padStart(2, '0') + '-' + String(today.getDate()).padStart(2, '0');
+                                updateForecastField({ sku: sku, parent: parent, column: 'Date of Appr', value: currentDate });
+                            },
+                            function() {
+                                cell.setValue(oldVal);
+                            }
+                        );
+                    },
+                },
+                {
+                    title: "Rating",
+                    field: "rating",
+                    minWidth: 88,
+                    width: 92,
+                    headerSort: true,
+                    hozAlign: "center",
+                    vertAlign: "middle",
+                    titleFormatter: function() {
+                        const wrap = document.createElement("div");
+                        wrap.style.cssText = "background:transparent;width:100%;min-height:76px;display:flex;align-items:center;justify-content:center;padding:8px 4px;box-sizing:border-box;";
+                        const span = document.createElement("span");
+                        span.className = "forecast-rating-header-label";
+                        span.textContent = "Rating";
+                        span.setAttribute("title", "Rating & reviews (Jungle Scout)");
+                        wrap.appendChild(span);
+                        return wrap;
+                    },
+                    accessor: function(row) {
+                        const r = row.rating;
+                        if (r === null || r === undefined || r === '') {
+                            return null;
+                        }
+                        const n = parseFloat(r);
+
+                        return Number.isFinite(n) ? n : null;
+                    },
+                    sorter: "number",
+                    cssClass: "forecast-rating-combo-cell",
+                    formatter: function(cell) {
+                        const d = cell.getRow().getData();
+                        const rawR = d.rating;
+                        const rawRev = d.reviews;
+                        const rVal = parseFloat(rawR);
+                        const hasRating = rawR !== null && rawR !== undefined && String(rawR).trim() !== '' && Number.isFinite(rVal);
+                        const revParsed = parseInt(String(rawRev == null ? '' : rawRev).replace(/,/g, ''), 10);
+                        const hasReviews = Number.isFinite(revParsed) && revParsed >= 0 && String(rawRev).trim() !== '';
+
+                        if (!hasRating && !hasReviews) {
+                            return '<div style="display:flex;align-items:center;justify-content:center;min-height:48px;"><span style="color:#6c757d;font-size:1.1rem;">—</span></div>';
+                        }
+
+                        let starColor = '#c9a227';
+                        if (hasRating) {
+                            if (rVal >= 4.5) {
+                                starColor = '#1565c0';
+                            } else if (rVal >= 3.5) {
+                                starColor = '#c9a227';
+                            } else if (rVal >= 2.5) {
+                                starColor = '#e8941c';
+                            } else {
+                                starColor = '#c62828';
+                            }
+                        }
+
+                        const ratingLine = hasRating
+                            ? (Number.isInteger(rVal) ? String(rVal) : rVal.toFixed(1))
+                            : null;
+                        const revLine = hasReviews
+                            ? (revParsed.toLocaleString("en-US") + " reviews")
+                            : null;
+
+                        let html = "<div style=\"display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1.2;padding:6px 4px;min-height:52px;\">";
+                        if (hasRating) {
+                            html += "<div style=\"font-weight:700;color:" + starColor + ";display:inline-flex;align-items:center;gap:4px;font-size:0.95rem;\">";
+                            html += "<i class=\"bi bi-star-fill\" style=\"font-size:0.9rem;line-height:1;\"></i>";
+                            html += "<span>" + ratingLine + "</span></div>";
+                        } else {
+                            html += "<div style=\"font-weight:700;color:#9e9e9e;display:inline-flex;align-items:center;gap:4px;font-size:0.85rem;\">";
+                            html += "<i class=\"bi bi-star\" style=\"font-size:0.85rem;\"></i><span>—</span></div>";
+                        }
+                        if (revLine) {
+                            html += "<div style=\"font-size:0.72rem;color:#5c5c5c;margin-top:4px;text-align:center;\">" + revLine + "</div>";
+                        } else if (hasRating) {
+                            html += "<div style=\"font-size:0.72rem;color:#9e9e9e;margin-top:4px;\">0 reviews</div>";
+                        }
+                        html += "</div>";
+
+                        return html;
                     }
                 },
                 {
@@ -1233,87 +1399,6 @@
                         const col = effRoiTextColor(eff);
 
                         return `<span style="display:block;text-align:center;font-weight:700;color:${col};" title="NROI% ÷ TAT × 12 — red &lt;100, green 100–200, magenta &gt;200">${eff}%</span>`;
-                    }
-                },
-                {
-                    title: "Rating",
-                    field: "rating",
-                    minWidth: 88,
-                    width: 92,
-                    headerSort: true,
-                    hozAlign: "center",
-                    vertAlign: "middle",
-                    titleFormatter: function() {
-                        const wrap = document.createElement("div");
-                        wrap.style.cssText = "background:transparent;width:100%;min-height:76px;display:flex;align-items:center;justify-content:center;padding:8px 4px;box-sizing:border-box;";
-                        const span = document.createElement("span");
-                        span.className = "forecast-rating-header-label";
-                        span.textContent = "Rating";
-                        span.setAttribute("title", "Rating & reviews (Jungle Scout)");
-                        wrap.appendChild(span);
-                        return wrap;
-                    },
-                    accessor: function(row) {
-                        const r = row.rating;
-                        if (r === null || r === undefined || r === '') {
-                            return null;
-                        }
-                        const n = parseFloat(r);
-
-                        return Number.isFinite(n) ? n : null;
-                    },
-                    sorter: "number",
-                    cssClass: "forecast-rating-combo-cell",
-                    formatter: function(cell) {
-                        const d = cell.getRow().getData();
-                        const rawR = d.rating;
-                        const rawRev = d.reviews;
-                        const rVal = parseFloat(rawR);
-                        const hasRating = rawR !== null && rawR !== undefined && String(rawR).trim() !== '' && Number.isFinite(rVal);
-                        const revParsed = parseInt(String(rawRev == null ? '' : rawRev).replace(/,/g, ''), 10);
-                        const hasReviews = Number.isFinite(revParsed) && revParsed >= 0 && String(rawRev).trim() !== '';
-
-                        if (!hasRating && !hasReviews) {
-                            return '<div style="display:flex;align-items:center;justify-content:center;min-height:48px;"><span style="color:#6c757d;font-size:1.1rem;">—</span></div>';
-                        }
-
-                        let starColor = '#c9a227';
-                        if (hasRating) {
-                            if (rVal >= 4.5) {
-                                starColor = '#1565c0';
-                            } else if (rVal >= 3.5) {
-                                starColor = '#c9a227';
-                            } else if (rVal >= 2.5) {
-                                starColor = '#e8941c';
-                            } else {
-                                starColor = '#c62828';
-                            }
-                        }
-
-                        const ratingLine = hasRating
-                            ? (Number.isInteger(rVal) ? String(rVal) : rVal.toFixed(1))
-                            : null;
-                        const revLine = hasReviews
-                            ? (revParsed.toLocaleString("en-US") + " reviews")
-                            : null;
-
-                        let html = "<div style=\"display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1.2;padding:6px 4px;min-height:52px;\">";
-                        if (hasRating) {
-                            html += "<div style=\"font-weight:700;color:" + starColor + ";display:inline-flex;align-items:center;gap:4px;font-size:0.95rem;\">";
-                            html += "<i class=\"bi bi-star-fill\" style=\"font-size:0.9rem;line-height:1;\"></i>";
-                            html += "<span>" + ratingLine + "</span></div>";
-                        } else {
-                            html += "<div style=\"font-weight:700;color:#9e9e9e;display:inline-flex;align-items:center;gap:4px;font-size:0.85rem;\">";
-                            html += "<i class=\"bi bi-star\" style=\"font-size:0.85rem;\"></i><span>—</span></div>";
-                        }
-                        if (revLine) {
-                            html += "<div style=\"font-size:0.72rem;color:#5c5c5c;margin-top:4px;text-align:center;\">" + revLine + "</div>";
-                        } else if (hasRating) {
-                            html += "<div style=\"font-size:0.72rem;color:#9e9e9e;margin-top:4px;\">0 reviews</div>";
-                        }
-                        html += "</div>";
-
-                        return html;
                     }
                 },
                 {
@@ -2227,6 +2312,32 @@
             });
             if (parentRow) parentRow.update({ two_order_qty: sumTwo, appr_req_qty: sumAppr }, true);
         }
+
+        /** After child MOQ edits: keep parent aggregate MOQ in sync (raw_data is used by parent rollups). */
+        function refreshParentMoqFromChildren(parentKey) {
+            if (!parentKey || typeof table === 'undefined' || !table) return;
+            let sumMOQ = 0;
+            let parentRow = null;
+            table.getRows().forEach(function(r) {
+                const d = r.getData();
+                const pk = d.Parent || d.parentKey || '';
+                if (pk !== parentKey) return;
+                const isP = d.is_parent === true || String(d.SKU || '').toLowerCase().includes('parent');
+                if (isP) {
+                    parentRow = r;
+                } else {
+                    const moq = parseFloat(d.MOQ) || parseFloat(d.raw_data && d.raw_data['MOQ']) || 0;
+                    sumMOQ += moq;
+                }
+            });
+            if (parentRow) {
+                const pd = parentRow.getData();
+                const rd = Object.assign({}, pd.raw_data || {}, { MOQ: sumMOQ });
+                parentRow.update({ MOQ: sumMOQ, raw_data: rd }, true);
+                const moqCell = parentRow.getCells().find(function(x) { return x.getField() === 'MOQ'; });
+                if (moqCell) moqCell.reformat();
+            }
+        }
         function getEffectiveNRPFilterSet() {
             const checked = [...document.querySelectorAll('.nrp-ms-opt:checked')].map(b => b.value);
             if (checked.length === 0) {
@@ -2896,22 +3007,7 @@
                 }
             });
 
-            // On focus, select all text in MOQ so user can replace whole value in one go
-            $(document).off('focus', '.editable-qty').on('focus', '.editable-qty', function() {
-                const $cell = $(this);
-                if ($cell.data('field') !== 'MOQ') return;
-                const el = this;
-                setTimeout(function() {
-                    if (typeof window.getSelection !== 'undefined' && typeof document.createRange !== 'undefined') {
-                        const range = document.createRange();
-                        range.selectNodeContents(el);
-                        const sel = window.getSelection();
-                        if (sel) { sel.removeAllRanges(); sel.addRange(range); }
-                    }
-                }, 0);
-            });
-
-            // Handle editable field
+            // Handle editable field (contenteditable cells, e.g. legacy qty fields — MOQ uses Tabulator number editor)
             $(document).off('blur', '.editable-qty').on('blur', '.editable-qty', function() {
                 const $cell = $(this);
                 const newValueRaw = $cell.text().trim();
@@ -2953,7 +3049,7 @@
                 $cell.css('opacity', '0.5');
 
                 // Debounce the AJAX call
-                debounce(`qty-${sku}-${field}`, function() {
+                debounce(`qty-${sku}-${parent}-${field}`, function() {
                     updateForecastField({
                         sku,
                         parent,
@@ -2963,36 +3059,8 @@
                         $cell.data('original', newValue);
                         $cell.css('opacity', '1');
 
-                        if (field === 'MOQ') {
-                            const today = new Date();
-                            const currentDate = today.getFullYear() + '-' + String(today.getMonth() + 1).padStart(2, '0') + '-' + String(today.getDate()).padStart(2, '0');
-
-                            const row = table.getRows().find(r =>
-                                r.getData().SKU === sku && r.getData().Parent === parent
-                            );
-
-                            if (row) {
-                                const d = row.getData();
-                                const st = String(d.stage || '').trim().toLowerCase();
-                                const moqNum = parseFloat(newValue) || 0;
-                                const twoq = st === 'to_order_analysis' ? moqNum : 0;
-                                const apprq = st === 'appr_req' ? moqNum : 0;
-                                row.update({ MOQ: newValue, two_order_qty: twoq, appr_req_qty: apprq }, true);
-                                syncParentStageQtyColumns(d.Parent || d.parentKey);
-                                ['MOQ', 'two_order_qty', 'appr_req_qty', 'TAT', 'eff_roi_pct'].forEach(function(f) {
-                                    const c = row.getCells().find(function(x) { return x.getField() === f; });
-                                    if (c) c.reformat();
-                                });
-                            }
-
-                            updateForecastField({
-                                sku,
-                                parent,
-                                column: 'Date of Appr',
-                                value: currentDate
-                            });
-                        }
-                        // No need to call setCombinedFilters for MOQ changes
+                        // MOQ is saved via Tabulator cellEdited (number editor), not this blur handler
+                        // No need to call setCombinedFilters for inline qty changes
                     }, function() {
                         $cell.text(originalValue);
                         $cell.css('opacity', '1');
@@ -3257,26 +3325,6 @@
                 );
 
             });
-
-            // Reusable AJAX call
-            function updateForecastField(data, onSuccess = () => {}, onFail = () => {}) {
-                $.post('/update-forecast-data', {
-                    ...data,
-                    _token: $('meta[name="csrf-token"]').attr('content')
-                }).done(res => {
-                    if (res.success) {
-                        console.log('Saved:', res.message);
-                        onSuccess();
-                    } else {
-                        console.warn('Not saved:', res.message);
-                        onFail();
-                    }
-                }).fail(err => {
-                    console.error('AJAX failed:', err);
-                    alert('Error saving data.');
-                    onFail();
-                });
-            }
 
         });
 
