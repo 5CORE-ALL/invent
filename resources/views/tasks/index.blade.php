@@ -2256,6 +2256,39 @@
             var currentUserId = {{ Auth::id() }};
             var currentUserEmail = '{{ Auth::user()->email }}';
             var suppressAssignFilterApply = false;
+            var TASK_INDEX_FILTERS_KEY = 'taskManager.indexFilters.v1';
+
+            function persistTaskIndexFilters() {
+                try {
+                    localStorage.setItem(TASK_INDEX_FILTERS_KEY, JSON.stringify({
+                        search: $('#filter-search').val() || '',
+                        group: $('#filter-group').val() || '',
+                        task: $('#filter-task').val() || '',
+                        assignor: $('#filter-assignor').val() || '',
+                        assignee: $('#filter-assignee').val() || '',
+                        status: $('#filter-status').val() || '',
+                        priority: $('#filter-priority').val() || ''
+                    }));
+                } catch (e) { /* ignore quota / private mode */ }
+            }
+
+            function restoreTaskIndexFilters() {
+                try {
+                    var raw = localStorage.getItem(TASK_INDEX_FILTERS_KEY);
+                    if (!raw) return;
+                    var s = JSON.parse(raw);
+                    if (!s || typeof s !== 'object') return;
+                    $('#filter-search').val(s.search || '');
+                    $('#filter-group').val(s.group || '');
+                    $('#filter-task').val(s.task || '');
+                    $('#filter-status').val(s.status || '');
+                    $('#filter-priority').val(s.priority || '');
+                    suppressAssignFilterApply = true;
+                    $('#filter-assignor').val(s.assignor != null ? s.assignor : '').trigger('change');
+                    $('#filter-assignee').val(s.assignee != null ? s.assignee : '').trigger('change');
+                    suppressAssignFilterApply = false;
+                } catch (e) { /* ignore */ }
+            }
 
             function taskFilterUserMatcher(params, data) {
                 if ($.trim(params.term || '') === '') {
@@ -3296,6 +3329,7 @@
                             return !data.assignor_name || data.assignor_name === '-' || data.assignor_name === '';
                         });
                         console.log('✓ Filter applied: No Assignor');
+                        persistTaskIndexFilters();
                         return; // Skip other filters
                     } else {
                         // Use "like" so tasks show when this person is assignor (exact or in list)
@@ -3337,6 +3371,7 @@
                         }
                         
                         setTimeout(updateStatistics, 100);
+                        persistTaskIndexFilters();
                         return; // Skip other filters
                     } else {
                         // Use "like" so tasks show when this person is assignee (single or in list: "Shobha N" or "Srimanta, Shobha N")
@@ -3387,7 +3422,19 @@
                         renderMobileTasks(filteredData);
                     }
                 }, 100);
+                persistTaskIndexFilters();
             }
+
+            var taskIndexFiltersRestored = false;
+            table.on('dataLoaded', function () {
+                if (taskIndexFiltersRestored) return;
+                taskIndexFiltersRestored = true;
+                restoreTaskIndexFilters();
+                applyFilters();
+            });
+            $(window).on('beforeunload pagehide', function () {
+                persistTaskIndexFilters();
+            });
 
             // Filter functionality - prevent form submission on Enter key
             $('#filter-search, #filter-group, #filter-task').on('keydown', function(e) {

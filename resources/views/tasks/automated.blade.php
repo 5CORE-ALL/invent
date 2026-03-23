@@ -645,6 +645,13 @@
                         <strong id="count-number">0</strong> selected
                     </span>
                     @endif
+
+                    <button type="button" class="stat-card border-0 text-dark" style="flex: 1; min-width: 110px; padding: 10px 12px; margin-bottom: 0; cursor: pointer; display: flex; align-items: center; justify-content: center; background: linear-gradient(135deg, #ffc107 0%, #e0a800) !important; border-left-color: #e0a800 !important;" id="tasks-refresh-table-btn" title="Reload tasks from server (keeps your filters)">
+                        <div class="text-center">
+                            <i class="mdi mdi-refresh" style="font-size: 18px; color: #212529;"></i>
+                            <div style="font-size: 10px; font-weight: 600; color: #212529; margin-top: 2px;">REFRESH</div>
+                        </div>
+                    </button>
                 </div>
             </div>
         </div>
@@ -987,6 +994,35 @@
             var isAdmin = {{ $isAdmin ? 'true' : 'false' }};
             var currentUserId = {{ Auth::id() }};
             var currentUserEmail = '{{ Auth::user()->email }}';
+            var TASK_AUTOMATED_FILTERS_KEY = 'taskManager.automatedFilters.v1';
+
+            function persistAutomatedTaskFilters() {
+                try {
+                    localStorage.setItem(TASK_AUTOMATED_FILTERS_KEY, JSON.stringify({
+                        search: $('#filter-search').val() || '',
+                        group: $('#filter-group').val() || '',
+                        task: $('#filter-task').val() || '',
+                        assignor: $('#filter-assignor').val() || '',
+                        assignee: $('#filter-assignee').val() || '',
+                        freq: $('#filter-freq').val() || ''
+                    }));
+                } catch (e) { /* ignore */ }
+            }
+
+            function restoreAutomatedTaskFilters() {
+                try {
+                    var raw = localStorage.getItem(TASK_AUTOMATED_FILTERS_KEY);
+                    if (!raw) return;
+                    var s = JSON.parse(raw);
+                    if (!s || typeof s !== 'object') return;
+                    $('#filter-search').val(s.search || '');
+                    $('#filter-group').val(s.group || '');
+                    $('#filter-task').val(s.task || '');
+                    $('#filter-assignor').val(s.assignor != null ? s.assignor : '');
+                    $('#filter-assignee').val(s.assignee != null ? s.assignee : '');
+                    $('#filter-freq').val(s.freq != null ? s.freq : '');
+                } catch (e) { /* ignore */ }
+            }
 
             // Initialize Tabulator
             var table = new Tabulator("#tasks-table", {
@@ -1512,6 +1548,7 @@
                             return !data.assignor_name || data.assignor_name === '-' || data.assignor_name === '';
                         });
                         updateStatistics();
+                        persistAutomatedTaskFilters();
                         return; // Skip other filters
                     } else {
                         filters.push({field:"assignor_name", type:"=", value:assignorValue});
@@ -1527,6 +1564,7 @@
                             return !data.assignee_name || data.assignee_name === '-' || data.assignee_name === '';
                         });
                         updateStatistics();
+                        persistAutomatedTaskFilters();
                         return; // Skip other filters
                     } else {
                         filters.push({field:"assignee_name", type:"=", value:assigneeValue});
@@ -1542,6 +1580,7 @@
                             return !data.schedule_type || data.schedule_type === '' || data.schedule_type === null || data.schedule_type === '-';
                         });
                         updateStatistics();
+                        persistAutomatedTaskFilters();
                         return; // Skip other filters
                     } else {
                         filters.push({field:"schedule_type", type:"=", value:freqValue});
@@ -1567,7 +1606,19 @@
                 setTimeout(function() {
                     updateStatistics();
                 }, 100);
+                persistAutomatedTaskFilters();
             }
+
+            var taskAutomatedFiltersRestored = false;
+            table.on('dataLoaded', function () {
+                if (taskAutomatedFiltersRestored) return;
+                taskAutomatedFiltersRestored = true;
+                restoreAutomatedTaskFilters();
+                applyFilters();
+            });
+            $(window).on('beforeunload pagehide', function () {
+                persistAutomatedTaskFilters();
+            });
 
             // Filter functionality
             $('#filter-search').on('keyup', applyFilters);
@@ -1576,6 +1627,30 @@
             $('#filter-assignor').on('change', applyFilters);
             $('#filter-assignee').on('change', applyFilters);
             $('#filter-freq').on('change', applyFilters);
+
+            // Reload table from server only; keep filter inputs and reapply Tabulator filters
+            $('#tasks-refresh-table-btn').on('click', function () {
+                var $btn = $(this);
+                var $icon = $btn.find('i.mdi-refresh').first();
+                $btn.prop('disabled', true);
+                if ($icon.length) {
+                    $icon.addClass('mdi-spin');
+                }
+                table.replaceData()
+                    .then(function () {
+                        applyFilters();
+                        setTimeout(updateStatistics, 100);
+                    })
+                    .catch(function (err) {
+                        console.error('Refresh table failed:', err);
+                    })
+                    .finally(function () {
+                        $btn.prop('disabled', false);
+                        if ($icon.length) {
+                            $icon.removeClass('mdi-spin');
+                        }
+                    });
+            });
 
             // Assignor playback (step through assignors - next to Assignor filter)
             var taskPlaybackListAssignor = [];
