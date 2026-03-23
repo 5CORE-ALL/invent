@@ -1654,6 +1654,19 @@
             $('#skuMetricsModal').modal('show');
         });
 
+        $(document).on('click', '.copy-goods-id-btn', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            const raw = this.getAttribute('data-goods-id');
+            if (!raw) return;
+            const id = raw;
+            navigator.clipboard.writeText(id).then(function() {
+                showToast('Goods ID copied to clipboard', 'success');
+            }).catch(function() {
+                showToast('Failed to copy Goods ID', 'error');
+            });
+        });
+
         // Discount type dropdown change handler
         $('#discount-type-select').on('change', function() {
             const discountType = $(this).val();
@@ -2655,7 +2668,25 @@
                         return `${sku} <button type="button" class="btn btn-sm ms-1 view-sku-chart" data-sku="${sku}" data-metric="price" title="View Price trend" style="border: none; background: none; color: #87CEEB; padding: 2px 6px;"><i class="fa fa-info-circle"></i></button>`;
                     }
                 },
-              
+                {
+                    title: "Goods ID",
+                    field: "goods_id",
+                    headerFilter: "input",
+                    hozAlign: "center",
+                    width: 168,
+                    accessorDownload: function(value) {
+                        return value != null && value !== '' ? String(value) : '';
+                    },
+                    formatter: function(cell) {
+                        const id = cell.getValue();
+                        if (id === null || id === undefined || String(id).trim() === '') return '';
+                        const s = String(id).trim();
+                        const escText = s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                        const escAttr = s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+                        return '<span class="align-middle">' + escText + '</span>' +
+                            ' <button type="button" class="btn btn-sm p-0 ms-1 copy-goods-id-btn align-middle" data-goods-id="' + escAttr + '" title="Copy Goods ID" style="border: none; background: none; color: #6c757d; line-height: 1;"><i class="fa fa-copy"></i></button>';
+                    }
+                },
                 {
                     title: "INV",
                     field: "inventory",
@@ -3597,7 +3628,7 @@
         let originalColumnVisibility = {}; // Store original visibility state
         
         // Columns to show when ads view is active (matching temu/ads page)
-        const adsColumnFields = ['sku', 'has_campaign', 'inventory', 'ovl30', 'temu_l30', 'dil_percent', 'nr_req', 'spend', 'spend_l60', 'l60_vs_l30', 'ad_clicks', 'acos_ad', 'out_roas_l30', 'in_roas_l30', 'campaign_status'];
+        const adsColumnFields = ['sku', 'goods_id', 'has_campaign', 'inventory', 'ovl30', 'temu_l30', 'dil_percent', 'nr_req', 'spend', 'spend_l60', 'l60_vs_l30', 'ad_clicks', 'acos_ad', 'out_roas_l30', 'in_roas_l30', 'campaign_status'];
         
         $('#toggle-ads-columns-btn').on('click', function() {
             adsColumnsVisible = !adsColumnsVisible;
