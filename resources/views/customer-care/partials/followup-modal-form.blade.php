@@ -33,7 +33,7 @@
             </select>
             <div class="invalid-feedback d-block" data-error-for="channel_master_id"></div>
         </div>
-        <x-followup.input-field label="Customer name" name="customer_name" :required="true" />
+        <x-followup.input-field label="Customer name" name="customer_name" />
         <x-followup.input-field label="Email" name="email" type="email" />
         <x-followup.input-field label="Phone" name="phone" type="tel" />
     </div>
@@ -51,8 +51,8 @@
             </select>
         </div>
         <div class="col-md-4 mb-3">
-            <label for="status" class="form-label">Status<span class="text-danger">*</span></label>
-            <select name="status" id="status" class="form-select" required>
+            <label for="followup_status" class="form-label">Status<span class="text-danger">*</span></label>
+            <select name="status" id="followup_status" class="form-select" required>
                 <option value="Pending">Pending</option>
                 <option value="In Progress">In Progress</option>
                 <option value="Resolved">Resolved</option>

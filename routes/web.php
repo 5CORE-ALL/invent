@@ -201,6 +201,7 @@ use App\Http\Controllers\InventoryManagement\OutgoingController;
 use App\Http\Controllers\InventoryManagement\RefundController;
 use App\Http\Controllers\CustomerCare\CustomerFollowupController;
 use App\Http\Controllers\CustomerCare\DARController;
+use App\Http\Controllers\CustomerCare\ShippingController;
 use App\Http\Controllers\InventoryManagement\StockAdjustmentController;
 use App\Http\Controllers\InventoryManagement\StockTransferController;
 use App\Http\Controllers\Channels\ChannelMovementAnalysisController;
@@ -611,6 +612,17 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/customer-care', function () {
         return view('customer-care.index');
     })->name('customer.care');
+    Route::get('/customer-care/shipping', [ShippingController::class, 'index'])->name('customer.care.shipping');
+    Route::get('/customer-care/shipping/overview', [ShippingController::class, 'overview'])->name('customer.care.shipping.overview');
+    Route::get('/customer-care/shipping/report-state', [ShippingController::class, 'reportState'])->name('customer.care.shipping.report.state');
+    Route::post('/customer-care/shipping/report-line', [ShippingController::class, 'reportSave'])->name('customer.care.shipping.report.save');
+    Route::delete('/customer-care/shipping/report-issues/{shipping_report_issue}', [ShippingController::class, 'reportIssueDestroy'])->name('customer.care.shipping.report.issue.destroy');
+    Route::get('/customer-care/shipping/platforms', [ShippingController::class, 'platformsList'])->name('customer.care.shipping.platforms');
+    Route::get('/customer-care/shipping/cleared', [ShippingController::class, 'clearedList'])->name('customer.care.shipping.cleared.list');
+    Route::post('/customer-care/shipping/cleared/{shipping_followup_archive}/restore', [ShippingController::class, 'clearedRestore'])->name('customer.care.shipping.cleared.restore');
+    Route::get('/customer-care/shipping/followups', [ShippingController::class, 'followupsList'])->name('customer.care.shipping.followups.list');
+    Route::post('/customer-care/shipping/followups', [ShippingController::class, 'followupsStore'])->name('customer.care.shipping.followups.store');
+    Route::post('/customer-care/shipping/followups/{shipping_followup}/resolve', [ShippingController::class, 'followupsResolve'])->name('customer.care.shipping.followups.resolve');
     Route::get('/customer-care/refunds', [RefundController::class, 'index'])->name('customer.care.refunds');
     Route::get('/customer-care/followups', [CustomerFollowupController::class, 'index'])->name('customer.care.followups');
     Route::get('/customer-care/followups/data', [CustomerFollowupController::class, 'data'])->name('customer.care.followups.data');

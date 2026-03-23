@@ -139,12 +139,40 @@
     }
 }
 
+/* ---- Page + table container (mirror blade for cache-only loads) ---- */
+.va-page {
+    min-width: 0;
+    max-width: 100%;
+}
+
+.va-page > [class*="col-"] {
+    min-width: 0;
+    max-width: 100%;
+}
+
+.va-page .card,
+.va-page .card-body {
+    min-width: 0;
+    max-width: 100%;
+}
+
 /* ---- Table & container ---- */
 .va-table-container {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
     overflow-x: auto;
-    overflow-y: visible;
+    overflow-y: auto;
     position: relative;
-    max-height: 600px;
+    max-height: min(600px, calc(100dvh - 15rem));
+    -webkit-overflow-scrolling: touch;
+}
+
+@supports not (height: 100dvh) {
+    .va-table-container {
+        max-height: min(600px, calc(100vh - 15rem));
+    }
 }
 
 .va-table {
@@ -235,9 +263,24 @@
 
 /* ---- Verification table (when using .custom-resizable-table) ---- */
 .table-container {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+    overflow-x: auto;
+    overflow-y: auto;
+    position: relative;
+    max-height: min(600px, calc(100dvh - 15rem));
+    -webkit-overflow-scrolling: touch;
     border-radius: 8px;
     border: 1px solid #e9ecef;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+@supports not (height: 100dvh) {
+    .table-container {
+        max-height: min(600px, calc(100vh - 15rem));
+    }
 }
 
 .custom-resizable-table {
@@ -246,8 +289,9 @@
 
 /* ---- Responsive ---- */
 @media (max-width: 768px) {
-    .va-table-container {
-        max-height: 400px;
+    .va-table-container,
+    .table-container {
+        max-height: min(400px, calc(100dvh - 12rem));
     }
     .va-table th,
     .va-table td {

@@ -6,18 +6,51 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
     <link rel="stylesheet" href="{{ asset('css/verification-adjustment.css') }}">
     <style>
+        /* ========== PAGE: fit viewport, prevent horizontal page scroll ========== */
+        .va-page {
+            min-width: 0;
+            max-width: 100%;
+        }
+
+        .va-page > [class*="col-"] {
+            min-width: 0;
+            max-width: 100%;
+        }
+
+        .va-page .card {
+            max-width: 100%;
+        }
+
+        .va-page .card-body {
+            min-width: 0;
+            max-width: 100%;
+        }
+
         /* ========== TABLE STRUCTURE ========== */
         .table-container {
+            width: 100%;
+            max-width: 100%;
+            min-width: 0;
+            box-sizing: border-box;
             overflow-x: auto;
-            overflow-y: visible;
+            overflow-y: auto;
             position: relative;
-            max-height: 600px;
+            max-height: min(600px, calc(100dvh - 15rem));
+            -webkit-overflow-scrolling: touch;
+        }
+
+        @supports not (height: 100dvh) {
+            .table-container {
+                max-height: min(600px, calc(100vh - 15rem));
+            }
         }
 
         .custom-resizable-table {
             width: 100%;
+            min-width: 100%;
             border-collapse: collapse;
             margin: 0;
+            table-layout: auto;
         }
 
         .custom-resizable-table th,
@@ -28,6 +61,7 @@
             position: relative;
             white-space: nowrap;
             overflow: visible !important;
+            vertical-align: middle;
         }
         
         /* Ensure table cells maintain proper alignment */
@@ -55,8 +89,8 @@
             pointer-events: auto;
         }
 
-        /* Center header content but exclude search containers */
-        .custom-resizable-table th > div:not(.dropdown-search-container):not(.header-text) {
+        /* Center header content but exclude search containers and vertical-header wrapper */
+        .custom-resizable-table th > div:not(.dropdown-search-container):not(.header-text):not(.va-th-v-inner) {
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -297,12 +331,6 @@
             cursor: default;
         }
         
-        /* Ensure table layout is fixed for proper column alignment */
-        .custom-resizable-table {
-            table-layout: auto;
-        }
-
-
         /* ========== SORTING ========== */
         .sortable {
             cursor: pointer;
@@ -387,17 +415,57 @@
             color: #17a2b8 !important;
         }
 
-        /* ========== HORIZONTAL HEADERS (readable, consistent with table) ========== */
+        /* ========== VERTICAL TABLE HEADERS (narrow columns, label reads upward) ========== */
+        #ebay-table thead th.va-th-v {
+            height: 132px;
+            width: 40px;
+            min-width: 36px;
+            max-width: 52px;
+            padding: 6px 2px !important;
+            vertical-align: bottom !important;
+            text-align: center !important;
+            box-sizing: border-box;
+        }
+
+        #ebay-table thead th.va-th-v .va-th-v-inner {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+            min-height: 108px;
+            transform: rotate(-90deg);
+            transform-origin: center center;
+            white-space: nowrap;
+            font-size: 11px;
+            font-weight: 600;
+            line-height: 1.2;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+        }
+
+        #ebay-table thead th.va-th-v .va-th-v-inner .header-text {
+            white-space: nowrap;
+            text-align: center;
+        }
+
+        #ebay-table thead th.va-th-v .sort-arrow {
+            display: inline-block;
+            font-size: 0.85em;
+            margin-left: 2px;
+        }
+
+        /* ========== HORIZONTAL HEADERS (shared with vertical layout) ========== */
         .horizontal-header {
             text-align: center;
             white-space: normal;
-            vertical-align: middle;
+            vertical-align: bottom;
             font-size: 12px !important;
             font-weight: 600;
             line-height: 1.3;
-            padding: 12px 10px !important;
+            padding: 6px 2px !important;
             width: auto;
-            min-width: 80px;
+            min-width: 36px;
+            max-width: 52px;
         }
 
         .horizontal-header .header-text {
@@ -1217,7 +1285,7 @@
             max-width: none;
         }
 
-        /* Horizontal readable headers (no rotation); most centered */
+        /* Sticky header row: vertical labels need fixed row height */
         #ebay-table thead th {
             height: auto;
             min-height: 0;
@@ -1227,12 +1295,21 @@
             vertical-align: middle !important;
         }
 
-        #ebay-table thead th:nth-child(3),
-        #ebay-table thead th:nth-child(4) {
+        #ebay-table thead th.va-th-v {
+            vertical-align: bottom !important;
+        }
+
+        /* Body: Parent + SKU stay left-aligned */
+        #ebay-table tbody td.va-td-parent {
             text-align: left;
         }
 
-        #ebay-table thead th > div {
+        #ebay-table tbody td.skuColumn {
+            text-align: left;
+        }
+
+        /* Vertical headers: inner wrapper handles rotation (see .va-th-v-inner above) */
+        #ebay-table thead th:not(.va-th-v) > div {
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -1240,7 +1317,7 @@
             height: 100%;
         }
 
-        #ebay-table thead th > div > div.d-flex:not(.dropdown-search-container) {
+        #ebay-table thead th:not(.va-th-v) > div > div.d-flex:not(.dropdown-search-container) {
             writing-mode: horizontal-tb;
             text-orientation: mixed;
             transform: none;
@@ -1248,7 +1325,7 @@
             margin: 0;
         }
 
-        #ebay-table thead th > div > div.dropdown-search-container {
+        #ebay-table thead th:not(.va-th-v) > div > div.dropdown-search-container {
             margin-top: 6px;
             width: 100%;
             pointer-events: auto;
@@ -1256,7 +1333,7 @@
             position: relative;
         }
 
-        #ebay-table thead th > div > div.dropdown-search-container input {
+        #ebay-table thead th:not(.va-th-v) > div > div.dropdown-search-container input {
             width: 100%;
             height: 28px;
             font-size: 12px;
@@ -1267,7 +1344,7 @@
             z-index: 101;
         }
 
-        #ebay-table thead th > div > div.dropdown-search-results {
+        #ebay-table thead th:not(.va-th-v) > div > div.dropdown-search-results {
             pointer-events: auto;
             z-index: 102;
         }
@@ -1288,12 +1365,6 @@
         #ebay-table tbody td {
             border-bottom: 1px solid #e9ecef !important;
             text-align: center;
-        }
-
-        /* Parent (3rd) and SKU (4th) columns stay left-aligned */
-        #ebay-table tbody td:nth-child(3),
-        #ebay-table tbody td:nth-child(4) {
-            text-align: left;
         }
 
         /* Inputs inside table */
@@ -1334,7 +1405,49 @@
         padding: 4px 8px;
         background-color: #fff;
     }
-    
+
+    /* VERIFIED (verified stock #) + REASON: tighter columns */
+    #ebay-table thead th[data-field="price"] {
+        width: 52px;
+        min-width: 48px;
+        max-width: 60px;
+    }
+
+    #ebay-table thead th[data-field="roi"] {
+        width: 72px;
+        min-width: 68px;
+        max-width: 84px;
+    }
+
+    #ebay-table td:has(.verified-stock-input) {
+        width: 1%;
+        max-width: 60px;
+        padding-left: 4px !important;
+        padding-right: 4px !important;
+    }
+
+    #ebay-table td:has(.reason-select) {
+        width: 1%;
+        max-width: 84px;
+        padding-left: 4px !important;
+        padding-right: 4px !important;
+    }
+
+    #ebay-table .verified-stock-input {
+        min-width: 0;
+        max-width: 100%;
+        width: 100%;
+        padding: 4px 6px;
+        font-size: 12px;
+    }
+
+    #ebay-table .reason-select {
+        min-width: 0;
+        max-width: 100%;
+        width: 100%;
+        font-size: 11px;
+        padding: 2px 4px;
+    }
 
     </style>
 @endsection
@@ -1353,7 +1466,7 @@
             </div>
         </div>
     </div> -->
-    <div class="row">
+    <div class="row va-page">
         <div class="col-12">
             <div class="card">
                 <div class="card-body">
@@ -1639,116 +1752,68 @@
                                     <th data-field="bulk-select" style="width: 50px; text-align: center;">
                                         <input type="checkbox" id="select-all-checkbox" title="Select All">
                                     </th>
-                                    <th data-field="sl_no">IMAGES <span class="sort-arrow">↓</span></th>
-                                    <th data-field="Parent" class="horizontal-header">
-                                        <div class="header-text">
-                                            <span class="sortable-header">PARENT <span class="sort-arrow">↓</span></span>
-                                        </div>
+                                    <th data-field="sl_no" class="va-th-v">
+                                        <div class="va-th-v-inner">IMAGES <span class="sort-arrow">↓</span></div>
                                     </th>
-                                    <th data-field="P" class="text-center" style="width: 36px; vertical-align: middle;">
-                                        <span class="sort-arrow">P</span>
-                                    </th>
-                                    <th data-field="SKU" class="horizontal-header">
-                                        <div class="header-text sortable">
-                                            SKU <span class="sort-arrow">↓</span>
-                                        </div>
-                                    </th>
-                                    <th data-field="r&a" class="hide-column"
-                                        style="vertical-align: middle; white-space: nowrap; padding-right: 4px;">
-                                        <div class="d-flex flex-column align-items-center">
-                                            <div class="d-flex align-items-center">
-                                                R&A <span class="sort-arrow">↓</span>
+                                    <th data-field="Parent" class="horizontal-header va-th-v">
+                                        <div class="va-th-v-inner">
+                                            <div class="header-text">
+                                                <span class="sortable-header">PARENT <span class="sort-arrow">↓</span></span>
                                             </div>
                                         </div>
                                     </th>
-                                    <th data-field="INV" style="vertical-align: middle; white-space: nowrap;">
-                                        <div class="d-flex flex-column align-items-center">
-                                            <div class="d-flex align-items-center">
-                                                INV <span class="sort-arrow">↓</span>
-                                            </div>
-                                            <!-- <div class="metric-total" id="inv-total">0</div> -->
-                                        </div>
+                                    <th data-field="P" class="text-center va-th-v" style="width: 36px;">
+                                        <div class="va-th-v-inner">P <span class="sort-arrow"></span></div>
                                     </th>
-                                    <th data-field="L30" style="vertical-align: middle; white-space: nowrap;">
-                                        <div class="d-flex flex-column align-items-center">
-                                            <div class="d-flex align-items-center">
-                                                L30 <span class="sort-arrow">↓</span>
-                                            </div>
-                                            <!-- <div class="metric-total" id="ovl30-total">0</div> -->
-                                        </div>
-                                    </th>
-                                    <th data-field="DIL" style="vertical-align: middle; white-space: nowrap;">
-                                        <div class="d-flex flex-column align-items-center">
-                                            <div class="d-flex align-items-center">
-                                                DIL <span class="sort-arrow">↓</span>
-                                            </div>
-                                            <!-- <div class="metric-total" id="ovdil-total">0%</div> -->
-                                        </div>
-                                    </th>
-                                    <th data-field="AVAILABLE_TO_SELL" style="vertical-align: middle; white-space: nowrap;">
-                                        <div class="d-flex flex-column align-items-center">
-                                            <div class="d-flex align-items-center">
-                                            AVL TO SELL<span class="sort-arrow">↓</span>
-                                            </div>
-                                            <!-- <div class="metric-total" id="el30-total">0</div> -->
-                                        </div>
-                                    </th>
-                                    <th data-field="COMMITTED" style="vertical-align: middle; white-space: nowrap;">
-                                        <div class="d-flex flex-column align-items-center">
-                                            <div class="d-flex align-items-center">
-                                                COMMITTED <span class="sort-arrow">↓</span>
-                                            </div>
-                                            <!-- <div class="metric-total" id="eDil-total">0%</div> -->
-                                        </div>
-                                    </th>
-                                    <th data-field="ON_HAND" style="vertical-align: middle; white-space: nowrap;">
-                                        <div class="d-flex flex-column align-items-center">
-                                            <div class="d-flex align-items-center">
-                                            ON HAND <span class="sort-arrow">↓</span>
-                                            </div>
-                                            <!-- <div class="metric-total" id="views-total">0</div> -->
-                                        </div>
-                                    </th>
-                                    <th data-field="price"
-                                        style="vertical-align: middle; white-space: nowrap; padding-right: 4px; width: 130px;">
-                                        <div class="d-flex flex-column align-items-center">
-                                            <div class="d-flex align-items-center">
-                                                VERIFIED <span class="sort-arrow"></span>
+                                    <th data-field="SKU" class="horizontal-header va-th-v">
+                                        <div class="va-th-v-inner">
+                                            <div class="header-text sortable">
+                                                SKU <span class="sort-arrow">↓</span>
                                             </div>
                                         </div>
                                     </th>
-                                    <th data-field="pft" style="vertical-align: middle; white-space: nowrap;">
-                                        <div class="d-flex flex-column align-items-center">
-                                            <div class="d-flex align-items-center">
-                                                TO ADJUST <span class="sort-arrow"></span>      
-                                            </div>
-                                            <!-- <div class="metric-total" id="pft-total">0%</div> -->
+                                    <th data-field="r&a" class="hide-column va-th-v">
+                                        <div class="va-th-v-inner">R&amp;A <span class="sort-arrow">↓</span></div>
+                                    </th>
+                                    <th data-field="INV" class="va-th-v">
+                                        <div class="va-th-v-inner">INV <span class="sort-arrow">↓</span></div>
+                                    </th>
+                                    <th data-field="L30" class="va-th-v">
+                                        <div class="va-th-v-inner">L30 <span class="sort-arrow">↓</span></div>
+                                    </th>
+                                    <th data-field="DIL" class="va-th-v">
+                                        <div class="va-th-v-inner">DIL <span class="sort-arrow">↓</span></div>
+                                    </th>
+                                    <th data-field="AVAILABLE_TO_SELL" class="va-th-v">
+                                        <div class="va-th-v-inner">AVL TO SELL <span class="sort-arrow">↓</span></div>
+                                    </th>
+                                    <th data-field="COMMITTED" class="va-th-v">
+                                        <div class="va-th-v-inner">COMMITTED <span class="sort-arrow">↓</span></div>
+                                    </th>
+                                    <th data-field="ON_HAND" class="va-th-v">
+                                        <div class="va-th-v-inner">ON HAND <span class="sort-arrow">↓</span></div>
+                                    </th>
+                                    <th data-field="price" class="va-th-v">
+                                        <div class="va-th-v-inner">VERIFIED <span class="sort-arrow"></span></div>
+                                    </th>
+                                    <th data-field="pft" class="va-th-v">
+                                        <div class="va-th-v-inner">TO ADJUST <span class="sort-arrow"></span></div>
+                                    </th>
+                                    <th data-field="roi" class="horizontal-header va-th-v">
+                                        <div class="va-th-v-inner">
+                                            <div class="header-text">REASON <span class="sort-arrow"></span></div>
                                         </div>
                                     </th>
-                                    <th data-field="roi" class="horizontal-header">
-                                        <div class="header-text">
-                                            REASON <span class="sort-arrow"></span>
+                                    <th data-field="remark" class="horizontal-header va-th-v">
+                                        <div class="va-th-v-inner">
+                                            <div class="header-text remarks-input">REMARK <span class="sort-arrow"></span></div>
                                         </div>
                                     </th>
-                                    <th data-field="remark" class="horizontal-header">
-                                        <div class="header-text remarks-input">
-                                            REMARK<span class="sort-arrow"></span>
-                                        </div>
+                                    <th data-field="tacos" class="va-th-v">
+                                        <div class="va-th-v-inner">ACCEPT <span class="sort-arrow"></span></div>
                                     </th>
-                                    <th data-field="tacos" style="vertical-align: middle; white-space: nowrap;">
-                                        <div class="d-flex flex-column align-items-center">
-                                            <div class="d-flex align-items-center">
-                                                Accept <span class="sort-arrow"></span>
-                                            </div>
-                                            <!-- <div class="metric-total" id="tacos-total">0%</div> -->
-                                        </div>
-                                    </th>
-                                    <th data-field="tacos" style="vertical-align: middle; white-space: nowrap; display: none;">
-                                        <div class="d-flex flex-column align-items-center">
-                                            <div class="d-flex align-items-center">
-                                                ADJ HISTORY<span class="sort-arrow"></span>
-                                            </div>
-                                        </div>
+                                    <th data-field="tacos" class="va-th-v" style="display: none;">
+                                        <div class="va-th-v-inner">ADJ HISTORY <span class="sort-arrow"></span></div>
                                     </th>
                                     <!-- <th data-field="tacos" style="vertical-align: middle; white-space: nowrap;">
                                         <div class="d-flex flex-column align-items-center">
@@ -1757,59 +1822,26 @@
                                             </div>
                                         </div>
                                     </th> -->
-                                    <th data-field="cvr" style="vertical-align: middle; white-space: nowrap;">
-                                        <div class="d-flex flex-column align-items-center">
-                                            <div class="d-flex align-items-center">
-                                                ADJ QTY <span class="sort-arrow"></span>
-                                            </div>
-                                            <!-- <div class="metric-total" id="cvr-total">0%</div> -->
-                                        </div>
+                                    <th data-field="cvr" class="va-th-v">
+                                        <div class="va-th-v-inner">ADJ QTY <span class="sort-arrow"></span></div>
                                     </th>
-                                    <th data-field="ad cost/ pc" style="vertical-align: middle; white-space: nowrap;">
-                                        <div class="d-flex flex-column align-items-center">
-                                            <!-- <small id="lossGainTotalText" class="badge bg-success mb-1" style="font-size: 13px;">
-                                                $ 0
-                                            </small> -->
-                                            <div class="d-flex align-items-center" id="lossGainHeader">
-                                                LOSS/GAIN<span class="sort-arrow "></span>
-                                            </div>
-                                            <!-- <small id="lossGainTotalText" class="text-success"></small> -->
-                                        </div>
+                                    <th data-field="ad cost/ pc" class="va-th-v">
+                                        <div class="va-th-v-inner"><span id="lossGainHeader">LOSS/GAIN</span> <span class="sort-arrow"></span></div>
                                     </th>
-                                    <th data-field="ad cost/ pc" style="vertical-align: middle; white-space: nowrap;">
-                                        <div class="d-flex flex-column align-items-center">
-                                            <div class="d-flex align-items-center">
-                                                APPR-AT<span class="sort-arrow"></span>
-                                            </div>
-                                        </div>
+                                    <th data-field="ad cost/ pc" class="va-th-v">
+                                        <div class="va-th-v-inner">APPR-AT <span class="sort-arrow"></span></div>
                                     </th>
-                                    <th data-field="ad cost/ pc" style="vertical-align: middle; white-space: nowrap;">
-                                        <div class="d-flex flex-column align-items-center">
-                                            <div class="d-flex align-items-center">
-                                                VERIFIED<span class="sort-arrow"></span>
-                                            </div>
-                                        </div>
+                                    <th data-field="ad cost/ pc" class="va-th-v">
+                                        <div class="va-th-v-inner">VERIFIED <span class="sort-arrow"></span></div>
                                     </th>
-                                    <th data-field="user" style="vertical-align: middle; white-space: nowrap;">
-                                        <div class="d-flex flex-column align-items-center">
-                                            <div class="d-flex align-items-center">
-                                                USER<span class="sort-arrow"></span>
-                                            </div>
-                                        </div>
+                                    <th data-field="user" class="va-th-v">
+                                        <div class="va-th-v-inner">USER <span class="sort-arrow"></span></div>
                                     </th>
-                                    <th data-field="history" class="history-header" style="vertical-align: middle; white-space: nowrap;">
-                                        <div class="d-flex flex-column align-items-center">
-                                            <div class="d-flex align-items-center">
-                                                HISTORY<span class="sort-arrow"></span>
-                                            </div>
-                                        </div>
+                                    <th data-field="history" class="history-header va-th-v">
+                                        <div class="va-th-v-inner">HISTORY <span class="sort-arrow"></span></div>
                                     </th>
-                                    <th data-field="activityLogs" class="activity-logs-header" style="vertical-align: middle; white-space: nowrap;">
-                                        <div class="d-flex flex-column align-items-center">
-                                            <div class="d-flex align-items-center">
-                                                Activity Logs<span class="sort-arrow"></span>
-                                            </div>
-                                        </div>
+                                    <th data-field="activityLogs" class="activity-logs-header va-th-v">
+                                        <div class="va-th-v-inner">ACTIVITY LOGS <span class="sort-arrow"></span></div>
                                     </th>
                                 </tr>
                             </thead>
@@ -2292,7 +2324,7 @@
                 currentParentIndex = 0;
 
                 // Show R&A column
-                $('th[data-field="r&a"], td:nth-child(4)').removeClass('hide-column');
+                $('th[data-field="r&a"], td.ra-cell').removeClass('hide-column');
 
                 showCurrentParent();
 
@@ -2310,7 +2342,7 @@
                 currentParentIndex = -1;
 
                 // Hide R&A column
-                $('th[data-field="r&a"], td:nth-child(4)').addClass('hide-column');
+                $('th[data-field="r&a"], td.ra-cell').addClass('hide-column');
 
                 // Update button visibility and reset color
                 $('#play-pause').hide();
@@ -2418,7 +2450,7 @@
             function initTable() {
                 loadData().then(() => {
                     // Hide R&A column initially
-                    $('th[data-field="r&a"], td:nth-child(4)').addClass('hide-column');
+                    $('th[data-field="r&a"], td.ra-cell').addClass('hide-column');
                     renderTable();
                     initResizableColumns();
                     initSorting();
@@ -2796,7 +2828,7 @@
                     $row.append(imgTd);
 
                     // $row.append($('<td>').text(item.sl_no));
-                    $row.append($('<td>').text(item.Parent));
+                    $row.append($('<td>').addClass('va-td-parent').text(item.Parent));
 
                     // P column: dot to show all SKUs in this parent
                     const parentName = item.Parent || '(No Parent)';

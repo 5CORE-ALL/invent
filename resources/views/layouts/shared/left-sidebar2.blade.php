@@ -873,6 +873,13 @@
                 </div>
             </li>
 
+            <li class="side-nav-item">
+                <a href="{{ route('customer.care.shipping') }}" class="side-nav-link">
+                    <i class="ri-truck-line"></i>
+                    <span>Shipping</span>
+                </a>
+            </li>
+
             {{-- Shopify --}}
             <li class="side-nav-item">
                 <a data-bs-toggle="collapse" href="#sidebarPages" aria-expanded="false"
