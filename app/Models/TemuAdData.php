@@ -36,6 +36,7 @@ class TemuAdData extends Model
     ];
 
     protected $casts = [
+        'goods_id' => 'string',
         'spend' => 'decimal:2',
         'base_price_sales' => 'decimal:2',
         'roas' => 'decimal:2',

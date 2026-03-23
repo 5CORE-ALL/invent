@@ -513,66 +513,6 @@ class Ebay2ApiService
         }
     }
 
-    /**
-     * Update bullet points for eBay2 listing (150 char limit).
-     */
-    public function updateBulletPoints(string $itemId, string $bulletPoints): array
-    {
-        $itemId = trim($itemId);
-        $bulletPoints = mb_substr(trim($bulletPoints), 0, 150);
-        if ($bulletPoints === '') {
-            return ['success' => false, 'message' => 'Bullet points cannot be empty.'];
-        }
-        try {
-            $itemDetails = $this->getItem($itemId);
-            if (! $itemDetails || ! isset($itemDetails['Item'])) {
-                return ['success' => false, 'message' => 'Item not found.'];
-            }
-            $existingDesc = $itemDetails['Item']['Description'] ?? '';
-            $bulletHtml = '<p><strong>Key Features:</strong></p><p>' . htmlspecialchars($bulletPoints, ENT_XML1, 'UTF-8') . '</p>';
-            $newDesc = ($existingDesc && strlen((string) $existingDesc) > 50) ? $existingDesc . '<br/><br/>' . $bulletHtml : $bulletHtml;
-
-            $authToken = $this->generateBearerToken();
-            $xml = new \SimpleXMLElement('<?xml version="1.0" encoding="utf-8"?><ReviseItemRequest xmlns="urn:ebay:apis:eBLBaseComponents"/>');
-            $credentials = $xml->addChild('RequesterCredentials');
-            $credentials->addChild('eBayAuthToken', $authToken ?? '');
-            $xml->addChild('ErrorLanguage', 'en_US');
-            $xml->addChild('WarningLevel', 'High');
-            $xml->addChild('DetailLevel', 'ReturnAll');
-            $item = $xml->addChild('Item');
-            $item->addChild('ItemID', $itemId);
-            $item->addChild('Description', $newDesc);
-
-            $response = Http::withHeaders([
-                'X-EBAY-API-COMPATIBILITY-LEVEL' => config('services.ebay2.compat_level', '1189'),
-                'X-EBAY-API-DEV-NAME' => config('services.ebay2.dev_id'),
-                'X-EBAY-API-APP-NAME' => config('services.ebay2.app_id'),
-                'X-EBAY-API-CERT-NAME' => config('services.ebay2.cert_id'),
-                'X-EBAY-API-CALL-NAME' => 'ReviseItem',
-                'X-EBAY-API-SITEID' => (string) (config('services.ebay2.site_id', 0)),
-                'Content-Type' => 'text/xml',
-            ])->withBody($xml->asXML(), 'text/xml')->post(config('services.ebay2.trading_api_endpoint', 'https://api.ebay.com/ws/api.dll'));
-
-            $body = $response->body();
-            $xmlResp = @simplexml_load_string($body);
-            if ($xmlResp === false) {
-                return ['success' => false, 'message' => 'Invalid API response.'];
-            }
-            $arr = json_decode(json_encode($xmlResp), true);
-            $ack = $arr['Ack'] ?? 'Failure';
-            if ($ack === 'Success' || $ack === 'Warning') {
-                return ['success' => true, 'message' => 'Bullet points updated successfully.'];
-            }
-            $errors = $arr['Errors'] ?? [];
-            $errors = is_array($errors) && isset($errors['ShortMessage']) ? [$errors] : (array) $errors;
-            $msg = $errors[0]['LongMessage'] ?? $errors[0]['ShortMessage'] ?? 'Unknown error';
-            return ['success' => false, 'message' => $msg];
-        } catch (\Throwable $e) {
-            Log::error('eBay2 updateBulletPoints exception', ['itemId' => $itemId, 'error' => $e->getMessage()]);
-            return ['success' => false, 'message' => $e->getMessage()];
-        }
-    }
-
     private function generateEbayToken(): ?string
     {
         // Backwards-compatible wrapper:
