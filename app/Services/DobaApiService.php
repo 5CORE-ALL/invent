@@ -26,17 +26,6 @@ class DobaApiService
      * @param  string  $title
      * @return bool
      */
-    public function updateBulletPoints(string $sku, string $bulletPoints): array
-    {
-        $sku = trim($sku);
-        $bulletPoints = mb_substr(trim($bulletPoints), 0, 60);
-        if ($bulletPoints === '') {
-            return ['success' => false, 'message' => 'Bullet points cannot be empty.'];
-        }
-        Log::info('Doba updateBulletPoints called', ['sku' => $sku]);
-        return ['success' => true, 'message' => 'Bullet points saved (Doba API update not yet implemented).'];
-    }
-
     public function updateTitle(string $sku, string $title): bool
     {
         Log::info('🚀 Push to Doba - Started', ['sku' => $sku]);

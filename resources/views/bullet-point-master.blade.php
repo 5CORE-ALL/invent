@@ -5,99 +5,46 @@
     <link rel="stylesheet" href="https://cdn.datatables.net/buttons/2.3.6/css/buttons.dataTables.min.css">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
-    <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
-    <link href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css" rel="stylesheet" />
 
     <style>
-        .table-responsive {
-            position: relative;
-            border: 1px solid #e9ecef;
-            border-radius: 10px;
-            max-height: 600px;
-            overflow-x: auto;
-            overflow-y: auto;
-            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
-            background-color: white;
-        }
-        .table-responsive thead th {
-            position: sticky;
-            top: 0;
-            background: linear-gradient(135deg, #2c6ed5 0%, #1a56b7 100%) !important;
-            color: white;
-            z-index: 10;
-            padding: 8px 10px;
-            font-weight: 600;
-            font-size: 11px;
-            letter-spacing: 0.5px;
-            text-transform: uppercase;
-            white-space: nowrap;
-        }
-        .table-responsive thead input, .table-responsive thead select {
-            background-color: rgba(255, 255, 255, 0.9);
-            border: none;
-            border-radius: 4px;
-            padding: 4px 6px;
-            margin-top: 4px;
-            font-size: 10px;
-            width: 100%;
-        }
-        .table-responsive tbody td {
-            padding: 8px 10px;
-            vertical-align: middle;
-            font-size: 12px;
-            color: #495057;
-        }
-        .table-responsive tbody tr:nth-child(even) { background-color: #f8fafc; }
-        .table-responsive tbody tr:hover { background-color: #e8f0fe; }
-        .bullet-text {
-            max-width: 150px;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-        }
-        .mp-cell {
-            max-width: 120px;
-            min-width: 100px;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-            cursor: pointer;
-            padding: 6px 8px;
-            font-size: 11px;
-        }
-        .mp-cell:hover {
-            background-color: #e8f0fe;
-            overflow: visible;
-            white-space: normal;
-            word-wrap: break-word;
-            z-index: 5;
-        }
-        .action-btn {
-            padding: 5px 10px;
-            border: none;
-            border-radius: 4px;
-            font-size: 11px;
-            cursor: pointer;
-            transition: all 0.2s;
-            margin: 0 2px;
-        }
-        .edit-btn {
-            background: linear-gradient(135deg, #ffc107 0%, #ff9800 100%);
-            color: white;
-        }
-        .edit-btn:hover { box-shadow: 0 2px 8px rgba(255, 193, 7, 0.3); }
-        .modal-header-gradient {
-            background: linear-gradient(135deg, #6B73FF 0%, #000DFF 100%);
-            color: white;
-        }
-        .char-counter { font-size: 11px; color: #6c757d; }
-        .char-counter.error { color: #dc3545; font-weight: 600; }
-        .char-counter.warning { color: #b8860b; }
-        .btn-update-selected {
-            background: linear-gradient(135deg, #2c6ed5 0%, #1a56b7 100%);
-            color: white;
-        }
-        .mp-col-header { font-size: 10px; }
+        .card.bp-master-card { border: 1px solid #e2e8f0; border-radius: 12px; box-shadow: 0 2px 12px rgba(44,110,213,.06); }
+        .card.bp-master-card .card-body { padding: 1.25rem 1.5rem; }
+        .bp-master-toolbar { display:flex; flex-wrap:wrap; align-items:center; gap:.5rem; }
+        .bp-master-toolbar .btn { padding:.3rem .6rem; font-size:.8rem; border-radius:6px; }
+        .table-responsive { position:relative; border:1px solid #e2e8f0; border-radius:10px; max-height:640px; overflow:auto; box-shadow:0 2px 8px rgba(0,0,0,.04); background:#fff; }
+        #bullet-master-table thead th { position:sticky; top:0; vertical-align:middle!important; background:linear-gradient(135deg,#2c6ed5 0%,#1a56b7 100%)!important; color:#fff; z-index:10; padding:6px 8px; font-size:10px; font-weight:600; text-transform:uppercase; white-space:nowrap; }
+        #bullet-master-table thead .th-caption { display:flex; align-items:center; gap:6px; }
+        #bullet-master-table thead .th-sub { margin-top:4px; }
+        #bullet-master-table thead input, #bullet-master-table thead select { background:rgba(255,255,255,.95); border:none; border-radius:4px; color:#333; padding:4px 6px; width:100%; font-size:10px; }
+        #bullet-master-table tbody td { padding:8px 10px; vertical-align:middle!important; border-bottom:1px solid #edf2f9; font-size:11px; line-height:1.35; color:#475569; }
+        #bullet-master-table tbody tr:nth-child(even){ background:#f8fafc; }
+        #bullet-master-table tbody tr:hover{ background:#e8f0fe; }
+        .table-img-cell img { width:36px; height:36px; object-fit:cover; border-radius:4px; }
+        .preview-cell { max-width:230px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; cursor:help; }
+        .action-buttons-group { display:flex; align-items:center; gap:6px; }
+        .action-btn { padding:5px 10px; border:none; border-radius:6px; font-size:11px; font-weight:500; display:inline-flex; align-items:center; gap:4px; }
+        .view-btn { background:#17a2b8; color:#fff; }
+        .edit-btn { background:linear-gradient(135deg,#2c6ed5 0%,#1a56b7 100%); color:#fff; }
+        .mp-cell-wrap { min-width:220px; max-width:260px; }
+        .mp-group-wrap { min-width:260px; max-width:320px; }
+        .mp-group-item { border:1px solid #e5e7eb; border-radius:6px; padding:6px; margin-bottom:6px; background:#fff; }
+        .mp-group-item:last-child { margin-bottom:0; }
+        .mp-top-row { display:flex; align-items:center; justify-content:space-between; gap:6px; margin-bottom:4px; }
+        .mp-status-dot { width:10px; height:10px; border-radius:50%; border:2px solid #94a3b8; display:inline-block; margin-left:4px; }
+        .mp-status-dot.success { background:#22c55e; border-color:#22c55e; }
+        .mp-counter { font-size:10px; color:#6c757d; }
+        .mp-counter.warning { color:#b8860b; font-weight:600; }
+        .mp-counter.error { color:#dc3545; font-weight:700; }
+        .mp-input { width:100%; min-height:54px; max-height:96px; resize:vertical; font-size:11px; padding:6px; border:1px solid #cfd6e4; border-radius:6px; }
+        .mp-input:focus { outline:none; border-color:#2c6ed5; box-shadow:0 0 0 2px rgba(44,110,213,.2); }
+        .group-badge { font-size:10px; }
+        .btn-push-all { background:#ff9900!important; color:#232f3e!important; font-weight:600; }
+        .btn-push-all:hover { background:#e88b00!important; color:#fff!important; }
+        .toast-container { z-index:1100; }
+        .rainbow-loader { display:none; text-align:center; padding:40px; }
+        .rainbow-loader .loading-text { margin-top:16px; font-weight:600; color:#2c6ed5; }
+        .modal-header-gradient { background:linear-gradient(135deg,#6B73FF 0%,#000DFF 100%); color:#fff; }
+        .ai-edit-panel { border:1px solid #dee2e6; border-radius:8px; padding:10px; background:#f8fafc; }
     </style>
 @endsection
 
@@ -111,571 +58,689 @@
 
     <div class="row">
         <div class="col-12">
-            <div class="card">
+            <div class="card bp-master-card">
                 <div class="card-body">
-                    <div class="mb-3 d-flex flex-wrap gap-2 align-items-center">
-                        <button id="addBulletBtn" class="btn btn-success btn-sm"><i class="fas fa-plus"></i> Add Bullet Points</button>
-                        <button id="exportBtn" class="btn btn-primary btn-sm"><i class="fas fa-download"></i> Export</button>
-                        <button id="importBtn" class="btn btn-info btn-sm"><i class="fas fa-upload"></i> Import</button>
-                        <input type="file" id="importFile" accept=".csv,.xlsx,.xls" style="display: none;">
-                        <button id="updateSelectedBtn" class="btn btn-update-selected btn-sm" disabled>
-                            <i class="fas fa-cloud-upload-alt"></i> Update Selected (<span id="selectedCount">0</span>)
-                        </button>
-                        <div class="btn-group btn-group-sm">
-                            <button type="button" class="btn btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown">Select marketplace group</button>
-                            <ul class="dropdown-menu">
-                                <li><a class="dropdown-item" href="#" data-group="150">All 150-char (eBay1-3, Walmart, Macy, AliExpress, Faire, BestBuy)</a></li>
-                                <li><a class="dropdown-item" href="#" data-group="100">Wayfair (100)</a></li>
-                                <li><a class="dropdown-item" href="#" data-group="80">Shein (80)</a></li>
-                                <li><a class="dropdown-item" href="#" data-group="60">DOBA (60)</a></li>
-                            </ul>
-                        </div>
+                    <div class="mb-3 bp-master-toolbar">
+                        <button id="exportBtn" class="btn btn-primary"><i class="fas fa-download"></i> Export</button>
+                        <button id="importBtn" class="btn btn-info"><i class="fas fa-upload"></i> Import</button>
+                        <button id="pushSelectedBtn" class="btn btn-secondary"><i class="fas fa-cloud-upload-alt"></i> Push Selected</button>
+                        <button id="pushAllBtn" class="btn btn-push-all"><i class="fas fa-cloud-upload-alt"></i> Push ALL to All Marketplaces</button>
+                        <input type="file" id="importFile" accept=".csv,.xlsx,.xls" style="display:none;">
                     </div>
 
                     <div class="table-responsive">
-                        <table id="bullet-master-table" class="table table-sm">
+                        <table id="bullet-master-table" class="table dt-responsive nowrap w-100">
                             <thead>
                                 <tr>
-                                    <th><input type="checkbox" id="selectAll" title="Select All"></th>
-                                    <th>Images</th>
+                                    <th><input type="checkbox" id="selectAllRows" title="Select All Rows"></th>
+                                    <th>SKU</th>
+                                    <th>Product Name</th>
                                     <th>
-                                        <span>Parent</span><span id="parentCount">(0)</span>
-                                        <input type="text" id="parentSearch" class="form-control-sm" placeholder="Search Parent">
+                                        <div class="th-caption">
+                                            <span>Current Bullets (Preview)</span>
+                                            <span id="previewCount">(0)</span>
+                                        </div>
+                                        <input type="text" id="previewSearch" class="th-sub" placeholder="Search preview">
                                     </th>
-                                    <th>
-                                        <span>SKU</span><span id="skuCount">(0)</span>
-                                        <input type="text" id="skuSearch" class="form-control-sm" placeholder="Search SKU">
+                                    <th>ACTION</th>
+
+                                    <th title="150 chars marketplaces">
+                                        <div class="th-caption">MARKETPLACES (150)</div>
+                                        <div class="th-sub"><input type="checkbox" class="group-market" data-group="g150"> Select Group</div>
                                     </th>
-                                    <th>Bullet 1 <span id="bullet1MissingCount" class="text-danger">(0)</span>
-                                        <select id="filterBullet1" class="form-control form-control-sm mt-1" style="font-size: 10px;">
-                                            <option value="all">All</option>
-                                            <option value="missing">Missing</option>
-                                        </select>
+                                    <th title="100 chars marketplaces">
+                                        <div class="th-caption">MARKETPLACES (100)</div>
+                                        <div class="th-sub"><input type="checkbox" class="group-market" data-group="g100"> Select Group</div>
                                     </th>
-                                    <th>Bullet 2 <span id="bullet2MissingCount" class="text-danger">(0)</span>
-                                        <select id="filterBullet2" class="form-control form-control-sm mt-1" style="font-size: 10px;">
-                                            <option value="all">All</option>
-                                            <option value="missing">Missing</option>
-                                        </select>
+                                    <th title="80 chars marketplaces">
+                                        <div class="th-caption">MARKETPLACES (80)</div>
+                                        <div class="th-sub"><input type="checkbox" class="group-market" data-group="g80"> Select Group</div>
                                     </th>
-                                    <th>Bullet 3 <span id="bullet3MissingCount" class="text-danger">(0)</span>
-                                        <select id="filterBullet3" class="form-control form-control-sm mt-1" style="font-size: 10px;">
-                                            <option value="all">All</option>
-                                            <option value="missing">Missing</option>
-                                        </select>
+                                    <th title="60 chars marketplaces">
+                                        <div class="th-caption">MARKETPLACES (60)</div>
+                                        <div class="th-sub"><input type="checkbox" class="group-market" data-group="g60"> Select Group</div>
                                     </th>
-                                    <th>Bullet 4 <span id="bullet4MissingCount" class="text-danger">(0)</span>
-                                        <select id="filterBullet4" class="form-control form-control-sm mt-1" style="font-size: 10px;">
-                                            <option value="all">All</option>
-                                            <option value="missing">Missing</option>
-                                        </select>
-                                    </th>
-                                    <th>Bullet 5 <span id="bullet5MissingCount" class="text-danger">(0)</span>
-                                        <select id="filterBullet5" class="form-control form-control-sm mt-1" style="font-size: 10px;">
-                                            <option value="all">All</option>
-                                            <option value="missing">Missing</option>
-                                        </select>
-                                    </th>
-                                    <th>Action</th>
-                                    <th class="mp-col-header">150: eBay1</th>
-                                    <th class="mp-col-header">eBay2</th>
-                                    <th class="mp-col-header">eBay3</th>
-                                    <th class="mp-col-header">Walmart</th>
-                                    <th class="mp-col-header">Macy</th>
-                                    <th class="mp-col-header">AliExp</th>
-                                    <th class="mp-col-header">Faire</th>
-                                    <th class="mp-col-header">BestBuy</th>
-                                    <th class="mp-col-header">100: Wayfair</th>
-                                    <th class="mp-col-header">80: Shein</th>
-                                    <th class="mp-col-header">60: DOBA</th>
                                 </tr>
                             </thead>
                             <tbody id="table-body"></tbody>
                         </table>
                     </div>
 
-                    <div id="rainbow-loader" class="text-center py-4" style="display: none;">
-                        <div class="spinner-border text-primary" role="status"></div>
-                        <p class="mt-2">Loading Bullet Points Data...</p>
+                    <div id="rainbow-loader" class="rainbow-loader">
+                        <div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div>
+                        <div class="loading-text">Loading Bullet Points Master Data...</div>
                     </div>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- Add/Edit Bullet Points (1-5) Modal -->
-    <div class="modal fade" id="bulletModal" tabindex="-1">
-        <div class="modal-dialog modal-lg">
+    <div class="modal fade" id="editRowModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-xl">
             <div class="modal-content">
                 <div class="modal-header modal-header-gradient">
-                    <h5 class="modal-title"><i class="fas fa-list me-2"></i><span id="modalTitle">Add Bullet Points</span></h5>
+                    <h5 class="modal-title"><i class="fas fa-edit me-2"></i>Edit Marketplace Bullet Points</h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
-                    <form id="bulletForm">
-                        <input type="hidden" id="editSku" name="sku">
-                        <div class="mb-3">
-                            <label for="selectSku" class="form-label">Select SKU <span class="text-danger">*</span></label>
-                            <select class="form-select" id="selectSku" name="sku" required>
-                                <option value="">Choose SKU...</option>
-                            </select>
+                    <input type="hidden" id="modalSku">
+                    <div class="mb-2"><strong>SKU:</strong> <span id="modalSkuLabel"></span></div>
+                    <div class="mb-2"><strong>Product:</strong> <span id="modalProductLabel"></span></div>
+                    <div class="ai-edit-panel mb-3">
+                        <div class="d-flex align-items-center gap-2 mb-2">
+                            <button class="btn btn-primary btn-sm" id="editModalAiGenerateBtn"><i class="fas fa-wand-magic-sparkles"></i> AI Generate</button>
+                            <span id="editModalAiLoading" style="display:none;"><i class="fas fa-spinner fa-spin"></i> Generating...</span>
                         </div>
-                        @for($i = 1; $i <= 5; $i++)
-                        <div class="mb-3">
-                            <label for="bullet{{ $i }}" class="form-label">Bullet {{ $i }} <span class="char-counter" id="counter{{ $i }}">0/200</span></label>
-                            <textarea class="form-control" id="bullet{{ $i }}" name="bullet{{ $i }}" rows="2" maxlength="200"></textarea>
-                        </div>
-                        @endfor
-                    </form>
+                        <div id="editModalAiFields" class="row g-2"></div>
+                    </div>
+                    <div id="modalFields" class="row g-3"></div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="button" class="btn btn-primary" id="saveBulletBtn"><i class="fas fa-save"></i> Save</button>
+                    <button type="button" class="btn btn-primary" id="saveModalBtn"><i class="fas fa-save"></i> Save Selected</button>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- Edit Marketplace Bullet Points Modal -->
-    <div class="modal fade" id="mpBulletModal" tabindex="-1">
+    <div class="modal fade" id="aiGenerateModal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog modal-lg">
             <div class="modal-content">
                 <div class="modal-header modal-header-gradient">
-                    <h5 class="modal-title"><i class="fas fa-store me-2"></i>Edit <span id="mpModalMarketplace"></span> Bullet Points</h5>
+                    <h5 class="modal-title"><i class="fas fa-magic me-2"></i>AI Generate Bullet Points</h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
-                    <input type="hidden" id="mpModalSku">
-                    <input type="hidden" id="mpModalMarketplaceVal">
+                    <input type="hidden" id="aiSku">
+                    <div class="mb-2"><strong>SKU:</strong> <span id="aiSkuLabel"></span></div>
                     <div class="mb-3">
-                        <label class="form-label">SKU</label>
-                        <div class="form-control-plaintext fw-bold" id="mpModalSkuDisplay"></div>
+                        <label class="form-label">Product Name</label>
+                        <input type="text" class="form-control" id="aiProductName" readonly>
                     </div>
-                    <div class="mb-3">
-                        <label for="mpModalTextarea" class="form-label">
-                            Bullet Points <span class="char-counter" id="mpModalCounter">0/150</span>
-                        </label>
-                        <textarea class="form-control" id="mpModalTextarea" rows="4"></textarea>
-                        <small class="text-muted">Limit: <span id="mpModalLimit">150</span> characters</small>
+                    <div class="d-flex gap-2 mb-3">
+                        <button class="btn btn-primary" id="aiGenerateBtn"><i class="fas fa-wand-magic-sparkles"></i> Generate</button>
+                        <span id="aiLoading" style="display:none;"><i class="fas fa-spinner fa-spin"></i> Generating...</span>
                     </div>
+                    <div id="aiFields" class="row g-2"></div>
                 </div>
                 <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="button" class="btn btn-primary" id="saveMpBulletBtn"><i class="fas fa-save"></i> Save</button>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-success" id="aiApplyBtn"><i class="fas fa-check"></i> Apply To Row</button>
                 </div>
             </div>
         </div>
     </div>
+
+    <div class="modal fade" id="viewRowModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header modal-header-gradient">
+                    <h5 class="modal-title"><i class="fas fa-eye me-2"></i>View Bullet Points</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body" id="viewRowContent"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="toast-container position-fixed top-0 end-0 p-3" id="toastContainer"></div>
 @endsection
 
 @section('script')
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
-(function() {
-    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+document.addEventListener('DOMContentLoaded', () => {
+    const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
     const LIMITS = { ebay:150, ebay2:150, ebay3:150, walmart:150, macy:150, aliexpress:150, faire:150, bestbuy:150, wayfair:100, shein:80, doba:60 };
-    const MP_LABELS = { ebay:'eBay1', ebay2:'eBay2', ebay3:'eBay3', walmart:'Walmart', macy:"Macy's", aliexpress:'AliExpress', faire:'Faire', bestbuy:'BestBuy', wayfair:'Wayfair', shein:'Shein', doba:'DOBA' };
-    const MARKETPLACES = ['ebay','ebay2','ebay3','walmart','macy','aliexpress','faire','bestbuy','wayfair','shein','doba'];
-    const MP_GROUP_150 = ['ebay','ebay2','ebay3','walmart','macy','aliexpress','faire','bestbuy'];
+    const LABELS = { ebay:'eBay 1', ebay2:'eBay 2', ebay3:'eBay 3', walmart:'Walmart', macy:"Macy's", aliexpress:'AliExpress', faire:'Faire', bestbuy:'BestBuy', wayfair:'Wayfair', shein:'Shein', doba:'DOBA' };
+    const MARKETPLACES = Object.keys(LIMITS);
+    const GROUPS = {
+        g150: ['ebay', 'ebay2', 'ebay3', 'walmart', 'macy', 'aliexpress', 'faire', 'bestbuy'],
+        g100: ['wayfair'],
+        g80: ['shein'],
+        g60: ['doba']
+    };
     let tableData = [];
-    let bulletModal, mpBulletModal;
+    let editRowModal, viewRowModal, aiGenerateModal;
 
-    function escapeHtml(s) {
+    const bySku = new Map();
+    const cssEsc = (s) => (window.CSS && typeof window.CSS.escape === 'function')
+        ? window.CSS.escape(String(s))
+        : String(s).replace(/([ !"#$%&'()*+,./:;<=>?@[\\\]^`{|}~])/g, '\\$1');
+
+    const esc = (s) => {
         if (s == null) return '';
         const d = document.createElement('div');
         d.textContent = String(s);
         return d.innerHTML;
-    }
+    };
+    const trunc = (s, n=50) => (!s ? '-' : (String(s).length > n ? String(s).slice(0,n) + '...' : String(s)));
 
-    function truncate(str, len) {
-        if (!str) return '-';
-        str = String(str).trim();
-        if (!str) return '-';
-        return str.length <= len ? str : str.substring(0, len) + '...';
+    function toast(msg, ok=true) {
+        if (!window.bootstrap || !window.bootstrap.Toast) {
+            alert(msg);
+            return;
+        }
+        const id = 't' + Date.now();
+        const cls = ok ? 'text-bg-success' : 'text-bg-danger';
+        document.getElementById('toastContainer').insertAdjacentHTML('beforeend',
+            `<div id="${id}" class="toast align-items-center ${cls} border-0" role="alert"><div class="d-flex"><div class="toast-body">${esc(msg)}</div><button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button></div></div>`);
+        const el = document.getElementById(id);
+        const t = new bootstrap.Toast(el, { delay: 2400 });
+        t.show();
+        el.addEventListener('hidden.bs.toast', () => el.remove());
     }
 
     function loadData() {
         document.getElementById('rainbow-loader').style.display = 'block';
-        document.getElementById('table-body').innerHTML = '';
         fetch('/bullet-point-master-combined-data')
             .then(r => r.json())
             .then(res => {
-                tableData = res.data || [];
-                applyFilters();
-                updateCounts();
-                document.getElementById('rainbow-loader').style.display = 'none';
+                const raw = Array.isArray(res.data) ? res.data : Object.values(res.data || {});
+                tableData = raw.filter(i => i && i.SKU && !String(i.SKU).toUpperCase().includes('PARENT'));
+                bySku.clear();
+                tableData.forEach(r => bySku.set(String(r.SKU), r));
+                try {
+                    renderTable(tableData);
+                } catch (e) {
+                    console.error('renderTable failed', e);
+                    const tbody = document.getElementById('table-body');
+                    tbody.innerHTML = `<tr><td colspan="9" class="text-danger">Render failed: ${esc(e.message || e)}</td></tr>`;
+                }
+                document.getElementById('previewCount').textContent = `(${tableData.length})`;
             })
-            .catch(err => {
-                console.error(err);
-                document.getElementById('rainbow-loader').style.display = 'none';
-                document.getElementById('table-body').innerHTML = '<tr><td colspan="22" class="text-danger">Failed to load data.</td></tr>';
-            });
+            .catch(e => toast('Failed to load data: ' + e.message, false))
+            .finally(() => { document.getElementById('rainbow-loader').style.display = 'none'; });
     }
 
-    function applyFilters() {
-        const parentFilter = (document.getElementById('parentSearch')?.value || '').toLowerCase();
-        const skuFilter = (document.getElementById('skuSearch')?.value || '').toLowerCase();
-        const f1 = document.getElementById('filterBullet1')?.value || 'all';
-        const f2 = document.getElementById('filterBullet2')?.value || 'all';
-        const f3 = document.getElementById('filterBullet3')?.value || 'all';
-        const f4 = document.getElementById('filterBullet4')?.value || 'all';
-        const f5 = document.getElementById('filterBullet5')?.value || 'all';
+    function mpCell(sku, mp, val, groupKey) {
+        const lim = LIMITS[mp];
+        const len = (val || '').length;
+        const pushed = (val || '').trim() !== '';
+        return `
+            <div class="mp-cell-wrap mp-group-item" title="${LABELS[mp]} limit ${lim}">
+                <div class="mp-top-row">
+                    <label class="form-check mb-0 d-flex align-items-center gap-1">
+                        <input class="form-check-input mp-check" type="checkbox" data-sku="${esc(sku)}" data-mp="${mp}" data-group="${groupKey}">
+                        <small>${esc(LABELS[mp])}</small><span class="mp-status-dot ${pushed ? 'success' : ''}"></span>
+                    </label>
+                    <span class="mp-counter ${len>lim ? 'error' : (len > lim*0.9 ? 'warning' : '')}" data-counter="${esc(sku)}-${mp}">${len}/${lim}</span>
+                </div>
+                <textarea class="mp-input" data-sku="${esc(sku)}" data-mp="${mp}" data-limit="${lim}" placeholder="Enter bullet points (${lim} max)">${esc(val || '')}</textarea>
+            </div>
+        `;
+    }
 
-        const filtered = tableData.filter(item => {
-            if (item.SKU && String(item.SKU).toUpperCase().includes('PARENT')) return false;
-            if (parentFilter && !(item.Parent || '').toLowerCase().includes(parentFilter)) return false;
-            if (skuFilter && !(item.SKU || '').toLowerCase().includes(skuFilter)) return false;
-            const miss = v => v == null || v === '' || (typeof v === 'string' && v.trim() === '');
-            if (f1 === 'missing' && !miss(item.bullet1)) return false;
-            if (f2 === 'missing' && !miss(item.bullet2)) return false;
-            if (f3 === 'missing' && !miss(item.bullet3)) return false;
-            if (f4 === 'missing' && !miss(item.bullet4)) return false;
-            if (f5 === 'missing' && !miss(item.bullet5)) return false;
-            return true;
+    function groupCell(groupKey, sku, bp, preview) {
+        const marketplaces = GROUPS[groupKey] || [];
+        return `
+            <div class="mp-group-wrap">
+                ${marketplaces.map(mp => mpCell(sku, mp, bp[mp] || preview || '', groupKey)).join('')}
+            </div>
+        `;
+    }
+
+    function renderTable(rows) {
+        rows = Array.isArray(rows) ? rows : Object.values(rows || {});
+        const tbody = document.getElementById('table-body');
+        tbody.innerHTML = rows.map(r => {
+            const sku = String(r.SKU || '');
+            const preview = r.default_bullets || [r.bullet1, r.bullet2, r.bullet3, r.bullet4, r.bullet5].filter(Boolean).join(' ');
+            const bp = r.bullet_points || {};
+            return `<tr data-sku="${esc(sku)}">
+                <td><input type="checkbox" class="form-check-input row-check" data-sku="${esc(sku)}"></td>
+                <td>${esc(sku)}</td>
+                <td>${esc(r.Parent || sku)}</td>
+                <td class="preview-cell" title="${esc(preview || '')}">${esc(trunc(preview, 60))}</td>
+                <td>
+                    <div class="action-buttons-group">
+                        <button class="action-btn view-btn" data-view="${esc(sku)}"><i class="fas fa-eye"></i> View</button>
+                        <button class="action-btn edit-btn" data-edit="${esc(sku)}"><i class="fas fa-edit"></i> Edit</button>
+                    </div>
+                </td>
+                <td>${groupCell('g150', sku, bp, preview)}</td>
+                <td>${groupCell('g100', sku, bp, preview)}</td>
+                <td>${groupCell('g80', sku, bp, preview)}</td>
+                <td>${groupCell('g60', sku, bp, preview)}</td>
+            </tr>`;
+        }).join('');
+
+        bindRowEvents();
+    }
+
+    function bindRowEvents() {
+        document.querySelectorAll('.mp-input').forEach(t => {
+            t.addEventListener('input', function() {
+                const lim = Number(this.dataset.limit || 150);
+                if (this.value.length > lim) this.value = this.value.slice(0, lim);
+                const c = document.querySelector(`[data-counter="${cssEsc(this.dataset.sku + '-' + this.dataset.mp)}"]`);
+                if (c) {
+                    const len = this.value.length;
+                    c.textContent = `${len}/${lim}`;
+                    c.classList.remove('warning', 'error');
+                    if (len > lim) c.classList.add('error');
+                    else if (len > lim*0.9) c.classList.add('warning');
+                }
+                const dot = this.closest('.mp-cell-wrap')?.querySelector('.mp-status-dot');
+                if (dot) dot.classList.toggle('success', this.value.trim().length > 0);
+            });
         });
 
-        renderTable(filtered);
+        document.querySelectorAll('[data-edit]').forEach(b => b.addEventListener('click', () => openEditModal(b.dataset.edit)));
+        document.querySelectorAll('[data-view]').forEach(b => b.addEventListener('click', () => openViewModal(b.dataset.view)));
     }
 
-    function renderTable(data) {
-        const tbody = document.getElementById('table-body');
-        tbody.innerHTML = '';
-        if (!data || data.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="22" class="text-center">No products found</td></tr>';
+    function getRowUpdates(sku, onlyChecked=true) {
+        const tr = document.querySelector(`tr[data-sku="${cssEsc(sku)}"]`);
+        if (!tr) return [];
+        const updates = [];
+        tr.querySelectorAll('.mp-input').forEach(inp => {
+            const mp = inp.dataset.mp;
+            const chk = tr.querySelector(`.mp-check[data-mp="${mp}"]`);
+            if (!onlyChecked || (chk && chk.checked)) {
+                const val = inp.value.trim();
+                if (val) updates.push({ marketplace: mp, bullet_points: val });
+            }
+        });
+        return updates;
+    }
+
+    function openViewModal(sku) {
+        const row = bySku.get(String(sku));
+        if (!row) return;
+        const bp = row.bullet_points || {};
+        document.getElementById('viewRowContent').innerHTML = `
+            <div><strong>SKU:</strong> ${esc(sku)}</div>
+            <hr>
+            ${MARKETPLACES.map(mp => `<div class="mb-2"><strong>${esc(LABELS[mp])} (${LIMITS[mp]}):</strong><div class="border rounded p-2 mt-1" style="white-space:pre-wrap;">${esc(bp[mp] || row.default_bullets || '')}</div></div>`).join('')}
+        `;
+        if (viewRowModal) viewRowModal.show();
+    }
+
+    function openEditModal(sku) {
+        const row = bySku.get(String(sku));
+        if (!row) return;
+        const bp = row.bullet_points || {};
+        document.getElementById('modalSku').value = sku;
+        document.getElementById('modalSkuLabel').textContent = sku;
+        document.getElementById('modalProductLabel').textContent = row.Parent || sku;
+        renderEditModalAiFields(row);
+        document.getElementById('modalFields').innerHTML = MARKETPLACES.map(mp => {
+            const val = bp[mp] || row.default_bullets || '';
+            const lim = LIMITS[mp];
+            return `<div class="col-md-6"><div class="border rounded p-2">
+                <div class="d-flex justify-content-between align-items-center mb-1">
+                    <label class="form-check mb-0"><input type="checkbox" class="form-check-input modal-mp-check" data-mp="${mp}" checked> <span>${esc(LABELS[mp])} <span class="badge bg-secondary">${lim}</span></span></label>
+                    <small class="mp-counter" data-modal-counter="${mp}">${(val || '').length}/${lim}</small>
+                </div>
+                <textarea class="form-control modal-mp-input" data-mp="${mp}" data-limit="${lim}" rows="3">${esc(val)}</textarea>
+            </div></div>`;
+        }).join('');
+
+        document.querySelectorAll('.modal-mp-input').forEach(inp => inp.addEventListener('input', function() {
+            const lim = Number(this.dataset.limit || 150);
+            if (this.value.length > lim) this.value = this.value.slice(0, lim);
+            const c = document.querySelector(`[data-modal-counter="${this.dataset.mp}"]`);
+            if (c) c.textContent = `${this.value.length}/${lim}`;
+        }));
+
+        if (editRowModal) editRowModal.show();
+    }
+
+    function renderEditModalAiFields(row) {
+        const current = [row.bullet1, row.bullet2, row.bullet3, row.bullet4, row.bullet5];
+        document.getElementById('editModalAiFields').innerHTML = [1,2,3,4,5].map(i => `
+            <div class="col-12">
+                <div class="d-flex justify-content-between align-items-center">
+                    <label class="form-label mb-1">Bullet ${i} <span id="editAiCount${i}" class="text-muted">0/200</span></label>
+                    <div class="btn-group btn-group-sm" role="group" aria-label="Rating">
+                        <button type="button" class="btn btn-outline-success edit-ai-rate" data-idx="${i}" data-rating="good"><i class="fas fa-thumbs-up"></i></button>
+                        <button type="button" class="btn btn-outline-danger edit-ai-rate" data-idx="${i}" data-rating="bad"><i class="fas fa-thumbs-down"></i></button>
+                    </div>
+                </div>
+                <textarea class="form-control edit-ai-bullet" data-idx="${i}" rows="2" maxlength="200">${esc(current[i-1] || '')}</textarea>
+            </div>
+        `).join('');
+        bindEditAICountersAndRatings();
+    }
+
+    function bindEditAICountersAndRatings() {
+        document.querySelectorAll('.edit-ai-bullet').forEach(t => {
+            const idx = t.dataset.idx;
+            const update = () => {
+                const len = t.value.length;
+                const el = document.getElementById('editAiCount' + idx);
+                if (el) el.textContent = `${len}/200`;
+            };
+            t.addEventListener('input', update);
+            update();
+        });
+
+        document.querySelectorAll('.edit-ai-rate').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const idx = this.dataset.idx;
+                const rating = this.dataset.rating;
+                const groupButtons = document.querySelectorAll(`.edit-ai-rate[data-idx="${idx}"]`);
+                groupButtons.forEach(b => b.classList.remove('active'));
+                this.classList.add('active');
+                const field = document.querySelector(`.edit-ai-bullet[data-idx="${idx}"]`);
+                if (field) field.dataset.rating = rating;
+            });
+        });
+    }
+
+    function openAIModal(sku) {
+        const row = bySku.get(String(sku));
+        if (!row) return;
+        document.getElementById('aiSku').value = sku;
+        document.getElementById('aiSkuLabel').textContent = sku;
+        document.getElementById('aiProductName').value = row.Parent || sku;
+        const current = [row.bullet1, row.bullet2, row.bullet3, row.bullet4, row.bullet5];
+        document.getElementById('aiFields').innerHTML = [1,2,3,4,5].map(i => `
+            <div class="col-12">
+                <div class="d-flex justify-content-between align-items-center">
+                    <label class="form-label mb-1">Bullet ${i} <span id="aiCount${i}" class="text-muted">0/200</span></label>
+                    <div class="btn-group btn-group-sm" role="group" aria-label="Rating">
+                        <button type="button" class="btn btn-outline-success ai-rate" data-idx="${i}" data-rating="good"><i class="fas fa-thumbs-up"></i></button>
+                        <button type="button" class="btn btn-outline-danger ai-rate" data-idx="${i}" data-rating="bad"><i class="fas fa-thumbs-down"></i></button>
+                    </div>
+                </div>
+                <textarea class="form-control ai-bullet" data-idx="${i}" rows="2" maxlength="200">${esc(current[i-1] || '')}</textarea>
+            </div>
+        `).join('');
+        bindAICounters();
+        bindAIRatings();
+        if (aiGenerateModal) aiGenerateModal.show();
+    }
+
+    function bindAICounters() {
+        document.querySelectorAll('.ai-bullet').forEach(t => {
+            const idx = t.dataset.idx;
+            const update = () => {
+                const len = t.value.length;
+                const el = document.getElementById('aiCount' + idx);
+                if (el) el.textContent = `${len}/200`;
+            };
+            t.addEventListener('input', update);
+            update();
+        });
+    }
+
+    function bindAIRatings() {
+        document.querySelectorAll('.ai-rate').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const idx = this.dataset.idx;
+                const rating = this.dataset.rating;
+                const groupButtons = document.querySelectorAll(`.ai-rate[data-idx="${idx}"]`);
+                groupButtons.forEach(b => b.classList.remove('active'));
+                this.classList.add('active');
+                const field = document.querySelector(`.ai-bullet[data-idx="${idx}"]`);
+                if (field) field.dataset.rating = rating;
+            });
+        });
+    }
+
+    function collectBulkItems(mode) {
+        const items = [];
+        if (mode === 'selected') {
+            document.querySelectorAll('.row-check:checked').forEach(r => {
+                const sku = r.dataset.sku;
+                const updates = getRowUpdates(sku, true);
+                if (updates.length) items.push({ sku, updates });
+            });
+        } else {
+            document.querySelectorAll('.row-check').forEach(r => {
+                const sku = r.dataset.sku;
+                const updates = getRowUpdates(sku, false);
+                if (updates.length) items.push({ sku, updates });
+            });
+        }
+        return items;
+    }
+
+    function bulkPush(mode) {
+        const items = collectBulkItems(mode);
+        if (!items.length) {
+            toast(mode === 'selected' ? 'Select row(s) and marketplace checkbox(es) first.' : 'Select at least one row first.', false);
             return;
         }
+        const btn = mode === 'selected' ? document.getElementById('pushSelectedBtn') : document.getElementById('pushAllBtn');
+        const old = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Pushing...';
 
-        data.forEach(item => {
-            const tr = document.createElement('tr');
-            const sku = item.SKU || item.sku || '';
-
-            tr.appendChild(cell('<input type="checkbox" class="row-select">'));
-            tr.appendChild(cell(item.image_path ? `<img src="${escapeHtml(item.image_path)}" style="width:36px;height:36px;object-fit:cover;border-radius:4px;">` : '-'));
-            tr.appendChild(cell(escapeHtml(item.Parent || '-')));
-            tr.appendChild(cell(escapeHtml(sku)));
-
-            for (let i = 1; i <= 5; i++) {
-                const td = document.createElement('td');
-                td.className = 'bullet-text';
-                td.textContent = item['bullet' + i] || '-';
-                td.title = item['bullet' + i] || '';
-                tr.appendChild(td);
-            }
-
-            const actionTd = document.createElement('td');
-            actionTd.innerHTML = `<button class="action-btn edit-btn" data-sku="${escapeHtml(sku)}"><i class="fas fa-edit"></i> Edit</button>`;
-            tr.appendChild(actionTd);
-
-            const bp = item.bullet_points || {};
-            MARKETPLACES.forEach(mp => {
-                const td = document.createElement('td');
-                td.className = 'mp-cell';
-                td.dataset.sku = sku;
-                td.dataset.mp = mp;
-                const val = bp[mp] || item.default_bullets || '';
-                td.innerHTML = `<input type="checkbox" class="mp-checkbox form-check-input" data-sku="${escapeHtml(sku)}" data-mp="${mp}"> <span class="mp-edit-text">${escapeHtml(truncate(val, 35))}</span>`;
-                td.title = val || 'Click to edit';
-                tr.appendChild(td);
-            });
-
-            tbody.appendChild(tr);
-        });
-
-        setupRowEvents();
-    }
-
-    function cell(html) {
-        const td = document.createElement('td');
-        td.innerHTML = html;
-        return td;
-    }
-
-    function setupRowEvents() {
-        document.querySelectorAll('.edit-btn').forEach(btn => {
-            btn.addEventListener('click', function() { openBulletModal('edit', this.dataset.sku); });
-        });
-        document.querySelectorAll('.mp-cell').forEach(td => {
-            td.addEventListener('click', function(e) {
-                if (e.target.classList.contains('mp-checkbox')) return;
-                openMpModal(td.dataset.sku, td.dataset.mp);
-            });
-            td.querySelectorAll('.mp-edit-text').forEach(span => {
-                span.style.cursor = 'pointer';
-            });
-        });
-        document.querySelectorAll('.mp-checkbox').forEach(cb => {
-            cb.addEventListener('click', e => e.stopPropagation());
-            cb.addEventListener('change', updateSelectedCount);
-        });
-        document.getElementById('selectAll')?.addEventListener('change', function() {
-            document.querySelectorAll('.mp-checkbox').forEach(cb => { cb.checked = this.checked; });
-            updateSelectedCount();
-        });
-    }
-
-    function updateSelectedCount() {
-        const n = document.querySelectorAll('.mp-checkbox:checked').length;
-        document.getElementById('selectedCount').textContent = n;
-        document.getElementById('updateSelectedBtn').disabled = n === 0;
-    }
-
-    function updateCounts() {
-        const items = tableData.filter(i => i.SKU && !String(i.SKU).toUpperCase().includes('PARENT'));
-        const parentSet = new Set(items.map(i => i.Parent).filter(Boolean));
-        const miss = v => v == null || v === '' || (typeof v === 'string' && v.trim() === '');
-        document.getElementById('parentCount').textContent = `(${parentSet.size})`;
-        document.getElementById('skuCount').textContent = `(${items.length})`;
-        document.getElementById('bullet1MissingCount').textContent = `(${items.filter(i => miss(i.bullet1)).length})`;
-        document.getElementById('bullet2MissingCount').textContent = `(${items.filter(i => miss(i.bullet2)).length})`;
-        document.getElementById('bullet3MissingCount').textContent = `(${items.filter(i => miss(i.bullet3)).length})`;
-        document.getElementById('bullet4MissingCount').textContent = `(${items.filter(i => miss(i.bullet4)).length})`;
-        document.getElementById('bullet5MissingCount').textContent = `(${items.filter(i => miss(i.bullet5)).length})`;
-    }
-
-    function openBulletModal(mode, sku) {
-        const modalTitle = document.getElementById('modalTitle');
-        const selectSku = document.getElementById('selectSku');
-        const editSku = document.getElementById('editSku');
-        document.getElementById('bulletForm').reset();
-        for (let i = 1; i <= 5; i++) {
-            document.getElementById('counter' + i).textContent = '0/200';
-            document.getElementById('counter' + i).classList.remove('error');
-        }
-
-        if (mode === 'add') {
-            modalTitle.textContent = 'Add Bullet Points';
-            selectSku.style.display = 'block';
-            selectSku.required = true;
-            editSku.value = '';
-            selectSku.innerHTML = '<option value="">Choose SKU...</option>';
-            tableData.forEach(i => {
-                if (i.SKU && !String(i.SKU).toUpperCase().includes('PARENT')) {
-                    selectSku.innerHTML += `<option value="${escapeHtml(i.SKU)}">${escapeHtml(i.SKU)}</option>`;
-                }
-            });
-            if (typeof $ !== 'undefined' && $(selectSku).length) {
-                try { $(selectSku).select2('destroy'); } catch(e) {}
-                $(selectSku).select2({ theme: 'bootstrap-5', placeholder: 'Choose SKU...', width: '100%', dropdownParent: $('#bulletModal') });
-            }
-        } else {
-            modalTitle.textContent = 'Edit Bullet Points';
-            selectSku.style.display = 'none';
-            selectSku.required = false;
-            editSku.value = sku;
-            try { $(selectSku).select2('destroy'); } catch(e) {}
-            const item = tableData.find(d => (d.SKU || d.sku) === sku);
-            if (item) {
-                for (let i = 1; i <= 5; i++) {
-                    const v = item['bullet' + i] || '';
-                    document.getElementById('bullet' + i).value = v;
-                    document.getElementById('counter' + i).textContent = v.length + '/200';
-                }
-            }
-        }
-        bulletModal.show();
-    }
-
-    function openMpModal(sku, mp) {
-        const item = tableData.find(d => (d.SKU || d.sku) === sku);
-        const bp = item?.bullet_points || {};
-        const val = bp[mp] || item?.default_bullets || '';
-        const limit = LIMITS[mp] || 150;
-
-        document.getElementById('mpModalSku').value = sku;
-        document.getElementById('mpModalMarketplaceVal').value = mp;
-        document.getElementById('mpModalSkuDisplay').textContent = sku;
-        document.getElementById('mpModalMarketplace').textContent = MP_LABELS[mp] || mp;
-        document.getElementById('mpModalTextarea').value = val;
-        document.getElementById('mpModalLimit').textContent = limit;
-        document.getElementById('mpModalTextarea').maxLength = limit + 50;
-        document.getElementById('mpModalCounter').textContent = val.length + '/' + limit;
-        mpBulletModal.show();
-    }
-
-    document.getElementById('addBulletBtn')?.addEventListener('click', () => openBulletModal('add'));
-
-    for (let i = 1; i <= 5; i++) {
-        const input = document.getElementById('bullet' + i);
-        const counter = document.getElementById('counter' + i);
-        if (input) input.addEventListener('input', function() {
-            const len = this.value.length;
-            counter.textContent = len + '/200';
-            counter.classList.toggle('error', len > 200);
-        });
-    }
-
-    document.getElementById('saveBulletBtn')?.addEventListener('click', function() {
-        const editSku = document.getElementById('editSku');
-        const selectSku = document.getElementById('selectSku');
-        const sku = editSku.value || (typeof $ !== 'undefined' && $(selectSku).hasClass('select2-hidden-accessible') ? $(selectSku).val() : selectSku.value);
-        if (!sku) { alert('Please select a SKU'); return; }
-
-        const payload = { sku };
-        for (let i = 1; i <= 5; i++) payload['bullet' + i] = document.getElementById('bullet' + i).value;
-
-        this.disabled = true;
-        this.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
-        fetch('/bullet-points/save', {
+        fetch('/bullet-point-master/update-bulk', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken },
-            body: JSON.stringify(payload)
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json' },
+            body: JSON.stringify({ items })
         })
         .then(r => r.json())
-        .then(data => {
-            if (data.success) { bulletModal.hide(); loadData(); alert('Saved!'); }
-            else alert(data.message || 'Save failed');
+        .then(res => {
+            if (res.success) toast(res.message || 'Updated successfully');
+            else toast(res.message || 'Completed with failures', false);
+            loadData();
         })
-        .catch(e => alert('Error: ' + e.message))
-        .finally(() => { this.disabled = false; this.innerHTML = '<i class="fas fa-save"></i> Save'; });
+        .catch(e => toast('Push failed: ' + e.message, false))
+        .finally(() => { btn.disabled = false; btn.innerHTML = old; });
+    }
+
+    function exportData() {
+        const rows = Array.from(document.querySelectorAll('#table-body tr')).map(tr => {
+            const sku = tr.getAttribute('data-sku');
+            const row = bySku.get(sku) || {};
+            const out = { SKU: sku, ProductName: row.Parent || sku, Preview: row.default_bullets || '' };
+            MARKETPLACES.forEach(mp => {
+                const inp = tr.querySelector(`.mp-input[data-mp="${mp}"]`);
+                out[LABELS[mp]] = inp ? inp.value : '';
+            });
+            return out;
+        });
+        const ws = XLSX.utils.json_to_sheet(rows);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, 'Bullet Points Master');
+        XLSX.writeFile(wb, 'bullet_points_master_' + new Date().toISOString().split('T')[0] + '.xlsx');
+    }
+
+    function importData(file) {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            try {
+                const wb = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
+                const json = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
+                if (!json.length) { toast('No rows in file', false); return; }
+
+                json.forEach(row => {
+                    const sku = String(row.SKU || '').trim();
+                    if (!sku) return;
+                    const tr = document.querySelector(`tr[data-sku="${cssEsc(sku)}"]`);
+                    if (!tr) return;
+                    MARKETPLACES.forEach(mp => {
+                        const key = LABELS[mp];
+                        const v = row[key];
+                        if (typeof v === 'string') {
+                            const inp = tr.querySelector(`.mp-input[data-mp="${mp}"]`);
+                            if (inp) {
+                                const lim = Number(inp.dataset.limit || 150);
+                                inp.value = v.slice(0, lim);
+                                inp.dispatchEvent(new Event('input'));
+                            }
+                        }
+                    });
+                });
+                toast('Import loaded into table. Click push to save.');
+            } catch (err) {
+                toast('Import failed: ' + err.message, false);
+            }
+        };
+        reader.readAsArrayBuffer(file);
+    }
+
+    // events
+    document.getElementById('previewSearch').addEventListener('input', function() {
+        const q = this.value.toLowerCase().trim();
+        const rows = !q ? tableData : tableData.filter(r => (String(r.default_bullets || '').toLowerCase().includes(q) || String(r.SKU || '').toLowerCase().includes(q) || String(r.Parent || '').toLowerCase().includes(q)));
+        renderTable(rows);
     });
 
-    document.getElementById('mpModalTextarea')?.addEventListener('input', function() {
-        const mp = document.getElementById('mpModalMarketplaceVal').value;
-        const limit = LIMITS[mp] || 150;
-        const len = this.value.length;
-        const counter = document.getElementById('mpModalCounter');
-        counter.textContent = len + '/' + limit;
-        counter.classList.remove('error', 'warning');
-        if (len > limit) counter.classList.add('error');
-        else if (len > limit * 0.9) counter.classList.add('warning');
-        if (len > limit) this.value = this.value.substring(0, limit);
+    document.getElementById('selectAllRows').addEventListener('change', function() {
+        document.querySelectorAll('.row-check').forEach(ch => ch.checked = this.checked);
     });
 
-    document.getElementById('saveMpBulletBtn')?.addEventListener('click', function() {
-        const sku = document.getElementById('mpModalSku').value;
-        const mp = document.getElementById('mpModalMarketplaceVal').value;
-        const text = document.getElementById('mpModalTextarea').value.trim();
-        if (!text) { alert('Bullet points cannot be empty'); return; }
+    document.querySelectorAll('.group-market').forEach(h => {
+        h.addEventListener('change', function() {
+            const groupKey = this.dataset.group;
+            document.querySelectorAll(`.mp-check[data-group="${groupKey}"]`).forEach(ch => ch.checked = this.checked);
+        });
+    });
 
-        this.disabled = true;
-        this.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
+    document.getElementById('saveModalBtn').addEventListener('click', function() {
+        const sku = document.getElementById('modalSku').value;
+        const aiBullets = Array.from(document.querySelectorAll('.edit-ai-bullet'))
+            .map(t => t.value.trim())
+            .filter(Boolean);
+        if (aiBullets.length) {
+            const combined = aiBullets.join(' ');
+            document.querySelectorAll('.modal-mp-input').forEach(inp => {
+                const lim = Number(inp.dataset.limit || 150);
+                inp.value = combined.slice(0, lim);
+                inp.dispatchEvent(new Event('input'));
+            });
+        }
+        const updates = [];
+        document.querySelectorAll('.modal-mp-input').forEach(inp => {
+            const mp = inp.dataset.mp;
+            const chk = document.querySelector(`.modal-mp-check[data-mp="${mp}"]`);
+            if (chk && chk.checked) {
+                const text = inp.value.trim();
+                if (text) updates.push({ marketplace: mp, bullet_points: text });
+            }
+        });
+        if (!updates.length) { toast('Select at least one marketplace with content.', false); return; }
+
+        const btn = this; const old = btn.innerHTML; btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
         fetch('/bullet-point-master/update', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json' },
-            body: JSON.stringify({ sku, updates: [{ marketplace: mp, bullet_points: text }] })
+            body: JSON.stringify({ sku, updates })
         })
         .then(r => r.json())
-        .then(data => {
-            if (data.success) { mpBulletModal.hide(); loadData(); alert('Saved!'); }
-            else alert(data.message || 'Save failed');
+        .then(res => {
+            if (res.success) { toast('Saved marketplace bullet points'); if (editRowModal) editRowModal.hide(); loadData(); }
+            else toast(res.message || 'Save failed', false);
         })
-        .catch(e => alert('Error: ' + e.message))
-        .finally(() => { this.disabled = false; this.innerHTML = '<i class="fas fa-save"></i> Save'; });
+        .catch(e => toast('Save failed: ' + e.message, false))
+        .finally(() => { btn.disabled = false; btn.innerHTML = old; });
     });
 
-    document.getElementById('updateSelectedBtn')?.addEventListener('click', function() {
-        const bySku = {};
-        document.querySelectorAll('.mp-checkbox:checked').forEach(cb => {
-            const sku = cb.dataset.sku;
-            const mp = cb.dataset.mp;
-            const item = tableData.find(d => (d.SKU || d.sku) === sku);
-            const bp = item?.bullet_points || {};
-            const val = (bp[mp] || item?.default_bullets || '').trim();
-            if (!val) return;
-            if (!bySku[sku]) bySku[sku] = [];
-            bySku[sku].push({ marketplace: mp, bullet_points: val });
+    document.getElementById('pushSelectedBtn').addEventListener('click', () => bulkPush('selected'));
+    document.getElementById('pushAllBtn').addEventListener('click', () => bulkPush('all'));
+    document.getElementById('exportBtn').addEventListener('click', exportData);
+    document.getElementById('importBtn').addEventListener('click', () => document.getElementById('importFile').click());
+    document.getElementById('importFile').addEventListener('change', function(e) { if (e.target.files[0]) importData(e.target.files[0]); this.value = ''; });
+
+    document.getElementById('editModalAiGenerateBtn').addEventListener('click', function() {
+        const sku = document.getElementById('modalSku').value;
+        const productName = document.getElementById('modalProductLabel').textContent || sku;
+        const btn = this;
+        btn.disabled = true;
+        document.getElementById('editModalAiLoading').style.display = 'inline';
+        fetch('/bullet-point-master/generate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json' },
+            body: JSON.stringify({ product_id: sku, sku, product_name: productName })
+        }).then(async (r) => {
+            const payload = await r.json().catch(() => ({}));
+            if (!r.ok || !payload.success) {
+                throw new Error(payload.message || 'AI generation failed');
+            }
+            return payload;
+        }).then((res) => {
+            const bullets = res.bullets || [];
+            document.querySelectorAll('.edit-ai-bullet').forEach((t, i) => {
+                t.value = (bullets[i] || '').slice(0, 200);
+                t.dispatchEvent(new Event('input'));
+            });
+            toast('AI bullets generated');
+        }).catch(e => toast('AI generation failed: ' + e.message, false))
+        .finally(() => {
+            btn.disabled = false;
+            document.getElementById('editModalAiLoading').style.display = 'none';
         });
+    });
 
-        const skus = Object.keys(bySku).filter(s => (bySku[s] || []).length > 0);
-        if (skus.length === 0) { alert('No bullet points to update. Enter text and try again.'); return; }
-
-        this.disabled = true;
-        this.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Updating...';
-        let completed = 0;
-        const errors = [];
-
-        function next() {
-            if (completed >= skus.length) {
-                document.getElementById('updateSelectedBtn').disabled = false;
-                document.getElementById('updateSelectedBtn').innerHTML = '<i class="fas fa-cloud-upload-alt"></i> Update Selected (<span id="selectedCount">0</span>)';
-                document.querySelectorAll('.mp-checkbox:checked').forEach(cb => cb.checked = false);
-                updateSelectedCount();
-                loadData();
-                if (errors.length) alert('Some failed:\n' + errors.slice(0, 5).join('\n'));
+    document.getElementById('aiGenerateBtn').addEventListener('click', function() {
+        const sku = document.getElementById('aiSku').value;
+        const productName = document.getElementById('aiProductName').value;
+        const btn = this;
+        btn.disabled = true;
+        document.getElementById('aiLoading').style.display = 'inline';
+        fetch('/bullet-point-master/generate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json' },
+            body: JSON.stringify({ product_id: sku, sku, product_name: productName })
+        }).then(r => r.json()).then(res => {
+            if (!res.success) {
+                toast(res.message || 'AI generation failed', false);
                 return;
             }
-            const sku = skus[completed];
-            const updates = bySku[sku].filter(u => (u.bullet_points || '').trim());
-            if (updates.length === 0) { completed++; next(); return; }
-
-            fetch('/bullet-point-master/update', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json' },
-                body: JSON.stringify({ sku, updates })
-            })
-            .then(r => r.json())
-            .then(res => { if (!res.success) errors.push(sku + ': ' + (res.message || 'Failed')); completed++; next(); })
-            .catch(e => { errors.push(sku + ': ' + e.message); completed++; next(); });
-        }
-        next();
-    });
-
-    document.querySelectorAll('[data-group]').forEach(el => {
-        el.addEventListener('click', function(e) {
-            e.preventDefault();
-            const g = this.dataset.group;
-            const mps = { '150': MP_GROUP_150, '100': ['wayfair'], '80': ['shein'], '60': ['doba'] }[g] || [];
-            document.querySelectorAll('.mp-checkbox').forEach(cb => {
-                if (mps.includes(cb.dataset.mp)) cb.checked = true;
+            const bullets = res.bullets || [];
+            document.querySelectorAll('.ai-bullet').forEach((t, i) => {
+                t.value = (bullets[i] || '').slice(0, 200);
+                t.dispatchEvent(new Event('input'));
             });
-            updateSelectedCount();
+        }).catch(e => toast('AI generation failed: ' + e.message, false))
+        .finally(() => { btn.disabled = false; document.getElementById('aiLoading').style.display = 'none'; });
+    });
+
+    document.getElementById('aiApplyBtn').addEventListener('click', function() {
+        const sku = document.getElementById('aiSku').value;
+        const tr = document.querySelector(`tr[data-sku="${cssEsc(sku)}"]`);
+        if (!tr) return;
+        const bullets = Array.from(document.querySelectorAll('.ai-bullet')).map(t => t.value.trim()).filter(Boolean);
+        const combined = bullets.join(' ');
+        tr.querySelectorAll('.mp-input').forEach(inp => {
+            const lim = Number(inp.dataset.limit || 150);
+            inp.value = combined.slice(0, lim);
+            inp.dispatchEvent(new Event('input'));
         });
+        toast('AI bullets applied to row. Select marketplaces and push.');
+        if (aiGenerateModal) aiGenerateModal.hide();
     });
 
-    document.getElementById('exportBtn')?.addEventListener('click', function() {
-        const items = tableData.filter(i => i.SKU && !String(i.SKU).toUpperCase().includes('PARENT'));
-        const rows = items.map(i => ({
-            Parent: i.Parent || '', SKU: i.SKU || '',
-            'Bullet 1': i.bullet1 || '', 'Bullet 2': i.bullet2 || '', 'Bullet 3': i.bullet3 || '',
-            'Bullet 4': i.bullet4 || '', 'Bullet 5': i.bullet5 || ''
-        }));
-        const ws = XLSX.utils.json_to_sheet(rows);
-        const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, 'Bullet Points');
-        XLSX.writeFile(wb, 'bullet_points_' + new Date().toISOString().split('T')[0] + '.xlsx');
-    });
+    function waitForBootstrap() {
+        if (window.bootstrap && window.bootstrap.Modal && window.bootstrap.Toast) {
+            return Promise.resolve();
+        }
 
-    document.getElementById('importBtn')?.addEventListener('click', () => document.getElementById('importFile').click());
-    document.getElementById('importFile')?.addEventListener('change', function(e) {
-        const f = e.target.files[0];
-        if (!f) return;
-        const r = new FileReader();
-        r.onload = function() {
-            try {
-                const wb = XLSX.read(new Uint8Array(r.result), { type: 'array' });
-                const json = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
-                if (json.length === 0) { alert('No data'); return; }
-                let ok = 0, err = 0;
-                Promise.all(json.map(row => {
-                    const sku = row.SKU || row.sku;
-                    if (!sku) { err++; return Promise.resolve(); }
-                    const payload = { sku };
-                    for (let i = 1; i <= 5; i++) payload['bullet' + i] = (row['Bullet ' + i] || row['bullet' + i] || '').substring(0, 200);
-                    return fetch('/bullet-points/save', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken },
-                        body: JSON.stringify(payload)
-                    }).then(res => res.json()).then(d => d.success ? ok++ : err++);
-                })).then(() => {
-                    alert('Import done. Success: ' + ok + ', Errors: ' + err);
-                    loadData();
-                });
-            } catch (ex) { alert('Import error: ' + ex.message); }
-        };
-        r.readAsArrayBuffer(f);
-        this.value = '';
-    });
+        return new Promise((resolve) => {
+            const existing = document.querySelector('script[data-bp-bootstrap]');
+            if (existing) {
+                existing.addEventListener('load', () => resolve(), { once: true });
+                existing.addEventListener('error', () => resolve(), { once: true });
+                return;
+            }
 
-    document.getElementById('parentSearch')?.addEventListener('input', applyFilters);
-    document.getElementById('skuSearch')?.addEventListener('input', applyFilters);
-    [1,2,3,4,5].forEach(i => document.getElementById('filterBullet' + i)?.addEventListener('change', applyFilters));
+            const script = document.createElement('script');
+            script.src = 'https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js';
+            script.async = true;
+            script.dataset.bpBootstrap = '1';
+            script.onload = () => resolve();
+            script.onerror = () => resolve();
+            document.head.appendChild(script);
+        });
+    }
 
-    document.addEventListener('DOMContentLoaded', function() {
-        bulletModal = new bootstrap.Modal(document.getElementById('bulletModal'));
-        mpBulletModal = new bootstrap.Modal(document.getElementById('mpBulletModal'));
+    waitForBootstrap().then(() => {
+        if (window.bootstrap && window.bootstrap.Modal) {
+            editRowModal = new bootstrap.Modal(document.getElementById('editRowModal'));
+            viewRowModal = new bootstrap.Modal(document.getElementById('viewRowModal'));
+            aiGenerateModal = new bootstrap.Modal(document.getElementById('aiGenerateModal'));
+        } else {
+            console.warn('Bootstrap JS not available; modals/toasts will be degraded.');
+        }
         loadData();
     });
-})();
+});
 </script>
 @endsection

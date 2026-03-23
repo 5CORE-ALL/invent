@@ -23,5 +23,6 @@ class TemuMetric extends Model
         'temu_sheet_price',
         'ad_sold',
         'organic_views',
+        'bullet_points',
     ];
 }

@@ -289,11 +289,21 @@
                     </div>
 
                     <button type="button" class="btn btn-sm btn-success" id="export-btn">
-                        <i class="fa fa-download"></i> Export
+                        <i class="fa fa-download"></i> Export L30
+                    </button>
+                    <button type="button" class="btn btn-sm btn-info" id="export-l7-btn">
+                        <i class="fa fa-download"></i> Export L7
                     </button>
                     <a href="{{ route('temu.tabulator') }}" class="btn btn-sm btn-outline-primary" title="View order-level sales data (Order ID, status, line items)">
                         <i class="fa fa-list-alt"></i> Order Data
                     </a>
+                    <div class="d-inline-flex align-items-center gap-1 flex-shrink-0 border rounded px-2 py-1 bg-light ms-1" title="Campaign report & sales period for this table">
+                        <label for="campaign-period-select" class="mb-0 small fw-semibold text-nowrap text-dark">Campaign Data</label>
+                        <select id="campaign-period-select" class="form-select form-select-sm" style="min-width: 88px;">
+                            <option value="L30" selected>L30</option>
+                            <option value="L7">L7</option>
+                        </select>
+                    </div>
                     <a href="{{ route('temu.lmp') }}" class="btn btn-sm btn-outline-secondary" title="Temu LMP table and upload">
                         <i class="fa fa-link"></i> Temu LMP
                     </a>
@@ -359,10 +369,15 @@
                     </div>
                     <div class="d-flex align-items-center gap-2 mt-2 pt-2 border-top">
                         <label class="form-label mb-0 me-1 text-nowrap" style="font-size: 0.8rem;"><i class="fa-solid fa-upload me-1"></i>Sales:</label>
+                        <input type="file" id="temu-l7-sales-upload-file" accept=".xlsx,.xls,.csv" class="form-control form-control-sm d-none" style="width: 0;">
+                        <button type="button" id="temu-l7-sales-upload-btn" class="btn btn-sm btn-info" title="Upload L7 Sales (same format as L30)" style="font-size: 0.75rem;">
+                            <i class="fa-solid fa-upload me-1"></i>L7 Sales
+                        </button>
                         <input type="file" id="temu-l60-sales-upload-file" accept=".xlsx,.xls,.csv" class="form-control form-control-sm d-none" style="width: 0;">
                         <button type="button" id="temu-l60-sales-upload-btn" class="btn btn-sm btn-success" title="Upload L60 Sales (order data, same format as L30)" style="font-size: 0.75rem;">
                             <i class="fa-solid fa-upload me-1"></i>L60 Sales
                         </button>
+                        <span id="temu-l7-sales-upload-status" class="ms-2" style="font-size: 0.7rem;"></span>
                         <span id="temu-l60-sales-upload-status" class="ms-2" style="font-size: 0.7rem;"></span>
                     </div>
                 </div>
@@ -1646,6 +1661,30 @@
             $('#skuMetricsModal').modal('show');
         });
 
+        $(document).on('click', '.copy-goods-id', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            const goodsId = ($(this).data('goods-id') || '').toString();
+            if (!goodsId) return;
+
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(goodsId).then(function() {
+                    if (typeof showToast === 'function') showToast('Goods ID copied', 'success');
+                }).catch(function() {
+                    if (typeof showToast === 'function') showToast('Failed to copy Goods ID', 'error');
+                });
+                return;
+            }
+
+            const tempInput = document.createElement('input');
+            tempInput.value = goodsId;
+            document.body.appendChild(tempInput);
+            tempInput.select();
+            document.execCommand('copy');
+            document.body.removeChild(tempInput);
+            if (typeof showToast === 'function') showToast('Goods ID copied', 'success');
+        });
+
         // Discount type dropdown change handler
         $('#discount-type-select').on('change', function() {
             const discountType = $(this).val();
@@ -2560,7 +2599,8 @@
             $('#temu-total-spend-badge').text('Total Ads Spend: $' + Math.round(totalSpend).toLocaleString());
             $('#temu-total-budget-badge').text('Budget: $' + totalBudget.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
             $('#temu-total-ad-sales-badge').text('Ad Sales: $' + Math.round(totalAdSales).toLocaleString());
-            $('#temu-total-ad-sold-badge').text('Total L30 Ad Sold: ' + totalAdSold.toLocaleString());
+            const adSoldLabel = (typeof currentCampaignPeriod !== 'undefined' && currentCampaignPeriod === 'L7') ? 'Total L7 Ad Sold' : 'Total L30 Ad Sold';
+            $('#temu-total-ad-sold-badge').text(adSoldLabel + ': ' + totalAdSold.toLocaleString());
             $('#temu-total-ad-clicks-badge').text('Ad Clicks: ' + totalAdClicks.toLocaleString());
             $('#temu-total-clicks-badge').text('Total Clicks: ' + totalAdClicks.toLocaleString());
             $('#temu-avg-clicks-badge').text('Avg Clicks: ' + (avgClicks % 1 === 0 ? Math.round(avgClicks).toLocaleString() : avgClicks.toFixed(1)));
@@ -2589,6 +2629,7 @@
         let totalCampaignCountFromBackend = 0;
         let salesSummaryFromBackend = null;
         let badgeAvgAds = null; // Ads % from badge — shown in ADS% column for all rows
+        let currentCampaignPeriod = 'L30';
 
         // Play/Pause parent navigation (like pricing-master-cvr)
         let fullDataset = [];
@@ -2609,6 +2650,9 @@
             ],
             ajaxResponse: function(url, params, response) {
                 if (response && Array.isArray(response.data)) {
+                    const periodFromResponse = (response.period || currentCampaignPeriod || 'L30').toUpperCase();
+                    currentCampaignPeriod = periodFromResponse;
+                    $('#campaign-period-select').val(currentCampaignPeriod);
                     totalCampaignCountFromBackend = parseInt(response.total_campaign_count || 0, 10);
                     salesSummaryFromBackend = response.sales_summary || null;
                     // Use exact aggregate_ads_percent from backend (matches all-marketplace-master)
@@ -2647,7 +2691,23 @@
                         return `${sku} <button type="button" class="btn btn-sm ms-1 view-sku-chart" data-sku="${sku}" data-metric="price" title="View Price trend" style="border: none; background: none; color: #87CEEB; padding: 2px 6px;"><i class="fa fa-info-circle"></i></button>`;
                     }
                 },
-              
+                {
+                    title: "Goods ID",
+                    field: "goods_id",
+                    hozAlign: "left",
+                    sorter: "string",
+                    width: 120,
+                    accessorDownload: function(value, data) {
+                        const g = (data && data.goods_id != null && data.goods_id !== '') ? String(data.goods_id) : '';
+                        // Leading tab forces Excel to treat as text (avoids scientific notation)
+                        return g ? ('\t' + g) : '';
+                    },
+                    formatter: function(cell) {
+                        const goodsId = (cell.getValue() || '').toString().trim();
+                        if (!goodsId) return '';
+                        return `${goodsId} <button type="button" class="btn btn-sm p-0 ms-1 copy-goods-id" data-goods-id="${goodsId}" title="Copy Goods ID" style="border:none;background:none;color:#6c757d;"><i class="fa fa-copy"></i></button>`;
+                    }
+                },
                 {
                     title: "INV",
                     field: "inventory",
@@ -3389,6 +3449,30 @@
                     width: 110
                 },
                 {
+                    title: "Impressions",
+                    field: "impressions",
+                    hozAlign: "right",
+                    sorter: "number",
+                    visible: false,
+                    width: 100,
+                    formatter: function(cell) {
+                        const v = parseInt(cell.getValue(), 10) || 0;
+                        return v.toLocaleString();
+                    }
+                },
+                {
+                    title: "Add to cart",
+                    field: "add_to_cart_number",
+                    hozAlign: "right",
+                    sorter: "number",
+                    visible: false,
+                    width: 100,
+                    formatter: function(cell) {
+                        const v = parseInt(cell.getValue(), 10) || 0;
+                        return v.toLocaleString();
+                    }
+                },
+                {
                     title: "OUT ROAS",
                     field: "out_roas_l30",
                     hozAlign: "right",
@@ -3589,7 +3673,30 @@
         let originalColumnVisibility = {}; // Store original visibility state
         
         // Columns to show when ads view is active (matching temu/ads page)
-        const adsColumnFields = ['sku', 'has_campaign', 'inventory', 'ovl30', 'temu_l30', 'dil_percent', 'nr_req', 'spend', 'spend_l60', 'l60_vs_l30', 'ad_clicks', 'acos_ad', 'out_roas_l30', 'in_roas_l30', 'campaign_status'];
+        const adsColumnFields = ['sku', 'goods_id', 'has_campaign', 'inventory', 'ovl30', 'temu_l30', 'dil_percent', 'nr_req', 'spend', 'spend_l60', 'l60_vs_l30', 'ad_clicks', 'acos_ad', 'out_roas_l30', 'in_roas_l30', 'campaign_status'];
+
+        function captureColumnVisibilityState() {
+            const state = {};
+            if (!table) return state;
+            table.getColumns().forEach(function(column) {
+                const field = column.getField();
+                if (field) state[field] = column.isVisible();
+            });
+            return state;
+        }
+
+        function applyColumnVisibilityState(state) {
+            if (!table || !state) return;
+            table.getColumns().forEach(function(column) {
+                const field = column.getField();
+                if (!field || !Object.prototype.hasOwnProperty.call(state, field)) return;
+                if (state[field]) {
+                    column.show();
+                } else {
+                    column.hide();
+                }
+            });
+        }
         
         $('#toggle-ads-columns-btn').on('click', function() {
             adsColumnsVisible = !adsColumnsVisible;
@@ -3728,6 +3835,61 @@
                 doTemuUploadReport(this, 'L60', 'temu-upload-status-container');
             });
             $('#temu-l60-upload-file')[0].click();
+        });
+
+        // L7 Sales upload (same format as L30, stored in temu_daily_data_l7)
+        $('#temu-l7-sales-upload-btn').on('click', function() {
+            $('#temu-l7-sales-upload-file').off('change').on('change', function() {
+                const file = this.files[0];
+                if (!file) return;
+                const $status = $('#temu-l7-sales-upload-status');
+                $status.text('Uploading...').css('color', '');
+                const totalChunks = 5;
+                const uploadId = 'temu_l7_' + Date.now();
+                let currentChunk = 0;
+                let totalImported = 0;
+
+                function uploadNextChunk() {
+                    const formData = new FormData();
+                    formData.append('file', file);
+                    formData.append('chunk', currentChunk);
+                    formData.append('totalChunks', totalChunks);
+                    formData.append('uploadId', uploadId);
+                    formData.append('_token', '{{ csrf_token() }}');
+
+                    $.ajax({
+                        url: '/temu/upload-daily-data-l7-chunk',
+                        type: 'POST',
+                        data: formData,
+                        processData: false,
+                        contentType: false,
+                        success: function(response) {
+                            if (response.success) {
+                                totalImported += response.imported || 0;
+                                $status.text('Chunk ' + (currentChunk + 1) + '/' + totalChunks + '...');
+                                if (currentChunk < totalChunks - 1) {
+                                    currentChunk++;
+                                    setTimeout(uploadNextChunk, 300);
+                                } else {
+                                    $status.text('Done. ' + totalImported + ' rows.').css('color', 'green');
+                                    showToast('L7 Sales upload completed. ' + totalImported + ' records.', 'success');
+                                    if (currentCampaignPeriod === 'L7' && table) table.setData('/temu-decrease-data-l7');
+                                }
+                            } else {
+                                $status.text('Error').css('color', 'red');
+                                showToast(response.message || 'Upload failed', 'error');
+                            }
+                        },
+                        error: function(xhr) {
+                            const msg = xhr.responseJSON && xhr.responseJSON.message ? xhr.responseJSON.message : 'Upload failed';
+                            $status.text('Error').css('color', 'red');
+                            showToast(msg, 'error');
+                        }
+                    });
+                }
+                uploadNextChunk();
+            });
+            $('#temu-l7-sales-upload-file')[0].click();
         });
 
         // L60 Sales upload (same format as L30, stored in temu_daily_data_l60)
@@ -4632,6 +4794,7 @@
             }
             fullDataset = (data && Array.isArray(data)) ? data : (table.getData ? table.getData("all") : []) || [];
             applyFilters();
+            updateCampaignPeriodUi();
             // Wait a bit to ensure badgeAvgAds is set from ajaxResponse before calculating NPFT
             setTimeout(function() {
                 updateSummary();
@@ -4675,9 +4838,74 @@
             }
         });
 
-        // Export functionality
+        function updateCampaignPeriodUi() {
+            const isL7 = currentCampaignPeriod === 'L7';
+            $('#export-btn').prop('disabled', isL7).toggleClass('disabled', isL7);
+            $('#export-l7-btn').prop('disabled', !isL7).toggleClass('disabled', !isL7);
+
+            const temuSalesCol = table.getColumn('temu_l30');
+            if (temuSalesCol) {
+                temuSalesCol.updateDefinition({
+                    title: isL7 ? 'Temu L7' : 'Temu L30',
+                });
+            }
+            const ovlCol = table.getColumn('ovl30');
+            if (ovlCol) {
+                ovlCol.updateDefinition({ title: isL7 ? 'OVL7' : 'OVL30' });
+            }
+            const cvr30Col = table.getColumn('cvr_30');
+            if (cvr30Col) {
+                cvr30Col.updateDefinition({ title: isL7 ? 'CVR 7' : 'CVR 30' });
+            }
+            const l60VsL30Col = table.getColumn('l60_vs_l30');
+            if (l60VsL30Col) {
+                l60VsL30Col.updateDefinition({ title: isL7 ? 'L60 vs L7' : 'L60 vs L30' });
+            }
+            $('#temu-total-ad-sold-badge').attr('title', isL7 ? 'Total L7 Ad Sold' : 'Total L30 Ad Sold');
+        }
+
+        function currentPeriodEndpoint() {
+            return currentCampaignPeriod === 'L7' ? '/temu-decrease-data-l7' : '/temu-decrease-data';
+        }
+
+        $('#campaign-period-select').on('change', function() {
+            const $sel = $(this);
+            $sel.prop('disabled', true);
+            const visibilityState = captureColumnVisibilityState();
+            currentCampaignPeriod = ($sel.val() || 'L30').toUpperCase();
+            const endpoint = currentPeriodEndpoint();
+            table.setData(endpoint).then(function() {
+                applyFilters();
+                updateCampaignPeriodUi();
+                applyColumnVisibilityState(visibilityState);
+                buildColumnDropdown();
+                if (typeof updateTemuAdsCounts === 'function') updateTemuAdsCounts();
+            }).catch(function(err) {
+                console.error('Campaign period load failed', err);
+                if (typeof showToast === 'function') {
+                    showToast('Failed to load ' + currentCampaignPeriod + ' data', 'error');
+                }
+            }).finally(function() {
+                $sel.prop('disabled', false);
+            });
+        });
+
+        // Export L30 (only available in L30 mode)
         $('#export-btn').on('click', function() {
-            table.download("csv", "temu_decrease_data.csv");
+            if (currentCampaignPeriod !== 'L30') {
+                showToast('Switch to L30 to use Export L30', 'warning');
+                return;
+            }
+            table.download("csv", "temu_decrease_data_l30.csv");
+        });
+
+        // Export L7: current table rows only (respects filters, column visibility, Ads Section) — same as L30 export pattern
+        $('#export-l7-btn').on('click', function() {
+            if (currentCampaignPeriod !== 'L7') {
+                showToast('Switch Campaign Data to L7 to export L7 data', 'warning');
+                return;
+            }
+            table.download('csv', 'temu_l7_data.csv');
         });
 
         // Single-badge history modal: click on a badge opens history for that metric
@@ -4743,6 +4971,8 @@
             $('#badgeTrendChartSuffix').text('(Rolling L' + days + ')');
             loadBadgeChartData(currentBadgeChartMetricKey, currentBadgeChartLabel, days);
         });
+
+        updateCampaignPeriodUi();
     });
 </script>
 @endsection

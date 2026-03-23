@@ -887,6 +887,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/temu/view-data', [TemuController::class, 'getViewTemuData']);
     Route::post('/temu/upload-daily-data-chunk', [TemuController::class, 'uploadDailyDataChunk']);
     Route::post('/temu/upload-daily-data-l60-chunk', [TemuController::class, 'uploadDailyDataL60Chunk']);
+    Route::post('/temu/upload-daily-data-l7-chunk', [TemuController::class, 'uploadDailyDataL7Chunk']);
     Route::get('/temu/download-daily-data-sample', [TemuController::class, 'downloadDailyDataSample'])->name('temu.daily.sample');
     Route::get('/temu/daily-data', [TemuController::class, 'getDailyData'])->name('temu.daily.data');
     Route::get('/ebay/daily-sales-data', [EbaySalesController::class, 'getData'])->name('ebay.daily.sales.data');
@@ -1099,6 +1100,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/bullet-point-master-data', [BulletPointMasterController::class, 'getData'])->name('bullet.point.master.data');
     Route::get('/bullet-point-master-combined-data', [BulletPointMasterController::class, 'getCombinedData'])->name('bullet.point.master.combined.data');
     Route::post('/bullet-point-master/update', [BulletPointMasterController::class, 'update'])->name('bullet.point.master.update');
+    Route::post('/bullet-point-master/update-bulk', [BulletPointMasterController::class, 'updateBulk'])->name('bullet.point.master.update.bulk');
+    Route::post('/bullet-point-master/generate', [BulletPointMasterController::class, 'generateBulletPoints'])->name('bullet.point.master.generate');
     Route::get('/title-master-data', [ProductMasterController::class, 'getTitleMasterData'])->name('title.master.data');
     Route::post('/title-master/save', [ProductMasterController::class, 'saveTitleData'])->name('title.master.save');
     Route::post('/title-master/ai/generate-titles', [ProductMasterController::class, 'generateTitlesWithAI'])->name('title.master.ai.generate');
@@ -1117,6 +1120,9 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/videos-master', fn() => view('videos-master'))->name('videos.master');
     Route::post('/videos-master/save', [ProductMasterController::class, 'saveVideosData'])->name('videos.master.save');
     Route::get('/bullet-points', [BulletPointMasterController::class, 'index'])->name('bullet.points');
+    Route::get('/bullet-points-data', [BulletPointMasterController::class, 'getData'])->name('bullet.points.data');
+    Route::post('/bullet-points/update', [BulletPointMasterController::class, 'update'])->name('bullet.points.update');
+    Route::post('/bullet-points/generate', [BulletPointMasterController::class, 'generate'])->name('bullet.points.generate');
     Route::post('/bullet-points/save', [ProductMasterController::class, 'saveBulletData'])->name('bullet.points.save');
     Route::get('/product-description', fn() => view('product-description'))->name('product.description');
     Route::post('/product-description/save', [ProductMasterController::class, 'saveDescriptionData'])->name('product.description.save');
@@ -1539,6 +1545,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     // Temu Decrease Page
     Route::get('/temu-decrease', [TemuController::class, 'temuDecreaseView'])->name('temu.decrease');
     Route::get('/temu-decrease-data', [TemuController::class, 'getTemuDecreaseData']);
+    Route::get('/temu-decrease-data-l7', [TemuController::class, 'getTemuDecreaseDataL7'])->name('temu.decrease.l7');
     Route::get('/temu-badge-history', [TemuController::class, 'getTemuBadgeHistory']);
     Route::post('/temu-pricing/update-price', [TemuController::class, 'updateTemuPrice']);
     Route::post('/temu-pricing/save-sprice', [TemuController::class, 'saveTemuSprice']);
