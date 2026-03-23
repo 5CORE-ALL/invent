@@ -65,17 +65,6 @@
             justify-content: center;
         }
 
-      
-
-        /* Supplier column: ensure column and filter don't truncate text */
-        .tabulator .tabulator-header .tabulator-col[tabulator-field="Supplier Tag"] .tabulator-header-filter input,
-        .tabulator .tabulator-header-filter input.supplier-header-filter {
-            max-width: 50% !important;
-            width: 50% !important;
-            min-width: 90px !important;
-            box-sizing: border-box;
-        }
-
         /* NRP: REQ = green dot, 2BDC (NR) = red, LATER = yellow; select overlaid for editing */
         .nrp-dot-cell {
             min-height: 36px;
@@ -99,17 +88,59 @@
             appearance: none;
         }
 
-        .forecast-rating-header-label {
-            font-weight: 700;
-            color: #111;
-            display: inline-block;
-            transform: rotate(-90deg);
-            transform-origin: center center;
-            white-space: nowrap;
-            font-size: 0.95rem;
-            letter-spacing: 0.03em;
+        .stage-dot-cell {
+            min-height: 36px;
+            min-width: 40px;
+        }
+        .stage-dot-cell .stage-status-dot {
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            flex-shrink: 0;
+            box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.12);
+        }
+        .stage-dot-cell .stage-stage-select {
+            opacity: 0;
+            cursor: pointer;
+            margin: 0 !important;
+            border: 0 !important;
+            padding: 0 !important;
             background: transparent !important;
-            box-shadow: none !important;
+            -webkit-appearance: none;
+            appearance: none;
+        }
+        .stage-dot-cell .stage-transit-icon {
+            font-size: 1.05rem;
+            line-height: 1;
+            color: #334155;
+        }
+
+        .tabulator-cell.forecast-rating-combo-cell {
+            font-size: 0.65rem;
+            line-height: 1.1;
+            padding: 1px 2px !important;
+        }
+
+        .tabulator-cell.forecast-current-supplier-cell {
+            vertical-align: middle;
+            padding-left: 2px !important;
+            padding-right: 2px !important;
+        }
+        .tabulator-cell.forecast-current-supplier-cell .forecast-supplier-name {
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+            overflow-wrap: anywhere;
+            word-break: break-word;
+            line-height: 1.15;
+            width: 100%;
+            max-width: 100%;
+            box-sizing: border-box;
+            text-align: center;
+            font-weight: 600;
+            font-size: 0.72rem;
         }
 
         .forecast-dil-pct {
@@ -138,10 +169,88 @@
             padding-top: 3px;
             padding-bottom: 3px;
         }
+        /* All column titles vertical (except row-selection checkbox column) */
         #forecast-table-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-content {
-            padding: 5px 4px;
+            display: flex;
+            flex-direction: column;
+            align-items: stretch;
+            justify-content: flex-start;
+            gap: 4px;
+            min-height: 108px;
+            padding: 4px 3px;
+            box-sizing: border-box;
         }
-
+        #forecast-table-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-title-holder {
+            display: flex;
+            flex-direction: row;
+            flex-wrap: nowrap;
+            align-items: center;
+            justify-content: center;
+            gap: 2px;
+            flex: 0 0 auto;
+            min-height: 56px;
+            width: 100%;
+        }
+        #forecast-table-wrap .tabulator .tabulator-header .tabulator-col:not(:first-child) .tabulator-col-title,
+        #forecast-table-wrap .tabulator .tabulator-header .tabulator-col:not(:first-child) .tabulator-title {
+            writing-mode: vertical-rl;
+            transform: rotate(180deg);
+            white-space: nowrap;
+            font-weight: 700;
+            font-size: 0.68rem;
+            line-height: 1.1;
+            letter-spacing: 0.02em;
+            text-align: center;
+        }
+        #forecast-table-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-sorter {
+            writing-mode: horizontal-tb !important;
+            transform: none !important;
+            flex-shrink: 0;
+        }
+        #forecast-table-wrap .tabulator .tabulator-header .tabulator-col:first-child .tabulator-col-content {
+            min-height: auto;
+            flex-direction: row;
+            align-items: center;
+            justify-content: center;
+        }
+        #forecast-table-wrap .tabulator .tabulator-header .tabulator-col:first-child .tabulator-col-title,
+        #forecast-table-wrap .tabulator .tabulator-header .tabulator-col:first-child .tabulator-col-title-holder,
+        #forecast-table-wrap .tabulator .tabulator-header .tabulator-col:first-child .tabulator-title {
+            writing-mode: horizontal-tb !important;
+            transform: none !important;
+            min-height: auto !important;
+        }
+        #forecast-table-wrap .tabulator .tabulator-header .tabulator-header-filter {
+            writing-mode: horizontal-tb !important;
+            transform: none !important;
+            flex: 1 1 auto;
+            width: 100%;
+            max-width: 100%;
+            margin-top: auto;
+            align-self: stretch;
+        }
+        #forecast-table-wrap .tabulator .tabulator-header .tabulator-header-filter input,
+        #forecast-table-wrap .tabulator .tabulator-header .tabulator-header-filter select {
+            width: 100%;
+            max-width: 100%;
+            box-sizing: border-box;
+            font-size: 0.68rem;
+            padding: 2px 3px;
+        }
+        /* Header filters fill narrow Parent/SKU columns */
+        #forecast-table-wrap .tabulator .tabulator-col.tabulator-field-Parent .tabulator-header-filter input,
+        #forecast-table-wrap .tabulator .tabulator-col.tabulator-field-SKU .tabulator-header-filter input {
+            width: 100%;
+            max-width: 100%;
+            box-sizing: border-box;
+        }
+        #forecast-table-wrap .tabulator .tabulator-col.tabulator-field-mfrg_supplier .tabulator-header-filter input {
+            width: 100%;
+            max-width: 100%;
+            box-sizing: border-box;
+            padding: 2px 3px;
+            font-size: 0.7rem;
+        }
     </style>
 @endsection
 
@@ -308,24 +417,6 @@
                     <!-- Bulk edit badge (shown when rows selected) -->
                     <div id="bulk-edit-badge" class="d-none mb-2 p-2 rounded border bg-light d-flex align-items-center gap-2 flex-wrap" style="min-height: 40px;">
                         <span class="fw-semibold text-dark" id="bulk-edit-count">0 selected</span>
-                        <div class="dropdown">
-                            <button class="btn btn-sm btn-primary dropdown-toggle" type="button" id="bulkEditSupplierBtn" data-bs-toggle="dropdown" aria-expanded="false">
-                                Edit Supplier All
-                            </button>
-                            <ul class="dropdown-menu" aria-labelledby="bulkEditSupplierBtn">
-                                <li class="px-3 py-2">
-                                    <select id="bulk-supplier-select" class="form-select form-select-sm" style="min-width: 180px;">
-                                        <option value="">Select supplier...</option>
-                                    </select>
-                                </li>
-                                <li><hr class="dropdown-divider"></li>
-                                <li>
-                                    <button class="dropdown-item" type="button" id="bulk-apply-supplier">
-                                        <i class="fas fa-check me-1"></i> Apply
-                                    </button>
-                                </li>
-                            </ul>
-                        </div>
                         <div class="dropdown">
                             <button class="btn btn-sm btn-secondary dropdown-toggle" type="button" id="bulkEditCurrentSupplierBtn" data-bs-toggle="dropdown" aria-expanded="false">
                                 Current Supplier
@@ -666,15 +757,28 @@
                         const preview = document.getElementById('image-hover-preview');
                         if (preview) preview.remove();
                     },
+                    width: 52,
+                    minWidth: 48,
+                    maxWidth: 56,
+                    widthGrow: 0
                 },
                 {
                     title: "Parent",
                     field: "Parent",
-                    minWidth: 130,
+                    width: 92,
+                    minWidth: 72,
+                    maxWidth: 180,
+                    widthGrow: 0,
                     headerFilter: "input",
-                    headerFilterPlaceholder: "Search parent.",
+                    headerFilterPlaceholder: "Filter",
                     headerFilterFunc: "like",
-                    accessor: row => row["Parent"]
+                    accessor: row => row["Parent"],
+                    formatter: function(cell) {
+                        const v = cell.getValue() == null ? '' : String(cell.getValue());
+                        const esc = v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                        const title = esc.replace(/"/g, '&quot;');
+                        return '<span title="' + title + '" style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;">' + esc + '</span>';
+                    }
                 },
 
 
@@ -682,11 +786,20 @@
                 {
                     title: "SKU",
                     field: "SKU",
-                    minWidth: 130,
+                    width: 118,
+                    minWidth: 88,
+                    maxWidth: 260,
+                    widthGrow: 0,
                     headerFilter: "input",
-                    headerFilterPlaceholder: "Search sku.",
+                    headerFilterPlaceholder: "Filter",
                     headerFilterFunc: "like",
-                    accessor: row => row["SKU"]
+                    accessor: row => row["SKU"],
+                    formatter: function(cell) {
+                        const v = cell.getValue() == null ? '' : String(cell.getValue());
+                        const esc = v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                        const title = esc.replace(/"/g, '&quot;');
+                        return '<span title="' + title + '" style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;">' + esc + '</span>';
+                    }
                 },
                 
                 {
@@ -832,24 +945,16 @@
                 {
                     title: "Stage",
                     field: "stage",
-                    minWidth: 86,
-                    width: 92,
-                    maxWidth: 110,
+                    minWidth: 48,
+                    width: 52,
+                    maxWidth: 64,
+                    widthGrow: 0,
+                    hozAlign: "center",
                     accessor: function(row) {
                         const stageValue = row?.["stage"] ?? '';
                         return stageValue ? String(stageValue).trim().toLowerCase() : '';
                     },
                     headerSort: false,
-                    titleFormatter: function() {
-                        const wrap = document.createElement("span");
-                        wrap.className = "d-inline-flex align-items-center justify-content-center gap-1";
-                        const icon = document.createElement("i");
-                        icon.className = "bi bi-funnel-fill";
-                        icon.setAttribute("title", "Stage filter");
-                        wrap.appendChild(icon);
-                        wrap.appendChild(document.createTextNode(" Stage"));
-                        return wrap;
-                    },
                     headerFilter: "list",
                     headerFilterParams: {
                         values: {
@@ -874,27 +979,55 @@
                         let value = cell.getValue() ?? '';
                         value = String(value).trim().toLowerCase();
                         const rowData = cell.getRow().getData();
+                        const sku = (rowData["SKU"] || '').replace(/'/g, "\\'");
+                        const parent = (rowData["Parent"] || '').replace(/'/g, "\\'");
 
-                        const allGoodLegacy = value === 'all_good'
+                        const stageTips = {
+                            '': 'Select stage',
+                            'appr_req': 'Appr Req — Approval',
+                            'mip': 'MIP',
+                            'r2s': 'R2S — Ready to ship',
+                            'transit': 'Transit',
+                            'to_order_analysis': 'Order — 2 Order',
+                            'all_good': 'All Good'
+                        };
+                        const tip = stageTips[value] || 'Select stage';
+                        const tipAttr = String(tip).replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+
+                        let markerHtml = '';
+                        if (value === 'transit') {
+                            markerHtml = '<i class="bi bi-truck stage-transit-icon" aria-hidden="true"></i>';
+                        } else {
+                            let dotColor = '#94a3b8';
+                            if (value === 'appr_req') dotColor = '#facc15';
+                            else if (value === 'mip') dotColor = '#2563eb';
+                            else if (value === 'to_order_analysis') dotColor = '#c2410c';
+                            else if (value === 'r2s') dotColor = '#16a34a';
+                            else if (value === 'all_good') dotColor = '#22c55e';
+                            markerHtml = '<span class="stage-status-dot" style="background-color:' + dotColor + ';" aria-hidden="true"></span>';
+                        }
+
+                        const allGoodOpt = value === 'all_good'
                             ? '<option value="all_good" selected>😊 All Good</option>'
-                            : '';
-                        return `
-                        <select class="form-select form-select-sm editable-select"
-                            data-type="Stage"
-                            data-sku='${rowData["SKU"]}'
-                            data-parent='${rowData["Parent"]}'
-                            style="width: 100%; max-width: 100%; min-width: 0; padding: 4px 20px 4px 6px;
-                                font-size: 0.8rem; border-radius: 4px; border: 1px solid #dee2e6;
-                                background-color: #fff;">
-                            <option value="">sel</option>
-                            ${allGoodLegacy}
-                            <option value="appr_req" ${value === 'appr_req' ? 'selected' : ''}>Appr Req</option>
-                            <option value="mip" ${value === 'mip' ? 'selected' : ''}>MIP</option>
-                            <option value="r2s" ${value === 'r2s' ? 'selected' : ''}>R2S</option>
-                            <option value="transit" ${value === 'transit' ? 'selected' : ''}>Trn</option>
-                            <option value="to_order_analysis" ${value === 'to_order_analysis' ? 'selected' : ''}>Ord</option>
-                        </select>
-                    `;
+                            : '<option value="all_good">😊 All Good</option>';
+
+                        return (
+                            '<div class="stage-dot-cell position-relative d-flex justify-content-center align-items-center w-100" title="' + tipAttr + '">' +
+                            markerHtml +
+                            '<select class="form-select form-select-sm editable-select stage-stage-select position-absolute top-0 start-0 w-100 h-100"' +
+                            ' data-type="Stage"' +
+                            ' data-sku=\'' + sku + '\'' +
+                            ' data-parent=\'' + parent + '\'' +
+                            ' aria-label="' + tipAttr + '">' +
+                            '<option value="">sel</option>' +
+                            allGoodOpt +
+                            '<option value="appr_req"' + (value === 'appr_req' ? ' selected' : '') + '>Appr Req</option>' +
+                            '<option value="mip"' + (value === 'mip' ? ' selected' : '') + '>MIP</option>' +
+                            '<option value="r2s"' + (value === 'r2s' ? ' selected' : '') + '>R2S</option>' +
+                            '<option value="transit"' + (value === 'transit' ? ' selected' : '') + '>Trn</option>' +
+                            '<option value="to_order_analysis"' + (value === 'to_order_analysis' ? ' selected' : '') + '>Ord</option>' +
+                            '</select></div>'
+                        );
                     },
                     cellCreated: function(cell) {
                         const selectEl = cell.getElement().querySelector('select');
@@ -1211,20 +1344,16 @@
                 {
                     title: "Rating",
                     field: "rating",
-                    minWidth: 88,
-                    width: 92,
+                    minWidth: 72,
+                    width: 76,
                     headerSort: true,
                     hozAlign: "center",
                     vertAlign: "middle",
                     titleFormatter: function() {
-                        const wrap = document.createElement("div");
-                        wrap.style.cssText = "background:transparent;width:100%;min-height:76px;display:flex;align-items:center;justify-content:center;padding:8px 4px;box-sizing:border-box;";
                         const span = document.createElement("span");
-                        span.className = "forecast-rating-header-label";
                         span.textContent = "Rating";
                         span.setAttribute("title", "Rating & reviews (Jungle Scout)");
-                        wrap.appendChild(span);
-                        return wrap;
+                        return span;
                     },
                     accessor: function(row) {
                         const r = row.rating;
@@ -1247,19 +1376,22 @@
                         const hasReviews = Number.isFinite(revParsed) && revParsed >= 0 && String(rawRev).trim() !== '';
 
                         if (!hasRating && !hasReviews) {
-                            return '<div style="display:flex;align-items:center;justify-content:center;min-height:48px;"><span style="color:#6c757d;font-size:1.1rem;">—</span></div>';
+                            return '<div style="display:flex;align-items:center;justify-content:center;"><span style="color:#6c757d;font-size:0.75rem;">—</span></div>';
                         }
 
-                        let starColor = '#c9a227';
+                        /* <3.5 red; 3.5–<4 yellow; 4–<4.5 green; ≥4.5 pink cell bg */
+                        let starColor = '#b91c1c';
+                        let ratingWrapStyle = '';
                         if (hasRating) {
                             if (rVal >= 4.5) {
-                                starColor = '#1565c0';
+                                starColor = '#9d174d';
+                                ratingWrapStyle = 'background:#fce7f3;border-radius:2px;padding:0 1px;box-sizing:border-box;';
+                            } else if (rVal >= 4) {
+                                starColor = '#15803d';
                             } else if (rVal >= 3.5) {
-                                starColor = '#c9a227';
-                            } else if (rVal >= 2.5) {
-                                starColor = '#e8941c';
+                                starColor = '#a16207';
                             } else {
-                                starColor = '#c62828';
+                                starColor = '#dc2626';
                             }
                         }
 
@@ -1267,22 +1399,24 @@
                             ? (Number.isInteger(rVal) ? String(rVal) : rVal.toFixed(1))
                             : null;
                         const revLine = hasReviews
-                            ? (revParsed.toLocaleString("en-US") + " reviews")
+                            ? (revParsed.toLocaleString("en-US") + " Rew")
                             : null;
 
-                        let html = "<div style=\"display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1.2;padding:6px 4px;min-height:52px;\">";
+                        let html = "<div style=\"display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1.1;padding:0 1px;" + ratingWrapStyle + "\">";
                         if (hasRating) {
-                            html += "<div style=\"font-weight:700;color:" + starColor + ";display:inline-flex;align-items:center;gap:4px;font-size:0.95rem;\">";
-                            html += "<i class=\"bi bi-star-fill\" style=\"font-size:0.9rem;line-height:1;\"></i>";
+                            html += "<div style=\"font-weight:700;color:" + starColor + ";display:inline-flex;align-items:center;gap:1px;font-size:0.72rem;\">";
+                            html += "<i class=\"bi bi-star-fill\" style=\"font-size:0.68rem;line-height:1;\"></i>";
                             html += "<span>" + ratingLine + "</span></div>";
                         } else {
-                            html += "<div style=\"font-weight:700;color:#9e9e9e;display:inline-flex;align-items:center;gap:4px;font-size:0.85rem;\">";
-                            html += "<i class=\"bi bi-star\" style=\"font-size:0.85rem;\"></i><span>—</span></div>";
+                            html += "<div style=\"font-weight:700;color:#9e9e9e;display:inline-flex;align-items:center;gap:1px;font-size:0.68rem;\">";
+                            html += "<i class=\"bi bi-star\" style=\"font-size:0.65rem;\"></i><span>—</span></div>";
                         }
+                        const revMuted = hasRating && rVal >= 4.5 ? '#861657' : '#5c5c5c';
+                        const revZero = hasRating && rVal >= 4.5 ? '#9d174d' : '#9e9e9e';
                         if (revLine) {
-                            html += "<div style=\"font-size:0.72rem;color:#5c5c5c;margin-top:4px;text-align:center;\">" + revLine + "</div>";
+                            html += "<div style=\"font-size:0.62rem;color:" + revMuted + ";margin-top:0;text-align:center;font-weight:500;\">" + revLine + "</div>";
                         } else if (hasRating) {
-                            html += "<div style=\"font-size:0.72rem;color:#9e9e9e;margin-top:4px;\">0 reviews</div>";
+                            html += "<div style=\"font-size:0.6rem;color:" + revZero + ";margin-top:0;\">0 Rew</div>";
                         }
                         html += "</div>";
 
@@ -1372,14 +1506,10 @@
                     hozAlign: "center",
                     sorter: "number",
                     titleFormatter: function() {
-                        const wrap = document.createElement("div");
-                        wrap.style.cssText = "background:transparent;width:100%;min-height:76px;display:flex;align-items:center;justify-content:center;padding:8px 4px;box-sizing:border-box;";
                         const span = document.createElement("span");
-                        span.className = "forecast-rating-header-label";
                         span.textContent = "NPFT%";
                         span.setAttribute("title", "GPFT% − AD% (amazon_data_view)");
-                        wrap.appendChild(span);
-                        return wrap;
+                        return span;
                     },
                     accessor: function(row) {
                         const v = parseFloat(row.avg_npft_pct);
@@ -1409,14 +1539,10 @@
                     hozAlign: "center",
                     sorter: "number",
                     titleFormatter: function() {
-                        const wrap = document.createElement("div");
-                        wrap.style.cssText = "background:transparent;width:100%;min-height:76px;display:flex;align-items:center;justify-content:center;padding:8px 4px;box-sizing:border-box;";
                         const span = document.createElement("span");
-                        span.className = "forecast-rating-header-label";
                         span.textContent = "NROI%";
                         span.setAttribute("title", "ROI% − AD% (amazon_data_view)");
-                        wrap.appendChild(span);
-                        return wrap;
+                        return span;
                     },
                     accessor: function(row) {
                         const v = parseFloat(row.avg_nroi_pct);
@@ -1446,14 +1572,10 @@
                     headerSort: true,
                     hozAlign: "center",
                     titleFormatter: function() {
-                        const wrap = document.createElement("div");
-                        wrap.style.cssText = "background:transparent;width:100%;min-height:76px;display:flex;align-items:center;justify-content:center;padding:8px 4px;box-sizing:border-box;";
                         const span = document.createElement("span");
-                        span.className = "forecast-rating-header-label";
                         span.textContent = "EFF ROI %";
                         span.setAttribute("title", "NROI% ÷ TAT × 12");
-                        wrap.appendChild(span);
-                        return wrap;
+                        return span;
                     },
                     accessor: function(row) {
                         if (!row) {
@@ -1584,49 +1706,32 @@
                     }
                 },
                 {
-                    title: "Supplier All",
-                    field: "Supplier Tag",
-                    accessor: row => row["Supplier Tag"],
-                    minWidth: 200,
-                    headerSort: false,
-                    headerFilter: "input",
-                    headerFilterPlaceholder: "Search supplier...",
-                    headerFilterFunc: "like",
-                    headerFilterParams: { attributes: { class: "supplier-header-filter", style: "width:50%; max-width:50%; min-width:90px; box-sizing:border-box;" } },
-                    formatter: function(cell) {
-                        const tag = cell.getValue() || '';
-                        const rowData = cell.getRow().getData();
-                        const parent = (rowData["Parent"] || '').replace(/'/g, "\\'");
-                        const sku = (rowData["SKU"] || '').replace(/'/g, "\\'");
-                        const list = window.forecastSuppliersList || [];
-                        let opts = '<option value="">Select...</option>';
-                        list.forEach(function(s) {
-                            opts += '<option value="' + s.id + '">' + (s.name || '').replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</option>';
-                        });
-                        return `
-                            <div class="d-flex align-items-center gap-2 supplier-cell flex-nowrap">
-                                <span class="text-muted supplier-tag-text text-truncate" style="min-width:0; max-width:110px;">${(tag || '-').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</span>
-                                <select class="form-select form-select-sm forecast-supplier-select flex-shrink-0" data-parent="${parent.replace(/"/g, '&quot;')}" data-sku="${sku.replace(/"/g, '&quot;')}" style="width:95px; min-width:95px; font-size:0.8rem;">
-                                    ${opts}
-                                </select>
-                            </div>`;
-                    },
-                    cellClick: function(e, cell) {
-                        if (e.target.classList.contains('forecast-supplier-select')) return;
-                    }
-                },
-                {
                     title: "Current Supplier",
                     field: "mfrg_supplier",
                     accessor: row => row["mfrg_supplier"] ?? '',
-                    minWidth: 120,
+                    minWidth: 68,
+                    width: 76,
+                    maxWidth: 92,
+                    widthGrow: 0,
+                    hozAlign: "center",
+                    vertAlign: "middle",
+                    cssClass: "forecast-current-supplier-cell",
                     headerSort: false,
+                    titleFormatter: function() {
+                        const span = document.createElement('span');
+                        span.textContent = 'Cur Supp';
+                        span.setAttribute('title', 'Current Supplier');
+                        span.style.fontWeight = '700';
+                        return span;
+                    },
                     headerFilter: "input",
-                    headerFilterPlaceholder: "Search supplier...",
+                    headerFilterPlaceholder: "Filter",
                     headerFilterFunc: "like",
                     formatter: function(cell) {
                         const value = cell.getValue() || '';
-                        return `<span class="text-truncate d-inline-block" style="max-width:140px;">${String(value).replace(/</g, '&lt;').replace(/>/g, '&gt;') || '-'}</span>`;
+                        const esc = String(value).replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                        const display = esc || '-';
+                        return '<span class="forecast-supplier-name" title="' + esc.replace(/"/g, '&quot;') + '">' + display + '</span>';
                     }
                 },
                  {
@@ -2140,54 +2245,17 @@
 
         // Populate bulk supplier dropdowns when suppliers load
         function populateBulkSupplierSelect() {
-            ['bulk-supplier-select', 'bulk-current-supplier-select'].forEach(function(id) {
-                const sel = document.getElementById(id);
-                if (!sel) return;
-                sel.innerHTML = '<option value="">Select supplier...</option>';
-                (window.forecastSuppliersList || []).forEach(function(s) {
-                    const opt = document.createElement('option');
-                    opt.value = id === 'bulk-current-supplier-select' ? (s.name || s.id) : s.id;
-                    opt.textContent = s.name || s.id;
-                    sel.appendChild(opt);
-                });
+            const sel = document.getElementById('bulk-current-supplier-select');
+            if (!sel) return;
+            sel.innerHTML = '<option value="">Select supplier...</option>';
+            (window.forecastSuppliersList || []).forEach(function(s) {
+                const opt = document.createElement('option');
+                opt.value = s.name || s.id;
+                opt.textContent = s.name || s.id;
+                sel.appendChild(opt);
             });
         }
         loadForecastSuppliers(function() { populateBulkSupplierSelect(); });
-
-        document.getElementById('bulk-apply-supplier')?.addEventListener('click', function(e) {
-            e.preventDefault();
-            const supplierId = (document.getElementById('bulk-supplier-select')?.value || '').trim();
-            if (!supplierId) { alert('Please select a supplier.'); return; }
-            const selected = table.getSelectedRows();
-            const parents = new Set();
-            selected.forEach(function(row) {
-                const d = row.getData();
-                const p = (d.Parent || '').trim();
-                if (p && !(d.SKU || '').toLowerCase().includes('parent')) parents.add(p);
-            });
-            if (parents.size === 0) { alert('No valid parents in selection.'); return; }
-            const btn = this;
-            btn.disabled = true;
-            const token = document.querySelector('input[name="_token"]')?.value || '';
-            const promises = Array.from(parents).map(function(parent) {
-                const fd = new FormData();
-                fd.append('supplier_id', supplierId);
-                fd.append('parent', parent);
-                fd.append('_token', token);
-                return fetch('{{ route("forecast.link-supplier-parent") }}', { method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' } })
-                    .then(function(r) { return r.json(); });
-            });
-            Promise.all(promises).then(function() {
-                table.replaceData();
-                table.deselectRow();
-                updateBulkEditBadge();
-                btn.disabled = false;
-                const sel = document.getElementById('bulk-supplier-select');
-                if (sel) sel.value = '';
-                const ddBtn = document.querySelector('#bulkEditSupplierBtn');
-                if (ddBtn) { const dd = bootstrap.Dropdown.getInstance(ddBtn); if (dd) dd.hide(); }
-            }).catch(function() { btn.disabled = false; });
-        });
 
         document.getElementById('bulk-apply-current-supplier')?.addEventListener('click', function(e) {
             e.preventDefault();
@@ -2280,31 +2348,6 @@
             const v = document.getElementById('bulk-cp-input')?.value?.trim() || '';
             if (!v || isNaN(parseFloat(v))) { alert('Please enter a valid CP.'); return; }
             bulkApplyForecastField('CP', function() { return v; }, 'bulk-apply-cp', 'bulk-cp-input', 'bulkEditCpBtn');
-        });
-
-        $(document).on('change', '.forecast-supplier-select', function() {
-            const sel = this;
-            const supplierId = (sel.value || '').trim();
-            if (!supplierId) return;
-            const parent = (sel.getAttribute('data-parent') || '').trim();
-            if (!parent) return;
-            const $sel = $(sel);
-            $sel.prop('disabled', true);
-            const fd = new FormData();
-            fd.append('supplier_id', supplierId);
-            fd.append('parent', parent);
-            fd.append('_token', document.querySelector('input[name="_token"]')?.value || '');
-            fetch('{{ route("forecast.link-supplier-parent") }}', {
-                method: 'POST',
-                body: fd,
-                headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' }
-            }).then(function(r) { return r.json(); }).then(function(res) {
-                if (res.success) {
-                    table.replaceData(); // reload table so Supplier Tag updates
-                }
-                $sel.prop('disabled', false);
-                sel.value = '';
-            }).catch(function() { $sel.prop('disabled', false); sel.value = ''; });
         });
 
         let currentParentFilter = null;
@@ -3199,8 +3242,8 @@
                     // For date input: skip if no change
                     if (isDate && newValue === originalValue) return;
 
-                    // Add visual feedback (NRP uses dot + reformat; skip dimming invisible select)
-                    if (field !== 'NR') $el.css('opacity', '0.6');
+                    // Add visual feedback (NRP / Stage use invisible overlay select; skip dimming)
+                    if (field !== 'NR' && field !== 'Stage') $el.css('opacity', '0.6');
                     
                     // Debounce for rapid changes
                     debounce(`select-${sku}-${field}`, function() {
@@ -3211,7 +3254,7 @@
                                 value: newValue
                             },
                             function() {
-                                if (field !== 'NR') $el.css('opacity', '1');
+                                if (field !== 'NR' && field !== 'Stage') $el.css('opacity', '1');
                                 
                                 if (isDate) {
                                     $el.data('original', newValue);

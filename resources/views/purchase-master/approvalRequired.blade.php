@@ -49,6 +49,12 @@
         #forecast-table-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-content {
             padding: 5px 4px;
         }
+        #forecast-table-wrap .tabulator .tabulator-col.tabulator-field-Parent .tabulator-header-filter input,
+        #forecast-table-wrap .tabulator .tabulator-col.tabulator-field-SKU .tabulator-header-filter input {
+            width: 100%;
+            max-width: 100%;
+            box-sizing: border-box;
+        }
     </style>
 @endsection
 
@@ -448,15 +454,28 @@
                         const preview = document.getElementById('image-hover-preview');
                         if (preview) preview.remove();
                     },
+                    width: 52,
+                    minWidth: 48,
+                    maxWidth: 56,
+                    widthGrow: 0
                 },
                 {
                     title: "Parent",
                     field: "Parent",
-                    minWidth: 130,
+                    width: 92,
+                    minWidth: 72,
+                    maxWidth: 180,
+                    widthGrow: 0,
                     headerFilter: "input",
-                    headerFilterPlaceholder: "Search parent.",
+                    headerFilterPlaceholder: "Filter",
                     headerFilterFunc: "like",
-                    accessor: row => row["Parent"]
+                    accessor: row => row["Parent"],
+                    formatter: function(cell) {
+                        const v = cell.getValue() == null ? '' : String(cell.getValue());
+                        const esc = v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                        const title = esc.replace(/"/g, '&quot;');
+                        return '<span title="' + title + '" style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;">' + esc + '</span>';
+                    }
                 },
 
 
@@ -464,11 +483,20 @@
                 {
                     title: "SKU",
                     field: "SKU",
-                    minWidth: 130,
+                    width: 118,
+                    minWidth: 88,
+                    maxWidth: 260,
+                    widthGrow: 0,
                     headerFilter: "input",
-                    headerFilterPlaceholder: "Search sku.",
+                    headerFilterPlaceholder: "Filter",
                     headerFilterFunc: "like",
-                    accessor: row => row["SKU"]
+                    accessor: row => row["SKU"],
+                    formatter: function(cell) {
+                        const v = cell.getValue() == null ? '' : String(cell.getValue());
+                        const esc = v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                        const title = esc.replace(/"/g, '&quot;');
+                        return '<span title="' + title + '" style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;">' + esc + '</span>';
+                    }
                 },
                 
                 {
