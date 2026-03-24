@@ -116,6 +116,37 @@
             color: white;
         }
 
+        /* Dedicated comparison columns: dot-only (L60 vs L15-45, L15-45 vs L30) */
+        .view-compare-col {
+            text-align: center !important;
+            vertical-align: middle !important;
+        }
+
+        .view-compare-th {
+            cursor: default !important;
+        }
+
+        .view-compare-dot {
+            display: inline-block;
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            margin: 2px auto;
+            vertical-align: middle;
+        }
+
+        .view-compare-dot--green {
+            background-color: #10b981;
+        }
+
+        .view-compare-dot--red {
+            background-color: #ef4444;
+        }
+
+        .view-compare-dot--neutral {
+            background-color: #94a3b8;
+        }
+
         .dil-percent-value.yellow {
             background-color: #ffc107;
             color: #212529;
@@ -1724,27 +1755,45 @@
                                 <th data-field="s_bid">S BID</th>
 
                                 <th data-field="l60_views" style="vertical-align: middle; white-space: nowrap;"
-                                    title="Listing views in the 30-day window from 60 to 30 days ago (before the current L30 period)">
+                                    title="Last 60 complete days (excl. today).">
                                     <div class="d-flex flex-column align-items-center" style="gap: 4px">
                                         <div class="d-flex align-items-center">
                                             L60 VIEWS <span class="sort-arrow">↓</span>
                                         </div>
                                     </div>
                                 </th>
+                                <th data-field="l1545_views" style="vertical-align: middle; white-space: nowrap;"
+                                    title="L60 minus L30 (days 31–60 ago).">
+                                    <div class="d-flex flex-column align-items-center" style="gap: 4px">
+                                        <div class="d-flex align-items-center">
+                                            L15-45 VIEWS <span class="sort-arrow">↓</span>
+                                        </div>
+                                    </div>
+                                </th>
                                 <th data-field="l30_views" style="vertical-align: middle; white-space: nowrap;"
-                                    title="Total listing views (eBay metrics; aligns with ~last 30 days total)">
+                                    title="Last 30 complete days (excl. today), from daily listing views.">
                                     <div class="d-flex flex-column align-items-center" style="gap: 4px">
                                         <div class="d-flex align-items-center">
                                             L30 VIEWS <span class="sort-arrow">↓</span>
                                         </div>
                                     </div>
                                 </th>
-                                <th data-field="l1545_views" style="vertical-align: middle; white-space: nowrap;"
-                                    title="Views in the rolling window from 45 to 16 days ago (~30 days)">
-                                    <div class="d-flex flex-column align-items-center" style="gap: 4px">
-                                        <div class="d-flex align-items-center">
-                                            L15-45 VIEWS <span class="sort-arrow">↓</span>
-                                        </div>
+                                <th data-field="l60_vs_l1545" data-no-sort="true"
+                                    class="text-center view-compare-th"
+                                    style="vertical-align: middle; white-space: nowrap; min-width: 88px;"
+                                    title="Green = L15-45 &gt; L60 (middle window higher) | Red = L60 &gt; L15-45 (full 60-day higher) | Gray = tie">
+                                    <div class="d-flex flex-column align-items-center" style="gap: 2px">
+                                        <span style="font-size: 0.75rem; line-height: 1.15;">L60 vs</span>
+                                        <span style="font-size: 0.75rem; line-height: 1.15;">L15-45</span>
+                                    </div>
+                                </th>
+                                <th data-field="l1545_vs_l30" data-no-sort="true"
+                                    class="text-center view-compare-th"
+                                    style="vertical-align: middle; white-space: nowrap; min-width: 88px;"
+                                    title="Green = L15-45 &lt; L30 (recent higher, improving) | Red = L15-45 &gt; L30 (declining) | Gray = tie">
+                                    <div class="d-flex flex-column align-items-center" style="gap: 2px">
+                                        <span style="font-size: 0.75rem; line-height: 1.15;">L15-45</span>
+                                        <span style="font-size: 0.75rem; line-height: 1.15;">vs L30</span>
                                     </div>
                                 </th>
                                 <th data-field="l7_views" style="vertical-align: middle; white-space: nowrap;"
@@ -2405,7 +2454,7 @@
                     'TacosL30'
                 ],
                 'conversion view': ['SCVR', 'KwCvrL60', 'KwCvrL30', 'KwCvrL7', 'PmtCvrL30', 'PmtCvrL7'],
-                'visibility view': ['KwCtrL60', 'KwCtrL30', 'KwCtrL7', 'PmtCtrL30', 'PmtCtrL7', 'L60_VIEWS', 'L30_VIEWS', 'L45_VIEWS', 'L7_VIEWS', 'L1_VIEWS']
+                'visibility view': ['KwCtrL60', 'KwCtrL30', 'KwCtrL7', 'PmtCtrL30', 'PmtCtrL7', 'L60_VIEWS', 'L45_VIEWS', 'L30_VIEWS', 'L60_VS_L1545', 'L1545_VS_L30', 'L7_VIEWS', 'L1_VIEWS']
             };
 
             // Filter state
@@ -2974,10 +3023,12 @@
                                     LP: item.LP_productmaster || 0,
                                     SHIP: item.Ship_productmaster || 0,
                                     VIEWS: item.ebay_views || 0,
-                                    L30_VIEWS: item.ebay_views != null ? Number(item.ebay_views) : 0,
+                                    L30_VIEWS: Number(item.l30_views ?? item.ebay_views ?? 0),
                                     L7_VIEWS: item.l7_views || 0,
                                     L60_VIEWS: item.l60_views != null ? Number(item.l60_views) : 0,
                                     L45_VIEWS: item.l45_views != null ? Number(item.l45_views) : 0,
+                                    L60_VS_L1545: item.l60_vs_l1545 || 'NEUTRAL',
+                                    L1545_VS_L30: item.l1545_vs_l30 || 'NEUTRAL',
                                     L1_VIEWS: item.yesterday_views != null ? Number(item.yesterday_views) : 0,
                                     YESTERDAY_VIEWS: item.yesterday_views != null ? Number(item.yesterday_views) : 0,
                                     CBID: item.bid_percentage || 0,
@@ -3058,12 +3109,12 @@
                 $tbody.empty();
 
                 if (isLoading) {
-                    $tbody.append('<tr><td colspan="22" class="text-center">Loading data...</td></tr>');
+                    $tbody.append('<tr><td colspan="24" class="text-center">Loading data...</td></tr>');
                     return;
                 }
 
                 if (filteredData.length === 0) {
-                    $tbody.append('<tr><td colspan="22" class="text-center">No matching records found</td></tr>');
+                    $tbody.append('<tr><td colspan="24" class="text-center">No matching records found</td></tr>');
                     return;
                 }
 
@@ -3147,6 +3198,45 @@
                         return '#E83E8C';
                     };
 
+                    /** Comparison column dots (numeric equality => neutral gray) */
+                    const viewCompareL60VsL1545 = (l60, l1545) => {
+                        if (l1545 === l60) {
+                            return {
+                                cls: 'view-compare-dot--neutral',
+                                tip: `L15-45 (${l1545}) = L60 (${l60})`
+                            };
+                        }
+                        if (l1545 > l60) {
+                            return {
+                                cls: 'view-compare-dot--green',
+                                tip: `L15-45 (${l1545}) > L60 (${l60}): middle window higher than full 60-day total.`
+                            };
+                        }
+                        return {
+                            cls: 'view-compare-dot--red',
+                            tip: `L60 (${l60}) > L15-45 (${l1545}): full 60-day higher than middle window.`
+                        };
+                    };
+
+                    const viewCompareL1545VsL30 = (l1545, l30) => {
+                        if (l1545 === l30) {
+                            return {
+                                cls: 'view-compare-dot--neutral',
+                                tip: `L15-45 (${l1545}) = L30 (${l30})`
+                            };
+                        }
+                        if (l1545 < l30) {
+                            return {
+                                cls: 'view-compare-dot--green',
+                                tip: `L15-45 (${l1545}) < L30 (${l30}): recent 30-day higher (improving).`
+                            };
+                        }
+                        return {
+                            cls: 'view-compare-dot--red',
+                            tip: `L15-45 (${l1545}) > L30 (${l30}): middle window higher than recent 30-day.`
+                        };
+                    };
+
                     // $row.append($('<td>').text(item['Sl']));
 
                     // SKU with hover content for links and campaign chart button
@@ -3216,7 +3306,7 @@
 
                     // Calculate CVR first
                     let ebayL30 = Number(item['eBay L30']) || 0;
-                    let views = Number(item.VIEWS) || 0;
+                    let views = Number(item.L30_VIEWS ?? item.VIEWS ?? item.ebay_views ?? 0) || 0;
                     let scvr = views > 0 ? (ebayL30 / views) * 100 : 0;
 
                     // Check if DIL is red (ov_dil < 0.1666, which is < 16.66%)
@@ -3261,12 +3351,20 @@
                     const l45v = Math.round(Number(item.L45_VIEWS || 0)) || 0;
                     const l7v = Math.round(Number(item.L7_VIEWS || 0)) || 0;
                     const l1v = Math.round(Number(item.L1_VIEWS || item.YESTERDAY_VIEWS || 0)) || 0;
-                    $row.append($('<td data-field="l60_views">').attr('title', 'Listing views in the 30-day window from 60 to 30 days ago').html(
+                    const cmpL60 = viewCompareL60VsL1545(l60v, l45v);
+                    const cmp1545 = viewCompareL1545VsL30(l45v, l30v);
+                    $row.append($('<td data-field="l60_views">').attr('title', 'Listing views over the last 60 complete calendar days (excluding today).').html(
                         `<span class="dil-percent-value ${getViewColor(l60v)}">${l60v}</span>`
                     ));
-                    $row.append($('<td data-field="l30_views">').attr('title', 'Total listing views (eBay metrics)').text(l30v));
-                    $row.append($('<td data-field="l1545_views">').attr('title', 'Views in the rolling L15–45 day window').html(
+                    $row.append($('<td data-field="l1545_views">').attr('title', 'Views in days 31–60 ago (L60 minus L30; the 30-day window before the L30 period).').html(
                         `<span class="dil-percent-value ${getViewColor(l45v)}">${l45v}</span>`
+                    ));
+                    $row.append($('<td data-field="l30_views">').attr('title', 'Listing views over the last 30 complete calendar days (excluding today).').text(l30v));
+                    $row.append($('<td data-field="l60_vs_l1545" class="view-compare-col">').append(
+                        $('<span>').addClass(`view-compare-dot ${cmpL60.cls}`).attr('title', cmpL60.tip)
+                    ));
+                    $row.append($('<td data-field="l1545_vs_l30" class="view-compare-col">').append(
+                        $('<span>').addClass(`view-compare-dot ${cmp1545.cls}`).attr('title', cmp1545.tip)
                     ));
                     $row.append($('<td data-field="l7_views">').attr('title', 'Last 7 days listing views').text(l7v));
                     $row.append($('<td data-field="l1_views">').attr('title', 'Views on the previous calendar day').html(
@@ -5063,7 +5161,7 @@
 
             // Initialize sorting functionality
             function initSorting() {
-                $('th[data-field]').addClass('sortable').on('click', function(e) {
+                $('th[data-field]').not('[data-no-sort="true"]').addClass('sortable').on('click', function(e) {
                     // Prevent sorting when resizing
                     if (isResizing) {
                         e.stopPropagation();
@@ -5130,9 +5228,9 @@
 
                     // Function to calculate SCVR (same logic as in renderTable)
                     function calculateSCVR(item) {
-                        // Use the same formula as renderTable: (eBay L30 / VIEWS) * 100
+                        // Same as renderTable: eBay L30 sales / rolling L30 listing views (fallback: lifetime VIEWS)
                         const ebayL30 = Number(item['eBay L30'] || item.raw_data?.['eBay L30'] || 0) || 0;
-                        const views = Number(item.VIEWS || item.ebay_views || 0) || 0;
+                        const views = Number(item.L30_VIEWS ?? item.VIEWS ?? item.ebay_views ?? 0) || 0;
                         return views > 0 ? (ebayL30 / views) * 100 : 0;
                     }
 
@@ -5790,8 +5888,9 @@
                     });
                 });
 
-                // Reapply sorting if there's an active sort
-                if (currentSort.field) {
+                // Reapply sorting if there's an active sort (skip non-sortable comparison columns)
+                if (currentSort.field && currentSort.field !== 'l60_vs_l1545' && currentSort.field !==
+                    'l1545_vs_l30') {
                     const thField = currentSort.field;
                     let dataField = thField === 'parent' ? 'Parent' : thField;
 
@@ -5827,9 +5926,9 @@
 
                     // Function to calculate SCVR (same logic as in renderTable)
                     function calculateSCVR(item) {
-                        // Use the same formula as renderTable: (eBay L30 / VIEWS) * 100
+                        // Same as renderTable: eBay L30 sales / rolling L30 listing views (fallback: lifetime VIEWS)
                         const ebayL30 = Number(item['eBay L30'] || item.raw_data?.['eBay L30'] || 0) || 0;
-                        const views = Number(item.VIEWS || item.ebay_views || 0) || 0;
+                        const views = Number(item.L30_VIEWS ?? item.VIEWS ?? item.ebay_views ?? 0) || 0;
                         return views > 0 ? (ebayL30 / views) * 100 : 0;
                     }
 
@@ -5930,13 +6029,24 @@
                         return;
                     }
                     const ovDil = item.ov_dil != null ? Math.round(item.ov_dil * 100) : '';
+                    const l60ex = Math.round(Number(item.L60_VIEWS || 0)) || 0;
+                    const l30ex = Math.round(Number(item.L30_VIEWS || item.VIEWS || 0)) || 0;
+                    const l45ex = Math.round(Number(item.L45_VIEWS || 0)) || 0;
+                    const cmpL60Note = l45ex === l60ex ? 'L15-45 = L60' : (l45ex > l60ex ? 'L15-45 > L60' :
+                        'L60 > L15-45');
+                    const cmp1545Note = l45ex === l30ex ? 'L15-45 = L30' : (l45ex < l30ex ? 'L15-45 < L30' :
+                        'L15-45 > L30');
                     exportData.push({
                         SKU: item['(Child) sku'] || '',
                         INV: item.INV != null ? item.INV : '',
-                        'L30 VIEWS': Math.round(Number(item.L30_VIEWS || item.VIEWS || 0)) || 0,
+                        'L60 VIEWS': l60ex,
+                        'L15-45 VIEWS': l45ex,
+                        'L30 VIEWS': l30ex,
+                        'L60 vs L15-45': item.L60_VS_L1545 || 'NEUTRAL',
+                        'L60 vs L15-45 (comparison)': cmpL60Note,
+                        'L15-45 vs L30': item.L1545_VS_L30 || 'NEUTRAL',
+                        'L15-45 vs L30 (comparison)': cmp1545Note,
                         'L7 VIEWS': Math.round(Number(item.L7_VIEWS || 0)) || 0,
-                        'L60 VIEWS': Math.round(Number(item.L60_VIEWS || 0)) || 0,
-                        'L15-45 VIEWS': Math.round(Number(item.L45_VIEWS || 0)) || 0,
                         'L1 VIEWS': Math.round(Number(item.L1_VIEWS || item.YESTERDAY_VIEWS || 0)) || 0,
                         CBID: item.CBID != null ? item.CBID : '',
                         ESBID: item.ESBID != null ? item.ESBID : '',

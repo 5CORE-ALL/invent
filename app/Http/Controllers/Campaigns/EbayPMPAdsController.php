@@ -365,12 +365,26 @@ class EbayPMPAdsController extends Controller
             $row['price_lmpa'] = $ebayMetric ? $ebayMetric->price_lmpa : null;
             $row['eBay_item_id'] = $ebayMetric ? $ebayMetric->item_id : null;
             $row['ebay_views'] = $ebayMetric ? (int) ($ebayMetric->views ?? 0) : 0;
-            $row['l7_views'] = $ebayMetric ? (int) ($ebayMetric->l7_views ?? 0) : 0;
-            $row['l60_views'] = (int) ($viewWindowBySku[$normalizedSku]['l60_views'] ?? 0);
-            $row['l45_views'] = (int) ($viewWindowBySku[$normalizedSku]['l45_views'] ?? 0);
-            $row['yesterday_views'] = (int) ($viewWindowBySku[$normalizedSku]['yesterday_views'] ?? 0);
+            $ebayL7 = $ebayMetric ? (int) ($ebayMetric->l7_views ?? 0) : 0;
+            $vw = $viewWindowBySku[$normalizedSku] ?? [];
+            $row['l60_views'] = (int) ($vw['l60_views'] ?? 0);
+            $row['l30_views'] = (int) ($vw['l30_views'] ?? 0);
+            $row['l45_views'] = (int) ($vw['l45_views'] ?? 0);
+            $row['l7_views'] = (int) ($vw['l7_views'] ?? 0);
+            if ($row['l7_views'] === 0 && $ebayL7 > 0
+                && (int) ($row['l60_views'] ?? 0) === 0 && (int) ($row['l30_views'] ?? 0) === 0) {
+                $row['l7_views'] = $ebayL7;
+            }
+            $row['yesterday_views'] = (int) ($vw['yesterday_views'] ?? 0);
             $row['views_metrics_fallback'] = false;
             $this->applyEbayMetricsViewsFallback($row);
+
+            $l60v = (int) ($row['l60_views'] ?? 0);
+            $l30v = (int) ($row['l30_views'] ?? 0);
+            $l1545v = (int) ($row['l45_views'] ?? 0);
+            $row['l60_vs_l1545'] = $l1545v === $l60v ? 'NEUTRAL' : ($l1545v > $l60v ? 'GREEN' : 'RED');
+            $row['l1545_vs_l30'] = $l1545v === $l30v ? 'NEUTRAL' : ($l1545v < $l30v ? 'GREEN' : 'RED');
+
             $row['campaign_id'] = ($ebayMetric && isset($listingToCampaignId[$ebayMetric->item_id])) 
                 ? $listingToCampaignId[$ebayMetric->item_id] : null;
 
@@ -491,7 +505,7 @@ class EbayPMPAdsController extends Controller
 
     /**
      * @param  array<int, string|null>  $skus
-     * @return array<string, array{l60_views: int, l45_views: int, yesterday_views: int}>
+     * @return array<string, array{l60_views: int, l30_views: int, l45_views: int, l7_views: int, yesterday_views: int}>
      */
     private function emptyViewAggregatesForSkus(array $skus): array
     {
@@ -507,7 +521,13 @@ class EbayPMPAdsController extends Controller
         };
         $out = [];
         foreach (array_values(array_unique(array_filter(array_map($normalizeSku, $skus)))) as $s) {
-            $out[$s] = ['l60_views' => 0, 'l45_views' => 0, 'yesterday_views' => 0];
+            $out[$s] = [
+                'l60_views' => 0,
+                'l30_views' => 0,
+                'l45_views' => 0,
+                'l7_views' => 0,
+                'yesterday_views' => 0,
+            ];
         }
 
         return $out;
@@ -523,11 +543,13 @@ class EbayPMPAdsController extends Controller
      * Rows are indexed by canonical SKU (alphanumeric only) so ProductMaster SKUs match
      * daily rows even when spacing differs.
      *
-     * Date windows use app timezone (config app.timezone). L60 / L45 / yesterday are
-     * calendar-day ranges relative to today.
+     * Date windows use app timezone (config app.timezone). Rolling windows exclude
+     * "today" (only complete calendar days through yesterday): L60 = days -60..-1,
+     * L30 = -30..-1, L7 = -7..-1, L1 = yesterday. L15-45 (stored as l45_views) =
+     * max(0, L60 - L30), i.e. views in days -60..-31 (the 30 days before the L30 window).
      *
      * @param  array<int, string|null>  $skus
-     * @return array<string, array{l60_views: int, l45_views: int, yesterday_views: int}>
+     * @return array<string, array{l60_views: int, l30_views: int, l45_views: int, l7_views: int, yesterday_views: int}>
      */
     private function computeEbayDailyViewAggregates(array $skus): array
     {
@@ -545,7 +567,13 @@ class EbayPMPAdsController extends Controller
         $normalizedSkus = array_values(array_unique(array_filter(array_map($normalizeSku, $skus))));
         $out = [];
         foreach ($normalizedSkus as $s) {
-            $out[$s] = ['l60_views' => 0, 'l45_views' => 0, 'yesterday_views' => 0];
+            $out[$s] = [
+                'l60_views' => 0,
+                'l30_views' => 0,
+                'l45_views' => 0,
+                'l7_views' => 0,
+                'yesterday_views' => 0,
+            ];
         }
 
         if ($normalizedSkus === []) {
@@ -603,11 +631,14 @@ class EbayPMPAdsController extends Controller
             return $this->emptyViewAggregatesForSkus($skus);
         }
 
-        $l60Start = $today->copy()->subDays(60)->format('Y-m-d');
-        $l60End = $today->copy()->subDays(31)->format('Y-m-d');
-        $l45Start = $today->copy()->subDays(45)->format('Y-m-d');
-        $l45End = $today->copy()->subDays(16)->format('Y-m-d');
         $yesterday = $today->copy()->subDay()->format('Y-m-d');
+        // Rolling windows: last N complete days through yesterday (exclude calendar "today").
+        $l60Start = $today->copy()->subDays(60)->format('Y-m-d');
+        $l60End = $yesterday;
+        $l30Start = $today->copy()->subDays(30)->format('Y-m-d');
+        $l30End = $yesterday;
+        $l7Start = $today->copy()->subDays(7)->format('Y-m-d');
+        $l7End = $yesterday;
 
         foreach ($normalizedSkus as $skuKey) {
             $canon = $this->ebaySkuCanonicalKey($skuKey);
@@ -646,16 +677,52 @@ class EbayPMPAdsController extends Controller
             };
 
             $deltaL60 = $sumDeltas($l60Start, $l60End);
-            $deltaL45 = $sumDeltas($l45Start, $l45End);
+            $deltaL30 = $sumDeltas($l30Start, $l30End);
+            $deltaL7 = $sumDeltas($l7Start, $l7End);
             $deltaYest = (int) ($dailyDeltas[$yesterday] ?? 0);
 
             $boundaryL60 = $this->viewsGainFromCumulativeSeries($dates, $l60Start, $l60End);
-            $boundaryL45 = $this->viewsGainFromCumulativeSeries($dates, $l45Start, $l45End);
+            $boundaryL30 = $this->viewsGainFromCumulativeSeries($dates, $l30Start, $l30End);
+            $boundaryL7 = $this->viewsGainFromCumulativeSeries($dates, $l7Start, $l7End);
             $boundaryYest = $this->yesterdayViewsFromCumulativeSeries($dates, $yesterday);
 
-            $out[$skuKey]['l60_views'] = (int) max($deltaL60, $boundaryL60);
-            $out[$skuKey]['l45_views'] = (int) max($deltaL45, $boundaryL45);
-            $out[$skuKey]['yesterday_views'] = (int) max($deltaYest, $boundaryYest);
+            $l60 = (int) max($deltaL60, $boundaryL60);
+            $l30 = (int) max($deltaL30, $boundaryL30);
+            $l7 = (int) max($deltaL7, $boundaryL7);
+            $l1 = (int) max($deltaYest, $boundaryYest);
+
+            if ($l30 > $l60) {
+                Log::warning('ebay_pmp_views_l30_exceeds_l60', [
+                    'sku' => $skuKey,
+                    'l30_raw' => $l30,
+                    'l60_raw' => $l60,
+                ]);
+                $l30 = $l60;
+            }
+            if ($l7 > $l30) {
+                Log::warning('ebay_pmp_views_l7_exceeds_l30', [
+                    'sku' => $skuKey,
+                    'l7_raw' => $l7,
+                    'l30' => $l30,
+                ]);
+                $l7 = $l30;
+            }
+            if ($l1 > $l7) {
+                Log::warning('ebay_pmp_views_l1_exceeds_l7', [
+                    'sku' => $skuKey,
+                    'l1_raw' => $l1,
+                    'l7' => $l7,
+                ]);
+                $l1 = $l7;
+            }
+
+            $l1545 = max(0, $l60 - $l30);
+
+            $out[$skuKey]['l60_views'] = $l60;
+            $out[$skuKey]['l30_views'] = $l30;
+            $out[$skuKey]['l45_views'] = $l1545;
+            $out[$skuKey]['l7_views'] = $l7;
+            $out[$skuKey]['yesterday_views'] = $l1;
         }
 
         if (filter_var(env('EBAY_PMP_VIEWS_DEBUG', false), FILTER_VALIDATE_BOOLEAN)) {
@@ -664,7 +731,9 @@ class EbayPMPAdsController extends Controller
                 'today' => $today->toDateString(),
                 'yesterday' => $yesterday,
                 'l60_window' => [$l60Start, $l60End],
-                'l45_window' => [$l45Start, $l45End],
+                'l30_window' => [$l30Start, $l30End],
+                'l7_window' => [$l7Start, $l7End],
+                'l1545_derived' => 'max(0, l60 - l30) === views in days -60..-31',
                 'daily_rows_loaded' => $rowsLoaded,
                 'canonical_series_count' => count($byCanonical),
                 'sku_candidate_count' => count($skuCandidates),
@@ -683,8 +752,11 @@ class EbayPMPAdsController extends Controller
      */
     private function applyEbayMetricsViewsFallback(array &$row): void
     {
-        $sum = (int) ($row['l60_views'] ?? 0) + (int) ($row['l45_views'] ?? 0) + (int) ($row['yesterday_views'] ?? 0);
-        if ($sum > 0) {
+        $l60 = (int) ($row['l60_views'] ?? 0);
+        $l30 = (int) ($row['l30_views'] ?? 0);
+        if ($l60 > 0 || $l30 > 0) {
+            $row['l45_views'] = max(0, $l60 - $l30);
+
             return;
         }
 
@@ -697,16 +769,15 @@ class EbayPMPAdsController extends Controller
         if ($l7 > 0) {
             $rate = $l7 / 7.0;
             $row['yesterday_views'] = (int) max(0, round($rate));
-            $row['l45_views'] = (int) max(0, round($rate * 30));
-            $nonL7 = max(0, $tv - $l7);
-            $row['l60_views'] = $nonL7 > 0
-                ? (int) max(0, round($nonL7 * (30 / 53)))
-                : (int) max(0, round($rate * 30));
+            $row['l30_views'] = (int) max(0, round($rate * 30));
+            $row['l60_views'] = (int) max(0, round($rate * 60));
+            $row['l45_views'] = max(0, $row['l60_views'] - $row['l30_views']);
         } else {
             $rate = $tv / 30.0;
             $row['yesterday_views'] = (int) max(0, round($rate));
-            $row['l45_views'] = (int) max(0, round($rate * 30));
-            $row['l60_views'] = (int) max(0, round($tv * (30 / 60)));
+            $row['l30_views'] = (int) max(0, round($rate * 30));
+            $row['l60_views'] = (int) max(0, round($rate * 60));
+            $row['l45_views'] = max(0, $row['l60_views'] - $row['l30_views']);
         }
 
         $row['views_metrics_fallback'] = true;
@@ -886,11 +957,28 @@ class EbayPMPAdsController extends Controller
         }
         ksort($series);
 
-        $l60Start = $today->copy()->subDays(60)->format('Y-m-d');
-        $l60End = $today->copy()->subDays(31)->format('Y-m-d');
-        $l45Start = $today->copy()->subDays(45)->format('Y-m-d');
-        $l45End = $today->copy()->subDays(16)->format('Y-m-d');
         $yesterday = $today->copy()->subDay()->format('Y-m-d');
+        $l60Start = $today->copy()->subDays(60)->format('Y-m-d');
+        $l60End = $yesterday;
+        $l30Start = $today->copy()->subDays(30)->format('Y-m-d');
+        $l30End = $yesterday;
+        $l7Start = $today->copy()->subDays(7)->format('Y-m-d');
+        $l7End = $yesterday;
+
+        $l60 = $this->viewsGainFromCumulativeSeries($series, $l60Start, $l60End);
+        $l30 = $this->viewsGainFromCumulativeSeries($series, $l30Start, $l30End);
+        $l7 = $this->viewsGainFromCumulativeSeries($series, $l7Start, $l7End);
+        $l1 = $this->yesterdayViewsFromCumulativeSeries($series, $yesterday);
+        if ($l30 > $l60) {
+            $l30 = $l60;
+        }
+        if ($l7 > $l30) {
+            $l7 = $l30;
+        }
+        if ($l1 > $l7) {
+            $l1 = $l7;
+        }
+        $l1545 = max(0, $l60 - $l30);
 
         return response()->json([
             'input' => $sku,
@@ -900,15 +988,19 @@ class EbayPMPAdsController extends Controller
             'today' => $today->toDateString(),
             'windows' => [
                 'l60' => [$l60Start, $l60End],
-                'l45' => [$l45Start, $l45End],
+                'l30' => [$l30Start, $l30End],
+                'l7' => [$l7Start, $l7End],
+                'l1545_derived' => 'max(0, l60 - l30)',
                 'yesterday' => $yesterday,
             ],
             'row_count' => $rows->count(),
             'series' => $series,
             'computed' => [
-                'l60' => $this->viewsGainFromCumulativeSeries($series, $l60Start, $l60End),
-                'l45' => $this->viewsGainFromCumulativeSeries($series, $l45Start, $l45End),
-                'yesterday' => $this->yesterdayViewsFromCumulativeSeries($series, $yesterday),
+                'l60' => $l60,
+                'l30' => $l30,
+                'l1545' => $l1545,
+                'l7' => $l7,
+                'l1' => $l1,
             ],
         ]);
     }
