@@ -49,11 +49,6 @@ class RoutingController extends Controller
             abort(404);
         }
 
-        // Catch-all {any} maps to view($first); spare-parts is served by SparePartController, not resources/views/spare-parts.blade.php
-        if ($first === 'spare-parts') {
-            return redirect()->route('inventory.spare-parts.index', $request->query());
-        }
-
         return view($first, ['mode' => $mode, 'demo' => $demo]);
     }
 
@@ -66,16 +61,12 @@ class RoutingController extends Controller
         $mode = $request->query('mode');
         $demo = $request->query('demo');
 
-        if ($first == "assets") {
+        if ($first == "assets")
             return redirect('home');
-        }
 
-        // Canonical route is /inventory/spare-parts (SparePartController). If this catch-all runs first, delegate there.
-        if ($first === 'inventory' && $second === 'spare-parts') {
-            return redirect()->route('inventory.spare-parts.index', $request->query());
-        }
 
-        return view($first.'.'.$second, ['mode' => $mode, 'demo' => $demo]);
+
+    return view($first .'.'. $second, ['mode' => $mode, 'demo' => $demo]);
     }
 
     /**
@@ -109,11 +100,6 @@ class RoutingController extends Controller
     // Optional: Block 'assets' explicitly (you already had this)
     if ($first === 'assets') {
         return redirect('home');
-    }
-
-    // Bad bookmark / double "inventory" segment: /inventory/inventory/spare-parts → /inventory/spare-parts
-    if ($first === 'inventory' && $second === 'inventory' && $third === 'spare-parts') {
-        return redirect()->route('inventory.spare-parts.index', $request->query());
     }
 
     // Construct view name
