@@ -4,11 +4,14 @@ namespace App\Http\Controllers\InventoryManagement;
 
 use App\Http\Controllers\Controller;
 use App\Models\ProductMaster;
+use App\Models\SparePartDetail;
 use App\Models\Supplier;
 use App\Services\SparePartInventoryService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Validation\Rule;
 
 class SparePartController extends Controller
 {
@@ -33,6 +36,10 @@ class SparePartController extends Controller
 
         return view('inventory.spare_parts', [
             'parentOptions' => $parentOptions,
+            'parentSelectJson' => $parentOptions->map(fn ($p) => [
+                'id' => $p->id,
+                'sku' => $p->sku,
+            ])->values(),
             'initialSummary' => $this->buildSummary(),
         ]);
     }
@@ -46,6 +53,7 @@ class SparePartController extends Controller
     {
         $parentId = $request->query('parent_id');
         $type = $request->query('type', 'spare');
+        $hasSpareDetails = Schema::hasTable('spare_part_details');
 
         $q = ProductMaster::query()->whereNull('deleted_at');
 
@@ -65,15 +73,26 @@ class SparePartController extends Controller
         if (Schema::hasTable('product_categories')) {
             $q->with(['productCategory' => static fn ($rel) => $rel->select('id', 'category_name')]);
         }
+        if ($hasSpareDetails) {
+            $q->with(['sparePartDetail.supplier' => static fn ($rel) => $rel->select('id', 'name', 'company')]);
+        }
         $rows = $q->orderBy('sku')
             ->limit(400)
             ->get();
 
-        $data = $rows->map(function (ProductMaster $p) {
+        $data = $rows->map(function (ProductMaster $p) use ($hasSpareDetails) {
             $stock = $p->sku ? $this->inventoryService->totalAvailableForSku($p->sku) : 0;
 
             return [
                 'id' => $p->id,
+                'part_name' => $hasSpareDetails ? ($p->sparePartDetail?->part_name ?? '') : '',
+                'msl_part' => $hasSpareDetails ? ($p->sparePartDetail?->msl_part ?? '') : '',
+                'quantity' => $hasSpareDetails ? $p->sparePartDetail?->quantity : null,
+                'supplier_name' => $hasSpareDetails
+                    ? ($p->sparePartDetail?->supplier?->name
+                        ?? $p->sparePartDetail?->supplier?->company
+                        ?? null)
+                    : null,
                 'sku' => $p->sku,
                 'category' => $p->productCategory?->category_name,
                 'parent_id' => $p->parent_id,
@@ -175,6 +194,73 @@ class SparePartController extends Controller
         return response()->json(['message' => 'Updated', 'part' => $part->only([
             'id', 'sku', 'is_spare_part', 'parent_id', 'min_stock_level', 'reorder_level', 'max_stock_level', 'lead_time_days',
         ])]);
+    }
+
+    /**
+     * Create spare-part linkage + row in spare_part_details (part name, MSL-Part).
+     */
+    public function storeSparePartDetail(Request $request)
+    {
+        if (! Schema::hasTable('spare_part_details')) {
+            return response()->json(['message' => 'spare_part_details table is missing. Run migrations.'], 503);
+        }
+
+        $validated = $request->validate([
+            'parent_id' => [
+                'required',
+                'integer',
+                Rule::exists('product_master', 'id')->whereNull('deleted_at'),
+            ],
+            'product_master_id' => [
+                'required',
+                'integer',
+                Rule::exists('product_master', 'id')->whereNull('deleted_at'),
+            ],
+            'part_name' => 'required|string|max:255',
+            'msl_part' => 'nullable|string|max:255',
+            'quantity' => 'required|integer|min:1',
+            'supplier_id' => 'nullable|integer|exists:suppliers,id',
+        ]);
+
+        $parentId = (int) $validated['parent_id'];
+        $partId = (int) $validated['product_master_id'];
+
+        if ($parentId === $partId) {
+            return response()->json(['message' => 'Parent and SKU must be different products.'], 422);
+        }
+
+        $product = ProductMaster::query()->whereNull('deleted_at')->findOrFail($partId);
+
+        DB::transaction(function () use ($product, $parentId, $validated) {
+            $product->is_spare_part = true;
+            $product->parent_id = $parentId;
+            $product->save();
+
+            SparePartDetail::query()->updateOrCreate(
+                ['product_master_id' => $product->id],
+                [
+                    'part_name' => $validated['part_name'],
+                    'msl_part' => $validated['msl_part'] ?? null,
+                    'quantity' => (int) $validated['quantity'],
+                    'supplier_id' => isset($validated['supplier_id']) ? (int) $validated['supplier_id'] : null,
+                ]
+            );
+        });
+
+        $product->load(['sparePartDetail.supplier']);
+
+        return response()->json([
+            'message' => 'Spare part saved',
+            'part' => [
+                'id' => $product->id,
+                'sku' => $product->sku,
+                'parent_id' => $product->parent_id,
+                'part_name' => $product->sparePartDetail?->part_name,
+                'msl_part' => $product->sparePartDetail?->msl_part,
+                'quantity' => $product->sparePartDetail?->quantity,
+                'supplier_id' => $product->sparePartDetail?->supplier_id,
+            ],
+        ], 201);
     }
 
     /**

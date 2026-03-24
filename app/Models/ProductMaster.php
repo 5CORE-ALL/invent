@@ -129,6 +129,11 @@ class ProductMaster extends Model
         return $this->hasMany(self::class, 'parent_id');
     }
 
+    public function sparePartDetail()
+    {
+        return $this->hasOne(SparePartDetail::class, 'product_master_id');
+    }
+
     public function scopeSpareParts($query)
     {
         return $query->where('is_spare_part', true);

@@ -3,6 +3,7 @@
 @section('css')
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="{{ asset('css/select-searchable.css') }}" rel="stylesheet">
     <style>
         .sp-card {
             border-radius: 0.5rem;
@@ -257,6 +258,9 @@
                             <div class="col-md-2">
                                 <button type="button" class="btn btn-sm btn-secondary" id="btn-reload-parts">Apply</button>
                             </div>
+                            <div class="col-md-auto d-flex align-items-end">
+                                <button type="button" class="btn btn-sm btn-primary" id="btn-open-create-spare-part">Create Spare Part</button>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -267,7 +271,7 @@
                                 <h5 class="card-title">Parts list</h5>
                                 <div class="table-responsive" style="max-height:420px;overflow:auto;">
                                     <table class="table table-sm table-hover" id="table-parts">
-                                        <thead class="sticky-top bg-light"><tr><th>SKU</th><th>Stock</th><th>Parent</th><th>Reorder</th><th>Edit</th></tr></thead>
+                                        <thead class="sticky-top bg-light"><tr><th>Part name</th><th>SKU</th><th>Qty</th><th>Supplier</th><th>Stock</th><th>Parent</th><th>Reorder</th><th>Edit</th></tr></thead>
                                         <tbody></tbody>
                                     </table>
                                 </div>
@@ -286,6 +290,53 @@
             </div>
         </div>
 
+        <div class="modal fade" id="modal-create-spare-part" tabindex="-1" aria-labelledby="modal-create-spare-part-label" aria-hidden="true">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header py-2">
+                        <h5 class="modal-title fs-6" id="modal-create-spare-part-label">Create spare part</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <p class="small text-muted mb-2">Chooses a parent product and SKU from Product Master, then stores the display name and MSL-Part in <code>spare_part_details</code>.</p>
+                        <div class="mb-2">
+                            <label class="form-label small mb-0" for="create-spare-parent">Parent</label>
+                            <select class="form-select form-select-sm select-searchable" id="create-spare-parent" required>
+                                <option value="">Select parent…</option>
+                            </select>
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label small mb-0" for="create-spare-sku">SKU</label>
+                            <select class="form-select form-select-sm select-searchable" id="create-spare-sku" required>
+                                <option value="">Loading SKUs…</option>
+                            </select>
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label small mb-0" for="create-spare-supplier-display">Supplier</label>
+                            <input type="text" class="form-control form-control-sm" id="create-spare-supplier-display" readonly placeholder="Select a SKU to load supplier">
+                            <input type="hidden" id="create-spare-supplier-id" value="">
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label small mb-0" for="create-spare-qty">Qty</label>
+                            <input type="number" class="form-control form-control-sm" id="create-spare-qty" min="1" value="1" required>
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label small mb-0" for="create-spare-part-name">Part name</label>
+                            <input type="text" class="form-control form-control-sm" id="create-spare-part-name" required maxlength="255" placeholder="Shown in Parts list">
+                        </div>
+                        <div class="mb-0">
+                            <label class="form-label small mb-0" for="create-spare-msl-part">MSL-Part</label>
+                            <input type="text" class="form-control form-control-sm" id="create-spare-msl-part" maxlength="255" placeholder="Optional">
+                        </div>
+                    </div>
+                    <div class="modal-footer py-2">
+                        <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="button" class="btn btn-sm btn-primary" id="btn-submit-create-spare-part">Save</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <div class="toast-container position-fixed bottom-0 end-0 p-3">
             <div id="toast-ok" class="toast align-items-center text-bg-success border-0" role="alert">
                 <div class="d-flex"><div class="toast-body" id="toast-ok-body"></div></div>
@@ -296,6 +347,7 @@
 
 @section('script')
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="{{ asset('js/select-searchable.js') }}"></script>
     <script>
         const csrfMeta = document.querySelector('meta[name="csrf-token"]');
         const csrf = csrfMeta ? csrfMeta.getAttribute('content') : '';
@@ -316,7 +368,10 @@
             poIndex: @json(route('inventory.spare-parts.api.purchase-orders.index', [], false)),
             poStore: @json(route('inventory.spare-parts.api.purchase-orders.store', [], false)),
             partUpdate0: @json(route('inventory.spare-parts.api.parts.update', ['id' => 0], false)),
+            sparePartDetailsStore: @json(route('inventory.spare-parts.api.spare-part-details.store', [], false)),
+            supplierForSku: @json(route('refunds.supplier-for-sku', [], false)),
         };
+        const SP_PARENT_OPTIONS = @json($parentSelectJson ?? []);
         const reqActionUrl = (id, action) => `${SP.reqIndex}/${id}/${action}`;
         const poActionUrl = (id, action) => `${SP.poIndex}/${id}/${action}`;
         const partUpdateUrl = (id) => SP.partUpdate0.replace(/\/0$/, '/' + id);
@@ -349,6 +404,9 @@
 
         function fillPartSelect(sel, data) {
             if (!sel) return;
+            if (window.SelectSearchable) {
+                window.SelectSearchable.destroy(sel);
+            }
             sel.innerHTML = '';
             const o0 = document.createElement('option');
             o0.value = '';
@@ -360,6 +418,9 @@
                 o.value = String(p.id);
                 o.textContent = p.sku || ('#' + p.id);
                 sel.appendChild(o);
+            }
+            if (window.SelectSearchable) {
+                window.SelectSearchable.refresh(sel);
             }
         }
 
@@ -410,7 +471,7 @@
             wrap.className = 'row g-1 mb-1 align-items-center';
             wrap.innerHTML = `
                 <div class="col-md-8 col-7">
-                    <select class="form-select form-select-sm part-select" aria-label="Product SKU">
+                    <select class="form-select form-select-sm part-select select-searchable" aria-label="Product SKU">
                         <option value="">Loading SKUs…</option>
                     </select>
                 </div>
@@ -422,11 +483,17 @@
             ensurePartSkusLoaded()
                 .then((data) => fillPartSelect(sel, data))
                 .catch((err) => {
+                    if (window.SelectSearchable) {
+                        window.SelectSearchable.destroy(sel);
+                    }
                     sel.innerHTML = '';
                     const o = document.createElement('option');
                     o.value = '';
                     o.textContent = 'Failed to load SKUs';
                     sel.appendChild(o);
+                    if (window.SelectSearchable) {
+                        window.SelectSearchable.refresh(sel);
+                    }
                     alert(err.message || 'Could not load product_master SKUs');
                 });
         }
@@ -556,7 +623,7 @@
             wrap.className = 'row g-1 mb-1 align-items-center';
             wrap.innerHTML = `
                 <div class="col-md-6 col-6">
-                    <select class="form-select form-select-sm part-select" aria-label="Product SKU">
+                    <select class="form-select form-select-sm part-select select-searchable" aria-label="Product SKU">
                         <option value="">Loading SKUs…</option>
                     </select>
                 </div>
@@ -569,11 +636,17 @@
             ensurePartSkusLoaded()
                 .then((data) => fillPartSelect(sel, data))
                 .catch((err) => {
+                    if (window.SelectSearchable) {
+                        window.SelectSearchable.destroy(sel);
+                    }
                     sel.innerHTML = '';
                     const o = document.createElement('option');
                     o.value = '';
                     o.textContent = 'Failed to load SKUs';
                     sel.appendChild(o);
+                    if (window.SelectSearchable) {
+                        window.SelectSearchable.refresh(sel);
+                    }
                     alert(err.message || 'Could not load product_master SKUs');
                 });
         }
@@ -689,10 +762,18 @@
             r.data.forEach(p => {
                 const tr = document.createElement('tr');
                 tr.innerHTML = `
-                    <td>${p.sku}</td><td>${p.stock}</td><td>${p.parent_sku || '—'}</td><td>${p.reorder_level ?? '—'}</td>
+                    <td class="td-part-name"></td>
+                    <td class="td-sku"></td>
+                    <td class="td-qty"></td>
+                    <td class="td-supplier"></td>
+                    <td>${p.stock}</td><td>${p.parent_sku || '—'}</td><td>${p.reorder_level ?? '—'}</td>
                     <td>
                         <button class="btn btn-sm btn-outline-primary btn-edit-part" data-id="${p.id}">Flags</button>
                     </td>`;
+                tr.querySelector('.td-part-name').textContent = (p.part_name && String(p.part_name).trim()) ? p.part_name : '—';
+                tr.querySelector('.td-sku').textContent = p.sku ?? '';
+                tr.querySelector('.td-qty').textContent = (p.quantity != null && p.quantity !== '') ? String(p.quantity) : '—';
+                tr.querySelector('.td-supplier').textContent = (p.supplier_name && String(p.supplier_name).trim()) ? p.supplier_name : '—';
                 tb.appendChild(tr);
             });
             tb.querySelectorAll('.btn-edit-part').forEach(btn => {
@@ -744,6 +825,157 @@
             if (r.data && r.data.length) wrap.appendChild(renderTree(r.data));
             else wrap.textContent = 'No top-level spare parts (set parent / flags on the Parts tab).';
         }
+
+        function fillCreateSpareParentSelect() {
+            const sel = document.getElementById('create-spare-parent');
+            if (window.SelectSearchable) {
+                window.SelectSearchable.destroy(sel);
+            }
+            sel.innerHTML = '<option value="">Select parent…</option>';
+            (SP_PARENT_OPTIONS || []).forEach((row) => {
+                const o = document.createElement('option');
+                o.value = String(row.id);
+                o.textContent = row.sku || ('#' + row.id);
+                sel.appendChild(o);
+            });
+            if (window.SelectSearchable) {
+                window.SelectSearchable.refresh(sel);
+            }
+        }
+
+        function fillCreateSpareSkuSelect(data) {
+            const sel = document.getElementById('create-spare-sku');
+            if (window.SelectSearchable) {
+                window.SelectSearchable.destroy(sel);
+            }
+            sel.innerHTML = '<option value="">Select SKU…</option>';
+            for (let i = 0; i < data.length; i++) {
+                const p = data[i];
+                const o = document.createElement('option');
+                o.value = String(p.id);
+                o.textContent = p.sku || ('#' + p.id);
+                sel.appendChild(o);
+            }
+            if (window.SelectSearchable) {
+                window.SelectSearchable.refresh(sel);
+            }
+        }
+
+        async function loadSupplierForSelectedCreateSpareSku() {
+            const sel = document.getElementById('create-spare-sku');
+            const supInp = document.getElementById('create-spare-supplier-display');
+            const supIdEl = document.getElementById('create-spare-supplier-id');
+            if (!sel || !supInp || !supIdEl) {
+                return;
+            }
+            if (!sel.value) {
+                supInp.value = '';
+                supIdEl.value = '';
+                return;
+            }
+            const opt = sel.options[sel.selectedIndex];
+            const skuText = opt ? opt.textContent.trim() : '';
+            if (!skuText || skuText === 'Loading SKUs…' || skuText === 'Failed to load SKUs' || skuText.indexOf('—') === 0) {
+                supInp.value = '';
+                supIdEl.value = '';
+                return;
+            }
+            try {
+                const r = await fetchJson(SP.supplierForSku + '?sku=' + encodeURIComponent(skuText));
+                supInp.value = r.supplier_name || '';
+                supIdEl.value = r.supplier_id != null ? String(r.supplier_id) : '';
+            } catch (e) {
+                supInp.value = '';
+                supIdEl.value = '';
+            }
+        }
+
+        document.getElementById('create-spare-sku').addEventListener('change', () => {
+            loadSupplierForSelectedCreateSpareSku();
+        });
+
+        document.getElementById('btn-open-create-spare-part').addEventListener('click', () => {
+            fillCreateSpareParentSelect();
+            document.getElementById('create-spare-part-name').value = '';
+            document.getElementById('create-spare-msl-part').value = '';
+            document.getElementById('create-spare-qty').value = '1';
+            document.getElementById('create-spare-supplier-display').value = '';
+            document.getElementById('create-spare-supplier-id').value = '';
+            const skuSel = document.getElementById('create-spare-sku');
+            if (window.SelectSearchable) {
+                window.SelectSearchable.destroy(skuSel);
+            }
+            skuSel.innerHTML = '<option value="">Loading SKUs…</option>';
+            if (window.SelectSearchable) {
+                window.SelectSearchable.refresh(skuSel);
+            }
+            ensurePartSkusLoaded()
+                .then((data) => {
+                    fillCreateSpareSkuSelect(data);
+                    loadSupplierForSelectedCreateSpareSku();
+                })
+                .catch(() => {
+                    if (window.SelectSearchable) {
+                        window.SelectSearchable.destroy(skuSel);
+                    }
+                    skuSel.innerHTML = '<option value="">Failed to load SKUs</option>';
+                    if (window.SelectSearchable) {
+                        window.SelectSearchable.refresh(skuSel);
+                    }
+                });
+            const modalEl = document.getElementById('modal-create-spare-part');
+            let m = bootstrap.Modal.getInstance(modalEl);
+            if (!m) {
+                m = new bootstrap.Modal(modalEl);
+            }
+            m.show();
+        });
+
+        document.getElementById('btn-submit-create-spare-part').addEventListener('click', async () => {
+            const parentId = document.getElementById('create-spare-parent').value;
+            const productMasterId = document.getElementById('create-spare-sku').value;
+            const partName = document.getElementById('create-spare-part-name').value.trim();
+            const mslPart = document.getElementById('create-spare-msl-part').value.trim();
+            const qtyRaw = document.getElementById('create-spare-qty').value;
+            const qty = parseInt(qtyRaw, 10);
+            const supplierIdRaw = document.getElementById('create-spare-supplier-id').value;
+            const supplierId = supplierIdRaw ? parseInt(supplierIdRaw, 10) : null;
+            if (!parentId || !productMasterId) {
+                alert('Choose a parent and a SKU.');
+                return;
+            }
+            if (!partName) {
+                alert('Enter a part name.');
+                return;
+            }
+            if (!(qty >= 1)) {
+                alert('Enter a valid quantity (at least 1).');
+                return;
+            }
+            try {
+                const body = {
+                    parent_id: parseInt(parentId, 10),
+                    product_master_id: parseInt(productMasterId, 10),
+                    part_name: partName,
+                    msl_part: mslPart || null,
+                    quantity: qty,
+                };
+                if (supplierId) {
+                    body.supplier_id = supplierId;
+                }
+                await fetchJson(SP.sparePartDetailsStore, {
+                    method: 'POST',
+                    body: JSON.stringify(body),
+                });
+                toast('Spare part created');
+                bootstrap.Modal.getInstance(document.getElementById('modal-create-spare-part'))?.hide();
+                loadParts();
+                loadTree();
+                refreshSummary();
+            } catch (e) {
+                alert(e.message);
+            }
+        });
 
         document.getElementById('btn-reload-parts').addEventListener('click', () => { loadParts(); loadTree(); });
         document.getElementById('btn-reload-low').addEventListener('click', loadLow);

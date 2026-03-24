@@ -672,6 +672,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/inventory/spare-parts/api/part-skus', [SparePartController::class, 'allPartSkus'])->name('inventory.spare-parts.api.part-skus');
     Route::get('/inventory/spare-parts/api/suppliers', [SparePartController::class, 'suppliers'])->name('inventory.spare-parts.api.suppliers');
     Route::patch('/inventory/spare-parts/api/parts/{id}', [SparePartController::class, 'updatePart'])->name('inventory.spare-parts.api.parts.update');
+    Route::post('/inventory/spare-parts/api/spare-part-details', [SparePartController::class, 'storeSparePartDetail'])->name('inventory.spare-parts.api.spare-part-details.store');
 
     Route::get('/inventory/spare-parts/api/requisitions', [SparePartsRequisitionController::class, 'index'])->name('inventory.spare-parts.api.requisitions.index');
     Route::post('/inventory/spare-parts/api/requisitions', [SparePartsRequisitionController::class, 'store'])->name('inventory.spare-parts.api.requisitions.store');
