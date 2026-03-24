@@ -265,7 +265,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function mpStackHtml(sku, mp, val) {
         const pushed = (val || '').trim() !== '';
         const tile = MP_TILE[mp] || { cls: 'btn-doba', short: '?' };
-        const tip = `${LABELS[mp]} — ${LIMITS[mp]} chars. ${pushed ? 'Pushed' : 'Not pushed'}. Click to push.`;
+        const tip = `${LABELS[mp]}. ${pushed ? 'Pushed' : 'Not pushed'}. Click to push.`;
         return `
             <button type="button" class="bp-mp-stack" data-push-mp="${mp}" data-sku="${esc(sku)}" title="${esc(tip)}">
                 <span class="bp-mp-dot ${pushed ? 'pushed' : ''}" aria-hidden="true"></span>
@@ -329,7 +329,7 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('viewRowContent').innerHTML = `
             <div><strong>SKU:</strong> ${esc(sku)}</div>
             <hr>
-            ${MARKETPLACES.map(mp => `<div class="mb-2"><strong>${esc(LABELS[mp])} (${LIMITS[mp]}):</strong><div class="border rounded p-2 mt-1" style="white-space:pre-wrap;">${esc(bp[mp] || row.default_bullets || '')}</div></div>`).join('')}
+            ${MARKETPLACES.map(mp => `<div class="mb-2"><strong>${esc(LABELS[mp])}:</strong><div class="border rounded p-2 mt-1" style="white-space:pre-wrap;">${esc(bp[mp] || row.default_bullets || '')}</div></div>`).join('')}
         `;
         if (viewRowModal) viewRowModal.show();
     }
@@ -344,7 +344,7 @@ document.addEventListener('DOMContentLoaded', () => {
             <div class="col-md-3 col-sm-4 col-6">
                 <label class="form-check">
                     <input type="checkbox" class="form-check-input modal-mp-check" data-mp="${mp}" ${preselectedMarketplace ? (preselectedMarketplace === mp ? 'checked' : '') : ''}>
-                    <span>${esc(LABELS[mp])} <span class="badge bg-secondary">${LIMITS[mp]}</span></span>
+                    <span>${esc(LABELS[mp])}</span>
                 </label>
             </div>
         `).join('');
@@ -358,13 +358,13 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('editModalAiFields').innerHTML = [1,2,3,4,5].map(i => `
             <div class="col-12">
                 <div class="d-flex justify-content-between align-items-center">
-                    <label class="form-label mb-1">Bullet ${i} <span id="editAiCount${i}" class="text-muted">0/200</span></label>
+                    <label class="form-label mb-1">Bullet ${i} <span id="editAiCount${i}" class="text-muted">0 chars (min 190)</span></label>
                     <div class="btn-group btn-group-sm" role="group" aria-label="Rating">
                         <button type="button" class="btn btn-outline-success edit-ai-rate" data-idx="${i}" data-rating="good"><i class="fas fa-thumbs-up"></i></button>
                         <button type="button" class="btn btn-outline-danger edit-ai-rate" data-idx="${i}" data-rating="bad"><i class="fas fa-thumbs-down"></i></button>
                     </div>
                 </div>
-                <textarea class="form-control edit-ai-bullet" data-idx="${i}" rows="2" maxlength="200">${esc(current[i-1] || '')}</textarea>
+                <textarea class="form-control edit-ai-bullet" data-idx="${i}" rows="4">${esc(current[i-1] || '')}</textarea>
             </div>
         `).join('');
         bindEditAICountersAndRatings();
@@ -375,7 +375,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const raw = normalized.split(/\n|[;|]/).map(s => s.replace(/^[-*\d\.\)\s]+/, '').trim()).filter(Boolean);
         const out = raw.slice(0, 5);
         while (out.length < 5) out.push('');
-        return out.map(v => v.slice(0, 200));
+        return out.map(v => v);
     }
 
     function bindEditAICountersAndRatings() {
@@ -385,9 +385,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 const len = t.value.length;
                 const el = document.getElementById('editAiCount' + idx);
                 if (el) {
-                    el.textContent = `${len}/200`;
-                    el.classList.toggle('text-danger', len >= 200);
-                    el.classList.toggle('text-muted', len < 200);
+                    el.textContent = `${len} chars (min 190)`;
+                    el.classList.toggle('text-warning', len > 0 && len < 190);
+                    el.classList.toggle('text-muted', len === 0);
                 }
             };
             t.addEventListener('input', update);
@@ -429,8 +429,7 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
         const combined = buildCombinedBulletText(bullets);
-        const lim = Number(LIMITS[mp] || 150);
-        const payload = { sku, updates: [{ marketplace: mp, bullet_points: combined.slice(0, lim) }] };
+        const payload = { sku, updates: [{ marketplace: mp, bullet_points: combined }] };
         fetch('/bullet-point-master/update', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json' },
@@ -486,7 +485,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             const item = bySku.get(sku);
                             if (item) {
                                 item.bullet_points = item.bullet_points || {};
-                                item.bullet_points[mp] = v.slice(0, Number(LIMITS[mp] || 150));
+                                item.bullet_points[mp] = v;
                             }
                         }
                     });
@@ -529,8 +528,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const updates = [];
         document.querySelectorAll('.modal-mp-check:checked').forEach(chk => {
             const mp = chk.dataset.mp;
-            const lim = Number(LIMITS[mp] || 150);
-            updates.push({ marketplace: mp, bullet_points: combined.slice(0, lim) });
+            updates.push({ marketplace: mp, bullet_points: combined });
         });
         if (!updates.length) { toast('Select at least one marketplace.', false); return; }
 
@@ -574,7 +572,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }).then((res) => {
             const bullets = res.bullets || [];
             document.querySelectorAll('.edit-ai-bullet').forEach((t, i) => {
-                t.value = (bullets[i] || '').slice(0, 200);
+                t.value = (bullets[i] || '');
                 t.dispatchEvent(new Event('input'));
             });
             const lens = bullets.map(b => String(b || '').length);

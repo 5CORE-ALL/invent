@@ -196,6 +196,124 @@ class WalmartService
     }
 
     /**
+     * Update shelf / marketing copy with bullet text via MP_ITEM feed (full text, no truncation).
+     *
+     * @return array{success:bool,message:string,feed_id?:string,feed_status?:string,response?:mixed}
+     */
+    public function updateBulletPoints(string $sku, string $bulletPoints): array
+    {
+        $sku = trim($sku);
+        $body = trim($bulletPoints);
+        if ($sku === '' || $body === '') {
+            return ['success' => false, 'message' => 'SKU and bullet points are required.'];
+        }
+
+        $feedXml = $this->buildBulletFeedXml($sku, $body);
+
+        return $this->submitMpItemFeed($feedXml, $sku, 'Walmart bullet points');
+    }
+
+    private function buildBulletFeedXml(string $sku, string $bulletText): string
+    {
+        $escapedSku = htmlspecialchars($sku, ENT_XML1);
+        $escaped = htmlspecialchars($bulletText, ENT_XML1);
+        $lines = preg_split('/\r\n|\r|\n/', $bulletText);
+        $titleLine = trim($lines[0] ?? '') ?: $sku;
+        $escapedName = htmlspecialchars($titleLine, ENT_XML1);
+
+        return '<?xml version="1.0" encoding="UTF-8"?>
+<MPItemFeed xmlns="http://walmart.com/" xmlns:ns2="http://walmart.com/mp/orders" xmlns:ns3="http://walmart.com/">
+  <MPItemFeedHeader>
+    <mart>US</mart>
+    <sellingChannel>marketplace</sellingChannel>
+    <processMode>REPLACE</processMode>
+    <subset>EXTERNAL</subset>
+    <locale>en</locale>
+    <version>4.8</version>
+  </MPItemFeedHeader>
+  <MPItem>
+    <Orderable>
+      <sku>' . $escapedSku . '</sku>
+      <productName>' . $escapedName . '</productName>
+      <shelfDescription>' . $escaped . '</shelfDescription>
+      <shortDescription>' . $escaped . '</shortDescription>
+      <productType>Item</productType>
+    </Orderable>
+  </MPItem>
+</MPItemFeed>';
+    }
+
+    /**
+     * @return array{success:bool,message:string,feed_id?:string,feed_status?:string,response?:mixed}
+     */
+    private function submitMpItemFeed(string $feedXml, string $sku, string $logLabel): array
+    {
+        Log::info("🚀 {$logLabel} update started", ['sku' => $sku]);
+
+        try {
+            $accessToken = $this->getAccessToken();
+            if (! $accessToken) {
+                return ['success' => false, 'message' => 'Failed to get Walmart access token'];
+            }
+
+            $response = Http::withoutVerifying()->withHeaders([
+                'WM_SEC.ACCESS_TOKEN' => $accessToken,
+                'WM_QOS.CORRELATION_ID' => (string) Str::uuid(),
+                'WM_SVC.NAME' => 'Walmart Marketplace',
+                'WM_MARKET_ID' => $this->marketplaceId,
+                'WM_CONSUMER.CHANNEL.TYPE' => config('services.walmart.channel_type'),
+                'Accept' => 'application/json',
+            ])->attach('file', $feedXml, 'mp-item-feed.xml')->post($this->baseUrl . '/v3/feeds', [
+                'feedType' => 'MP_ITEM',
+            ]);
+
+            if (! $response->successful() && $response->status() !== 202) {
+                return ['success' => false, 'message' => 'Feed submission failed: ' . $response->body()];
+            }
+
+            $payload = $response->json() ?? [];
+            $feedId = $payload['feedId'] ?? $payload['id'] ?? null;
+
+            if (! $feedId && is_string($response->body())) {
+                if (preg_match('/"feedId"\s*:\s*"?(?<id>[^",\s]+)"?/', $response->body(), $m)) {
+                    $feedId = $m['id'];
+                } elseif (preg_match('/<feedId>(?<id>[^<]+)<\/feedId>/', $response->body(), $m)) {
+                    $feedId = $m['id'];
+                }
+            }
+
+            if (! $feedId) {
+                return ['success' => false, 'message' => 'Feed accepted but feedId missing'];
+            }
+
+            $statusResult = $this->pollFeedStatus((string) $feedId, $accessToken);
+            $finalStatus = strtoupper((string) ($statusResult['feedStatus'] ?? $statusResult['feed_status'] ?? 'UNKNOWN'));
+
+            if (in_array($finalStatus, ['PROCESSED', 'COMPLETED', 'DONE'], true)) {
+                return [
+                    'success' => true,
+                    'message' => 'Walmart bullet points updated successfully',
+                    'feed_id' => (string) $feedId,
+                    'feed_status' => $finalStatus,
+                    'response' => $statusResult,
+                ];
+            }
+
+            return [
+                'success' => false,
+                'message' => 'Feed processing failed with status: ' . $finalStatus,
+                'feed_id' => (string) $feedId,
+                'feed_status' => $finalStatus,
+                'response' => $statusResult,
+            ];
+        } catch (\Throwable $e) {
+            Log::error("Walmart {$logLabel} failed", ['sku' => $sku, 'error' => $e->getMessage()]);
+
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    /**
      * Get Walmart feed status by feed ID.
      */
     public function getFeedStatus(string $feedId, ?string $accessToken = null): array

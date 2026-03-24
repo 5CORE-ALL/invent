@@ -408,4 +408,98 @@ XML;
         }
         return implode('; ', $parts) ?: 'Update had errors.';
     }
+
+    /**
+     * Push bullet lines as catalog key features (GraphQL). No truncation.
+     *
+     * @return array{success: bool, message: string}
+     */
+    public function updateBulletPoints(string $sku, string $bulletPoints): array
+    {
+        $sku = trim($sku);
+        $bulletPoints = trim($bulletPoints);
+        if ($sku === '' || $bulletPoints === '') {
+            return ['success' => false, 'message' => 'SKU and bullet points are required.'];
+        }
+
+        $lines = array_values(array_filter(array_map('trim', preg_split('/\r\n|\r|\n/', $bulletPoints))));
+        if ($lines === []) {
+            return ['success' => false, 'message' => 'No bullet lines found.'];
+        }
+
+        try {
+            $token = $this->getTokenForCatalog();
+            if (! $token) {
+                return ['success' => false, 'message' => 'Wayfair authentication failed.'];
+            }
+
+            $requestId = $this->submitKeyFeaturesUpdate($token, $sku, $lines);
+            if ($requestId === null) {
+                return ['success' => false, 'message' => 'Wayfair: failed to submit bullet/key feature update.'];
+            }
+
+            return $this->pollUpdateStatus($token, $requestId, $sku);
+        } catch (\Throwable $e) {
+            Log::error('Wayfair updateBulletPoints', ['sku' => $sku, 'error' => $e->getMessage()]);
+
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    /**
+     * @param  list<string>  $features
+     */
+    private function submitKeyFeaturesUpdate(string $token, string $sku, array $features): ?string
+    {
+        $url = config('services.wayfair.product_catalog_graphql_url', 'https://api.wayfair.io/v1/product-catalog-api/graphql');
+        $supplierId = (string) config('services.wayfair.supplier_id', '2603');
+        $brand = config('services.wayfair.brand', 'WAYFAIR');
+        $country = config('services.wayfair.country', 'UNITED_STATES');
+        $locale = config('services.wayfair.locale', 'en-US');
+
+        $mutation = <<<'GRAPHQL'
+        mutation UpdateMarketSpecificCatalogItems($input: UpdateMarketSpecificCatalogItemsInput!) {
+          updateCatalogEntitiesMutations {
+            updateMarketSpecificCatalogItems(input: $input) {
+              requestId
+            }
+          }
+        }
+        GRAPHQL;
+
+        $variables = [
+            'input' => [
+                'marketContext' => [
+                    'locale' => $locale,
+                    'country' => $country,
+                    'brand' => $brand,
+                ],
+                'supplierId' => $supplierId,
+                'catalogItemsToUpdate' => [
+                    [
+                        'supplierPartNumber' => $sku,
+                        'keyFeatures' => $features,
+                    ],
+                ],
+                'validateOnly' => false,
+            ],
+        ];
+
+        $response = Http::withoutVerifying()
+            ->withToken($token)
+            ->withHeaders(['Content-Type' => 'application/json'])
+            ->post($url, [
+                'query' => $mutation,
+                'variables' => $variables,
+            ]);
+
+        $data = $response->json();
+        if (! empty($data['errors'])) {
+            Log::warning('Wayfair keyFeatures GraphQL errors', ['sku' => $sku, 'errors' => $data['errors']]);
+
+            return null;
+        }
+
+        return $data['data']['updateCatalogEntitiesMutations']['updateMarketSpecificCatalogItems']['requestId'] ?? null;
+    }
 }

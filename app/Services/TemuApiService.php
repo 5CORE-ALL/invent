@@ -874,4 +874,82 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
             return ['success' => false, 'message' => 'Exception: ' . $e->getMessage()];
         }
     }
+
+    /**
+     * Push bullet copy via goods partial update (goodsSummary / description). Mirrors updateTitle flow.
+     *
+     * @return array{success: bool, message: string}
+     */
+    public function updateBulletPoints(string $sku, string $bulletPoints): array
+    {
+        $sku = trim($sku);
+        $bulletPoints = trim($bulletPoints);
+        if ($sku === '' || $bulletPoints === '') {
+            return ['success' => false, 'message' => 'SKU and bullet points are required.'];
+        }
+
+        $goodsId = $this->getGoodsIdBySku($sku);
+        if (! $goodsId) {
+            return ['success' => false, 'message' => 'goodsId not found for SKU.'];
+        }
+
+        $skuInfo = $this->getSkuInfoForGoodsAndSku($goodsId, $sku);
+        $apiType = config('services.temu.goods_update_type', 'bg.local.goods.partial.update');
+        $url = 'https://openapi-b-us.temu.com/openapi/router';
+        $skuListField = config('services.temu.update_sku_list_field', 'skuList');
+        $goodsBasicField = config('services.temu.goods_basic_field', 'goodsBasic');
+
+        $summaryField = config('services.temu.goods_summary_field', 'goodsSummary');
+        $requestBody = [
+            'type' => $apiType,
+            'goodsId' => (int) $goodsId,
+            $goodsBasicField => [
+                $summaryField => $bulletPoints,
+            ],
+        ];
+
+        $price = $this->getProductPrice($sku);
+        $dimensions = $this->getProductDimensions($sku);
+        $images = $this->getProductImages($sku);
+
+        if ($skuInfo !== null && isset($skuInfo['skuId'])) {
+            $skuIdField = config('services.temu.sku_id_field', 'skuId');
+            $skuCodeField = config('services.temu.sku_code_field', 'outSkuSn');
+            $requestBody[$skuListField] = [[
+                $skuIdField => (int) $skuInfo['skuId'],
+                $skuCodeField => $sku,
+                'listPrice' => [
+                    'amount' => (string) ($price ?? 1.00),
+                    'currency' => 'USD',
+                ],
+                'listPriceType' => 0,
+                'weight' => $dimensions['weight'],
+                'length' => $dimensions['length'],
+                'width' => $dimensions['width'],
+                'height' => $dimensions['height'],
+                'weightUnit' => $dimensions['weightUnit'],
+                'volumeUnit' => $dimensions['volumeUnit'],
+                'images' => $images,
+            ]];
+        }
+
+        try {
+            $signedRequest = $this->generateSignValue($requestBody);
+            $request = Http::withHeaders(['Content-Type' => 'application/json']);
+            if (config('filesystems.default') === 'local') {
+                $request = $request->withoutVerifying();
+            }
+            $response = $request->post($url, $signedRequest);
+            $data = $response->json();
+            if ($response->successful() && ($data['success'] ?? false)) {
+                return ['success' => true, 'message' => 'Temu bullet points updated.'];
+            }
+
+            return ['success' => false, 'message' => (string) ($data['errorMsg'] ?? $data['message'] ?? $response->body())];
+        } catch (\Throwable $e) {
+            Log::error('Temu updateBulletPoints', ['sku' => $sku, 'error' => $e->getMessage()]);
+
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
 }
