@@ -5,6 +5,7 @@
 
 @section('css')
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
     <link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css" />
     <style>
         /* ========== TABLE STRUCTURE ========== */
@@ -1313,7 +1314,7 @@
                         <div class="col-md-2">
                             <label class="form-label fw-semibold mb-2"
                                 style="color: #475569; font-size: 0.8125rem;">
-                                T VIEWS Range
+                                L30 VIEWS Range
                             </label>
                             <div class="d-flex gap-2">
                                 <input type="number" id="t-views-filter-min"
@@ -1395,7 +1396,7 @@
                         <div class="col-md-2">
                             <label class="form-label fw-semibold mb-2"
                                 style="color: #475569; font-size: 0.8125rem;">
-                                L45 VIEWS Range
+                                L15-45 VIEWS Range
                             </label>
                             <div class="d-flex gap-2">
                                 <input type="number" id="l45-views-filter-min"
@@ -1409,7 +1410,7 @@
                         <div class="col-md-2">
                             <label class="form-label fw-semibold mb-2"
                                 style="color: #475569; font-size: 0.8125rem;">
-                                YESTERDAY VIEWS Range
+                                L1 VIEWS Range
                             </label>
                             <div class="d-flex gap-2">
                                 <input type="number" id="yesterday-views-filter-min"
@@ -1722,41 +1723,43 @@
                                 <th data-field="esbid">ES BID</th>
                                 <th data-field="s_bid">S BID</th>
 
-                                <th data-field="total_views" style="vertical-align: middle; white-space: nowrap;">
-                                    <div class="d-flex flex-column align-items-center" style="gap: 4px">
-                                        <div class="d-flex align-items-center">
-                                            T VIEWS <span class="sort-arrow">↓</span>
-                                        </div>
-                                    </div>
-                                </th>
-                                <th data-field="l7_views" style="vertical-align: middle; white-space: nowrap;">
-                                    <div class="d-flex flex-column align-items-center" style="gap: 4px">
-                                        <div class="d-flex align-items-center">
-                                            L7 VIEWS <span class="sort-arrow">↓</span>
-                                        </div>
-                                    </div>
-                                </th>
                                 <th data-field="l60_views" style="vertical-align: middle; white-space: nowrap;"
-                                    title="Last 60 days views (60-30 days ago)">
+                                    title="Listing views in the 30-day window from 60 to 30 days ago (before the current L30 period)">
                                     <div class="d-flex flex-column align-items-center" style="gap: 4px">
                                         <div class="d-flex align-items-center">
                                             L60 VIEWS <span class="sort-arrow">↓</span>
                                         </div>
                                     </div>
                                 </th>
-                                <th data-field="l45_views" style="vertical-align: middle; white-space: nowrap;"
-                                    title="Last 45 days views (30-day window from middle of previous month)">
+                                <th data-field="l30_views" style="vertical-align: middle; white-space: nowrap;"
+                                    title="Total listing views (eBay metrics; aligns with ~last 30 days total)">
                                     <div class="d-flex flex-column align-items-center" style="gap: 4px">
                                         <div class="d-flex align-items-center">
-                                            L45 VIEWS <span class="sort-arrow">↓</span>
+                                            L30 VIEWS <span class="sort-arrow">↓</span>
                                         </div>
                                     </div>
                                 </th>
-                                <th data-field="yesterday_views" style="vertical-align: middle; white-space: nowrap;"
-                                    title="Views from yesterday only">
+                                <th data-field="l1545_views" style="vertical-align: middle; white-space: nowrap;"
+                                    title="Views in the rolling window from 45 to 16 days ago (~30 days)">
                                     <div class="d-flex flex-column align-items-center" style="gap: 4px">
                                         <div class="d-flex align-items-center">
-                                            YESTERDAY VIEWS <span class="sort-arrow">↓</span>
+                                            L15-45 VIEWS <span class="sort-arrow">↓</span>
+                                        </div>
+                                    </div>
+                                </th>
+                                <th data-field="l7_views" style="vertical-align: middle; white-space: nowrap;"
+                                    title="Listing views in the last 7 days (eBay metrics)">
+                                    <div class="d-flex flex-column align-items-center" style="gap: 4px">
+                                        <div class="d-flex align-items-center">
+                                            L7 VIEWS <span class="sort-arrow">↓</span>
+                                        </div>
+                                    </div>
+                                </th>
+                                <th data-field="l1_views" style="vertical-align: middle; white-space: nowrap;"
+                                    title="Estimated views on the previous calendar day (from daily snapshots or fallback)">
+                                    <div class="d-flex flex-column align-items-center" style="gap: 4px">
+                                        <div class="d-flex align-items-center">
+                                            L1 VIEWS <span class="sort-arrow">↓</span>
                                         </div>
                                     </div>
                                 </th>
@@ -1876,6 +1879,7 @@
     <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.min.js"></script>
     <!-- SheetJS for Excel Export -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
 
     <script>
         // Chart initialization
@@ -2186,11 +2190,13 @@
         });
     </script>
     <script>
-        flatpickr("#duration", {
-            enableTime: true,
-            mode: "range",
-            dateFormat: "M d, Y h:i K"
-        });
+        if (typeof flatpickr === 'function' && document.getElementById('duration')) {
+            flatpickr("#duration", {
+                enableTime: true,
+                mode: "range",
+                dateFormat: "M d, Y h:i K"
+            });
+        }
 
         document.getElementById("createBtn").addEventListener("click", function() {
             const form = document.getElementById("taskForm");
@@ -2399,7 +2405,7 @@
                     'TacosL30'
                 ],
                 'conversion view': ['SCVR', 'KwCvrL60', 'KwCvrL30', 'KwCvrL7', 'PmtCvrL30', 'PmtCvrL7'],
-                'visibility view': ['KwCtrL60', 'KwCtrL30', 'KwCtrL7', 'PmtCtrL30', 'PmtCtrL7', 'L60_VIEWS', 'L45_VIEWS', 'YESTERDAY_VIEWS']
+                'visibility view': ['KwCtrL60', 'KwCtrL30', 'KwCtrL7', 'PmtCtrL30', 'PmtCtrL7', 'L60_VIEWS', 'L30_VIEWS', 'L45_VIEWS', 'L7_VIEWS', 'L1_VIEWS']
             };
 
             // Filter state
@@ -2968,9 +2974,11 @@
                                     LP: item.LP_productmaster || 0,
                                     SHIP: item.Ship_productmaster || 0,
                                     VIEWS: item.ebay_views || 0,
+                                    L30_VIEWS: item.ebay_views != null ? Number(item.ebay_views) : 0,
                                     L7_VIEWS: item.l7_views || 0,
                                     L60_VIEWS: item.l60_views != null ? Number(item.l60_views) : 0,
                                     L45_VIEWS: item.l45_views != null ? Number(item.l45_views) : 0,
+                                    L1_VIEWS: item.yesterday_views != null ? Number(item.yesterday_views) : 0,
                                     YESTERDAY_VIEWS: item.yesterday_views != null ? Number(item.yesterday_views) : 0,
                                     CBID: item.bid_percentage || 0,
                                     ESBID: item.suggested_bid || 0,
@@ -3248,26 +3256,26 @@
                         </span>`
                     ));
 
-                    $row.append($('<td data-field="total_views">').text(item.VIEWS));
-
-                    $row.append($('<td data-field="l7_views">').text(item.L7_VIEWS || 0));
-
                     const l60v = Math.round(Number(item.L60_VIEWS || 0)) || 0;
+                    const l30v = Math.round(Number(item.L30_VIEWS || item.VIEWS || 0)) || 0;
                     const l45v = Math.round(Number(item.L45_VIEWS || 0)) || 0;
-                    const yv = Math.round(Number(item.YESTERDAY_VIEWS || 0)) || 0;
-                    $row.append($('<td data-field="l60_views">').attr('title', 'Last 60 days views (60-30 days ago)').html(
+                    const l7v = Math.round(Number(item.L7_VIEWS || 0)) || 0;
+                    const l1v = Math.round(Number(item.L1_VIEWS || item.YESTERDAY_VIEWS || 0)) || 0;
+                    $row.append($('<td data-field="l60_views">').attr('title', 'Listing views in the 30-day window from 60 to 30 days ago').html(
                         `<span class="dil-percent-value ${getViewColor(l60v)}">${l60v}</span>`
                     ));
-                    $row.append($('<td data-field="l45_views">').attr('title', 'Last 45 days views (30-day window from middle of previous month)').html(
+                    $row.append($('<td data-field="l30_views">').attr('title', 'Total listing views (eBay metrics)').text(l30v));
+                    $row.append($('<td data-field="l1545_views">').attr('title', 'Views in the rolling L15–45 day window').html(
                         `<span class="dil-percent-value ${getViewColor(l45v)}">${l45v}</span>`
                     ));
-                    $row.append($('<td data-field="yesterday_views">').attr('title', 'Views from yesterday only').html(
-                        `<span class="dil-percent-value ${getViewColor(yv)}">${yv}</span>`
+                    $row.append($('<td data-field="l7_views">').attr('title', 'Last 7 days listing views').text(l7v));
+                    $row.append($('<td data-field="l1_views">').attr('title', 'Views on the previous calendar day').html(
+                        `<span class="dil-percent-value ${getViewColor(l1v)}">${l1v}</span>`
                     ));
 
                     // CVR with color coding and tooltip
 
-                    $row.append($('<td>').html(
+                    $row.append($('<td data-field="cvr">').html(
                         `<span class="dil-percent-value" style="color: ${getCvrColor(scvr)}">
                            ${scvr.toFixed(2)}%
                         </span>`
@@ -5087,11 +5095,11 @@
                         'cbid': 'CBID',
                         'esbid': 'ESBID',
                         's_bid': 'SBID', // S BID is calculated, not ESBID
-                        'total_views': 'VIEWS',
+                        'l30_views': 'L30_VIEWS',
                         'l7_views': 'L7_VIEWS',
                         'l60_views': 'L60_VIEWS',
-                        'l45_views': 'L45_VIEWS',
-                        'yesterday_views': 'YESTERDAY_VIEWS',
+                        'l1545_views': 'L45_VIEWS',
+                        'l1_views': 'L1_VIEWS',
                         'cvr': 'SCVR', // SCVR is calculated dynamically
                         'pmtclkl7': 'PmtClkL7',
                         'views': 'PmtClkL30',
@@ -5162,11 +5170,11 @@
                     const numericFieldsSet = new Set([
                         'sl_no', 'INV', 'L30', 'ov_dil', 'eBay L30', 'E Dil%',
                         'eBay Price', 'PFT %', 'Roi', 'Tacos30', 'SCVR', 'PmtClkL30', 'PmtClkL7',
-                        'SPRICE', 'SPFT', 'SROI', 'Sales L30', 'Profit', 'VIEWS', 'L7_VIEWS',
-                        'L60_VIEWS', 'L45_VIEWS', 'YESTERDAY_VIEWS',
+                        'SPRICE', 'SPFT', 'SROI', 'Sales L30', 'Profit', 'VIEWS', 'L30_VIEWS', 'L7_VIEWS',
+                        'L60_VIEWS', 'L45_VIEWS', 'L1_VIEWS', 'YESTERDAY_VIEWS',
                         'CBID', 'ESBID', 'SBID', 'TPFT',
-                        'inv', 'ov_l30', 'el_30', 'c_bid', 'cbid', 'esbid', 's_bid', 'total_views',
-                        'l7_views', 'l60_views', 'l45_views', 'yesterday_views',
+                        'inv', 'ov_l30', 'el_30', 'c_bid', 'cbid', 'esbid', 's_bid', 'l30_views',
+                        'l7_views', 'l60_views', 'l1545_views', 'l1_views',
                         'cvr', 'pmtclkl7', 'views', 'price', 'pft', 'roi', 'tpft', 'troi'
                     ]);
                     const isNumeric = numericFieldsSet.has(dataField) || numericFieldsSet.has(originalField);
@@ -5494,7 +5502,7 @@
 
                 // Validate T VIEWS
                 if (tViewsMinVal !== '' && tViewsMaxVal !== '' && parseFloat(tViewsMinVal) > parseFloat(tViewsMaxVal)) {
-                    alert('T VIEWS: Minimum value cannot be greater than maximum value');
+                    alert('L30 VIEWS: Minimum value cannot be greater than maximum value');
                     return;
                 }
 
@@ -5528,14 +5536,14 @@
                 const l45MinVal = $('#l45-views-filter-min').val();
                 const l45MaxVal = $('#l45-views-filter-max').val();
                 if (l45MinVal !== '' && l45MaxVal !== '' && parseFloat(l45MinVal) > parseFloat(l45MaxVal)) {
-                    alert('L45 VIEWS: Minimum value cannot be greater than maximum value');
+                    alert('L15-45 VIEWS: Minimum value cannot be greater than maximum value');
                     return;
                 }
 
                 const yMinVal = $('#yesterday-views-filter-min').val();
                 const yMaxVal = $('#yesterday-views-filter-max').val();
                 if (yMinVal !== '' && yMaxVal !== '' && parseFloat(yMinVal) > parseFloat(yMaxVal)) {
-                    alert('YESTERDAY VIEWS: Minimum value cannot be greater than maximum value');
+                    alert('L1 VIEWS: Minimum value cannot be greater than maximum value');
                     return;
                 }
 
@@ -5731,7 +5739,7 @@
 
                 if (yesterdayViewsRangeFilter.min !== null || yesterdayViewsRangeFilter.max !== null) {
                     filteredData = filteredData.filter(item => {
-                        const v = parseFloat(item.YESTERDAY_VIEWS || 0) || 0;
+                        const v = parseFloat(item.L1_VIEWS || item.YESTERDAY_VIEWS || 0) || 0;
                         if (yesterdayViewsRangeFilter.min !== null && v < yesterdayViewsRangeFilter.min) return false;
                         if (yesterdayViewsRangeFilter.max !== null && v > yesterdayViewsRangeFilter.max) return false;
                         return true;
@@ -5797,11 +5805,11 @@
                         'cbid': 'CBID',
                         'esbid': 'ESBID',
                         's_bid': 'SBID',
-                        'total_views': 'VIEWS',
+                        'l30_views': 'L30_VIEWS',
                         'l7_views': 'L7_VIEWS',
                         'l60_views': 'L60_VIEWS',
-                        'l45_views': 'L45_VIEWS',
-                        'yesterday_views': 'YESTERDAY_VIEWS',
+                        'l1545_views': 'L45_VIEWS',
+                        'l1_views': 'L1_VIEWS',
                         'cvr': 'SCVR',
                         'pmtclkl7': 'PmtClkL7',
                         'views': 'PmtClkL30',
@@ -5858,11 +5866,11 @@
                     const numericFieldsSet = new Set([
                         'sl_no', 'INV', 'L30', 'ov_dil', 'eBay L30', 'E Dil%',
                         'eBay Price', 'PFT %', 'Roi', 'Tacos30', 'SCVR', 'PmtClkL30', 'PmtClkL7',
-                        'SPRICE', 'SPFT', 'SROI', 'Sales L30', 'Profit', 'VIEWS', 'L7_VIEWS',
-                        'L60_VIEWS', 'L45_VIEWS', 'YESTERDAY_VIEWS',
+                        'SPRICE', 'SPFT', 'SROI', 'Sales L30', 'Profit', 'VIEWS', 'L30_VIEWS', 'L7_VIEWS',
+                        'L60_VIEWS', 'L45_VIEWS', 'L1_VIEWS', 'YESTERDAY_VIEWS',
                         'CBID', 'ESBID', 'SBID', 'TPFT',
-                        'inv', 'ov_l30', 'el_30', 'c_bid', 'cbid', 'esbid', 's_bid', 'total_views',
-                        'l7_views', 'l60_views', 'l45_views', 'yesterday_views',
+                        'inv', 'ov_l30', 'el_30', 'c_bid', 'cbid', 'esbid', 's_bid', 'l30_views',
+                        'l7_views', 'l60_views', 'l1545_views', 'l1_views',
                         'cvr', 'pmtclkl7', 'views', 'price', 'pft', 'roi', 'tpft', 'troi'
                     ]);
                     const isNumeric = numericFieldsSet.has(dataField) || numericFieldsSet.has(originalField);
@@ -5925,11 +5933,11 @@
                     exportData.push({
                         SKU: item['(Child) sku'] || '',
                         INV: item.INV != null ? item.INV : '',
-                        'T VIEWS': Math.round(Number(item.VIEWS || 0)) || 0,
+                        'L30 VIEWS': Math.round(Number(item.L30_VIEWS || item.VIEWS || 0)) || 0,
                         'L7 VIEWS': Math.round(Number(item.L7_VIEWS || 0)) || 0,
                         'L60 VIEWS': Math.round(Number(item.L60_VIEWS || 0)) || 0,
-                        'L45 VIEWS': Math.round(Number(item.L45_VIEWS || 0)) || 0,
-                        'YESTERDAY VIEWS': Math.round(Number(item.YESTERDAY_VIEWS || 0)) || 0,
+                        'L15-45 VIEWS': Math.round(Number(item.L45_VIEWS || 0)) || 0,
+                        'L1 VIEWS': Math.round(Number(item.L1_VIEWS || item.YESTERDAY_VIEWS || 0)) || 0,
                         CBID: item.CBID != null ? item.CBID : '',
                         ESBID: item.ESBID != null ? item.ESBID : '',
                         SBID: (function() {
