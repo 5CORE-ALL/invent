@@ -1762,19 +1762,19 @@
                                         </div>
                                     </div>
                                 </th>
-                                <th data-field="l30_views" style="vertical-align: middle; white-space: nowrap;"
-                                    title="Last 30 complete days (excl. today), from daily listing views.">
-                                    <div class="d-flex flex-column align-items-center" style="gap: 4px">
-                                        <div class="d-flex align-items-center">
-                                            L30 VIEWS <span class="sort-arrow">↓</span>
-                                        </div>
-                                    </div>
-                                </th>
                                 <th data-field="l1545_views" style="vertical-align: middle; white-space: nowrap;"
                                     title="L60 minus L30 (days 31–60 ago).">
                                     <div class="d-flex flex-column align-items-center" style="gap: 4px">
                                         <div class="d-flex align-items-center">
                                             L15-45 VIEWS <span class="sort-arrow">↓</span>
+                                        </div>
+                                    </div>
+                                </th>
+                                <th data-field="l30_views" style="vertical-align: middle; white-space: nowrap;"
+                                    title="Last 30 complete days (excl. today), from daily listing views.">
+                                    <div class="d-flex flex-column align-items-center" style="gap: 4px">
+                                        <div class="d-flex align-items-center">
+                                            L30 VIEWS <span class="sort-arrow">↓</span>
                                         </div>
                                     </div>
                                 </th>
@@ -2454,7 +2454,7 @@
                     'TacosL30'
                 ],
                 'conversion view': ['SCVR', 'KwCvrL60', 'KwCvrL30', 'KwCvrL7', 'PmtCvrL30', 'PmtCvrL7'],
-                'visibility view': ['KwCtrL60', 'KwCtrL30', 'KwCtrL7', 'PmtCtrL30', 'PmtCtrL7', 'L60_VIEWS', 'L30_VIEWS', 'L45_VIEWS', 'L60_VS_L1545', 'L1545_VS_L30', 'L7_VIEWS', 'L1_VIEWS']
+                'visibility view': ['KwCtrL60', 'KwCtrL30', 'KwCtrL7', 'PmtCtrL30', 'PmtCtrL7', 'L60_VIEWS', 'L45_VIEWS', 'L30_VIEWS', 'L60_VS_L1545', 'L1545_VS_L30', 'L7_VIEWS', 'L1_VIEWS']
             };
 
             // Filter state
@@ -3356,10 +3356,10 @@
                     $row.append($('<td data-field="l60_views">').attr('title', 'Listing views over the last 60 complete calendar days (excluding today).').html(
                         `<span class="dil-percent-value ${getViewColor(l60v)}">${l60v}</span>`
                     ));
-                    $row.append($('<td data-field="l30_views">').attr('title', 'Listing views over the last 30 complete calendar days (excluding today).').text(l30v));
                     $row.append($('<td data-field="l1545_views">').attr('title', 'Views in days 31–60 ago (L60 minus L30; the 30-day window before the L30 period).').html(
                         `<span class="dil-percent-value ${getViewColor(l45v)}">${l45v}</span>`
                     ));
+                    $row.append($('<td data-field="l30_views">').attr('title', 'Listing views over the last 30 complete calendar days (excluding today).').text(l30v));
                     $row.append($('<td data-field="l60_vs_l1545" class="view-compare-col">').append(
                         $('<span>').addClass(`view-compare-dot ${cmpL60.cls}`).attr('title', cmpL60.tip)
                     ));
@@ -6039,14 +6039,14 @@
                     exportData.push({
                         SKU: item['(Child) sku'] || '',
                         INV: item.INV != null ? item.INV : '',
-                        'L30 VIEWS': Math.round(Number(item.L30_VIEWS || item.VIEWS || 0)) || 0,
-                        'L7 VIEWS': Math.round(Number(item.L7_VIEWS || 0)) || 0,
                         'L60 VIEWS': l60ex,
                         'L15-45 VIEWS': l45ex,
+                        'L30 VIEWS': l30ex,
                         'L60 vs L15-45': item.L60_VS_L1545 || 'NEUTRAL',
                         'L60 vs L15-45 (comparison)': cmpL60Note,
                         'L15-45 vs L30': item.L1545_VS_L30 || 'NEUTRAL',
                         'L15-45 vs L30 (comparison)': cmp1545Note,
+                        'L7 VIEWS': Math.round(Number(item.L7_VIEWS || 0)) || 0,
                         'L1 VIEWS': Math.round(Number(item.L1_VIEWS || item.YESTERDAY_VIEWS || 0)) || 0,
                         CBID: item.CBID != null ? item.CBID : '',
                         ESBID: item.ESBID != null ? item.ESBID : '',

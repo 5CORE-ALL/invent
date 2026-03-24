@@ -374,7 +374,7 @@ class AutoUpdateAmazonBgtPt extends Command
                 } elseif ($acos < 30) {
                     $row['sbgt'] = 5;
                 } else {
-                    $row['sbgt'] = 3;
+                    $row['sbgt'] = 2;
                 }
 
                 $result[] = (object) $row;
