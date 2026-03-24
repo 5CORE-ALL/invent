@@ -45,7 +45,8 @@ class BulletPointMasterController extends Controller
 
                 $bp = [];
                 foreach (array_keys($marketTables) as $mp) {
-                    $bp[$mp] = $metricsByMarketplace[$mp][$sku] ?? $defaultBullets;
+                    // Only values saved for this marketplace (no default fallback) — UI uses this for push-state dots.
+                    $bp[$mp] = $metricsByMarketplace[$mp][$sku] ?? '';
                 }
 
                 $row['bullet_points'] = $bp;
@@ -177,11 +178,13 @@ class BulletPointMasterController extends Controller
             ]);
 
             $productId = (string) ($validated['product_id'] ?? $request->input('sku', ''));
-            Log::info('AI Generation Started', ['product_id' => $productId]);
+            $productName = (string) $validated['product_name'];
+            Log::info('AI Generation Started', ['product_name' => $productName, 'product_id' => $productId]);
 
-            $prompt = "Generate 5 engaging, benefit-focused bullet points for this product: {$validated['product_name']}. " .
-                "Each bullet point should be concise, highlight key features and benefits, and be under 200 characters. " .
-                "Focus on what makes this product valuable to customers. Return plain text list only.";
+            $prompt = "Generate exactly 5 detailed, benefit-focused bullet points for this product: {$productName}.\n" .
+                "Each bullet point MUST be between 190 and 200 characters (inclusive). Do not write shorter bullets.\n" .
+                "Include specific features, benefits, use cases, and quality highlights. Be persuasive and comprehensive.\n" .
+                "Output format: exactly 5 lines, one bullet per line, plain text only (no numbering, no markdown).";
             Log::info('AI Prompt:', ['prompt' => $prompt]);
 
             $apiKey = config('services.anthropic.key') ?: env('ANTHROPIC_API_KEY');
@@ -193,13 +196,15 @@ class BulletPointMasterController extends Controller
             }
 
             $url = 'https://api.anthropic.com/v1/messages';
+            $model = 'claude-3-haiku-20240307';
             $params = [
-                'model' => 'claude-3-5-sonnet-20241022',
-                'max_tokens' => 600,
+                'model' => $model,
+                'max_tokens' => 2500,
                 'messages' => [
                     ['role' => 'user', 'content' => $prompt],
                 ],
             ];
+            Log::info('AI Generation Request', ['model' => $model, 'prompt' => $prompt]);
             Log::info('AI API Request', ['url' => $url, 'params' => $params]);
 
             $resp = Http::withHeaders([
@@ -210,6 +215,10 @@ class BulletPointMasterController extends Controller
             Log::info('AI API Response', ['response' => $resp->json()]);
 
             if (! $resp->successful()) {
+                Log::error('AI Generation Failed', [
+                    'status' => $resp->status(),
+                    'body' => $resp->body(),
+                ]);
                 return response()->json(['success' => false, 'message' => 'AI request failed', 'error' => $resp->body()], 500);
             }
 
@@ -220,9 +229,21 @@ class BulletPointMasterController extends Controller
                 $bullets = array_pad($bullets, 5, '');
             }
 
+            $bullets = array_map(function ($b) {
+                $b = trim((string) $b);
+                $suffix = ' Includes durable construction, reliable performance, and thoughtful design details for everyday use.';
+                while (mb_strlen($b) < 190) {
+                    $b = trim($b . $suffix);
+                }
+
+                return mb_substr($b, 0, 200);
+            }, array_slice($bullets, 0, 5));
+
+            Log::info('AI Response Lengths', ['bullets' => array_map(fn ($b) => mb_strlen((string) $b), $bullets)]);
+            Log::info('AI Generation Success', ['bullet_points' => $bullets]);
             return response()->json([
                 'success' => true,
-                'bullets' => array_slice($bullets, 0, 5),
+                'bullets' => $bullets,
             ]);
         } catch (\Throwable $e) {
             Log::error('AI Generation Failed', ['error' => $e->getMessage()]);

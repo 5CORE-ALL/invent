@@ -1377,6 +1377,50 @@
                             </button>
                         </div>
                     </div>
+                    <div class="row g-3 align-items-end pt-1 mb-3">
+                        <div class="col-md-2">
+                            <label class="form-label fw-semibold mb-2"
+                                style="color: #475569; font-size: 0.8125rem;">
+                                L60 VIEWS Range
+                            </label>
+                            <div class="d-flex gap-2">
+                                <input type="number" id="l60-views-filter-min"
+                                    class="form-control form-control-sm" placeholder="Min" step="1"
+                                    style="border-color: #e2e8f0;">
+                                <input type="number" id="l60-views-filter-max"
+                                    class="form-control form-control-sm" placeholder="Max" step="1"
+                                    style="border-color: #e2e8f0;">
+                            </div>
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label fw-semibold mb-2"
+                                style="color: #475569; font-size: 0.8125rem;">
+                                L45 VIEWS Range
+                            </label>
+                            <div class="d-flex gap-2">
+                                <input type="number" id="l45-views-filter-min"
+                                    class="form-control form-control-sm" placeholder="Min" step="1"
+                                    style="border-color: #e2e8f0;">
+                                <input type="number" id="l45-views-filter-max"
+                                    class="form-control form-control-sm" placeholder="Max" step="1"
+                                    style="border-color: #e2e8f0;">
+                            </div>
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label fw-semibold mb-2"
+                                style="color: #475569; font-size: 0.8125rem;">
+                                YESTERDAY VIEWS Range
+                            </label>
+                            <div class="d-flex gap-2">
+                                <input type="number" id="yesterday-views-filter-min"
+                                    class="form-control form-control-sm" placeholder="Min" step="1"
+                                    style="border-color: #e2e8f0;">
+                                <input type="number" id="yesterday-views-filter-max"
+                                    class="form-control form-control-sm" placeholder="Max" step="1"
+                                    style="border-color: #e2e8f0;">
+                            </div>
+                        </div>
+                    </div>
 
                     <!-- for popup modal start Modal -->
                     <div class="modal fade" id="createTaskModal" tabindex="-1" aria-labelledby="createTaskModalLabel"
@@ -1689,6 +1733,30 @@
                                     <div class="d-flex flex-column align-items-center" style="gap: 4px">
                                         <div class="d-flex align-items-center">
                                             L7 VIEWS <span class="sort-arrow">↓</span>
+                                        </div>
+                                    </div>
+                                </th>
+                                <th data-field="l60_views" style="vertical-align: middle; white-space: nowrap;"
+                                    title="Last 60 days views (60-30 days ago)">
+                                    <div class="d-flex flex-column align-items-center" style="gap: 4px">
+                                        <div class="d-flex align-items-center">
+                                            L60 VIEWS <span class="sort-arrow">↓</span>
+                                        </div>
+                                    </div>
+                                </th>
+                                <th data-field="l45_views" style="vertical-align: middle; white-space: nowrap;"
+                                    title="Last 45 days views (30-day window from middle of previous month)">
+                                    <div class="d-flex flex-column align-items-center" style="gap: 4px">
+                                        <div class="d-flex align-items-center">
+                                            L45 VIEWS <span class="sort-arrow">↓</span>
+                                        </div>
+                                    </div>
+                                </th>
+                                <th data-field="yesterday_views" style="vertical-align: middle; white-space: nowrap;"
+                                    title="Views from yesterday only">
+                                    <div class="d-flex flex-column align-items-center" style="gap: 4px">
+                                        <div class="d-flex align-items-center">
+                                            YESTERDAY VIEWS <span class="sort-arrow">↓</span>
                                         </div>
                                     </div>
                                 </th>
@@ -2331,7 +2399,7 @@
                     'TacosL30'
                 ],
                 'conversion view': ['SCVR', 'KwCvrL60', 'KwCvrL30', 'KwCvrL7', 'PmtCvrL30', 'PmtCvrL7'],
-                'visibility view': ['KwCtrL60', 'KwCtrL30', 'KwCtrL7', 'PmtCtrL30', 'PmtCtrL7']
+                'visibility view': ['KwCtrL60', 'KwCtrL30', 'KwCtrL7', 'PmtCtrL30', 'PmtCtrL7', 'L60_VIEWS', 'L45_VIEWS', 'YESTERDAY_VIEWS']
             };
 
             // Filter state
@@ -2359,6 +2427,10 @@
                 min: null,
                 max: null
             };
+
+            let l60ViewsRangeFilter = { min: null, max: null };
+            let l45ViewsRangeFilter = { min: null, max: null };
+            let yesterdayViewsRangeFilter = { min: null, max: null };
             
             // CBID range filter
             let cbidRangeFilter = {
@@ -2897,6 +2969,9 @@
                                     SHIP: item.Ship_productmaster || 0,
                                     VIEWS: item.ebay_views || 0,
                                     L7_VIEWS: item.l7_views || 0,
+                                    L60_VIEWS: item.l60_views != null ? Number(item.l60_views) : 0,
+                                    L45_VIEWS: item.l45_views != null ? Number(item.l45_views) : 0,
+                                    YESTERDAY_VIEWS: item.yesterday_views != null ? Number(item.yesterday_views) : 0,
                                     CBID: item.bid_percentage || 0,
                                     ESBID: item.suggested_bid || 0,
                                     TPFT: item.TPFT || 0,
@@ -2975,12 +3050,12 @@
                 $tbody.empty();
 
                 if (isLoading) {
-                    $tbody.append('<tr><td colspan="15" class="text-center">Loading data...</td></tr>');
+                    $tbody.append('<tr><td colspan="22" class="text-center">Loading data...</td></tr>');
                     return;
                 }
 
                 if (filteredData.length === 0) {
-                    $tbody.append('<tr><td colspan="15" class="text-center">No matching records found</td></tr>');
+                    $tbody.append('<tr><td colspan="22" class="text-center">No matching records found</td></tr>');
                     return;
                 }
 
@@ -3176,6 +3251,19 @@
                     $row.append($('<td data-field="total_views">').text(item.VIEWS));
 
                     $row.append($('<td data-field="l7_views">').text(item.L7_VIEWS || 0));
+
+                    const l60v = Math.round(Number(item.L60_VIEWS || 0)) || 0;
+                    const l45v = Math.round(Number(item.L45_VIEWS || 0)) || 0;
+                    const yv = Math.round(Number(item.YESTERDAY_VIEWS || 0)) || 0;
+                    $row.append($('<td data-field="l60_views">').attr('title', 'Last 60 days views (60-30 days ago)').html(
+                        `<span class="dil-percent-value ${getViewColor(l60v)}">${l60v}</span>`
+                    ));
+                    $row.append($('<td data-field="l45_views">').attr('title', 'Last 45 days views (30-day window from middle of previous month)').html(
+                        `<span class="dil-percent-value ${getViewColor(l45v)}">${l45v}</span>`
+                    ));
+                    $row.append($('<td data-field="yesterday_views">').attr('title', 'Views from yesterday only').html(
+                        `<span class="dil-percent-value ${getViewColor(yv)}">${yv}</span>`
+                    ));
 
                     // CVR with color coding and tooltip
 
@@ -5001,6 +5089,9 @@
                         's_bid': 'SBID', // S BID is calculated, not ESBID
                         'total_views': 'VIEWS',
                         'l7_views': 'L7_VIEWS',
+                        'l60_views': 'L60_VIEWS',
+                        'l45_views': 'L45_VIEWS',
+                        'yesterday_views': 'YESTERDAY_VIEWS',
                         'cvr': 'SCVR', // SCVR is calculated dynamically
                         'pmtclkl7': 'PmtClkL7',
                         'views': 'PmtClkL30',
@@ -5072,9 +5163,10 @@
                         'sl_no', 'INV', 'L30', 'ov_dil', 'eBay L30', 'E Dil%',
                         'eBay Price', 'PFT %', 'Roi', 'Tacos30', 'SCVR', 'PmtClkL30', 'PmtClkL7',
                         'SPRICE', 'SPFT', 'SROI', 'Sales L30', 'Profit', 'VIEWS', 'L7_VIEWS',
+                        'L60_VIEWS', 'L45_VIEWS', 'YESTERDAY_VIEWS',
                         'CBID', 'ESBID', 'SBID', 'TPFT',
                         'inv', 'ov_l30', 'el_30', 'c_bid', 'cbid', 'esbid', 's_bid', 'total_views',
-                        'l7_views',
+                        'l7_views', 'l60_views', 'l45_views', 'yesterday_views',
                         'cvr', 'pmtclkl7', 'views', 'price', 'pft', 'roi', 'tpft', 'troi'
                     ]);
                     const isNumeric = numericFieldsSet.has(dataField) || numericFieldsSet.has(originalField);
@@ -5303,7 +5395,7 @@
             }
 
             // Add change event listeners to all range filter inputs for auto-filter
-            $('#t-views-filter-min, #t-views-filter-max, #l7-views-filter-min, #l7-views-filter-max, #cbid-filter-min, #cbid-filter-max, #scvr-filter-min, #scvr-filter-max').on('input change', function() {
+            $('#t-views-filter-min, #t-views-filter-max, #l7-views-filter-min, #l7-views-filter-max, #l60-views-filter-min, #l60-views-filter-max, #l45-views-filter-min, #l45-views-filter-max, #yesterday-views-filter-min, #yesterday-views-filter-max, #cbid-filter-min, #cbid-filter-max, #scvr-filter-min, #scvr-filter-max').on('input change', function() {
                 applyRangeFiltersOnChange();
             });
 
@@ -5339,6 +5431,30 @@
                 // Set L7 Views filter values
                 l7ViewsRangeFilter.min = l7MinVal !== '' ? parseFloat(l7MinVal) : null;
                 l7ViewsRangeFilter.max = l7MaxVal !== '' ? parseFloat(l7MaxVal) : null;
+
+                const l60MinVal = $('#l60-views-filter-min').val();
+                const l60MaxVal = $('#l60-views-filter-max').val();
+                if (l60MinVal !== '' && l60MaxVal !== '' && parseFloat(l60MinVal) > parseFloat(l60MaxVal)) {
+                    return;
+                }
+                l60ViewsRangeFilter.min = l60MinVal !== '' ? parseFloat(l60MinVal) : null;
+                l60ViewsRangeFilter.max = l60MaxVal !== '' ? parseFloat(l60MaxVal) : null;
+
+                const l45MinVal = $('#l45-views-filter-min').val();
+                const l45MaxVal = $('#l45-views-filter-max').val();
+                if (l45MinVal !== '' && l45MaxVal !== '' && parseFloat(l45MinVal) > parseFloat(l45MaxVal)) {
+                    return;
+                }
+                l45ViewsRangeFilter.min = l45MinVal !== '' ? parseFloat(l45MinVal) : null;
+                l45ViewsRangeFilter.max = l45MaxVal !== '' ? parseFloat(l45MaxVal) : null;
+
+                const yMinVal = $('#yesterday-views-filter-min').val();
+                const yMaxVal = $('#yesterday-views-filter-max').val();
+                if (yMinVal !== '' && yMaxVal !== '' && parseFloat(yMinVal) > parseFloat(yMaxVal)) {
+                    return;
+                }
+                yesterdayViewsRangeFilter.min = yMinVal !== '' ? parseFloat(yMinVal) : null;
+                yesterdayViewsRangeFilter.max = yMaxVal !== '' ? parseFloat(yMaxVal) : null;
 
                 // CBID filter
                 const cbidMinVal = $('#cbid-filter-min').val();
@@ -5402,6 +5518,34 @@
                     return;
                 }
 
+                const l60MinVal = $('#l60-views-filter-min').val();
+                const l60MaxVal = $('#l60-views-filter-max').val();
+                if (l60MinVal !== '' && l60MaxVal !== '' && parseFloat(l60MinVal) > parseFloat(l60MaxVal)) {
+                    alert('L60 VIEWS: Minimum value cannot be greater than maximum value');
+                    return;
+                }
+
+                const l45MinVal = $('#l45-views-filter-min').val();
+                const l45MaxVal = $('#l45-views-filter-max').val();
+                if (l45MinVal !== '' && l45MaxVal !== '' && parseFloat(l45MinVal) > parseFloat(l45MaxVal)) {
+                    alert('L45 VIEWS: Minimum value cannot be greater than maximum value');
+                    return;
+                }
+
+                const yMinVal = $('#yesterday-views-filter-min').val();
+                const yMaxVal = $('#yesterday-views-filter-max').val();
+                if (yMinVal !== '' && yMaxVal !== '' && parseFloat(yMinVal) > parseFloat(yMaxVal)) {
+                    alert('YESTERDAY VIEWS: Minimum value cannot be greater than maximum value');
+                    return;
+                }
+
+                const scvrMinVal = $('#scvr-filter-min').val();
+                const scvrMaxVal = $('#scvr-filter-max').val();
+                if (scvrMinVal !== '' && scvrMaxVal !== '' && parseFloat(scvrMinVal) > parseFloat(scvrMaxVal)) {
+                    alert('SCVR: Minimum value cannot be greater than maximum value');
+                    return;
+                }
+
                 // Apply filters with validation
                 applyRangeFilters();
             });
@@ -5422,6 +5566,21 @@
                 // Clear L7 Views input fields
                 $('#l7-views-filter-min').val('');
                 $('#l7-views-filter-max').val('');
+
+                l60ViewsRangeFilter.min = null;
+                l60ViewsRangeFilter.max = null;
+                $('#l60-views-filter-min').val('');
+                $('#l60-views-filter-max').val('');
+
+                l45ViewsRangeFilter.min = null;
+                l45ViewsRangeFilter.max = null;
+                $('#l45-views-filter-min').val('');
+                $('#l45-views-filter-max').val('');
+
+                yesterdayViewsRangeFilter.min = null;
+                yesterdayViewsRangeFilter.max = null;
+                $('#yesterday-views-filter-min').val('');
+                $('#yesterday-views-filter-max').val('');
 
                 // Clear CBID filter values
                 cbidRangeFilter.min = null;
@@ -5552,6 +5711,33 @@
                     });
                 }
 
+                if (l60ViewsRangeFilter.min !== null || l60ViewsRangeFilter.max !== null) {
+                    filteredData = filteredData.filter(item => {
+                        const v = parseFloat(item.L60_VIEWS || 0) || 0;
+                        if (l60ViewsRangeFilter.min !== null && v < l60ViewsRangeFilter.min) return false;
+                        if (l60ViewsRangeFilter.max !== null && v > l60ViewsRangeFilter.max) return false;
+                        return true;
+                    });
+                }
+
+                if (l45ViewsRangeFilter.min !== null || l45ViewsRangeFilter.max !== null) {
+                    filteredData = filteredData.filter(item => {
+                        const v = parseFloat(item.L45_VIEWS || 0) || 0;
+                        if (l45ViewsRangeFilter.min !== null && v < l45ViewsRangeFilter.min) return false;
+                        if (l45ViewsRangeFilter.max !== null && v > l45ViewsRangeFilter.max) return false;
+                        return true;
+                    });
+                }
+
+                if (yesterdayViewsRangeFilter.min !== null || yesterdayViewsRangeFilter.max !== null) {
+                    filteredData = filteredData.filter(item => {
+                        const v = parseFloat(item.YESTERDAY_VIEWS || 0) || 0;
+                        if (yesterdayViewsRangeFilter.min !== null && v < yesterdayViewsRangeFilter.min) return false;
+                        if (yesterdayViewsRangeFilter.max !== null && v > yesterdayViewsRangeFilter.max) return false;
+                        return true;
+                    });
+                }
+
                 // Apply CBID range filter
                 if (cbidRangeFilter.min !== null || cbidRangeFilter.max !== null) {
                     filteredData = filteredData.filter(item => {
@@ -5613,6 +5799,9 @@
                         's_bid': 'SBID',
                         'total_views': 'VIEWS',
                         'l7_views': 'L7_VIEWS',
+                        'l60_views': 'L60_VIEWS',
+                        'l45_views': 'L45_VIEWS',
+                        'yesterday_views': 'YESTERDAY_VIEWS',
                         'cvr': 'SCVR',
                         'pmtclkl7': 'PmtClkL7',
                         'views': 'PmtClkL30',
@@ -5670,9 +5859,10 @@
                         'sl_no', 'INV', 'L30', 'ov_dil', 'eBay L30', 'E Dil%',
                         'eBay Price', 'PFT %', 'Roi', 'Tacos30', 'SCVR', 'PmtClkL30', 'PmtClkL7',
                         'SPRICE', 'SPFT', 'SROI', 'Sales L30', 'Profit', 'VIEWS', 'L7_VIEWS',
+                        'L60_VIEWS', 'L45_VIEWS', 'YESTERDAY_VIEWS',
                         'CBID', 'ESBID', 'SBID', 'TPFT',
                         'inv', 'ov_l30', 'el_30', 'c_bid', 'cbid', 'esbid', 's_bid', 'total_views',
-                        'l7_views',
+                        'l7_views', 'l60_views', 'l45_views', 'yesterday_views',
                         'cvr', 'pmtclkl7', 'views', 'price', 'pft', 'roi', 'tpft', 'troi'
                     ]);
                     const isNumeric = numericFieldsSet.has(dataField) || numericFieldsSet.has(originalField);
@@ -5727,24 +5917,36 @@
 
                 let exportData = [];
 
-                // Table ke rows loop karke sbid lete hain
-                $("#ebay-table tbody tr").each(function(index) {
-                    let cbid = $(this).find('td[data-field="cbid"]').text().trim();
-                    let esbid = $(this).find('td[data-field="esbid"]').text().trim();
-                    let sbid = $(this).find('td[data-field="sbid"]').text().trim();
-                    let ovDil = $(this).find('td[data-field="ov_dil"]').data("value");
-                    let inv = $(this).find('td.inv_col').text().trim();
-
-                    if (filteredData[index]) {
-                        exportData.push({
-                            SKU: filteredData[index]['(Child) sku'] || "",
-                            INV: inv || "",
-                            CBID: cbid || "",
-                            ESBID: esbid || "",
-                            SBID: sbid || "",
-                            'Dil%': ovDil || ""
-                        });
+                filteredData.forEach(function(item) {
+                    if (item.NRL === 'NR') {
+                        return;
                     }
+                    const ovDil = item.ov_dil != null ? Math.round(item.ov_dil * 100) : '';
+                    exportData.push({
+                        SKU: item['(Child) sku'] || '',
+                        INV: item.INV != null ? item.INV : '',
+                        'T VIEWS': Math.round(Number(item.VIEWS || 0)) || 0,
+                        'L7 VIEWS': Math.round(Number(item.L7_VIEWS || 0)) || 0,
+                        'L60 VIEWS': Math.round(Number(item.L60_VIEWS || 0)) || 0,
+                        'L45 VIEWS': Math.round(Number(item.L45_VIEWS || 0)) || 0,
+                        'YESTERDAY VIEWS': Math.round(Number(item.YESTERDAY_VIEWS || 0)) || 0,
+                        CBID: item.CBID != null ? item.CBID : '',
+                        ESBID: item.ESBID != null ? item.ESBID : '',
+                        SBID: (function() {
+                            const l7Views = Number(item.L7_VIEWS || item.l7_views || 0) || 0;
+                            let sbidValue;
+                            if (l7Views >= 0 && l7Views < 50) sbidValue = parseFloat(item.ESBID || 0) || 0;
+                            else if (l7Views >= 50 && l7Views < 100) sbidValue = 8;
+                            else if (l7Views >= 100 && l7Views < 150) sbidValue = 7;
+                            else if (l7Views >= 150 && l7Views < 200) sbidValue = 6;
+                            else if (l7Views >= 200 && l7Views < 350) sbidValue = 5;
+                            else if (l7Views >= 350 && l7Views < 400) sbidValue = 4;
+                            else if (l7Views >= 400) sbidValue = 3;
+                            else sbidValue = parseFloat(item.ESBID || 0) || 0;
+                            return Math.min(sbidValue, 15).toFixed(1);
+                        })(),
+                        'Dil%': ovDil
+                    });
                 });
 
                 console.log("Final Export Data:", exportData);
