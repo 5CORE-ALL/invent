@@ -560,13 +560,40 @@ class EbayPMPAdsController extends Controller
 
         $today = \Carbon\Carbon::now(config('app.timezone'))->startOfDay();
         $minDate = $today->copy()->subDays(70);
+        $minDateStr = $minDate->format('Y-m-d');
+
+        // Only load daily rows for SKUs we need (avoids OOM when the table has all eBay SKUs).
+        $skuCandidates = $this->expandSkuCandidatesForDailyDataLookup($normalizedSkus);
+        if ($skuCandidates === []) {
+            return $out;
+        }
+
+        /** @var array<string, array<string, int>> $byCanonical date => cumulative views */
+        $byCanonical = [];
+        $rowsLoaded = 0;
 
         try {
-            $rows = EbaySkuDailyData::query()
-                ->where('record_date', '>=', $minDate->format('Y-m-d'))
-                ->orderBy('sku')
-                ->orderBy('record_date')
-                ->get(['sku', 'record_date', 'daily_data']);
+            foreach (array_chunk($skuCandidates, 400) as $skuChunk) {
+                $q = DB::table('ebay_sku_daily_data')
+                    ->where('record_date', '>=', $minDateStr)
+                    ->whereIn('sku', $skuChunk)
+                    ->orderBy('sku')
+                    ->orderBy('record_date');
+
+                foreach ($q->cursor() as $r) {
+                    $rowsLoaded++;
+                    $canon = $this->ebaySkuCanonicalKey((string) $r->sku);
+                    if ($canon === '') {
+                        continue;
+                    }
+                    $d = $this->formatSqlDateString($r->record_date);
+                    $views = $this->extractDailyDataViews($r->daily_data ?? null);
+                    if (! isset($byCanonical[$canon])) {
+                        $byCanonical[$canon] = [];
+                    }
+                    $byCanonical[$canon][$d] = max($byCanonical[$canon][$d] ?? 0, $views);
+                }
+            }
         } catch (\Throwable $e) {
             Log::error('ebay_pmp_daily_data_query_failed', [
                 'message' => $e->getMessage(),
@@ -574,23 +601,6 @@ class EbayPMPAdsController extends Controller
             ]);
 
             return $this->emptyViewAggregatesForSkus($skus);
-        }
-
-        /** @var array<string, array<string, int>> $byCanonical date => cumulative views */
-        $byCanonical = [];
-        foreach ($rows as $r) {
-            $canon = $this->ebaySkuCanonicalKey((string) $r->sku);
-            if ($canon === '') {
-                continue;
-            }
-            $d = $r->record_date instanceof \DateTimeInterface
-                ? $r->record_date->format('Y-m-d')
-                : \Carbon\Carbon::parse($r->record_date)->format('Y-m-d');
-            $views = isset($r->daily_data['views']) ? (int) $r->daily_data['views'] : 0;
-            if (! isset($byCanonical[$canon])) {
-                $byCanonical[$canon] = [];
-            }
-            $byCanonical[$canon][$d] = max($byCanonical[$canon][$d] ?? 0, $views);
         }
 
         $l60Start = $today->copy()->subDays(60)->format('Y-m-d');
@@ -621,12 +631,15 @@ class EbayPMPAdsController extends Controller
 
             $sumDeltas = function (string $startStr, string $endStr) use ($dailyDeltas) {
                 $sum = 0;
-                $cur = \Carbon\Carbon::parse($startStr)->startOfDay();
-                $endC = \Carbon\Carbon::parse($endStr)->startOfDay();
-                while ($cur->lte($endC)) {
-                    $ds = $cur->format('Y-m-d');
+                $ts = strtotime($startStr.' 00:00:00');
+                $endTs = strtotime($endStr.' 23:59:59');
+                if ($ts === false || $endTs === false) {
+                    return 0;
+                }
+                while ($ts <= $endTs) {
+                    $ds = date('Y-m-d', $ts);
                     $sum += (int) ($dailyDeltas[$ds] ?? 0);
-                    $cur->addDay();
+                    $ts = strtotime('+1 day', $ts);
                 }
 
                 return $sum;
@@ -652,8 +665,9 @@ class EbayPMPAdsController extends Controller
                 'yesterday' => $yesterday,
                 'l60_window' => [$l60Start, $l60End],
                 'l45_window' => [$l45Start, $l45End],
-                'daily_rows_loaded' => $rows->count(),
+                'daily_rows_loaded' => $rowsLoaded,
                 'canonical_series_count' => count($byCanonical),
+                'sku_candidate_count' => count($skuCandidates),
             ]);
         }
 
@@ -707,6 +721,63 @@ class EbayPMPAdsController extends Controller
         $s = preg_replace('/\s+/u', ' ', $s);
 
         return preg_replace('/[^A-Z0-9]/', '', $s);
+    }
+
+    /**
+     * Possible `sku` column values in ebay_sku_daily_data for ProductMaster SKUs (spacing/dash variants).
+     *
+     * @param  array<int, string>  $normalizedSkus
+     * @return array<int, string>
+     */
+    private function expandSkuCandidatesForDailyDataLookup(array $normalizedSkus): array
+    {
+        $skuCandidates = [];
+        foreach ($normalizedSkus as $ns) {
+            if ($ns === '') {
+                continue;
+            }
+            $skuCandidates[] = $ns;
+            $skuCandidates[] = str_replace(' ', '-', $ns);
+            $skuCandidates[] = str_replace('-', ' ', $ns);
+            $skuCandidates[] = preg_replace('/\s+/u', '', $ns);
+            $compact = preg_replace('/\s+/u', ' ', $ns);
+            $skuCandidates[] = preg_replace('/-+/', '-', $compact);
+        }
+
+        return array_values(array_unique(array_filter($skuCandidates)));
+    }
+
+    /**
+     * @param  mixed  $recordDate
+     */
+    private function formatSqlDateString($recordDate): string
+    {
+        if ($recordDate instanceof \DateTimeInterface) {
+            return $recordDate->format('Y-m-d');
+        }
+        $s = (string) $recordDate;
+        if (preg_match('/^\d{4}-\d{2}-\d{2}/', $s, $m)) {
+            return substr($s, 0, 10);
+        }
+
+        return $s !== '' ? substr($s, 0, 10) : '';
+    }
+
+    /**
+     * @param  mixed  $dailyData  JSON string or decoded array from DB
+     */
+    private function extractDailyDataViews($dailyData): int
+    {
+        if ($dailyData === null || $dailyData === '') {
+            return 0;
+        }
+        if (is_string($dailyData)) {
+            $decoded = json_decode($dailyData, true);
+        } else {
+            $decoded = is_array($dailyData) ? $dailyData : [];
+        }
+
+        return isset($decoded['views']) ? (int) $decoded['views'] : 0;
     }
 
     /**
