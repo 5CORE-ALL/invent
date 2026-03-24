@@ -662,6 +662,9 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::put('/outgoing-update-reason-comment', [OutgoingController::class, 'updateReasonAndComment']);
     Route::get('/outgoing-history/{id}', [OutgoingController::class, 'getHistory']);
 
+    // Spare parts — wrong URLs → canonical page (URLs only, before catch-all routes)
+    Route::get('/spare-parts', fn() => redirect('/inventory/spare-parts', 301));
+
     // Spare parts (inventory management)
     Route::get('/inventory/spare-parts', [SparePartController::class, 'index'])->name('inventory.spare-parts.index');
     Route::get('/inventory/spare-parts/api/summary', [SparePartController::class, 'summary'])->name('inventory.spare-parts.api.summary');
