@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Campaigns;
 
 use App\Http\Controllers\Controller;
 use App\Models\EbayDataView;
+use App\Models\EbaySkuDailyData;
 use App\Models\EbayGeneralReport;
 use App\Models\EbayListingStatus;
 use App\Models\EbayMetric;
@@ -193,6 +194,8 @@ class EbayPMPAdsController extends Controller
 
         $skus = $productMasters->pluck("sku")->filter()->unique()->values()->all();
 
+        $viewWindowBySku = $this->computeEbayDailyViewAggregates($skus);
+
         // Fetch Shopify data with normalized SKU matching
         $shopifyDataRaw = ShopifySku::whereIn("sku", $skus)->get();
         $shopifyData = [];
@@ -321,6 +324,9 @@ class EbayPMPAdsController extends Controller
             $row['eBay_item_id'] = $ebayMetric->item_id ?? null;
             $row['ebay_views'] = $ebayMetric->views ?? 0;
             $row['l7_views'] = $ebayMetric->l7_views ?? 0;
+            $row['l60_views'] = (int) ($viewWindowBySku[$normalizedSku]['l60_views'] ?? 0);
+            $row['l45_views'] = (int) ($viewWindowBySku[$normalizedSku]['l45_views'] ?? 0);
+            $row['yesterday_views'] = (int) ($viewWindowBySku[$normalizedSku]['yesterday_views'] ?? 0);
             $row['campaign_id'] = ($ebayMetric && isset($listingToCampaignId[$ebayMetric->item_id])) 
                 ? $listingToCampaignId[$ebayMetric->item_id] : null;
 
@@ -435,6 +441,108 @@ class EbayPMPAdsController extends Controller
             "data" => $result,
             "status" => 200,
         ]);
+    }
+
+    /**
+     * Per-SKU view metrics from ebay_sku_daily_data (cumulative listing views per snapshot).
+     * Day-over-day deltas approximate views received on each calendar day.
+     *
+     * - l60_views: sum of daily deltas from (today-60) through (today-31) — the 30 days before the last 30.
+     * - l45_views: sum of daily deltas from (today-45) through (today-16) — rolling 30-day window.
+     * - yesterday_views: delta for calendar yesterday vs prior snapshot day.
+     *
+     * @param  array<int, string|null>  $skus
+     * @return array<string, array{l60_views: int, l45_views: int, yesterday_views: int}>
+     */
+    private function computeEbayDailyViewAggregates(array $skus): array
+    {
+        $normalizeSku = function ($sku) {
+            if (empty($sku)) {
+                return '';
+            }
+            $sku = strtoupper(trim($sku));
+            $sku = preg_replace('/\s+/u', ' ', $sku);
+            $sku = preg_replace('/[^\S\r\n]+/u', ' ', $sku);
+
+            return trim($sku);
+        };
+
+        $normalizedSkus = array_values(array_unique(array_filter(array_map($normalizeSku, $skus))));
+        $out = [];
+        foreach ($normalizedSkus as $s) {
+            $out[$s] = ['l60_views' => 0, 'l45_views' => 0, 'yesterday_views' => 0];
+        }
+
+        if ($normalizedSkus === []) {
+            return $out;
+        }
+
+        $today = \Carbon\Carbon::today();
+        $minDate = $today->copy()->subDays(70);
+
+        $rows = EbaySkuDailyData::whereIn('sku', $normalizedSkus)
+            ->where('record_date', '>=', $minDate->format('Y-m-d'))
+            ->orderBy('sku')
+            ->orderBy('record_date')
+            ->get(['sku', 'record_date', 'daily_data']);
+
+        $bySku = [];
+        foreach ($rows as $r) {
+            $skuKey = $normalizeSku($r->sku);
+            $d = $r->record_date instanceof \DateTimeInterface
+                ? $r->record_date->format('Y-m-d')
+                : \Carbon\Carbon::parse($r->record_date)->format('Y-m-d');
+            $views = isset($r->daily_data['views']) ? (int) $r->daily_data['views'] : 0;
+            if (! isset($bySku[$skuKey])) {
+                $bySku[$skuKey] = [];
+            }
+            $bySku[$skuKey][$d] = $views;
+        }
+
+        $l60Start = $today->copy()->subDays(60)->format('Y-m-d');
+        $l60End = $today->copy()->subDays(31)->format('Y-m-d');
+        $l45Start = $today->copy()->subDays(45)->format('Y-m-d');
+        $l45End = $today->copy()->subDays(16)->format('Y-m-d');
+        $yesterday = $today->copy()->subDay()->format('Y-m-d');
+
+        foreach ($normalizedSkus as $skuKey) {
+            $dates = $bySku[$skuKey] ?? [];
+            if ($dates === []) {
+                continue;
+            }
+            ksort($dates);
+            $dateKeys = array_keys($dates);
+            $dailyDeltas = [];
+            for ($i = 0; $i < count($dateKeys); $i++) {
+                $dk = $dateKeys[$i];
+                $cum = $dates[$dk];
+                if ($i === 0) {
+                    $dailyDeltas[$dk] = 0;
+                    continue;
+                }
+                $prevCum = $dates[$dateKeys[$i - 1]];
+                $dailyDeltas[$dk] = max(0, $cum - $prevCum);
+            }
+
+            $sumRange = function (string $startStr, string $endStr) use ($dailyDeltas) {
+                $sum = 0;
+                $cur = \Carbon\Carbon::parse($startStr)->startOfDay();
+                $endC = \Carbon\Carbon::parse($endStr)->startOfDay();
+                while ($cur->lte($endC)) {
+                    $ds = $cur->format('Y-m-d');
+                    $sum += (int) ($dailyDeltas[$ds] ?? 0);
+                    $cur->addDay();
+                }
+
+                return $sum;
+            };
+
+            $out[$skuKey]['l60_views'] = $sumRange($l60Start, $l60End);
+            $out[$skuKey]['l45_views'] = $sumRange($l45Start, $l45End);
+            $out[$skuKey]['yesterday_views'] = (int) ($dailyDeltas[$yesterday] ?? 0);
+        }
+
+        return $out;
     }
 
     private function extractNumber($value)
