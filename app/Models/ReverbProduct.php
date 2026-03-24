@@ -16,6 +16,7 @@ class ReverbProduct extends Model
         'reverb_listing_id',
         'listing_state',
         'product_title',
+        'description',
         'last_synced_at',
         'last_shopify_qty',
         'r_l30',

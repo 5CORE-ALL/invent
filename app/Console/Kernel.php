@@ -12,6 +12,10 @@ use App\Console\Commands\CheckReverbListings;
 use App\Console\Commands\FetchReverbData;
 use App\Console\Commands\RelistReverbProducts;
 use App\Console\Commands\SyncReverbListingStatuses;
+use App\Console\Commands\SyncReverbCommand;
+use App\Console\Commands\SyncShopifyCatalogCommand;
+use App\Console\Commands\SyncShopifyPlsCatalogCommand;
+use App\Console\Commands\DebugEbaySkuMetricsCommand;
 use App\Console\Commands\FetchTopDawgData;
 use App\Console\Commands\SyncTopDawgAll;
 use App\Console\Commands\FetchMacyProducts;
@@ -36,6 +40,10 @@ class Kernel extends ConsoleKernel
         FetchReverbData::class,
         RelistReverbProducts::class,
         SyncReverbListingStatuses::class,
+        SyncReverbCommand::class,
+        SyncShopifyCatalogCommand::class,
+        SyncShopifyPlsCatalogCommand::class,
+        DebugEbaySkuMetricsCommand::class,
         FetchTopDawgData::class,
         SyncTopDawgAll::class,
         \App\Console\Commands\ProcessPendingReverbOrders::class,

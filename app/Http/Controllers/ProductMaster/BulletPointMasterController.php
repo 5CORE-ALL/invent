@@ -23,6 +23,8 @@ class BulletPointMasterController extends Controller
     public function getData(Request $request)
     {
         try {
+            $this->ensureMarketplaceModelClassesResolvable();
+
             $baseResponse = app(PMController::class)->getViewProductData($request);
             $baseData = $baseResponse->getData(true);
             $products = $baseData['data'] ?? [];
@@ -370,12 +372,42 @@ class BulletPointMasterController extends Controller
             }
             return ['success' => false, 'message' => 'Unexpected service response'];
         } catch (\Throwable $e) {
-            Log::warning('Marketplace service update failed', [
-                'marketplace' => $marketplace,
-                'sku' => $sku,
-                'error' => $e->getMessage(),
-            ]);
-            return ['success' => false, 'message' => $e->getMessage()];
+            $msg = $e->getMessage();
+            if (str_contains($msg, 'not found') && str_contains($msg, 'Class')) {
+                Log::error('Marketplace service failed: missing class or autoload issue', [
+                    'marketplace' => $marketplace,
+                    'sku' => $sku,
+                    'error' => $msg,
+                ]);
+            } else {
+                Log::warning('Marketplace service update failed', [
+                    'marketplace' => $marketplace,
+                    'sku' => $sku,
+                    'error' => $msg,
+                ]);
+            }
+
+            return ['success' => false, 'message' => $msg];
+        }
+    }
+
+    /**
+     * Fails soft (log only) if expected marketplace Eloquent classes are missing.
+     */
+    private function ensureMarketplaceModelClassesResolvable(): void
+    {
+        $classes = [
+            \App\Models\ReverbListing::class,
+            \App\Models\ShopifyProduct::class,
+            \App\Models\ShopifyVariant::class,
+            \App\Models\ShopifyPlsProduct::class,
+            \App\Models\ShopifyPlsVariant::class,
+        ];
+
+        foreach ($classes as $class) {
+            if (! class_exists($class)) {
+                Log::warning('BulletPointMaster: marketplace model class missing', ['class' => $class]);
+            }
         }
     }
 
