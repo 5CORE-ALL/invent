@@ -382,8 +382,8 @@ class EbayPMPAdsController extends Controller
             $l60v = (int) ($row['l60_views'] ?? 0);
             $l30v = (int) ($row['l30_views'] ?? 0);
             $l1545v = (int) ($row['l45_views'] ?? 0);
-            $row['l60_vs_l1545_green'] = $l1545v > $l60v;
-            $row['l1545_vs_l30_green'] = $l1545v < $l30v;
+            $row['l60_vs_l1545'] = $l1545v === $l60v ? 'NEUTRAL' : ($l1545v > $l60v ? 'GREEN' : 'RED');
+            $row['l1545_vs_l30'] = $l1545v === $l30v ? 'NEUTRAL' : ($l1545v < $l30v ? 'GREEN' : 'RED');
 
             $row['campaign_id'] = ($ebayMetric && isset($listingToCampaignId[$ebayMetric->item_id])) 
                 ? $listingToCampaignId[$ebayMetric->item_id] : null;

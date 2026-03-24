@@ -116,32 +116,35 @@
             color: white;
         }
 
-        /* Per-row view trend dots (L60 vs L15-45, L15-45 vs L30) */
-        .view-trend-dot {
-            display: inline-block;
-            width: 9px;
-            height: 9px;
-            border-radius: 50%;
-            margin-right: 4px;
-            vertical-align: middle;
-            flex-shrink: 0;
+        /* Dedicated comparison columns: dot-only (L60 vs L15-45, L15-45 vs L30) */
+        .view-compare-col {
+            text-align: center !important;
+            vertical-align: middle !important;
         }
 
-        .view-trend-dot--green {
+        .view-compare-th {
+            cursor: default !important;
+        }
+
+        .view-compare-dot {
+            display: inline-block;
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            margin: 2px auto;
+            vertical-align: middle;
+        }
+
+        .view-compare-dot--green {
             background-color: #10b981;
         }
 
-        .view-trend-dot--red {
+        .view-compare-dot--red {
             background-color: #ef4444;
         }
 
-        .view-trend-dot--neutral {
+        .view-compare-dot--neutral {
             background-color: #94a3b8;
-        }
-
-        .view-trend-cell-inner {
-            display: inline-flex;
-            align-items: center;
         }
 
         .dil-percent-value.yellow {
@@ -1752,7 +1755,7 @@
                                 <th data-field="s_bid">S BID</th>
 
                                 <th data-field="l60_views" style="vertical-align: middle; white-space: nowrap;"
-                                    title="Last 60 complete days (excl. today). Per-row dot: green = L15-45 &gt; L60; red = L60 &gt; L15-45; gray = tie.">
+                                    title="Last 60 complete days (excl. today).">
                                     <div class="d-flex flex-column align-items-center" style="gap: 4px">
                                         <div class="d-flex align-items-center">
                                             L60 VIEWS <span class="sort-arrow">↓</span>
@@ -1768,11 +1771,29 @@
                                     </div>
                                 </th>
                                 <th data-field="l1545_views" style="vertical-align: middle; white-space: nowrap;"
-                                    title="L60 minus L30 (days 31–60 ago). Per-row dot: green = L15-45 &lt; L30 (recent higher); red = L15-45 &gt; L30; gray = tie.">
+                                    title="L60 minus L30 (days 31–60 ago).">
                                     <div class="d-flex flex-column align-items-center" style="gap: 4px">
                                         <div class="d-flex align-items-center">
                                             L15-45 VIEWS <span class="sort-arrow">↓</span>
                                         </div>
+                                    </div>
+                                </th>
+                                <th data-field="l60_vs_l1545" data-no-sort="true"
+                                    class="text-center view-compare-th"
+                                    style="vertical-align: middle; white-space: nowrap; min-width: 88px;"
+                                    title="Green = L15-45 &gt; L60 (middle window higher) | Red = L60 &gt; L15-45 (full 60-day higher) | Gray = tie">
+                                    <div class="d-flex flex-column align-items-center" style="gap: 2px">
+                                        <span style="font-size: 0.75rem; line-height: 1.15;">L60 vs</span>
+                                        <span style="font-size: 0.75rem; line-height: 1.15;">L15-45</span>
+                                    </div>
+                                </th>
+                                <th data-field="l1545_vs_l30" data-no-sort="true"
+                                    class="text-center view-compare-th"
+                                    style="vertical-align: middle; white-space: nowrap; min-width: 88px;"
+                                    title="Green = L15-45 &lt; L30 (recent higher, improving) | Red = L15-45 &gt; L30 (declining) | Gray = tie">
+                                    <div class="d-flex flex-column align-items-center" style="gap: 2px">
+                                        <span style="font-size: 0.75rem; line-height: 1.15;">L15-45</span>
+                                        <span style="font-size: 0.75rem; line-height: 1.15;">vs L30</span>
                                     </div>
                                 </th>
                                 <th data-field="l7_views" style="vertical-align: middle; white-space: nowrap;"
@@ -2433,7 +2454,7 @@
                     'TacosL30'
                 ],
                 'conversion view': ['SCVR', 'KwCvrL60', 'KwCvrL30', 'KwCvrL7', 'PmtCvrL30', 'PmtCvrL7'],
-                'visibility view': ['KwCtrL60', 'KwCtrL30', 'KwCtrL7', 'PmtCtrL30', 'PmtCtrL7', 'L60_VIEWS', 'L30_VIEWS', 'L45_VIEWS', 'L7_VIEWS', 'L1_VIEWS']
+                'visibility view': ['KwCtrL60', 'KwCtrL30', 'KwCtrL7', 'PmtCtrL30', 'PmtCtrL7', 'L60_VIEWS', 'L30_VIEWS', 'L45_VIEWS', 'L60_VS_L1545', 'L1545_VS_L30', 'L7_VIEWS', 'L1_VIEWS']
             };
 
             // Filter state
@@ -3006,8 +3027,8 @@
                                     L7_VIEWS: item.l7_views || 0,
                                     L60_VIEWS: item.l60_views != null ? Number(item.l60_views) : 0,
                                     L45_VIEWS: item.l45_views != null ? Number(item.l45_views) : 0,
-                                    l60_vs_l1545_green: !!item.l60_vs_l1545_green,
-                                    l1545_vs_l30_green: !!item.l1545_vs_l30_green,
+                                    L60_VS_L1545: item.l60_vs_l1545 || 'NEUTRAL',
+                                    L1545_VS_L30: item.l1545_vs_l30 || 'NEUTRAL',
                                     L1_VIEWS: item.yesterday_views != null ? Number(item.yesterday_views) : 0,
                                     YESTERDAY_VIEWS: item.yesterday_views != null ? Number(item.yesterday_views) : 0,
                                     CBID: item.bid_percentage || 0,
@@ -3088,12 +3109,12 @@
                 $tbody.empty();
 
                 if (isLoading) {
-                    $tbody.append('<tr><td colspan="22" class="text-center">Loading data...</td></tr>');
+                    $tbody.append('<tr><td colspan="24" class="text-center">Loading data...</td></tr>');
                     return;
                 }
 
                 if (filteredData.length === 0) {
-                    $tbody.append('<tr><td colspan="22" class="text-center">No matching records found</td></tr>');
+                    $tbody.append('<tr><td colspan="24" class="text-center">No matching records found</td></tr>');
                     return;
                 }
 
@@ -3177,43 +3198,42 @@
                         return '#E83E8C';
                     };
 
-                    /** Per-row trend dot: L60 cell — green when L15-45 > L60, red when L60 > L15-45 */
-                    const ebayViewTrendDotL60 = (row, l60, l1545) => {
-                        if (row.l60_vs_l1545_green) {
+                    /** Comparison column dots (numeric equality => neutral gray) */
+                    const viewCompareL60VsL1545 = (l60, l1545) => {
+                        if (l1545 === l60) {
                             return {
-                                cls: 'view-trend-dot--green',
-                                tip: `L15-45 (${l1545}) > L60 (${l60}): the older 30-day window (days 31–60 ago) had more views than the full last-60-day total.`
+                                cls: 'view-compare-dot--neutral',
+                                tip: `L15-45 (${l1545}) = L60 (${l60})`
                             };
                         }
-                        if (l60 > l1545) {
+                        if (l1545 > l60) {
                             return {
-                                cls: 'view-trend-dot--red',
-                                tip: `L60 (${l60}) > L15-45 (${l1545}): full 60-day total is higher than the middle 30-day window.`
+                                cls: 'view-compare-dot--green',
+                                tip: `L15-45 (${l1545}) > L60 (${l60}): middle window higher than full 60-day total.`
                             };
                         }
                         return {
-                            cls: 'view-trend-dot--neutral',
-                            tip: `L15-45 equals L60 (${l60}).`
+                            cls: 'view-compare-dot--red',
+                            tip: `L60 (${l60}) > L15-45 (${l1545}): full 60-day higher than middle window.`
                         };
                     };
 
-                    /** Per-row trend dot: L15-45 cell — green when L15-45 < L30, red when L15-45 > L30 */
-                    const ebayViewTrendDotL1545 = (row, l1545, l30) => {
-                        if (row.l1545_vs_l30_green) {
+                    const viewCompareL1545VsL30 = (l1545, l30) => {
+                        if (l1545 === l30) {
                             return {
-                                cls: 'view-trend-dot--green',
-                                tip: `L15-45 (${l1545}) < L30 (${l30}): recent 30 days had more views than days 31–60 ago.`
+                                cls: 'view-compare-dot--neutral',
+                                tip: `L15-45 (${l1545}) = L30 (${l30})`
                             };
                         }
-                        if (l1545 > l30) {
+                        if (l1545 < l30) {
                             return {
-                                cls: 'view-trend-dot--red',
-                                tip: `L15-45 (${l1545}) > L30 (${l30}): middle window had more views than the last 30 days.`
+                                cls: 'view-compare-dot--green',
+                                tip: `L15-45 (${l1545}) < L30 (${l30}): recent 30-day higher (improving).`
                             };
                         }
                         return {
-                            cls: 'view-trend-dot--neutral',
-                            tip: `L15-45 equals L30 (${l1545}).`
+                            cls: 'view-compare-dot--red',
+                            tip: `L15-45 (${l1545}) > L30 (${l30}): middle window higher than recent 30-day.`
                         };
                     };
 
@@ -3331,19 +3351,21 @@
                     const l45v = Math.round(Number(item.L45_VIEWS || 0)) || 0;
                     const l7v = Math.round(Number(item.L7_VIEWS || 0)) || 0;
                     const l1v = Math.round(Number(item.L1_VIEWS || item.YESTERDAY_VIEWS || 0)) || 0;
-                    const dotL60 = ebayViewTrendDotL60(item, l60v, l45v);
-                    const dotL1545 = ebayViewTrendDotL1545(item, l45v, l30v);
-                    const $l60Cell = $('<td data-field="l60_views">').attr('title', 'Listing views over the last 60 complete calendar days (excluding today).');
-                    const $l60Inner = $('<div class="view-trend-cell-inner">');
-                    $l60Inner.append($('<span>').addClass(`view-trend-dot ${dotL60.cls}`).attr('title', dotL60.tip));
-                    $l60Inner.append($('<span>').addClass(`dil-percent-value ${getViewColor(l60v)}`).text(l60v));
-                    $row.append($l60Cell.append($l60Inner));
+                    const cmpL60 = viewCompareL60VsL1545(l60v, l45v);
+                    const cmp1545 = viewCompareL1545VsL30(l45v, l30v);
+                    $row.append($('<td data-field="l60_views">').attr('title', 'Listing views over the last 60 complete calendar days (excluding today).').html(
+                        `<span class="dil-percent-value ${getViewColor(l60v)}">${l60v}</span>`
+                    ));
                     $row.append($('<td data-field="l30_views">').attr('title', 'Listing views over the last 30 complete calendar days (excluding today).').text(l30v));
-                    const $l1545Cell = $('<td data-field="l1545_views">').attr('title', 'Views in days 31–60 ago (L60 minus L30; the 30-day window before the L30 period).');
-                    const $l1545Inner = $('<div class="view-trend-cell-inner">');
-                    $l1545Inner.append($('<span>').addClass(`view-trend-dot ${dotL1545.cls}`).attr('title', dotL1545.tip));
-                    $l1545Inner.append($('<span>').addClass(`dil-percent-value ${getViewColor(l45v)}`).text(l45v));
-                    $row.append($l1545Cell.append($l1545Inner));
+                    $row.append($('<td data-field="l1545_views">').attr('title', 'Views in days 31–60 ago (L60 minus L30; the 30-day window before the L30 period).').html(
+                        `<span class="dil-percent-value ${getViewColor(l45v)}">${l45v}</span>`
+                    ));
+                    $row.append($('<td data-field="l60_vs_l1545" class="view-compare-col">').append(
+                        $('<span>').addClass(`view-compare-dot ${cmpL60.cls}`).attr('title', cmpL60.tip)
+                    ));
+                    $row.append($('<td data-field="l1545_vs_l30" class="view-compare-col">').append(
+                        $('<span>').addClass(`view-compare-dot ${cmp1545.cls}`).attr('title', cmp1545.tip)
+                    ));
                     $row.append($('<td data-field="l7_views">').attr('title', 'Last 7 days listing views').text(l7v));
                     $row.append($('<td data-field="l1_views">').attr('title', 'Views on the previous calendar day').html(
                         `<span class="dil-percent-value ${getViewColor(l1v)}">${l1v}</span>`
@@ -5139,7 +5161,7 @@
 
             // Initialize sorting functionality
             function initSorting() {
-                $('th[data-field]').addClass('sortable').on('click', function(e) {
+                $('th[data-field]').not('[data-no-sort="true"]').addClass('sortable').on('click', function(e) {
                     // Prevent sorting when resizing
                     if (isResizing) {
                         e.stopPropagation();
@@ -5866,8 +5888,9 @@
                     });
                 });
 
-                // Reapply sorting if there's an active sort
-                if (currentSort.field) {
+                // Reapply sorting if there's an active sort (skip non-sortable comparison columns)
+                if (currentSort.field && currentSort.field !== 'l60_vs_l1545' && currentSort.field !==
+                    'l1545_vs_l30') {
                     const thField = currentSort.field;
                     let dataField = thField === 'parent' ? 'Parent' : thField;
 
@@ -6006,13 +6029,24 @@
                         return;
                     }
                     const ovDil = item.ov_dil != null ? Math.round(item.ov_dil * 100) : '';
+                    const l60ex = Math.round(Number(item.L60_VIEWS || 0)) || 0;
+                    const l30ex = Math.round(Number(item.L30_VIEWS || item.VIEWS || 0)) || 0;
+                    const l45ex = Math.round(Number(item.L45_VIEWS || 0)) || 0;
+                    const cmpL60Note = l45ex === l60ex ? 'L15-45 = L60' : (l45ex > l60ex ? 'L15-45 > L60' :
+                        'L60 > L15-45');
+                    const cmp1545Note = l45ex === l30ex ? 'L15-45 = L30' : (l45ex < l30ex ? 'L15-45 < L30' :
+                        'L15-45 > L30');
                     exportData.push({
                         SKU: item['(Child) sku'] || '',
                         INV: item.INV != null ? item.INV : '',
                         'L30 VIEWS': Math.round(Number(item.L30_VIEWS || item.VIEWS || 0)) || 0,
                         'L7 VIEWS': Math.round(Number(item.L7_VIEWS || 0)) || 0,
-                        'L60 VIEWS': Math.round(Number(item.L60_VIEWS || 0)) || 0,
-                        'L15-45 VIEWS': Math.round(Number(item.L45_VIEWS || 0)) || 0,
+                        'L60 VIEWS': l60ex,
+                        'L15-45 VIEWS': l45ex,
+                        'L60 vs L15-45': item.L60_VS_L1545 || 'NEUTRAL',
+                        'L60 vs L15-45 (comparison)': cmpL60Note,
+                        'L15-45 vs L30': item.L1545_VS_L30 || 'NEUTRAL',
+                        'L15-45 vs L30 (comparison)': cmp1545Note,
                         'L1 VIEWS': Math.round(Number(item.L1_VIEWS || item.YESTERDAY_VIEWS || 0)) || 0,
                         CBID: item.CBID != null ? item.CBID : '',
                         ESBID: item.ESBID != null ? item.ESBID : '',
