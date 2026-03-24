@@ -186,14 +186,12 @@ class AutoUpdateAmzUnderKwBids extends Command
 
             $shopifyData = [];
             $amazonDatasheets = [];
-            $nrValues = [];
 
             if (!empty($skus)) {
                 $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
                 $amazonDatasheets = AmazonDatasheet::whereIn('sku', $skus)->get()->keyBy(function ($item) {
                     return strtoupper($item->sku);
                 });
-                $nrValues = AmazonDataView::whereIn('sku', $skus)->pluck('value', 'sku');
             }
 
         // For PARENT rows: INV = sum of child SKUs' INV (same as Over/BgtKw commands)
@@ -440,17 +438,6 @@ class AutoUpdateAmzUnderKwBids extends Command
                 // Continue without avg_cpc if there's an error
             }
 
-            $row['NRA'] = '';
-            if (isset($nrValues[$pm->sku])) {
-                $raw = $nrValues[$pm->sku];
-                if (!is_array($raw)) {
-                    $raw = json_decode($raw, true);
-                }
-                if (is_array($raw)) {
-                    $row['NRA'] = $raw['NRA'] ?? null;
-                }
-            }
-
             $l1_cpc = floatval($row['l1_cpc']);
             $l7_cpc = floatval($row['l7_cpc']);
             $budget = floatval($row['campaignBudgetAmount']);
@@ -496,7 +483,7 @@ class AutoUpdateAmzUnderKwBids extends Command
             $ub1Red = $ub1 < 66;
 
             // Under-utilized: 2UB red AND 1UB red (same as KW tabulator)
-            if ($row['INV'] > 0 && $row['NRA'] !== 'NRA' && $row['campaignName'] !== '' && ($ub2Red && $ub1Red)) {
+            if ($row['INV'] > 0 && $row['campaignName'] !== '' && ($ub2Red && $ub1Red)) {
                 $l2_cpc = floatval($row['l2_cpc'] ?? 0);
                 $row['sbid'] = 0;
                 if ($l1_cpc > 0) {

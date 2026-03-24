@@ -266,9 +266,6 @@ class AutoUpdateAmazonPtBids extends Command
                 });
             }
 
-            // NRA check: skip SKUs with NRA = 'NRA' (same as frontend - controller does not add these rows)
-            $nrValues = AmazonDataView::whereIn('sku', $skus)->pluck('value', 'sku');
-
             // For PARENT rows: INV = sum of child SKUs' INV (same as BgtKw/BgtPt)
             $childInvSumByParent = [];
             foreach ($productMasters as $pm) {
@@ -422,13 +419,6 @@ class AutoUpdateAmazonPtBids extends Command
                 continue;
             }
             $processedCampaignIds[$campaignId] = true;
-
-            // Skip NRA = 'NRA' (matches frontend - these rows are not in controller output)
-            $nrRaw = $nrValues[$pm->sku] ?? null;
-            $nrArr = is_array($nrRaw) ? $nrRaw : (is_string($nrRaw) ? json_decode($nrRaw, true) : []);
-            if (is_array($nrArr) && isset($nrArr['NRA']) && trim((string)$nrArr['NRA']) === 'NRA') {
-                continue;
-            }
 
             $row = [];
             // INV: for PARENT SKU use sum of children's INV; for child use shopify inv

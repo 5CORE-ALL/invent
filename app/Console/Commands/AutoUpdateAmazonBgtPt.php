@@ -348,21 +348,14 @@ class AutoUpdateAmazonBgtPt extends Command
                 $acos = (float) ($row['acos_L30'] ?? 0);
 
                 $tpft = 0;
-                $nra = '';
                 if (isset($nrValues[$pm->sku])) {
                     $raw = $nrValues[$pm->sku];
                     if (!is_array($raw)) $raw = json_decode($raw, true);
                     if (is_array($raw)) {
                         $tpft = isset($raw['TPFT']) ? (int) floor($raw['TPFT']) : 0;
-                        $nra = $raw['NRA'] ?? '';
                     }
                 }
                 $row['TPFT'] = $tpft;
-
-                // Skip if NRA === 'NRA' (matching frontend filter)
-                if ($nra === 'NRA') {
-                    continue;
-                }
 
                 $acos = (float) ($row['acos_L30'] ?? 0);
 

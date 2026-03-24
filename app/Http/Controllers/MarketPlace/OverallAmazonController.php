@@ -5816,19 +5816,13 @@ class OverallAmazonController extends Controller
                     $acos = 0;
                 }
                 
-                // ACOS-based SBGT rules
-                if ($acos > 25) {
-                    $sbgt = 1;
-                } elseif ($acos >= 20) {
-                    $sbgt = 2;
-                } elseif ($acos >= 15) {
-                    $sbgt = 4;
-                } elseif ($acos >= 10) {
-                    $sbgt = 6;
-                } elseif ($acos >= 5) {
-                    $sbgt = 8;
+                // ACOS-based SBGT rules (match Blade + commands): <20 => 10, 20-<30 => 5, >=30 => 2
+                if ($acos < 20) {
+                    $sbgt = 10;
+                } elseif ($acos < 30) {
+                    $sbgt = 5;
                 } else {
-                    $sbgt = 10; // Less than 5
+                    $sbgt = 2;
                 }
                 
                 // Get last_sbid from day-before-yesterday's records
@@ -6086,19 +6080,13 @@ class OverallAmazonController extends Controller
                     $acos = 0;
                 }
                 
-                // ACOS-based SBGT rules
-                if ($acos > 25) {
-                    $sbgt = 1;
-                } elseif ($acos >= 20) {
-                    $sbgt = 2;
-                } elseif ($acos >= 15) {
-                    $sbgt = 4;
-                } elseif ($acos >= 10) {
-                    $sbgt = 6;
-                } elseif ($acos >= 5) {
-                    $sbgt = 8;
+                // ACOS-based SBGT rules (match Blade + commands): <20 => 10, 20-<30 => 5, >=30 => 2
+                if ($acos < 20) {
+                    $sbgt = 10;
+                } elseif ($acos < 30) {
+                    $sbgt = 5;
                 } else {
-                    $sbgt = 10; // Less than 5
+                    $sbgt = 2;
                 }
                 
                 // Get last_sbid from day-before-yesterday's records
@@ -6323,19 +6311,13 @@ class OverallAmazonController extends Controller
                     $acos = 0;
                 }
                 
-                // ACOS-based SBGT rules for HL
-                if ($acos > 25) {
-                    $sbgt = 1;
-                } elseif ($acos >= 20) {
-                    $sbgt = 2;
-                } elseif ($acos >= 15) {
-                    $sbgt = 4;
-                } elseif ($acos >= 10) {
-                    $sbgt = 6;
-                } elseif ($acos >= 5) {
-                    $sbgt = 8;
+                // ACOS-based SBGT rules (match Blade + commands): <20 => 10, 20-<30 => 5, >=30 => 2
+                if ($acos < 20) {
+                    $sbgt = 10;
+                } elseif ($acos < 30) {
+                    $sbgt = 5;
                 } else {
-                    $sbgt = 10; // Less than 5
+                    $sbgt = 2;
                 }
                 
                 // Fetch last_sbid from day-before-yesterday's records for HL campaigns

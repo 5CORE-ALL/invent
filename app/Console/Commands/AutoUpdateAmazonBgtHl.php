@@ -306,7 +306,6 @@ class AutoUpdateAmazonBgtHl extends Command
                 }
 
                 $tpft = 0;
-                $nra = '';
                 if (isset($nrValues[$pm->sku])) {
                     $raw = $nrValues[$pm->sku];
                     if (!is_array($raw)) {
@@ -314,14 +313,9 @@ class AutoUpdateAmazonBgtHl extends Command
                     }
                     if (is_array($raw)) {
                         $tpft = isset($raw['TPFT']) ? (int) floor($raw['TPFT']) : 0;
-                        $nra = $raw['NRA'] ?? '';
                     }
                 }
                 $row['TPFT'] = $tpft;
-
-                if ($nra === 'NRA') {
-                    continue;
-                }
 
                 $validCampaignsForTotal[] = $row;
             }

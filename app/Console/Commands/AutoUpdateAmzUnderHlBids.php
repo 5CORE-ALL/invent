@@ -221,7 +221,6 @@ class AutoUpdateAmzUnderHlBids extends Command
             }
 
             $shopifyData = [];
-            $nrValues = [];
 
             $normalizeSku = function ($s) {
                 if ($s === null || $s === '') return '';
@@ -232,14 +231,6 @@ class AutoUpdateAmzUnderHlBids extends Command
 
             if (!empty($skus)) {
                 $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
-                $nrValues = [];
-                foreach (AmazonDataView::whereIn('sku', $skus)->get() as $r) {
-                    $nrValues[$r->sku] = $r->value;
-                    $n = $normalizeSku($r->sku);
-                    if ($n !== '') {
-                        $nrValues[$n] = $r->value;
-                    }
-                }
             }
 
         $amazonSpCampaignReportsL7 = AmazonSbCampaignReport::where('ad_type', 'SPONSORED_BRANDS')
@@ -331,19 +322,6 @@ class AutoUpdateAmzUnderHlBids extends Command
                 // Continue without avg_cpc if there's an error
             }
 
-            $row['NRA'] = '';
-            $nrRaw = $nrValues[$pm->sku] ?? ($nrValues[$normalizeSku($pm->sku)] ?? null);
-            if ($nrRaw !== null) {
-                $raw = is_array($nrRaw) ? $nrRaw : (is_string($nrRaw) ? json_decode($nrRaw, true) : null);
-                if (is_array($raw)) {
-                    $row['NRA'] = trim((string)($raw['NRA'] ?? ''));
-                    // When NRA is empty, derive from NRL (same as tabulator: NRL=NRL -> NRA, else RA)
-                    if ($row['NRA'] === '') {
-                        $row['NRA'] = (trim((string)($raw['NRL'] ?? '')) === 'NRL') ? 'NRA' : 'RA';
-                    }
-                }
-            }
-
             $l1_cpc = floatval($row['l1_cpc']);
             $l7_cpc = floatval($row['l7_cpc']);
             $budget = floatval($row['campaignBudgetAmount']);
@@ -352,9 +330,9 @@ class AutoUpdateAmzUnderHlBids extends Command
             $ub7 = $budget > 0 ? ($l7_spend / ($budget * 7)) * 100 : 0;
             $ub1 = $budget > 0 ? ($l1_spend / $budget) * 100 : 0;
 
-            // Under-utilized rule: INV > 0, NRA !== 'NRA', campaignName !== '', ub7 < 66 && ub1 < 66 (aligned with Under KW/PT)
+            // Under-utilized rule: INV > 0, campaignName !== '', ub7 < 66 && ub1 < 66
             $row['INV'] = (int) ($row['INV'] ?? 0);
-            if ($row['INV'] > 0 && $row['NRA'] !== 'NRA' && $row['campaignName'] !== '' && ($ub7 < 66 && $ub1 < 66)) {
+            if ($row['INV'] > 0 && $row['campaignName'] !== '' && ($ub7 < 66 && $ub1 < 66)) {
                 // Calculate SBID for HL campaigns - use same logic as HL SBID column (never avg_cpc)
                 // Under-utilized: Priority - L1 CPC → L7 CPC → 0.60 when both zero
                 if ($l1_cpc > 0) {
