@@ -474,4 +474,71 @@ class ReverbApiService
             ];
         }
     }
+
+    /**
+     * Update listing description / marketing copy with bullet text (full body, no truncation).
+     *
+     * @return array{success: bool, message: string, listing_id?: string}
+     */
+    public function updateBulletPoints(string $sku, string $bulletPoints): array
+    {
+        $token = config('services.reverb.token');
+        if (! $token) {
+            return ['success' => false, 'message' => 'Reverb API token not configured (services.reverb.token).'];
+        }
+
+        $bulletPoints = trim($bulletPoints);
+        if ($bulletPoints === '') {
+            return ['success' => false, 'message' => 'Bullet points cannot be empty.'];
+        }
+
+        $listingId = $this->getListingIdBySku($sku);
+        if ($listingId === null) {
+            return ['success' => false, 'message' => "No Reverb listing found for SKU: {$sku}."];
+        }
+
+        $html = '<ul>';
+        foreach (preg_split('/\r\n|\r|\n/', $bulletPoints) as $line) {
+            $line = trim($line);
+            if ($line === '') {
+                continue;
+            }
+            $html .= '<li>'.htmlspecialchars($line, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8').'</li>';
+        }
+        $html .= '</ul>';
+
+        $updateUrl = 'https://api.reverb.com/api/listings/'.$listingId;
+        $payload = [
+            'description' => $html,
+            'plain_text_description' => $bulletPoints,
+        ];
+
+        try {
+            $response = Http::withoutVerifying()
+                ->timeout(30)
+                ->withHeaders([
+                    'Authorization' => 'Bearer '.$token,
+                    'Accept' => 'application/hal+json',
+                    'Accept-Version' => '3.0',
+                    'Content-Type' => 'application/hal+json',
+                ])
+                ->put($updateUrl, $payload);
+
+            if ($response->successful()) {
+                return [
+                    'success' => true,
+                    'message' => 'Reverb listing description updated.',
+                    'listing_id' => $listingId,
+                ];
+            }
+
+            return [
+                'success' => false,
+                'message' => 'Reverb API error (HTTP '.$response->status().'): '.$response->body(),
+                'listing_id' => $listingId,
+            ];
+        } catch (\Throwable $e) {
+            return ['success' => false, 'message' => $e->getMessage(), 'listing_id' => $listingId];
+        }
+    }
 }

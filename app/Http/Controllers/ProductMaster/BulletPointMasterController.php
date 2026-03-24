@@ -23,6 +23,8 @@ class BulletPointMasterController extends Controller
     public function getData(Request $request)
     {
         try {
+            $this->ensureMarketplaceModelClassesResolvable();
+
             $baseResponse = app(PMController::class)->getViewProductData($request);
             $baseData = $baseResponse->getData(true);
             $products = $baseData['data'] ?? [];
@@ -98,8 +100,7 @@ class BulletPointMasterController extends Controller
                     continue;
                 }
 
-                $limit = $this->getBulletPointLimit($marketplace);
-                $text = mb_substr($text, 0, $limit);
+                // No upper character limit — store and push full text as-is.
 
                 $tableSaved = $this->saveToMarketplaceTable($marketplace, $sku, $text);
                 $serviceResult = $this->callMarketplaceService($marketplace, $sku, $text);
@@ -182,7 +183,7 @@ class BulletPointMasterController extends Controller
             Log::info('AI Generation Started', ['product_name' => $productName, 'product_id' => $productId]);
 
             $prompt = "Generate exactly 5 detailed, benefit-focused bullet points for this product: {$productName}.\n" .
-                "Each bullet point MUST be between 190 and 200 characters (inclusive). Do not write shorter bullets.\n" .
+                "Each bullet point MUST be at least 190 characters. There is no maximum length.\n" .
                 "Include specific features, benefits, use cases, and quality highlights. Be persuasive and comprehensive.\n" .
                 "Output format: exactly 5 lines, one bullet per line, plain text only (no numbering, no markdown).";
             Log::info('AI Prompt:', ['prompt' => $prompt]);
@@ -236,7 +237,7 @@ class BulletPointMasterController extends Controller
                     $b = trim($b . $suffix);
                 }
 
-                return mb_substr($b, 0, 200);
+                return $b;
             }, array_slice($bullets, 0, 5));
 
             Log::info('AI Response Lengths', ['bullets' => array_map(fn ($b) => mb_strlen((string) $b), $bullets)]);
@@ -255,16 +256,6 @@ class BulletPointMasterController extends Controller
     public function generate(Request $request)
     {
         return $this->generateBulletPoints($request);
-    }
-
-    public function getBulletPointLimit(string $marketplace): int
-    {
-        return match ($marketplace) {
-            'wayfair', 'shopify_main', 'shopify_pls' => 100,
-            'shein' => 80,
-            'doba' => 60,
-            default => 150,
-        };
     }
 
     private function marketplaceTableMap(): array
@@ -357,6 +348,8 @@ class BulletPointMasterController extends Controller
             'reverb' => \App\Services\ReverbApiService::class,
             'shopify_main' => \App\Services\ShopifyApiService::class,
             'shopify_pls' => \App\Services\ShopifyPLSApiService::class,
+            'amazon' => \App\Services\AmazonSpApiService::class,
+            'bestbuy' => \App\Services\BestBuyApiService::class,
         ];
 
         try {
@@ -379,12 +372,42 @@ class BulletPointMasterController extends Controller
             }
             return ['success' => false, 'message' => 'Unexpected service response'];
         } catch (\Throwable $e) {
-            Log::warning('Marketplace service update failed', [
-                'marketplace' => $marketplace,
-                'sku' => $sku,
-                'error' => $e->getMessage(),
-            ]);
-            return ['success' => false, 'message' => $e->getMessage()];
+            $msg = $e->getMessage();
+            if (str_contains($msg, 'not found') && str_contains($msg, 'Class')) {
+                Log::error('Marketplace service failed: missing class or autoload issue', [
+                    'marketplace' => $marketplace,
+                    'sku' => $sku,
+                    'error' => $msg,
+                ]);
+            } else {
+                Log::warning('Marketplace service update failed', [
+                    'marketplace' => $marketplace,
+                    'sku' => $sku,
+                    'error' => $msg,
+                ]);
+            }
+
+            return ['success' => false, 'message' => $msg];
+        }
+    }
+
+    /**
+     * Fails soft (log only) if expected marketplace Eloquent classes are missing.
+     */
+    private function ensureMarketplaceModelClassesResolvable(): void
+    {
+        $classes = [
+            \App\Models\ReverbListing::class,
+            \App\Models\ShopifyProduct::class,
+            \App\Models\ShopifyVariant::class,
+            \App\Models\ShopifyPlsProduct::class,
+            \App\Models\ShopifyPlsVariant::class,
+        ];
+
+        foreach ($classes as $class) {
+            if (! class_exists($class)) {
+                Log::warning('BulletPointMaster: marketplace model class missing', ['class' => $class]);
+            }
         }
     }
 
@@ -395,7 +418,7 @@ class BulletPointMasterController extends Controller
         foreach ($lines as $line) {
             $line = trim(preg_replace('/^[-*\d\.\)\s]+/', '', $line));
             if ($line !== '') {
-                $bullets[] = mb_substr($line, 0, 200);
+                $bullets[] = $line;
             }
         }
 
@@ -403,7 +426,7 @@ class BulletPointMasterController extends Controller
             $parts = preg_split('/\s*[;\|]\s*/', trim($text));
             foreach ($parts as $p) {
                 if (trim($p) !== '') {
-                    $bullets[] = mb_substr(trim($p), 0, 200);
+                    $bullets[] = trim($p);
                 }
             }
         }

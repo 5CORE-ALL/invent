@@ -136,4 +136,66 @@ class MacysApiService
             return ['success' => false, 'message' => $e->getMessage()];
         }
     }
+
+    /**
+     * Update long marketing copy / bullets (Mirakl product attributes). No truncation.
+     *
+     * @return array{success:bool,message:string,response?:mixed}
+     */
+    public function updateBulletPoints(string $sku, string $bulletPoints): array
+    {
+        Log::info('Macy bullet update started', ['sku' => $sku]);
+
+        try {
+            $sku = trim($sku);
+            $bulletPoints = trim($bulletPoints);
+            if ($sku === '' || $bulletPoints === '') {
+                return ['success' => false, 'message' => 'SKU and bullet points are required.'];
+            }
+
+            $token = $this->getAccessToken();
+            if (! $token) {
+                return ['success' => false, 'message' => 'Macy access token not available'];
+            }
+
+            $baseUrl = 'https://miraklconnect.com/api/products';
+            $productPayload = [
+                'id' => $sku,
+                'attributes' => [
+                    'longDescription' => $bulletPoints,
+                    'productDescription' => $bulletPoints,
+                    'bulletPoints' => $bulletPoints,
+                ],
+            ];
+
+            $headers = [
+                'Accept' => 'application/json',
+                'Content-Type' => 'application/json',
+            ];
+            $channelId = config('services.macy.company_id');
+            if (! empty($channelId)) {
+                $headers['channel_id'] = $channelId;
+            }
+
+            $request = Http::withoutVerifying()->withToken($token)->withHeaders($headers)->timeout(60);
+
+            $response = $request->post($baseUrl, ['products' => [$productPayload]]);
+            if (! $response->successful()) {
+                $response = $request->patch("{$baseUrl}/{$sku}", $productPayload);
+            }
+            if (! $response->successful()) {
+                $response = $request->put("{$baseUrl}/{$sku}", $productPayload);
+            }
+
+            if (! $response->successful()) {
+                return ['success' => false, 'message' => 'Macy bullet update failed: ' . $response->body()];
+            }
+
+            return ['success' => true, 'message' => 'Macy bullet points updated', 'response' => $response->json()];
+        } catch (\Throwable $e) {
+            Log::error('Macy bullet update failed', ['sku' => $sku, 'error' => $e->getMessage()]);
+
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
 }

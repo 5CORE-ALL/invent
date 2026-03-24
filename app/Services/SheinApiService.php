@@ -805,20 +805,80 @@ public function getStock(array $skuCodes)
     }
 
     /**
-     * Update bullet points for a Shein product (80 char limit).
-     * Saves to metrics; full API integration can be added when Shein exposes bullet point update.
+     * Update product description / selling points via Shein product update API (full text, no truncation).
      *
      * @return array{success: bool, message: string}
      */
     public function updateBulletPoints(string $sku, string $bulletPoints): array
     {
         $sku = trim($sku);
-        $bulletPoints = mb_substr(trim($bulletPoints), 0, 80);
-        if ($bulletPoints === '') {
-            return ['success' => false, 'message' => 'Bullet points cannot be empty.'];
+        $bulletPoints = trim($bulletPoints);
+        if ($sku === '' || $bulletPoints === '') {
+            return ['success' => false, 'message' => 'SKU and bullet points are required.'];
         }
-        Log::info('Shein updateBulletPoints called', ['sku' => $sku]);
-        return ['success' => true, 'message' => 'Bullet points saved (Shein API update not yet implemented).'];
+
+        $openKeyId = config('services.shein.open_key_id');
+        $secretKey = config('services.shein.secret_key');
+        if (empty($openKeyId) || empty($secretKey)) {
+            return ['success' => false, 'message' => 'Configure SHEIN_OPEN_KEY_ID and SHEIN_SECRET_KEY in .env.'];
+        }
+
+        $endpoint = (string) config(
+            'services.shein.product_update_path',
+            '/open-api/openapi-business-backend/product/update'
+        );
+        $url = $this->baseUrl.$endpoint;
+
+        $timestamp = (int) round(microtime(true) * 1000);
+        $random = Str::random(5);
+        $signature = $this->generateSheinSignature($endpoint, $timestamp, $random);
+
+        $metric = $this->safeSheinMetricFindBySku($sku);
+        $productName = $metric && ! empty($metric->product_name) ? $metric->product_name : $sku;
+
+        $payload = [
+            'skuCode' => $sku,
+            'productName' => $productName,
+            'productDesc' => $bulletPoints,
+        ];
+
+        if ($metric && ! empty($metric->spu_name)) {
+            $payload['spuCode'] = $metric->spu_name;
+        }
+
+        try {
+            $response = Http::withoutVerifying()
+                ->timeout(60)
+                ->withHeaders([
+                    'Language' => 'en-us',
+                    'x-lt-openKeyId' => $openKeyId,
+                    'x-lt-timestamp' => (string) $timestamp,
+                    'x-lt-signature' => $signature,
+                    'Content-Type' => 'application/json',
+                ])
+                ->post($url, $payload);
+
+            $json = is_array($response->json()) ? $response->json() : null;
+
+            if (! $response->successful()) {
+                return [
+                    'success' => false,
+                    'message' => 'HTTP '.$response->status().': '.mb_substr((string) $response->body(), 0, 500),
+                ];
+            }
+
+            if ($this->sheinResponseIndicatesSuccess($json)) {
+                Log::info('Shein updateBulletPoints success', ['sku' => $sku]);
+
+                return ['success' => true, 'message' => 'Shein product description updated.'];
+            }
+
+            return ['success' => false, 'message' => $this->sheinExtractErrorMessage($json)];
+        } catch (\Throwable $e) {
+            Log::error('Shein updateBulletPoints exception', ['error' => $e->getMessage()]);
+
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
     }
 
 }

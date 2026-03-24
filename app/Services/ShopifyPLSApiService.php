@@ -193,4 +193,89 @@ class ShopifyPLSApiService
 
         return null;
     }
+
+    /**
+     * @return array{success: bool, message: string}
+     */
+    public function updateBulletPoints(string $sku, string $bulletPoints): array
+    {
+        $sku = trim($sku);
+        $bulletPoints = trim($bulletPoints);
+        if ($sku === '' || $bulletPoints === '') {
+            return ['success' => false, 'message' => 'SKU and bullet points are required.'];
+        }
+
+        try {
+            $domain = config('services.prolightsounds.domain') ?? config('services.prolightsounds.store_url');
+            $token = config('services.prolightsounds.password');
+            if (! $domain || ! $token) {
+                return ['success' => false, 'message' => 'Shopify PLS credentials not configured.'];
+            }
+
+            $domain = preg_replace('#^https?://#', '', $domain);
+            $domain = rtrim($domain, '/');
+
+            $productId = null;
+            $shopifySku = ShopifySku::where('sku', $sku)
+                ->orWhere('sku', strtoupper($sku))
+                ->orWhere('sku', strtolower($sku))
+                ->first();
+
+            if ($shopifySku && $shopifySku->variant_id) {
+                $variantResponse = Http::withHeaders([
+                    'X-Shopify-Access-Token' => $token,
+                ])->timeout(30)->get("https://{$domain}/admin/api/2024-01/variants/{$shopifySku->variant_id}.json");
+
+                if ($variantResponse->successful()) {
+                    $productId = $variantResponse->json('variant.product_id');
+                }
+            }
+
+            if (! $productId) {
+                $found = $this->findProductBySkuViaGraphQL($domain, $token, $sku);
+                if ($found) {
+                    $productId = $found['product_id'];
+                }
+            }
+
+            if (! $productId) {
+                return ['success' => false, 'message' => 'PLS product not found for SKU.'];
+            }
+
+            $html = '<ul>';
+            foreach (preg_split('/\r\n|\r|\n/', $bulletPoints) as $line) {
+                $line = trim($line);
+                if ($line === '') {
+                    continue;
+                }
+                $html .= '<li>'.htmlspecialchars($line, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8').'</li>';
+            }
+            $html .= '</ul>';
+
+            $productUrl = "https://{$domain}/admin/api/2024-01/products/{$productId}.json";
+            $getProduct = Http::withHeaders([
+                'X-Shopify-Access-Token' => $token,
+            ])->timeout(30)->get($productUrl);
+            $title = $getProduct->json('product.title') ?? '';
+
+            $response = Http::withHeaders([
+                'X-Shopify-Access-Token' => $token,
+                'Content-Type' => 'application/json',
+            ])->timeout(30)->put($productUrl, [
+                'product' => [
+                    'id' => $productId,
+                    'title' => $title,
+                    'body_html' => $html,
+                ],
+            ]);
+
+            if ($response->successful()) {
+                return ['success' => true, 'message' => 'Shopify PLS product bullets updated.'];
+            }
+
+            return ['success' => false, 'message' => 'PLS update failed: '.$response->body()];
+        } catch (\Throwable $e) {
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
 }

@@ -8,7 +8,6 @@ use App\Models\MarketplacePercentage;
 use App\Models\Shopifyb2cDataView;
 use App\Models\ShopifySku;
 use App\Models\ProductMaster;
-use App\Models\ShopifyProduct;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 

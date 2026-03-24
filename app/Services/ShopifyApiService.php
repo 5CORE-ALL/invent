@@ -109,6 +109,92 @@ class ShopifyApiService
         }
     }
 
+    /**
+     * Update product body HTML from bullet lines (no truncation).
+     *
+     * @return array{success: bool, message: string}
+     */
+    public function updateBulletPoints(string $sku, string $bulletPoints): array
+    {
+        $sku = trim($sku);
+        $bulletPoints = trim($bulletPoints);
+        if ($sku === '' || $bulletPoints === '') {
+            return ['success' => false, 'message' => 'SKU and bullet points are required.'];
+        }
+
+        try {
+            $domain = config('services.shopify.store_url') ?: config('services.shopify.domain');
+            $token = config('services.shopify.access_token') ?: config('services.shopify.password');
+            if (! $domain || ! $token) {
+                return ['success' => false, 'message' => 'Shopify credentials not configured.'];
+            }
+
+            $domain = preg_replace('#^https?://#', '', $domain);
+            $domain = rtrim($domain, '/');
+
+            $shopifySku = ShopifySku::where('sku', $sku)
+                ->orWhere('sku', strtoupper($sku))
+                ->orWhere('sku', strtolower($sku))
+                ->first();
+
+            if (! $shopifySku || ! $shopifySku->variant_id) {
+                return ['success' => false, 'message' => 'Shopify variant mapping not found for SKU.'];
+            }
+
+            $variantUrl = "https://{$domain}/admin/api/2024-01/variants/{$shopifySku->variant_id}.json";
+            $variantRes = Http::withHeaders([
+                'X-Shopify-Access-Token' => $token,
+                'Content-Type' => 'application/json',
+            ])->timeout(30)->get($variantUrl);
+
+            if (! $variantRes->successful()) {
+                return ['success' => false, 'message' => 'Variant lookup failed: '.$variantRes->body()];
+            }
+
+            $productId = $variantRes->json('variant.product_id');
+            if (! $productId) {
+                return ['success' => false, 'message' => 'Product ID missing.'];
+            }
+
+            $html = '<ul>';
+            foreach (preg_split('/\r\n|\r|\n/', $bulletPoints) as $line) {
+                $line = trim($line);
+                if ($line === '') {
+                    continue;
+                }
+                $html .= '<li>'.htmlspecialchars($line, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8').'</li>';
+            }
+            $html .= '</ul>';
+
+            $productUrl = "https://{$domain}/admin/api/2024-01/products/{$productId}.json";
+            $getProduct = Http::withHeaders([
+                'X-Shopify-Access-Token' => $token,
+                'Content-Type' => 'application/json',
+            ])->timeout(30)->get($productUrl);
+
+            $title = $getProduct->json('product.title') ?? '';
+
+            $updateRes = Http::withHeaders([
+                'X-Shopify-Access-Token' => $token,
+                'Content-Type' => 'application/json',
+            ])->timeout(30)->put($productUrl, [
+                'product' => [
+                    'id' => $productId,
+                    'title' => $title,
+                    'body_html' => $html,
+                ],
+            ]);
+
+            if ($updateRes->successful()) {
+                return ['success' => true, 'message' => 'Shopify product bullets updated.'];
+            }
+
+            return ['success' => false, 'message' => 'Shopify update failed: '.$updateRes->body()];
+        } catch (\Throwable $e) {
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
     public function getInventory()
     {
 

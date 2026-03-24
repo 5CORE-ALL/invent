@@ -89,4 +89,57 @@ class BestBuyApiService
 
         return $response->json(); // returns array of channels
     }
+
+    /**
+     * Mirakl Connect product update for Best Buy channel (bullet / long description).
+     *
+     * @return array{success: bool, message: string}
+     */
+    public function updateBulletPoints(string $sku, string $bulletPoints): array
+    {
+        $sku = trim($sku);
+        $bulletPoints = trim($bulletPoints);
+        if ($sku === '' || $bulletPoints === '') {
+            return ['success' => false, 'message' => 'SKU and bullet points are required.'];
+        }
+
+        $token = $this->getAccessToken();
+        if (! $token) {
+            return ['success' => false, 'message' => 'Best Buy / Mirakl access token not available.'];
+        }
+
+        $baseUrl = 'https://miraklconnect.com/api/products';
+        $productPayload = [
+            'id' => $sku,
+            'attributes' => [
+                'longDescription' => $bulletPoints,
+                'productDescription' => $bulletPoints,
+            ],
+        ];
+
+        $headers = [
+            'Accept' => 'application/json',
+            'Content-Type' => 'application/json',
+            'channel_id' => 'bestbuyusa',
+        ];
+
+        try {
+            $request = Http::withoutVerifying()->withToken($token)->withHeaders($headers)->timeout(60);
+            $response = $request->post($baseUrl, ['products' => [$productPayload]]);
+            if (! $response->successful()) {
+                $response = $request->patch("{$baseUrl}/{$sku}", $productPayload);
+            }
+            if (! $response->successful()) {
+                $response = $request->put("{$baseUrl}/{$sku}", $productPayload);
+            }
+
+            if (! $response->successful()) {
+                return ['success' => false, 'message' => 'Best Buy update failed: '.$response->body()];
+            }
+
+            return ['success' => true, 'message' => 'Best Buy bullet points updated.'];
+        } catch (\Throwable $e) {
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
 }

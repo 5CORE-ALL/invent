@@ -138,4 +138,56 @@ class FaireService
         }
     }
 
+    /**
+     * @return array{success:bool,message:string,response?:mixed}
+     */
+    public function updateBulletPoints(string $sku, string $bulletPoints): array
+    {
+        $token = config('services.faire.bearer_token')
+            ?? config('services.faire.access_token')
+            ?? config('services.faire.token');
+
+        if (! $token) {
+            return ['success' => false, 'message' => 'Faire API token is missing'];
+        }
+
+        $sku = trim($sku);
+        $bulletPoints = trim($bulletPoints);
+        if ($sku === '' || $bulletPoints === '') {
+            return ['success' => false, 'message' => 'SKU and bullet points are required.'];
+        }
+
+        $productId = $this->getProductIdBySku($sku);
+        if (! $productId) {
+            return ['success' => false, 'message' => "Faire product not found for SKU {$sku}"];
+        }
+
+        $baseUrl = 'https://www.faire.com/external-api/v2';
+        $headers = [
+            'X-FAIRE-ACCESS-TOKEN' => $token,
+            'Content-Type' => 'application/json',
+            'Accept' => 'application/json',
+        ];
+
+        $payload = [
+            'description' => $bulletPoints,
+            'short_description' => $bulletPoints,
+        ];
+
+        try {
+            $res = Http::withoutVerifying()
+                ->withHeaders($headers)
+                ->timeout(45)
+                ->patch("{$baseUrl}/products/{$productId}", $payload);
+
+            if ($res->successful()) {
+                return ['success' => true, 'message' => 'Faire bullet points updated', 'response' => $res->json()];
+            }
+
+            return ['success' => false, 'message' => 'Faire update failed: '.$res->body()];
+        } catch (\Throwable $e) {
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
 }

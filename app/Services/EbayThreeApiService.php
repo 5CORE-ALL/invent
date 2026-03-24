@@ -3,7 +3,9 @@
 namespace App\Services;
 
 use App\Models\Ebay3Metric;
+use App\Services\Support\EbayTradingReviseItem;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use SimpleXMLElement;
@@ -1174,5 +1176,42 @@ class EbayThreeApiService
             \Illuminate\Support\Facades\Log::error('eBay Browse token exception: ' . $e->getMessage());
             return null;
         }
+    }
+
+    /**
+     * @return array{success: bool, message: string}
+     */
+    public function updateBulletPoints(string $productId, string $bulletPoints): array
+    {
+        $sku = trim($productId);
+        $bulletPoints = trim($bulletPoints);
+        if ($sku === '' || $bulletPoints === '') {
+            return ['success' => false, 'message' => 'SKU and bullet points are required.'];
+        }
+
+        $itemId = DB::table('ebay_3_metrics')->where('sku', $sku)->value('item_id');
+        if (! $itemId) {
+            return ['success' => false, 'message' => 'eBay3 item_id not found for this SKU in ebay_3_metrics.'];
+        }
+
+        try {
+            $token = $this->generateBearerToken();
+        } catch (\Throwable $e) {
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+
+        $html = EbayTradingReviseItem::bulletsToDescriptionHtml($bulletPoints);
+
+        return EbayTradingReviseItem::reviseItemDescription(
+            $this->endpoint,
+            $this->compatLevel,
+            $this->devId,
+            $this->appId,
+            $this->certId,
+            $this->siteId,
+            $token,
+            (string) $itemId,
+            $html
+        );
     }
 }

@@ -491,4 +491,57 @@ class AliExpressApiService
             'page_size' => $result['page_size'] ?? $result['pageSize'] ?? null,
         ];
     }
+
+    /**
+     * Push detail / mobile description via solution.product.edit (no truncation).
+     *
+     * @return array{success: bool, message?: string, status?: int, data?: mixed}
+     */
+    public function updateBulletPoints(string $productId, string $bulletPoints, ?string $language = 'en'): array
+    {
+        $productId = trim($productId);
+        $bulletPoints = trim($bulletPoints);
+        if ($productId === '' || $bulletPoints === '') {
+            return ['success' => false, 'message' => 'Product ID and bullet points are required.'];
+        }
+
+        $html = '<ul>';
+        foreach (preg_split('/\r\n|\r|\n/', $bulletPoints) as $line) {
+            $line = trim($line);
+            if ($line === '') {
+                continue;
+            }
+            $html .= '<li>'.htmlspecialchars($line, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8').'</li>';
+        }
+        $html .= '</ul>';
+
+        $editRequest = [
+            'product_id' => (string) $productId,
+            'multi_language_description_list' => [
+                [
+                    'language' => $language ?: 'en',
+                    'mobile_detail' => $html,
+                    'web_detail' => $html,
+                ],
+            ],
+        ];
+
+        $res = $this->callSync('aliexpress.solution.product.edit', [
+            'edit_product_request' => $this->encodeRequestPayload($editRequest),
+        ]);
+
+        if (! empty($res['success'])) {
+            return [
+                'success' => true,
+                'message' => 'AliExpress product detail updated.',
+                'data' => $res['data'] ?? $res['result'] ?? null,
+            ];
+        }
+
+        return [
+            'success' => false,
+            'message' => (string) ($res['message'] ?? 'AliExpress product edit failed.'),
+            'response' => $res['response'] ?? $res,
+        ];
+    }
 }

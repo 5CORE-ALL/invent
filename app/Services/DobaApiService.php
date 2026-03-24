@@ -834,4 +834,67 @@ class DobaApiService
         }
         return $allStock;
     }
+
+    /**
+     * Push long product description / bullets to Doba OpenAPI (no truncation).
+     *
+     * @return array{success: bool, message: string}
+     */
+    public function updateBulletPoints(string $sku, string $bulletPoints): array
+    {
+        Log::info('Doba updateBulletPoints', ['sku' => $sku]);
+
+        try {
+            $sku = trim($sku);
+            $bulletPoints = trim($bulletPoints);
+            if ($sku === '' || $bulletPoints === '') {
+                return ['success' => false, 'message' => 'SKU and bullet points are required.'];
+            }
+
+            $itemNo = $this->resolveSkuToItemNo($sku);
+            if (! $itemNo) {
+                return ['success' => false, 'message' => 'SKU not found in DobaMetric/DobaDataView.'];
+            }
+
+            $timestamp = $this->getMillisecond();
+            $content = $this->getContent($timestamp);
+            $sign = $this->generateSignature($content);
+
+            $payload = [
+                'itemNo' => (string) $itemNo,
+                'productTitle' => $sku,
+                'productDescription' => $bulletPoints,
+                'description' => $bulletPoints,
+            ];
+
+            $headers = [
+                'appKey' => config('services.doba.app_key'),
+                'signType' => 'rsa2',
+                'timestamp' => $timestamp,
+                'sign' => $sign,
+                'Content-Type' => 'application/x-www-form-urlencoded',
+            ];
+
+            $attempts = [
+                ['url' => 'https://openapi.doba.com/api/goods/info/update', 'method' => 'post', 'body' => 'form'],
+                ['url' => 'https://openapi.doba.com/api/goods/update', 'method' => 'post', 'body' => 'form'],
+            ];
+
+            foreach ($attempts as $attempt) {
+                $response = Http::withHeaders($headers)->asForm()->post($attempt['url'], $payload);
+                if ($response->successful()) {
+                    $responseData = $response->json();
+                    if (isset($responseData['responseCode']) && $responseData['responseCode'] !== '000000') {
+                        continue;
+                    }
+
+                    return ['success' => true, 'message' => 'Doba product description updated.'];
+                }
+            }
+
+            return ['success' => false, 'message' => 'Doba bullet update failed for all endpoints.'];
+        } catch (\Throwable $e) {
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
 }

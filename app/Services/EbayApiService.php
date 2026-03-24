@@ -2,12 +2,14 @@
 
 namespace App\Services;
 
+use App\Models\ProductStockMapping;
+use App\Services\Support\EbayTradingReviseItem;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use SimpleXMLElement;
 use ZipArchive;
-use App\Models\ProductStockMapping;
 
 class EbayApiService
 {
@@ -1583,4 +1585,43 @@ public function downloadAndParseEbayReport(string $taskId, string $token): array
         'thresholdLower' => $vtrMetric['thresholdLowerBound']['value'] ?? null,
     ];
  }
+
+    /**
+     * Push bullet points to the listing HTML description (ReviseItem). No truncation.
+     *
+     * @return array{success: bool, message: string}
+     */
+    public function updateBulletPoints(string $productId, string $bulletPoints): array
+    {
+        $sku = trim($productId);
+        $bulletPoints = trim($bulletPoints);
+        if ($sku === '' || $bulletPoints === '') {
+            return ['success' => false, 'message' => 'SKU and bullet points are required.'];
+        }
+
+        $itemId = DB::table('ebay_metrics')->where('sku', $sku)->value('item_id');
+        if (! $itemId) {
+            return ['success' => false, 'message' => 'eBay item_id not found for this SKU in ebay_metrics.'];
+        }
+
+        try {
+            $token = $this->generateBearerToken();
+        } catch (\Throwable $e) {
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+
+        $html = EbayTradingReviseItem::bulletsToDescriptionHtml($bulletPoints);
+
+        return EbayTradingReviseItem::reviseItemDescription(
+            $this->endpoint,
+            $this->compatLevel,
+            $this->devId,
+            $this->appId,
+            $this->certId,
+            $this->siteId,
+            $token,
+            (string) $itemId,
+            $html
+        );
+    }
 }
