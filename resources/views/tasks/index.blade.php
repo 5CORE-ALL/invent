@@ -1001,10 +1001,10 @@
             box-shadow: 0 2px 4px rgba(220, 53, 69, 0.3);
         }
 
-        /* Action Icon Buttons */
+        /* Action Icon Buttons (view / edit / delete — 25% smaller than previous 16px/36px) */
         .action-btn-icon {
-            padding: 8px 10px;
-            font-size: 16px;
+            padding: 6px 8px;
+            font-size: 12px;
             border-radius: 6px;
             border: none;
             cursor: pointer;
@@ -1012,9 +1012,9 @@
             margin: 0 3px;
             display: inline-block;
             text-align: center;
-            width: 36px;
-            height: 36px;
-            line-height: 20px;
+            width: 27px;
+            height: 27px;
+            line-height: 15px;
         }
 
         .action-btn-icon:hover {

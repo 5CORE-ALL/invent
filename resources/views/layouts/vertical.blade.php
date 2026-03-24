@@ -84,9 +84,9 @@
     <!-- Floating Task Form Sidebar -->
     <div id="floating-task-form" style="position: fixed; 
                                          top: 0; 
-                                         right: -25%; 
-                                         width: 25%; 
-                                         min-width: 250px;
+                                         right: -30%; 
+                                         width: 30%; 
+                                         min-width: 280px;
                                          height: auto;
                                          max-height: 100vh;
                                          background: white; 
@@ -96,11 +96,14 @@
                                          transition: right 0.3s ease;
                                          padding: 0;">
         
-        <!-- Header with close button -->
+        <!-- Header: title doubles as submit; close stays separate -->
         <div class="position-relative" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 10px 15px;">
-            <div style="font-size: 13px; font-weight: bold; padding-right: 25px;">
+            <button type="submit"
+                    form="quick-task-form"
+                    id="quick-task-header-submit"
+                    class="quick-task-header-submit-btn">
                 <i class="mdi mdi-plus-circle me-1"></i> Create Task
-            </div>
+            </button>
             <button type="button" 
                     id="close-task-form-btn"
                     class="btn-close btn-close-white position-absolute"
@@ -206,10 +209,6 @@
                     <input type="file" class="form-control" name="image" accept="image/*" style="font-size: 9px; padding: 2px 4px; height: 26px;">
                 </div>
             </div>
-
-            <button type="submit" class="btn btn-danger w-100" style="font-size: 10px; padding: 4px 8px; height: 28px; margin-top: 6px;">
-                <i class="mdi mdi-check-circle me-1" style="font-size: 11px;"></i> Create
-            </button>
         </form>
         </div>
     </div>
@@ -225,6 +224,29 @@
                                          display: none;"></div>
 
     <style>
+        .quick-task-header-submit-btn {
+            font-size: 13px;
+            font-weight: bold;
+            border: none;
+            background: rgba(255, 255, 255, 0.15);
+            color: #fff;
+            padding: 6px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            text-align: left;
+            display: block;
+            width: calc(100% - 36px);
+            transition: background 0.2s ease, color 0.2s ease;
+        }
+        .quick-task-header-submit-btn:hover {
+            background: rgba(255, 255, 255, 0.28);
+            color: #fff;
+        }
+        .quick-task-header-submit-btn:focus-visible {
+            outline: 2px solid rgba(255, 255, 255, 0.9);
+            outline-offset: 2px;
+        }
+
         .floating-task-btn:hover {
             transform: translateY(-3px);
             box-shadow: 0 6px 20px rgba(220, 53, 69, 0.6);
@@ -265,7 +287,7 @@
 
             // Close floating task form
             function closeTaskForm() {
-                $('#floating-task-form').css('right', '-25%');
+                $('#floating-task-form').css('right', '-30%');
                 $('#task-form-backdrop').fadeOut(300);
                 $('body').css('overflow', 'auto');
             }
