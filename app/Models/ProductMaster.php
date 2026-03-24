@@ -14,6 +14,12 @@ class ProductMaster extends Model
 
     protected $fillable = [
         'parent',
+        'is_spare_part',
+        'min_stock_level',
+        'reorder_level',
+        'max_stock_level',
+        'lead_time_days',
+        'parent_id',
         'sku',
         'barcode',
         'group_id',
@@ -88,6 +94,11 @@ class ProductMaster extends Model
         'Values' => 'array',
         'sales' => 'array',
         'views' => 'array',
+        'is_spare_part' => 'boolean',
+        'min_stock_level' => 'integer',
+        'reorder_level' => 'integer',
+        'max_stock_level' => 'integer',
+        'lead_time_days' => 'integer',
     ];
 
     protected $guarded = ['group_id'];
@@ -106,6 +117,21 @@ class ProductMaster extends Model
     public function productCategory()
     {
         return $this->belongsTo(ProductCategory::class, 'category_id');
+    }
+
+    public function parentPart()
+    {
+        return $this->belongsTo(self::class, 'parent_id');
+    }
+
+    public function childParts()
+    {
+        return $this->hasMany(self::class, 'parent_id');
+    }
+
+    public function scopeSpareParts($query)
+    {
+        return $query->where('is_spare_part', true);
     }
 
     public function stockMovements()

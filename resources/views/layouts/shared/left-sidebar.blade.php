@@ -1550,6 +1550,9 @@
                             </a>
                         </li> --}}
                         <li>
+                            <a href="{{ route('inventory.spare-parts.index') }}">Spare Parts</a>
+                        </li>
+                        <li>
                             <a href="{{ route('verify-adjust') }}">Verifications & Adjustments</a>
                         </li>
                         <li>

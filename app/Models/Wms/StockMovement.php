@@ -21,6 +21,13 @@ class StockMovement extends Model
 
     public const TYPE_ADJUSTMENT = 'ADJUSTMENT';
 
+    /** Spare parts module (also stored in `stock_movements.type`) */
+    public const TYPE_ISSUE = 'issue';
+
+    public const TYPE_PURCHASE = 'purchase';
+
+    public const TYPE_SPARE_ADJUSTMENT = 'adjustment';
+
     protected $table = 'stock_movements';
 
     protected $fillable = [
@@ -33,6 +40,8 @@ class StockMovement extends Model
         'user_id',
         'inventory_id',
         'note',
+        'reference_type',
+        'reference_id',
     ];
 
     protected $casts = [
@@ -68,6 +77,9 @@ class StockMovement extends Model
             self::TYPE_PACK,
             self::TYPE_DISPATCH,
             self::TYPE_ADJUSTMENT,
+            self::TYPE_ISSUE,
+            self::TYPE_PURCHASE,
+            self::TYPE_SPARE_ADJUSTMENT,
         ];
     }
 }
