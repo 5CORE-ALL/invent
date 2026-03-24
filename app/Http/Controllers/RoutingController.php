@@ -49,6 +49,10 @@ class RoutingController extends Controller
             abort(404);
         }
 
+        if (!view()->exists($first)) {
+            abort(404);
+        }
+
         return view($first, ['mode' => $mode, 'demo' => $demo]);
     }
 
@@ -57,16 +61,19 @@ class RoutingController extends Controller
      */
     public function secondLevel(Request $request, $first, $second)
     {
-
         $mode = $request->query('mode');
         $demo = $request->query('demo');
 
         if ($first == "assets")
             return redirect('home');
 
+        $viewName = $first . '.' . $second;
 
+        if (!view()->exists($viewName)) {
+            abort(404);
+        }
 
-    return view($first .'.'. $second, ['mode' => $mode, 'demo' => $demo]);
+        return view($viewName, ['mode' => $mode, 'demo' => $demo]);
     }
 
     /**
@@ -79,38 +86,43 @@ class RoutingController extends Controller
 
         if ($first == "assets")
             return redirect('home');
-        
-        return view($first . '.' . $second . '.' . $third, ['mode' => $mode, 'demo' => $demo]);
+
+        $viewName = $first . '.' . $second . '.' . $third;
+
+        if (!view()->exists($viewName)) {
+            abort(404);
+        }
+
+        return view($viewName, ['mode' => $mode, 'demo' => $demo]);
     }
 
     public function thirdLevel(Request $request, $first, $second, $third)
-{
-    $mode = $request->query('mode');
-    $demo = $request->query('demo');
+    {
+        $mode = $request->query('mode');
+        $demo = $request->query('demo');
 
-    // Block access to sensitive or invalid paths
-    if (
-        Str::startsWith($first, '.') ||          // e.g., .well-known, .env
-        in_array($first, ['storage', 'vendor', 'assets', 'admin']) ||
-        Str::contains($first . $second . $third, ['..', '~', '\\'])
-    ) {
-        abort(404);
+        // Block access to sensitive or invalid paths
+        if (
+            Str::startsWith($first, '.') ||          // e.g., .well-known, .env
+            in_array($first, ['storage', 'vendor', 'assets', 'admin']) ||
+            Str::contains($first . $second . $third, ['..', '~', '\\'])
+        ) {
+            abort(404);
+        }
+
+        if ($first === 'assets') {
+            return redirect('home');
+        }
+
+        // Construct view name
+        $viewName = "$first.$second.$third";
+
+        // Only render if the view exists
+        if (!view()->exists($viewName)) {
+            abort(404);
+        }
+
+        return view($viewName, compact('mode', 'demo'));
     }
-
-    // Optional: Block 'assets' explicitly (you already had this)
-    if ($first === 'assets') {
-        return redirect('home');
-    }
-
-    // Construct view name
-    $viewName = "$first.$second.$third";
-
-    // Only render if the view exists
-    if (!view()->exists($viewName)) {
-        abort(404);
-    }
-
-    return view($viewName, compact('mode', 'demo'));
-}
 
 }
