@@ -2974,7 +2974,7 @@
                                     LP: item.LP_productmaster || 0,
                                     SHIP: item.Ship_productmaster || 0,
                                     VIEWS: item.ebay_views || 0,
-                                    L30_VIEWS: item.ebay_views != null ? Number(item.ebay_views) : 0,
+                                    L30_VIEWS: Number(item.l30_views ?? item.ebay_views ?? 0),
                                     L7_VIEWS: item.l7_views || 0,
                                     L60_VIEWS: item.l60_views != null ? Number(item.l60_views) : 0,
                                     L45_VIEWS: item.l45_views != null ? Number(item.l45_views) : 0,
@@ -3216,7 +3216,7 @@
 
                     // Calculate CVR first
                     let ebayL30 = Number(item['eBay L30']) || 0;
-                    let views = Number(item.VIEWS) || 0;
+                    let views = Number(item.L30_VIEWS ?? item.VIEWS ?? item.ebay_views ?? 0) || 0;
                     let scvr = views > 0 ? (ebayL30 / views) * 100 : 0;
 
                     // Check if DIL is red (ov_dil < 0.1666, which is < 16.66%)
@@ -3261,11 +3261,11 @@
                     const l45v = Math.round(Number(item.L45_VIEWS || 0)) || 0;
                     const l7v = Math.round(Number(item.L7_VIEWS || 0)) || 0;
                     const l1v = Math.round(Number(item.L1_VIEWS || item.YESTERDAY_VIEWS || 0)) || 0;
-                    $row.append($('<td data-field="l60_views">').attr('title', 'Listing views in the 30-day window from 60 to 30 days ago').html(
+                    $row.append($('<td data-field="l60_views">').attr('title', 'Listing views over the last 60 complete calendar days (excluding today).').html(
                         `<span class="dil-percent-value ${getViewColor(l60v)}">${l60v}</span>`
                     ));
-                    $row.append($('<td data-field="l30_views">').attr('title', 'Total listing views (eBay metrics)').text(l30v));
-                    $row.append($('<td data-field="l1545_views">').attr('title', 'Views in the rolling L15–45 day window').html(
+                    $row.append($('<td data-field="l30_views">').attr('title', 'Listing views over the last 30 complete calendar days (excluding today).').text(l30v));
+                    $row.append($('<td data-field="l1545_views">').attr('title', 'Views in days 31–60 ago (L60 minus L30; same as the 30-day window before the L30 period).').html(
                         `<span class="dil-percent-value ${getViewColor(l45v)}">${l45v}</span>`
                     ));
                     $row.append($('<td data-field="l7_views">').attr('title', 'Last 7 days listing views').text(l7v));
@@ -5130,9 +5130,9 @@
 
                     // Function to calculate SCVR (same logic as in renderTable)
                     function calculateSCVR(item) {
-                        // Use the same formula as renderTable: (eBay L30 / VIEWS) * 100
+                        // Same as renderTable: eBay L30 sales / rolling L30 listing views (fallback: lifetime VIEWS)
                         const ebayL30 = Number(item['eBay L30'] || item.raw_data?.['eBay L30'] || 0) || 0;
-                        const views = Number(item.VIEWS || item.ebay_views || 0) || 0;
+                        const views = Number(item.L30_VIEWS ?? item.VIEWS ?? item.ebay_views ?? 0) || 0;
                         return views > 0 ? (ebayL30 / views) * 100 : 0;
                     }
 
@@ -5827,9 +5827,9 @@
 
                     // Function to calculate SCVR (same logic as in renderTable)
                     function calculateSCVR(item) {
-                        // Use the same formula as renderTable: (eBay L30 / VIEWS) * 100
+                        // Same as renderTable: eBay L30 sales / rolling L30 listing views (fallback: lifetime VIEWS)
                         const ebayL30 = Number(item['eBay L30'] || item.raw_data?.['eBay L30'] || 0) || 0;
-                        const views = Number(item.VIEWS || item.ebay_views || 0) || 0;
+                        const views = Number(item.L30_VIEWS ?? item.VIEWS ?? item.ebay_views ?? 0) || 0;
                         return views > 0 ? (ebayL30 / views) * 100 : 0;
                     }
 
