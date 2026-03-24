@@ -12,7 +12,8 @@
     z-index: 9999;
 }
 
-#status {
+// Scoped so form fields (e.g. follow-up Status) are not styled as the loader chip
+#preloader #status {
     width: 80px;
     height: 80px;
     position: absolute;

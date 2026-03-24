@@ -792,7 +792,7 @@
                     document.getElementById('email').value = d.email || '';
                     document.getElementById('phone').value = d.phone || '';
                     document.getElementById('issue_type').value = d.issue_type;
-                    document.getElementById('status').value = d.status;
+                    document.getElementById('followup_status').value = d.status;
                     document.getElementById('priority').value = d.priority;
                     document.getElementById('followup_date').value = d.followup_date;
                     document.getElementById('followup_time').value = d.followup_time || '';

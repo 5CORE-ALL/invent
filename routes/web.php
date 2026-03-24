@@ -201,8 +201,13 @@ use App\Http\Controllers\InventoryManagement\OutgoingController;
 use App\Http\Controllers\InventoryManagement\RefundController;
 use App\Http\Controllers\CustomerCare\CustomerFollowupController;
 use App\Http\Controllers\CustomerCare\DARController;
+use App\Http\Controllers\CustomerCare\ShippingController;
 use App\Http\Controllers\InventoryManagement\StockAdjustmentController;
 use App\Http\Controllers\InventoryManagement\StockTransferController;
+use App\Http\Controllers\InventoryManagement\SparePartController;
+use App\Http\Controllers\InventoryManagement\RequisitionController as SparePartsRequisitionController;
+use App\Http\Controllers\InventoryManagement\IssueController as SparePartsIssueController;
+use App\Http\Controllers\InventoryManagement\SparePartPurchaseOrderController;
 use App\Http\Controllers\Channels\ChannelMovementAnalysisController;
 use App\Http\Controllers\Channels\NewMarketplaceController;
 use App\Http\Controllers\Channels\OpportunityController;
@@ -611,6 +616,17 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/customer-care', function () {
         return view('customer-care.index');
     })->name('customer.care');
+    Route::get('/customer-care/shipping', [ShippingController::class, 'index'])->name('customer.care.shipping');
+    Route::get('/customer-care/shipping/overview', [ShippingController::class, 'overview'])->name('customer.care.shipping.overview');
+    Route::get('/customer-care/shipping/report-state', [ShippingController::class, 'reportState'])->name('customer.care.shipping.report.state');
+    Route::post('/customer-care/shipping/report-line', [ShippingController::class, 'reportSave'])->name('customer.care.shipping.report.save');
+    Route::delete('/customer-care/shipping/report-issues/{shipping_report_issue}', [ShippingController::class, 'reportIssueDestroy'])->name('customer.care.shipping.report.issue.destroy');
+    Route::get('/customer-care/shipping/platforms', [ShippingController::class, 'platformsList'])->name('customer.care.shipping.platforms');
+    Route::get('/customer-care/shipping/cleared', [ShippingController::class, 'clearedList'])->name('customer.care.shipping.cleared.list');
+    Route::post('/customer-care/shipping/cleared/{shipping_followup_archive}/restore', [ShippingController::class, 'clearedRestore'])->name('customer.care.shipping.cleared.restore');
+    Route::get('/customer-care/shipping/followups', [ShippingController::class, 'followupsList'])->name('customer.care.shipping.followups.list');
+    Route::post('/customer-care/shipping/followups', [ShippingController::class, 'followupsStore'])->name('customer.care.shipping.followups.store');
+    Route::post('/customer-care/shipping/followups/{shipping_followup}/resolve', [ShippingController::class, 'followupsResolve'])->name('customer.care.shipping.followups.resolve');
     Route::get('/customer-care/refunds', [RefundController::class, 'index'])->name('customer.care.refunds');
     Route::get('/customer-care/followups', [CustomerFollowupController::class, 'index'])->name('customer.care.followups');
     Route::get('/customer-care/followups/data', [CustomerFollowupController::class, 'data'])->name('customer.care.followups.data');
@@ -645,6 +661,32 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/outgoing-reasons', [OutgoingController::class, 'storeReason']);
     Route::put('/outgoing-update-reason-comment', [OutgoingController::class, 'updateReasonAndComment']);
     Route::get('/outgoing-history/{id}', [OutgoingController::class, 'getHistory']);
+
+    // Spare parts (inventory management)
+    Route::get('/inventory/spare-parts', [SparePartController::class, 'index'])->name('inventory.spare-parts.index');
+    Route::get('/inventory/spare-parts/api/summary', [SparePartController::class, 'summary'])->name('inventory.spare-parts.api.summary');
+    Route::get('/inventory/spare-parts/api/spare-parts', [SparePartController::class, 'sparePartsData'])->name('inventory.spare-parts.api.parts');
+    Route::get('/inventory/spare-parts/api/low-stock', [SparePartController::class, 'lowStockData'])->name('inventory.spare-parts.api.low-stock');
+    Route::get('/inventory/spare-parts/api/tree', [SparePartController::class, 'tree'])->name('inventory.spare-parts.api.tree');
+    Route::get('/inventory/spare-parts/api/search-parts', [SparePartController::class, 'searchParts'])->name('inventory.spare-parts.api.search-parts');
+    Route::get('/inventory/spare-parts/api/part-skus', [SparePartController::class, 'allPartSkus'])->name('inventory.spare-parts.api.part-skus');
+    Route::get('/inventory/spare-parts/api/suppliers', [SparePartController::class, 'suppliers'])->name('inventory.spare-parts.api.suppliers');
+    Route::patch('/inventory/spare-parts/api/parts/{id}', [SparePartController::class, 'updatePart'])->name('inventory.spare-parts.api.parts.update');
+    Route::post('/inventory/spare-parts/api/spare-part-details', [SparePartController::class, 'storeSparePartDetail'])->name('inventory.spare-parts.api.spare-part-details.store');
+
+    Route::get('/inventory/spare-parts/api/requisitions', [SparePartsRequisitionController::class, 'index'])->name('inventory.spare-parts.api.requisitions.index');
+    Route::post('/inventory/spare-parts/api/requisitions', [SparePartsRequisitionController::class, 'store'])->name('inventory.spare-parts.api.requisitions.store');
+    Route::post('/inventory/spare-parts/api/requisitions/{requisition}/submit', [SparePartsRequisitionController::class, 'submit'])->name('inventory.spare-parts.api.requisitions.submit');
+    Route::post('/inventory/spare-parts/api/requisitions/{requisition}/approve', [SparePartsRequisitionController::class, 'approve'])->name('inventory.spare-parts.api.requisitions.approve');
+    Route::post('/inventory/spare-parts/api/requisitions/{requisition}/close', [SparePartsRequisitionController::class, 'close'])->name('inventory.spare-parts.api.requisitions.close');
+
+    Route::get('/inventory/spare-parts/api/issues/pending', [SparePartsIssueController::class, 'pending'])->name('inventory.spare-parts.api.issues.pending');
+    Route::post('/inventory/spare-parts/api/issues', [SparePartsIssueController::class, 'store'])->name('inventory.spare-parts.api.issues.store');
+
+    Route::get('/inventory/spare-parts/api/purchase-orders', [SparePartPurchaseOrderController::class, 'index'])->name('inventory.spare-parts.api.purchase-orders.index');
+    Route::post('/inventory/spare-parts/api/purchase-orders', [SparePartPurchaseOrderController::class, 'store'])->name('inventory.spare-parts.api.purchase-orders.store');
+    Route::post('/inventory/spare-parts/api/purchase-orders/{sparePartPurchaseOrder}/send', [SparePartPurchaseOrderController::class, 'send'])->name('inventory.spare-parts.api.purchase-orders.send');
+    Route::post('/inventory/spare-parts/api/purchase-orders/{sparePartPurchaseOrder}/receive', [SparePartPurchaseOrderController::class, 'receive'])->name('inventory.spare-parts.api.purchase-orders.receive');
     Route::post('/outgoing-archive', [OutgoingController::class, 'archive']);
 
     Route::get('/refunds-view', [RefundController::class, 'index'])->name('refunds.view');

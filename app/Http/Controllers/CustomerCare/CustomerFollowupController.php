@@ -205,7 +205,7 @@ class CustomerFollowupController extends Controller
             'order_id' => 'nullable|string|max:64',
             'sku' => 'nullable|string|max:128',
             'channel_master_id' => 'nullable|integer',
-            'customer_name' => 'required|string|max:255',
+            'customer_name' => 'nullable|string|max:255',
             'email' => 'nullable|email|max:255',
             'phone' => 'nullable|string|max:32',
             'issue_type' => ['required', Rule::in(['Payment', 'Delivery', 'Return', 'Refund', 'Other'])],
@@ -223,6 +223,10 @@ class CustomerFollowupController extends Controller
         if (!empty($validated['reference_link']) && !filter_var($validated['reference_link'], FILTER_VALIDATE_URL)) {
             return response()->json(['success' => false, 'message' => 'Reference link must be a valid URL.', 'errors' => ['reference_link' => ['Invalid URL']]], 422);
         }
+
+        $validated['customer_name'] = isset($validated['customer_name']) && trim((string) $validated['customer_name']) !== ''
+            ? trim($validated['customer_name'])
+            : '';
 
         $validated['channel_master_id'] = $this->validateChannelMasterId(
             isset($validated['channel_master_id']) ? (int) $validated['channel_master_id'] : null
@@ -277,7 +281,7 @@ class CustomerFollowupController extends Controller
             'order_id' => 'nullable|string|max:64',
             'sku' => 'nullable|string|max:128',
             'channel_master_id' => 'nullable|integer',
-            'customer_name' => 'required|string|max:255',
+            'customer_name' => 'nullable|string|max:255',
             'email' => 'nullable|email|max:255',
             'phone' => 'nullable|string|max:32',
             'issue_type' => ['required', Rule::in(['Payment', 'Delivery', 'Return', 'Refund', 'Other'])],
@@ -295,6 +299,10 @@ class CustomerFollowupController extends Controller
         if (!empty($validated['reference_link']) && !filter_var($validated['reference_link'], FILTER_VALIDATE_URL)) {
             return response()->json(['success' => false, 'message' => 'Reference link must be a valid URL.'], 422);
         }
+
+        $validated['customer_name'] = isset($validated['customer_name']) && trim((string) $validated['customer_name']) !== ''
+            ? trim($validated['customer_name'])
+            : '';
 
         $validated['channel_master_id'] = $this->validateChannelMasterId(
             isset($validated['channel_master_id']) ? (int) $validated['channel_master_id'] : null
