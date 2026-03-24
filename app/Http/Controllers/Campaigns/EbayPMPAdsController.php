@@ -194,6 +194,7 @@ class EbayPMPAdsController extends Controller
 
         $skus = $productMasters->pluck("sku")->filter()->unique()->values()->all();
 
+        // Daily view windows: load all recent ebay_sku_daily_data (see computeEbayDailyViewAggregates).
         $viewWindowBySku = $this->computeEbayDailyViewAggregates($skus);
 
         // Fetch Shopify data with normalized SKU matching
@@ -317,16 +318,18 @@ class EbayPMPAdsController extends Controller
             $row["INV"] = $shopify->inv ?? 0;
             $row["L30"] = $shopify->quantity ?? 0;
 
-            $row["eBay L30"] = $ebayMetric->ebay_l30 ?? 0;
-            $row["eBay L60"] = $ebayMetric->ebay_l60 ?? 0;
-            $row["eBay Price"] = $ebayMetric->ebay_price ?? 0;
-            $row['price_lmpa'] = $ebayMetric->price_lmpa ?? null;
-            $row['eBay_item_id'] = $ebayMetric->item_id ?? null;
-            $row['ebay_views'] = $ebayMetric->views ?? 0;
-            $row['l7_views'] = $ebayMetric->l7_views ?? 0;
+            $row["eBay L30"] = $ebayMetric ? (int) ($ebayMetric->ebay_l30 ?? 0) : 0;
+            $row["eBay L60"] = $ebayMetric ? (int) ($ebayMetric->ebay_l60 ?? 0) : 0;
+            $row["eBay Price"] = $ebayMetric ? (float) ($ebayMetric->ebay_price ?? 0) : 0;
+            $row['price_lmpa'] = $ebayMetric ? $ebayMetric->price_lmpa : null;
+            $row['eBay_item_id'] = $ebayMetric ? $ebayMetric->item_id : null;
+            $row['ebay_views'] = $ebayMetric ? (int) ($ebayMetric->views ?? 0) : 0;
+            $row['l7_views'] = $ebayMetric ? (int) ($ebayMetric->l7_views ?? 0) : 0;
             $row['l60_views'] = (int) ($viewWindowBySku[$normalizedSku]['l60_views'] ?? 0);
             $row['l45_views'] = (int) ($viewWindowBySku[$normalizedSku]['l45_views'] ?? 0);
             $row['yesterday_views'] = (int) ($viewWindowBySku[$normalizedSku]['yesterday_views'] ?? 0);
+            $row['views_metrics_fallback'] = false;
+            $this->applyEbayMetricsViewsFallback($row);
             $row['campaign_id'] = ($ebayMetric && isset($listingToCampaignId[$ebayMetric->item_id])) 
                 ? $listingToCampaignId[$ebayMetric->item_id] : null;
 
@@ -445,11 +448,16 @@ class EbayPMPAdsController extends Controller
 
     /**
      * Per-SKU view metrics from ebay_sku_daily_data (cumulative listing views per snapshot).
-     * Day-over-day deltas approximate views received on each calendar day.
      *
-     * - l60_views: sum of daily deltas from (today-60) through (today-31) — the 30 days before the last 30.
-     * - l45_views: sum of daily deltas from (today-45) through (today-16) — rolling 30-day window.
-     * - yesterday_views: delta for calendar yesterday vs prior snapshot day.
+     * Uses (1) sum of day-over-day deltas when the counter updates daily, and (2) cumulative
+     * boundary math (last snapshot in window minus last snapshot before window) when the
+     * counter is flat for many days (delta sum would be 0 incorrectly).
+     *
+     * Rows are indexed by canonical SKU (alphanumeric only) so ProductMaster SKUs match
+     * daily rows even when spacing differs.
+     *
+     * Date windows use app timezone (config app.timezone). L60 / L45 / yesterday are
+     * calendar-day ranges relative to today.
      *
      * @param  array<int, string|null>  $skus
      * @return array<string, array{l60_views: int, l45_views: int, yesterday_views: int}>
@@ -477,26 +485,30 @@ class EbayPMPAdsController extends Controller
             return $out;
         }
 
-        $today = \Carbon\Carbon::today();
+        $today = \Carbon\Carbon::now(config('app.timezone'))->startOfDay();
         $minDate = $today->copy()->subDays(70);
 
-        $rows = EbaySkuDailyData::whereIn('sku', $normalizedSkus)
+        $rows = EbaySkuDailyData::query()
             ->where('record_date', '>=', $minDate->format('Y-m-d'))
             ->orderBy('sku')
             ->orderBy('record_date')
             ->get(['sku', 'record_date', 'daily_data']);
 
-        $bySku = [];
+        /** @var array<string, array<string, int>> $byCanonical date => cumulative views */
+        $byCanonical = [];
         foreach ($rows as $r) {
-            $skuKey = $normalizeSku($r->sku);
+            $canon = $this->ebaySkuCanonicalKey((string) $r->sku);
+            if ($canon === '') {
+                continue;
+            }
             $d = $r->record_date instanceof \DateTimeInterface
                 ? $r->record_date->format('Y-m-d')
                 : \Carbon\Carbon::parse($r->record_date)->format('Y-m-d');
             $views = isset($r->daily_data['views']) ? (int) $r->daily_data['views'] : 0;
-            if (! isset($bySku[$skuKey])) {
-                $bySku[$skuKey] = [];
+            if (! isset($byCanonical[$canon])) {
+                $byCanonical[$canon] = [];
             }
-            $bySku[$skuKey][$d] = $views;
+            $byCanonical[$canon][$d] = max($byCanonical[$canon][$d] ?? 0, $views);
         }
 
         $l60Start = $today->copy()->subDays(60)->format('Y-m-d');
@@ -506,7 +518,8 @@ class EbayPMPAdsController extends Controller
         $yesterday = $today->copy()->subDay()->format('Y-m-d');
 
         foreach ($normalizedSkus as $skuKey) {
-            $dates = $bySku[$skuKey] ?? [];
+            $canon = $this->ebaySkuCanonicalKey($skuKey);
+            $dates = $byCanonical[$canon] ?? [];
             if ($dates === []) {
                 continue;
             }
@@ -524,7 +537,7 @@ class EbayPMPAdsController extends Controller
                 $dailyDeltas[$dk] = max(0, $cum - $prevCum);
             }
 
-            $sumRange = function (string $startStr, string $endStr) use ($dailyDeltas) {
+            $sumDeltas = function (string $startStr, string $endStr) use ($dailyDeltas) {
                 $sum = 0;
                 $cur = \Carbon\Carbon::parse($startStr)->startOfDay();
                 $endC = \Carbon\Carbon::parse($endStr)->startOfDay();
@@ -537,12 +550,214 @@ class EbayPMPAdsController extends Controller
                 return $sum;
             };
 
-            $out[$skuKey]['l60_views'] = $sumRange($l60Start, $l60End);
-            $out[$skuKey]['l45_views'] = $sumRange($l45Start, $l45End);
-            $out[$skuKey]['yesterday_views'] = (int) ($dailyDeltas[$yesterday] ?? 0);
+            $deltaL60 = $sumDeltas($l60Start, $l60End);
+            $deltaL45 = $sumDeltas($l45Start, $l45End);
+            $deltaYest = (int) ($dailyDeltas[$yesterday] ?? 0);
+
+            $boundaryL60 = $this->viewsGainFromCumulativeSeries($dates, $l60Start, $l60End);
+            $boundaryL45 = $this->viewsGainFromCumulativeSeries($dates, $l45Start, $l45End);
+            $boundaryYest = $this->yesterdayViewsFromCumulativeSeries($dates, $yesterday);
+
+            $out[$skuKey]['l60_views'] = (int) max($deltaL60, $boundaryL60);
+            $out[$skuKey]['l45_views'] = (int) max($deltaL45, $boundaryL45);
+            $out[$skuKey]['yesterday_views'] = (int) max($deltaYest, $boundaryYest);
+        }
+
+        if (filter_var(env('EBAY_PMP_VIEWS_DEBUG', false), FILTER_VALIDATE_BOOLEAN)) {
+            Log::info('ebay_pmp_views_daily_aggregate', [
+                'timezone' => (string) config('app.timezone'),
+                'today' => $today->toDateString(),
+                'yesterday' => $yesterday,
+                'l60_window' => [$l60Start, $l60End],
+                'l45_window' => [$l45Start, $l45End],
+                'daily_rows_loaded' => $rows->count(),
+                'canonical_series_count' => count($byCanonical),
+            ]);
         }
 
         return $out;
+    }
+
+    /**
+     * When daily snapshots are missing, stale, or cumulative counters are flat (day deltas all 0),
+     * estimate windows from ebay_metrics already on the row (ebay_views, l7_views).
+     * Sets views_metrics_fallback = true so the UI can distinguish from true daily-derived values.
+     *
+     * @param  array<string, mixed>  $row
+     */
+    private function applyEbayMetricsViewsFallback(array &$row): void
+    {
+        $sum = (int) ($row['l60_views'] ?? 0) + (int) ($row['l45_views'] ?? 0) + (int) ($row['yesterday_views'] ?? 0);
+        if ($sum > 0) {
+            return;
+        }
+
+        $l7 = (int) ($row['l7_views'] ?? 0);
+        $tv = (int) ($row['ebay_views'] ?? 0);
+        if ($l7 <= 0 && $tv <= 0) {
+            return;
+        }
+
+        if ($l7 > 0) {
+            $rate = $l7 / 7.0;
+            $row['yesterday_views'] = (int) max(0, round($rate));
+            $row['l45_views'] = (int) max(0, round($rate * 30));
+            $nonL7 = max(0, $tv - $l7);
+            $row['l60_views'] = $nonL7 > 0
+                ? (int) max(0, round($nonL7 * (30 / 53)))
+                : (int) max(0, round($rate * 30));
+        } else {
+            $rate = $tv / 30.0;
+            $row['yesterday_views'] = (int) max(0, round($rate));
+            $row['l45_views'] = (int) max(0, round($rate * 30));
+            $row['l60_views'] = (int) max(0, round($tv * (30 / 60)));
+        }
+
+        $row['views_metrics_fallback'] = true;
+    }
+
+    /**
+     * Canonical SKU for matching ProductMaster, ebay_metrics, and ebay_sku_daily_data rows.
+     */
+    private function ebaySkuCanonicalKey(string $sku): string
+    {
+        $s = strtoupper(trim($sku));
+        $s = preg_replace('/\s+/u', ' ', $s);
+
+        return preg_replace('/[^A-Z0-9]/', '', $s);
+    }
+
+    /**
+     * Approximate views gained in [rangeStart, rangeEnd] from cumulative snapshots (date => total views).
+     */
+    private function viewsGainFromCumulativeSeries(array $dateToCum, string $rangeStart, string $rangeEnd): int
+    {
+        if ($dateToCum === []) {
+            return 0;
+        }
+        ksort($dateToCum);
+        $vBefore = null;
+        foreach ($dateToCum as $d => $v) {
+            if ($d < $rangeStart) {
+                $vBefore = (int) $v;
+            }
+        }
+        $vEnd = null;
+        foreach ($dateToCum as $d => $v) {
+            if ($d >= $rangeStart && $d <= $rangeEnd) {
+                $vEnd = (int) $v;
+            }
+        }
+        if ($vEnd === null) {
+            return 0;
+        }
+        if ($vBefore === null) {
+            $firstV = null;
+            foreach ($dateToCum as $d => $v) {
+                if ($d >= $rangeStart && $d <= $rangeEnd) {
+                    $firstV = (int) $v;
+                    break;
+                }
+            }
+
+            return max(0, $vEnd - ($firstV ?? $vEnd));
+        }
+
+        return max(0, $vEnd - $vBefore);
+    }
+
+    /**
+     * Views on calendar yesterday: last cumulative before yesterday vs snapshot on yesterday (if any).
+     */
+    private function yesterdayViewsFromCumulativeSeries(array $dateToCum, string $yesterday): int
+    {
+        if ($dateToCum === []) {
+            return 0;
+        }
+        ksort($dateToCum);
+        $before = null;
+        foreach ($dateToCum as $d => $v) {
+            if ($d < $yesterday) {
+                $before = (int) $v;
+            }
+        }
+        $onDay = $dateToCum[$yesterday] ?? null;
+        if ($onDay === null || $before === null) {
+            return 0;
+        }
+
+        return max(0, (int) $onDay - $before);
+    }
+
+    /**
+     * Debug-only: raw cumulative series + computed windows for a SKU (canonical match).
+     */
+    public function debugEbaySkuViews(Request $request, string $sku)
+    {
+        if (! config('app.debug') && ! filter_var(env('EBAY_PMP_VIEWS_DEBUG', false), FILTER_VALIDATE_BOOLEAN)) {
+            abort(404);
+        }
+
+        $normalizeSku = function ($s) {
+            if (empty($s)) {
+                return '';
+            }
+            $s = strtoupper(trim($s));
+            $s = preg_replace('/\s+/u', ' ', $s);
+
+            return trim($s);
+        };
+
+        $normalized = $normalizeSku($sku);
+        $canon = $this->ebaySkuCanonicalKey($normalized);
+        $today = \Carbon\Carbon::now(config('app.timezone'))->startOfDay();
+        $minDate = $today->copy()->subDays(120);
+
+        $rows = EbaySkuDailyData::query()
+            ->where('record_date', '>=', $minDate->format('Y-m-d'))
+            ->where(function ($q) use ($sku, $normalized, $canon) {
+                $q->where('sku', $sku)
+                    ->orWhere('sku', $normalized)
+                    ->orWhereRaw('REPLACE(REPLACE(UPPER(TRIM(sku)), "-", ""), " ", "") = ?', [$canon]);
+            })
+            ->orderBy('record_date')
+            ->get(['sku', 'record_date', 'daily_data', 'updated_at']);
+
+        $series = [];
+        foreach ($rows as $r) {
+            $d = $r->record_date instanceof \DateTimeInterface
+                ? $r->record_date->format('Y-m-d')
+                : \Carbon\Carbon::parse($r->record_date)->format('Y-m-d');
+            $v = isset($r->daily_data['views']) ? (int) $r->daily_data['views'] : 0;
+            $series[$d] = max($series[$d] ?? 0, $v);
+        }
+        ksort($series);
+
+        $l60Start = $today->copy()->subDays(60)->format('Y-m-d');
+        $l60End = $today->copy()->subDays(31)->format('Y-m-d');
+        $l45Start = $today->copy()->subDays(45)->format('Y-m-d');
+        $l45End = $today->copy()->subDays(16)->format('Y-m-d');
+        $yesterday = $today->copy()->subDay()->format('Y-m-d');
+
+        return response()->json([
+            'input' => $sku,
+            'normalized' => $normalized,
+            'canonical' => $canon,
+            'timezone' => config('app.timezone'),
+            'today' => $today->toDateString(),
+            'windows' => [
+                'l60' => [$l60Start, $l60End],
+                'l45' => [$l45Start, $l45End],
+                'yesterday' => $yesterday,
+            ],
+            'row_count' => $rows->count(),
+            'series' => $series,
+            'computed' => [
+                'l60' => $this->viewsGainFromCumulativeSeries($series, $l60Start, $l60End),
+                'l45' => $this->viewsGainFromCumulativeSeries($series, $l45Start, $l45End),
+                'yesterday' => $this->yesterdayViewsFromCumulativeSeries($series, $yesterday),
+            ],
+        ]);
     }
 
     private function extractNumber($value)
