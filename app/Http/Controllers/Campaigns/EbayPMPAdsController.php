@@ -16,6 +16,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 
 class EbayPMPAdsController extends Controller
 {
@@ -176,7 +177,33 @@ class EbayPMPAdsController extends Controller
         ]);
     }
 
-    public function getEbayPmpAdsData()
+    public function getEbayPmpAdsData(Request $request)
+    {
+        Log::info('ebay_pmp_ads_data.start');
+
+        try {
+            return $this->buildEbayPmpAdsDataResponse();
+        } catch (\Throwable $e) {
+            Log::error('ebay_pmp_ads_data.failed', [
+                'message' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return response()->json([
+                'message' => 'Failed to load eBay PMT Ads data',
+                'data' => [],
+                'status' => 500,
+                'error' => config('app.debug') ? $e->getMessage() : 'Server error',
+            ], 500);
+        }
+    }
+
+    /**
+     * Core JSON builder for PMT Ads grid (wrapped by {@see getEbayPmpAdsData} try/catch).
+     */
+    private function buildEbayPmpAdsDataResponse()
     {
         // SKU normalization function to handle spaces and whitespace
         $normalizeSku = function ($sku) {
@@ -195,7 +222,15 @@ class EbayPMPAdsController extends Controller
         $skus = $productMasters->pluck("sku")->filter()->unique()->values()->all();
 
         // Daily view windows: load all recent ebay_sku_daily_data (see computeEbayDailyViewAggregates).
-        $viewWindowBySku = $this->computeEbayDailyViewAggregates($skus);
+        try {
+            $viewWindowBySku = $this->computeEbayDailyViewAggregates($skus);
+        } catch (\Throwable $e) {
+            Log::error('ebay_pmp_view_aggregates_outer_failed', [
+                'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            $viewWindowBySku = $this->emptyViewAggregatesForSkus($skus);
+        }
 
         // Fetch Shopify data with normalized SKU matching
         $shopifyDataRaw = ShopifySku::whereIn("sku", $skus)->get();
@@ -237,20 +272,26 @@ class EbayPMPAdsController extends Controller
 
         // Get campaign listings with bid_percentage. Prioritize COST_PER_SALE rows
         // since they have bid_percentage, but fallback to latest row if no COST_PER_SALE exists.
-        $campaignListings = DB::connection('apicentral')
-            ->table('ebay_campaign_ads_listings as t')
-            ->join(DB::raw('(SELECT listing_id, 
-                                    MAX(CASE WHEN funding_strategy = "COST_PER_SALE" THEN id END) AS max_cps_id,
-                                    MAX(id) AS max_id
-                             FROM ebay_campaign_ads_listings 
-                             GROUP BY listing_id) x'), 
-                function($join) {
-                    $join->on('t.id', '=', DB::raw('COALESCE(x.max_cps_id, x.max_id)'));
-                })
-            ->select('t.listing_id', 't.bid_percentage', 't.suggested_bid')
-            ->get()
-            ->keyBy('listing_id');
-
+        $campaignListings = collect();
+        try {
+            $campaignListings = DB::connection('apicentral')
+                ->table('ebay_campaign_ads_listings as t')
+                ->join(DB::raw('(SELECT listing_id, 
+                                        MAX(CASE WHEN funding_strategy = "COST_PER_SALE" THEN id END) AS max_cps_id,
+                                        MAX(id) AS max_id
+                                 FROM ebay_campaign_ads_listings 
+                                 GROUP BY listing_id) x'), 
+                    function($join) {
+                        $join->on('t.id', '=', DB::raw('COALESCE(x.max_cps_id, x.max_id)'));
+                    })
+                ->select('t.listing_id', 't.bid_percentage', 't.suggested_bid')
+                ->get()
+                ->keyBy('listing_id');
+        } catch (\Throwable $e) {
+            Log::warning('ebay_pmp_apicentral_campaign_listings_unavailable', [
+                'message' => $e->getMessage(),
+            ]);
+        }
 
         $adMetricsBySku = [];
 
@@ -315,8 +356,8 @@ class EbayPMPAdsController extends Controller
             $row["(Child) sku"] = $pm->sku;
             $row['fba'] = $pm->fba;
 
-            $row["INV"] = $shopify->inv ?? 0;
-            $row["L30"] = $shopify->quantity ?? 0;
+            $row["INV"] = $shopify ? ((int) ($shopify->inv ?? 0)) : 0;
+            $row["L30"] = $shopify ? ((int) ($shopify->quantity ?? 0)) : 0;
 
             $row["eBay L30"] = $ebayMetric ? (int) ($ebayMetric->ebay_l30 ?? 0) : 0;
             $row["eBay L60"] = $ebayMetric ? (int) ($ebayMetric->ebay_l60 ?? 0) : 0;
@@ -392,7 +433,8 @@ class EbayPMPAdsController extends Controller
                 $lp > 0 ? (($price * $percentage - $lp - $ship) / $lp) : 0,
                 2
             );
-            $row["TPFT"] = $row["PFT %"] + $adPercentage - $row["bid_percentage"];
+            $bidPct = $row["bid_percentage"];
+            $row["TPFT"] = $row["PFT %"] + $adPercentage - (is_numeric($bidPct) ? (float) $bidPct : 0);
             $row["percentage"] = $percentage;
             $row["LP_productmaster"] = $lp;
             $row["Ship_productmaster"] = $ship;
@@ -432,7 +474,8 @@ class EbayPMPAdsController extends Controller
                 }
             }
 
-            $row["image_path"] = $shopify->image_src ?? ($values["image_path"] ?? ($pm->image_path ?? null));
+            $row["image_path"] = $shopify ? ($shopify->image_src ?? null) : null;
+            $row["image_path"] = $row["image_path"] ?? ($values["image_path"] ?? ($pm->image_path ?? null));
 
             if($row['NRL'] !== 'NRL' && stripos($pm->sku, 'PARENT') === false){
                 $result[] = (object) $row;
@@ -444,6 +487,30 @@ class EbayPMPAdsController extends Controller
             "data" => $result,
             "status" => 200,
         ]);
+    }
+
+    /**
+     * @param  array<int, string|null>  $skus
+     * @return array<string, array{l60_views: int, l45_views: int, yesterday_views: int}>
+     */
+    private function emptyViewAggregatesForSkus(array $skus): array
+    {
+        $normalizeSku = function ($sku) {
+            if (empty($sku)) {
+                return '';
+            }
+            $sku = strtoupper(trim($sku));
+            $sku = preg_replace('/\s+/u', ' ', $sku);
+            $sku = preg_replace('/[^\S\r\n]+/u', ' ', $sku);
+
+            return trim($sku);
+        };
+        $out = [];
+        foreach (array_values(array_unique(array_filter(array_map($normalizeSku, $skus)))) as $s) {
+            $out[$s] = ['l60_views' => 0, 'l45_views' => 0, 'yesterday_views' => 0];
+        }
+
+        return $out;
     }
 
     /**
@@ -485,14 +552,29 @@ class EbayPMPAdsController extends Controller
             return $out;
         }
 
+        if (! Schema::hasTable('ebay_sku_daily_data')) {
+            Log::warning('ebay_pmp_missing_table_ebay_sku_daily_data');
+
+            return $out;
+        }
+
         $today = \Carbon\Carbon::now(config('app.timezone'))->startOfDay();
         $minDate = $today->copy()->subDays(70);
 
-        $rows = EbaySkuDailyData::query()
-            ->where('record_date', '>=', $minDate->format('Y-m-d'))
-            ->orderBy('sku')
-            ->orderBy('record_date')
-            ->get(['sku', 'record_date', 'daily_data']);
+        try {
+            $rows = EbaySkuDailyData::query()
+                ->where('record_date', '>=', $minDate->format('Y-m-d'))
+                ->orderBy('sku')
+                ->orderBy('record_date')
+                ->get(['sku', 'record_date', 'daily_data']);
+        } catch (\Throwable $e) {
+            Log::error('ebay_pmp_daily_data_query_failed', [
+                'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return $this->emptyViewAggregatesForSkus($skus);
+        }
 
         /** @var array<string, array<string, int>> $byCanonical date => cumulative views */
         $byCanonical = [];
