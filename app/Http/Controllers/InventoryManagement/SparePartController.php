@@ -34,7 +34,7 @@ class SparePartController extends Controller
             ->limit(500)
             ->get(['id', 'sku', 'parent', 'category_id']);
 
-        return view('inventory.spare-parts', [
+        return view('inventory.spare_parts', [
             'parentOptions' => $parentOptions,
             'parentSelectJson' => $parentOptions->map(fn ($p) => [
                 'id' => $p->id,
