@@ -629,12 +629,16 @@ class AutoUpdateAmazonKwBids extends Command
             $row['sbid'] = 0;
 
             if ($ub2Red && $ub1Red) {
-                // KW 2UB red AND KW 1UB red: L1*1.1, else L2*1.1, else L7*1.1, else 0.60
+                // KW 2UB red AND 1UB red:
+                // 1) L1*1.10
+                // 2) if L1 is 0, L2*1.10
+                // 3) if L1 and L2 are 0, L7*1.10
+                // 4) if all CPC are 0, default 0.60
                 if ($l1_cpc > 0) {
                     $row['sbid'] = floor($l1_cpc * 1.10 * 100) / 100;
-                } elseif ($l2_cpc > 0) {
+                } elseif ($l1_cpc <= 0 && $l2_cpc > 0) {
                     $row['sbid'] = floor($l2_cpc * 1.10 * 100) / 100;
-                } elseif ($l7_cpc > 0) {
+                } elseif ($l1_cpc <= 0 && $l2_cpc <= 0 && $l7_cpc > 0) {
                     $row['sbid'] = floor($l7_cpc * 1.10 * 100) / 100;
                 } else {
                     $row['sbid'] = 0.60;

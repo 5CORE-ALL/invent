@@ -3310,8 +3310,8 @@
                             var acos = parseFloat(data.acos || data.ACOS || 0);
                             if (isNaN(acos)) acos = 0;
                             if (acos < 20) return 10;
-                            if (acos < 30) return 5;
-                            return 3;
+                            if (acos >= 20 && acos < 30) return 5;
+                            return 2;
                         },
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
@@ -3454,8 +3454,8 @@
                             var acos = parseFloat(data.pt_acos || data.PT_ACOS || 0);
                             if (isNaN(acos)) acos = 0;
                             if (acos < 20) return 10;
-                            if (acos < 30) return 5;
-                            return 3;
+                            if (acos >= 20 && acos < 30) return 5;
+                            return 2;
                         },
                         formatter: function(cell) {
                             return cell.getValue();
@@ -3812,8 +3812,8 @@
                             var acos = parseFloat(data.hl_acos || data.HL_ACOS || 0);
                             if (isNaN(acos)) acos = 0;
                             if (acos < 20) return 10;
-                            if (acos < 30) return 5;
-                            return 3;
+                            if (acos >= 20 && acos < 30) return 5;
+                            return 2;
                         },
                         formatter: function(cell) {
                             return cell.getValue();
@@ -4700,8 +4700,8 @@
                                 var sbid = 0;
                                 if (ub2Red && ub1Red) {
                                     if (l1Cpc > 0) sbid = Math.floor(l1Cpc * 1.10 * 100) / 100;
-                                    else if (l2Cpc > 0) sbid = Math.floor(l2Cpc * 1.10 * 100) / 100;
-                                    else if (l7Cpc > 0) sbid = Math.floor(l7Cpc * 1.10 * 100) / 100;
+                                    else if (l1Cpc <= 0 && l2Cpc > 0) sbid = Math.floor(l2Cpc * 1.10 * 100) / 100;
+                                    else if (l1Cpc <= 0 && l2Cpc <= 0 && l7Cpc > 0) sbid = Math.floor(l7Cpc * 1.10 * 100) / 100;
                                     else sbid = 0.60;
                                 } else if (ub2Pink && ub1Pink) {
                                     sbid = Math.floor(l1Cpc * 0.90 * 100) / 100;
@@ -4749,13 +4749,13 @@
                             var ub2Pink = ub2 > 99;
 
                             var sbid = 0;
-                            // Case 1: KW 2UB = red AND KW 1UB = red → L1*1.1, else L2*1.1, else L7*1.1, else 0.60
+                            // Case 1: KW 2UB = red AND KW 1UB = red
                             if (ub2Red && ub1Red) {
                                 if (l1Cpc > 0) {
                                     sbid = Math.floor(l1Cpc * 1.10 * 100) / 100;
-                                } else if (l2Cpc > 0) {
+                                } else if (l1Cpc <= 0 && l2Cpc > 0) {
                                     sbid = Math.floor(l2Cpc * 1.10 * 100) / 100;
-                                } else if (l7Cpc > 0) {
+                                } else if (l1Cpc <= 0 && l2Cpc <= 0 && l7Cpc > 0) {
                                     sbid = Math.floor(l7Cpc * 1.10 * 100) / 100;
                                 } else {
                                     sbid = 0.60;
