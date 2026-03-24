@@ -378,6 +378,13 @@ class EbayPMPAdsController extends Controller
             $row['yesterday_views'] = (int) ($vw['yesterday_views'] ?? 0);
             $row['views_metrics_fallback'] = false;
             $this->applyEbayMetricsViewsFallback($row);
+
+            $l60v = (int) ($row['l60_views'] ?? 0);
+            $l30v = (int) ($row['l30_views'] ?? 0);
+            $l1545v = (int) ($row['l45_views'] ?? 0);
+            $row['l60_vs_l1545_green'] = $l1545v > $l60v;
+            $row['l1545_vs_l30_green'] = $l1545v < $l30v;
+
             $row['campaign_id'] = ($ebayMetric && isset($listingToCampaignId[$ebayMetric->item_id])) 
                 ? $listingToCampaignId[$ebayMetric->item_id] : null;
 
