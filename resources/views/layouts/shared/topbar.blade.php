@@ -27,7 +27,7 @@
             </div>
 
             <!-- Sidebar Menu Toggle Button -->
-            <button class="button-toggle-menu">
+            <button class="button-toggle-menu" type="button">
                 <i class="ri-menu-line"></i>
             </button>
 

@@ -84,10 +84,10 @@
     <!-- Floating Task Form Sidebar -->
     <div id="floating-task-form" style="position: fixed; 
                                          top: 0; 
-                                         right: -30%; 
+                                         right: -420px; 
                                          width: 30%; 
                                          min-width: 280px;
-                                         height: auto;
+                                         height: 100vh;
                                          max-height: 100vh;
                                          background: white; 
                                          box-shadow: -5px 0 25px rgba(0,0,0,0.3); 
@@ -265,19 +265,55 @@
             border-radius: 3px;
         }
         
-        @media (max-width: 768px) {
+        @media (max-width: 991.98px) {
             .floating-task-btn {
                 display: none;
             }
             #floating-task-form {
                 width: 100%;
+                min-width: 0;
+                max-width: 100%;
                 right: -100%;
+                height: 100vh;
+                max-height: 100vh;
+            }
+
+            #quick-task-form .form-label {
+                font-size: 12px !important;
+                margin-bottom: 4px !important;
+            }
+
+            #quick-task-form .form-control,
+            #quick-task-form .form-select {
+                font-size: 14px !important;
+                padding: 8px 10px !important;
+                height: 40px !important;
+            }
+
+            #quick-task-form input[type="file"] {
+                height: auto !important;
+                min-height: 40px;
+            }
+
+            #toggle-quick-more-fields {
+                font-size: 12px !important;
+                height: 36px !important;
+                padding: 6px 10px !important;
+            }
+
+            .quick-task-header-submit-btn {
+                font-size: 16px;
+                padding: 10px 12px;
             }
         }
     </style>
 
     <script>
         $(document).ready(function() {
+            function getTaskFormClosedOffset() {
+                return window.matchMedia('(max-width: 991.98px)').matches ? '-100%' : '-420px';
+            }
+
             // Open floating task form
             $('#open-task-form-btn').on('click', function() {
                 $('#floating-task-form').css('right', '0');
@@ -287,13 +323,20 @@
 
             // Close floating task form
             function closeTaskForm() {
-                $('#floating-task-form').css('right', '-30%');
+                $('#floating-task-form').css('right', getTaskFormClosedOffset());
                 $('#task-form-backdrop').fadeOut(300);
                 $('body').css('overflow', 'auto');
             }
 
             $('#close-task-form-btn').on('click', closeTaskForm);
             $('#task-form-backdrop').on('click', closeTaskForm);
+
+            // Keep closed position in sync when viewport changes.
+            $(window).on('resize', function() {
+                if ($('#floating-task-form').css('right') !== '0px') {
+                    $('#floating-task-form').css('right', getTaskFormClosedOffset());
+                }
+            });
             
             // Close on Escape key
             $(document).on('keydown', function(e) {

@@ -21,6 +21,7 @@
         <span>Menu</span>
     </a>
 </nav>
+<div id="mobile-sidebar-overlay" class="d-md-none" onclick="toggleMobileMenu(true)"></div>
 
 <style>
 /* Mobile Bottom Navigation */
@@ -88,9 +89,46 @@
         padding-bottom: 80px !important;
     }
     
-    /* Hide desktop sidebar on mobile */
+    /* Reuse full desktop sidebar as mobile drawer */
     .leftside-menu {
-        display: none !important;
+        display: block !important;
+        position: fixed !important;
+        top: 0 !important;
+        left: -88vw !important;
+        width: 88vw !important;
+        max-width: 340px !important;
+        height: 100vh !important;
+        z-index: 1045 !important;
+        transition: left 0.25s ease !important;
+        box-shadow: 6px 0 20px rgba(0, 0, 0, 0.25) !important;
+        transform: none !important;
+    }
+
+    body.mobile-menu-open .leftside-menu {
+        left: 0 !important;
+        margin-left: 0 !important;
+        opacity: 1 !important;
+        visibility: visible !important;
+    }
+
+    body.mobile-menu-open {
+        overflow: hidden;
+    }
+
+    #mobile-sidebar-overlay {
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.45);
+        z-index: 1040;
+    }
+
+    body.mobile-menu-open #mobile-sidebar-overlay {
+        display: block;
+    }
+
+    .leftside-menu #leftside-menu-container {
+        height: calc(100vh - 70px) !important;
     }
     
     /* Make content full width on mobile */
@@ -109,90 +147,52 @@
 </style>
 
 <script>
-function toggleMobileMenu() {
-    // Create mobile menu overlay
-    const existingMenu = document.getElementById('mobile-menu-overlay');
-    if (existingMenu) {
-        existingMenu.remove();
+function toggleMobileMenu(forceClose = false) {
+    if (window.innerWidth >= 768) {
         return;
     }
-    
-    const menuOverlay = document.createElement('div');
-    menuOverlay.id = 'mobile-menu-overlay';
-    menuOverlay.style.cssText = `
-        position: fixed;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        background: rgba(0,0,0,0.5);
-        z-index: 9998;
-        animation: fadeIn 0.3s;
-    `;
-    
-    const menuPanel = document.createElement('div');
-    menuPanel.style.cssText = `
-        position: fixed;
-        right: 0;
-        top: 0;
-        bottom: 0;
-        width: 280px;
-        background: white;
-        z-index: 9999;
-        animation: slideInRight 0.3s;
-        overflow-y: auto;
-        box-shadow: -2px 0 10px rgba(0,0,0,0.2);
-    `;
-    
-    menuPanel.innerHTML = `
-        <div style="padding: 20px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">
-            <div style="display: flex; justify-content: space-between; align-items: center;">
-                <h5 style="margin: 0;">Menu</h5>
-                <button onclick="toggleMobileMenu()" style="background: transparent; border: none; color: white; font-size: 24px;">
-                    <i class="mdi mdi-close"></i>
-                </button>
-            </div>
-            <div style="margin-top: 10px; font-size: 14px;">{{ Auth::user()->name ?? 'User' }}</div>
-        </div>
-        <div style="padding: 15px;">
-            <a href="{{ url('/') }}" style="display: block; padding: 12px; color: #333; text-decoration: none; border-bottom: 1px solid #eee;">
-                <i class="mdi mdi-view-dashboard me-2"></i> Dashboard
-            </a>
-            <a href="{{ route('tasks.index') }}" style="display: block; padding: 12px; color: #333; text-decoration: none; border-bottom: 1px solid #eee;">
-                <i class="mdi mdi-format-list-checks me-2"></i> All Tasks
-            </a>
-            <a href="{{ route('tasks.create') }}" style="display: block; padding: 12px; color: #333; text-decoration: none; border-bottom: 1px solid #eee;">
-                <i class="mdi mdi-plus-circle me-2"></i> Create Task
-            </a>
-            <a href="#" style="display: block; padding: 12px; color: #333; text-decoration: none; border-bottom: 1px solid #eee;">
-                <i class="mdi mdi-cog me-2"></i> Settings
-            </a>
-            <a href="{{ route('logout') }}" onclick="event.preventDefault(); document.getElementById('logout-form').submit();" 
-               style="display: block; padding: 12px; color: #dc3545; text-decoration: none;">
-                <i class="mdi mdi-logout me-2"></i> Logout
-            </a>
-            <form id="logout-form" action="{{ route('logout') }}" method="POST" style="display: none;">
-                @csrf
-            </form>
-        </div>
-    `;
-    
-    menuOverlay.onclick = toggleMobileMenu;
-    document.body.appendChild(menuOverlay);
-    document.body.appendChild(menuPanel);
+
+    const body = document.body;
+    const html = document.documentElement;
+    const isOpen = body.classList.contains('mobile-menu-open');
+
+    if (forceClose || isOpen) {
+        body.classList.remove('mobile-menu-open');
+        html.classList.remove('sidebar-enable');
+        const themeBackdrop = document.getElementById('custom-backdrop');
+        if (themeBackdrop) {
+            themeBackdrop.remove();
+        }
+        body.style.overflow = null;
+        body.style.paddingRight = null;
+        return;
+    }
+
+    body.classList.add('mobile-menu-open');
+    html.classList.add('sidebar-enable');
 }
 
-// Add animations
-const style = document.createElement('style');
-style.textContent = `
-    @keyframes fadeIn {
-        from { opacity: 0; }
-        to { opacity: 1; }
+// Auto close mobile drawer when leaving mobile viewport.
+window.addEventListener('resize', function () {
+    if (window.innerWidth >= 768) {
+        document.body.classList.remove('mobile-menu-open');
+        document.documentElement.classList.remove('sidebar-enable');
     }
-    @keyframes slideInRight {
-        from { transform: translateX(100%); }
-        to { transform: translateX(0); }
+});
+
+// Intercept topbar hamburger on mobile to avoid theme conflict.
+document.addEventListener('DOMContentLoaded', function () {
+    const topbarBtn = document.querySelector('.button-toggle-menu');
+    if (!topbarBtn) {
+        return;
     }
-`;
-document.head.appendChild(style);
+
+    topbarBtn.addEventListener('click', function (event) {
+        if (window.innerWidth < 768) {
+            event.preventDefault();
+            event.stopImmediatePropagation();
+            toggleMobileMenu();
+        }
+    }, true);
+});
 </script>
