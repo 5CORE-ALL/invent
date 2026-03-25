@@ -8,6 +8,8 @@ use App\Services\Support\ShopifyBulletPointsFormatter;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use App\Models\ProductMaster;
+use Illuminate\Http\Client\Response;
+use Illuminate\Support\Facades\Cache;
 
 class ShopifyApiService
 {
@@ -151,13 +153,19 @@ class ShopifyApiService
             }
 
             $variantUrl = "https://{$domain}/admin/api/2024-01/variants/{$shopifySku->variant_id}.json";
-            $variantRes = Http::withHeaders([
-                'X-Shopify-Access-Token' => $token,
-                'Content-Type' => 'application/json',
-            ])->timeout(30)->get($variantUrl);
+            $variantRes = $this->retryOnRateLimit(function () use ($token, $variantUrl) {
+                return Http::withHeaders([
+                    'X-Shopify-Access-Token' => $token,
+                    'Content-Type' => 'application/json',
+                ])->timeout(30)->get($variantUrl);
+            });
 
             if (! $variantRes->successful()) {
-                return ['success' => false, 'message' => 'Variant lookup failed: '.$variantRes->body()];
+                $msg = $variantRes->status() === 429
+                    ? 'Variant lookup rate limited after retries.'
+                    : 'Variant lookup failed: '.$variantRes->body();
+
+                return ['success' => false, 'message' => $msg];
             }
 
             $productId = $variantRes->json('variant.product_id');
@@ -165,33 +173,99 @@ class ShopifyApiService
                 return ['success' => false, 'message' => 'Product ID missing.'];
             }
 
+            usleep(500000);
+
+            $title = $this->getProductTitle($domain, $token, $productId);
+            if ($title === '') {
+                return ['success' => false, 'message' => 'Could not load product title (Shopify rate limit or API error).'];
+            }
+
             $productUrl = "https://{$domain}/admin/api/2024-01/products/{$productId}.json";
-            $getProduct = Http::withHeaders([
-                'X-Shopify-Access-Token' => $token,
-                'Content-Type' => 'application/json',
-            ])->timeout(30)->get($productUrl);
-
-            $title = $getProduct->json('product.title') ?? '';
-
-            $updateRes = Http::withHeaders([
-                'X-Shopify-Access-Token' => $token,
-                'Content-Type' => 'application/json',
-            ])->timeout(30)->put($productUrl, [
-                'product' => [
-                    'id' => $productId,
-                    'title' => $title,
-                    'body_html' => $formattedHtml,
-                ],
-            ]);
+            $updateRes = $this->retryOnRateLimit(function () use ($token, $productUrl, $productId, $formattedHtml, $title) {
+                return Http::withHeaders([
+                    'X-Shopify-Access-Token' => $token,
+                    'Content-Type' => 'application/json',
+                ])->timeout(30)->put($productUrl, [
+                    'product' => [
+                        'id' => $productId,
+                        'title' => $title,
+                        'body_html' => $formattedHtml,
+                    ],
+                ]);
+            });
 
             if ($updateRes->successful()) {
                 return ['success' => true, 'message' => 'Shopify product bullets updated.'];
             }
 
-            return ['success' => false, 'message' => 'Shopify update failed: '.$updateRes->body()];
+            $errBody = $updateRes->status() === 429
+                ? 'Shopify update rate limited after retries.'
+                : $updateRes->body();
+
+            return ['success' => false, 'message' => 'Shopify update failed: '.$errBody];
         } catch (\Throwable $e) {
             return ['success' => false, 'message' => $e->getMessage()];
         }
+    }
+
+    /**
+     * Retry HTTP calls when Shopify returns 429 Too Many Requests.
+     */
+    private function retryOnRateLimit(callable $call, int $maxRetries = 3): Response
+    {
+        $attempt = 0;
+        $response = null;
+
+        while ($attempt < $maxRetries) {
+            $response = $call();
+
+            if ($response->status() !== 429) {
+                return $response;
+            }
+
+            $attempt++;
+            $wait = (int) (pow(2, $attempt) * 1000000);
+            usleep($wait);
+        }
+
+        return $response;
+    }
+
+    /**
+     * Cached product title to reduce sequential API calls per store.
+     */
+    private function getProductTitle(string $domain, string $token, int|string $productId): string
+    {
+        $cacheKey = 'shopify_product_title_'.$productId;
+        $cached = Cache::get($cacheKey);
+        if (is_string($cached) && $cached !== '') {
+            return $cached;
+        }
+
+        $productUrl = "https://{$domain}/admin/api/2024-01/products/{$productId}.json";
+        $getProduct = $this->retryOnRateLimit(function () use ($token, $productUrl) {
+            return Http::withHeaders([
+                'X-Shopify-Access-Token' => $token,
+                'Content-Type' => 'application/json',
+            ])->timeout(30)->get($productUrl);
+        });
+
+        if (! $getProduct->successful()) {
+            if ($getProduct->status() === 429) {
+                Log::warning('Shopify main store: product title fetch rate limited after retries', [
+                    'product_id' => $productId,
+                ]);
+            }
+
+            return '';
+        }
+
+        $title = (string) ($getProduct->json('product.title') ?? '');
+        if ($title !== '') {
+            Cache::put($cacheKey, $title, 3600);
+        }
+
+        return $title;
     }
 
     public function getInventory()
