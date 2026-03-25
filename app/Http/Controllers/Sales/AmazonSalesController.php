@@ -53,16 +53,16 @@ class AmazonSalesController extends Controller
         
         $hlSpent = $hlSpentData->sum('max_cost') ?? 0;
 
-        // Last 35 days ending today (California Pacific) — rolling window
-        $todayPacific = Carbon::now('America/Los_Angeles');
-        $endToday = $todayPacific->copy()->endOfDay();
-        $start35 = $todayPacific->copy()->subDays(34)->startOfDay(); // 35 calendar days
+        // Last 35 days ending yesterday (California Pacific), matching Amazon dashboard behavior
+        $yesterdayPacific = Carbon::yesterday('America/Los_Angeles');
+        $endDate = $yesterdayPacific->copy()->endOfDay();
+        $start35 = $yesterdayPacific->copy()->subDays(34)->startOfDay(); // 35 calendar days
         
         // Use order totals instead of item prices to match Amazon's "Ordered Product Sales" report
         // This includes shipping and discounts properly
         $sales35Days = (float) DB::table('amazon_orders as o')
             ->where('o.order_date', '>=', $start35)
-            ->where('o.order_date', '<=', $endToday)
+            ->where('o.order_date', '<=', $endDate)
             ->where(function ($q) {
                 $q->whereNull('o.status')->orWhere('o.status', '!=', 'Canceled');
             })
@@ -70,10 +70,10 @@ class AmazonSalesController extends Controller
 
         // 8 Feb to today (separate badge, fixed start)
         $start8Feb = Carbon::createFromDate(now()->year, 2, 8)->startOfDay();
-        $daysFrom8Feb = $start8Feb->isFuture() ? 0 : $start8Feb->diffInDays($endToday) + 1;
+        $daysFrom8Feb = $start8Feb->isFuture() ? 0 : $start8Feb->diffInDays($endDate) + 1;
         $salesFrom8Feb = $start8Feb->isFuture() ? 0.0 : (float) DB::table('amazon_orders as o')
             ->where('o.order_date', '>=', $start8Feb)
-            ->where('o.order_date', '<=', $endToday)
+            ->where('o.order_date', '<=', $endDate)
             ->where(function ($q) {
                 $q->whereNull('o.status')->orWhere('o.status', '!=', 'Canceled');
             })
@@ -92,19 +92,19 @@ class AmazonSalesController extends Controller
     public function getData(Request $request)
     {
         // ============================================================
-        // Last 35 days ending today (California Pacific) — same as main badge
+        // Last 35 days ending yesterday (California Pacific) — same as main badge
         // ============================================================
 
-        $todayPacific = Carbon::now('America/Los_Angeles');
-        $endToday = $todayPacific->copy()->endOfDay();
-        $start35 = $todayPacific->copy()->subDays(34)->startOfDay();
+        $yesterdayPacific = Carbon::yesterday('America/Los_Angeles');
+        $endDate = $yesterdayPacific->copy()->endOfDay();
+        $start35 = $yesterdayPacific->copy()->subDays(34)->startOfDay();
         $startDateStr = $start35->format('Y-m-d');
-        $endDateStr = $endToday->format('Y-m-d');
+        $endDateStr = $endDate->format('Y-m-d');
 
         $orderRows = DB::table('amazon_orders as o')
             ->join('amazon_order_items as i', 'o.id', '=', 'i.amazon_order_id')
             ->where('o.order_date', '>=', $start35)
-            ->where('o.order_date', '<=', $endToday)
+            ->where('o.order_date', '<=', $endDate)
             ->where(function ($q) {
                 $q->whereNull('o.status')->orWhere('o.status', '!=', 'Canceled');
             })

@@ -17,6 +17,7 @@ use App\Models\FbaListingStatus;
 use App\Models\FbaShipCalculation;
 use App\Models\FbaMetricsHistory;
 use App\Models\FbaSkuDailyData;
+use App\Models\FbaAgeData;
 use App\Models\AmazonSkuCompetitor;
 use App\Models\AmazonProductReview;
 use App\Models\MarketplacePercentage;
@@ -233,7 +234,12 @@ class FbaDataController extends Controller
       $matchedSkus = $fbaData->keys()->toArray();
       $unmatchedSkus = array_diff($skus, $matchedSkus);
 
-      return compact('productData', 'shopifyData', 'fbaData', 'fbaPriceData', 'fbaReportsData', 'matchedSkus', 'unmatchedSkus', 'fbaMonthlySales', 'fbaManualData', 'fbaDispatchDates', 'fbaShipCalculations', 'amazonDatasheet', 'amazonReviews', 'fbaShipments', 'amazonSpCampaignReportsL60', 'amazonSpCampaignReportsL30', 'amazonSpCampaignReportsL15', 'amazonSpCampaignReportsL7', 'amazonSpCampaignReportsL1', 'amazonLmpLookup');
+      // FBA age / health data keyed by full FBA SKU (e.g. "CAPO AL BLK FBA")
+      $fbaAgeData = FbaAgeData::all()->keyBy(function ($item) {
+         return strtoupper(trim($item->sku));
+      });
+
+      return compact('productData', 'shopifyData', 'fbaData', 'fbaPriceData', 'fbaReportsData', 'matchedSkus', 'unmatchedSkus', 'fbaMonthlySales', 'fbaManualData', 'fbaDispatchDates', 'fbaShipCalculations', 'amazonDatasheet', 'amazonReviews', 'fbaShipments', 'amazonSpCampaignReportsL60', 'amazonSpCampaignReportsL30', 'amazonSpCampaignReportsL15', 'amazonSpCampaignReportsL7', 'amazonSpCampaignReportsL1', 'amazonLmpLookup', 'fbaAgeData');
    }
 
    public function fbaPageView()
@@ -596,6 +602,7 @@ class FbaDataController extends Controller
       $amazonReviews = $data['amazonReviews'];
       $fbaShipments = $data['fbaShipments'];
       $amazonLmpLookup = $data['amazonLmpLookup'];
+      $fbaAgeData = $data['fbaAgeData'];
       $productData = $data['productData']->keyBy(function ($p) {
          return strtoupper(trim($p->sku));
       });
@@ -701,7 +708,7 @@ class FbaDataController extends Controller
       $amazonPercentage = $amazonMarketplace ? ($amazonMarketplace->percentage / 100) : 0.80;
 
       // Prepare table data with repeated parent name for all child SKUs
-      $tableData = $fbaData->map(function ($fba, $sku) use ($fbaPriceData, $fbaReportsData, $shopifyData, $productData, $fbaMonthlySales, $fbaManualData, $fbaDispatchDates, $fbaShipCalculations, $amazonDatasheet, $amazonReviews, $fbaShipments, $adsKWDataBySku, $adsPTDataBySku, $overallAvgPrice, $fbaListingStatuses, $amazonLmpLookup, $amazonAdSpendBySku, $amazonPercentage) {
+      $tableData = $fbaData->map(function ($fba, $sku) use ($fbaPriceData, $fbaReportsData, $shopifyData, $productData, $fbaMonthlySales, $fbaManualData, $fbaDispatchDates, $fbaShipCalculations, $amazonDatasheet, $amazonReviews, $fbaShipments, $adsKWDataBySku, $adsPTDataBySku, $overallAvgPrice, $fbaListingStatuses, $amazonLmpLookup, $amazonAdSpendBySku, $amazonPercentage, $fbaAgeData) {
          $fbaPriceInfo = $fbaPriceData->get($sku);
          $fbaReportsInfo = $fbaReportsData->get($sku);
          $shopifyInfo = $shopifyData->get($sku);
@@ -1149,7 +1156,53 @@ class FbaDataController extends Controller
             'SALES_AMT' => round($sales_amt, 2),
             'LP_AMT' => round($lp_amt, 2),
 
-
+            // FBA Age data from fba_age_data table
+            'Inv_age' => (function() use ($fba, $fbaAgeData) {
+               $age = $fbaAgeData->get(strtoupper(trim($fba->seller_sku)));
+               if (!$age) return null;
+               return $age->health_status;
+            })(),
+            'age_data' => (function() use ($fba, $fbaAgeData) {
+               $age = $fbaAgeData->get(strtoupper(trim($fba->seller_sku)));
+               if (!$age) return null;
+               return [
+                  'snapshot_date'                => $age->snapshot_date,
+                  'health_status'                => $age->health_status,
+                  'recommended_action'           => $age->recommended_action,
+                  'available'                    => $age->available,
+                  'inv_age_0_to_30_days'         => $age->inv_age_0_to_30_days,
+                  'inv_age_31_to_60_days'        => $age->inv_age_31_to_60_days,
+                  'inv_age_61_to_90_days'        => $age->inv_age_61_to_90_days,
+                  'inv_age_0_to_90_days'         => $age->inv_age_0_to_90_days,
+                  'inv_age_91_to_180_days'       => $age->inv_age_91_to_180_days,
+                  'inv_age_181_to_270_days'      => $age->inv_age_181_to_270_days,
+                  'inv_age_271_to_365_days'      => $age->inv_age_271_to_365_days,
+                  'inv_age_366_to_455_days'      => $age->inv_age_366_to_455_days,
+                  'inv_age_456_plus_days'        => $age->inv_age_456_plus_days,
+                  'units_shipped_t7'             => $age->units_shipped_t7,
+                  'units_shipped_t30'            => $age->units_shipped_t30,
+                  'units_shipped_t60'            => $age->units_shipped_t60,
+                  'units_shipped_t90'            => $age->units_shipped_t90,
+                  'sell_through'                 => $age->sell_through,
+                  'days_of_supply'               => $age->days_of_supply,
+                  'estimated_excess_quantity'    => $age->estimated_excess_quantity,
+                  'estimated_storage_cost_next_month' => $age->estimated_storage_cost_next_month,
+                  'ais_qty_181_210'              => $age->ais_qty_181_210,
+                  'ais_est_181_210'              => $age->ais_est_181_210,
+                  'ais_qty_211_240'              => $age->ais_qty_211_240,
+                  'ais_est_211_240'              => $age->ais_est_211_240,
+                  'ais_qty_241_270'              => $age->ais_qty_241_270,
+                  'ais_est_241_270'              => $age->ais_est_241_270,
+                  'ais_qty_271_300'              => $age->ais_qty_271_300,
+                  'ais_est_271_300'              => $age->ais_est_271_300,
+                  'ais_qty_301_330'              => $age->ais_qty_301_330,
+                  'ais_est_301_330'              => $age->ais_est_301_330,
+                  'ais_qty_331_365'              => $age->ais_qty_331_365,
+                  'ais_est_331_365'              => $age->ais_est_331_365,
+                  'no_sale_last_6_months'        => $age->no_sale_last_6_months,
+                  'inventory_age_snapshot_date'  => $age->inventory_age_snapshot_date,
+               ];
+            })(),
 
          ];
       })->values();
