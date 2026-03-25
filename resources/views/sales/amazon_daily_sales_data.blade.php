@@ -595,7 +595,7 @@
             const totalOrders = uniqueOrderIds.size; // Count unique orders
             $('#total-orders-badge').text('Total Orders: ' + totalOrders.toLocaleString());
             $('#total-quantity-badge').text('Total Quantity: ' + totalQuantity.toLocaleString());
-            $('#total-sales-badge').text('Total Sales: $' + totalRevenue.toFixed(2));
+            $('#sales-35-days-badge').text('Total Sales: $' + totalRevenue.toFixed(2));
             $('#total-revenue-badge').text('Total Revenue: $' + totalRevenue.toFixed(2));
             $('#pft-percentage-badge').text('GPFT %: ' + pftPercentage.toFixed(1) + '%');
             $('#roi-percentage-badge').text('ROI %: ' + roiPercentage.toFixed(1) + '%');

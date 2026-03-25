@@ -210,15 +210,22 @@
 
     <!-- Inv age Modal -->
     <div class="modal fade" id="invageModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog">
+        <div class="modal-dialog modal-lg">
             <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">Inv age Details</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                <div class="modal-header py-2" style="background: #1a8a8a;">
+                    <div class="d-flex align-items-center gap-2">
+                        <i class="fas fa-layer-group text-white"></i>
+                        <h6 class="modal-title text-white mb-0 fw-bold">FBA Inventory Age</h6>
+                        <span id="invage-sku-badge" class="badge bg-white text-dark ms-2 fw-semibold" style="font-size:12px;"></span>
+                    </div>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
-                <div class="modal-body">
-                    <p><strong>SKU:</strong> <span id="modalSKU"></span></p>
-                    <p><strong>Inv age:</strong> <span id="modalInvage"></span></p>
+                <div class="modal-body p-3" id="invage-modal-body">
+                    <!-- filled by JS -->
+                </div>
+                <div class="modal-footer py-1 text-muted" style="font-size:11px;">
+                    Snapshot: <span id="invage-snapshot-date" class="ms-1 fw-semibold"></span>
+                    &nbsp;|&nbsp; Age snapshot: <span id="invage-age-snapshot-date" class="fw-semibold"></span>
                 </div>
             </div>
         </div>
@@ -1729,9 +1736,29 @@
                             title: "Inv<br> age",
                             field: "Inv_age",
                             hozAlign: "center",
+                            cellClick: function(e, cell) {
+                                const rowData = cell.getRow().getData();
+                                if (rowData.is_parent) return;
+                                openInvageModal(rowData.age_data || null, rowData.FBA_SKU || rowData.SKU);
+                            },
                             formatter: function(cell) {
-                                const value = cell.getValue();
-                                return `<span>${value || ''}</span> <i class="fa fa-eye" style="cursor:pointer; color:#3b7ddd; margin-left:5px;" onclick="openInvageModal('${value || ''}', '${cell.getRow().getData().SKU}')"></i>`;
+                                const rowData = cell.getRow().getData();
+                                if (rowData.is_parent) return '';
+                                const health = rowData.Inv_age;
+                                const ageData = rowData.age_data;
+
+                                if (!ageData) {
+                                    return `<span style="cursor:pointer;color:#ccc;" title="No age data"><i class="fa fa-eye"></i></span>`;
+                                }
+
+                                const colorMap = {
+                                    'Excess'      : '#e74c3c',
+                                    'Healthy'     : '#27ae60',
+                                    'Low stock'   : '#e67e22',
+                                    'Out of stock': '#95a5a6',
+                                };
+                                const color = colorMap[health] || '#3b7ddd';
+                                return `<span class="badge" style="background:${color};font-size:10px;cursor:pointer;" title="Click to view age details">${health || '—'} <i class="fa fa-eye ms-1"></i></span>`;
                             }
                         },
 
@@ -3521,6 +3548,155 @@
                 $('#lmpModal').appendTo('body').modal('show');
                 console.log('Modal shown');
             }
+
+        // ── FBA Inventory Age Modal ───────────────────────────────────────────
+        window.openInvageModal = function(ageData, fbaSku) {
+            $('#invage-sku-badge').text(fbaSku || '');
+
+            if (!ageData) {
+                $('#invage-modal-body').html(
+                    '<div class="text-center text-muted py-4"><i class="fas fa-box-open fa-2x mb-2"></i><p>No age data available for this SKU.<br><small>Run: <code>php artisan fba:fetch-age-data --skip-api --truncate</code></small></p></div>'
+                );
+                $('#invage-snapshot-date').text('—');
+                $('#invage-age-snapshot-date').text('—');
+                $('#invageModal').modal('show');
+                return;
+            }
+
+            $('#invage-snapshot-date').text(ageData.snapshot_date || '—');
+            $('#invage-age-snapshot-date').text(ageData.inventory_age_snapshot_date || '—');
+
+            const healthColor = { 'Excess': '#e74c3c', 'Healthy': '#27ae60', 'Low stock': '#e67e22', 'Out of stock': '#95a5a6' };
+            const hColor = healthColor[ageData.health_status] || '#3b7ddd';
+            const total = (ageData.inv_age_0_to_90_days || 0)
+                        + (ageData.inv_age_91_to_180_days || 0)
+                        + (ageData.inv_age_181_to_270_days || 0)
+                        + (ageData.inv_age_271_to_365_days || 0)
+                        + (ageData.inv_age_366_to_455_days || 0)
+                        + (ageData.inv_age_456_plus_days || 0);
+
+            const bar = (qty) => {
+                if (!total) return '';
+                const pct = Math.round((qty / total) * 100);
+                return `<div class="progress" style="height:6px;margin-top:3px;">
+                    <div class="progress-bar" style="width:${pct}%;background:#1a8a8a;"></div>
+                </div>`;
+            };
+
+            const ageBuckets = [
+                { label: '0 – 30 days',    val: ageData.inv_age_0_to_30_days   || 0, color: '#27ae60' },
+                { label: '31 – 60 days',   val: ageData.inv_age_31_to_60_days  || 0, color: '#2ecc71' },
+                { label: '61 – 90 days',   val: ageData.inv_age_61_to_90_days  || 0, color: '#f39c12' },
+                { label: '91 – 180 days',  val: ageData.inv_age_91_to_180_days || 0, color: '#e67e22' },
+                { label: '181 – 270 days', val: ageData.inv_age_181_to_270_days|| 0, color: '#e74c3c' },
+                { label: '271 – 365 days', val: ageData.inv_age_271_to_365_days|| 0, color: '#c0392b' },
+                { label: '366 – 455 days', val: ageData.inv_age_366_to_455_days|| 0, color: '#8e44ad' },
+                { label: '456+ days',      val: ageData.inv_age_456_plus_days  || 0, color: '#2c3e50' },
+            ];
+
+            let bucketRows = ageBuckets.map(b => `
+                <tr>
+                    <td><span style="display:inline-block;width:10px;height:10px;background:${b.color};border-radius:2px;margin-right:5px;"></span>${b.label}</td>
+                    <td class="text-end fw-bold">${b.val}</td>
+                    <td style="width:120px">${bar(b.val)}</td>
+                </tr>`).join('');
+
+            // AIS fee rows
+            const aisEntries = [
+                { label:'181–210d', qty: ageData.ais_qty_181_210, est: ageData.ais_est_181_210 },
+                { label:'211–240d', qty: ageData.ais_qty_211_240, est: ageData.ais_est_211_240 },
+                { label:'241–270d', qty: ageData.ais_qty_241_270, est: ageData.ais_est_241_270 },
+                { label:'271–300d', qty: ageData.ais_qty_271_300, est: ageData.ais_est_271_300 },
+                { label:'301–330d', qty: ageData.ais_qty_301_330, est: ageData.ais_est_301_330 },
+                { label:'331–365d', qty: ageData.ais_qty_331_365, est: ageData.ais_est_331_365 },
+            ].filter(a => a.qty > 0);
+
+            const aisHtml = aisEntries.length ? `
+                <div class="mt-3">
+                    <p class="fw-bold mb-1" style="font-size:12px;color:#c0392b;"><i class="fas fa-dollar-sign me-1"></i>Aged Inventory Surcharge (AIS) Projections</p>
+                    <table class="table table-sm table-bordered mb-0" style="font-size:12px;">
+                        <thead class="table-danger"><tr><th>Age Tier</th><th class="text-end">Units Charged</th><th class="text-end">Est. Fee</th></tr></thead>
+                        <tbody>${aisEntries.map(a => `<tr><td>${a.label}</td><td class="text-end">${a.qty}</td><td class="text-end text-danger fw-bold">$${parseFloat(a.est||0).toFixed(2)}</td></tr>`).join('')}</tbody>
+                    </table>
+                </div>` : '';
+
+            const noSale = ageData.no_sale_last_6_months
+                ? `<span class="badge bg-danger ms-2" style="font-size:11px;">No sale last 6 months</span>` : '';
+
+            const html = `
+                <div class="row g-2 mb-3">
+                    <div class="col-6 col-md-3">
+                        <div class="border rounded p-2 text-center">
+                            <div style="font-size:11px;color:#888;">Health</div>
+                            <div class="fw-bold" style="color:${hColor};font-size:14px;">${ageData.health_status || '—'}${noSale}</div>
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <div class="border rounded p-2 text-center">
+                            <div style="font-size:11px;color:#888;">Available</div>
+                            <div class="fw-bold" style="font-size:16px;">${ageData.available || 0}</div>
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <div class="border rounded p-2 text-center">
+                            <div style="font-size:11px;color:#888;">Days of Supply</div>
+                            <div class="fw-bold" style="font-size:16px;">${ageData.days_of_supply ?? '—'}</div>
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <div class="border rounded p-2 text-center">
+                            <div style="font-size:11px;color:#888;">Est. Storage Fee</div>
+                            <div class="fw-bold text-danger" style="font-size:16px;">$${parseFloat(ageData.estimated_storage_cost_next_month||0).toFixed(2)}</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="row g-2 mb-3">
+                    <div class="col-6 col-md-3">
+                        <div class="border rounded p-2 text-center">
+                            <div style="font-size:11px;color:#888;">Sold T7</div>
+                            <div class="fw-bold">${ageData.units_shipped_t7 || 0}</div>
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <div class="border rounded p-2 text-center">
+                            <div style="font-size:11px;color:#888;">Sold T30</div>
+                            <div class="fw-bold">${ageData.units_shipped_t30 || 0}</div>
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <div class="border rounded p-2 text-center">
+                            <div style="font-size:11px;color:#888;">Sold T60</div>
+                            <div class="fw-bold">${ageData.units_shipped_t60 || 0}</div>
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <div class="border rounded p-2 text-center">
+                            <div style="font-size:11px;color:#888;">Sell-Through</div>
+                            <div class="fw-bold">${ageData.sell_through ? parseFloat(ageData.sell_through).toFixed(2) : '—'}</div>
+                        </div>
+                    </div>
+                </div>
+
+                <p class="fw-bold mb-1" style="font-size:12px;color:#1a8a8a;"><i class="fas fa-calendar-alt me-1"></i>Inventory Age Breakdown (${total} units total)</p>
+                <table class="table table-sm table-bordered mb-0" style="font-size:12px;">
+                    <thead style="background:#1a8a8a;color:#fff;"><tr><th>Age Bucket</th><th class="text-end">Units</th><th>Bar</th></tr></thead>
+                    <tbody>${bucketRows}</tbody>
+                </table>
+
+                ${aisHtml}
+
+                ${ageData.recommended_action ? `
+                <div class="mt-3 p-2 rounded" style="background:#fff3cd;border:1px solid #ffc107;font-size:12px;">
+                    <i class="fas fa-lightbulb text-warning me-1"></i>
+                    <strong>Amazon Recommends:</strong> ${ageData.recommended_action}
+                    ${ageData.estimated_excess_quantity > 0 ? `<span class="ms-2 text-muted">(Excess qty: ${ageData.estimated_excess_quantity})</span>` : ''}
+                </div>` : ''}
+            `;
+
+            $('#invage-modal-body').html(html);
+            $('#invageModal').modal('show');
+        };
 
         </script>
     @endsection
