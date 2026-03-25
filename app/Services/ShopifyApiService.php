@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\ProductStockMapping;
 use App\Models\ShopifySku;
+use App\Services\Support\ShopifyBulletPointsFormatter;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use App\Models\ProductMaster;
@@ -110,16 +111,21 @@ class ShopifyApiService
     }
 
     /**
-     * Update product body HTML from bullet lines (no truncation).
+     * Phase 1: Overwrite product `body_html` with Key Features bullets only (see ShopifyBulletPointsFormatter).
      *
      * @return array{success: bool, message: string}
      */
     public function updateBulletPoints(string $identifier, string $bulletPoints): array
     {
-        $bulletPoints = trim($bulletPoints);
-        if (trim($identifier) === '' || $bulletPoints === '') {
+        if (trim($identifier) === '' || trim($bulletPoints) === '') {
             return ['success' => false, 'message' => 'SKU (or variant_id) and bullet points are required.'];
         }
+
+        if (! ShopifyBulletPointsFormatter::hasAnyBulletLine($bulletPoints)) {
+            return ['success' => false, 'message' => 'At least one bullet line is required.'];
+        }
+
+        $formattedHtml = ShopifyBulletPointsFormatter::formatBodyHtml($bulletPoints);
 
         try {
             $domain = config('services.shopify.store_url') ?: config('services.shopify.domain');
@@ -159,16 +165,6 @@ class ShopifyApiService
                 return ['success' => false, 'message' => 'Product ID missing.'];
             }
 
-            $html = '<ul>';
-            foreach (preg_split('/\r\n|\r|\n/', $bulletPoints) as $line) {
-                $line = trim($line);
-                if ($line === '') {
-                    continue;
-                }
-                $html .= '<li>'.htmlspecialchars($line, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8').'</li>';
-            }
-            $html .= '</ul>';
-
             $productUrl = "https://{$domain}/admin/api/2024-01/products/{$productId}.json";
             $getProduct = Http::withHeaders([
                 'X-Shopify-Access-Token' => $token,
@@ -184,7 +180,7 @@ class ShopifyApiService
                 'product' => [
                     'id' => $productId,
                     'title' => $title,
-                    'body_html' => $html,
+                    'body_html' => $formattedHtml,
                 ],
             ]);
 
