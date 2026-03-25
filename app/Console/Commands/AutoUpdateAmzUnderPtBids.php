@@ -357,7 +357,19 @@ class AutoUpdateAmzUnderPtBids extends Command
                 : (int) ($shopify->inv ?? 0);
             $row['campaign_id'] = $campaignId;
             $row['campaignName'] = $matchedCampaignL7->campaignName ?? ($matchedCampaignL1->campaignName ?? '');
-            $row['campaignBudgetAmount'] = $matchedCampaignL7->campaignBudgetAmount ?? ($matchedCampaignL1->campaignBudgetAmount ?? '');
+            // Keep utilization budget stable across windows so command-side UB matches frontend behavior.
+            // Prefer the higher non-zero budget from recent windows.
+            $budgetCandidates = [
+                floatval($matchedCampaignL2->campaignBudgetAmount ?? 0),
+                floatval($matchedCampaignL1->campaignBudgetAmount ?? 0),
+                floatval($matchedCampaignL7->campaignBudgetAmount ?? 0),
+            ];
+            $budgetCandidates = array_values(array_filter($budgetCandidates, function ($v) {
+                return $v > 0;
+            }));
+            $utilizationBudget = !empty($budgetCandidates) ? max($budgetCandidates) : 0;
+            $row['campaignBudgetAmount'] = $utilizationBudget;
+            $row['utilization_budget'] = $utilizationBudget;
             $row['l7_spend'] = $matchedCampaignL7->spend ?? 0;
             $row['l7_cpc'] = $matchedCampaignL7->costPerClick ?? 0;
             $row['l1_spend'] = $matchedCampaignL1->spend ?? 0;
@@ -420,7 +432,7 @@ class AutoUpdateAmzUnderPtBids extends Command
             $l1_cpc = floatval($row['l1_cpc']);
             $l2_cpc = floatval($row['l2_cpc'] ?? 0);
             $l7_cpc = floatval($row['l7_cpc']);
-            $budget = floatval($row['campaignBudgetAmount']);
+            $budget = floatval($row['utilization_budget'] ?? $row['campaignBudgetAmount'] ?? 0);
             $l7_spend = floatval($row['l7_spend']);
             $l1_spend = floatval($row['l1_spend']);
             $l2_spend = floatval($row['l2_spend'] ?? 0);

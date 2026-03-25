@@ -5740,7 +5740,8 @@ class OverallAmazonController extends Controller
             ->where(function($q) use ($cleanSku) {
                 $q->where('report_date_range', 'L30')
                   ->orWhere('report_date_range', 'L7')
-                  ->orWhere('report_date_range', 'L1');
+                  ->orWhere('report_date_range', 'L1')
+                  ->orWhere('report_date_range', 'L2');
             })
             ->where('campaignStatus', '!=', 'ARCHIVED')
             ->get()
@@ -5759,6 +5760,7 @@ class OverallAmazonController extends Controller
                 $l30 = $group->where('report_date_range', 'L30')->first();
                 $l7 = $group->where('report_date_range', 'L7')->first();
                 $l1 = $group->where('report_date_range', 'L1')->first();
+                $l2 = $group->where('report_date_range', 'L2')->first();
                 
                 $campaign = $l30 ?? $l7 ?? $l1;
                 if (!$campaign) return null;
@@ -5766,6 +5768,7 @@ class OverallAmazonController extends Controller
                 $budget = floatval($campaign->campaignBudgetAmount ?? 0);
                 $l7Spend = $l7 ? floatval($l7->spend ?? $l7->cost ?? 0) : 0;
                 $l1Spend = $l1 ? floatval($l1->spend ?? $l1->cost ?? 0) : 0;
+                $l2Spend = $l2 ? floatval($l2->spend ?? $l2->cost ?? 0) : 0;
                 $l7Clicks = $l7 ? floatval($l7->clicks ?? 0) : 0;
                 $l1Clicks = $l1 ? floatval($l1->clicks ?? 0) : 0;
                 $l30Clicks = $l30 ? floatval($l30->clicks ?? 0) : 0;
@@ -5773,6 +5776,7 @@ class OverallAmazonController extends Controller
                 // Use costPerClick from records (matching AmazonSpBudgetController)
                 $l7Cpc = $l7 ? floatval($l7->costPerClick ?? 0) : 0;
                 $l1Cpc = $l1 ? floatval($l1->costPerClick ?? 0) : 0;
+                $l2Cpc = $l2 ? floatval($l2->costPerClick ?? 0) : 0;
                 
                 // Calculate avg_cpc (lifetime average from daily records)
                 $campaignId = $campaign->campaign_id ?? null;
@@ -5799,6 +5803,7 @@ class OverallAmazonController extends Controller
                 
                 $ub7 = $budget > 0 ? ($l7Spend / ($budget * 7)) * 100 : 0;
                 $ub1 = $budget > 0 ? ($l1Spend / $budget) * 100 : 0;
+                $ub2 = $budget > 0 ? ($l2Spend / $budget) * 100 : 0;
                 
                 $l30Spend = $l30 ? floatval($l30->spend ?? $l30->cost ?? 0) : 0;
                 $l30Sales = $l30 ? floatval($l30->sales30d ?? 0) : 0;
@@ -5869,61 +5874,27 @@ class OverallAmazonController extends Controller
                     }
                 }
                 
-                // Calculate SBID dynamically based on utilization type (matching utilized-kw logic)
+                // KW SBID rules (same as Blade/commands):
+                // - 2UB red + 1UB red => L1*1.10, else L2*1.10, else L7*1.10, else 0.60
+                // - 2UB pink + 1UB pink => L1*0.90
                 $sbid = 0;
-                $utilizationType = 'all';
-                if ($ub7 > 99 && $ub1 > 99) {
-                    $utilizationType = 'over';
-                } elseif ($ub7 < 66 && $ub1 < 66) {
-                    $utilizationType = 'under';
-                } elseif ($ub7 >= 66 && $ub7 <= 99 && $ub1 >= 66 && $ub1 <= 99) {
-                    $utilizationType = 'correctly';
-                }
-                
-                // Special case: If UB7 and UB1 = 0%, use price-based default
-                $isZeroUtilizationPt = ($ub7 == 0 && $ub1 == 0);
-                if ($isZeroUtilizationPt) {
-                    if ($price < 50) {
-                        $sbid = 0.50;
-                    } elseif ($price >= 50 && $price < 100) {
-                        $sbid = 1.00;
-                    } elseif ($price >= 100 && $price < 200) {
-                        $sbid = 1.50;
-                    } else {
-                        $sbid = 2.00;
-                    }
-                } elseif ($utilizationType === 'over') {
-                    // Over-utilized: Priority L1 CPC → L7 CPC → AVG CPC → 1.00, then decrease by 10%
-                    if ($l1Cpc > 0) {
-                        $sbid = floor($l1Cpc * 0.90 * 100) / 100;
-                    } elseif ($l7Cpc > 0) {
-                        $sbid = floor($l7Cpc * 0.90 * 100) / 100;
-                    } elseif ($avgCpc > 0) {
-                        $sbid = floor($avgCpc * 0.90 * 100) / 100;
-                    } else {
-                        $sbid = 1.00;
-                    }
-                } elseif ($utilizationType === 'under') {
-                    // Under-utilized: Priority L1 CPC → L7 CPC → AVG CPC → 1.00, then increase by 10%
+                $ub2Red = $ub2 < 66;
+                $ub2Pink = $ub2 > 99;
+                $ub1Red = $ub1 < 66;
+                $ub1Pink = $ub1 > 99;
+
+                if ($ub2Red && $ub1Red) {
                     if ($l1Cpc > 0) {
                         $sbid = floor($l1Cpc * 1.10 * 100) / 100;
-                    } elseif ($l7Cpc > 0) {
+                    } elseif ($l1Cpc <= 0 && $l2Cpc > 0) {
+                        $sbid = floor($l2Cpc * 1.10 * 100) / 100;
+                    } elseif ($l1Cpc <= 0 && $l2Cpc <= 0 && $l7Cpc > 0) {
                         $sbid = floor($l7Cpc * 1.10 * 100) / 100;
-                    } elseif ($avgCpc > 0) {
-                        $sbid = floor($avgCpc * 1.10 * 100) / 100;
                     } else {
-                        $sbid = 1.00;
+                        $sbid = 0.60;
                     }
-                } else {
-                    // Correctly-utilized or all: no SBID change needed
-                    $sbid = 0;
-                }
-                
-                // Apply price-based caps
-                if ($price < 10 && $sbid > 0.10) {
-                    $sbid = 0.10;
-                } elseif ($price >= 10 && $price < 20 && $sbid > 0.20) {
-                    $sbid = 0.20;
+                } elseif ($ub2Pink && $ub1Pink) {
+                    $sbid = floor($l1Cpc * 0.90 * 100) / 100;
                 }
                 
                 return [
@@ -5938,9 +5909,11 @@ class OverallAmazonController extends Controller
                     'ad_cvr' => round($adCvr, 2),
                     '7ub' => round($ub7, 2),
                     '1ub' => round($ub1, 2),
+                    '2ub' => round($ub2, 2),
                     'avg_cpc' => round($avgCpc, 2),
                     'l7cpc' => round($l7Cpc, 2),
                     'l1cpc' => round($l1Cpc, 2),
+                    'l2cpc' => round($l2Cpc, 2),
                     'l_bid' => $lastSbid,
                     'sbid' => $sbid > 0 ? round($sbid, 2) : 0,
                 ];

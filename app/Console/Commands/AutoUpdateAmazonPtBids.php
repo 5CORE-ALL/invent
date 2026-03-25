@@ -428,7 +428,19 @@ class AutoUpdateAmazonPtBids extends Command
             $row['campaign_id'] = $campaignId;
             $row['campaignName'] = $matchedCampaignL7->campaignName ?? ($matchedCampaignL1->campaignName ?? '');
             $row['campaignStatus'] = strtoupper(trim($matchedCampaignL7->campaignStatus ?? ($matchedCampaignL1->campaignStatus ?? 'PAUSED')));
-            $row['campaignBudgetAmount'] = $matchedCampaignL7->campaignBudgetAmount ?? ($matchedCampaignL1->campaignBudgetAmount ?? 0);
+            // Keep utilization budget stable across windows so command-side UB matches frontend behavior.
+            // Prefer the higher non-zero budget from recent windows.
+            $budgetCandidates = [
+                floatval($matchedCampaignL2->campaignBudgetAmount ?? 0),
+                floatval($matchedCampaignL1->campaignBudgetAmount ?? 0),
+                floatval($matchedCampaignL7->campaignBudgetAmount ?? 0),
+            ];
+            $budgetCandidates = array_values(array_filter($budgetCandidates, function ($v) {
+                return $v > 0;
+            }));
+            $utilizationBudget = !empty($budgetCandidates) ? max($budgetCandidates) : 0;
+            $row['campaignBudgetAmount'] = $utilizationBudget;
+            $row['utilization_budget'] = $utilizationBudget;
             $row['l7_spend'] = $matchedCampaignL7->spend ?? 0;
             $row['l7_cpc'] = $matchedCampaignL7->costPerClick ?? 0;
             $row['l1_spend'] = $matchedCampaignL1->spend ?? 0;
@@ -487,7 +499,7 @@ class AutoUpdateAmazonPtBids extends Command
                 // Continue without avg_cpc if there's an error
             }
 
-            $budget = floatval($row['campaignBudgetAmount']);
+            $budget = floatval($row['utilization_budget'] ?? $row['campaignBudgetAmount'] ?? 0);
             $l7_spend = floatval($row['l7_spend']);
             $l1_spend = floatval($row['l1_spend']);
 

@@ -273,6 +273,15 @@ class AutoUpdateAmazonHlBids extends Command
             })
             ->get();
 
+        $amazonSpCampaignReportsL30 = AmazonSbCampaignReport::where('ad_type', 'SPONSORED_BRANDS')
+            ->where('report_date_range', 'L30')
+            ->where(function ($q) use ($skus) {
+                foreach ($skus as $sku) {
+                    $q->orWhere('campaignName', 'LIKE', '%' . strtoupper($sku) . '%');
+                }
+            })
+            ->get();
+
         $result = [];
         $processedCampaignIds = []; // Track to avoid processing same campaign multiple times
 
@@ -301,6 +310,14 @@ class AutoUpdateAmazonHlBids extends Command
                 return ($cleanName === $expected1 || $cleanName === $expected2);
             });
 
+            $matchedCampaignL30 = $amazonSpCampaignReportsL30->first(function ($item) use ($sku) {
+                $cleanName = preg_replace('/\s+/', ' ', strtoupper(trim($item->campaignName)));
+                $cleanSku = preg_replace('/\s+/', ' ', $sku);
+                $expected1 = $cleanSku;
+                $expected2 = $cleanSku . ' HEAD';
+                return ($cleanName === $expected1 || $cleanName === $expected2);
+            });
+
             if (!$matchedCampaignL7 && !$matchedCampaignL1) {
                 continue;
             }
@@ -316,7 +333,18 @@ class AutoUpdateAmazonHlBids extends Command
             $row['INV']    = $shopify->inv ?? 0;
             $row['campaign_id'] = $campaignId;
             $row['campaignName'] = $matchedCampaignL7->campaignName ?? ($matchedCampaignL1->campaignName ?? '');
-            $row['campaignBudgetAmount'] = $matchedCampaignL7->campaignBudgetAmount ?? ($matchedCampaignL1->campaignBudgetAmount ?? 0);
+            // Align HL budget source with frontend preference (L30 first, then L7/L1 fallback).
+            $budgetCandidates = [
+                floatval($matchedCampaignL30->campaignBudgetAmount ?? 0),
+                floatval($matchedCampaignL7->campaignBudgetAmount ?? 0),
+                floatval($matchedCampaignL1->campaignBudgetAmount ?? 0),
+            ];
+            $budgetCandidates = array_values(array_filter($budgetCandidates, function ($v) {
+                return $v > 0;
+            }));
+            $utilizationBudget = !empty($budgetCandidates) ? $budgetCandidates[0] : 0;
+            $row['campaignBudgetAmount'] = $utilizationBudget;
+            $row['utilization_budget'] = $utilizationBudget;
             $row['l7_spend'] = $matchedCampaignL7->cost ?? 0;
 
             $costPerClick7 = ($matchedCampaignL7 && $matchedCampaignL7->clicks > 0)
@@ -350,7 +378,7 @@ class AutoUpdateAmazonHlBids extends Command
                 // Continue without avg_cpc if there's an error
             }
 
-            $budget = floatval($row['campaignBudgetAmount']);
+            $budget = floatval($row['utilization_budget'] ?? $row['campaignBudgetAmount'] ?? 0);
             $l7_spend = floatval($row['l7_spend']);
             $l1_spend = floatval($row['l1_spend']);
 
