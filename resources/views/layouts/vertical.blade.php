@@ -94,7 +94,8 @@
                                          z-index: 1050; 
                                          overflow-y: auto; 
                                          transition: right 0.3s ease;
-                                         padding: 0;">
+                                         padding: 0;
+                                         display: none;">
         
         <!-- Header: title doubles as submit; close stays separate -->
         <div class="position-relative" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 10px 15px;">
@@ -247,6 +248,18 @@
             outline-offset: 2px;
         }
 
+        .floating-task-btn {
+            display: flex !important;
+            z-index: 1035 !important;
+        }
+
+        body.task-form-open .floating-task-btn {
+            opacity: 0 !important;
+            pointer-events: none !important;
+            transform: scale(0.9);
+            transition: opacity 0.2s ease, transform 0.2s ease;
+        }
+
         .floating-task-btn:hover {
             transform: translateY(-3px);
             box-shadow: 0 6px 20px rgba(220, 53, 69, 0.6);
@@ -267,7 +280,12 @@
         
         @media (max-width: 991.98px) {
             .floating-task-btn {
-                display: none;
+                top: auto !important;
+                bottom: 84px !important;
+                right: 12px !important;
+                width: 50px !important;
+                height: 50px !important;
+                display: flex !important;
             }
             #floating-task-form {
                 width: 100%;
@@ -306,18 +324,40 @@
                 padding: 10px 12px;
             }
         }
+
+        @media all and (display-mode: standalone) and (max-width: 991.98px) {
+            .floating-task-btn {
+                bottom: calc(84px + env(safe-area-inset-bottom)) !important;
+            }
+        }
     </style>
 
     <script>
         $(document).ready(function() {
+            let hideTaskFormTimer = null;
+
             function getTaskFormClosedOffset() {
                 return window.matchMedia('(max-width: 991.98px)').matches ? '-100%' : '-420px';
             }
 
+            function ensureTaskFormClosed() {
+                clearTimeout(hideTaskFormTimer);
+                $('#floating-task-form')
+                    .css('right', getTaskFormClosedOffset())
+                    .hide();
+                $('#task-form-backdrop').hide();
+                $('body').removeClass('task-form-open').css('overflow', 'auto');
+            }
+
             // Open floating task form
             $('#open-task-form-btn').on('click', function() {
-                $('#floating-task-form').css('right', '0');
+                clearTimeout(hideTaskFormTimer);
+                $('#floating-task-form').show();
+                requestAnimationFrame(function () {
+                    $('#floating-task-form').css('right', '0');
+                });
                 $('#task-form-backdrop').fadeIn(300);
+                $('body').addClass('task-form-open');
                 $('body').css('overflow', 'hidden');
             });
 
@@ -325,7 +365,12 @@
             function closeTaskForm() {
                 $('#floating-task-form').css('right', getTaskFormClosedOffset());
                 $('#task-form-backdrop').fadeOut(300);
+                $('body').removeClass('task-form-open');
                 $('body').css('overflow', 'auto');
+                clearTimeout(hideTaskFormTimer);
+                hideTaskFormTimer = setTimeout(function () {
+                    $('#floating-task-form').hide();
+                }, 320);
             }
 
             $('#close-task-form-btn').on('click', closeTaskForm);
@@ -333,17 +378,21 @@
 
             // Keep closed position in sync when viewport changes.
             $(window).on('resize', function() {
-                if ($('#floating-task-form').css('right') !== '0px') {
+                if (!$('body').hasClass('task-form-open')) {
                     $('#floating-task-form').css('right', getTaskFormClosedOffset());
                 }
             });
             
             // Close on Escape key
             $(document).on('keydown', function(e) {
-                if (e.key === 'Escape' && $('#floating-task-form').css('right') === '0px') {
+                if (e.key === 'Escape' && $('body').hasClass('task-form-open')) {
                     closeTaskForm();
                 }
             });
+
+            // Keep modal closed on first load and browser page restore.
+            ensureTaskFormClosed();
+            window.addEventListener('pageshow', ensureTaskFormClosed);
 
             // Toggle more fields in quick form
             $('#toggle-quick-more-fields').on('click', function() {

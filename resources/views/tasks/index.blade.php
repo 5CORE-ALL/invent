@@ -876,12 +876,28 @@
             background-color: #d0e8ff !important;
         }
         
-        /* Automated task rows - yellow background */
+        /* Automated task rows - alternating yellow/light-yellow background */
         .tabulator-row.automated-task {
             background-color: #fffbea !important;
         }
+
+        .tabulator-row.automated-task.alt {
+            background-color: #fff7cc !important;
+        }
+
+        .tabulator-row.automated-task .tabulator-cell {
+            background-color: #fffbea !important;
+        }
+
+        .tabulator-row.automated-task.alt .tabulator-cell {
+            background-color: #fff7cc !important;
+        }
         
         .tabulator-row.automated-task:hover {
+            background-color: #fef3c7 !important;
+        }
+
+        .tabulator-row.automated-task:hover .tabulator-cell {
             background-color: #fef3c7 !important;
         }
 
@@ -2731,22 +2747,32 @@
                         }
                     }
                     
+                    // Reset dynamic classes before applying current state
+                    row.getElement().classList.remove('automated-task', 'alt', 'overdue-task');
+                    row.getElement().style.backgroundColor = "";
+                    row.getElement().style.borderLeft = "";
+
                     // Apply styling based on overdue status
                     if (isOverdue) {
                         row.getElement().style.backgroundColor = "#ffe5e5";
                         row.getElement().style.borderLeft = "4px solid #dc3545";
                         row.getElement().classList.add('overdue-task');
-                        row.getElement().classList.remove('automated-task');
                     } else if (data.is_automate_task) {
                         row.getElement().classList.add('automated-task');
-                        row.getElement().classList.remove('overdue-task');
-                        row.getElement().style.backgroundColor = "#fffbea";
+                        // Alternate shades among automated rows: yellow / light-yellow
+                        var automatedRowsBefore = row.getTable().getRows("active").filter(function(r) {
+                            var d = r.getData();
+                            return !!d && !!d.is_automate_task;
+                        });
+                        var automatedIndex = automatedRowsBefore.findIndex(function(r) {
+                            return r.getData().id === data.id;
+                        });
+                        if (automatedIndex % 2 === 1) {
+                            row.getElement().classList.add('alt');
+                        }
                         row.getElement().style.borderLeft = "4px solid #ffc107";
                     } else {
-                        row.getElement().classList.remove('automated-task');
-                        row.getElement().classList.remove('overdue-task');
-                        row.getElement().style.backgroundColor = "";
-                        row.getElement().style.borderLeft = "";
+                        // Keep default styling for non-automated rows
                     }
                 },
                 layout: "fitColumns",
@@ -2922,6 +2948,15 @@
                                 
                                 var tidDate = new Date(year, month - 1, day);
                                 tidDate.setHours(0, 0, 0, 0);
+
+                                // Automated recurring tasks (daily/weekly/monthly):
+                                // allow a 1-day grace period before marking TID as red.
+                                var scheduleType = String(rowData.schedule_type || '').toLowerCase();
+                                var isAutomatedRecurring = !!rowData.is_automate_task && ['daily', 'weekly', 'monthly'].includes(scheduleType);
+                                if (isAutomatedRecurring) {
+                                    tidDate.setDate(tidDate.getDate() + 1);
+                                }
+
                                 var now = new Date();
                                 now.setHours(0, 0, 0, 0);
                                 var textColor = '#0d6efd'; // Default blue
@@ -3168,7 +3203,17 @@
                     if (t.start_date && t.status !== 'Archived') {
                         var tidDate = new Date(t.start_date);
                         if (isNaN(tidDate.getTime())) return false;
-                        return tidDate < now;
+                        tidDate.setHours(0, 0, 0, 0);
+
+                        var scheduleType = String(t.schedule_type || '').toLowerCase();
+                        var isAutomatedRecurring = !!t.is_automate_task && ['daily', 'weekly', 'monthly'].includes(scheduleType);
+                        if (isAutomatedRecurring) {
+                            tidDate.setDate(tidDate.getDate() + 1);
+                        }
+
+                        var current = new Date(now);
+                        current.setHours(0, 0, 0, 0);
+                        return current > tidDate;
                     }
                     return false;
                 }).length;

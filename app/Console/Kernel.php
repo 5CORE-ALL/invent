@@ -144,7 +144,7 @@ class Kernel extends ConsoleKernel
         |--------------------------------------------------------------------------
         */
         $schedule->command('tasks:generate-daily-automated')
-            ->dailyAt('00:01')
+            ->dailyAt('12:01')
             ->timezone('Asia/Kolkata')
             ->name('generate-daily-automated-tasks')
             ->withoutOverlapping()
@@ -155,6 +155,15 @@ class Kernel extends ConsoleKernel
             ->twiceDaily(6, 18)
             ->timezone('Asia/Kolkata')
             ->name('mark-missed-automated-tasks')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        // Lightweight alert: log only when expected automated instances are missing.
+        $schedule->command('tasks:automated-health-alert')
+            ->everyThirtyMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('automated-tasks-health-alert')
             ->withoutOverlapping()
             ->runInBackground()
             ->appendOutputTo($log);

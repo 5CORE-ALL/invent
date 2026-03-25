@@ -17,26 +17,36 @@ class ExecuteAutomatedTasks extends Command
     public function handle(TaskWhatsAppNotificationService $taskWhatsApp)
     {
         $this->info('Checking for automated tasks to execute...');
+        $this->line('Note: daily automated tasks are handled by tasks:generate-daily-automated.');
 
         $now = Carbon::now('Asia/Kolkata');
         $currentTime = $now->format('H:i');
-        $currentDay = $now->format('D'); // Mon, Tue, etc.
+        $currentDay = strtolower($now->format('D')); // mon, tue, etc.
         $currentDate = $now->format('j'); // 1-31
+        $dayStart = $now->copy()->startOfDay();
+        $dayEnd = $now->copy()->endOfDay();
+
+        // Keep DB comparisons in same timezone as scheduling logic.
+        try {
+            DB::statement("SET time_zone = '+05:30'");
+        } catch (\Throwable $e) {
+            Log::warning('Could not set session time_zone to Asia/Kolkata: ' . $e->getMessage());
+        }
 
         // Get all active automated tasks (weekly/monthly; daily are handled by generate-daily-automated)
         $automatedTasks = DB::table('automate_tasks')
             ->whereNotIn('status', ['Done', 'Archived'])
-            ->where('is_pause', 0)
             ->get();
         
         $executed = 0;
         
         foreach ($automatedTasks as $task) {
             $shouldRun = false;
+            $scheduleType = strtolower((string) ($task->schedule_type ?? ''));
             
-            // Check if it's time to run based on schedule_type
-            // Daily tasks are created only by tasks:generate-daily-automated (00:01); skip here to avoid duplicates
-            switch ($task->schedule_type) {
+            // Check if it's time to run based on schedule_type.
+            // Daily tasks are created by tasks:generate-daily-automated; skip here to avoid duplicates.
+            switch ($scheduleType) {
                 case 'daily':
                     $shouldRun = false;
                     break;
@@ -45,24 +55,32 @@ class ExecuteAutomatedTasks extends Command
                     // Run on specific days of week (schedule_days can be "Mon,Tue" or "Monday,Tuesday")
                     if ($task->schedule_days && $task->schedule_time) {
                         $scheduledDays = array_map(function ($d) {
-                            $d = trim($d);
-                            return strlen($d) >= 3 ? substr($d, 0, 3) : $d; // Mon, Tue, etc.
+                            $d = strtolower(trim($d));
+                            return strlen($d) >= 3 ? substr($d, 0, 3) : $d; // mon, tue, etc.
                         }, explode(',', $task->schedule_days));
                         $taskTime = Carbon::parse($task->schedule_time)->format('H:i');
-                        $shouldRun = in_array($currentDay, $scheduledDays) && ($currentTime == $taskTime);
+                        // Use >= to recover missed exact-minute runs if scheduler is delayed.
+                        $shouldRun = in_array($currentDay, $scheduledDays, true) && ($currentTime >= $taskTime);
                     }
                     break;
                     
                 case 'monthly':
                     // Run on specific dates of month (schedule_days e.g. "1,15,EOM")
                     if ($task->schedule_days && $task->schedule_time) {
-                        $scheduledDates = array_map('trim', explode(',', $task->schedule_days));
+                        $scheduledDates = array_map(function ($d) {
+                            $d = strtoupper(trim($d));
+                            if ($d !== 'EOM') {
+                                $d = ltrim($d, '0');
+                            }
+                            return $d;
+                        }, explode(',', $task->schedule_days));
                         $taskTime = Carbon::parse($task->schedule_time)->format('H:i');
                         $lastDayNum = (int) $now->copy()->endOfMonth()->format('j');
                         $isEndOfMonth = ((int) $currentDate) === $lastDayNum;
 
-                        $shouldRun = (in_array((string) $currentDate, $scheduledDates) || (in_array('EOM', $scheduledDates) && $isEndOfMonth))
-                                     && ($currentTime == $taskTime);
+                        // Use >= to recover missed exact-minute runs if scheduler is delayed.
+                        $shouldRun = (in_array((string) $currentDate, $scheduledDates, true) || (in_array('EOM', $scheduledDates, true) && $isEndOfMonth))
+                                     && ($currentTime >= $taskTime);
                     }
                     break;
             }
@@ -71,7 +89,8 @@ class ExecuteAutomatedTasks extends Command
                 // Check if task was already created today (prevent duplicates)
                 $alreadyCreatedToday = DB::table('tasks')
                     ->where('automate_task_id', $task->id)
-                    ->whereDate('created_at', $now->toDateString())
+                    ->whereBetween('start_date', [$dayStart, $dayEnd])
+                    ->whereNull('deleted_at')
                     ->exists();
                 
                 if ($alreadyCreatedToday) {
@@ -92,18 +111,19 @@ class ExecuteAutomatedTasks extends Command
                     }
                 }
                 
+                // Keep task timing anchored to configured schedule_time (not command runtime).
+                $scheduleTime = $task->schedule_time ?? '00:00:00';
+                $timeParts = array_map('intval', explode(':', (string) $scheduleTime));
+                $hour = $timeParts[0] ?? 0;
+                $minute = $timeParts[1] ?? 0;
+                $second = $timeParts[2] ?? 0;
+                $startDate = Carbon::today('Asia/Kolkata')->setTime($hour, $minute, $second);
+
                 // For automated tasks: due_date = start_date + 5 days (standard completion window)
-                $dueDate = $now->copy()->addDays(5);
+                $dueDate = $startDate->copy()->addDays(5);
                 $completionDate = $dueDate->copy();
 
-                // Ensure id is set if table id is not AUTO_INCREMENT (avoids "Field 'id' doesn't have a default value")
-                $nextId = (int) DB::table('tasks')->max('id') + 1;
-                if ($nextId <= 0) {
-                    $nextId = 1;
-                }
-                
                 $taskData = [
-                    'id' => $nextId,
                     'title' => $task->title . ' [Auto: ' . $now->format('d-M-y') . ']',
                     'group' => $task->group,
                     'priority' => $task->priority,
@@ -111,7 +131,7 @@ class ExecuteAutomatedTasks extends Command
                     'assignor' => $task->assignor,
                     'assign_to' => $assignTo ?: null,
                     'eta_time' => $task->eta_time,
-                    'start_date' => $now,
+                    'start_date' => $startDate,
                     'due_date' => $dueDate,
                     'completion_date' => $completionDate,
                     'status' => 'Todo',
@@ -145,8 +165,7 @@ class ExecuteAutomatedTasks extends Command
                     'updated_at' => $now,
                 ];
 
-                DB::table('tasks')->insert($taskData);
-                $taskId = $nextId;
+                $taskId = DB::table('tasks')->insertGetId($taskData);
                 $taskInstance = Task::find($taskId);
 
                 if ($taskInstance && $assignTo) {

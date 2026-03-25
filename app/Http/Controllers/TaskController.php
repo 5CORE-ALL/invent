@@ -1473,7 +1473,6 @@ class TaskController extends Controller
             'link7' => $validated['checklist_link'],
             'workspace' => 0,
             'order' => 0,
-            'is_pause' => 0,
             'created_at' => now(),
             'updated_at' => now(),
         ]);

@@ -36,7 +36,6 @@ class CheckDailyAutomatedTasks extends Command
 
         $automateTasks = DB::table('automate_tasks')
             ->where('schedule_type', 'daily')
-            ->where('is_pause', 0)
             ->whereNotIn('status', ['Done', 'Archived'])
             ->orderBy('id')
             ->get();

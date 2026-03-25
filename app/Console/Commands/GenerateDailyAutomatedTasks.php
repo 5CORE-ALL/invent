@@ -28,7 +28,7 @@ class GenerateDailyAutomatedTasks extends Command
 
     /**
      * Execute the console command.
-     * Daily task is skipped if: schedule_type != 'daily', is_pause = 1, status in (Done, Archived),
+     * Daily task is skipped if: schedule_type != 'daily', status in (Done, Archived),
      * or a task for this automate_task_id was already created today (same day in Asia/Kolkata).
      */
     public function handle(TaskWhatsAppNotificationService $taskWhatsApp)
@@ -53,8 +53,7 @@ class GenerateDailyAutomatedTasks extends Command
 
             // Fetch automated tasks in chunks for better performance
             DB::table('automate_tasks')
-                ->where('schedule_type', 'daily')
-                ->where('is_pause', 0)
+                ->whereRaw('LOWER(schedule_type) = ?', ['daily'])
                 ->whereNotIn('status', ['Done', 'Archived'])
                 ->orderBy('id')
                 ->chunk(100, function ($automatedTasks) use ($now, $today, $taskWhatsApp, &$generated, &$skipped) {
@@ -106,15 +105,8 @@ class GenerateDailyAutomatedTasks extends Command
                                 }
                             }
 
-                            // Ensure id is set if table id is not AUTO_INCREMENT (avoids "Field 'id' doesn't have a default value")
-                            $nextId = (int) DB::table('tasks')->max('id') + 1;
-                            if ($nextId <= 0) {
-                                $nextId = 1;
-                            }
-
                             // Prepare task data
                             $taskData = [
-                                'id' => $nextId,
                                 'task_id' => null,
                                 'title' => $autoTask->title . ' [Auto: ' . $now->format('d-M-y') . ']',
                                 'group' => $autoTask->group,
@@ -158,8 +150,7 @@ class GenerateDailyAutomatedTasks extends Command
                             ];
 
                             // Insert the task
-                            DB::table('tasks')->insert($taskData);
-                            $taskId = $nextId;
+                            $taskId = DB::table('tasks')->insertGetId($taskData);
                             $taskInstance = Task::find($taskId);
 
                             if ($taskInstance && $assignTo) {
