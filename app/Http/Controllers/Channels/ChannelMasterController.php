@@ -823,7 +823,7 @@ class ChannelMasterController extends Controller
         // Fetch both channel and sheet_link from ChannelMaster
         $columns = ['channel', 'sheet_link', 'channel_percentage', 'type'];
         
-        // Check if 'base', 'target', and 'missing_link' columns exist before adding them
+        // Check optional columns before adding them
         if (Schema::hasColumn('channel_master', 'base')) {
             $columns[] = 'base';
         }
@@ -832,6 +832,9 @@ class ChannelMasterController extends Controller
         }
         if (Schema::hasColumn('channel_master', 'missing_link')) {
             $columns[] = 'missing_link';
+        }
+        if (Schema::hasColumn('channel_master', 'addition_sheet')) {
+            $columns[] = 'addition_sheet';
         }
         
         $channels = ChannelMaster::whereRaw('LOWER(TRIM(status)) = ?', ['active'])
@@ -922,6 +925,7 @@ class ChannelMasterController extends Controller
                 'base' => $channelRow->base ?? 0,
                 'target' => $channelRow->target ?? 0,
                 'missing_link' => $channelRow->missing_link ?? '',
+                'addition_sheet' => $channelRow->addition_sheet ?? '',
                 // '0 Sold SKU Count' => 0,
                 // 'Sold SKU Count'   => 0,
                 // 'Brand Registry'   => '',
@@ -5782,6 +5786,7 @@ class ChannelMasterController extends Controller
         $validatedData = $request->validate([
             'channel' => 'required|string',
             'sheet_link' => 'nullable|url',
+            'addition_sheet' => 'nullable|url',
             'type' => 'nullable|string',
             'channel_percentage' => 'nullable|numeric',
             // 'status' => 'required|in:Active,In Active,To Onboard,In Progress',
@@ -5793,6 +5798,9 @@ class ChannelMasterController extends Controller
         ]);
         // Save Data to Database
         try {
+            if (!Schema::hasColumn('channel_master', 'addition_sheet')) {
+                unset($validatedData['addition_sheet']);
+            }
             // Set default status to 'Active' if not provided
             if (!isset($validatedData['status'])) {
                 $validatedData['status'] = 'Active';
@@ -5826,6 +5834,7 @@ class ChannelMasterController extends Controller
         $base = $request->input('base');
         $target = $request->input('target');
         $missingLink = $request->input('missing_link');
+        $additionSheet = $request->input('addition_sheet');
 
         $channel = ChannelMaster::where('channel', $originalChannel)->first();
 
@@ -5843,6 +5852,9 @@ class ChannelMasterController extends Controller
         // Save missing_link if column exists
         if (Schema::hasColumn('channel_master', 'missing_link')) {
             $channel->missing_link = $missingLink;
+        }
+        if (Schema::hasColumn('channel_master', 'addition_sheet')) {
+            $channel->addition_sheet = $additionSheet;
         }
         
         $channel->save();

@@ -23,7 +23,9 @@ class ChannelMaster extends Model
         'action_req',
         'channel_percentage',
         'base',
-        'target'
+        'target',
+        'missing_link',
+        'addition_sheet'
     ];
 
     /**

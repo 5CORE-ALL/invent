@@ -343,6 +343,10 @@
                             <input type="url" class="form-control" id="channelUrl">
                         </div>
                         <div class="mb-3">
+                            <label for="additionSheet" class="form-label">Addition Sheet</label>
+                            <input type="url" class="form-control" id="additionSheet" placeholder="https://...">
+                        </div>
+                        <div class="mb-3">
                             <label for="type" class="form-label">Type</label>
                             <select class="form-control" id="type">
                                 <option value="">Select Type</option>
@@ -394,9 +398,14 @@
                             <input type="number" class="form-control" id="editTarget" step="0.01">
                         </div>
                         <div class="mb-3">
-                            <label for="editMissingLink" class="form-label">Missing Link</label>
+                            <label for="editMissingLink" class="form-label">Blade page link</label>
                             <input type="url" class="form-control" id="editMissingLink" placeholder="https://...">
-                            <small class="text-muted">This link will open when clicking the Missing column</small>
+                            <small class="text-muted">This link will open when clicking channel name</small>
+                        </div>
+                        <div class="mb-3">
+                            <label for="editAdditionSheet" class="form-label">Addition Sheet</label>
+                            <input type="url" class="form-control" id="editAdditionSheet" placeholder="https://...">
+                            <small class="text-muted">This link will open when clicking the Missing L column</small>
                         </div>
                     </form>
                 </div>
@@ -965,7 +974,7 @@
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
                             const rowData = cell.getRow().getData();
-                            const missingLink = rowData['missing_link'] || '';
+                            const additionSheet = rowData['addition_sheet'] || '';
                             const channel = (rowData['Channel '] || '').trim();
                             const dotColor = getMetricDotColor(channel, 'missing_l');
                             const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="missing_l" style="cursor:pointer;color:${dotColor};font-size:8px;" title="View Chart"></i>`;
@@ -973,8 +982,8 @@
                             const textColor = value === 0 ? '#198754' : value > 0 ? '#dc3545' : 'black';
                             const style = `color:${textColor};font-weight:600;`;
 
-                            if (missingLink && value > 0) {
-                                return `<a href="${missingLink}" target="_blank" style="${style}text-decoration:none;cursor:pointer;" title="Click to view missing items details">${value}</a>${chartIcon}`;
+                            if (additionSheet) {
+                                return `<a href="${additionSheet}" target="_blank" style="${style}text-decoration:none;cursor:pointer;" title="Click to open addition sheet">${value}</a>${chartIcon}`;
                             }
 
                             return `<span style="${style}">${value}</span>${chartIcon}`;
@@ -2681,6 +2690,7 @@
                                     const type = rowData['type'] || '';
                                     const target = rowData['target'] || 0;
                                     const missingLink = rowData['missing_link'] || '';
+                                    const additionSheet = rowData['addition_sheet'] || '';
 
                                     // Populate modal
                                     $('#editChannelName').val(channel);
@@ -2688,6 +2698,7 @@
                                     $('#editType').val(type);
                                     $('#editTarget').val(target);
                                     $('#editMissingLink').val(missingLink);
+                                    $('#editAdditionSheet').val(additionSheet);
                                     $('#originalChannel').val(channel);
 
                                     // Open modal
@@ -4020,6 +4031,7 @@
                     const type = rowData['type'] || '';
                     const target = rowData['target'] || 0;
                     const missingLink = rowData['missing_link'] || '';
+                    const additionSheet = rowData['addition_sheet'] || '';
 
                     // Populate modal fields
                     $('#editChannelName').val(channel);
@@ -4027,6 +4039,7 @@
                     $('#editType').val(type);
                     $('#editTarget').val(target);
                     $('#editMissingLink').val(missingLink);
+                    $('#editAdditionSheet').val(additionSheet);
                     $('#originalChannel').val(channel);
 
                     // Show modal using Bootstrap 5 API
@@ -4097,6 +4110,7 @@
             $(document).on('click', '#saveChannelBtn', function() {
                 const channelName = $('#channelName').val().trim();
                 const channelUrl = $('#channelUrl').val().trim();
+                const additionSheet = $('#additionSheet').val().trim();
                 const type = $('#type').val().trim();
 
                 if (!channelName || !channelUrl || !type) {
@@ -4110,6 +4124,7 @@
                     data: {
                         channel: channelName,
                         sheet_link: channelUrl,
+                        addition_sheet: additionSheet,
                         type: type,
                         _token: $('meta[name="csrf-token"]').attr('content')
                     },
@@ -4138,6 +4153,7 @@
                 const type = $('#editType').val();
                 const target = $('#editTarget').val().trim();
                 const missingLink = $('#editMissingLink').val().trim();
+                const additionSheet = $('#editAdditionSheet').val().trim();
                 const originalChannel = $('#originalChannel').val().trim();
 
                 if (!channel || !sheetUrl) {
@@ -4154,6 +4170,7 @@
                         type: type,
                         target: target,
                         missing_link: missingLink,
+                        addition_sheet: additionSheet,
                         original_channel: originalChannel,
                         _token: $('meta[name="csrf-token"]').attr('content')
                     },
