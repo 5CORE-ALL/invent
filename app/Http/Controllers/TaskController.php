@@ -53,9 +53,11 @@ class TaskController extends Controller
         }
 
         // Calculate statistics based on filtered tasks (with user filter if selected)
+        // Overdue means TID/start_date is already past (matches table behavior).
+        // Keep only archived tasks excluded from overdue stats.
         $overdueQuery = (clone $tasksQuery)->whereNotNull('start_date')
-                           ->whereRaw('DATE_ADD(start_date, INTERVAL 10 DAY) < NOW()')
-                           ->whereNotIn('status', ['Done', 'Archived']);
+                           ->where('start_date', '<', now())
+                           ->where('status', '!=', 'Archived');
 
         // Calculate statistics based on filtered tasks (with user filter if selected)
         $stats = [

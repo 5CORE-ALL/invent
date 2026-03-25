@@ -114,6 +114,14 @@ class StockBalanceController extends Controller
     }
 
     /**
+     * Display the alternate stock balance view
+     */
+    public function alternateView()
+    {
+        return view('inventory-management.stock-balance-alternate');
+    }
+
+    /**
      * Display the combo-trf view (duplicate of stock balance tabulator)
      */
     public function comboTrfView()

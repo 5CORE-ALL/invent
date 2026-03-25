@@ -858,6 +858,9 @@
                             <a href="{{ route('customer.care.refunds') }}">Refunds</a>
                         </li>
                         <li>
+                            <a href="{{ route('customer.care.orders.on.hold') }}">Orders On Hold</a>
+                        </li>
+                        <li>
                             <a href="{{ route('customer.care.followups') }}">Follow UP</a>
                         </li>
                         <li>
@@ -953,6 +956,9 @@
                             </li>
                             <li>
                                 <a href="{{ route('stock.balance.view') }}">Stock Balance</a>
+                            </li>
+                            <li>
+                                <a href="{{ route('stock.balance.alternate') }}">Stock Alternate</a>
                             </li>
                             <li>
                                 <a href="{{ route('combo.trf') }}">Combo TRF</a>

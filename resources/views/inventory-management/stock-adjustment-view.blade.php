@@ -1563,7 +1563,7 @@ MS RBP5 2PCS,100,Main Godawn,Add,Other</pre>
             $(this).prop('disabled', true).html('<i class="fas fa-spinner fa-spin me-1"></i> Processing...');
 
             $.ajax({
-                url: '{{ route("stock.adjustment.bulk-csv") }}',
+                url: '{{ url("/stock-adjustment-bulk-csv") }}',
                 method: 'POST',
                 data: formData,
                 processData: false,

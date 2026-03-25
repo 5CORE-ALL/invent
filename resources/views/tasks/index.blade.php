@@ -3161,14 +3161,14 @@
                     done_atc: filteredData.filter(t => t.status === 'Done').reduce((sum, t) => sum + (parseInt(t.etc_done) || 0), 0)
                 };
                 
-                // Overdue calculation
+                // Overdue calculation:
+                // Task is overdue when TID/start_date has already passed and it's not archived.
                 var now = new Date();
                 stats.overdue = filteredData.filter(function(t) {
-                    if (t.start_date && !['Done', 'Archived'].includes(t.status)) {
+                    if (t.start_date && t.status !== 'Archived') {
                         var tidDate = new Date(t.start_date);
-                        var overdueDate = new Date(tidDate);
-                        overdueDate.setDate(overdueDate.getDate() + 10);
-                        return overdueDate < now;
+                        if (isNaN(tidDate.getTime())) return false;
+                        return tidDate < now;
                     }
                     return false;
                 }).length;

@@ -628,6 +628,454 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/customer-care/shipping/followups', [ShippingController::class, 'followupsStore'])->name('customer.care.shipping.followups.store');
     Route::post('/customer-care/shipping/followups/{shipping_followup}/resolve', [ShippingController::class, 'followupsResolve'])->name('customer.care.shipping.followups.resolve');
     Route::get('/customer-care/refunds', [RefundController::class, 'index'])->name('customer.care.refunds');
+    Route::get('/customer-care/orders-on-hold', function () {
+        $marketplaces = \Illuminate\Support\Facades\DB::table('marketplace_percentages')
+            ->whereNotNull('marketplace')
+            ->where('marketplace', '!=', '')
+            ->orderBy('marketplace')
+            ->pluck('marketplace')
+            ->map(fn ($m) => trim((string) $m))
+            ->filter()
+            ->unique()
+            ->values();
+
+        return view('customer-care.orders_on_hold', compact('marketplaces'));
+    })->name('customer.care.orders.on.hold');
+    Route::get('/customer-care/orders-on-hold/sku-details', function (\Illuminate\Http\Request $request) {
+        $sku = trim((string) $request->query('sku', ''));
+        if ($sku === '') {
+            return response()->json(['found' => false, 'message' => 'SKU is required.'], 422);
+        }
+
+        $row = \Illuminate\Support\Facades\DB::table('product_master as pm')
+            ->leftJoin('shopify_skus as ss', 'ss.sku', '=', 'pm.sku')
+            ->selectRaw('pm.sku, pm.parent, COALESCE(ss.inv, 0) as qty')
+            ->whereRaw('LOWER(TRIM(pm.sku)) = ?', [strtolower($sku)])
+            ->first();
+
+        if (! $row) {
+            return response()->json(['found' => false, 'message' => 'SKU not found.']);
+        }
+
+        return response()->json([
+            'found' => true,
+            'sku' => $row->sku,
+            'parent' => $row->parent,
+            'qty' => (float) $row->qty,
+        ]);
+    })->name('customer.care.orders.on.hold.sku.details');
+    Route::get('/customer-care/orders-on-hold/issues', function () {
+        $rows = \Illuminate\Support\Facades\DB::table('orders_on_hold_issues')
+            ->where(function ($q) {
+                $q->whereNull('is_archived')->orWhere('is_archived', false);
+            })
+            ->orderByDesc('id')
+            ->limit(1000)
+            ->get([
+                'id',
+                'sku',
+                'qty',
+                'parent',
+                'marketplace_1',
+                'marketplace_2',
+                'what_happened',
+                'issue',
+                'issue_remark',
+                'action_1',
+                'action_1_remark',
+                'c_action_1',
+                'close_note',
+                'created_by',
+                'created_at',
+            ]);
+
+        $tz = config('app.timezone');
+        $data = $rows->map(function ($row) use ($tz) {
+            return [
+                'id' => (int) $row->id,
+                'sku' => $row->sku,
+                'qty' => (float) $row->qty,
+                'parent' => $row->parent,
+                'marketplace_1' => $row->marketplace_1,
+                'marketplace_2' => $row->marketplace_2,
+                'what_happened' => $row->what_happened,
+                'issue' => $row->issue,
+                'issue_remark' => $row->issue_remark,
+                'action_1' => $row->action_1,
+                'action_1_remark' => $row->action_1_remark,
+                'c_action_1' => $row->c_action_1,
+                'close_note' => $row->close_note,
+                'created_by' => $row->created_by,
+                'created_at' => $row->created_at,
+                'created_at_display' => $row->created_at
+                    ? \Carbon\Carbon::parse($row->created_at)->timezone($tz)->format('d-m-Y H:i')
+                    : '',
+            ];
+        })->values();
+
+        return response()->json(['data' => $data]);
+    })->name('customer.care.orders.on.hold.issues.index');
+    Route::get('/customer-care/orders-on-hold/history', function () {
+        $rows = \Illuminate\Support\Facades\DB::table('orders_on_hold_issue_histories')
+            ->orderByDesc('id')
+            ->limit(1000)
+            ->get([
+                'id',
+                'orders_on_hold_issue_id',
+                'event_type',
+                'revision_no',
+                'sku',
+                'qty',
+                'parent',
+                'marketplace_1',
+                'marketplace_2',
+                'what_happened',
+                'issue',
+                'issue_remark',
+                'action_1',
+                'action_1_remark',
+                'c_action_1',
+                'close_note',
+                'created_by',
+                'logged_at',
+            ]);
+
+        $tz = config('app.timezone');
+        $data = $rows->map(function ($row) use ($tz) {
+            return [
+                'id' => (int) $row->id,
+                'orders_on_hold_issue_id' => $row->orders_on_hold_issue_id ? (int) $row->orders_on_hold_issue_id : null,
+                'event_type' => $row->event_type,
+                'revision_no' => $row->revision_no !== null ? (int) $row->revision_no : null,
+                'issue_ref' => ($row->orders_on_hold_issue_id
+                    ? (
+                        ((int) ($row->revision_no ?? 0) > 0)
+                            ? ((string) $row->orders_on_hold_issue_id . '.' . (string) ((int) $row->revision_no))
+                            : (string) $row->orders_on_hold_issue_id
+                    )
+                    : null),
+                'sku' => $row->sku,
+                'qty' => (float) $row->qty,
+                'parent' => $row->parent,
+                'marketplace_1' => $row->marketplace_1,
+                'marketplace_2' => $row->marketplace_2,
+                'what_happened' => $row->what_happened,
+                'issue' => $row->issue,
+                'issue_remark' => $row->issue_remark,
+                'action_1' => $row->action_1,
+                'action_1_remark' => $row->action_1_remark,
+                'c_action_1' => $row->c_action_1,
+                'close_note' => $row->close_note,
+                'created_by' => $row->created_by,
+                'logged_at' => $row->logged_at,
+                'logged_at_display' => $row->logged_at
+                    ? \Carbon\Carbon::parse($row->logged_at)->timezone($tz)->format('d-m-Y H:i')
+                    : '',
+            ];
+        })->values();
+
+        return response()->json(['data' => $data]);
+    })->name('customer.care.orders.on.hold.history.index');
+    Route::post('/customer-care/orders-on-hold/issues', function (\Illuminate\Http\Request $request) {
+        $validated = $request->validate([
+            'sku' => 'required|string|max:128',
+            'qty' => 'required|numeric|min:0',
+            'parent' => 'nullable|string|max:255',
+            'marketplace_1' => 'nullable|string|max:255',
+            'marketplace_2' => 'nullable|string|max:255',
+            'what_happened' => 'nullable|string|max:50',
+            'issue' => 'required|string|max:255',
+            'issue_remark' => 'nullable|string|max:255',
+            'action_1' => 'nullable|string|in:Upgraded + Stock Alternate,Alternate Sent + Stock Alternate,Sent Wrong Item + Stock Outgoing,Cancelled,Other|max:255',
+            'action_1_remark' => 'nullable|string|max:255',
+            'c_action_1' => 'nullable|string|max:255',
+            'close_note' => 'nullable|string|max:255',
+        ]);
+        $allowedRootCauses = [
+            'Mapping',
+            'Replacement Issued But not Entered',
+            'FBA stock Issued But not Entered',
+            'Alternate Issued But not Entered',
+            'Stock Balance not Entered',
+            'Reserve Stock Issue',
+            'Other',
+        ];
+        if (!in_array((string) ($validated['issue'] ?? ''), $allowedRootCauses, true)) {
+            return response()->json([
+                'message' => 'Invalid Root Cause Found selection.',
+                'errors' => ['issue' => ['Invalid Root Cause Found selection.']],
+            ], 422);
+        }
+        if (($validated['issue'] ?? null) === 'Other' && trim((string) ($validated['issue_remark'] ?? '')) === '') {
+            return response()->json([
+                'message' => 'Root Cause Found remark is required when Other is selected.',
+                'errors' => ['issue_remark' => ['Root Cause Found remark is required when Other is selected.']],
+            ], 422);
+        }
+        if (($validated['action_1'] ?? null) === 'Other' && trim((string) ($validated['action_1_remark'] ?? '')) === '') {
+            return response()->json([
+                'message' => 'Action 1 remark is required when Action 1 is Other.',
+                'errors' => ['action_1_remark' => ['Action 1 remark is required when Action 1 is Other.']],
+            ], 422);
+        }
+
+        $user = auth()->user();
+        $createdBy = trim((string) ($user?->name ?? 'System'));
+        if ($createdBy === '') {
+            $createdBy = 'System';
+        }
+
+        $id = \Illuminate\Support\Facades\DB::transaction(function () use ($validated, $createdBy, $user) {
+            $now = now();
+
+            $payload = [
+                'sku' => trim($validated['sku']),
+                'qty' => (float) $validated['qty'],
+                'parent' => isset($validated['parent']) ? trim((string) $validated['parent']) : null,
+                'marketplace_1' => isset($validated['marketplace_1']) ? trim((string) $validated['marketplace_1']) : null,
+                'marketplace_2' => isset($validated['marketplace_2']) ? trim((string) $validated['marketplace_2']) : null,
+                'what_happened' => isset($validated['what_happened']) ? trim((string) $validated['what_happened']) : null,
+                'issue' => trim($validated['issue']),
+                'issue_remark' => isset($validated['issue_remark']) ? trim((string) $validated['issue_remark']) : null,
+                'action_1' => isset($validated['action_1']) ? trim((string) $validated['action_1']) : null,
+                'action_1_remark' => isset($validated['action_1_remark']) ? trim((string) $validated['action_1_remark']) : null,
+                'c_action_1' => isset($validated['c_action_1']) ? trim((string) $validated['c_action_1']) : null,
+                'close_note' => isset($validated['close_note']) ? trim((string) $validated['close_note']) : null,
+                'created_by' => $createdBy,
+                'created_by_user_id' => $user?->id,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ];
+
+            $issueId = \Illuminate\Support\Facades\DB::table('orders_on_hold_issues')->insertGetId($payload);
+
+            \Illuminate\Support\Facades\DB::table('orders_on_hold_issue_histories')->insert([
+                'orders_on_hold_issue_id' => $issueId,
+                'event_type' => 'created',
+                'revision_no' => 0,
+                'sku' => $payload['sku'],
+                'qty' => $payload['qty'],
+                'parent' => $payload['parent'],
+                'marketplace_1' => $payload['marketplace_1'],
+                'marketplace_2' => $payload['marketplace_2'],
+                'what_happened' => $payload['what_happened'],
+                'issue' => $payload['issue'],
+                'issue_remark' => $payload['issue_remark'],
+                'action_1' => $payload['action_1'],
+                'action_1_remark' => $payload['action_1_remark'],
+                'c_action_1' => $payload['c_action_1'],
+                'close_note' => $payload['close_note'],
+                'created_by' => $createdBy,
+                'created_by_user_id' => $user?->id,
+                'logged_at' => $now,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ]);
+
+            return $issueId;
+        });
+
+        $row = \Illuminate\Support\Facades\DB::table('orders_on_hold_issues')
+            ->where('id', $id)
+            ->first([
+                'id',
+                'sku',
+                'qty',
+                'parent',
+                'marketplace_1',
+                'marketplace_2',
+                'what_happened',
+                'issue',
+                'issue_remark',
+                'action_1',
+                'action_1_remark',
+                'c_action_1',
+                'close_note',
+                'created_by',
+                'created_at',
+            ]);
+
+        $tz = config('app.timezone');
+
+        return response()->json([
+            'message' => 'Hold issue saved successfully.',
+            'row' => [
+                'id' => (int) $row->id,
+                'sku' => $row->sku,
+                'qty' => (float) $row->qty,
+                'parent' => $row->parent,
+                'marketplace_1' => $row->marketplace_1,
+                'marketplace_2' => $row->marketplace_2,
+                'what_happened' => $row->what_happened,
+                'issue' => $row->issue,
+                'issue_remark' => $row->issue_remark,
+                'action_1' => $row->action_1,
+                'action_1_remark' => $row->action_1_remark,
+                'c_action_1' => $row->c_action_1,
+                'close_note' => $row->close_note,
+                'created_by' => $row->created_by,
+                'created_at' => $row->created_at,
+                'created_at_display' => $row->created_at
+                    ? \Carbon\Carbon::parse($row->created_at)->timezone($tz)->format('d-m-Y H:i')
+                    : '',
+            ],
+        ], 201);
+    })->name('customer.care.orders.on.hold.issues.store');
+    Route::put('/customer-care/orders-on-hold/issues/{id}', function (\Illuminate\Http\Request $request, int $id) {
+        $validated = $request->validate([
+            'sku' => 'required|string|max:128',
+            'qty' => 'required|numeric|min:0',
+            'parent' => 'nullable|string|max:255',
+            'marketplace_1' => 'nullable|string|max:255',
+            'marketplace_2' => 'nullable|string|max:255',
+            'what_happened' => 'nullable|string|max:50',
+            'issue' => 'required|string|max:255',
+            'issue_remark' => 'nullable|string|max:255',
+            'action_1' => 'nullable|string|in:Upgraded + Stock Alternate,Alternate Sent + Stock Alternate,Sent Wrong Item + Stock Outgoing,Cancelled,Other|max:255',
+            'action_1_remark' => 'nullable|string|max:255',
+            'c_action_1' => 'nullable|string|max:255',
+            'close_note' => 'nullable|string|max:255',
+        ]);
+        $allowedRootCauses = [
+            'Mapping',
+            'Replacement Issued But not Entered',
+            'FBA stock Issued But not Entered',
+            'Alternate Issued But not Entered',
+            'Stock Balance not Entered',
+            'Reserve Stock Issue',
+            'Other',
+        ];
+        if (!in_array((string) ($validated['issue'] ?? ''), $allowedRootCauses, true)) {
+            return response()->json([
+                'message' => 'Invalid Root Cause Found selection.',
+                'errors' => ['issue' => ['Invalid Root Cause Found selection.']],
+            ], 422);
+        }
+        if (($validated['issue'] ?? null) === 'Other' && trim((string) ($validated['issue_remark'] ?? '')) === '') {
+            return response()->json([
+                'message' => 'Root Cause Found remark is required when Other is selected.',
+                'errors' => ['issue_remark' => ['Root Cause Found remark is required when Other is selected.']],
+            ], 422);
+        }
+        if (($validated['action_1'] ?? null) === 'Other' && trim((string) ($validated['action_1_remark'] ?? '')) === '') {
+            return response()->json([
+                'message' => 'Action 1 remark is required when Action 1 is Other.',
+                'errors' => ['action_1_remark' => ['Action 1 remark is required when Action 1 is Other.']],
+            ], 422);
+        }
+
+        $existing = \Illuminate\Support\Facades\DB::table('orders_on_hold_issues')->where('id', $id)->first();
+        if (! $existing) {
+            return response()->json(['message' => 'Record not found.'], 404);
+        }
+
+        $user = auth()->user();
+        $actorName = trim((string) ($user?->name ?? 'System'));
+        if ($actorName === '') {
+            $actorName = 'System';
+        }
+
+        \Illuminate\Support\Facades\DB::transaction(function () use ($id, $validated, $actorName, $user) {
+            $now = now();
+            $nextRevision = ((int) (\Illuminate\Support\Facades\DB::table('orders_on_hold_issue_histories')
+                ->where('orders_on_hold_issue_id', $id)
+                ->max('revision_no'))) + 1;
+            $payload = [
+                'sku' => trim($validated['sku']),
+                'qty' => (float) $validated['qty'],
+                'parent' => isset($validated['parent']) ? trim((string) $validated['parent']) : null,
+                'marketplace_1' => isset($validated['marketplace_1']) ? trim((string) $validated['marketplace_1']) : null,
+                'marketplace_2' => isset($validated['marketplace_2']) ? trim((string) $validated['marketplace_2']) : null,
+                'what_happened' => isset($validated['what_happened']) ? trim((string) $validated['what_happened']) : null,
+                'issue' => trim($validated['issue']),
+                'issue_remark' => isset($validated['issue_remark']) ? trim((string) $validated['issue_remark']) : null,
+                'action_1' => isset($validated['action_1']) ? trim((string) $validated['action_1']) : null,
+                'action_1_remark' => isset($validated['action_1_remark']) ? trim((string) $validated['action_1_remark']) : null,
+                'c_action_1' => isset($validated['c_action_1']) ? trim((string) $validated['c_action_1']) : null,
+                'close_note' => isset($validated['close_note']) ? trim((string) $validated['close_note']) : null,
+                'updated_at' => $now,
+            ];
+
+            \Illuminate\Support\Facades\DB::table('orders_on_hold_issues')->where('id', $id)->update($payload);
+
+            \Illuminate\Support\Facades\DB::table('orders_on_hold_issue_histories')->insert([
+                'orders_on_hold_issue_id' => $id,
+                'event_type' => 'updated',
+                'revision_no' => $nextRevision,
+                'sku' => $payload['sku'],
+                'qty' => $payload['qty'],
+                'parent' => $payload['parent'],
+                'marketplace_1' => $payload['marketplace_1'],
+                'marketplace_2' => $payload['marketplace_2'],
+                'what_happened' => $payload['what_happened'],
+                'issue' => $payload['issue'],
+                'issue_remark' => $payload['issue_remark'],
+                'action_1' => $payload['action_1'],
+                'action_1_remark' => $payload['action_1_remark'],
+                'c_action_1' => $payload['c_action_1'],
+                'close_note' => $payload['close_note'],
+                'created_by' => $actorName,
+                'created_by_user_id' => $user?->id,
+                'logged_at' => $now,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ]);
+        });
+
+        return response()->json(['message' => 'Hold issue updated successfully.']);
+    })->name('customer.care.orders.on.hold.issues.update');
+    Route::post('/customer-care/orders-on-hold/issues/{id}/archive', function (int $id) {
+        $row = \Illuminate\Support\Facades\DB::table('orders_on_hold_issues')->where('id', $id)->first();
+        if (! $row) {
+            return response()->json(['message' => 'Record not found.'], 404);
+        }
+
+        $user = auth()->user();
+        $actorName = trim((string) ($user?->name ?? 'System'));
+        if ($actorName === '') {
+            $actorName = 'System';
+        }
+
+        \Illuminate\Support\Facades\DB::transaction(function () use ($id, $row, $actorName, $user) {
+            $now = now();
+            $nextRevision = ((int) (\Illuminate\Support\Facades\DB::table('orders_on_hold_issue_histories')
+                ->where('orders_on_hold_issue_id', $id)
+                ->max('revision_no'))) + 1;
+            \Illuminate\Support\Facades\DB::table('orders_on_hold_issues')
+                ->where('id', $id)
+                ->update([
+                    'is_archived' => true,
+                    'archived_at' => $now,
+                    'archived_by' => $actorName,
+                    'updated_at' => $now,
+                ]);
+
+            \Illuminate\Support\Facades\DB::table('orders_on_hold_issue_histories')->insert([
+                'orders_on_hold_issue_id' => $id,
+                'event_type' => 'archived',
+                'revision_no' => $nextRevision,
+                'sku' => $row->sku,
+                'qty' => (float) $row->qty,
+                'parent' => $row->parent,
+                'marketplace_1' => $row->marketplace_1 ?? null,
+                'marketplace_2' => $row->marketplace_2 ?? null,
+                'what_happened' => $row->what_happened ?? null,
+                'issue' => $row->issue,
+                'issue_remark' => $row->issue_remark ?? null,
+                'action_1' => $row->action_1 ?? null,
+                'action_1_remark' => $row->action_1_remark ?? null,
+                'c_action_1' => $row->c_action_1 ?? null,
+                'close_note' => $row->close_note ?? null,
+                'created_by' => $actorName,
+                'created_by_user_id' => $user?->id,
+                'logged_at' => $now,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ]);
+        });
+
+        return response()->json(['message' => 'Hold issue archived successfully.']);
+    })->name('customer.care.orders.on.hold.issues.archive');
     Route::get('/customer-care/followups', [CustomerFollowupController::class, 'index'])->name('customer.care.followups');
     Route::get('/customer-care/followups/data', [CustomerFollowupController::class, 'data'])->name('customer.care.followups.data');
     Route::get('/customer-care/followups/skus', [CustomerFollowupController::class, 'searchProductSkus'])->name('customer.care.followups.skus');
@@ -707,6 +1155,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     //Stock Adjustment
     Route::get('/stock-adjustment-view', [StockAdjustmentController::class, 'index'])->name('stock.adjustment.view');
     Route::post('/stock-adjustment-store', [StockAdjustmentController::class, 'store'])->name('stock.adjustment.store');
+    Route::post('/stock-adjustment-bulk-csv', [StockAdjustmentController::class, 'processBulkCSV']);
     Route::get('/stock-adjustment-data-list', [StockAdjustmentController::class, 'list']);
 
     //Stock Transfer
@@ -717,6 +1166,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     //Stock Balance
     Route::get('/stock-balance-view', [StockBalanceController::class, 'index'])->name('stock.balance.view');
     Route::get('/stock-balance-tabulator', [StockBalanceController::class, 'tabulatorView'])->name('stock.balance.tabulator');
+    Route::get('/stock-balance-alternate', [StockBalanceController::class, 'alternateView'])->name('stock.balance.alternate');
     Route::post('/stock-balance-store', [StockBalanceController::class, 'store'])->name('stock.balance.store');
     Route::get('/stock-balance-data-list', [StockBalanceController::class, 'list']);
     Route::get('/stock-balance-inventory-data', [StockBalanceController::class, 'getInventoryData']);
