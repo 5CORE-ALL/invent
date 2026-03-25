@@ -3,6 +3,9 @@
 namespace App\Services;
 
 use App\Models\ShopifySku;
+use App\Services\Support\ShopifyBulletPointsFormatter;
+use Illuminate\Http\Client\Response;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -153,10 +156,12 @@ class ShopifyPLSApiService
 
                 Log::info('ShopifyPLS: GraphQL SKU search', ['query' => $queryStr, 'url' => $graphqlUrl]);
 
-                $response = Http::withHeaders([
-                    'X-Shopify-Access-Token' => $token,
-                    'Content-Type' => 'application/json',
-                ])->timeout(30)->post($graphqlUrl, $payload);
+                $response = $this->retryOnRateLimit(function () use ($token, $graphqlUrl, $payload) {
+                    return Http::withHeaders([
+                        'X-Shopify-Access-Token' => $token,
+                        'Content-Type' => 'application/json',
+                    ])->timeout(30)->post($graphqlUrl, $payload);
+                });
 
                 if (! $response->successful()) {
                     Log::warning('ShopifyPLS: GraphQL request failed', ['status' => $response->status(), 'query' => $queryStr]);
@@ -195,14 +200,21 @@ class ShopifyPLSApiService
     }
 
     /**
+     * Phase 1: Overwrite product `body_html` with Key Features bullets only (see ShopifyBulletPointsFormatter).
+     *
      * @return array{success: bool, message: string}
      */
     public function updateBulletPoints(string $identifier, string $bulletPoints): array
     {
-        $bulletPoints = trim($bulletPoints);
-        if (trim($identifier) === '' || $bulletPoints === '') {
+        if (trim($identifier) === '' || trim($bulletPoints) === '') {
             return ['success' => false, 'message' => 'SKU (or variant_id / product_id) and bullet points are required.'];
         }
+
+        if (! ShopifyBulletPointsFormatter::hasAnyBulletLine($bulletPoints)) {
+            return ['success' => false, 'message' => 'At least one bullet line is required.'];
+        }
+
+        $formattedHtml = ShopifyBulletPointsFormatter::formatBodyHtml($bulletPoints);
 
         try {
             $domain = config('services.prolightsounds.domain') ?? config('services.prolightsounds.store_url');
@@ -216,6 +228,7 @@ class ShopifyPLSApiService
 
             $trim = trim($identifier);
             $productId = null;
+            $hadHttp = false;
             $shopifySku = ShopifySku::where('sku', $trim)
                 ->orWhere('sku', strtoupper($trim))
                 ->orWhere('sku', strtolower($trim))
@@ -226,9 +239,14 @@ class ShopifyPLSApiService
             }
 
             if ($shopifySku && $shopifySku->variant_id) {
-                $variantResponse = Http::withHeaders([
-                    'X-Shopify-Access-Token' => $token,
-                ])->timeout(30)->get("https://{$domain}/admin/api/2024-01/variants/{$shopifySku->variant_id}.json");
+                $variantUrl = "https://{$domain}/admin/api/2024-01/variants/{$shopifySku->variant_id}.json";
+                $variantResponse = $this->retryOnRateLimit(function () use ($token, $variantUrl) {
+                    return Http::withHeaders([
+                        'X-Shopify-Access-Token' => $token,
+                        'Content-Type' => 'application/json',
+                    ])->timeout(30)->get($variantUrl);
+                });
+                $hadHttp = true;
 
                 if ($variantResponse->successful()) {
                     $productId = $variantResponse->json('variant.product_id');
@@ -236,15 +254,30 @@ class ShopifyPLSApiService
             }
 
             if (! $productId && ctype_digit($trim)) {
-                $productProbe = Http::withHeaders([
-                    'X-Shopify-Access-Token' => $token,
-                ])->timeout(30)->get("https://{$domain}/admin/api/2024-01/products/{$trim}.json");
+                if ($hadHttp) {
+                    usleep(500000);
+                }
+                $probeUrl = "https://{$domain}/admin/api/2024-01/products/{$trim}.json";
+                $productProbe = $this->retryOnRateLimit(function () use ($token, $probeUrl) {
+                    return Http::withHeaders([
+                        'X-Shopify-Access-Token' => $token,
+                        'Content-Type' => 'application/json',
+                    ])->timeout(30)->get($probeUrl);
+                });
+                $hadHttp = true;
                 if ($productProbe->successful() && $productProbe->json('product.id')) {
                     $productId = (int) $productProbe->json('product.id');
+                    $probeTitle = (string) ($productProbe->json('product.title') ?? '');
+                    if ($productId && $probeTitle !== '') {
+                        Cache::put('shopify_pls_product_title_'.$productId, $probeTitle, 3600);
+                    }
                 }
             }
 
             if (! $productId) {
+                if ($hadHttp) {
+                    usleep(500000);
+                }
                 $found = $this->findProductBySkuViaGraphQL($domain, $token, $trim);
                 if ($found) {
                     $productId = $found['product_id'];
@@ -255,40 +288,98 @@ class ShopifyPLSApiService
                 return ['success' => false, 'message' => 'PLS product not found for SKU, variant_id, or product_id.'];
             }
 
-            $html = '<ul>';
-            foreach (preg_split('/\r\n|\r|\n/', $bulletPoints) as $line) {
-                $line = trim($line);
-                if ($line === '') {
-                    continue;
-                }
-                $html .= '<li>'.htmlspecialchars($line, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8').'</li>';
+            usleep(500000);
+
+            $title = $this->getProductTitle($domain, $token, $productId);
+            if ($title === '') {
+                return ['success' => false, 'message' => 'Could not load product title (Shopify PLS rate limit or API error).'];
             }
-            $html .= '</ul>';
 
             $productUrl = "https://{$domain}/admin/api/2024-01/products/{$productId}.json";
-            $getProduct = Http::withHeaders([
-                'X-Shopify-Access-Token' => $token,
-            ])->timeout(30)->get($productUrl);
-            $title = $getProduct->json('product.title') ?? '';
-
-            $response = Http::withHeaders([
-                'X-Shopify-Access-Token' => $token,
-                'Content-Type' => 'application/json',
-            ])->timeout(30)->put($productUrl, [
-                'product' => [
-                    'id' => $productId,
-                    'title' => $title,
-                    'body_html' => $html,
-                ],
-            ]);
+            $response = $this->retryOnRateLimit(function () use ($token, $productUrl, $productId, $title, $formattedHtml) {
+                return Http::withHeaders([
+                    'X-Shopify-Access-Token' => $token,
+                    'Content-Type' => 'application/json',
+                ])->timeout(30)->put($productUrl, [
+                    'product' => [
+                        'id' => $productId,
+                        'title' => $title,
+                        'body_html' => $formattedHtml,
+                    ],
+                ]);
+            });
 
             if ($response->successful()) {
                 return ['success' => true, 'message' => 'Shopify PLS product bullets updated.'];
             }
 
-            return ['success' => false, 'message' => 'PLS update failed: '.$response->body()];
+            $errBody = $response->status() === 429
+                ? 'PLS update rate limited after retries.'
+                : $response->body();
+
+            return ['success' => false, 'message' => 'PLS update failed: '.$errBody];
         } catch (\Throwable $e) {
             return ['success' => false, 'message' => $e->getMessage()];
         }
+    }
+
+    /**
+     * Retry HTTP calls when Shopify returns 429 Too Many Requests.
+     */
+    private function retryOnRateLimit(callable $call, int $maxRetries = 3): Response
+    {
+        $attempt = 0;
+        $response = null;
+
+        while ($attempt < $maxRetries) {
+            $response = $call();
+
+            if ($response->status() !== 429) {
+                return $response;
+            }
+
+            $attempt++;
+            $wait = (int) (pow(2, $attempt) * 1000000);
+            usleep($wait);
+        }
+
+        return $response;
+    }
+
+    /**
+     * Cached product title for PLS store to reduce sequential API calls.
+     */
+    private function getProductTitle(string $domain, string $token, int|string $productId): string
+    {
+        $cacheKey = 'shopify_pls_product_title_'.$productId;
+        $cached = Cache::get($cacheKey);
+        if (is_string($cached) && $cached !== '') {
+            return $cached;
+        }
+
+        $productUrl = "https://{$domain}/admin/api/2024-01/products/{$productId}.json";
+        $getProduct = $this->retryOnRateLimit(function () use ($token, $productUrl) {
+            return Http::withHeaders([
+                'X-Shopify-Access-Token' => $token,
+                'Content-Type' => 'application/json',
+            ])->timeout(30)->get($productUrl);
+        });
+
+        if (! $getProduct->successful()) {
+            if ($getProduct->status() === 429) {
+                Log::warning('Shopify PLS: product title fetch rate limited after retries', [
+                    'product_id' => $productId,
+                ]);
+            }
+
+            return '';
+        }
+
+        $title = (string) ($getProduct->json('product.title') ?? '');
+        if ($title !== '') {
+            Cache::put($cacheKey, $title, 3600);
+        }
+
+        return $title;
     }
 }
