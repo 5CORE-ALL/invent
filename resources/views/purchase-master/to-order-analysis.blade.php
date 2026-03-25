@@ -654,6 +654,29 @@
                         }
                     },
                     {
+                        title: "B / S",
+                        field: "buyer_link",
+                        hozAlign: "center",
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+                            const buyerLink = rowData.buyer_link || "";
+                            const sellerLink = rowData.seller_link || "";
+
+                            if (!buyerLink && !sellerLink) {
+                                return '<span class="text-muted">-</span>';
+                            }
+
+                            const buyerBtn = buyerLink
+                                ? `<a href="${buyerLink}" target="_blank" class="btn btn-sm btn-outline-primary" title="Buyer Link" style="min-width:30px;padding:2px 8px;">B</a>`
+                                : '';
+                            const sellerBtn = sellerLink
+                                ? `<a href="${sellerLink}" target="_blank" class="btn btn-sm btn-outline-secondary" title="Seller Link" style="min-width:30px;padding:2px 8px;">S</a>`
+                                : '';
+
+                            return `<div style="display:flex;justify-content:center;gap:6px;">${buyerBtn}${sellerBtn}</div>`;
+                        },
+                    },
+                    {
                         title: "RFQ Form",
                         field: "RFQ Form Link",
                         formatter: linkFormatter,

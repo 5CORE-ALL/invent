@@ -296,6 +296,10 @@ class ToOrderAnalysisController extends Controller
             $toOrderRecords = DB::table('to_order_analysis')->whereNull('deleted_at')->orderBy('id', 'asc')->get()->keyBy('sku');
             $productData = DB::table('product_master')->get()->keyBy(fn($item) => strtoupper(trim($item->sku)));
             $forecastData = DB::table('forecast_analysis')->get()->keyBy(fn($row) => strtoupper(trim($row->sku)));
+            $amazonDataMap = DB::table('amazon_data_view')
+                ->select('sku', 'value')
+                ->get()
+                ->keyBy(fn($item) => strtoupper(trim($item->sku)));
 
             $shopifySkus = ShopifySku::all()->keyBy(fn($item) => strtoupper(trim($item->sku)));
             $allReviews = \App\Models\ToOrderReview::all()->keyBy(fn($r) => strtoupper(trim($r->sku)) . '|' . strtoupper(trim($r->parent)));
@@ -314,6 +318,13 @@ class ToOrderAnalysisController extends Controller
 
                 $product = $productData->get($sheetSku);
                 $forecast = $forecastData->get($sheetSku);
+                $amazonData = $amazonDataMap->get($sheetSku);
+                $amazonValue = [];
+                if ($amazonData) {
+                    $amazonValue = is_array($amazonData->value)
+                        ? $amazonData->value
+                        : (json_decode($amazonData->value ?? '{}', true) ?: []);
+                }
                 
                 // Skip if SKU has NR or LATER in forecast_analysis table (unless explicitly shown)
                 $nrValue = strtoupper(trim($forecast->nr ?? ''));
@@ -405,6 +416,8 @@ class ToOrderAnalysisController extends Controller
                     'cbm'             => $cbm,
                     'total_cbm'       => $cbm * $approvedQty,
                     'Image'           => $finalImage,
+                    'buyer_link'      => $amazonValue['buyer_link'] ?? '',
+                    'seller_link'     => $amazonValue['seller_link'] ?? '',
 
                     'has_review'      => $review ? true : false,
                     'positive_review' => $review->positive_review ?? null,
