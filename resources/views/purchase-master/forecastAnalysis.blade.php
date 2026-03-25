@@ -384,6 +384,10 @@
                                  LP Val: $<span id="total_lp_value_display" class="fw-semibold text-dark">0</span>
                             </button>
 
+                            <button id="total_order_value" class="btn btn-sm btn-warning fw-semibold text-dark" title="2 Ord × CP (visible rows)">
+                                 Ord Val: $<span id="total_order_value_display" class="fw-semibold text-dark">0</span>
+                            </button>
+
                             {{-- <button id="total_restock_msl" class="btn btn-sm btn-dark fw-semibold text-white">
                                  Restock MSL: $<span id="total_restock_msl_value" class="fw-semibold text-white">0.00</span>
                             </button> --}}
@@ -681,6 +685,255 @@
 
         //global variables for play btn
         let groupedSkuData = {};
+        let currentOrderPositiveOnly = false;
+        let currentOrderPositiveCount = 0;
+        let currentMipPositiveOnly = false;
+        let currentMipPositiveCount = 0;
+        let currentR2sPositiveOnly = false;
+        let currentR2sPositiveCount = 0;
+        let currentTransitPositiveOnly = false;
+        let currentTransitPositiveCount = 0;
+        let currentAllGoodOnly = false;
+        let currentAllGoodCount = 0;
+        function isSelectableForecastRow(row) {
+            if (!row) return false;
+            const data = (typeof row.getData === 'function') ? row.getData() : (row || {});
+            const sku = (data.SKU || '').toString().toLowerCase();
+            return sku.indexOf('parent') === -1;
+        }
+        function isOrderPositiveRow(data) {
+            return (parseFloat(data?.two_order_qty) || 0) > 0;
+        }
+        function isMipPositiveRow(data) {
+            return (parseFloat(data?.order_given) || 0) > 0;
+        }
+        function isR2sPositiveRow(data) {
+            const raw = data && data.raw_data ? data.raw_data : {};
+            const value = (data && data.readyToShipQty !== undefined && data.readyToShipQty !== null)
+                ? data.readyToShipQty
+                : raw.readyToShipQty;
+            return (parseFloat(value) || 0) > 0;
+        }
+        function isTransitPositiveRow(data) {
+            const raw = data && data.raw_data ? data.raw_data : {};
+            const value = (data && data.transit !== undefined && data.transit !== null)
+                ? data.transit
+                : raw.transit;
+            return (parseFloat(value) || 0) > 0;
+        }
+        function isAllGoodRow(data) {
+            return !!(data && data.all_good);
+        }
+        function orderColumnTitleFormatter() {
+            const wrap = document.createElement('div');
+            wrap.style.display = 'flex';
+            wrap.style.alignItems = 'center';
+            wrap.style.justifyContent = 'center';
+            wrap.style.gap = '4px';
+
+            const label = document.createElement('span');
+            label.textContent = "Order (" + currentOrderPositiveCount + ")";
+
+            const dotBtn = document.createElement('button');
+            dotBtn.type = 'button';
+            dotBtn.setAttribute('aria-label', 'Toggle Order > 0 filter');
+            dotBtn.title = currentOrderPositiveOnly ? 'Showing only Order > 0 (click for all)' : 'Show only Order > 0';
+            dotBtn.style.width = '12px';
+            dotBtn.style.height = '12px';
+            dotBtn.style.borderRadius = '9999px';
+            dotBtn.style.border = currentOrderPositiveOnly ? '1px solid #15803d' : '1px solid #94a3b8';
+            dotBtn.style.background = currentOrderPositiveOnly ? '#22c55e' : '#d1d5db';
+            dotBtn.style.padding = '0';
+            dotBtn.style.cursor = 'pointer';
+            dotBtn.style.flexShrink = '0';
+
+            dotBtn.addEventListener('click', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                currentOrderPositiveOnly = !currentOrderPositiveOnly;
+                setCombinedFilters();
+                updateOrderColumnHeader(currentOrderPositiveCount);
+            });
+
+            wrap.appendChild(label);
+            wrap.appendChild(dotBtn);
+            return wrap;
+        }
+        function updateOrderColumnHeader(count) {
+            currentOrderPositiveCount = Number.isFinite(count) ? count : 0;
+            table.updateColumnDefinition("two_order_qty", {
+                title: "Order (" + currentOrderPositiveCount + ")",
+                titleFormatter: orderColumnTitleFormatter
+            });
+        }
+        function mipColumnTitleFormatter() {
+            const wrap = document.createElement('div');
+            wrap.style.display = 'flex';
+            wrap.style.alignItems = 'center';
+            wrap.style.justifyContent = 'center';
+            wrap.style.gap = '4px';
+
+            const label = document.createElement('span');
+            label.textContent = "MIP (" + currentMipPositiveCount + ")";
+
+            const dotBtn = document.createElement('button');
+            dotBtn.type = 'button';
+            dotBtn.setAttribute('aria-label', 'Toggle MIP > 0 filter');
+            dotBtn.title = currentMipPositiveOnly ? 'Showing only MIP > 0 (click for all)' : 'Show only MIP > 0';
+            dotBtn.style.width = '12px';
+            dotBtn.style.height = '12px';
+            dotBtn.style.borderRadius = '9999px';
+            dotBtn.style.border = currentMipPositiveOnly ? '1px solid #15803d' : '1px solid #94a3b8';
+            dotBtn.style.background = currentMipPositiveOnly ? '#22c55e' : '#d1d5db';
+            dotBtn.style.padding = '0';
+            dotBtn.style.cursor = 'pointer';
+            dotBtn.style.flexShrink = '0';
+
+            dotBtn.addEventListener('click', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                currentMipPositiveOnly = !currentMipPositiveOnly;
+                setCombinedFilters();
+                updateMipColumnHeader(currentMipPositiveCount);
+            });
+
+            wrap.appendChild(label);
+            wrap.appendChild(dotBtn);
+            return wrap;
+        }
+        function updateMipColumnHeader(count) {
+            currentMipPositiveCount = Number.isFinite(count) ? count : 0;
+            table.updateColumnDefinition("order_given", {
+                title: "MIP (" + currentMipPositiveCount + ")",
+                titleFormatter: mipColumnTitleFormatter
+            });
+        }
+        function r2sColumnTitleFormatter() {
+            const wrap = document.createElement('div');
+            wrap.style.display = 'flex';
+            wrap.style.alignItems = 'center';
+            wrap.style.justifyContent = 'center';
+            wrap.style.gap = '4px';
+
+            const label = document.createElement('span');
+            label.textContent = "R2S (" + currentR2sPositiveCount + ")";
+
+            const dotBtn = document.createElement('button');
+            dotBtn.type = 'button';
+            dotBtn.setAttribute('aria-label', 'Toggle R2S > 0 filter');
+            dotBtn.title = currentR2sPositiveOnly ? 'Showing only R2S > 0 (click for all)' : 'Show only R2S > 0';
+            dotBtn.style.width = '12px';
+            dotBtn.style.height = '12px';
+            dotBtn.style.borderRadius = '9999px';
+            dotBtn.style.border = currentR2sPositiveOnly ? '1px solid #15803d' : '1px solid #94a3b8';
+            dotBtn.style.background = currentR2sPositiveOnly ? '#22c55e' : '#d1d5db';
+            dotBtn.style.padding = '0';
+            dotBtn.style.cursor = 'pointer';
+            dotBtn.style.flexShrink = '0';
+
+            dotBtn.addEventListener('click', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                currentR2sPositiveOnly = !currentR2sPositiveOnly;
+                setCombinedFilters();
+                updateR2sColumnHeader(currentR2sPositiveCount);
+            });
+
+            wrap.appendChild(label);
+            wrap.appendChild(dotBtn);
+            return wrap;
+        }
+        function updateR2sColumnHeader(count) {
+            currentR2sPositiveCount = Number.isFinite(count) ? count : 0;
+            table.updateColumnDefinition("readyToShipQty", {
+                title: "R2S (" + currentR2sPositiveCount + ")",
+                titleFormatter: r2sColumnTitleFormatter
+            });
+        }
+        function transitColumnTitleFormatter() {
+            const wrap = document.createElement('div');
+            wrap.style.display = 'flex';
+            wrap.style.alignItems = 'center';
+            wrap.style.justifyContent = 'center';
+            wrap.style.gap = '4px';
+
+            const label = document.createElement('span');
+            label.textContent = "Trn (" + currentTransitPositiveCount + ")";
+
+            const dotBtn = document.createElement('button');
+            dotBtn.type = 'button';
+            dotBtn.setAttribute('aria-label', 'Toggle Transit > 0 filter');
+            dotBtn.title = currentTransitPositiveOnly ? 'Showing only Transit > 0 (click for all)' : 'Show only Transit > 0';
+            dotBtn.style.width = '12px';
+            dotBtn.style.height = '12px';
+            dotBtn.style.borderRadius = '9999px';
+            dotBtn.style.border = currentTransitPositiveOnly ? '1px solid #15803d' : '1px solid #94a3b8';
+            dotBtn.style.background = currentTransitPositiveOnly ? '#22c55e' : '#d1d5db';
+            dotBtn.style.padding = '0';
+            dotBtn.style.cursor = 'pointer';
+            dotBtn.style.flexShrink = '0';
+
+            dotBtn.addEventListener('click', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                currentTransitPositiveOnly = !currentTransitPositiveOnly;
+                setCombinedFilters();
+                updateTransitColumnHeader(currentTransitPositiveCount);
+            });
+
+            wrap.appendChild(label);
+            wrap.appendChild(dotBtn);
+            return wrap;
+        }
+        function updateTransitColumnHeader(count) {
+            currentTransitPositiveCount = Number.isFinite(count) ? count : 0;
+            table.updateColumnDefinition("transit", {
+                title: "Trn (" + currentTransitPositiveCount + ")",
+                titleFormatter: transitColumnTitleFormatter
+            });
+        }
+        function allGoodColumnTitleFormatter() {
+            const wrap = document.createElement('div');
+            wrap.style.display = 'flex';
+            wrap.style.alignItems = 'center';
+            wrap.style.justifyContent = 'center';
+            wrap.style.gap = '4px';
+
+            const label = document.createElement('span');
+            label.textContent = "All Good (" + currentAllGoodCount + ")";
+
+            const dotBtn = document.createElement('button');
+            dotBtn.type = 'button';
+            dotBtn.setAttribute('aria-label', 'Toggle All Good filter');
+            dotBtn.title = currentAllGoodOnly ? 'Showing only All Good rows (click for all)' : 'Show only All Good rows';
+            dotBtn.style.width = '12px';
+            dotBtn.style.height = '12px';
+            dotBtn.style.borderRadius = '9999px';
+            dotBtn.style.border = currentAllGoodOnly ? '1px solid #15803d' : '1px solid #94a3b8';
+            dotBtn.style.background = currentAllGoodOnly ? '#22c55e' : '#d1d5db';
+            dotBtn.style.padding = '0';
+            dotBtn.style.cursor = 'pointer';
+            dotBtn.style.flexShrink = '0';
+
+            dotBtn.addEventListener('click', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                currentAllGoodOnly = !currentAllGoodOnly;
+                setCombinedFilters();
+                updateAllGoodColumnHeader(currentAllGoodCount);
+            });
+
+            wrap.appendChild(label);
+            wrap.appendChild(dotBtn);
+            return wrap;
+        }
+        function updateAllGoodColumnHeader(count) {
+            currentAllGoodCount = Number.isFinite(count) ? count : 0;
+            table.updateColumnDefinition("all_good", {
+                title: "All Good (" + currentAllGoodCount + ")",
+                titleFormatter: allGoodColumnTitleFormatter
+            });
+        }
 
         const table = new Tabulator("#forecast-table", {
             ajaxURL: "/forecast-analysis-data-view",
@@ -696,11 +949,6 @@
             height: 400,
             index: "SKU",
             editTriggerEvent: "dblclick",
-            selectableRows: true,
-            selectableCheck: function(row) {
-                const sku = (row.getData().SKU || '').toString().toLowerCase();
-                return sku.indexOf('parent') === -1;
-            },
             rowFormatter: function(row) {
                 const data = row.getData();
                 const sku = data["SKU"] || '';
@@ -712,11 +960,32 @@
             columns: [
                 {
                     formatter: "rowSelection",
-                    titleFormatter: "rowSelection",
+                    titleFormatter: function(cell) {
+                        const checkbox = document.createElement("input");
+                        checkbox.type = "checkbox";
+                        checkbox.style.margin = "0";
+                        checkbox.style.cursor = "pointer";
+                        checkbox.addEventListener("click", function(e) {
+                            e.stopPropagation();
+                            const activeRows = cell.getTable().getRows("active").filter(isSelectableForecastRow);
+                            if (checkbox.checked) {
+                                activeRows.forEach(function(row) { row.select(); });
+                            } else {
+                                cell.getTable().deselectRow();
+                            }
+                        });
+                        return checkbox;
+                    },
                     align: "center",
                     headerSort: false,
                     width: 40,
-                    minWidth: 40
+                    minWidth: 40,
+                    cellClick: function(e, cell) {
+                        e.stopPropagation();
+                        const row = cell.getRow();
+                        if (!isSelectableForecastRow(row)) return;
+                        row.toggleSelect();
+                    }
                 },
                 {
                     title: "#",
@@ -934,6 +1203,25 @@
                     }
                 },
                 {
+                    title: "All Good",
+                    field: "all_good",
+                    headerSort: false,
+                    titleFormatter: allGoodColumnTitleFormatter,
+                    hozAlign: "center",
+                    width: 74,
+                    minWidth: 64,
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        const isParent = rowData.is_parent || rowData.isParent;
+                        if (!isParent) {
+                            return '<span class="text-muted">—</span>';
+                        }
+                        return cell.getValue()
+                            ? '<span title="All child 2 Ord values are below 0" style="font-size:16px;">😊</span>'
+                            : '<span class="text-muted">—</span>';
+                    }
+                },
+                {
                     title: "M AVG ",
                     field: "MSL_Four",
                     accessor: row => (row ? row["MSL_Four"] : null),
@@ -972,8 +1260,19 @@
                     headerFilterEmptyCheck: function(value) {
                         return value === "" || value === null || value === undefined;
                     },
-                    headerFilterFunc: function() {
-                        return true;
+                    headerFilterFunc: function(headerValue, rowValue, rowData) {
+                        const selected = normalizeStageValue(headerValue);
+                        if (!selected) return true;
+
+                        const stageValue = normalizeStageValue(rowValue);
+                        if (selected === '__blank__') {
+                            return !stageValue;
+                        }
+                        if (selected === 'transit') {
+                            const transitValue = rowData && rowData.raw_data ? rowData.raw_data["transit"] : (rowData ? rowData["transit"] : 0);
+                            return (parseFloat(transitValue) || 0) > 0;
+                        }
+                        return stageValue === selected;
                     },
                     formatter: function(cell) {
                         let value = cell.getValue() ?? '';
@@ -995,7 +1294,9 @@
                         const tipAttr = String(tip).replace(/&/g, '&amp;').replace(/"/g, '&quot;');
 
                         let markerHtml = '';
-                        if (value === 'transit') {
+                        if (value === 'all_good') {
+                            markerHtml = '<span aria-hidden="true" style="font-size:14px;line-height:1;">😊</span>';
+                        } else if (value === 'transit') {
                             markerHtml = '<i class="bi bi-truck stage-transit-icon" aria-hidden="true"></i>';
                         } else {
                             let dotColor = '#94a3b8';
@@ -1003,7 +1304,6 @@
                             else if (value === 'mip') dotColor = '#2563eb';
                             else if (value === 'to_order_analysis') dotColor = '#c2410c';
                             else if (value === 'r2s') dotColor = '#16a34a';
-                            else if (value === 'all_good') dotColor = '#22c55e';
                             markerHtml = '<span class="stage-status-dot" style="background-color:' + dotColor + ';" aria-hidden="true"></span>';
                         }
 
@@ -1059,6 +1359,7 @@
                     accessor: row => (row ? row.two_order_qty : null),
                     sorter: "number",
                     headerSort: true,
+                    titleFormatter: orderColumnTitleFormatter,
                     formatter: function(cell) {
                         const v = parseFloat(cell.getValue());
                         if (!v || isNaN(v)) {
@@ -1110,6 +1411,7 @@
                     accessor: row => (row ? row["order_given"] : null),
                     sorter: "number",
                     headerSort: true,
+                    titleFormatter: mipColumnTitleFormatter,
                     formatter: function(cell) {
                         const value = cell.getValue();
                         const rowData = cell.getRow().getData();
@@ -1138,6 +1440,7 @@
                     accessor: row => (row ? row["readyToShipQty"] : null),
                     sorter: "number",
                     headerSort: true,
+                    titleFormatter: r2sColumnTitleFormatter,
                     formatter: function(cell) {
                         const value = cell.getValue();
                         const n = parseFloat(value);
@@ -1216,6 +1519,7 @@
                     accessor: row => (row ? row["transit"] : null),
                     sorter: "number",
                     headerSort: true,
+                    titleFormatter: transitColumnTitleFormatter,
                     hozAlign: "center",
                     formatter: function(cell) {
                         const row = cell.getRow();
@@ -2160,6 +2464,18 @@
                 const sorted = [];
                 groupOrder.forEach(function(p) {
                     const g = groups[p];
+                    const childRows = g.filter(function(r) { return !r.is_parent; });
+                    const allGoodForParent = childRows.length > 0 && childRows.every(function(r) {
+                        return (parseFloat(r.to_order) || 0) < 0;
+                    });
+                    g.forEach(function(r) {
+                        if (r.is_parent) {
+                            r.all_good = allGoodForParent;
+                            if (r.raw_data) r.raw_data.all_good = allGoodForParent;
+                        } else {
+                            r.all_good = false;
+                        }
+                    });
                     g.sort(function(a, b) { return (a.is_parent ? 1 : 0) - (b.is_parent ? 1 : 0); });
                     sorted.push.apply(sorted, g);
                 });
@@ -2180,13 +2496,15 @@
                     const transitCount = allData.filter(row => notParent(row) && (parseFloat(row.transit) || 0) > 0).length;
                     const twoOrderStageCount = allData.filter(row => notParent(row) && (parseFloat(row.two_order_qty) || 0) > 0).length;
                     const apprReqStageCount = allData.filter(row => notParent(row) && (parseFloat(row.appr_req_qty) || 0) > 0).length;
+                    const allGoodCount = allData.filter(row => (row.is_parent || row.isParent) && !!row.all_good).length;
                     table.updateColumnDefinition("msl", { title: "MSL (" + mslCount + ")" });
                     table.updateColumnDefinition("to_order", { title: "2 Ord (" + toOrderCount + ")" });
                     table.updateColumnDefinition("appr_req_qty", { title: "Appr Req (" + apprReqStageCount + ")" });
-                    table.updateColumnDefinition("two_order_qty", { title: "Order (" + twoOrderStageCount + ")" });
-                    table.updateColumnDefinition("order_given", { title: "MIP (" + mipCount + ")" });
-                    table.updateColumnDefinition("readyToShipQty", { title: "R2S (" + r2sCount + ")" });
-                    table.updateColumnDefinition("transit", { title: "Trn (" + transitCount + ")" });
+                    updateOrderColumnHeader(twoOrderStageCount);
+                    updateMipColumnHeader(mipCount);
+                    updateR2sColumnHeader(r2sCount);
+                    updateTransitColumnHeader(transitCount);
+                    updateAllGoodColumnHeader(allGoodCount);
                 }, 0);
                 return sorted;
             },
@@ -2384,6 +2702,10 @@
             currentInvFilter = v === undefined || v === null ? '' : String(v);
             if (typeof setCombinedFilters === 'function') setCombinedFilters();
         }
+        function normalizeStageValue(value) {
+            if (value === undefined || value === null) return '';
+            return String(value).trim().toLowerCase();
+        }
         function syncParentStageQtyColumns(parentKey) {
             if (!parentKey || typeof table === 'undefined' || !table) return;
             let sumTwo = 0;
@@ -2515,7 +2837,7 @@
                     
                     // Stage filter - check stage field or transit field
                     // If filter is "__blank__", match empty/null/undefined stage
-                    const childStage = child.stage || '';
+                    const childStage = normalizeStageValue(child.stage);
                     let stageMatch = true;
                     if (currentStageFilter) {
                         if (currentStageFilter === '__blank__') {
@@ -2535,13 +2857,25 @@
                         currentColorFilter === 'yellow' ?
                         apprReqYellowRowVisible(child) :
                         true;
-                    return nrMatch && laterMatch && nrpMatch && stageMatch && filterMatch && invHeaderMatchesRow(child);
+                    const orderPositiveMatch = !currentOrderPositiveOnly || isOrderPositiveRow(child);
+                    const mipPositiveMatch = !currentMipPositiveOnly || isMipPositiveRow(child);
+                    const r2sPositiveMatch = !currentR2sPositiveOnly || isR2sPositiveRow(child);
+                    const transitPositiveMatch = !currentTransitPositiveOnly || isTransitPositiveRow(child);
+                    const allGoodMatch = !currentAllGoodOnly;
+                    return nrMatch && laterMatch && nrpMatch && stageMatch && filterMatch && orderPositiveMatch && mipPositiveMatch && r2sPositiveMatch && transitPositiveMatch && allGoodMatch && invHeaderMatchesRow(child);
                 });
 
                 if (matchingChildren.length > 0) {
                     visibleParentKeys.add(parentKey);
                 }
             });
+            if (currentAllGoodOnly) {
+                allData.forEach(function(item) {
+                    if ((item.is_parent || item.isParent) && !!item.all_good) {
+                        visibleParentKeys.add(item.Parent || item.parentKey || '');
+                    }
+                });
+            }
 
             table.setFilter(function(row) {
                 const data = typeof row.getData === 'function' ? row.getData() : row;
@@ -2567,7 +2901,7 @@
                 
                 // Stage filter - check stage field or transit field
                 // If filter is "__blank__", match empty/null/undefined stage
-                const dataStage = data.stage || '';
+                const dataStage = normalizeStageValue(data.stage);
                 let stageMatch = true;
                 if (currentStageFilter) {
                     if (currentStageFilter === '__blank__') {
@@ -2588,14 +2922,31 @@
                         if (currentColorFilter === 'yellow') {
                             return false;
                         }
-                        return data.Parent === currentParentFilter;
+                        return data.Parent === currentParentFilter &&
+                            (!currentOrderPositiveOnly || visibleParentKeys.has(data.Parent)) &&
+                            (!currentMipPositiveOnly || visibleParentKeys.has(data.Parent)) &&
+                            (!currentR2sPositiveOnly || visibleParentKeys.has(data.Parent)) &&
+                            (!currentTransitPositiveOnly || visibleParentKeys.has(data.Parent)) &&
+                            (!currentAllGoodOnly || isAllGoodRow(data));
                     } else {
-                        return data.Parent === currentParentFilter && matchesFilter && matchesNR && matchesLATER && nrpMatch && stageMatch && invHeaderMatchesRow(data);
+                        return data.Parent === currentParentFilter && matchesFilter && matchesNR && matchesLATER && nrpMatch && stageMatch &&
+                            (!currentOrderPositiveOnly || isOrderPositiveRow(data)) &&
+                            (!currentMipPositiveOnly || isMipPositiveRow(data)) &&
+                            (!currentR2sPositiveOnly || isR2sPositiveRow(data)) &&
+                            (!currentTransitPositiveOnly || isTransitPositiveRow(data)) &&
+                            (!currentAllGoodOnly || isAllGoodRow(data)) &&
+                            invHeaderMatchesRow(data);
                     }
                 }
 
                 if (isChild) {
-                    const showChild = matchesFilter && matchesNR && matchesLATER && nrpMatch && stageMatch && invHeaderMatchesRow(data);
+                    const showChild = matchesFilter && matchesNR && matchesLATER && nrpMatch && stageMatch &&
+                        (!currentOrderPositiveOnly || isOrderPositiveRow(data)) &&
+                        (!currentMipPositiveOnly || isMipPositiveRow(data)) &&
+                        (!currentR2sPositiveOnly || isR2sPositiveRow(data)) &&
+                        (!currentTransitPositiveOnly || isTransitPositiveRow(data)) &&
+                        (!currentAllGoodOnly || isAllGoodRow(data)) &&
+                        invHeaderMatchesRow(data);
                     if (currentRowTypeFilter === 'parent') return false;
                     if (currentRowTypeFilter === 'sku') return showChild;
                     return showChild;
@@ -2609,7 +2960,15 @@
                     // When NRP multiselect is partial (not all types), only show parents that have
                     // at least one visible child matching filters — otherwise every parent stayed visible
                     // with default REQ styling while children were filtered (broken UX).
-                    const useChildDerivedParentVisibility = (nrpSel !== null) || !!invHeaderFilterMode(currentInvFilter);
+                    const useChildDerivedParentVisibility =
+                        (nrpSel !== null) ||
+                        !!invHeaderFilterMode(currentInvFilter) ||
+                        !!currentStageFilter ||
+                        !!currentOrderPositiveOnly ||
+                        !!currentMipPositiveOnly ||
+                        !!currentR2sPositiveOnly ||
+                        !!currentTransitPositiveOnly ||
+                        !!currentAllGoodOnly;
                     if (useChildDerivedParentVisibility) {
                         return visibleParentKeys.has(data.Parent);
                     }
@@ -2643,6 +3002,47 @@
                 if (totalMslCElement) {
                     const wholeNumber = Math.round(totalMslC);
                     totalMslCElement.textContent = wholeNumber.toLocaleString('en-US');
+                }
+
+                // Keep INV Val / LP Val badges aligned with currently visible (active) rows.
+                const visibleChildRows = visibleRows.filter(function(row) {
+                    const d = row.getData();
+                    return d && !d.is_parent;
+                });
+                const visibleInvValue = visibleChildRows.reduce(function(sum, row) {
+                    const d = row.getData();
+                    const invValue = parseFloat(d.inv_value);
+                    if (Number.isFinite(invValue)) return sum + invValue;
+                    const inv = parseFloat(d.INV) || 0;
+                    const sp = parseFloat(d.shopifyb2c_price) || 0;
+                    return sum + (inv * sp);
+                }, 0);
+                const totalInvValueElement = document.getElementById('total_inv_value_display');
+                if (totalInvValueElement) {
+                    totalInvValueElement.textContent = Math.round(visibleInvValue).toLocaleString('en-US');
+                }
+                const visibleLpValue = visibleChildRows.reduce(function(sum, row) {
+                    const d = row.getData();
+                    const lpValue = parseFloat(d.lp_value);
+                    if (Number.isFinite(lpValue)) return sum + lpValue;
+                    const inv = parseFloat(d.INV) || 0;
+                    const lp = parseFloat(d.LP) || 0;
+                    return sum + (inv * lp);
+                }, 0);
+                const totalLpValueElement = document.getElementById('total_lp_value_display');
+                if (totalLpValueElement) {
+                    totalLpValueElement.textContent = Math.round(visibleLpValue).toLocaleString('en-US');
+                }
+                const visibleOrderValue = visibleChildRows.reduce(function(sum, row) {
+                    const d = row.getData();
+                    const orderQty = parseFloat(d.two_order_qty);
+                    if (!Number.isFinite(orderQty) || orderQty <= 0) return sum;
+                    const cp = parseFloat(d.CP ?? (d.raw_data ? d.raw_data.CP : 0)) || 0;
+                    return sum + (orderQty * cp);
+                }, 0);
+                const totalOrderValueElement = document.getElementById('total_order_value_display');
+                if (totalOrderValueElement) {
+                    totalOrderValueElement.textContent = Math.round(visibleOrderValue).toLocaleString('en-US');
                 }
 
                 let totalMslSpAmz = 0;
@@ -3530,7 +3930,7 @@
 
             // Stage filter (toolbar) — keep in sync with Stage column header filter
             document.getElementById('stage-filter').addEventListener('change', function(e) {
-                currentStageFilter = e.target.value;
+                currentStageFilter = normalizeStageValue(e.target.value);
                 const tbl = Tabulator.findTable("#forecast-table")[0];
                 if (tbl && typeof tbl.setHeaderFilterValue === 'function') {
                     tbl.setHeaderFilterValue("stage", currentStageFilter || "");
@@ -3568,7 +3968,7 @@
                         const tbl = Tabulator.findTable("#forecast-table")[0];
                         if (tbl && typeof tbl.getHeaderFilterValue === 'function') {
                             let v = tbl.getHeaderFilterValue("stage");
-                            currentStageFilter = (v === undefined || v === null) ? "" : String(v);
+                            currentStageFilter = normalizeStageValue(v);
                             const sf = document.getElementById("stage-filter");
                             if (sf) sf.value = currentStageFilter;
                             setCombinedFilters();
