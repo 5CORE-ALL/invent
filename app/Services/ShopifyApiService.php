@@ -114,12 +114,11 @@ class ShopifyApiService
      *
      * @return array{success: bool, message: string}
      */
-    public function updateBulletPoints(string $sku, string $bulletPoints): array
+    public function updateBulletPoints(string $identifier, string $bulletPoints): array
     {
-        $sku = trim($sku);
         $bulletPoints = trim($bulletPoints);
-        if ($sku === '' || $bulletPoints === '') {
-            return ['success' => false, 'message' => 'SKU and bullet points are required.'];
+        if (trim($identifier) === '' || $bulletPoints === '') {
+            return ['success' => false, 'message' => 'SKU (or variant_id) and bullet points are required.'];
         }
 
         try {
@@ -132,13 +131,17 @@ class ShopifyApiService
             $domain = preg_replace('#^https?://#', '', $domain);
             $domain = rtrim($domain, '/');
 
-            $shopifySku = ShopifySku::where('sku', $sku)
-                ->orWhere('sku', strtoupper($sku))
-                ->orWhere('sku', strtolower($sku))
+            $trim = trim($identifier);
+            $shopifySku = ShopifySku::where('sku', $trim)
+                ->orWhere('sku', strtoupper($trim))
+                ->orWhere('sku', strtolower($trim))
                 ->first();
+            if (! $shopifySku) {
+                $shopifySku = ShopifySku::where('variant_id', $trim)->first();
+            }
 
             if (! $shopifySku || ! $shopifySku->variant_id) {
-                return ['success' => false, 'message' => 'Shopify variant mapping not found for SKU.'];
+                return ['success' => false, 'message' => 'Shopify variant mapping not found for SKU or variant_id.'];
             }
 
             $variantUrl = "https://{$domain}/admin/api/2024-01/variants/{$shopifySku->variant_id}.json";

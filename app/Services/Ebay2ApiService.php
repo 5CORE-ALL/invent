@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Ebay2Metric;
 use App\Models\ProductStockMapping;
+use App\Services\Concerns\ResolvesBulletPointIdentifier;
 use App\Services\Support\EbayTradingReviseItem;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -14,6 +15,7 @@ use ZipArchive;
 
 class Ebay2ApiService
 {
+    use ResolvesBulletPointIdentifier;
 
     protected $appId;
     protected $certId;
@@ -1420,17 +1422,17 @@ public function downloadAndParseEbayReport(string $taskId, string $token): array
     /**
      * @return array{success: bool, message: string}
      */
-    public function updateBulletPoints(string $productId, string $bulletPoints): array
+    public function updateBulletPoints(string $identifier, string $bulletPoints): array
     {
-        $sku = trim($productId);
         $bulletPoints = trim($bulletPoints);
-        if ($sku === '' || $bulletPoints === '') {
-            return ['success' => false, 'message' => 'SKU and bullet points are required.'];
+        if (trim($identifier) === '' || $bulletPoints === '') {
+            return ['success' => false, 'message' => 'SKU (or item_id) and bullet points are required.'];
         }
 
-        $itemId = DB::table('ebay_2_metrics')->where('sku', $sku)->value('item_id');
+        $row = $this->findMetricRowBySkuOrAlternateIds('ebay_2_metrics', $identifier, ['item_id']);
+        $itemId = $row->item_id ?? null;
         if (! $itemId) {
-            return ['success' => false, 'message' => 'eBay2 item_id not found for this SKU in ebay_2_metrics.'];
+            return ['success' => false, 'message' => 'Product not found in ebay_2_metrics (try SKU or eBay item_id).'];
         }
 
         try {

@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Ebay3Metric;
+use App\Services\Concerns\ResolvesBulletPointIdentifier;
 use App\Services\Support\EbayTradingReviseItem;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -12,6 +13,7 @@ use SimpleXMLElement;
 
 class EbayThreeApiService
 {
+    use ResolvesBulletPointIdentifier;
 
     protected $appId;
     protected $certId;
@@ -1181,17 +1183,17 @@ class EbayThreeApiService
     /**
      * @return array{success: bool, message: string}
      */
-    public function updateBulletPoints(string $productId, string $bulletPoints): array
+    public function updateBulletPoints(string $identifier, string $bulletPoints): array
     {
-        $sku = trim($productId);
         $bulletPoints = trim($bulletPoints);
-        if ($sku === '' || $bulletPoints === '') {
-            return ['success' => false, 'message' => 'SKU and bullet points are required.'];
+        if (trim($identifier) === '' || $bulletPoints === '') {
+            return ['success' => false, 'message' => 'SKU (or item_id) and bullet points are required.'];
         }
 
-        $itemId = DB::table('ebay_3_metrics')->where('sku', $sku)->value('item_id');
+        $row = $this->findMetricRowBySkuOrAlternateIds('ebay_3_metrics', $identifier, ['item_id']);
+        $itemId = $row->item_id ?? null;
         if (! $itemId) {
-            return ['success' => false, 'message' => 'eBay3 item_id not found for this SKU in ebay_3_metrics.'];
+            return ['success' => false, 'message' => 'Product not found in ebay_3_metrics (try SKU or eBay item_id).'];
         }
 
         try {

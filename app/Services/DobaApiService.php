@@ -111,20 +111,30 @@ class DobaApiService
         }
     }
 
-    private function resolveSkuToItemNo(string $sku): ?string
+    private function resolveSkuToItemNo(string $identifier): ?string
     {
-        $metric = DobaMetric::where('sku', $sku)
-            ->orWhere('sku', strtoupper($sku))
-            ->orWhere('sku', strtolower($sku))
+        $id = trim($identifier);
+        if ($id === '') {
+            return null;
+        }
+
+        $metric = DobaMetric::where('item_id', $id)->first();
+        if ($metric && $metric->item_id) {
+            return (string) $metric->item_id;
+        }
+
+        $metric = DobaMetric::where('sku', $id)
+            ->orWhere('sku', strtoupper($id))
+            ->orWhere('sku', strtolower($id))
             ->first();
 
         if ($metric && $metric->item_id) {
             return (string) $metric->item_id;
         }
 
-        $view = DobaDataView::where('sku', $sku)
-            ->orWhere('sku', strtoupper($sku))
-            ->orWhere('sku', strtolower($sku))
+        $view = DobaDataView::where('sku', $id)
+            ->orWhere('sku', strtoupper($id))
+            ->orWhere('sku', strtolower($id))
             ->first();
 
         if ($view && isset($view->doba_product_id)) {
@@ -132,6 +142,26 @@ class DobaApiService
         }
 
         return null;
+    }
+
+    /**
+     * Seller SKU label for payloads when identifier was Doba item_id.
+     */
+    private function resolveDobaSellerSkuLabel(string $identifier, ?string $itemNo): string
+    {
+        $id = trim($identifier);
+        $metric = DobaMetric::where('sku', $id)
+            ->orWhere('sku', strtoupper($id))
+            ->orWhere('sku', strtolower($id))
+            ->first();
+        if (! $metric && $itemNo !== null) {
+            $metric = DobaMetric::where('item_id', $itemNo)->first();
+        }
+        if ($metric && $metric->sku) {
+            return trim((string) $metric->sku);
+        }
+
+        return $id;
     }
 
     /**
@@ -840,21 +870,22 @@ class DobaApiService
      *
      * @return array{success: bool, message: string}
      */
-    public function updateBulletPoints(string $sku, string $bulletPoints): array
+    public function updateBulletPoints(string $identifier, string $bulletPoints): array
     {
-        Log::info('Doba updateBulletPoints', ['sku' => $sku]);
+        Log::info('Doba updateBulletPoints', ['identifier' => $identifier]);
 
         try {
-            $sku = trim($sku);
             $bulletPoints = trim($bulletPoints);
-            if ($sku === '' || $bulletPoints === '') {
-                return ['success' => false, 'message' => 'SKU and bullet points are required.'];
+            if (trim($identifier) === '' || $bulletPoints === '') {
+                return ['success' => false, 'message' => 'SKU (or item_id) and bullet points are required.'];
             }
 
-            $itemNo = $this->resolveSkuToItemNo($sku);
+            $itemNo = $this->resolveSkuToItemNo($identifier);
             if (! $itemNo) {
-                return ['success' => false, 'message' => 'SKU not found in DobaMetric/DobaDataView.'];
+                return ['success' => false, 'message' => 'SKU or item_id not found in DobaMetric/DobaDataView.'];
             }
+
+            $sellerSku = $this->resolveDobaSellerSkuLabel($identifier, $itemNo);
 
             $timestamp = $this->getMillisecond();
             $content = $this->getContent($timestamp);
@@ -862,7 +893,7 @@ class DobaApiService
 
             $payload = [
                 'itemNo' => (string) $itemNo,
-                'productTitle' => $sku,
+                'productTitle' => $sellerSku,
                 'productDescription' => $bulletPoints,
                 'description' => $bulletPoints,
             ];

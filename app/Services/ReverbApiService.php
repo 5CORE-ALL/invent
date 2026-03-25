@@ -480,7 +480,7 @@ class ReverbApiService
      *
      * @return array{success: bool, message: string, listing_id?: string}
      */
-    public function updateBulletPoints(string $sku, string $bulletPoints): array
+    public function updateBulletPoints(string $identifier, string $bulletPoints): array
     {
         $token = config('services.reverb.token');
         if (! $token) {
@@ -492,9 +492,31 @@ class ReverbApiService
             return ['success' => false, 'message' => 'Bullet points cannot be empty.'];
         }
 
-        $listingId = $this->getListingIdBySku($sku);
+        $trim = trim($identifier);
+        if ($trim === '') {
+            return ['success' => false, 'message' => 'SKU or listing_id is required.'];
+        }
+
+        $listingId = null;
+        $product = ReverbProduct::query()
+            ->where('sku', $trim)
+            ->orWhere('sku', strtoupper($trim))
+            ->orWhere('sku', strtolower($trim))
+            ->first();
+        if ($product && $product->reverb_listing_id) {
+            $listingId = trim((string) $product->reverb_listing_id);
+        }
+        if (! $listingId) {
+            $product = ReverbProduct::query()->where('reverb_listing_id', $trim)->first();
+            if ($product && $product->reverb_listing_id) {
+                $listingId = trim((string) $product->reverb_listing_id);
+            }
+        }
+        if (! $listingId) {
+            $listingId = $this->getListingIdBySku($trim);
+        }
         if ($listingId === null) {
-            return ['success' => false, 'message' => "No Reverb listing found for SKU: {$sku}."];
+            return ['success' => false, 'message' => 'No Reverb listing found for SKU or reverb_listing_id.'];
         }
 
         $html = '<ul>';

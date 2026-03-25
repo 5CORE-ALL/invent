@@ -880,17 +880,55 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
      *
      * @return array{success: bool, message: string}
      */
-    public function updateBulletPoints(string $sku, string $bulletPoints): array
+    /**
+     * Resolve seller SKU and goods_id from SKU, goods_id, or internal sku_id (Temu metrics).
+     *
+     * @return array{sku: string, goods_id: ?string}
+     */
+    private function resolveTemuGoodsAndSku(string $identifier): array
     {
-        $sku = trim($sku);
-        $bulletPoints = trim($bulletPoints);
-        if ($sku === '' || $bulletPoints === '') {
-            return ['success' => false, 'message' => 'SKU and bullet points are required.'];
+        $id = trim($identifier);
+        if ($id === '') {
+            return ['sku' => '', 'goods_id' => null];
         }
 
-        $goodsId = $this->getGoodsIdBySku($sku);
+        $m = TemuMetric::query()
+            ->where('sku', $id)
+            ->orWhere('sku', strtoupper($id))
+            ->orWhere('sku', strtolower($id))
+            ->first();
+        if (! $m) {
+            $m = TemuMetric::query()
+                ->where('goods_id', $id)
+                ->orWhere('sku_id', $id)
+                ->first();
+        }
+
+        if ($m) {
+            $sku = $m->sku ? trim((string) $m->sku) : $id;
+            $gid = $m->goods_id;
+
+            return [
+                'sku' => $sku,
+                'goods_id' => $gid !== null && $gid !== '' ? (string) $gid : null,
+            ];
+        }
+
+        return ['sku' => $id, 'goods_id' => null];
+    }
+
+    public function updateBulletPoints(string $identifier, string $bulletPoints): array
+    {
+        $bulletPoints = trim($bulletPoints);
+        if (trim($identifier) === '' || $bulletPoints === '') {
+            return ['success' => false, 'message' => 'SKU (or goods_id) and bullet points are required.'];
+        }
+
+        $resolved = $this->resolveTemuGoodsAndSku($identifier);
+        $sku = $resolved['sku'];
+        $goodsId = $resolved['goods_id'] ?? $this->getGoodsIdBySku($sku);
         if (! $goodsId) {
-            return ['success' => false, 'message' => 'goodsId not found for SKU.'];
+            return ['success' => false, 'message' => 'goodsId not found for SKU or marketplace id.'];
         }
 
         $skuInfo = $this->getSkuInfoForGoodsAndSku($goodsId, $sku);

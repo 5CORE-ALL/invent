@@ -197,12 +197,11 @@ class ShopifyPLSApiService
     /**
      * @return array{success: bool, message: string}
      */
-    public function updateBulletPoints(string $sku, string $bulletPoints): array
+    public function updateBulletPoints(string $identifier, string $bulletPoints): array
     {
-        $sku = trim($sku);
         $bulletPoints = trim($bulletPoints);
-        if ($sku === '' || $bulletPoints === '') {
-            return ['success' => false, 'message' => 'SKU and bullet points are required.'];
+        if (trim($identifier) === '' || $bulletPoints === '') {
+            return ['success' => false, 'message' => 'SKU (or variant_id / product_id) and bullet points are required.'];
         }
 
         try {
@@ -215,11 +214,16 @@ class ShopifyPLSApiService
             $domain = preg_replace('#^https?://#', '', $domain);
             $domain = rtrim($domain, '/');
 
+            $trim = trim($identifier);
             $productId = null;
-            $shopifySku = ShopifySku::where('sku', $sku)
-                ->orWhere('sku', strtoupper($sku))
-                ->orWhere('sku', strtolower($sku))
+            $shopifySku = ShopifySku::where('sku', $trim)
+                ->orWhere('sku', strtoupper($trim))
+                ->orWhere('sku', strtolower($trim))
                 ->first();
+
+            if (! $shopifySku) {
+                $shopifySku = ShopifySku::where('variant_id', $trim)->first();
+            }
 
             if ($shopifySku && $shopifySku->variant_id) {
                 $variantResponse = Http::withHeaders([
@@ -231,15 +235,24 @@ class ShopifyPLSApiService
                 }
             }
 
+            if (! $productId && ctype_digit($trim)) {
+                $productProbe = Http::withHeaders([
+                    'X-Shopify-Access-Token' => $token,
+                ])->timeout(30)->get("https://{$domain}/admin/api/2024-01/products/{$trim}.json");
+                if ($productProbe->successful() && $productProbe->json('product.id')) {
+                    $productId = (int) $productProbe->json('product.id');
+                }
+            }
+
             if (! $productId) {
-                $found = $this->findProductBySkuViaGraphQL($domain, $token, $sku);
+                $found = $this->findProductBySkuViaGraphQL($domain, $token, $trim);
                 if ($found) {
                     $productId = $found['product_id'];
                 }
             }
 
             if (! $productId) {
-                return ['success' => false, 'message' => 'PLS product not found for SKU.'];
+                return ['success' => false, 'message' => 'PLS product not found for SKU, variant_id, or product_id.'];
             }
 
             $html = '<ul>';

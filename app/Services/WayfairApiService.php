@@ -4,9 +4,13 @@ namespace App\Services;
 
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
+use App\Services\Concerns\ResolvesBulletPointIdentifier;
 
 class WayfairApiService
 {
+    use ResolvesBulletPointIdentifier;
+
     protected $token;
  protected $authUrl = 'https://sso.auth.wayfair.com/oauth/token';
     protected $graphqlUrl = 'https://api.wayfair.com/v1/graphql';
@@ -414,17 +418,28 @@ XML;
      *
      * @return array{success: bool, message: string}
      */
-    public function updateBulletPoints(string $sku, string $bulletPoints): array
+    public function updateBulletPoints(string $identifier, string $bulletPoints): array
     {
-        $sku = trim($sku);
         $bulletPoints = trim($bulletPoints);
-        if ($sku === '' || $bulletPoints === '') {
-            return ['success' => false, 'message' => 'SKU and bullet points are required.'];
+        if (trim($identifier) === '' || $bulletPoints === '') {
+            return ['success' => false, 'message' => 'SKU (or supplier part number) and bullet points are required.'];
         }
 
         $lines = array_values(array_filter(array_map('trim', preg_split('/\r\n|\r|\n/', $bulletPoints))));
         if ($lines === []) {
             return ['success' => false, 'message' => 'No bullet lines found.'];
+        }
+
+        $sku = trim($identifier);
+        if (Schema::hasTable('wayfair_metrics')) {
+            $row = $this->findMetricRowBySkuOrAlternateIds('wayfair_metrics', $identifier, [
+                'supplier_part_number',
+                'supplier_sku',
+                'catalog_supplier_part_number',
+            ]);
+            if ($row && ! empty($row->sku)) {
+                $sku = trim((string) $row->sku);
+            }
         }
 
         try {

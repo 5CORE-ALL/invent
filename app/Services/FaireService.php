@@ -8,9 +8,13 @@ use Aws\Signature\SignatureV4;
 use Aws\Credentials\Credentials;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
+use App\Services\Concerns\ResolvesBulletPointIdentifier;
 
 class FaireService
 {
+    use ResolvesBulletPointIdentifier;
+
     protected $clientId;
     protected $clientSecret;
     protected $redirectUrl;
@@ -141,7 +145,7 @@ class FaireService
     /**
      * @return array{success:bool,message:string,response?:mixed}
      */
-    public function updateBulletPoints(string $sku, string $bulletPoints): array
+    public function updateBulletPoints(string $identifier, string $bulletPoints): array
     {
         $token = config('services.faire.bearer_token')
             ?? config('services.faire.access_token')
@@ -151,15 +155,25 @@ class FaireService
             return ['success' => false, 'message' => 'Faire API token is missing'];
         }
 
-        $sku = trim($sku);
         $bulletPoints = trim($bulletPoints);
-        if ($sku === '' || $bulletPoints === '') {
-            return ['success' => false, 'message' => 'SKU and bullet points are required.'];
+        if (trim($identifier) === '' || $bulletPoints === '') {
+            return ['success' => false, 'message' => 'SKU (or Faire product id) and bullet points are required.'];
         }
 
-        $productId = $this->getProductIdBySku($sku);
+        $productId = null;
+        if (Schema::hasTable('faire_metrics')) {
+            $row = $this->findMetricRowBySkuOrAlternateIds('faire_metrics', $identifier, ['product_id', 'faire_product_id']);
+            if ($row && ! empty($row->product_id)) {
+                $productId = (string) $row->product_id;
+            }
+        }
+
         if (! $productId) {
-            return ['success' => false, 'message' => "Faire product not found for SKU {$sku}"];
+            $productId = $this->getProductIdBySku(trim($identifier));
+        }
+
+        if (! $productId) {
+            return ['success' => false, 'message' => 'Faire product not found for SKU or marketplace product id.'];
         }
 
         $baseUrl = 'https://www.faire.com/external-api/v2';

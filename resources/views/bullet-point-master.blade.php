@@ -61,6 +61,26 @@
         .modal-header-gradient { background:linear-gradient(135deg,#6B73FF 0%,#000DFF 100%); color:#fff; }
         .ai-edit-panel { border:1px solid #dee2e6; border-radius:8px; padding:10px; background:#f8fafc; }
         .modal-market-wrap { border:1px solid #dee2e6; border-radius:8px; padding:10px; background:#fff; }
+        /* View-all bullet points modal */
+        #viewRowModal .bp-view-section { margin-bottom:1.25rem; }
+        #viewRowModal .bp-view-section-title {
+            font-family: ui-monospace, Consolas, monospace;
+            font-size:11px; font-weight:700; color:#1e40af; letter-spacing:0.02em;
+            padding:.35rem .5rem; background:#eff6ff; border-radius:6px; border-left:4px solid #2563eb;
+            margin-bottom:.65rem;
+        }
+        #viewRowModal .bp-view-mp { margin-bottom:1rem; padding-bottom:1rem; border-bottom:1px solid #e2e8f0; }
+        #viewRowModal .bp-view-mp:last-child { border-bottom:none; padding-bottom:0; margin-bottom:0; }
+        #viewRowModal .bp-view-mp-label { font-weight:600; color:#0f172a; font-size:13px; margin-bottom:.35rem; display:flex; align-items:center; justify-content:space-between; gap:.5rem; flex-wrap:wrap; }
+        #viewRowModal .bp-view-char { font-size:11px; font-weight:500; color:#64748b; }
+        #viewRowModal .bp-view-char.over-limit { color:#dc2626; font-weight:700; }
+        #viewRowModal .bp-view-char.at-limit { color:#b45309; font-weight:600; }
+        #viewRowModal .bp-view-body {
+            font-size:12px; line-height:1.45; color:#334155; white-space:pre-wrap; word-break:break-word;
+            background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:.65rem .75rem; min-height:2.25rem;
+        }
+        #viewRowModal .bp-view-empty { color:#94a3b8; font-style:italic; }
+        #viewRowModal .modal-body { max-height:min(70vh, 560px); overflow-y:auto; }
     </style>
 @endsection
 
@@ -164,14 +184,20 @@
         </div>
     </div>
 
-    <div class="modal fade" id="viewRowModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-lg">
+    <div class="modal fade" id="viewRowModal" tabindex="-1" aria-labelledby="viewRowModalTitle" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
             <div class="modal-content">
                 <div class="modal-header modal-header-gradient">
-                    <h5 class="modal-title"><i class="fas fa-eye me-2"></i>View Bullet Points</h5>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                    <h5 class="modal-title" id="viewRowModalTitle"><i class="fas fa-eye me-2"></i>Bullet Points</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body" id="viewRowContent"></div>
+                <div class="modal-footer border-top bg-light">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-primary" id="viewCopyAllBtn" title="Copy all text below to clipboard">
+                        <i class="fas fa-copy me-1"></i> Copy all
+                    </button>
+                </div>
             </div>
         </div>
     </div>
@@ -187,6 +213,21 @@ document.addEventListener('DOMContentLoaded', () => {
     const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
     const LIMITS = { ebay:150, ebay2:150, ebay3:150, walmart:150, macy:150, aliexpress:150, faire:150, bestbuy:150, wayfair:100, shein:80, doba:60 };
     const LABELS = { ebay:'eBay 1', ebay2:'eBay 2', ebay3:'eBay 3', walmart:'Walmart', macy:"Macy's", aliexpress:'AliExpress', faire:'Faire', bestbuy:'BestBuy', wayfair:'Wayfair', shein:'Shein', doba:'DOBA' };
+    /** Labels in view modal (match requested naming: eBay1, BestBuy, etc.) */
+    const VIEW_LABELS = { ebay:'eBay1', ebay2:'eBay2', ebay3:'eBay3', walmart:'Walmart', macy:"Macy's", aliexpress:'AliExpress', faire:'Faire', bestbuy:'BestBuy', wayfair:'Wayfair', shein:'Shein', doba:'DOBA' };
+    const OTHER_MARKETPLACES = [
+        { key: 'shopify_main', label: 'Shopify Main' },
+        { key: 'shopify_pls', label: 'Shopify PLS' },
+        { key: 'temu', label: 'Temu' },
+        { key: 'amazon', label: 'Amazon' },
+        { key: 'reverb', label: 'Reverb' },
+    ];
+    const VIEW_SECTIONS = [
+        { limit: 150, banner: '========== 150 Character Marketplaces ==========', keys: ['ebay', 'ebay2', 'ebay3', 'walmart', 'macy', 'aliexpress', 'faire', 'bestbuy'] },
+        { limit: 100, banner: '========== 100 Character Marketplaces ==========', keys: ['wayfair'] },
+        { limit: 80, banner: '========== 80 Character Marketplaces ==========', keys: ['shein'] },
+        { limit: 60, banner: '========== 60 Character Marketplaces ==========', keys: ['doba'] },
+    ];
     const MARKETPLACES = Object.keys(LIMITS);
     const GROUPS = {
         g150: ['ebay', 'ebay2', 'ebay3', 'walmart', 'macy', 'aliexpress', 'faire', 'bestbuy'],
@@ -211,6 +252,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let tableData = [];
     let editRowModal, viewRowModal;
     let preselectedMarketplace = null;
+    let lastViewModalPlainText = '';
 
     const bySku = new Map();
     const cssEsc = (s) => (window.CSS && typeof window.CSS.escape === 'function')
@@ -304,7 +346,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 <td>${esc(sku)}</td>
                 <td>${esc(r.Parent || sku)}</td>
                 <td class="preview-cell" title="${esc(preview || '')}">${esc(trunc(preview, 64))}</td>
-                <td class="action-buttons-cell"><button type="button" class="action-btn edit-btn" data-edit="${esc(sku)}"><i class="fas fa-edit"></i> Edit</button></td>
+                <td class="action-buttons-cell">
+                    <div class="action-buttons-group">
+                        <button type="button" class="action-btn view-btn" data-view="${esc(sku)}" title="View Bullet Points" aria-label="View Bullet Points"><i class="fas fa-eye" aria-hidden="true"></i></button>
+                        <button type="button" class="action-btn edit-btn" data-edit="${esc(sku)}"><i class="fas fa-edit"></i> Edit</button>
+                    </div>
+                </td>
                 <td>${groupCell('g150', sku, bp)}</td>
                 <td>${groupCell('g100', sku, bp)}</td>
                 <td>${groupCell('g80', sku, bp)}</td>
@@ -316,22 +363,132 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function bindRowEvents() {
+        document.querySelectorAll('.view-btn[data-view]').forEach(b => b.addEventListener('click', () => openViewModal(b.dataset.view)));
         document.querySelectorAll('.edit-btn[data-edit]').forEach(b => b.addEventListener('click', () => openEditModal(b.dataset.edit)));
         document.querySelectorAll('.bp-mp-stack[data-push-mp]').forEach(b => b.addEventListener('click', () => {
             pushSingleMarketplace(b.dataset.sku, b.dataset.pushMp);
         }));
     }
 
+    function charCountClass(len, limit) {
+        if (limit == null || limit <= 0) return 'bp-view-char';
+        if (len > limit) return 'bp-view-char over-limit';
+        if (len === limit) return 'bp-view-char at-limit';
+        return 'bp-view-char';
+    }
+
+    function renderViewMarketplaceBlock(mpKey, label, text, limit) {
+        const raw = text == null ? '' : String(text);
+        const trimmed = raw.trim();
+        const empty = trimmed === '';
+        const len = raw.length;
+        const charCls = charCountClass(len, limit);
+        const bodyHtml = empty
+            ? `<div class="bp-view-body bp-view-empty">No bullet points saved yet</div>`
+            : `<div class="bp-view-body">${esc(raw)}</div>`;
+        return `
+            <div class="bp-view-mp" data-mp="${esc(mpKey)}">
+                <div class="bp-view-mp-label">
+                    <span>${esc(label)}:</span>
+                    <span class="${charCls}">${len} character${len === 1 ? '' : 's'}${limit ? ` (limit ${limit})` : ''}</span>
+                </div>
+                ${bodyHtml}
+            </div>`;
+    }
+
+    function buildViewModalHtml(sku, row) {
+        const bp = row.bullet_points || {};
+        const lines = [];
+
+        let html = `<div class="mb-2 pb-2 border-bottom"><strong>Product:</strong> ${esc(row.Parent || sku)}</div>`;
+
+        VIEW_SECTIONS.forEach((sec) => {
+            html += `<div class="bp-view-section">`;
+            html += `<div class="bp-view-section-title">${esc(sec.banner)}</div>`;
+            lines.push(sec.banner);
+            sec.keys.forEach((mp) => {
+                const label = VIEW_LABELS[mp] || LABELS[mp] || mp;
+                const limit = LIMITS[mp] ?? sec.limit;
+                const text = bp[mp];
+                html += renderViewMarketplaceBlock(mp, label, text, limit);
+                lines.push(`${label}: ${(text && String(text).trim()) ? String(text) : 'No bullet points saved yet'}`);
+            });
+            lines.push('');
+            html += `</div>`;
+        });
+
+        html += `<div class="bp-view-section">`;
+        html += `<div class="bp-view-section-title">${esc('========== Additional marketplaces ==========')}</div>`;
+        lines.push('========== Additional marketplaces ==========');
+        OTHER_MARKETPLACES.forEach(({ key, label }) => {
+            const text = bp[key];
+            html += renderViewMarketplaceBlock(key, label, text, null);
+            lines.push(`${label}: ${(text && String(text).trim()) ? String(text) : 'No bullet points saved yet'}`);
+            lines.push('');
+        });
+        html += `</div>`;
+
+        const extraKeys = Object.keys(bp).filter((k) => {
+            if (VIEW_SECTIONS.some((s) => s.keys.includes(k))) return false;
+            if (OTHER_MARKETPLACES.some((o) => o.key === k)) return false;
+            return true;
+        });
+        if (extraKeys.length) {
+            html += `<div class="bp-view-section">`;
+            html += `<div class="bp-view-section-title">${esc('========== Other (from API) ==========')}</div>`;
+            lines.push('========== Other (from API) ==========');
+            extraKeys.sort().forEach((k) => {
+                const text = bp[k];
+                html += renderViewMarketplaceBlock(k, k, text, null);
+                lines.push(`${k}: ${(text && String(text).trim()) ? String(text) : 'No bullet points saved yet'}`);
+                lines.push('');
+            });
+            html += `</div>`;
+        }
+
+        lastViewModalPlainText = `Bullet Points - ${sku}\nProduct: ${row.Parent || sku}\n\n` + lines.join('\n').trim();
+        return html;
+    }
+
     function openViewModal(sku) {
         const row = bySku.get(String(sku));
         if (!row) return;
-        const bp = row.bullet_points || {};
-        document.getElementById('viewRowContent').innerHTML = `
-            <div><strong>SKU:</strong> ${esc(sku)}</div>
-            <hr>
-            ${MARKETPLACES.map(mp => `<div class="mb-2"><strong>${esc(LABELS[mp])}:</strong><div class="border rounded p-2 mt-1" style="white-space:pre-wrap;">${esc(bp[mp] || row.default_bullets || '')}</div></div>`).join('')}
-        `;
+        const titleEl = document.getElementById('viewRowModalTitle');
+        if (titleEl) {
+            titleEl.innerHTML = `<i class="fas fa-eye me-2" aria-hidden="true"></i>${esc('Bullet Points - ' + sku)}`;
+        }
+        document.getElementById('viewRowContent').innerHTML = buildViewModalHtml(sku, row);
         if (viewRowModal) viewRowModal.show();
+    }
+
+    function copyViewModalToClipboard() {
+        const text = lastViewModalPlainText || '';
+        if (!text.trim()) {
+            toast('Nothing to copy', false);
+            return;
+        }
+        const done = () => toast('Copied all bullet points to clipboard');
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(text).then(done).catch(() => fallbackCopy(text, done));
+        } else {
+            fallbackCopy(text, done);
+        }
+    }
+
+    function fallbackCopy(text, onOk) {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.left = '-9999px';
+        document.body.appendChild(ta);
+        ta.select();
+        try {
+            document.execCommand('copy');
+            onOk();
+        } catch (e) {
+            toast('Copy failed', false);
+        }
+        document.body.removeChild(ta);
     }
 
     function openEditModal(sku) {
@@ -546,6 +703,9 @@ document.addEventListener('DOMContentLoaded', () => {
         .catch(e => toast('Save failed: ' + e.message, false))
         .finally(() => { btn.disabled = false; btn.innerHTML = old; });
     });
+
+    const viewCopyAllBtn = document.getElementById('viewCopyAllBtn');
+    if (viewCopyAllBtn) viewCopyAllBtn.addEventListener('click', copyViewModalToClipboard);
 
     document.getElementById('pushSelectedBtn').addEventListener('click', () => bulkPush('selected'));
     document.getElementById('pushAllBtn').addEventListener('click', () => bulkPush('all'));

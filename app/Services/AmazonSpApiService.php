@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\DB;
 use App\Models\AmazonListingRaw;
 use App\Models\ProductStockMapping;
 
@@ -2964,16 +2965,54 @@ class AmazonSpApiService
     }
 
     /**
+     * Prefer seller SKU from amazon_metrics when identifier is ASIN/FNSKU or alternate column.
+     */
+    private function resolveAmazonSellerSkuForBullets(string $identifier): string
+    {
+        $id = trim($identifier);
+        if ($id === '' || ! Schema::hasTable('amazon_metrics')) {
+            return $id;
+        }
+
+        $row = DB::table('amazon_metrics')
+            ->where(function ($q) use ($id) {
+                $q->where('sku', $id)
+                    ->orWhere('sku', strtoupper($id))
+                    ->orWhere('sku', strtolower($id));
+            })
+            ->first();
+
+        if (! $row) {
+            $cols = Schema::getColumnListing('amazon_metrics');
+            foreach (['asin', 'fnsku', 'seller_sku', 'amazon_sku'] as $col) {
+                if (! in_array($col, $cols, true)) {
+                    continue;
+                }
+                $row = DB::table('amazon_metrics')->where($col, $id)->first();
+                if ($row) {
+                    break;
+                }
+            }
+        }
+
+        if ($row && ! empty($row->sku)) {
+            return trim((string) $row->sku);
+        }
+
+        return $id;
+    }
+
+    /**
      * PATCH listing bullet_point attributes (SP-API Listings Items). Full text per line; no truncation.
      *
      * @return array{success: bool, message: string}
      */
-    public function updateBulletPoints(string $productId, string $bulletPoints): array
+    public function updateBulletPoints(string $identifier, string $bulletPoints): array
     {
-        $sku = trim($productId);
+        $sku = $this->resolveAmazonSellerSkuForBullets($identifier);
         $bulletPoints = trim($bulletPoints);
         if ($sku === '' || $bulletPoints === '') {
-            return ['success' => false, 'message' => 'SKU and bullet points are required.'];
+            return ['success' => false, 'message' => 'SKU (or ASIN from amazon_metrics) and bullet points are required.'];
         }
 
         $lines = array_values(array_filter(array_map('trim', preg_split('/\r\n|\r|\n/', $bulletPoints))));

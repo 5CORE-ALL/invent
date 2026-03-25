@@ -244,6 +244,32 @@ class SheinApiService
         }
     }
 
+    /**
+     * Resolve seller SKU for Shein API from metrics (SKU or spu_name / alternate keys).
+     */
+    private function resolveSheinSellerSku(string $identifier): string
+    {
+        $id = trim($identifier);
+        if ($id === '' || ! $this->metricsTableExists()) {
+            return $id;
+        }
+
+        try {
+            $m = SheinMetric::query()
+                ->where('sku', $id)
+                ->orWhere('sku', strtoupper($id))
+                ->orWhere('sku', strtolower($id))
+                ->first();
+            if (! $m && Schema::hasColumn('shein_metrics', 'spu_name')) {
+                $m = SheinMetric::query()->where('spu_name', $id)->first();
+            }
+
+            return ($m && $m->sku) ? trim((string) $m->sku) : $id;
+        } catch (\Throwable $e) {
+            return $id;
+        }
+    }
+
     private function safeSheinMetricUpdateTitle(string $sku, string $normalizedTitle): void
     {
         if (! $this->metricsTableExists()) {
@@ -809,13 +835,14 @@ public function getStock(array $skuCodes)
      *
      * @return array{success: bool, message: string}
      */
-    public function updateBulletPoints(string $sku, string $bulletPoints): array
+    public function updateBulletPoints(string $identifier, string $bulletPoints): array
     {
-        $sku = trim($sku);
         $bulletPoints = trim($bulletPoints);
-        if ($sku === '' || $bulletPoints === '') {
-            return ['success' => false, 'message' => 'SKU and bullet points are required.'];
+        if (trim($identifier) === '' || $bulletPoints === '') {
+            return ['success' => false, 'message' => 'SKU (or spu) and bullet points are required.'];
         }
+
+        $sku = $this->resolveSheinSellerSku($identifier);
 
         $openKeyId = config('services.shein.open_key_id');
         $secretKey = config('services.shein.secret_key');

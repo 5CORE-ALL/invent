@@ -4,6 +4,7 @@ namespace App\Services;
 
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use App\Models\AliexpressMetric;
 
 /**
  * AliExpress dropshipping / Solution API — POST https://api-sg.aliexpress.com/sync
@@ -497,13 +498,23 @@ class AliExpressApiService
      *
      * @return array{success: bool, message?: string, status?: int, data?: mixed}
      */
-    public function updateBulletPoints(string $productId, string $bulletPoints, ?string $language = 'en'): array
+    public function updateBulletPoints(string $identifier, string $bulletPoints, ?string $language = 'en'): array
     {
-        $productId = trim($productId);
         $bulletPoints = trim($bulletPoints);
-        if ($productId === '' || $bulletPoints === '') {
-            return ['success' => false, 'message' => 'Product ID and bullet points are required.'];
+        if (trim($identifier) === '' || $bulletPoints === '') {
+            return ['success' => false, 'message' => 'SKU (or AliExpress product_id) and bullet points are required.'];
         }
+
+        $trim = trim($identifier);
+        $row = AliexpressMetric::query()
+            ->where('sku', $trim)
+            ->orWhere('sku', strtoupper($trim))
+            ->orWhere('sku', strtolower($trim))
+            ->first();
+        if (! $row) {
+            $row = AliexpressMetric::query()->where('product_id', $trim)->first();
+        }
+        $productId = $row && $row->product_id ? (string) $row->product_id : $trim;
 
         $html = '<ul>';
         foreach (preg_split('/\r\n|\r|\n/', $bulletPoints) as $line) {

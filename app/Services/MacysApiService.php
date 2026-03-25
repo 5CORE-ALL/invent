@@ -8,9 +8,14 @@ use Aws\Signature\SignatureV4;
 use Aws\Credentials\Credentials;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use App\Models\ProductStockMapping;
+use App\Services\Concerns\ResolvesBulletPointIdentifier;
+
 class MacysApiService
 {
+    use ResolvesBulletPointIdentifier;
+
     private function getAccessToken()
     {
             $response = Http::withoutVerifying()->asForm()->post('https://auth.mirakl.net/oauth/token', [
@@ -142,15 +147,39 @@ class MacysApiService
      *
      * @return array{success:bool,message:string,response?:mixed}
      */
-    public function updateBulletPoints(string $sku, string $bulletPoints): array
+    /**
+     * Resolve Mirakl seller SKU from metrics (by SKU or product / listing id columns when present).
+     */
+    private function resolveMacyMiraklSku(string $identifier): string
     {
-        Log::info('Macy bullet update started', ['sku' => $sku]);
+        $id = trim($identifier);
+        if ($id === '') {
+            return '';
+        }
+
+        if (Schema::hasTable('macy_metrics')) {
+            $row = $this->findMetricRowBySkuOrAlternateIds('macy_metrics', $identifier, [
+                'product_id',
+                'mirakl_product_id',
+                'listing_id',
+            ]);
+            if ($row && ! empty($row->sku)) {
+                return trim((string) $row->sku);
+            }
+        }
+
+        return $id;
+    }
+
+    public function updateBulletPoints(string $identifier, string $bulletPoints): array
+    {
+        Log::info('Macy bullet update started', ['identifier' => $identifier]);
 
         try {
-            $sku = trim($sku);
+            $sku = $this->resolveMacyMiraklSku($identifier);
             $bulletPoints = trim($bulletPoints);
             if ($sku === '' || $bulletPoints === '') {
-                return ['success' => false, 'message' => 'SKU and bullet points are required.'];
+                return ['success' => false, 'message' => 'SKU (or marketplace product id) and bullet points are required.'];
             }
 
             $token = $this->getAccessToken();
