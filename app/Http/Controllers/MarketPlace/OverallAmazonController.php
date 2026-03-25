@@ -3191,7 +3191,13 @@ class OverallAmazonController extends Controller
             $sumRow['campaign_id'] = ($parentCampaignL7 ? $parentCampaignL7->campaign_id : null) ?? ($parentCampaignL1 ? $parentCampaignL1->campaign_id : null) ?? ($firstParentL30 ? $firstParentL30->campaign_id : null);
             $sumRow['campaignName'] = ($parentCampaignL7 ? $parentCampaignL7->campaignName : null) ?? ($parentCampaignL1 ? $parentCampaignL1->campaignName : null) ?? ($firstParentL30 ? $firstParentL30->campaignName : null);
             $sumRow['campaignStatus'] = ($parentCampaignL7 ? $parentCampaignL7->campaignStatus : null) ?? ($parentCampaignL1 ? $parentCampaignL1->campaignStatus : null) ?? ($firstParentL30 ? $firstParentL30->campaignStatus : null);
-            $sumRow['campaignBudgetAmount'] = ($parentCampaignL90 ? $parentCampaignL90->campaignBudgetAmount : null) ?? ($parentCampaignL7 ? $parentCampaignL7->campaignBudgetAmount : null) ?? ($firstParentL30 ? $firstParentL30->campaignBudgetAmount : null) ?? 0;
+            // Prefer recent budget windows for utilization; avoid stale L90 budget overriding current campaign budget.
+            $sumRow['campaignBudgetAmount'] = ($firstParentL30 ? $firstParentL30->campaignBudgetAmount : null)
+                ?? ($parentCampaignL7 ? $parentCampaignL7->campaignBudgetAmount : null)
+                ?? ($parentCampaignL1 ? $parentCampaignL1->campaignBudgetAmount : null)
+                ?? ($parentCampaignL2 ? $parentCampaignL2->campaignBudgetAmount : null)
+                ?? ($parentCampaignL90 ? $parentCampaignL90->campaignBudgetAmount : null)
+                ?? 0;
             
             // L7 spend with fallback calculation (clicks * cpc) like KW page
             $l7SpendVal = $parentCampaignL7 ? (float)($parentCampaignL7->spend ?? $parentCampaignL7->cost ?? 0) : 0;
