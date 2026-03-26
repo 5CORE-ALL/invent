@@ -13,7 +13,7 @@ use Illuminate\Support\Facades\Schema;
 
 class AutoUpdateAmazonFbaUnderPtBids extends Command
 {
-    protected $signature = 'amazon-fba:auto-update-under-pt-bids {--dry-run : Run without updating Amazon} {--verbose : Detailed output}';
+    protected $signature = 'amazon-fba:auto-update-under-pt-bids {--dry-run : Run without updating Amazon}';
     protected $description = 'Auto-update Amazon FBA under-utilized product targeting bids';
 
     public function __construct()
@@ -26,7 +26,7 @@ class AutoUpdateAmazonFbaUnderPtBids extends Command
         $startTs = microtime(true);
         $startedAtIso = now()->toIso8601String();
         $dryRun = (bool) $this->option('dry-run');
-        $verbose = (bool) $this->option('verbose');
+        $verbose = $this->output->isVerbose();
         $commandName = $this->getName();
 
         $this->info('[' . now()->toDateTimeString() . "] Start {$commandName} (dryRun=" . ($dryRun ? 'true' : 'false') . ')');
