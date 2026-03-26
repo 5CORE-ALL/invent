@@ -3404,7 +3404,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/update-amazon-nr-nrl-fba-data', 'updateNrNRLFbaData');
     });
 
-    // Amazon FBA bid automation health endpoint (last command run info).
+    // Amazon FBA bid automation health endpoint (last command run info; public for monitoring).
     Route::get('/amazon/fba/bid-auto-update/health', function () {
         $health = cache()->get('amazon_fba_bid_update_health');
 
@@ -3419,7 +3419,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
             'status' => 'OK',
             'health' => $health,
         ]);
-    });
+    })->withoutMiddleware([\App\Http\Middleware\Authenticate::class]);
 
     Route::controller(AmazonMissingAdsController::class)->group(function () {
         Route::get('/amazon/missing/ads', 'index')->name('amazon.missing.ads');
