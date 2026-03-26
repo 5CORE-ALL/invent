@@ -233,10 +233,11 @@ class ShopifyApiService
             return ['success' => false, 'message' => 'SKU (or variant_id) and description are required.'];
         }
 
-        $descriptionHtml = ShopifyBulletPointsFormatter::formatLongDescriptionHtml($description);
-        if ($descriptionHtml === '') {
+        $descriptionPlain = trim($description);
+        if ($descriptionPlain === '') {
             return ['success' => false, 'message' => 'Description is empty.'];
         }
+        $descriptionHtml = '<p>'.nl2br(htmlspecialchars($descriptionPlain, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'), false).'</p>';
 
         try {
             $domain = config('services.shopify.store_url') ?: config('services.shopify.domain');
