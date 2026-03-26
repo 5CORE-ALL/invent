@@ -13,7 +13,7 @@ use Illuminate\Support\Facades\Schema;
 
 class AutoUpdateAmazonFbaOverKwBids extends Command
 {
-    protected $signature = 'amazon-fba:auto-update-over-kw-bids {--dry-run : Run without updating Amazon}';
+    protected $signature = 'amazon-fba:auto-update-over-kw-bids {--dry-run : Run without updating Amazon} {--campaign-id= : Only update this campaign ID}';
     protected $description = 'Auto-update Amazon FBA over-utilized keyword bids';
 
     public function __construct()
@@ -103,6 +103,33 @@ class AutoUpdateAmazonFbaOverKwBids extends Command
         $candidates = array_values(array_filter($candidates, function ($c) {
             return !empty($c->campaign_id) && isset($c->sbid) && is_numeric($c->sbid) && (float) $c->sbid > 0;
         }));
+
+        $specificCampaignId = $this->option('campaign-id');
+        if ($specificCampaignId !== null && $specificCampaignId !== '') {
+            $specificCampaignId = trim((string) $specificCampaignId);
+            $candidates = array_values(array_filter($candidates, function ($c) use ($specificCampaignId) {
+                return (string) ($c->campaign_id ?? '') === $specificCampaignId;
+            }));
+            if (empty($candidates)) {
+                $this->error("Campaign ID {$specificCampaignId} not found or not eligible.");
+                $this->writeHealth([
+                    'command' => $commandName,
+                    'status' => 'ERROR',
+                    'dry_run' => $dryRun,
+                    'started_at' => $startedAtIso,
+                    'ended_at' => now()->toIso8601String(),
+                    'duration_ms' => (int) ((microtime(true) - $startTs) * 1000),
+                    'updated_count' => 0,
+                    'skipped_count' => 0,
+                    'failed_count' => 0,
+                    'error' => 'campaign_id_not_found_or_not_eligible',
+                    'campaign_id' => $specificCampaignId,
+                ]);
+
+                return 1;
+            }
+            $this->info("Testing only campaign: {$specificCampaignId}");
+        }
 
         if (empty($candidates)) {
             $this->warn('No eligible campaigns found.');
