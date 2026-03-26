@@ -19,6 +19,7 @@ use Illuminate\Support\Facades\Log;
 use Carbon\Carbon;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
+use PhpOffice\PhpSpreadsheet\RichText\RichText;
 use App\Support\TemuGoodsIdHelper;
 
 class TemuAdsController extends Controller
@@ -451,23 +452,48 @@ class TemuAdsController extends Controller
                 ], 422);
             }
 
-            $parseCurrency = function ($value) {
+            $normalizeCellValue = function ($value) {
+                if ($value instanceof RichText) {
+                    return trim($value->getPlainText());
+                }
+                if (is_object($value) && method_exists($value, '__toString')) {
+                    return trim((string) $value);
+                }
+                if (is_string($value)) {
+                    return trim($value);
+                }
+
+                return $value;
+            };
+            $parseCurrency = function ($value) use ($normalizeCellValue) {
+                $value = $normalizeCellValue($value);
                 if (empty($value) || $value === '∞') {
                     return null;
                 }
 
                 return floatval(str_replace(['$', ','], '', $value));
             };
-            $parsePercent = function ($value) {
+            $parsePercent = function ($value) use ($normalizeCellValue) {
+                $value = $normalizeCellValue($value);
                 if (empty($value) || $value === '∞') {
                     return null;
                 }
 
                 return floatval(str_replace('%', '', $value));
             };
+            $parseNumber = function ($value) use ($normalizeCellValue) {
+                $value = $normalizeCellValue($value);
+                if ($value === null || $value === '' || $value === '∞') {
+                    return 0;
+                }
+
+                return floatval(str_replace([',', '%', '$'], '', (string) $value));
+            };
 
             $imported = 0;
             $skipped = 0;
+            $rowErrors = 0;
+            $firstRowError = null;
             $highestRow = (int) $sheet->getHighestDataRow();
             $numCols = count($headers);
 
@@ -476,7 +502,7 @@ class TemuAdsController extends Controller
                 TemuCampaignReport::where('report_range', $reportRange)->delete();
 
                 for ($rowNum = 2; $rowNum <= $highestRow; $rowNum++) {
-                    $firstCell = $sheet->getCell(Coordinate::stringFromColumnIndex(1).$rowNum)->getValue();
+                    $firstCell = $normalizeCellValue($sheet->getCell(Coordinate::stringFromColumnIndex(1).$rowNum)->getValue());
                     if ($firstCell !== null && $firstCell !== '' && stripos((string) $firstCell, 'Total') !== false) {
                         $skipped++;
 
@@ -485,7 +511,7 @@ class TemuAdsController extends Controller
 
                     $row = [];
                     for ($c = 1; $c <= $numCols; $c++) {
-                        $row[] = $sheet->getCell(Coordinate::stringFromColumnIndex($c).$rowNum)->getValue();
+                        $row[] = $normalizeCellValue($sheet->getCell(Coordinate::stringFromColumnIndex($c).$rowNum)->getValue());
                     }
                     if (empty(array_filter($row, fn ($v) => $v !== null && $v !== ''))) {
                         $skipped++;
@@ -516,14 +542,14 @@ class TemuAdsController extends Controller
                             'report_range' => $reportRange,
                             'spend' => $parseCurrency($rowData['Spend'] ?? null),
                             'base_price_sales' => $parseCurrency($rowData['Base price sales'] ?? null),
-                            'roas' => floatval($rowData['ROAS'] ?? 0),
+                            'roas' => $parseNumber($rowData['ROAS'] ?? 0),
                             'acos_ad' => $parsePercent($rowData['ACOS(AD)'] ?? null),
                             'cost_per_transaction' => $parseCurrency($rowData['Cost per transaction'] ?? null),
                             'sub_orders' => ! empty($rowData['Sub-Orders']) ? (int) $rowData['Sub-Orders'] : 0,
                             'items' => ! empty($rowData['Items']) ? (int) $rowData['Items'] : 0,
                             'net_total_cost' => $parseCurrency($rowData['Net total cost'] ?? null),
                             'net_declared_sales' => $parseCurrency($rowData['Net declared sales'] ?? null),
-                            'net_roas' => floatval($rowData['Net advertising return on investment (ROAS)'] ?? 0),
+                            'net_roas' => $parseNumber($rowData['Net advertising return on investment (ROAS)'] ?? 0),
                             'net_acos_ad' => $parsePercent($rowData['Net advertising cost ratio (advertising)'] ?? null),
                             'net_cost_per_transaction' => $parseCurrency($rowData['Net cost per transaction'] ?? null),
                             'net_orders' => ! empty($rowData['Net Orders']) ? (int) $rowData['Net Orders'] : 0,
@@ -533,25 +559,53 @@ class TemuAdsController extends Controller
                             'ctr' => $parsePercent($rowData['CTR'] ?? null),
                             'cvr' => $parsePercent($rowData['Conversion Rate (CVR)'] ?? null),
                             'add_to_cart_number' => ! empty($rowData['Add-to-cart number']) ? (int) str_replace(',', '', $rowData['Add-to-cart number']) : 0,
-                            'weekly_roas' => floatval($rowData['Weekly ROAS'] ?? 0),
-                            'target' => floatval($rowData['Target'] ?? 0),
+                            'weekly_roas' => $parseNumber($rowData['Weekly ROAS'] ?? 0),
+                            'target' => $parseNumber($rowData['Target'] ?? 0),
                         ];
 
                         TemuCampaignReport::create($campaignData);
                         $imported++;
                     } catch (\Exception $e) {
                         $skipped++;
+                        $rowErrors++;
+                        if ($firstRowError === null) {
+                            $firstRowError = $e->getMessage();
+                        }
                         Log::warning("Failed to import campaign row {$rowNum}: ".$e->getMessage());
 
                         continue;
                     }
                 }
 
+                // Guard: never wipe this range with a zero-import commit.
+                if ($imported === 0) {
+                    DB::rollBack();
+                    $msg = "Imported 0 rows for {$reportRange}. Existing {$reportRange} campaign data was kept.";
+                    if ($highestRow <= 1) {
+                        $msg .= " The sheet appears to contain only headers/no data rows.";
+                    } elseif ($firstRowError) {
+                        $msg .= " First row error: {$firstRowError}";
+                    } else {
+                        $msg .= " All rows were skipped (check file format/headers).";
+                    }
+
+                    return response()->json([
+                        'success' => false,
+                        'message' => $msg,
+                        'imported' => 0,
+                        'skipped' => $skipped,
+                        'row_errors' => $rowErrors,
+                    ], 422);
+                }
+
                 DB::commit();
 
                 return response()->json([
                     'success' => true,
-                    'message' => "Successfully imported $imported records for $reportRange"
+                    'message' => "Successfully imported $imported records for $reportRange",
+                    'imported' => $imported,
+                    'skipped' => $skipped,
+                    'row_errors' => $rowErrors,
                 ]);
             } catch (\Exception $e) {
                 DB::rollBack();
