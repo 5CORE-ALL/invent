@@ -7,12 +7,16 @@
             table-layout: fixed;
             width: 100%;
             font-size: 12px;
+            border: 1px solid #dee2e6;
+            border-collapse: collapse;
         }
 
         .orders-hold-table th,
         .orders-hold-table td {
             padding: 0.45rem 0.4rem;
             vertical-align: middle;
+            border: 1px solid #dee2e6;
+            text-align: center;
         }
 
         .orders-hold-table td {
@@ -56,13 +60,41 @@
             width: 10%;
         }
 
+        .orders-hold-col-what {
+            width: 6%;
+        }
+
+        .orders-hold-col-close {
+            width: 8%;
+            text-align: center;
+        }
+
         .hold-action-btn {
-            width: 30px;
-            height: 30px;
+            width: 20px;
+            height: 20px;
             padding: 0;
-            display: inline-flex;
+            display: inline-flex !important;
             align-items: center;
             justify-content: center;
+            flex: 0 0 20px;
+            line-height: 1;
+            border: 0 !important;
+            background: transparent !important;
+            box-shadow: none !important;
+            border-radius: 0;
+        }
+
+        .hold-action-btn i {
+            font-size: 16px;
+            line-height: 1;
+        }
+
+        .hold-edit-btn {
+            color: #0dcaf0 !important;
+        }
+
+        .hold-archive-btn {
+            color: #dc3545 !important;
         }
 
         .hold-close-actions {
@@ -71,13 +103,17 @@
             align-items: center;
             justify-content: center;
             gap: 6px;
-            min-width: 72px;
+            margin: 0 auto;
+            width: fit-content;
+            max-width: 100%;
         }
 
         .orders-hold-close-cell {
             padding: 0.3rem 0.25rem !important;
             text-align: center;
             vertical-align: middle;
+            white-space: nowrap;
+            overflow: hidden;
         }
 
         .what-happened-dot {
@@ -92,6 +128,31 @@
         .what-happened-dot-damaged {
             background-color: #b8860b;
         }
+
+        .sku-image-preview {
+            width: 88px;
+            height: 88px;
+            object-fit: contain;
+            border: 1px solid #dee2e6;
+            border-radius: 0.375rem;
+            background: #fff;
+            padding: 4px;
+        }
+
+        .action-icon-hints {
+            margin-top: 6px;
+            display: flex;
+            gap: 14px;
+            flex-wrap: wrap;
+            color: #6c757d;
+            font-size: 12px;
+        }
+
+        .action-icon-hints i {
+            font-size: 15px;
+            vertical-align: middle;
+            margin-right: 4px;
+        }
     </style>
 @endsection
 
@@ -105,10 +166,10 @@
         <div class="col-12">
             <div class="d-flex justify-content-start align-items-center gap-2 mb-3">
                 <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#ordersOnHoldIssueModal">
-                    <i class="mdi mdi-plus me-1"></i> Add Hold Issue
+                    <i class="bi bi-plus-lg me-1"></i> Add Hold Issue
                 </button>
                 <button type="button" class="btn btn-outline-secondary" id="btnShowHistory">
-                    <i class="mdi mdi-history me-1"></i> History
+                    <i class="bi bi-clock-history me-1"></i> History
                 </button>
             </div>
             <div class="card">
@@ -130,21 +191,22 @@
                                     <th class="orders-hold-col-idx">#</th>
                                     <th class="orders-hold-col-sku">SKU</th>
                                     <th class="orders-hold-col-qty">QTY</th>
+                                    <th class="orders-hold-col-qty">Order Qty</th>
                                     <th class="orders-hold-col-parent">Parent</th>
                                     <th class="orders-hold-col-mp">MKT1</th>
                                     <th class="orders-hold-col-mp">MKT2</th>
-                                    <th class="orders-hold-col-action">What Happened?</th>
-                                    <th class="orders-hold-col-action">Action 1</th>
+                                    <th class="orders-hold-col-what">What?</th>
+                                    <th class="orders-hold-col-action">Action</th>
                                     <th class="orders-hold-col-issue">Root Cause<br>Found</th>
-                                    <th class="orders-hold-col-action">C Action 1</th>
-                                    <th class="orders-hold-col-action">Close</th>
+                                    <th class="orders-hold-col-action">Root Cause Fixed</th>
+                                    <th class="orders-hold-col-close">Close</th>
                                     <th class="orders-hold-col-created-by">Created By</th>
                                     <th class="orders-hold-col-created-at">Created At</th>
                                 </tr>
                             </thead>
                             <tbody id="hold_issue_table_body">
                                 <tr id="hold_issue_empty_row">
-                                    <td colspan="13" class="text-center text-muted py-4">No records found.</td>
+                                    <td colspan="14" class="text-center text-muted py-4">No records found.</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -165,13 +227,14 @@
                                     <th class="orders-hold-col-idx">#</th>
                                     <th class="orders-hold-col-sku">SKU</th>
                                     <th class="orders-hold-col-qty">QTY</th>
+                                    <th class="orders-hold-col-qty">Order Qty</th>
                                     <th class="orders-hold-col-parent">Parent</th>
                                     <th class="orders-hold-col-mp">MKT1</th>
                                     <th class="orders-hold-col-mp">MKT2</th>
-                                    <th class="orders-hold-col-action">What Happened?</th>
-                                    <th class="orders-hold-col-action">Action 1</th>
+                                    <th class="orders-hold-col-what">What?</th>
+                                    <th class="orders-hold-col-action">Action</th>
                                     <th class="orders-hold-col-issue">Root Cause<br>Found</th>
-                                    <th class="orders-hold-col-action">C Action 1</th>
+                                    <th class="orders-hold-col-action">Root Cause Fixed</th>
                                     <th class="orders-hold-col-action">Close</th>
                                     <th class="orders-hold-col-action">Event</th>
                                     <th class="orders-hold-col-created-by">Created By</th>
@@ -180,7 +243,7 @@
                             </thead>
                             <tbody id="hold_issue_history_table_body">
                                 <tr id="hold_issue_history_empty_row">
-                                    <td colspan="14" class="text-center text-muted py-4">No history found.</td>
+                                    <td colspan="15" class="text-center text-muted py-4">No history found.</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -208,11 +271,20 @@
                                 <input type="text" class="form-control" id="hold_issue_sku" name="sku"
                                     list="hold_issue_sku_datalist" placeholder="Search SKU" required>
                                 <datalist id="hold_issue_sku_datalist"></datalist>
+                                <div class="mt-2 d-none" id="hold_issue_sku_image_wrap">
+                                    <img src="" alt="SKU Image" id="hold_issue_sku_image" class="sku-image-preview">
+                                </div>
                             </div>
 
                             <div class="col-md-3">
-                                <label for="hold_issue_qty" class="form-label">QTY</label>
+                                <label for="hold_issue_qty" class="form-label">Qty as in Stock</label>
                                 <input type="number" class="form-control" id="hold_issue_qty" name="qty" readonly>
+                            </div>
+
+                            <div class="col-md-3">
+                                <label for="hold_issue_order_qty" class="form-label">Order Qty</label>
+                                <input type="number" class="form-control" id="hold_issue_order_qty" name="order_qty"
+                                    min="0" step="1" placeholder="Enter order qty">
                             </div>
 
                             <div class="col-md-3">
@@ -233,7 +305,7 @@
                             </div>
 
                             <div class="col-md-6">
-                                <label for="hold_issue_what_happened" class="form-label">What Happened?</label>
+                                <label for="hold_issue_what_happened" class="form-label">What?</label>
                                 <select class="form-select" id="hold_issue_what_happened" name="what_happened">
                                     <option value="">Select</option>
                                     <option value="0 Stock">0 Stock</option>
@@ -248,19 +320,24 @@
                             </datalist>
 
                             <div class="col-md-4">
-                                <label for="hold_issue_action_1" class="form-label">Action 1</label>
+                                <label for="hold_issue_action_1" class="form-label">Action</label>
                                 <select class="form-select" id="hold_issue_action_1" name="action_1">
-                                    <option value="">Select Action 1</option>
+                                    <option value="">Select Action</option>
+                                    <option value="Offer Customer Alterntive / Updgrade">Offer Customer Alterntive / Updgrade</option>
                                     <option value="Upgraded + Stock Alternate">Upgraded + Stock Alternate</option>
                                     <option value="Alternate Sent + Stock Alternate">Alternate Sent + Stock Alternate</option>
                                     <option value="Sent Wrong Item + Stock Outgoing">Sent Wrong Item + Stock Outgoing</option>
                                     <option value="Cancelled">Cancelled</option>
                                     <option value="Other">Other</option>
                                 </select>
+                                <div class="action-icon-hints">
+                                    <span><i class="bi bi-arrow-up-circle"></i>Upgrade</span>
+                                    <span><i class="bi bi-arrow-left-right"></i>Alternate</span>
+                                </div>
                             </div>
 
                             <div class="col-md-8 d-none" id="action1RemarkWrap">
-                                <label for="hold_issue_action_1_remark" class="form-label">Action 1 Remark</label>
+                                <label for="hold_issue_action_1_remark" class="form-label">Action Remark</label>
                                 <input type="text" class="form-control" id="hold_issue_action_1_remark" name="action_1_remark"
                                     placeholder="Write remark for Other">
                             </div>
@@ -286,9 +363,24 @@
                             </div>
 
                             <div class="col-md-4">
-                                <label for="hold_issue_c_action_1" class="form-label">C Action 1</label>
+                                <label for="hold_issue_c_action_1" class="form-label">Root Cause Fixed</label>
                                 <input type="text" class="form-control" id="hold_issue_c_action_1" name="c_action_1"
-                                    placeholder="Enter C Action 1">
+                                    list="hold_issue_root_cause_fixed_datalist" placeholder="Select Root Cause Fixed">
+                                <datalist id="hold_issue_root_cause_fixed_datalist">
+                                    <option value="Mapping Fixed"></option>
+                                    <option value="Replacement Entry Fixed"></option>
+                                    <option value="FBA Entry Fixed"></option>
+                                    <option value="Alternate Entry Fixed"></option>
+                                    <option value="Stock Balance Fixed"></option>
+                                    <option value="Reserve Stock Fixed"></option>
+                                    <option value="Other"></option>
+                                </datalist>
+                            </div>
+
+                            <div class="col-md-8 d-none" id="cAction1RemarkWrap">
+                                <label for="hold_issue_c_action_1_remark" class="form-label">Root Cause Fixed Remark</label>
+                                <input type="text" class="form-control" id="hold_issue_c_action_1_remark"
+                                    name="c_action_1_remark" placeholder="Write remark for Other">
                             </div>
 
                         </div>
@@ -316,7 +408,10 @@
 
             const skuInput = document.getElementById('hold_issue_sku');
             const skuDatalist = document.getElementById('hold_issue_sku_datalist');
+            const skuImageWrap = document.getElementById('hold_issue_sku_image_wrap');
+            const skuImage = document.getElementById('hold_issue_sku_image');
             const qtyInput = document.getElementById('hold_issue_qty');
+            const orderQtyInput = document.getElementById('hold_issue_order_qty');
             const parentInput = document.getElementById('hold_issue_parent');
             const marketplace1Input = document.getElementById('hold_issue_marketplace_1');
             const marketplace2Input = document.getElementById('hold_issue_marketplace_2');
@@ -328,6 +423,8 @@
             const action1RemarkInput = document.getElementById('hold_issue_action_1_remark');
             const action1RemarkWrap = document.getElementById('action1RemarkWrap');
             const cAction1Input = document.getElementById('hold_issue_c_action_1');
+            const cAction1RemarkInput = document.getElementById('hold_issue_c_action_1_remark');
+            const cAction1RemarkWrap = document.getElementById('cAction1RemarkWrap');
             const form = document.getElementById('ordersOnHoldIssueForm');
             const alertBox = document.getElementById('ordersOnHoldIssueAlert');
             const tableBody = document.getElementById('hold_issue_table_body');
@@ -401,6 +498,33 @@
                 return escapeHtml(root);
             }
 
+            function rootCauseFixedDisplayHtml(value, remark) {
+                const fixed = String(value || '').trim();
+                const rmk = String(remark || '').trim();
+                if (!fixed) return '—';
+                if (fixed === 'Other' && rmk) {
+                    return escapeHtml(fixed + ': ' + rmk);
+                }
+                return escapeHtml(fixed);
+            }
+
+            function resetSkuImage() {
+                if (!skuImage || !skuImageWrap) return;
+                skuImage.setAttribute('src', '');
+                skuImageWrap.classList.add('d-none');
+            }
+
+            function setSkuImage(url) {
+                if (!skuImage || !skuImageWrap) return;
+                const u = String(url || '').trim();
+                if (!u) {
+                    resetSkuImage();
+                    return;
+                }
+                skuImage.setAttribute('src', u);
+                skuImageWrap.classList.remove('d-none');
+            }
+
             function toggleRootCauseRemarkField() {
                 const selected = String(issueInput?.value || '').trim();
                 const isOther = selected === 'Other';
@@ -425,6 +549,18 @@
                 }
             }
 
+            function toggleCAction1RemarkField() {
+                const selected = String(cAction1Input?.value || '').trim();
+                const isOther = selected === 'Other';
+                if (cAction1RemarkWrap) {
+                    cAction1RemarkWrap.classList.toggle('d-none', !isOther);
+                }
+                if (cAction1RemarkInput) {
+                    cAction1RemarkInput.required = isOther;
+                    if (!isOther) cAction1RemarkInput.value = '';
+                }
+            }
+
             function updateTotalCount() {
                 totalCountEl.textContent = String(holdIssueRows.length);
             }
@@ -443,22 +579,23 @@
                 const dataRowsHtml = holdIssueRows.map((row, index) => {
                     const buttonsHtml =
                         '<div class="hold-close-actions">' +
-                        '<button type="button" class="btn btn-sm btn-outline-primary hold-action-btn hold-edit-btn" data-id="' + row.id +
-                        '" title="Edit"><i class="mdi mdi-pencil"></i></button>' +
-                        '<button type="button" class="btn btn-sm btn-outline-danger hold-action-btn hold-archive-btn" data-id="' + row.id +
-                        '" title="Archive"><i class="mdi mdi-archive"></i></button>' +
+                        '<button type="button" class="btn btn-sm hold-action-btn hold-edit-btn" data-id="' + row.id +
+                        '" title="Edit"><i class="bi bi-pencil-fill"></i></button>' +
+                        '<button type="button" class="btn btn-sm hold-action-btn hold-archive-btn" data-id="' + row.id +
+                        '" title="Archive"><i class="bi bi-archive-fill"></i></button>' +
                         '</div>';
                     return '<tr>' +
                         '<td>' + escapeHtml(row.id) + '</td>' +
                         '<td>' + escapeHtml(row.sku) + '</td>' +
                         '<td>' + escapeHtml(row.qty) + '</td>' +
+                        '<td>' + escapeHtml(row.order_qty) + '</td>' +
                         '<td>' + escapeHtml(row.parent) + '</td>' +
                         '<td>' + escapeHtml(row.marketplace_1) + '</td>' +
                         '<td>' + escapeHtml(row.marketplace_2) + '</td>' +
                         '<td>' + whatHappenedDotHtml(row.what_happened) + '</td>' +
                         '<td>' + action1DisplayHtml(row.action_1, row.action_1_remark) + '</td>' +
                         '<td>' + rootCauseDisplayHtml(row.issue, row.issue_remark) + '</td>' +
-                        '<td>' + escapeHtml(row.c_action_1) + '</td>' +
+                        '<td>' + rootCauseFixedDisplayHtml(row.c_action_1, row.c_action_1_remark) + '</td>' +
                         '<td class="orders-hold-close-cell">' + buttonsHtml + '</td>' +
                         '<td>' + escapeHtml(row.created_by) + '</td>' +
                         '<td>' + escapeHtml(row.created_at) + '</td>' +
@@ -493,13 +630,14 @@
                         '<td>' + escapeHtml(row.issue_ref || row.orders_on_hold_issue_id || row.id) + '</td>' +
                         '<td>' + escapeHtml(row.sku) + '</td>' +
                         '<td>' + escapeHtml(row.qty) + '</td>' +
+                        '<td>' + escapeHtml(row.order_qty) + '</td>' +
                         '<td>' + escapeHtml(row.parent) + '</td>' +
                         '<td>' + escapeHtml(row.marketplace_1) + '</td>' +
                         '<td>' + escapeHtml(row.marketplace_2) + '</td>' +
                         '<td>' + whatHappenedDotHtml(row.what_happened) + '</td>' +
                         '<td>' + action1DisplayHtml(row.action_1, row.action_1_remark) + '</td>' +
                         '<td>' + rootCauseDisplayHtml(row.issue, row.issue_remark) + '</td>' +
-                        '<td>' + escapeHtml(row.c_action_1) + '</td>' +
+                        '<td>' + rootCauseFixedDisplayHtml(row.c_action_1, row.c_action_1_remark) + '</td>' +
                         '<td>' + escapeHtml(row.close_note) + '</td>' +
                         '<td>' + escapeHtml(row.event_type) + '</td>' +
                         '<td>' + escapeHtml(row.created_by) + '</td>' +
@@ -518,6 +656,7 @@
                     id: row?.id ?? null,
                     sku: row?.sku ?? '',
                     qty: row?.qty ?? 0,
+                    order_qty: row?.order_qty ?? '',
                     parent: row?.parent ?? '',
                     marketplace_1: row?.marketplace_1 ?? '',
                     marketplace_2: row?.marketplace_2 ?? '',
@@ -527,6 +666,7 @@
                     action_1: row?.action_1 ?? '',
                     action_1_remark: row?.action_1_remark ?? '',
                     c_action_1: row?.c_action_1 ?? '',
+                    c_action_1_remark: row?.c_action_1_remark ?? '',
                     close_note: row?.close_note ?? '',
                     created_by: row?.created_by ?? 'System',
                     created_at: row?.created_at_display ?? row?.created_at ?? '',
@@ -542,6 +682,7 @@
                     event_type: row?.event_type ?? '',
                     sku: row?.sku ?? '',
                     qty: row?.qty ?? 0,
+                    order_qty: row?.order_qty ?? '',
                     parent: row?.parent ?? '',
                     marketplace_1: row?.marketplace_1 ?? '',
                     marketplace_2: row?.marketplace_2 ?? '',
@@ -551,6 +692,7 @@
                     action_1: row?.action_1 ?? '',
                     action_1_remark: row?.action_1_remark ?? '',
                     c_action_1: row?.c_action_1 ?? '',
+                    c_action_1_remark: row?.c_action_1_remark ?? '',
                     close_note: row?.close_note ?? '',
                     created_by: row?.created_by ?? 'System',
                     logged_at: row?.logged_at_display ?? row?.logged_at ?? '',
@@ -597,7 +739,9 @@
                 const submitBtn = form.querySelector('button[type="submit"]');
                 if (submitBtn) submitBtn.textContent = 'Save';
                 qtyInput.value = '';
+                orderQtyInput.value = '';
                 parentInput.value = '';
+                resetSkuImage();
                 marketplace1Input.value = '';
                 marketplace2Input.value = '';
                 whatHappenedInput.value = '';
@@ -607,6 +751,8 @@
                 action1RemarkInput.value = '';
                 toggleAction1RemarkField();
                 cAction1Input.value = '';
+                cAction1RemarkInput.value = '';
+                toggleCAction1RemarkField();
                 hideAlert();
             }
 
@@ -620,6 +766,7 @@
                 editingIssueId = Number(record.id);
                 skuInput.value = record.sku || '';
                 qtyInput.value = record.qty ?? '';
+                orderQtyInput.value = record.order_qty ?? '';
                 parentInput.value = record.parent || '';
                 marketplace1Input.value = record.marketplace_1 || '';
                 marketplace2Input.value = record.marketplace_2 || '';
@@ -631,6 +778,8 @@
                 action1RemarkInput.value = record.action_1_remark || '';
                 toggleAction1RemarkField();
                 cAction1Input.value = record.c_action_1 || '';
+                cAction1RemarkInput.value = record.c_action_1_remark || '';
+                toggleCAction1RemarkField();
                 hideAlert();
 
                 const submitBtn = form.querySelector('button[type="submit"]');
@@ -697,6 +846,7 @@
                 const sku = skuInput.value.trim();
                 qtyInput.value = '';
                 parentInput.value = '';
+                resetSkuImage();
 
                 if (!sku) return;
 
@@ -715,6 +865,7 @@
 
                     qtyInput.value = data.qty ?? 0;
                     parentInput.value = data.parent ?? '';
+                    setSkuImage(data.image_url ?? '');
                 } catch (e) {
                     // Keep inputs blank on request errors.
                 }
@@ -736,6 +887,9 @@
             issueInput.addEventListener('change', toggleRootCauseRemarkField);
 
             action1Input.addEventListener('change', toggleAction1RemarkField);
+
+            cAction1Input.addEventListener('input', toggleCAction1RemarkField);
+            cAction1Input.addEventListener('change', toggleCAction1RemarkField);
 
             form.addEventListener('submit', async (event) => {
                 event.preventDefault();
@@ -760,8 +914,13 @@
                     return;
                 }
                 if (action1Input.value.trim() === 'Other' && action1RemarkInput.value.trim() === '') {
-                    showAlert('Please enter Action 1 remark for Other.');
+                    showAlert('Please enter Action remark for Other.');
                     action1RemarkInput.focus();
+                    return;
+                }
+                if (cAction1Input.value.trim() === 'Other' && cAction1RemarkInput.value.trim() === '') {
+                    showAlert('Please enter Root Cause Fixed remark for Other.');
+                    cAction1RemarkInput.focus();
                     return;
                 }
 
@@ -769,6 +928,7 @@
                     const payload = {
                         sku: sku,
                         qty: qtyInput.value === '' ? 0 : Number(qtyInput.value),
+                        order_qty: orderQtyInput.value === '' ? null : Number(orderQtyInput.value),
                         parent: parentInput.value.trim(),
                         marketplace_1: marketplace1Input.value.trim(),
                         marketplace_2: marketplace2Input.value.trim(),
@@ -778,6 +938,7 @@
                         action_1: action1Input.value.trim(),
                         action_1_remark: action1RemarkInput.value.trim(),
                         c_action_1: cAction1Input.value.trim(),
+                        c_action_1_remark: cAction1RemarkInput.value.trim(),
                     };
 
                     const isEdit = editingIssueId !== null;
@@ -855,6 +1016,7 @@
             modalEl.addEventListener('hidden.bs.modal', resetForm);
             toggleRootCauseRemarkField();
             toggleAction1RemarkField();
+            toggleCAction1RemarkField();
             renderRows();
             renderHistoryRows();
             loadHoldIssueRows();

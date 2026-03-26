@@ -649,8 +649,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         }
 
         $row = \Illuminate\Support\Facades\DB::table('product_master as pm')
-            ->leftJoin('shopify_skus as ss', 'ss.sku', '=', 'pm.sku')
-            ->selectRaw('pm.sku, pm.parent, COALESCE(ss.inv, 0) as qty')
+            ->selectRaw('pm.sku, pm.parent, pm.Values as values_json, pm.main_image, pm.image1')
             ->whereRaw('LOWER(TRIM(pm.sku)) = ?', [strtolower($sku)])
             ->first();
 
@@ -658,11 +657,41 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
             return response()->json(['found' => false, 'message' => 'SKU not found.']);
         }
 
+        $shopify = \Illuminate\Support\Facades\DB::table('shopify_skus')
+            ->selectRaw('COALESCE(inv, 0) as qty, image_src')
+            ->whereRaw('LOWER(TRIM(sku)) = ?', [strtolower((string) $row->sku)])
+            ->first();
+
+        $normalizeImage = static function ($path) {
+            $p = trim((string) ($path ?? ''));
+            if ($p === '') {
+                return null;
+            }
+            if (preg_match('/^(https?:)?\/\//i', $p) || str_starts_with($p, 'data:')) {
+                return $p;
+            }
+            return '/' . ltrim($p, '/');
+        };
+
+        $values = [];
+        if (isset($row->values_json) && is_string($row->values_json) && trim($row->values_json) !== '') {
+            $decoded = json_decode($row->values_json, true);
+            if (is_array($decoded)) {
+                $values = $decoded;
+            }
+        }
+
+        $imageUrl = $normalizeImage($shopify?->image_src)
+            ?? $normalizeImage($values['image_path'] ?? null)
+            ?? $normalizeImage($row->main_image ?? null)
+            ?? $normalizeImage($row->image1 ?? null);
+
         return response()->json([
             'found' => true,
             'sku' => $row->sku,
             'parent' => $row->parent,
-            'qty' => (float) $row->qty,
+            'qty' => (float) ($shopify?->qty ?? 0),
+            'image_url' => $imageUrl,
         ]);
     })->name('customer.care.orders.on.hold.sku.details');
     Route::get('/customer-care/orders-on-hold/issues', function () {
@@ -676,6 +705,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
                 'id',
                 'sku',
                 'qty',
+                'order_qty',
                 'parent',
                 'marketplace_1',
                 'marketplace_2',
@@ -685,6 +715,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
                 'action_1',
                 'action_1_remark',
                 'c_action_1',
+                'c_action_1_remark',
                 'close_note',
                 'created_by',
                 'created_at',
@@ -696,6 +727,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
                 'id' => (int) $row->id,
                 'sku' => $row->sku,
                 'qty' => (float) $row->qty,
+                'order_qty' => $row->order_qty !== null ? (float) $row->order_qty : null,
                 'parent' => $row->parent,
                 'marketplace_1' => $row->marketplace_1,
                 'marketplace_2' => $row->marketplace_2,
@@ -705,6 +737,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
                 'action_1' => $row->action_1,
                 'action_1_remark' => $row->action_1_remark,
                 'c_action_1' => $row->c_action_1,
+                'c_action_1_remark' => $row->c_action_1_remark,
                 'close_note' => $row->close_note,
                 'created_by' => $row->created_by,
                 'created_at' => $row->created_at,
@@ -727,6 +760,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
                 'revision_no',
                 'sku',
                 'qty',
+                'order_qty',
                 'parent',
                 'marketplace_1',
                 'marketplace_2',
@@ -736,6 +770,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
                 'action_1',
                 'action_1_remark',
                 'c_action_1',
+                'c_action_1_remark',
                 'close_note',
                 'created_by',
                 'logged_at',
@@ -757,6 +792,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
                     : null),
                 'sku' => $row->sku,
                 'qty' => (float) $row->qty,
+                'order_qty' => $row->order_qty !== null ? (float) $row->order_qty : null,
                 'parent' => $row->parent,
                 'marketplace_1' => $row->marketplace_1,
                 'marketplace_2' => $row->marketplace_2,
@@ -766,6 +802,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
                 'action_1' => $row->action_1,
                 'action_1_remark' => $row->action_1_remark,
                 'c_action_1' => $row->c_action_1,
+                'c_action_1_remark' => $row->c_action_1_remark,
                 'close_note' => $row->close_note,
                 'created_by' => $row->created_by,
                 'logged_at' => $row->logged_at,
@@ -781,15 +818,17 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         $validated = $request->validate([
             'sku' => 'required|string|max:128',
             'qty' => 'required|numeric|min:0',
+            'order_qty' => 'nullable|numeric|min:0',
             'parent' => 'nullable|string|max:255',
             'marketplace_1' => 'nullable|string|max:255',
             'marketplace_2' => 'nullable|string|max:255',
             'what_happened' => 'nullable|string|max:50',
             'issue' => 'required|string|max:255',
             'issue_remark' => 'nullable|string|max:255',
-            'action_1' => 'nullable|string|in:Upgraded + Stock Alternate,Alternate Sent + Stock Alternate,Sent Wrong Item + Stock Outgoing,Cancelled,Other|max:255',
+            'action_1' => 'nullable|string|in:Offer Customer Alterntive / Updgrade,Upgraded + Stock Alternate,Alternate Sent + Stock Alternate,Sent Wrong Item + Stock Outgoing,Cancelled,Other|max:255',
             'action_1_remark' => 'nullable|string|max:255',
             'c_action_1' => 'nullable|string|max:255',
+            'c_action_1_remark' => 'nullable|string|max:255',
             'close_note' => 'nullable|string|max:255',
         ]);
         $allowedRootCauses = [
@@ -815,8 +854,14 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         }
         if (($validated['action_1'] ?? null) === 'Other' && trim((string) ($validated['action_1_remark'] ?? '')) === '') {
             return response()->json([
-                'message' => 'Action 1 remark is required when Action 1 is Other.',
-                'errors' => ['action_1_remark' => ['Action 1 remark is required when Action 1 is Other.']],
+                'message' => 'Action remark is required when Action is Other.',
+                'errors' => ['action_1_remark' => ['Action remark is required when Action is Other.']],
+            ], 422);
+        }
+        if (($validated['c_action_1'] ?? null) === 'Other' && trim((string) ($validated['c_action_1_remark'] ?? '')) === '') {
+            return response()->json([
+                'message' => 'Root Cause Fixed remark is required when Root Cause Fixed is Other.',
+                'errors' => ['c_action_1_remark' => ['Root Cause Fixed remark is required when Root Cause Fixed is Other.']],
             ], 422);
         }
 
@@ -832,6 +877,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
             $payload = [
                 'sku' => trim($validated['sku']),
                 'qty' => (float) $validated['qty'],
+                'order_qty' => isset($validated['order_qty']) ? (float) $validated['order_qty'] : null,
                 'parent' => isset($validated['parent']) ? trim((string) $validated['parent']) : null,
                 'marketplace_1' => isset($validated['marketplace_1']) ? trim((string) $validated['marketplace_1']) : null,
                 'marketplace_2' => isset($validated['marketplace_2']) ? trim((string) $validated['marketplace_2']) : null,
@@ -841,6 +887,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
                 'action_1' => isset($validated['action_1']) ? trim((string) $validated['action_1']) : null,
                 'action_1_remark' => isset($validated['action_1_remark']) ? trim((string) $validated['action_1_remark']) : null,
                 'c_action_1' => isset($validated['c_action_1']) ? trim((string) $validated['c_action_1']) : null,
+                'c_action_1_remark' => isset($validated['c_action_1_remark']) ? trim((string) $validated['c_action_1_remark']) : null,
                 'close_note' => isset($validated['close_note']) ? trim((string) $validated['close_note']) : null,
                 'created_by' => $createdBy,
                 'created_by_user_id' => $user?->id,
@@ -856,6 +903,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
                 'revision_no' => 0,
                 'sku' => $payload['sku'],
                 'qty' => $payload['qty'],
+                'order_qty' => $payload['order_qty'],
                 'parent' => $payload['parent'],
                 'marketplace_1' => $payload['marketplace_1'],
                 'marketplace_2' => $payload['marketplace_2'],
@@ -865,6 +913,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
                 'action_1' => $payload['action_1'],
                 'action_1_remark' => $payload['action_1_remark'],
                 'c_action_1' => $payload['c_action_1'],
+                'c_action_1_remark' => $payload['c_action_1_remark'],
                 'close_note' => $payload['close_note'],
                 'created_by' => $createdBy,
                 'created_by_user_id' => $user?->id,
@@ -882,6 +931,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
                 'id',
                 'sku',
                 'qty',
+                'order_qty',
                 'parent',
                 'marketplace_1',
                 'marketplace_2',
@@ -891,6 +941,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
                 'action_1',
                 'action_1_remark',
                 'c_action_1',
+                'c_action_1_remark',
                 'close_note',
                 'created_by',
                 'created_at',
@@ -904,6 +955,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
                 'id' => (int) $row->id,
                 'sku' => $row->sku,
                 'qty' => (float) $row->qty,
+                'order_qty' => $row->order_qty !== null ? (float) $row->order_qty : null,
                 'parent' => $row->parent,
                 'marketplace_1' => $row->marketplace_1,
                 'marketplace_2' => $row->marketplace_2,
@@ -913,6 +965,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
                 'action_1' => $row->action_1,
                 'action_1_remark' => $row->action_1_remark,
                 'c_action_1' => $row->c_action_1,
+                'c_action_1_remark' => $row->c_action_1_remark,
                 'close_note' => $row->close_note,
                 'created_by' => $row->created_by,
                 'created_at' => $row->created_at,
@@ -926,15 +979,17 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         $validated = $request->validate([
             'sku' => 'required|string|max:128',
             'qty' => 'required|numeric|min:0',
+            'order_qty' => 'nullable|numeric|min:0',
             'parent' => 'nullable|string|max:255',
             'marketplace_1' => 'nullable|string|max:255',
             'marketplace_2' => 'nullable|string|max:255',
             'what_happened' => 'nullable|string|max:50',
             'issue' => 'required|string|max:255',
             'issue_remark' => 'nullable|string|max:255',
-            'action_1' => 'nullable|string|in:Upgraded + Stock Alternate,Alternate Sent + Stock Alternate,Sent Wrong Item + Stock Outgoing,Cancelled,Other|max:255',
+            'action_1' => 'nullable|string|in:Offer Customer Alterntive / Updgrade,Upgraded + Stock Alternate,Alternate Sent + Stock Alternate,Sent Wrong Item + Stock Outgoing,Cancelled,Other|max:255',
             'action_1_remark' => 'nullable|string|max:255',
             'c_action_1' => 'nullable|string|max:255',
+            'c_action_1_remark' => 'nullable|string|max:255',
             'close_note' => 'nullable|string|max:255',
         ]);
         $allowedRootCauses = [
@@ -960,8 +1015,14 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         }
         if (($validated['action_1'] ?? null) === 'Other' && trim((string) ($validated['action_1_remark'] ?? '')) === '') {
             return response()->json([
-                'message' => 'Action 1 remark is required when Action 1 is Other.',
-                'errors' => ['action_1_remark' => ['Action 1 remark is required when Action 1 is Other.']],
+                'message' => 'Action remark is required when Action is Other.',
+                'errors' => ['action_1_remark' => ['Action remark is required when Action is Other.']],
+            ], 422);
+        }
+        if (($validated['c_action_1'] ?? null) === 'Other' && trim((string) ($validated['c_action_1_remark'] ?? '')) === '') {
+            return response()->json([
+                'message' => 'Root Cause Fixed remark is required when Root Cause Fixed is Other.',
+                'errors' => ['c_action_1_remark' => ['Root Cause Fixed remark is required when Root Cause Fixed is Other.']],
             ], 422);
         }
 
@@ -984,6 +1045,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
             $payload = [
                 'sku' => trim($validated['sku']),
                 'qty' => (float) $validated['qty'],
+                'order_qty' => isset($validated['order_qty']) ? (float) $validated['order_qty'] : null,
                 'parent' => isset($validated['parent']) ? trim((string) $validated['parent']) : null,
                 'marketplace_1' => isset($validated['marketplace_1']) ? trim((string) $validated['marketplace_1']) : null,
                 'marketplace_2' => isset($validated['marketplace_2']) ? trim((string) $validated['marketplace_2']) : null,
@@ -993,6 +1055,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
                 'action_1' => isset($validated['action_1']) ? trim((string) $validated['action_1']) : null,
                 'action_1_remark' => isset($validated['action_1_remark']) ? trim((string) $validated['action_1_remark']) : null,
                 'c_action_1' => isset($validated['c_action_1']) ? trim((string) $validated['c_action_1']) : null,
+                'c_action_1_remark' => isset($validated['c_action_1_remark']) ? trim((string) $validated['c_action_1_remark']) : null,
                 'close_note' => isset($validated['close_note']) ? trim((string) $validated['close_note']) : null,
                 'updated_at' => $now,
             ];
@@ -1005,6 +1068,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
                 'revision_no' => $nextRevision,
                 'sku' => $payload['sku'],
                 'qty' => $payload['qty'],
+                'order_qty' => $payload['order_qty'],
                 'parent' => $payload['parent'],
                 'marketplace_1' => $payload['marketplace_1'],
                 'marketplace_2' => $payload['marketplace_2'],
@@ -1014,6 +1078,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
                 'action_1' => $payload['action_1'],
                 'action_1_remark' => $payload['action_1_remark'],
                 'c_action_1' => $payload['c_action_1'],
+                'c_action_1_remark' => $payload['c_action_1_remark'],
                 'close_note' => $payload['close_note'],
                 'created_by' => $actorName,
                 'created_by_user_id' => $user?->id,
@@ -1057,6 +1122,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
                 'revision_no' => $nextRevision,
                 'sku' => $row->sku,
                 'qty' => (float) $row->qty,
+                'order_qty' => $row->order_qty !== null ? (float) $row->order_qty : null,
                 'parent' => $row->parent,
                 'marketplace_1' => $row->marketplace_1 ?? null,
                 'marketplace_2' => $row->marketplace_2 ?? null,
@@ -1066,6 +1132,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
                 'action_1' => $row->action_1 ?? null,
                 'action_1_remark' => $row->action_1_remark ?? null,
                 'c_action_1' => $row->c_action_1 ?? null,
+                'c_action_1_remark' => $row->c_action_1_remark ?? null,
                 'close_note' => $row->close_note ?? null,
                 'created_by' => $actorName,
                 'created_by_user_id' => $user?->id,

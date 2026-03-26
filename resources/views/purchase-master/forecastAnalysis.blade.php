@@ -1272,6 +1272,9 @@
                             const transitValue = rowData && rowData.raw_data ? rowData.raw_data["transit"] : (rowData ? rowData["transit"] : 0);
                             return (parseFloat(transitValue) || 0) > 0;
                         }
+                        if (selected === 'appr_req') {
+                            return getEffectiveApprReqValue(rowData) > 0;
+                        }
                         return stageValue === selected;
                     },
                     formatter: function(cell) {
@@ -1346,8 +1349,14 @@
                     headerSort: true,
                     hozAlign: "center",
                     formatter: function(cell) {
+                        const rowData = cell.getRow().getData() || {};
                         const v = parseFloat(cell.getValue());
                         if (!v || isNaN(v)) {
+                            const fallbackApprReq = getEffectiveApprReqValue(rowData);
+                            if (fallbackApprReq > 0) {
+                                const dispMoq = Number.isInteger(fallbackApprReq) ? fallbackApprReq : fallbackApprReq.toFixed(2).replace(/\.?0+$/, '');
+                                return `<div style="text-align:center;font-weight:700;background:#fff3a0;border-radius:4px;padding:2px 4px;">${dispMoq}</div>`;
+                            }
                             return '<div style="text-align:center;" class="text-muted">—</div>';
                         }
                         return `<div style="text-align:center;font-weight:bold;">${Number.isInteger(v) ? v : v.toFixed(2).replace(/\.?0+$/, '')}</div>`;
@@ -2780,15 +2789,23 @@
             updateNRPMultiselectLabel();
         }
 
-        /** APPR Req. filter: hide rows with any pipeline qty in 2 Order / MIP / R2S / Transit */
+        function isNullOrDashQty(value) {
+            if (value === null || value === undefined) return true;
+            const raw = String(value).trim();
+            if (raw === '' || raw === '-' || raw === '—') return true;
+            const n = parseFloat(raw);
+            return !Number.isFinite(n) || n === 0;
+        }
+
+        /** APPR Req. filter: hide rows with any pipeline qty in Order / MIP / R2S / Trn */
         function apprReqHideRowForPipelineQty(rowData) {
-            if (!rowData || rowData.is_parent) return false;
+            if (!rowData || rowData.is_parent || rowData.isParent) return false;
             const raw = rowData.raw_data || {};
-            const transit = parseFloat(rowData.transit ?? raw.transit ?? 0) || 0;
-            const r2s = parseFloat(raw.readyToShipQty ?? raw['readyToShipQty'] ?? rowData.readyToShipQty ?? 0) || 0;
-            const mip = parseFloat(raw.order_given ?? raw['Order Given'] ?? 0) || 0;
-            const twoOrd = parseFloat(rowData.two_order_qty ?? 0) || 0;
-            return transit > 0 || r2s > 0 || mip > 0 || twoOrd > 0;
+            const transit = rowData.transit ?? raw.transit ?? raw['Transit'] ?? null;
+            const r2s = rowData.readyToShipQty ?? raw.readyToShipQty ?? raw['readyToShipQty'] ?? null;
+            const mip = rowData.order_given ?? raw.order_given ?? raw['Order Given'] ?? null;
+            const order = rowData.two_order_qty ?? raw.two_order_qty ?? raw['two_order_qty'] ?? null;
+            return !isNullOrDashQty(transit) || !isNullOrDashQty(r2s) || !isNullOrDashQty(mip) || !isNullOrDashQty(order);
         }
 
         /** Appr Req. filter: hide NRP = 2BDC (NR) and LATER — only REQ rows */
@@ -2799,10 +2816,39 @@
         }
 
         function apprReqYellowRowVisible(rowData) {
-            return rowData &&
-                rowData.to_order >= 0 &&
-                !apprReqHideRowForPipelineQty(rowData) &&
+            if (!rowData || rowData.is_parent || rowData.isParent) return false;
+            const raw = rowData.raw_data || {};
+            const twoOrdVal = parseFloat(rowData.to_order ?? raw.to_order ?? 0);
+            if (!Number.isFinite(twoOrdVal) || twoOrdVal <= 0) return false;
+            return !apprReqHideRowForPipelineQty(rowData) &&
                 !apprReqHideRowForNrp2BdcOrLater(rowData);
+        }
+
+        /** Fallback rule for Appr Req cell:
+         * if 2 Ord > 0 and Order/MIP/R2S/Trn are null-or-dash, show MOQ (yellow).
+         */
+        function shouldShowMoqFallbackInApprReq(rowData) {
+            if (!rowData || rowData.is_parent || rowData.isParent) return false;
+            const raw = rowData.raw_data || {};
+            const twoOrdVal = parseFloat(rowData.to_order ?? raw.to_order ?? 0);
+            if (!Number.isFinite(twoOrdVal) || twoOrdVal <= 0) return false;
+            return !apprReqHideRowForPipelineQty(rowData);
+        }
+
+        function getEffectiveApprReqValue(rowData) {
+            if (!rowData || rowData.is_parent || rowData.isParent) return 0;
+            const explicitApprReq = parseFloat(rowData.appr_req_qty);
+            if (Number.isFinite(explicitApprReq) && explicitApprReq > 0) {
+                return explicitApprReq;
+            }
+            if (shouldShowMoqFallbackInApprReq(rowData)) {
+                const raw = rowData.raw_data || {};
+                const moqVal = parseFloat(rowData.MOQ ?? raw.MOQ ?? raw['Approved QTY']);
+                if (Number.isFinite(moqVal) && moqVal > 0) {
+                    return moqVal;
+                }
+            }
+            return 0;
         }
 
         function setCombinedFilters() {
@@ -2847,6 +2893,8 @@
                             const transitValue = child.raw_data ? child.raw_data["transit"] : child["transit"];
                             const transit = parseFloat(transitValue) || 0;
                             stageMatch = transit > 0;
+                        } else if (currentStageFilter === 'appr_req') {
+                            stageMatch = getEffectiveApprReqValue(child) > 0;
                         } else {
                             stageMatch = childStage === currentStageFilter;
                         }
@@ -2911,6 +2959,8 @@
                         const transitValue = data.raw_data ? data.raw_data["transit"] : data["transit"];
                         const transit = parseFloat(transitValue) || 0;
                         stageMatch = transit > 0;
+                    } else if (currentStageFilter === 'appr_req') {
+                        stageMatch = getEffectiveApprReqValue(data) > 0;
                     } else {
                         stageMatch = dataStage === currentStageFilter;
                     }

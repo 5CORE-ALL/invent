@@ -869,6 +869,16 @@ class ForecastAnalysisController extends Controller
                 
                 // Use MOQ value from ProductMaster
                 $orderQty = $moqValue ?? null;
+
+                if (strtolower($value) === 'appr_req' && is_numeric($orderQty) && (float) $orderQty > 0) {
+                    DB::table('forecast_analysis')
+                        ->whereRaw('TRIM(LOWER(sku)) = ?', [strtolower($sku)])
+                        ->whereRaw('TRIM(LOWER(parent)) = ?', [strtolower($parent)])
+                        ->update([
+                            'approved_qty' => (float) $orderQty,
+                            'updated_at' => now(),
+                        ]);
+                }
                 
                 if(strtolower($value) === 'to_order_analysis'){
                     DB::table('to_order_analysis')->updateOrInsert(
@@ -974,6 +984,16 @@ class ForecastAnalysisController extends Controller
                 
                 // Use MOQ value from ProductMaster
                 $orderQty = $moqValue ?? null;
+
+                if (strtolower($value) === 'appr_req' && is_numeric($orderQty) && (float) $orderQty > 0) {
+                    DB::table('forecast_analysis')
+                        ->whereRaw('TRIM(LOWER(sku)) = ?', [strtolower($sku)])
+                        ->whereRaw('TRIM(LOWER(parent)) = ?', [strtolower($parent)])
+                        ->update([
+                            'approved_qty' => (float) $orderQty,
+                            'updated_at' => now(),
+                        ]);
+                }
                     
                 if(strtolower($value) === 'to_order_analysis'){
                     DB::table('to_order_analysis')->updateOrInsert(
