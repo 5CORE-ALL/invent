@@ -178,12 +178,14 @@ class DescriptionMasterController extends Controller
                 $text = trim((string) ($u['description'] ?? ''));
                 if ($text === '') {
                     $results[$marketplace] = ['success' => false, 'message' => 'Description cannot be empty'];
+
                     continue;
                 }
 
                 $max = $this->maxCharsForMarketplace($marketplace);
                 if (mb_strlen($text) > $max) {
                     $results[$marketplace] = ['success' => false, 'message' => "Description exceeds {$max} characters for this marketplace."];
+
                     continue;
                 }
 
@@ -240,8 +242,8 @@ class DescriptionMasterController extends Controller
             $prompt = "Generate a detailed product description of minimum {$minLen} characters and maximum {$maxLen} characters.\n".
                 "Product: {$productName}\n".
                 ($current !== '' ? "Existing notes (optional reference):\n{$current}\n\n" : '').
-                "Include features, benefits, specifications, use cases, and quality highlights. ".
-                "Make it comprehensive and persuasive. Plain text only (no HTML, no markdown headings).";
+                'Include features, benefits, specifications, use cases, and quality highlights. '.
+                'Make it comprehensive and persuasive. Plain text only (no HTML, no markdown headings).';
 
             $apiKey = config('services.anthropic.key') ?: env('ANTHROPIC_API_KEY');
             if (! $apiKey) {
@@ -433,44 +435,16 @@ class DescriptionMasterController extends Controller
         }
     }
 
-    private function getBulletPlainForShopify(string $sku, string $marketplace): string
-    {
-        $table = $marketplace === 'shopify_main' ? 'shopify_metrics' : 'shopify_pls_metrics';
-        if (Schema::hasTable($table) && Schema::hasColumn($table, 'bullet_points')) {
-            $row = DB::table($table)->where('sku', $sku)->first();
-            if ($row && ! empty($row->bullet_points)) {
-                return (string) $row->bullet_points;
-            }
-        }
-
-        $pm = ProductMaster::query()
-            ->where('sku', $sku)
-            ->orWhere('sku', strtoupper($sku))
-            ->orWhere('sku', strtolower($sku))
-            ->first();
-        if ($pm) {
-            return implode("\n", array_filter(array_map('trim', [
-                $pm->bullet1, $pm->bullet2, $pm->bullet3, $pm->bullet4, $pm->bullet5,
-            ])));
-        }
-
-        return '';
-    }
-
     /**
      * @return array{success: bool, message: string}
      */
     private function callMarketplaceDescriptionService(string $marketplace, string $sku, string $text): array
     {
         if ($marketplace === 'shopify_main') {
-            $bullets = $this->getBulletPlainForShopify($sku, 'shopify_main');
-
-            return app(ShopifyApiService::class)->updateProductDescriptionWithBullets($sku, $bullets, $text);
+            return app(ShopifyApiService::class)->updateDescription($sku, $text);
         }
         if ($marketplace === 'shopify_pls') {
-            $bullets = $this->getBulletPlainForShopify($sku, 'shopify_pls');
-
-            return app(ShopifyPLSApiService::class)->updateProductDescriptionWithBullets($sku, $bullets, $text);
+            return app(ShopifyPLSApiService::class)->updateDescription($sku, $text);
         }
 
         $map = [
