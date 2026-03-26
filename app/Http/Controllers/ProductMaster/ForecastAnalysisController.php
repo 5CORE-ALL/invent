@@ -568,10 +568,10 @@ class ForecastAnalysisController extends Controller
             }
 
             // Stage from pipeline qtys: Transit → R2S → MIP → 2 Order; none → Select (empty)
-            // Never auto-overwrite appr_req / all_good — those are set from the grid and must survive refresh.
+            // Never auto-overwrite appr_req — this is set from the grid and must survive refresh.
             if (! $item->is_parent) {
                 $currentStage = strtolower(trim((string) ($item->stage ?? '')));
-                $manualStages = ['appr_req', 'all_good'];
+                $manualStages = ['appr_req'];
 
                 if (! in_array($currentStage, $manualStages, true)) {
                     $qtyTransit = (float) ($item->transit ?? 0);
@@ -846,7 +846,7 @@ class ForecastAnalysisController extends Controller
             if ($columnKey === 'stage' && !empty($value)) {
                 $value = strtolower(trim($value));
                 // Ensure value is one of the valid options
-                $validStages = ['appr_req', 'mip', 'r2s', 'transit', 'all_good', 'to_order_analysis'];
+                $validStages = ['appr_req', 'mip', 'r2s', 'transit', 'to_order_analysis'];
                 if (!in_array($value, $validStages)) {
                     $value = ''; // Default to empty if invalid
                 }
@@ -959,7 +959,7 @@ class ForecastAnalysisController extends Controller
             if ($columnKey === 'stage' && !empty($value)) {
                 $value = strtolower(trim($value));
                 // Ensure value is one of the valid options
-                $validStages = ['appr_req', 'mip', 'r2s', 'transit', 'all_good', 'to_order_analysis'];
+                $validStages = ['appr_req', 'mip', 'r2s', 'transit', 'to_order_analysis'];
                 if (!in_array($value, $validStages)) {
                     $value = ''; // Default to empty if invalid
                 }

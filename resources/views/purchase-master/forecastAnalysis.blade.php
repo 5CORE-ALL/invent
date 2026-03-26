@@ -3,6 +3,7 @@
 @section('css')
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
+    <link href="{{ asset('css/select-searchable.css') }}" rel="stylesheet">
     <link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
     <style>
         .tabulator .tabulator-footer {
@@ -263,7 +264,7 @@
     <div class="row">
         <div class="col-12">
             <div class="card shadow-sm">
-                <div class="card-body pb-2 d-flex flex-column">
+                <div class="card-body pb-0 d-flex flex-column">
                     <div class="mb-3 d-flex align-items-center gap-3">
                         <!-- Play/Pause Controls -->
                         <div class="d-flex align-items-center me-3">
@@ -292,14 +293,41 @@
 
                         <div class="d-flex align-items-center flex-wrap gap-2">
                             <!-- Stage Filter (before Column) -->
-                            <select id="stage-filter" class="form-select-sm border border-primary" style="width: 132px;">
+                            <select id="stage-filter" class="form-select-sm border border-primary" style="width: 150px;">
                                 <option value="">All</option>
-                                <option value="__blank__">sel</option>
+                                <option value="__blank__">Not Req Now</option>
                                 <option value="appr_req">Appr Req</option>
                                 <option value="mip">MIP</option>
                                 <option value="r2s">R2S</option>
                                 <option value="transit">Trn</option>
                                 <option value="to_order_analysis">Ord</option>
+                            </select>
+
+                            <!-- 2 Ord Color Filter -->
+                            <select id="two-ord-color-filter" class="form-select-sm border border-primary" style="width: 150px;" aria-label="2 Ord color filter" onchange="window.__fa_applyTwoOrdColorFilter && window.__fa_applyTwoOrdColorFilter(this.value)">
+                                <option value="">2 Ord: All</option>
+                                <option value="neg">2 Ord: Red (&lt; 0)</option>
+                                <option value="nonneg">2 Ord: Yellow (&gt;= 0)</option>
+                            </select>
+                            <select id="order-color-filter-top" class="form-select-sm border border-primary" style="width: 145px;" aria-label="Order filter">
+                                <option value="">Order: All</option>
+                                <option value="pos">Order: &gt; 0</option>
+                            </select>
+                            <select id="mip-color-filter-top" class="form-select-sm border border-primary" style="width: 135px;" aria-label="MIP filter">
+                                <option value="">MIP: All</option>
+                                <option value="pos">MIP: &gt; 0</option>
+                            </select>
+                            <select id="r2s-color-filter-top" class="form-select-sm border border-primary" style="width: 135px;" aria-label="R2S filter">
+                                <option value="">R2S: All</option>
+                                <option value="pos">R2S: &gt; 0</option>
+                            </select>
+                            <select id="trn-color-filter-top" class="form-select-sm border border-primary" style="width: 135px;" aria-label="Trn filter">
+                                <option value="">Trn: All</option>
+                                <option value="pos">Trn: &gt; 0</option>
+                            </select>
+                            <select id="moq-color-filter-top" class="form-select-sm border border-primary" style="width: 140px;" aria-label="MOQ filter">
+                                <option value="">MOQ: All</option>
+                                <option value="pos">MOQ: &gt; 0</option>
                             </select>
 
                             <!-- Column Management -->
@@ -421,23 +449,13 @@
                     <!-- Bulk edit badge (shown when rows selected) -->
                     <div id="bulk-edit-badge" class="d-none mb-2 p-2 rounded border bg-light d-flex align-items-center gap-2 flex-wrap" style="min-height: 40px;">
                         <span class="fw-semibold text-dark" id="bulk-edit-count">0 selected</span>
-                        <div class="dropdown">
-                            <button class="btn btn-sm btn-secondary dropdown-toggle" type="button" id="bulkEditCurrentSupplierBtn" data-bs-toggle="dropdown" aria-expanded="false">
-                                Current Supplier
+                        <div class="d-flex align-items-center gap-2">
+                            <select id="bulk-current-supplier-select" class="form-select form-select-sm select-searchable" style="min-width: 180px;">
+                                <option value="">Select supplier...</option>
+                            </select>
+                            <button class="btn btn-sm btn-secondary" type="button" id="bulk-apply-current-supplier">
+                                <i class="fas fa-check me-1"></i> Apply
                             </button>
-                            <ul class="dropdown-menu" aria-labelledby="bulkEditCurrentSupplierBtn">
-                                <li class="px-3 py-2">
-                                    <select id="bulk-current-supplier-select" class="form-select form-select-sm" style="min-width: 180px;">
-                                        <option value="">Select supplier...</option>
-                                    </select>
-                                </li>
-                                <li><hr class="dropdown-divider"></li>
-                                <li>
-                                    <button class="dropdown-item" type="button" id="bulk-apply-current-supplier">
-                                        <i class="fas fa-check me-1"></i> Apply
-                                    </button>
-                                </li>
-                            </ul>
                         </div>
                         <div class="dropdown">
                             <button class="btn btn-sm btn-info dropdown-toggle" type="button" id="bulkEditStageBtn" data-bs-toggle="dropdown" aria-expanded="false">
@@ -618,6 +636,7 @@
 @endsection
 
 @section('script')
+    <script src="{{ asset('js/select-searchable.js') }}"></script>
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
     <script>
         document.body.style.zoom = "95%";
@@ -685,268 +704,71 @@
 
         //global variables for play btn
         let groupedSkuData = {};
-        let currentOrderPositiveOnly = false;
         let currentOrderPositiveCount = 0;
-        let currentMipPositiveOnly = false;
         let currentMipPositiveCount = 0;
-        let currentR2sPositiveOnly = false;
         let currentR2sPositiveCount = 0;
-        let currentTransitPositiveOnly = false;
         let currentTransitPositiveCount = 0;
-        let currentAllGoodOnly = false;
-        let currentAllGoodCount = 0;
+        let currentMoqPositiveCount = 0;
         function isSelectableForecastRow(row) {
             if (!row) return false;
             const data = (typeof row.getData === 'function') ? row.getData() : (row || {});
             const sku = (data.SKU || '').toString().toLowerCase();
             return sku.indexOf('parent') === -1;
         }
-        function isOrderPositiveRow(data) {
-            return (parseFloat(data?.two_order_qty) || 0) > 0;
-        }
-        function isMipPositiveRow(data) {
-            return (parseFloat(data?.order_given) || 0) > 0;
-        }
-        function isR2sPositiveRow(data) {
-            const raw = data && data.raw_data ? data.raw_data : {};
-            const value = (data && data.readyToShipQty !== undefined && data.readyToShipQty !== null)
-                ? data.readyToShipQty
-                : raw.readyToShipQty;
-            return (parseFloat(value) || 0) > 0;
-        }
-        function isTransitPositiveRow(data) {
-            const raw = data && data.raw_data ? data.raw_data : {};
-            const value = (data && data.transit !== undefined && data.transit !== null)
-                ? data.transit
-                : raw.transit;
-            return (parseFloat(value) || 0) > 0;
-        }
-        function isAllGoodRow(data) {
-            return !!(data && data.all_good);
-        }
-        function orderColumnTitleFormatter() {
-            const wrap = document.createElement('div');
-            wrap.style.display = 'flex';
-            wrap.style.alignItems = 'center';
-            wrap.style.justifyContent = 'center';
-            wrap.style.gap = '4px';
-
-            const label = document.createElement('span');
-            label.textContent = "Order (" + currentOrderPositiveCount + ")";
-
-            const dotBtn = document.createElement('button');
-            dotBtn.type = 'button';
-            dotBtn.setAttribute('aria-label', 'Toggle Order > 0 filter');
-            dotBtn.title = currentOrderPositiveOnly ? 'Showing only Order > 0 (click for all)' : 'Show only Order > 0';
-            dotBtn.style.width = '12px';
-            dotBtn.style.height = '12px';
-            dotBtn.style.borderRadius = '9999px';
-            dotBtn.style.border = currentOrderPositiveOnly ? '1px solid #15803d' : '1px solid #94a3b8';
-            dotBtn.style.background = currentOrderPositiveOnly ? '#22c55e' : '#d1d5db';
-            dotBtn.style.padding = '0';
-            dotBtn.style.cursor = 'pointer';
-            dotBtn.style.flexShrink = '0';
-
-            dotBtn.addEventListener('click', function(e) {
-                e.preventDefault();
-                e.stopPropagation();
-                currentOrderPositiveOnly = !currentOrderPositiveOnly;
-                setCombinedFilters();
-                updateOrderColumnHeader(currentOrderPositiveCount);
-            });
-
-            wrap.appendChild(label);
-            wrap.appendChild(dotBtn);
-            return wrap;
-        }
         function updateOrderColumnHeader(count) {
             currentOrderPositiveCount = Number.isFinite(count) ? count : 0;
-            table.updateColumnDefinition("two_order_qty", {
-                title: "Order (" + currentOrderPositiveCount + ")",
-                titleFormatter: orderColumnTitleFormatter
+            table.updateColumnDefinition("to_order", {
+                title: "2 Ord (" + currentOrderPositiveCount + ")"
             });
-        }
-        function mipColumnTitleFormatter() {
-            const wrap = document.createElement('div');
-            wrap.style.display = 'flex';
-            wrap.style.alignItems = 'center';
-            wrap.style.justifyContent = 'center';
-            wrap.style.gap = '4px';
-
-            const label = document.createElement('span');
-            label.textContent = "MIP (" + currentMipPositiveCount + ")";
-
-            const dotBtn = document.createElement('button');
-            dotBtn.type = 'button';
-            dotBtn.setAttribute('aria-label', 'Toggle MIP > 0 filter');
-            dotBtn.title = currentMipPositiveOnly ? 'Showing only MIP > 0 (click for all)' : 'Show only MIP > 0';
-            dotBtn.style.width = '12px';
-            dotBtn.style.height = '12px';
-            dotBtn.style.borderRadius = '9999px';
-            dotBtn.style.border = currentMipPositiveOnly ? '1px solid #15803d' : '1px solid #94a3b8';
-            dotBtn.style.background = currentMipPositiveOnly ? '#22c55e' : '#d1d5db';
-            dotBtn.style.padding = '0';
-            dotBtn.style.cursor = 'pointer';
-            dotBtn.style.flexShrink = '0';
-
-            dotBtn.addEventListener('click', function(e) {
-                e.preventDefault();
-                e.stopPropagation();
-                currentMipPositiveOnly = !currentMipPositiveOnly;
-                setCombinedFilters();
-                updateMipColumnHeader(currentMipPositiveCount);
-            });
-
-            wrap.appendChild(label);
-            wrap.appendChild(dotBtn);
-            return wrap;
         }
         function updateMipColumnHeader(count) {
             currentMipPositiveCount = Number.isFinite(count) ? count : 0;
             table.updateColumnDefinition("order_given", {
-                title: "MIP (" + currentMipPositiveCount + ")",
-                titleFormatter: mipColumnTitleFormatter
+                title: "MIP"
             });
-        }
-        function r2sColumnTitleFormatter() {
-            const wrap = document.createElement('div');
-            wrap.style.display = 'flex';
-            wrap.style.alignItems = 'center';
-            wrap.style.justifyContent = 'center';
-            wrap.style.gap = '4px';
-
-            const label = document.createElement('span');
-            label.textContent = "R2S (" + currentR2sPositiveCount + ")";
-
-            const dotBtn = document.createElement('button');
-            dotBtn.type = 'button';
-            dotBtn.setAttribute('aria-label', 'Toggle R2S > 0 filter');
-            dotBtn.title = currentR2sPositiveOnly ? 'Showing only R2S > 0 (click for all)' : 'Show only R2S > 0';
-            dotBtn.style.width = '12px';
-            dotBtn.style.height = '12px';
-            dotBtn.style.borderRadius = '9999px';
-            dotBtn.style.border = currentR2sPositiveOnly ? '1px solid #15803d' : '1px solid #94a3b8';
-            dotBtn.style.background = currentR2sPositiveOnly ? '#22c55e' : '#d1d5db';
-            dotBtn.style.padding = '0';
-            dotBtn.style.cursor = 'pointer';
-            dotBtn.style.flexShrink = '0';
-
-            dotBtn.addEventListener('click', function(e) {
-                e.preventDefault();
-                e.stopPropagation();
-                currentR2sPositiveOnly = !currentR2sPositiveOnly;
-                setCombinedFilters();
-                updateR2sColumnHeader(currentR2sPositiveCount);
-            });
-
-            wrap.appendChild(label);
-            wrap.appendChild(dotBtn);
-            return wrap;
         }
         function updateR2sColumnHeader(count) {
             currentR2sPositiveCount = Number.isFinite(count) ? count : 0;
             table.updateColumnDefinition("readyToShipQty", {
-                title: "R2S (" + currentR2sPositiveCount + ")",
-                titleFormatter: r2sColumnTitleFormatter
+                title: "R2S"
             });
-        }
-        function transitColumnTitleFormatter() {
-            const wrap = document.createElement('div');
-            wrap.style.display = 'flex';
-            wrap.style.alignItems = 'center';
-            wrap.style.justifyContent = 'center';
-            wrap.style.gap = '4px';
-
-            const label = document.createElement('span');
-            label.textContent = "Trn (" + currentTransitPositiveCount + ")";
-
-            const dotBtn = document.createElement('button');
-            dotBtn.type = 'button';
-            dotBtn.setAttribute('aria-label', 'Toggle Transit > 0 filter');
-            dotBtn.title = currentTransitPositiveOnly ? 'Showing only Transit > 0 (click for all)' : 'Show only Transit > 0';
-            dotBtn.style.width = '12px';
-            dotBtn.style.height = '12px';
-            dotBtn.style.borderRadius = '9999px';
-            dotBtn.style.border = currentTransitPositiveOnly ? '1px solid #15803d' : '1px solid #94a3b8';
-            dotBtn.style.background = currentTransitPositiveOnly ? '#22c55e' : '#d1d5db';
-            dotBtn.style.padding = '0';
-            dotBtn.style.cursor = 'pointer';
-            dotBtn.style.flexShrink = '0';
-
-            dotBtn.addEventListener('click', function(e) {
-                e.preventDefault();
-                e.stopPropagation();
-                currentTransitPositiveOnly = !currentTransitPositiveOnly;
-                setCombinedFilters();
-                updateTransitColumnHeader(currentTransitPositiveCount);
-            });
-
-            wrap.appendChild(label);
-            wrap.appendChild(dotBtn);
-            return wrap;
         }
         function updateTransitColumnHeader(count) {
             currentTransitPositiveCount = Number.isFinite(count) ? count : 0;
             table.updateColumnDefinition("transit", {
-                title: "Trn (" + currentTransitPositiveCount + ")",
-                titleFormatter: transitColumnTitleFormatter
+                title: "Trn"
             });
         }
-        function allGoodColumnTitleFormatter() {
-            const wrap = document.createElement('div');
-            wrap.style.display = 'flex';
-            wrap.style.alignItems = 'center';
-            wrap.style.justifyContent = 'center';
-            wrap.style.gap = '4px';
-
-            const label = document.createElement('span');
-            label.textContent = "All Good (" + currentAllGoodCount + ")";
-
-            const dotBtn = document.createElement('button');
-            dotBtn.type = 'button';
-            dotBtn.setAttribute('aria-label', 'Toggle All Good filter');
-            dotBtn.title = currentAllGoodOnly ? 'Showing only All Good rows (click for all)' : 'Show only All Good rows';
-            dotBtn.style.width = '12px';
-            dotBtn.style.height = '12px';
-            dotBtn.style.borderRadius = '9999px';
-            dotBtn.style.border = currentAllGoodOnly ? '1px solid #15803d' : '1px solid #94a3b8';
-            dotBtn.style.background = currentAllGoodOnly ? '#22c55e' : '#d1d5db';
-            dotBtn.style.padding = '0';
-            dotBtn.style.cursor = 'pointer';
-            dotBtn.style.flexShrink = '0';
-
-            dotBtn.addEventListener('click', function(e) {
-                e.preventDefault();
-                e.stopPropagation();
-                currentAllGoodOnly = !currentAllGoodOnly;
-                setCombinedFilters();
-                updateAllGoodColumnHeader(currentAllGoodCount);
-            });
-
-            wrap.appendChild(label);
-            wrap.appendChild(dotBtn);
-            return wrap;
-        }
-        function updateAllGoodColumnHeader(count) {
-            currentAllGoodCount = Number.isFinite(count) ? count : 0;
-            table.updateColumnDefinition("all_good", {
-                title: "All Good (" + currentAllGoodCount + ")",
-                titleFormatter: allGoodColumnTitleFormatter
+        function updateTopQtyFilterOptionCounts(counts) {
+            const c = counts || {};
+            const defs = [
+                { id: 'order-color-filter-top', all: 'Order: All', pos: 'Order: > 0', n: Number.isFinite(c.order) ? c.order : 0 },
+                { id: 'mip-color-filter-top', all: 'MIP: All', pos: 'MIP: > 0', n: Number.isFinite(c.mip) ? c.mip : 0 },
+                { id: 'r2s-color-filter-top', all: 'R2S: All', pos: 'R2S: > 0', n: Number.isFinite(c.r2s) ? c.r2s : 0 },
+                { id: 'trn-color-filter-top', all: 'Trn: All', pos: 'Trn: > 0', n: Number.isFinite(c.trn) ? c.trn : 0 },
+                { id: 'moq-color-filter-top', all: 'MOQ: All', pos: 'MOQ: > 0', n: Number.isFinite(c.moq) ? c.moq : 0 },
+            ];
+            defs.forEach(function(def) {
+                const sel = document.getElementById(def.id);
+                if (!sel) return;
+                const allOpt = sel.querySelector('option[value=""]');
+                const posOpt = sel.querySelector('option[value="pos"]');
+                if (allOpt) allOpt.textContent = def.all;
+                if (posOpt) posOpt.textContent = def.pos + ' (' + def.n + ')';
             });
         }
-
         const table = new Tabulator("#forecast-table", {
             ajaxURL: "/forecast-analysis-data-view",
             ajaxConfig: "GET",
             layout: "fitDataFill",
             pagination: true,
-            paginationSize: 200,
+            paginationSize: 100,
             initialSort: [{ column: "Parent", dir: "asc" }],
             initialHeaderFilter: [{ field: "nr", value: "" }, { field: "stage", value: "" }, { field: "INV", value: "" }],
             paginationCounter: "rows",
             movableColumns: false,
             resizableColumns: true,
-            height: 400,
+            height: 600,
             index: "SKU",
             editTriggerEvent: "dblclick",
             rowFormatter: function(row) {
@@ -976,7 +798,7 @@
                         });
                         return checkbox;
                     },
-                    align: "center",
+                    hozAlign: "center",
                     headerSort: false,
                     width: 40,
                     minWidth: 40,
@@ -994,10 +816,14 @@
                     formatter: function(cell) {
                         const url = cell.getValue();
                         if (!url) return `<span class="text-muted">N/A</span>`;
+                        const fallbackSvg = "data:image/svg+xml;utf8," + encodeURIComponent(
+                            "<svg xmlns='http://www.w3.org/2000/svg' width='30' height='30'><rect width='100%' height='100%' fill='%23f3f4f6'/><text x='50%' y='52%' font-size='8' text-anchor='middle' fill='%239ca3af' font-family='Arial'>No Img</text></svg>"
+                        );
                         return `<img 
                         src="${url}" 
                         data-full="${url}" 
                         class="hover-thumb" 
+                        onerror="this.onerror=null;this.dataset.full='';this.src='${fallbackSvg}';"
                         style="width:30px;height:30px;border-radius:6px;object-fit:contain;box-shadow:0 1px 4px #0001;cursor: pointer;"
                     >`;
                     },
@@ -1006,6 +832,7 @@
                         if (!img) return;
 
                         const fullUrl = img.getAttribute('data-full');
+                        if (!fullUrl) return;
 
                         let preview = document.createElement('div');
                         preview.id = 'image-hover-preview';
@@ -1041,7 +868,7 @@
                     headerFilter: "input",
                     headerFilterPlaceholder: "Filter",
                     headerFilterFunc: "like",
-                    accessor: row => row["Parent"],
+                    accessor: row => (row ? row["Parent"] : ''),
                     formatter: function(cell) {
                         const v = cell.getValue() == null ? '' : String(cell.getValue());
                         const esc = v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -1062,7 +889,7 @@
                     headerFilter: "input",
                     headerFilterPlaceholder: "Filter",
                     headerFilterFunc: "like",
-                    accessor: row => row["SKU"],
+                    accessor: row => (row ? row["SKU"] : ''),
                     formatter: function(cell) {
                         const v = cell.getValue() == null ? '' : String(cell.getValue());
                         const esc = v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -1074,7 +901,7 @@
                 {
                     title: "INV",
                     field: "INV",
-                    accessor: row => row["INV"],
+                    accessor: row => (row ? row["INV"] : 0),
                     headerSort: false,
                     headerFilter: "input",
                     headerFilterPlaceholder: "All · 0 · >0",
@@ -1118,7 +945,7 @@
                 {
                     title: "l30",
                     field: "L30",
-                    accessor: row => row["L30"],
+                    accessor: row => (row ? row["L30"] : 0),
                     formatter: function(cell) {
                         const value = cell.getValue();
                         return `<span style="display:block; text-align:center;">${value}</span>`;
@@ -1129,6 +956,7 @@
                     field: "ov_dil",
                     headerSort: true,
                     accessor: function(row) {
+                        if (!row) return 0;
                         const l30 = parseFloat(row.L30);
                         const inv = parseFloat(row.INV);
                         if (!isNaN(l30) && !isNaN(inv) && inv !== 0) {
@@ -1203,25 +1031,6 @@
                     }
                 },
                 {
-                    title: "All Good",
-                    field: "all_good",
-                    headerSort: false,
-                    titleFormatter: allGoodColumnTitleFormatter,
-                    hozAlign: "center",
-                    width: 74,
-                    minWidth: 64,
-                    formatter: function(cell) {
-                        const rowData = cell.getRow().getData();
-                        const isParent = rowData.is_parent || rowData.isParent;
-                        if (!isParent) {
-                            return '<span class="text-muted">—</span>';
-                        }
-                        return cell.getValue()
-                            ? '<span title="All child 2 Ord values are below 0" style="font-size:16px;">😊</span>'
-                            : '<span class="text-muted">—</span>';
-                    }
-                },
-                {
                     title: "M AVG ",
                     field: "MSL_Four",
                     accessor: row => (row ? row["MSL_Four"] : null),
@@ -1247,15 +1056,14 @@
                     headerFilterParams: {
                         values: {
                             "": "All",
-                            "__blank__": "sel",
+                            "__blank__": "Not Req Now",
                             "appr_req": "Appr Req",
                             "mip": "MIP",
                             "r2s": "R2S",
                             "transit": "Trn",
                             "to_order_analysis": "Ord"
                         },
-                        clearable: false,
-                        listOnEmpty: true
+                        clearable: false
                     },
                     headerFilterEmptyCheck: function(value) {
                         return value === "" || value === null || value === undefined;
@@ -1266,7 +1074,8 @@
 
                         const stageValue = normalizeStageValue(rowValue);
                         if (selected === '__blank__') {
-                            return !stageValue;
+                            const twoOrd = parseFloat((rowData && (rowData.to_order ?? (rowData.raw_data ? rowData.raw_data.to_order : null))) ?? 0);
+                            return !stageValue || (Number.isFinite(twoOrd) && twoOrd < 0);
                         }
                         if (selected === 'transit') {
                             const transitValue = rowData && rowData.raw_data ? rowData.raw_data["transit"] : (rowData ? rowData["transit"] : 0);
@@ -1290,16 +1099,13 @@
                             'mip': 'MIP',
                             'r2s': 'R2S — Ready to ship',
                             'transit': 'Transit',
-                            'to_order_analysis': 'Order — 2 Order',
-                            'all_good': 'All Good'
+                            'to_order_analysis': 'Order — 2 Order'
                         };
                         const tip = stageTips[value] || 'Select stage';
                         const tipAttr = String(tip).replace(/&/g, '&amp;').replace(/"/g, '&quot;');
 
                         let markerHtml = '';
-                        if (value === 'all_good') {
-                            markerHtml = '<span aria-hidden="true" style="font-size:14px;line-height:1;">😊</span>';
-                        } else if (value === 'transit') {
+                        if (value === 'transit') {
                             markerHtml = '<i class="bi bi-truck stage-transit-icon" aria-hidden="true"></i>';
                         } else {
                             let dotColor = '#94a3b8';
@@ -1310,10 +1116,6 @@
                             markerHtml = '<span class="stage-status-dot" style="background-color:' + dotColor + ';" aria-hidden="true"></span>';
                         }
 
-                        const allGoodOpt = value === 'all_good'
-                            ? '<option value="all_good" selected>😊 All Good</option>'
-                            : '<option value="all_good">😊 All Good</option>';
-
                         return (
                             '<div class="stage-dot-cell position-relative d-flex justify-content-center align-items-center w-100" title="' + tipAttr + '">' +
                             markerHtml +
@@ -1322,8 +1124,7 @@
                             ' data-sku=\'' + sku + '\'' +
                             ' data-parent=\'' + parent + '\'' +
                             ' aria-label="' + tipAttr + '">' +
-                            '<option value="">sel</option>' +
-                            allGoodOpt +
+                            '<option value="">Not Req Now</option>' +
                             '<option value="appr_req"' + (value === 'appr_req' ? ' selected' : '') + '>Appr Req</option>' +
                             '<option value="mip"' + (value === 'mip' ? ' selected' : '') + '>MIP</option>' +
                             '<option value="r2s"' + (value === 'r2s' ? ' selected' : '') + '>R2S</option>' +
@@ -1332,14 +1133,7 @@
                             '</select></div>'
                         );
                     },
-                    cellCreated: function(cell) {
-                        const selectEl = cell.getElement().querySelector('select');
-                        if (selectEl) {
-                            let value = cell.getValue() ?? '';
-                            value = String(value).trim().toLowerCase();
-                            selectEl.value = value;
-                        }
-                    }
+                    // select value is already controlled by formatter selected options
                 },
                 {
                     title: "Appr Req",
@@ -1350,16 +1144,32 @@
                     hozAlign: "center",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData() || {};
+                        const isParent = !!(rowData.is_parent || rowData.isParent);
+                        const skuAttr = String(rowData.SKU || '').replace(/'/g, "\\'");
+                        const parentAttr = String(rowData.Parent || '').replace(/'/g, "\\'");
+                        const renderWithMoveDot = function(valueText, isFallback) {
+                            if (isParent) {
+                                const bgParent = isFallback ? 'background:#fff3a0;border-radius:4px;padding:2px 4px;' : '';
+                                return `<div style="text-align:center;font-weight:700;${bgParent}">${valueText}</div>`;
+                            }
+                            const bg = isFallback ? 'background:#fff3a0;border-radius:4px;padding:2px 4px;' : '';
+                            return `<div style="text-align:center;font-weight:700;${bg}display:flex;align-items:center;justify-content:center;gap:6px;">
+                                <span>${valueText}</span>
+                                <button type="button" class="appr-req-move-dot" data-sku='${skuAttr}' data-parent='${parentAttr}' title="Move MOQ to Order" aria-label="Move MOQ to Order"
+                                    style="width:10px;height:10px;border-radius:9999px;border:1px solid #b8860b;background:#facc15;padding:0;cursor:pointer;display:inline-block;line-height:1;"></button>
+                            </div>`;
+                        };
                         const v = parseFloat(cell.getValue());
                         if (!v || isNaN(v)) {
                             const fallbackApprReq = getEffectiveApprReqValue(rowData);
                             if (fallbackApprReq > 0) {
                                 const dispMoq = Number.isInteger(fallbackApprReq) ? fallbackApprReq : fallbackApprReq.toFixed(2).replace(/\.?0+$/, '');
-                                return `<div style="text-align:center;font-weight:700;background:#fff3a0;border-radius:4px;padding:2px 4px;">${dispMoq}</div>`;
+                                return renderWithMoveDot(dispMoq, true);
                             }
                             return '<div style="text-align:center;" class="text-muted">—</div>';
                         }
-                        return `<div style="text-align:center;font-weight:bold;">${Number.isInteger(v) ? v : v.toFixed(2).replace(/\.?0+$/, '')}</div>`;
+                        const disp = Number.isInteger(v) ? v : v.toFixed(2).replace(/\.?0+$/, '');
+                        return renderWithMoveDot(disp, false);
                     }
                 },
                 {
@@ -1368,7 +1178,6 @@
                     accessor: row => (row ? row.two_order_qty : null),
                     sorter: "number",
                     headerSort: true,
-                    titleFormatter: orderColumnTitleFormatter,
                     formatter: function(cell) {
                         const v = parseFloat(cell.getValue());
                         if (!v || isNaN(v)) {
@@ -1420,7 +1229,6 @@
                     accessor: row => (row ? row["order_given"] : null),
                     sorter: "number",
                     headerSort: true,
-                    titleFormatter: mipColumnTitleFormatter,
                     formatter: function(cell) {
                         const value = cell.getValue();
                         const rowData = cell.getRow().getData();
@@ -1449,7 +1257,6 @@
                     accessor: row => (row ? row["readyToShipQty"] : null),
                     sorter: "number",
                     headerSort: true,
-                    titleFormatter: r2sColumnTitleFormatter,
                     formatter: function(cell) {
                         const value = cell.getValue();
                         const n = parseFloat(value);
@@ -1528,7 +1335,6 @@
                     accessor: row => (row ? row["transit"] : null),
                     sorter: "number",
                     headerSort: true,
-                    titleFormatter: transitColumnTitleFormatter,
                     hozAlign: "center",
                     formatter: function(cell) {
                         const row = cell.getRow();
@@ -1557,7 +1363,7 @@
                 {
                     title: "MOQ",
                     field: "MOQ",
-                    accessor: row => row["MOQ"],
+                    accessor: row => (row ? row["MOQ"] : ''),
                     headerSort: false,
                     hozAlign: "center",
                     editable: function(cell) {
@@ -1655,6 +1461,35 @@
                     },
                 },
                 {
+                    title: "Current Supplier",
+                    field: "mfrg_supplier",
+                    accessor: row => row["mfrg_supplier"] ?? '',
+                    minWidth: 68,
+                    width: 76,
+                    maxWidth: 92,
+                    widthGrow: 0,
+                    hozAlign: "center",
+                    vertAlign: "middle",
+                    cssClass: "forecast-current-supplier-cell",
+                    headerSort: false,
+                    titleFormatter: function() {
+                        const span = document.createElement('span');
+                        span.textContent = 'Cur Supp';
+                        span.setAttribute('title', 'Current Supplier');
+                        span.style.fontWeight = '700';
+                        return span;
+                    },
+                    headerFilter: "input",
+                    headerFilterPlaceholder: "Filter",
+                    headerFilterFunc: "like",
+                    formatter: function(cell) {
+                        const value = cell.getValue() || '';
+                        const esc = String(value).replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                        const display = esc || '-';
+                        return '<span class="forecast-supplier-name" title="' + esc.replace(/"/g, '&quot;') + '">' + display + '</span>';
+                    }
+                },
+                {
                     title: "Rating",
                     field: "rating",
                     minWidth: 72,
@@ -1669,6 +1504,7 @@
                         return span;
                     },
                     accessor: function(row) {
+                        if (!row) return null;
                         const r = row.rating;
                         if (r === null || r === undefined || r === '') {
                             return null;
@@ -1825,6 +1661,7 @@
                         return span;
                     },
                     accessor: function(row) {
+                        if (!row) return null;
                         const v = parseFloat(row.avg_npft_pct);
                         return Number.isFinite(v) ? v : null;
                     },
@@ -1858,6 +1695,7 @@
                         return span;
                     },
                     accessor: function(row) {
+                        if (!row) return null;
                         const v = parseFloat(row.avg_nroi_pct);
                         return Number.isFinite(v) ? v : null;
                     },
@@ -1960,8 +1798,7 @@
                     headerFilter: "list",
                     headerFilterParams: {
                         values: { "": "All", "REQ": "REQ", "NR": "2BDC", "LATER": "LATER" },
-                        clearable: false,
-                        listOnEmpty: true
+                        clearable: false
                     },
                     headerFilterEmptyCheck: function(value) {
                         return value === "" || value === null || value === undefined;
@@ -2018,39 +1855,10 @@
                         `;
                     }
                 },
-                {
-                    title: "Current Supplier",
-                    field: "mfrg_supplier",
-                    accessor: row => row["mfrg_supplier"] ?? '',
-                    minWidth: 68,
-                    width: 76,
-                    maxWidth: 92,
-                    widthGrow: 0,
-                    hozAlign: "center",
-                    vertAlign: "middle",
-                    cssClass: "forecast-current-supplier-cell",
-                    headerSort: false,
-                    titleFormatter: function() {
-                        const span = document.createElement('span');
-                        span.textContent = 'Cur Supp';
-                        span.setAttribute('title', 'Current Supplier');
-                        span.style.fontWeight = '700';
-                        return span;
-                    },
-                    headerFilter: "input",
-                    headerFilterPlaceholder: "Filter",
-                    headerFilterFunc: "like",
-                    formatter: function(cell) {
-                        const value = cell.getValue() || '';
-                        const esc = String(value).replace(/</g, '&lt;').replace(/>/g, '&gt;');
-                        const display = esc || '-';
-                        return '<span class="forecast-supplier-name" title="' + esc.replace(/"/g, '&quot;') + '">' + display + '</span>';
-                    }
-                },
                  {
                     title: "CP",
                     field: "CP",
-                    accessor: row => row["CP"],
+                    accessor: row => (row ? row["CP"] : 0),
                     visible: false,
                     formatter: function(cell) {
                         const value = cell.getValue() || 0;
@@ -2060,7 +1868,7 @@
                 {
                     title: "LP",
                     field: "LP",
-                    accessor: row => row["LP"],
+                    accessor: row => (row ? row["LP"] : 0),
                     visible: false,
                     formatter: function(cell) {
                         const value = cell.getValue() || 0;
@@ -2473,18 +2281,6 @@
                 const sorted = [];
                 groupOrder.forEach(function(p) {
                     const g = groups[p];
-                    const childRows = g.filter(function(r) { return !r.is_parent; });
-                    const allGoodForParent = childRows.length > 0 && childRows.every(function(r) {
-                        return (parseFloat(r.to_order) || 0) < 0;
-                    });
-                    g.forEach(function(r) {
-                        if (r.is_parent) {
-                            r.all_good = allGoodForParent;
-                            if (r.raw_data) r.raw_data.all_good = allGoodForParent;
-                        } else {
-                            r.all_good = false;
-                        }
-                    });
                     g.sort(function(a, b) { return (a.is_parent ? 1 : 0) - (b.is_parent ? 1 : 0); });
                     sorted.push.apply(sorted, g);
                 });
@@ -2500,20 +2296,29 @@
                     const notParent = row => !String(row.SKU || '').toLowerCase().includes('parent');
                     const mslCount = allData.filter(row => notParent(row) && (parseFloat(row.msl) || 0) > 0).length;
                     const toOrderCount = allData.filter(row => notParent(row) && (parseFloat(row.to_order) || 0) > 0).length;
+                    const orderCount = allData.filter(row => notParent(row) && (parseFloat(row.two_order_qty) || 0) > 0).length;
                     const mipCount = allData.filter(row => notParent(row) && (parseFloat(row.order_given) || 0) > 0).length;
                     const r2sCount = allData.filter(row => notParent(row) && (parseFloat(row.readyToShipQty) || 0) > 0).length;
                     const transitCount = allData.filter(row => notParent(row) && (parseFloat(row.transit) || 0) > 0).length;
-                    const twoOrderStageCount = allData.filter(row => notParent(row) && (parseFloat(row.two_order_qty) || 0) > 0).length;
+                    const moqCount = allData.filter(row => notParent(row) && (parseFloat(row.MOQ) || 0) > 0).length;
                     const apprReqStageCount = allData.filter(row => notParent(row) && (parseFloat(row.appr_req_qty) || 0) > 0).length;
-                    const allGoodCount = allData.filter(row => (row.is_parent || row.isParent) && !!row.all_good).length;
                     table.updateColumnDefinition("msl", { title: "MSL (" + mslCount + ")" });
                     table.updateColumnDefinition("to_order", { title: "2 Ord (" + toOrderCount + ")" });
                     table.updateColumnDefinition("appr_req_qty", { title: "Appr Req (" + apprReqStageCount + ")" });
-                    updateOrderColumnHeader(twoOrderStageCount);
-                    updateMipColumnHeader(mipCount);
-                    updateR2sColumnHeader(r2sCount);
-                    updateTransitColumnHeader(transitCount);
-                    updateAllGoodColumnHeader(allGoodCount);
+                    table.updateColumnDefinition("two_order_qty", { title: "Order" });
+                    table.updateColumnDefinition("order_given", { title: "MIP" });
+                    table.updateColumnDefinition("readyToShipQty", { title: "R2S" });
+                    table.updateColumnDefinition("transit", { title: "Trn" });
+                    table.updateColumnDefinition("MOQ", { title: "MOQ" });
+                    updateOrderColumnHeader(toOrderCount);
+                    currentMoqPositiveCount = moqCount;
+                    updateTopQtyFilterOptionCounts({
+                        order: orderCount,
+                        mip: mipCount,
+                        r2s: r2sCount,
+                        trn: transitCount,
+                        moq: moqCount,
+                    });
                 }, 0);
                 return sorted;
             },
@@ -2528,7 +2333,7 @@
                 const wrap = document.getElementById('forecast-table-wrap');
                 if (!wrap || typeof table === 'undefined' || !table) return;
                 const top = wrap.getBoundingClientRect().top;
-                const px = Math.max(220, Math.floor(window.innerHeight - top - 12));
+                const px = Math.max(320, Math.floor(window.innerHeight - top - 2));
                 wrap.style.height = px + 'px';
                 if (typeof table.setHeight === 'function') {
                     table.setHeight(px);
@@ -2538,6 +2343,13 @@
             table.on('tableBuilt', function() { requestAnimationFrame(applyForecastTableHeight); });
             table.on('dataLoaded', function() { requestAnimationFrame(applyForecastTableHeight); });
             window.addEventListener('load', function() { requestAnimationFrame(applyForecastTableHeight); });
+            const host = document.querySelector('#forecast-table-wrap')?.closest('.card-body');
+            if (host && typeof ResizeObserver !== 'undefined') {
+                const ro = new ResizeObserver(function() {
+                    requestAnimationFrame(applyForecastTableHeight);
+                });
+                ro.observe(host);
+            }
             requestAnimationFrame(applyForecastTableHeight);
         })();
 
@@ -2571,6 +2383,11 @@
         table.on("rowSelectionChanged", updateBulkEditBadge);
 
         // Populate bulk supplier dropdowns when suppliers load
+        function refreshBulkSupplierSearchSelect() {
+            const sel = document.getElementById('bulk-current-supplier-select');
+            if (!sel || !window.SelectSearchable) return;
+            window.SelectSearchable.refresh(sel);
+        }
         function populateBulkSupplierSelect() {
             const sel = document.getElementById('bulk-current-supplier-select');
             if (!sel) return;
@@ -2581,6 +2398,7 @@
                 opt.textContent = s.name || s.id;
                 sel.appendChild(opt);
             });
+            refreshBulkSupplierSearchSelect();
         }
         loadForecastSuppliers(function() { populateBulkSupplierSelect(); });
 
@@ -2614,9 +2432,10 @@
                 updateBulkEditBadge();
                 btn.disabled = false;
                 const sel = document.getElementById('bulk-current-supplier-select');
-                if (sel) sel.value = '';
-                const dd = bootstrap.Dropdown.getInstance(document.querySelector('#bulkEditCurrentSupplierBtn'));
-                if (dd) dd.hide();
+                if (sel) {
+                    sel.value = '';
+                    sel.dispatchEvent(new Event('change', { bubbles: true }));
+                }
             }).catch(function() { btn.disabled = false; });
         });
 
@@ -2679,10 +2498,49 @@
 
         let currentParentFilter = null;
         let currentColorFilter = null;
+        let currentTwoOrdColorFilter = '';
+        let currentTopQtySignFilters = {
+            order: '',
+            mip: '',
+            r2s: '',
+            trn: '',
+            moq: '',
+        };
         const hideNRYes = false;
         const hideLATERYes = false;
         let currentRowTypeFilter = 'sku';
         let currentStageFilter = '';
+        let isProgrammaticStageHeaderSync = false;
+        let isApplyingCombinedFilters = false;
+        let pendingCombinedFiltersRun = false;
+        function normalizeTwoOrdFilterValue(rawValue) {
+            const raw = (rawValue || '').trim().toLowerCase();
+            if (raw === 'red') return 'neg';
+            if (raw === 'yellow') return 'nonneg';
+            return raw;
+        }
+        function applyTwoOrdColorFilter(rawValue) {
+            currentTwoOrdColorFilter = normalizeTwoOrdFilterValue(rawValue);
+            currentParentFilter = null;
+            if (currentTwoOrdColorFilter) {
+                currentColorFilter = null;
+                const apprLabel = document.getElementById('appr-req-badge-label');
+                if (apprLabel) apprLabel.textContent = 'All';
+            }
+            if (typeof setCombinedFilters === 'function' && table && table.rowManager && table.rowManager.element) {
+                setCombinedFilters();
+            }
+        }
+        window.__fa_applyTwoOrdColorFilter = applyTwoOrdColorFilter;
+        if (!window.__fa_twoOrdChangeBound) {
+            window.__fa_twoOrdChangeBound = true;
+            document.addEventListener('change', function(e) {
+                const t = e && e.target;
+                if (t && t.id === 'two-ord-color-filter') {
+                    applyTwoOrdColorFilter(t.value || '');
+                }
+            });
+        }
         /** INV header: empty=all, 0/zero=exactly 0, >0/gt0=positive */
         let currentInvFilter = '';
         function invHeaderFilterMode(raw) {
@@ -2714,6 +2572,92 @@
         function normalizeStageValue(value) {
             if (value === undefined || value === null) return '';
             return String(value).trim().toLowerCase();
+        }
+        function matchesTwoOrdColorFilter(data) {
+            if (!currentTwoOrdColorFilter) return true;
+            const n = parseFloat(data && data.to_order);
+            const v = Number.isFinite(n) ? n : 0;
+            if (currentTwoOrdColorFilter === 'neg' || currentTwoOrdColorFilter === 'red') return v < 0;
+            if (currentTwoOrdColorFilter === 'nonneg' || currentTwoOrdColorFilter === 'yellow') return v >= 0;
+            return true;
+        }
+        function normalizeQtySignFilterValue(rawValue) {
+            const raw = (rawValue || '').trim().toLowerCase();
+            if (raw === 'pos' || raw === '>0' || raw === 'gt0' || raw === 'positive' || raw === 'yellow' || raw === 'nonneg') return 'pos';
+            return '';
+        }
+        function hasActiveTopQtySignFilter() {
+            return !!(
+                currentTopQtySignFilters.order ||
+                currentTopQtySignFilters.mip ||
+                currentTopQtySignFilters.r2s ||
+                currentTopQtySignFilters.trn ||
+                currentTopQtySignFilters.moq
+            );
+        }
+        function getQtyFilterNumericValue(data, key) {
+            const raw = data && data.raw_data ? data.raw_data : {};
+            if (key === 'order') {
+                const n = parseFloat(data?.two_order_qty ?? raw?.two_order_qty ?? raw?.['two_order_qty']);
+                return Number.isFinite(n) ? n : 0;
+            }
+            if (key === 'mip') {
+                const n = parseFloat(data?.order_given ?? raw?.order_given ?? raw?.['Order Given']);
+                return Number.isFinite(n) ? n : 0;
+            }
+            if (key === 'r2s') {
+                const n = parseFloat(data?.readyToShipQty ?? raw?.readyToShipQty ?? raw?.['readyToShipQty']);
+                return Number.isFinite(n) ? n : 0;
+            }
+            if (key === 'trn') {
+                const n = parseFloat(data?.transit ?? raw?.transit ?? raw?.['Transit']);
+                return Number.isFinite(n) ? n : 0;
+            }
+            if (key === 'moq') {
+                const n = parseFloat(data?.MOQ ?? raw?.MOQ ?? raw?.['Approved QTY']);
+                return Number.isFinite(n) ? n : 0;
+            }
+            return 0;
+        }
+        function matchesTopQtySignFilters(data) {
+            if (!hasActiveTopQtySignFilter()) return true;
+            const keys = ['order', 'mip', 'r2s', 'trn', 'moq'];
+            for (let i = 0; i < keys.length; i++) {
+                const k = keys[i];
+                const mode = normalizeQtySignFilterValue(currentTopQtySignFilters[k]);
+                if (!mode) continue;
+                const v = getQtyFilterNumericValue(data, k);
+                if (mode === 'pos' && !(v > 0)) return false;
+            }
+            return true;
+        }
+        function applyTopQtySignFilter(key, rawValue) {
+            if (!currentTopQtySignFilters || !Object.prototype.hasOwnProperty.call(currentTopQtySignFilters, key)) return;
+            const normalized = normalizeQtySignFilterValue(rawValue);
+            // These 5 top qty filters are mutually exclusive by UX request.
+            if (normalized) {
+                Object.keys(currentTopQtySignFilters).forEach(function(k) {
+                    currentTopQtySignFilters[k] = (k === key) ? normalized : '';
+                });
+                const topQtyFilterIds = {
+                    order: 'order-color-filter-top',
+                    mip: 'mip-color-filter-top',
+                    r2s: 'r2s-color-filter-top',
+                    trn: 'trn-color-filter-top',
+                    moq: 'moq-color-filter-top',
+                };
+                Object.keys(topQtyFilterIds).forEach(function(k) {
+                    if (k === key) return;
+                    const el = document.getElementById(topQtyFilterIds[k]);
+                    if (el && el.value !== '') el.value = '';
+                });
+            } else {
+                currentTopQtySignFilters[key] = '';
+            }
+            currentParentFilter = null;
+            if (typeof setCombinedFilters === 'function' && table && table.rowManager && table.rowManager.element) {
+                setCombinedFilters();
+            }
         }
         function syncParentStageQtyColumns(parentKey) {
             if (!parentKey || typeof table === 'undefined' || !table) return;
@@ -2852,6 +2796,17 @@
         }
 
         function setCombinedFilters() {
+            if (isApplyingCombinedFilters) {
+                pendingCombinedFiltersRun = true;
+                return;
+            }
+            // Tabulator may emit early lifecycle events before rowManager element exists.
+            // Applying filters in that window can throw inside RowManager.getBoundingClientRect.
+            if (!table || !table.rowManager || !table.rowManager.element) {
+                return;
+            }
+            isApplyingCombinedFilters = true;
+            try {
             const allData = table.getData();
             const groupedChildrenMap = {};
             const visibleParentKeys = new Set();
@@ -2887,7 +2842,8 @@
                     let stageMatch = true;
                     if (currentStageFilter) {
                         if (currentStageFilter === '__blank__') {
-                            stageMatch = !childStage || childStage === '';
+                            const childTwoOrd = parseFloat(child.to_order ?? (child.raw_data ? child.raw_data.to_order : 0));
+                            stageMatch = (!childStage || childStage === '') || (Number.isFinite(childTwoOrd) && childTwoOrd < 0);
                         } else if (currentStageFilter === 'transit') {
                             // For transit filter, check if transit value exists and > 0
                             const transitValue = child.raw_data ? child.raw_data["transit"] : child["transit"];
@@ -2901,41 +2857,39 @@
                     }
                     
                     const filterMatch = currentColorFilter === 'red' ?
-                        child.to_order < 0 :
+                        ((parseFloat(child.to_order) || 0) < 0) :
                         currentColorFilter === 'yellow' ?
                         apprReqYellowRowVisible(child) :
                         true;
-                    const orderPositiveMatch = !currentOrderPositiveOnly || isOrderPositiveRow(child);
-                    const mipPositiveMatch = !currentMipPositiveOnly || isMipPositiveRow(child);
-                    const r2sPositiveMatch = !currentR2sPositiveOnly || isR2sPositiveRow(child);
-                    const transitPositiveMatch = !currentTransitPositiveOnly || isTransitPositiveRow(child);
-                    const allGoodMatch = !currentAllGoodOnly;
-                    return nrMatch && laterMatch && nrpMatch && stageMatch && filterMatch && orderPositiveMatch && mipPositiveMatch && r2sPositiveMatch && transitPositiveMatch && allGoodMatch && invHeaderMatchesRow(child);
+                    const twoOrdColorMatch = matchesTwoOrdColorFilter(child);
+                    const qtySignMatch = matchesTopQtySignFilters(child);
+                    return nrMatch && laterMatch && nrpMatch && stageMatch && filterMatch && twoOrdColorMatch && qtySignMatch && invHeaderMatchesRow(child);
                 });
 
                 if (matchingChildren.length > 0) {
                     visibleParentKeys.add(parentKey);
                 }
             });
-            if (currentAllGoodOnly) {
-                allData.forEach(function(item) {
-                    if ((item.is_parent || item.isParent) && !!item.all_good) {
-                        visibleParentKeys.add(item.Parent || item.parentKey || '');
-                    }
-                });
-            }
-
+            try {
             table.setFilter(function(row) {
                 const data = typeof row.getData === 'function' ? row.getData() : row;
 
                 const isChild = !data.is_parent;
                 const isParent = data.is_parent;
+                const twoOrdRaw = data.to_order ?? (data.raw_data ? data.raw_data.to_order : 0);
+                const twoOrdValue = Number.isFinite(parseFloat(twoOrdRaw)) ? parseFloat(twoOrdRaw) : 0;
+                const twoOrdFilterLive = (document.getElementById('two-ord-color-filter')?.value || currentTwoOrdColorFilter || '').trim().toLowerCase();
 
                 const matchesFilter = currentColorFilter === 'red' ?
-                    data.to_order < 0 :
+                    ((parseFloat(data.to_order) || 0) < 0) :
                     currentColorFilter === 'yellow' ?
                     apprReqYellowRowVisible(data) :
                     true;
+                const twoOrdColorMatch = matchesTwoOrdColorFilter(data);
+                const qtySignMatch = matchesTopQtySignFilters(data);
+                // Hard guard: when 2 Ord color filter is set, enforce it before all other checks.
+                if ((twoOrdFilterLive === 'neg' || twoOrdFilterLive === 'red') && !(twoOrdValue < 0)) return false;
+                if ((twoOrdFilterLive === 'nonneg' || twoOrdFilterLive === 'yellow') && !(twoOrdValue >= 0)) return false;
 
                 const dataNR = data.nr || '';
                 let effectiveNR = (dataNR === '' ? 'REQ' : String(dataNR).trim().toUpperCase());
@@ -2953,7 +2907,8 @@
                 let stageMatch = true;
                 if (currentStageFilter) {
                     if (currentStageFilter === '__blank__') {
-                        stageMatch = !dataStage || dataStage === '';
+                        const dataTwoOrd = parseFloat(data.to_order ?? (data.raw_data ? data.raw_data.to_order : 0));
+                        stageMatch = (!dataStage || dataStage === '') || (Number.isFinite(dataTwoOrd) && dataTwoOrd < 0);
                     } else if (currentStageFilter === 'transit') {
                         // For transit filter, check if transit value exists and > 0
                         const transitValue = data.raw_data ? data.raw_data["transit"] : data["transit"];
@@ -2972,30 +2927,21 @@
                         if (currentColorFilter === 'yellow') {
                             return false;
                         }
-                        return data.Parent === currentParentFilter &&
-                            (!currentOrderPositiveOnly || visibleParentKeys.has(data.Parent)) &&
-                            (!currentMipPositiveOnly || visibleParentKeys.has(data.Parent)) &&
-                            (!currentR2sPositiveOnly || visibleParentKeys.has(data.Parent)) &&
-                            (!currentTransitPositiveOnly || visibleParentKeys.has(data.Parent)) &&
-                            (!currentAllGoodOnly || isAllGoodRow(data));
+                        if (currentTwoOrdColorFilter && !matchesTwoOrdColorFilter(data)) {
+                            return false;
+                        }
+                        if (!qtySignMatch) {
+                            return false;
+                        }
+                        return data.Parent === currentParentFilter;
                     } else {
-                        return data.Parent === currentParentFilter && matchesFilter && matchesNR && matchesLATER && nrpMatch && stageMatch &&
-                            (!currentOrderPositiveOnly || isOrderPositiveRow(data)) &&
-                            (!currentMipPositiveOnly || isMipPositiveRow(data)) &&
-                            (!currentR2sPositiveOnly || isR2sPositiveRow(data)) &&
-                            (!currentTransitPositiveOnly || isTransitPositiveRow(data)) &&
-                            (!currentAllGoodOnly || isAllGoodRow(data)) &&
+                        return data.Parent === currentParentFilter && matchesFilter && twoOrdColorMatch && qtySignMatch && matchesNR && matchesLATER && nrpMatch && stageMatch &&
                             invHeaderMatchesRow(data);
                     }
                 }
 
                 if (isChild) {
-                    const showChild = matchesFilter && matchesNR && matchesLATER && nrpMatch && stageMatch &&
-                        (!currentOrderPositiveOnly || isOrderPositiveRow(data)) &&
-                        (!currentMipPositiveOnly || isMipPositiveRow(data)) &&
-                        (!currentR2sPositiveOnly || isR2sPositiveRow(data)) &&
-                        (!currentTransitPositiveOnly || isTransitPositiveRow(data)) &&
-                        (!currentAllGoodOnly || isAllGoodRow(data)) &&
+                    const showChild = matchesFilter && twoOrdColorMatch && qtySignMatch && matchesNR && matchesLATER && nrpMatch && stageMatch &&
                         invHeaderMatchesRow(data);
                     if (currentRowTypeFilter === 'parent') return false;
                     if (currentRowTypeFilter === 'sku') return showChild;
@@ -3006,6 +2952,9 @@
                     if (currentColorFilter === 'yellow') {
                         return false;
                     }
+                    if (currentTwoOrdColorFilter && !matchesTwoOrdColorFilter(data)) {
+                        return false;
+                    }
                     if (currentRowTypeFilter === 'sku') return false;
                     // When NRP multiselect is partial (not all types), only show parents that have
                     // at least one visible child matching filters — otherwise every parent stayed visible
@@ -3014,11 +2963,8 @@
                         (nrpSel !== null) ||
                         !!invHeaderFilterMode(currentInvFilter) ||
                         !!currentStageFilter ||
-                        !!currentOrderPositiveOnly ||
-                        !!currentMipPositiveOnly ||
-                        !!currentR2sPositiveOnly ||
-                        !!currentTransitPositiveOnly ||
-                        !!currentAllGoodOnly;
+                        !!currentTwoOrdColorFilter ||
+                        hasActiveTopQtySignFilter();
                     if (useChildDerivedParentVisibility) {
                         return visibleParentKeys.has(data.Parent);
                     }
@@ -3031,6 +2977,10 @@
 
                 return false;
             });
+            } catch (err) {
+                console.warn('[Forecast] skipped filter apply (table not ready):', err);
+                return;
+            }
 
             // update visible count
             setTimeout(() => {
@@ -3275,6 +3225,17 @@
             ).length;
 
             document.getElementById('yellow-count-box').textContent = `Appr Req: ${yellowCount}`;
+            } finally {
+                isApplyingCombinedFilters = false;
+                if (pendingCombinedFiltersRun) {
+                    pendingCombinedFiltersRun = false;
+                    if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
+                        window.requestAnimationFrame(() => setCombinedFilters());
+                    } else {
+                        setTimeout(() => setCombinedFilters(), 0);
+                    }
+                }
+            }
         }
 
         function updateParentTotalsBasedOnVisibleRows() {
@@ -3799,6 +3760,80 @@
                     }, 150);
                 });
 
+            $(document).off('click', '.appr-req-move-dot').on('click', '.appr-req-move-dot', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+
+                const $btn = $(this);
+                if ($btn.data('busy')) return;
+
+                const sku = String($btn.data('sku') || '').trim();
+                const parent = String($btn.data('parent') || '').trim();
+                if (!sku) return;
+
+                const row = table.getRows().find(r => {
+                    const d = r.getData();
+                    return String(d.SKU || '').trim() === sku && String(d.Parent || '').trim() === parent;
+                });
+
+                if (!row) {
+                    alert('Row not found.');
+                    return;
+                }
+
+                const rowData = row.getData() || {};
+                const raw = rowData.raw_data || {};
+                const moqVal = parseFloat(rowData.MOQ ?? raw.MOQ ?? raw['Approved QTY'] ?? 0);
+                if (!Number.isFinite(moqVal) || moqVal <= 0) {
+                    alert('MOQ is empty or zero.');
+                    return;
+                }
+
+                $btn.data('busy', true).css('opacity', '0.5').css('cursor', 'wait');
+
+                updateForecastField({
+                        sku: sku,
+                        parent: parent,
+                        column: 'Stage',
+                        value: 'to_order_analysis'
+                    },
+                    function() {
+                        const updatedRaw = Object.assign({}, raw, {
+                            stage: 'to_order_analysis',
+                            two_order_qty: moqVal,
+                            appr_req_qty: 0,
+                            order_given: 0,
+                            readyToShipQty: 0,
+                            transit: 0
+                        });
+
+                        row.update({
+                            stage: 'to_order_analysis',
+                            two_order_qty: moqVal,
+                            appr_req_qty: 0,
+                            order_given: 0,
+                            readyToShipQty: 0,
+                            transit: 0,
+                            raw_data: updatedRaw
+                        }, true);
+
+                        syncParentStageQtyColumns(rowData.Parent || rowData.parentKey);
+                        row.getCells().forEach(function(cell) {
+                            const f = cell.getField();
+                            if (['stage', 'order_given', 'readyToShipQty', 'transit', 'to_order', 'two_order_qty', 'appr_req_qty'].includes(f)) {
+                                cell.reformat();
+                            }
+                        });
+                        setCombinedFilters();
+                        $btn.data('busy', false).css('opacity', '1').css('cursor', 'pointer');
+                    },
+                    function() {
+                        $btn.data('busy', false).css('opacity', '1').css('cursor', 'pointer');
+                        alert('Failed to move MOQ to Order.');
+                    }
+                );
+            });
+
             // Handle notes edit modal save
             $('#saveNotesBtn').on('click', function() {
                 const newValue = $('#notesInput').val().trim();
@@ -3978,12 +4013,36 @@
                 setCombinedFilters();
             });
 
+            const twoOrdFilterEl = document.getElementById('two-ord-color-filter');
+            if (twoOrdFilterEl && twoOrdFilterEl.value) {
+                window.__fa_applyTwoOrdColorFilter(twoOrdFilterEl.value);
+            }
+            const topQtyFilterConfig = [
+                { id: 'order-color-filter-top', key: 'order' },
+                { id: 'mip-color-filter-top', key: 'mip' },
+                { id: 'r2s-color-filter-top', key: 'r2s' },
+                { id: 'trn-color-filter-top', key: 'trn' },
+                { id: 'moq-color-filter-top', key: 'moq' },
+            ];
+            topQtyFilterConfig.forEach(function(cfg) {
+                const el = document.getElementById(cfg.id);
+                if (!el) return;
+                if (el.value) applyTopQtySignFilter(cfg.key, el.value);
+                el.addEventListener('change', function(e) {
+                    applyTopQtySignFilter(cfg.key, e && e.target ? e.target.value : '');
+                });
+            });
+
             // Stage filter (toolbar) — keep in sync with Stage column header filter
             document.getElementById('stage-filter').addEventListener('change', function(e) {
                 currentStageFilter = normalizeStageValue(e.target.value);
                 const tbl = Tabulator.findTable("#forecast-table")[0];
                 if (tbl && typeof tbl.setHeaderFilterValue === 'function') {
+                    isProgrammaticStageHeaderSync = true;
                     tbl.setHeaderFilterValue("stage", currentStageFilter || "");
+                    setTimeout(function() {
+                        isProgrammaticStageHeaderSync = false;
+                    }, 0);
                 }
                 setCombinedFilters();
             });
@@ -4015,6 +4074,9 @@
                         setCombinedFilters();
                     }
                     if (e.target.closest && e.target.closest('.tabulator-col[tabulator-field="stage"]')) {
+                        if (isProgrammaticStageHeaderSync) {
+                            return;
+                        }
                         const tbl = Tabulator.findTable("#forecast-table")[0];
                         if (tbl && typeof tbl.getHeaderFilterValue === 'function') {
                             let v = tbl.getHeaderFilterValue("stage");
