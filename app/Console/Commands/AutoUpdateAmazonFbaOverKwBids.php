@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Console\Concerns\CalculatesAmazonFbaBidUpdates;
 use App\Http\Controllers\Campaigns\AmazonSpBudgetController;
 use Illuminate\Console\Command;
 use App\Models\AmazonSpCampaignReport;
@@ -13,6 +14,8 @@ use Illuminate\Support\Facades\Schema;
 
 class AutoUpdateAmazonFbaOverKwBids extends Command
 {
+    use CalculatesAmazonFbaBidUpdates;
+
     protected $signature = 'amazon-fba:auto-update-over-kw-bids {--dry-run : Run without updating Amazon} {--campaign-id= : Only update this campaign ID}';
     protected $description = 'Auto-update Amazon FBA over-utilized keyword bids';
 
@@ -101,7 +104,11 @@ class AutoUpdateAmazonFbaOverKwBids extends Command
 
         $candidates = $this->getAutomateAmzUtilizedBgtKw();
         $candidates = array_values(array_filter($candidates, function ($c) {
-            return !empty($c->campaign_id) && isset($c->sbid) && is_numeric($c->sbid) && (float) $c->sbid > 0;
+            return !empty($c->campaign_id)
+                && isset($c->current_bid, $c->sbid)
+                && is_numeric($c->sbid)
+                && (float) $c->sbid > 0
+                && abs((float) $c->sbid - (float) $c->current_bid) >= 0.005;
         }));
 
         $specificCampaignId = $this->option('campaign-id');
@@ -147,10 +154,30 @@ class AutoUpdateAmazonFbaOverKwBids extends Command
             return 0;
         }
 
-        $this->info('Eligible campaigns: ' . count($candidates));
-        if ($verbose) {
+        $this->info('Eligible campaigns (with bid change): ' . count($candidates));
+        if ($dryRun) {
+            foreach ($candidates as $c) {
+                $this->line(sprintf(
+                    ' - %s: bid=%.2f ub7=%.2f ub1=%.2f inv=%d → would update to: $%.2f',
+                    $c->campaign_id,
+                    (float) $c->current_bid,
+                    (float) $c->ub7,
+                    (float) $c->ub1,
+                    (int) $c->inv,
+                    (float) $c->sbid
+                ));
+            }
+        } elseif ($verbose) {
             foreach (array_slice($candidates, 0, 20) as $c) {
-                $this->info(" - {$c->campaign_id}: bid={$c->sbid} ub7={$c->ub7} ub1={$c->ub1} inv={$c->inv}");
+                $this->info(sprintf(
+                    ' - %s: current=%.2f → new=%.2f ub7=%.2f ub1=%.2f inv=%d',
+                    $c->campaign_id,
+                    (float) $c->current_bid,
+                    (float) $c->sbid,
+                    (float) $c->ub7,
+                    (float) $c->ub1,
+                    (int) $c->inv
+                ));
             }
             if (count($candidates) > 20) {
                 $this->info(' ... (showing first 20 candidates only)');
@@ -299,23 +326,19 @@ class AutoUpdateAmazonFbaOverKwBids extends Command
                 $ub7 = $budget > 0 ? ($l7_spend / ($budget * 7)) * 100 : 0;
                 $ub1 = $budget > 0 ? ($l1_spend / $budget) * 100 : 0;
 
-                if ($ub7 <= 90 || $ub1 <= 90) {
+                if ($ub1 <= self::OVER_UTILIZED_THRESHOLD) {
                     continue;
                 }
 
-                // Existing business rule: over-utilized bids are based on L1 CPC (decrease) unless L7 CPC is 0.
-                $newBid = ($l7_cpc === 0.0)
-                    ? 0.50
-                    : (floor($l1_cpc * 0.90 * 100) / 100);
-
-                // Amazon-ish sanity clamp.
-                $newBid = max(0.01, min(1000.0, (float) $newBid));
-                if ($newBid <= 0) {
+                $currentBid = $this->resolveCurrentBidFromReport($matchedCampaignL7, $matchedCampaignL1, $l7_cpc, $l1_cpc);
+                $newBid = $this->calculateOverUtilizedBid($currentBid, $ub1, $inv);
+                if ($newBid <= 0 || abs($newBid - $currentBid) < 0.001) {
                     continue;
                 }
 
                 $candidate = (object) [
                     'campaign_id' => (string) $campaignId,
+                    'current_bid' => round($currentBid, 2),
                     'sbid' => (float) $newBid,
                     'ub7' => round($ub7, 2),
                     'ub1' => round($ub1, 2),
@@ -326,14 +349,12 @@ class AutoUpdateAmazonFbaOverKwBids extends Command
                     'inv' => $inv,
                 ];
 
-                // Deduplicate by campaign_id (keep the most "over" candidate).
+                // Deduplicate by campaign_id (keep highest ub1 = most over-utilized).
                 if (!isset($candidatesByCampaignId[$candidate->campaign_id])) {
                     $candidatesByCampaignId[$candidate->campaign_id] = $candidate;
                 } else {
                     $existing = $candidatesByCampaignId[$candidate->campaign_id];
-                    $existingOverAmount = floatval($existing->ub7) - 90.0;
-                    $candidateOverAmount = floatval($candidate->ub7) - 90.0;
-                    if ($candidateOverAmount > $existingOverAmount) {
+                    if (floatval($candidate->ub1) > floatval($existing->ub1)) {
                         $candidatesByCampaignId[$candidate->campaign_id] = $candidate;
                     }
                 }
@@ -370,12 +391,18 @@ class AutoUpdateAmazonFbaOverKwBids extends Command
 
         foreach (array_chunk($candidates, $chunkSize) as $chunkIndex => $chunk) {
             $bidByCampaignId = [];
+            $currentBidByCampaignId = [];
+            $ub1ByCampaignId = [];
+            $invByCampaignId = [];
             $campaignIds = [];
             $bids = [];
             foreach ($chunk as $c) {
                 $cid = (string) $c->campaign_id;
                 $bid = (float) $c->sbid;
                 $bidByCampaignId[$cid] = $bid;
+                $currentBidByCampaignId[$cid] = (float) ($c->current_bid ?? 0);
+                $ub1ByCampaignId[$cid] = (float) ($c->ub1 ?? 0);
+                $invByCampaignId[$cid] = (int) ($c->inv ?? 0);
                 $campaignIds[] = $cid;
                 $bids[] = $bid;
             }
@@ -386,11 +413,6 @@ class AutoUpdateAmazonFbaOverKwBids extends Command
 
             if ($dryRun) {
                 $this->warn('DRY RUN: Skipping API update for chunk #' . $chunkIndex);
-                if ($verbose) {
-                    foreach ($chunk as $c) {
-                        $this->info(" DRY: {$c->campaign_id} -> {$c->sbid}");
-                    }
-                }
                 continue;
             }
 
@@ -420,6 +442,22 @@ class AutoUpdateAmazonFbaOverKwBids extends Command
                     $result = $result->getData(true);
                 }
 
+                $status = is_array($result) ? (int) ($result['status'] ?? 0) : 0;
+                $errMsg = is_array($result) ? (string) ($result['message'] ?? $result['error'] ?? '') : '';
+
+                if ($status !== 200 && $status !== 207) {
+                    foreach ($currentCampaignIds as $cid) {
+                        $failedCampaignIds[$cid] = true;
+                    }
+                    $this->error("Chunk #{$chunkIndex} attempt {$attempt}: keywords API status {$status}" . ($errMsg !== '' ? " — {$errMsg}" : ''));
+                    $retryable = $this->hasRateLimitOrServerFailure([['error' => $errMsg]]);
+                    if (!$retryable || $attempt >= $maxRetries) {
+                        break;
+                    }
+
+                    continue;
+                }
+
                 $failed = is_array($result) ? ($result['failed'] ?? []) : [];
                 $skipped = is_array($result) ? ($result['skipped'] ?? []) : [];
 
@@ -435,8 +473,32 @@ class AutoUpdateAmazonFbaOverKwBids extends Command
                 }
 
                 if (empty($failed)) {
+                    $skippedIdsThisRound = [];
+                    foreach ($skipped as $s) {
+                        if (!empty($s['campaign_id'])) {
+                            $skippedIdsThisRound[(string) $s['campaign_id']] = true;
+                        }
+                    }
+                    foreach ($currentCampaignIds as $cid) {
+                        if (!empty($skippedIdsThisRound[$cid])) {
+                            continue;
+                        }
+                        $old = $currentBidByCampaignId[$cid] ?? null;
+                        $new = $bidByCampaignId[$cid] ?? null;
+                        Log::info('FBA Bid Update', [
+                            'campaign_id' => $cid,
+                            'current_bid' => $old,
+                            'utilization_1d' => $ub1ByCampaignId[$cid] ?? null,
+                            'inventory' => $invByCampaignId[$cid] ?? null,
+                            'new_bid' => $new,
+                            'action' => ($old !== null && $new !== null && abs((float) $old - (float) $new) >= 0.005) ? 'UPDATED' : 'NO_CHANGE',
+                        ]);
+                        if ($verbose) {
+                            $this->info("✓ Updated campaign {$cid} bid {$old} → {$new}");
+                        }
+                    }
                     if ($verbose) {
-                        $this->info("Chunk #{$chunkIndex} succeeded (no failed campaigns).");
+                        $this->info("Chunk #{$chunkIndex} succeeded (HTTP {$status}).");
                     }
                     break;
                 }
@@ -449,7 +511,6 @@ class AutoUpdateAmazonFbaOverKwBids extends Command
                     break;
                 }
 
-                // Retry only the failed campaigns we still have bids for.
                 $retryCampaignIds = [];
                 $retryBids = [];
                 foreach ($failed as $f) {
