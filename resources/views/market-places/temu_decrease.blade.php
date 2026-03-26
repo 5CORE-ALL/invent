@@ -2460,11 +2460,14 @@
             // Weighted GROI% = (Total Profit / Total LP/COGS) × 100
             const avgGroi = totalLp > 0 ? (totalProfit / totalLp) * 100 : (totalProducts > 0 ? totalGroi / totalProducts : 0);
             const avgAds = totalProducts > 0 ? totalAds / totalProducts : 0;
-            // Use aggregate_ads_percent from backend if available (exact match with all-marketplace-master)
-            // Otherwise calculate as fallback: (Total Ad Spend L30 / Total Revenue) * 100
-            if (badgeAvgAds == null || badgeAvgAds === undefined) {
-                const aggregateAdsPercent = totalRevenue > 0 ? (totalSpendL30 / totalRevenue) * 100 : 0;
-                badgeAvgAds = aggregateAdsPercent;
+            // Prefer backend aggregate_ads_percent only when it is a valid positive number.
+            // If backend sends 0/invalid while table has spend+sales, compute ADS% from table totals.
+            // Primary source is spend_l30; fall back to spend snapshot when spend_l30 is unavailable.
+            const spendForAdsPercent = totalSpendL30 > 0 ? totalSpendL30 : totalSpend;
+            const computedAggregateAdsPercent = totalRevenue > 0 ? (spendForAdsPercent / totalRevenue) * 100 : 0;
+            const hasValidBackendAdsPercent = Number.isFinite(Number(badgeAvgAds)) && Number(badgeAvgAds) > 0;
+            if (!hasValidBackendAdsPercent) {
+                badgeAvgAds = computedAggregateAdsPercent;
             }
             // NPFT% = GPFT% - ADS% (simple formula, not weighted)
             // CRITICAL: Always use badgeAvgAds (aggregate Ads% from backend) - never use avgAds (simple average)
@@ -2473,8 +2476,8 @@
             if (badgeAvgAds != null && badgeAvgAds !== undefined) {
                 adsPercentForNpft = badgeAvgAds;
             } else if (totalRevenue > 0) {
-                // Fallback: calculate same way as backend
-                adsPercentForNpft = (totalSpendL30 / totalRevenue) * 100;
+                // Fallback: use same source selection as badge (spend_l30, else spend snapshot)
+                adsPercentForNpft = (spendForAdsPercent / totalRevenue) * 100;
             }
             // Use weighted avgGprft for accurate NPFT calculation
             const avgNpft = avgGprft - adsPercentForNpft;
@@ -2491,11 +2494,22 @@
             // Calculate average views
             const avgViews = totalProducts > 0 ? totalViews / totalProducts : 0;
             
-            // Update badges (Total Orders, Quantity, Revenue from API = same as sales page when available)
+            // Update badges (prefer backend summary; fall back to table totals when backend returns empty/zeroed summary)
             if (salesSummaryFromBackend) {
-                $('#total-orders-badge').text('Orders: ' + (salesSummaryFromBackend.total_orders || 0).toLocaleString());
-                $('#total-quantity-badge').text('QTY: ' + (salesSummaryFromBackend.total_quantity || 0).toLocaleString());
-                $('#total-revenue-badge').text('Sales: $' + (salesSummaryFromBackend.total_revenue != null ? Math.round(Number(salesSummaryFromBackend.total_revenue)).toLocaleString() : '0'));
+                const backendOrders = Number(salesSummaryFromBackend.total_orders || 0);
+                const backendQuantity = Number(salesSummaryFromBackend.total_quantity || 0);
+                const backendRevenue = Number(salesSummaryFromBackend.total_revenue || 0);
+                const hasBackendSalesSummary = (backendOrders > 0 || backendQuantity > 0 || backendRevenue > 0);
+
+                if (hasBackendSalesSummary) {
+                    $('#total-orders-badge').text('Orders: ' + backendOrders.toLocaleString());
+                    $('#total-quantity-badge').text('QTY: ' + backendQuantity.toLocaleString());
+                    $('#total-revenue-badge').text('Sales: $' + Math.round(backendRevenue).toLocaleString());
+                } else {
+                    $('#total-orders-badge').text('Orders: 0');
+                    $('#total-quantity-badge').text('QTY: ' + totalQuantity.toLocaleString());
+                    $('#total-revenue-badge').text('Sales: $' + Math.round(totalRevenue).toLocaleString());
+                }
             } else {
                 $('#total-orders-badge').text('Orders: 0');
                 $('#total-quantity-badge').text('QTY: ' + totalQuantity.toLocaleString());
@@ -2658,8 +2672,10 @@
                     // Use exact aggregate_ads_percent from backend (matches all-marketplace-master)
                     // This is the authoritative value - always use it for NPFT calculation
                     if (response.aggregate_ads_percent != null && response.aggregate_ads_percent !== undefined) {
-                        badgeAvgAds = parseFloat(response.aggregate_ads_percent);
-                        console.log('badgeAvgAds set from backend:', badgeAvgAds);
+                        const parsedAggregateAds = parseFloat(response.aggregate_ads_percent);
+                        badgeAvgAds = Number.isFinite(parsedAggregateAds) ? parsedAggregateAds : null;
+                    } else {
+                        badgeAvgAds = null;
                     }
                     return response.data;
                 }
@@ -3083,7 +3099,7 @@
                         const value = price > 0 ? ((price * 0.96 - lp - temuShip) / price) * 100 : 0;
                         const colorClass = getPftColor(value);
                         const dotBtn = sku ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${sku}" data-metric="profit_percent" title="View GPRFT% chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #ff1493;"></span></button>` : '';
-                        return `<span class="dil-percent-value ${colorClass}">${value.toFixed(1)}%</span> ${dotBtn}`.trim();
+                        return `<span class="dil-percent-value ${colorClass}">${Math.round(value)}%</span> ${dotBtn}`.trim();
                     }
                 },
                 {
@@ -3147,7 +3163,7 @@
                         const value = parseFloat(cell.getValue()) || 0;
                         const colorClass = getRoiColor(value);
                         const dotBtn = sku ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${sku}" data-metric="roi_percent" title="View GROI% chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #6f42c1;"></span></button>` : '';
-                        return `<span class="dil-percent-value ${colorClass}">${value.toFixed(1)}%</span> ${dotBtn}`.trim();
+                        return `<span class="dil-percent-value ${colorClass}">${Math.round(value)}%</span> ${dotBtn}`.trim();
                     }
                 },
 
@@ -3164,7 +3180,7 @@
                         const value = parseFloat(cell.getValue()) || 0;
                         const colorClass = getPftColor(value);
                         const dotBtn = sku ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${sku}" data-metric="npft_percent" title="View NPFT% chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #28a745;"></span></button>` : '';
-                        return `<span class="dil-percent-value ${colorClass}">${value.toFixed(1)}%</span> ${dotBtn}`.trim();
+                        return `<span class="dil-percent-value ${colorClass}">${Math.round(value)}%</span> ${dotBtn}`.trim();
                     }
                 },
                 {
@@ -3178,7 +3194,7 @@
                         const value = parseFloat(cell.getValue()) || 0;
                         const colorClass = getRoiColor(value);
                         const dotBtn = sku ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${sku}" data-metric="nroi_percent" title="View NROI% chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #17a2b8;"></span></button>` : '';
-                        return `<span class="dil-percent-value ${colorClass}">${value.toFixed(1)}%</span> ${dotBtn}`.trim();
+                        return `<span class="dil-percent-value ${colorClass}">${Math.round(value)}%</span> ${dotBtn}`.trim();
                     }
                 },
                 {

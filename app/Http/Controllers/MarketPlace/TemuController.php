@@ -2496,24 +2496,26 @@ class TemuController extends Controller
             if ($isL7Period && !$hasL7Rows) {
                 $salesSource->where('purchase_date', '>=', Carbon::now()->subDays(7));
             }
-
-            $allowedRawSkus = $salesSource->select('contribution_sku')->distinct()->get()
-                ->filter(function ($r) use ($normalizeSku, $normalizedPmSet) {
-                    return isset($normalizedPmSet[$normalizeSku($r->contribution_sku ?? '')]);
-                })
-                ->pluck('contribution_sku')
-                ->unique()
-                ->values()
-                ->all();
-            $salesOrderRows = $salesSource->whereIn('contribution_sku', $allowedRawSkus)
-                ->get(['contribution_sku', 'order_id', 'quantity_purchased', 'base_price_total']);
+            $salesOrderRows = $salesSource->get(['contribution_sku', 'order_id', 'quantity_purchased', 'base_price_total']);
             $salesTotalOrders = 0;
             $salesTotalQuantity = 0;
             $salesTotalRevenue = 0.0;
             foreach ($salesOrderRows as $row) {
-                if (trim((string)($row->contribution_sku ?? '')) === '' || trim((string)($row->order_id ?? '')) === '') {
+                $rawSku = trim((string) ($row->contribution_sku ?? ''));
+                $orderId = trim((string) ($row->order_id ?? ''));
+                if ($rawSku === '' || $orderId === '') {
                     continue;
                 }
+
+                // Keep summary SKU matching identical to row-level L30/L7 mapping
+                // so badge totals stay in sync with the table.
+                $normalizedRowSku = $normalizeSku($rawSku);
+                $normalizedRowSkuNoSpace = str_replace(' ', '', $normalizedRowSku);
+                $matchesPmSku = isset($normalizedPmSet[$normalizedRowSku]) || isset($noSpaceToNormalized[$normalizedRowSkuNoSpace]);
+                if (!$matchesPmSku) {
+                    continue;
+                }
+
                 $salesTotalOrders++;
                 $qty = (int)($row->quantity_purchased ?? 0);
                 $base = (float)($row->base_price_total ?? 0);
