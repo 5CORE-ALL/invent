@@ -213,6 +213,16 @@ class WalmartService
         return $this->submitMpItemFeed($feedXml, $sku, 'Walmart bullet points');
     }
 
+    /**
+     * Product description uses the same MP_ITEM feed fields as marketing copy (truncate in caller if needed).
+     *
+     * @return array{success:bool,message:string,feed_id?:string,feed_status?:string,response?:mixed}
+     */
+    public function updateProductDescription(string $identifier, string $description): array
+    {
+        return $this->updateBulletPoints($identifier, $description);
+    }
+
     private function buildBulletFeedXml(string $sku, string $bulletText): string
     {
         $escapedSku = htmlspecialchars($sku, ENT_XML1);

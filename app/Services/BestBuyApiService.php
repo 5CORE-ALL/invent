@@ -142,4 +142,12 @@ class BestBuyApiService
             return ['success' => false, 'message' => $e->getMessage()];
         }
     }
+
+    /**
+     * @return array{success: bool, message: string}
+     */
+    public function updateProductDescription(string $sku, string $description): array
+    {
+        return $this->updateBulletPoints($sku, $description);
+    }
 }

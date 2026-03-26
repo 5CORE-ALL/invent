@@ -908,4 +908,11 @@ public function getStock(array $skuCodes)
         }
     }
 
+    /**
+     * @return array{success: bool, message: string}
+     */
+    public function updateProductDescription(string $identifier, string $description): array
+    {
+        return $this->updateBulletPoints($identifier, $description);
+    }
 }

@@ -209,6 +209,97 @@ class ShopifyApiService
     }
 
     /**
+     * Description Master: set body_html to Key Features (from bullet lines) + long description, preserving title.
+     *
+     * @return array{success: bool, message: string}
+     */
+    public function updateProductDescriptionWithBullets(string $identifier, string $bulletPointsPlain, string $descriptionPlain): array
+    {
+        $combined = ShopifyBulletPointsFormatter::combineBulletPointsAndDescription($bulletPointsPlain, $descriptionPlain);
+        if (trim($combined) === '') {
+            return ['success' => false, 'message' => 'Nothing to push: add bullets (Bullet Points Master) and/or description text.'];
+        }
+
+        try {
+            $domain = config('services.shopify.store_url') ?: config('services.shopify.domain');
+            $token = config('services.shopify.access_token') ?: config('services.shopify.password');
+            if (! $domain || ! $token) {
+                return ['success' => false, 'message' => 'Shopify credentials not configured.'];
+            }
+
+            $domain = preg_replace('#^https?://#', '', $domain);
+            $domain = rtrim($domain, '/');
+
+            $trim = trim($identifier);
+            $shopifySku = ShopifySku::where('sku', $trim)
+                ->orWhere('sku', strtoupper($trim))
+                ->orWhere('sku', strtolower($trim))
+                ->first();
+            if (! $shopifySku) {
+                $shopifySku = ShopifySku::where('variant_id', $trim)->first();
+            }
+
+            if (! $shopifySku || ! $shopifySku->variant_id) {
+                return ['success' => false, 'message' => 'Shopify variant mapping not found for SKU or variant_id.'];
+            }
+
+            $variantUrl = "https://{$domain}/admin/api/2024-01/variants/{$shopifySku->variant_id}.json";
+            $variantRes = $this->retryOnRateLimit(function () use ($token, $variantUrl) {
+                return Http::withHeaders([
+                    'X-Shopify-Access-Token' => $token,
+                    'Content-Type' => 'application/json',
+                ])->timeout(30)->get($variantUrl);
+            });
+
+            if (! $variantRes->successful()) {
+                $msg = $variantRes->status() === 429
+                    ? 'Variant lookup rate limited after retries.'
+                    : 'Variant lookup failed: '.$variantRes->body();
+
+                return ['success' => false, 'message' => $msg];
+            }
+
+            $productId = $variantRes->json('variant.product_id');
+            if (! $productId) {
+                return ['success' => false, 'message' => 'Product ID missing.'];
+            }
+
+            usleep(500000);
+
+            $title = $this->getProductTitle($domain, $token, $productId);
+            if ($title === '') {
+                return ['success' => false, 'message' => 'Could not load product title (Shopify rate limit or API error).'];
+            }
+
+            $productUrl = "https://{$domain}/admin/api/2024-01/products/{$productId}.json";
+            $updateRes = $this->retryOnRateLimit(function () use ($token, $productUrl, $productId, $combined, $title) {
+                return Http::withHeaders([
+                    'X-Shopify-Access-Token' => $token,
+                    'Content-Type' => 'application/json',
+                ])->timeout(30)->put($productUrl, [
+                    'product' => [
+                        'id' => $productId,
+                        'title' => $title,
+                        'body_html' => $combined,
+                    ],
+                ]);
+            });
+
+            if ($updateRes->successful()) {
+                return ['success' => true, 'message' => 'Shopify product description (bullets + copy) updated.'];
+            }
+
+            $errBody = $updateRes->status() === 429
+                ? 'Shopify update rate limited after retries.'
+                : $updateRes->body();
+
+            return ['success' => false, 'message' => 'Shopify update failed: '.$errBody];
+        } catch (\Throwable $e) {
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    /**
      * Retry HTTP calls when Shopify returns 429 Too Many Requests.
      */
     private function retryOnRateLimit(callable $call, int $maxRetries = 3): Response

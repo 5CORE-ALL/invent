@@ -462,6 +462,21 @@ XML;
     }
 
     /**
+     * Uses the same key-features update path; description is split into lines.
+     *
+     * @return array{success: bool, message: string}
+     */
+    public function updateProductDescription(string $identifier, string $description): array
+    {
+        $description = trim($description);
+        if ($description === '') {
+            return ['success' => false, 'message' => 'Description is required.'];
+        }
+
+        return $this->updateBulletPoints($identifier, $description);
+    }
+
+    /**
      * @param  list<string>  $features
      */
     private function submitKeyFeaturesUpdate(string $token, string $sku, array $features): ?string

@@ -5,8 +5,8 @@ namespace App\Services\Support;
 /**
  * Phase 1 (Bullet Points Master): overwrites Shopify product `body_html` with formatted bullets only.
  *
- * Phase 2 (future — Description Master): merge long-form description below this block in the same
- * `body_html` field (bullets at top, description at bottom). Reuse or extend this formatter then.
+ * Phase 2 (Description Master): merge long-form description below Key Features in the same
+ * `body_html` field (bullets at top, description at bottom).
  */
 final class ShopifyBulletPointsFormatter
 {
@@ -45,5 +45,37 @@ final class ShopifyBulletPointsFormatter
         }
 
         return false;
+    }
+
+    /**
+     * Long-form copy as HTML (escaped, line breaks preserved).
+     */
+    public static function formatLongDescriptionHtml(string $description): string
+    {
+        $d = trim($description);
+        if ($d === '') {
+            return '';
+        }
+
+        return '<div class="product-description-master">'
+            .nl2br(htmlspecialchars($d, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'), false)
+            .'</div>';
+    }
+
+    /**
+     * Shopify body_html: Key Features block (if any bullet lines) + long description (if non-empty).
+     */
+    public static function combineBulletPointsAndDescription(string $bulletPointsPlain, string $descriptionPlain): string
+    {
+        $parts = [];
+        if (self::hasAnyBulletLine($bulletPointsPlain)) {
+            $parts[] = self::formatBodyHtml($bulletPointsPlain);
+        }
+        $descHtml = self::formatLongDescriptionHtml($descriptionPlain);
+        if ($descHtml !== '') {
+            $parts[] = $descHtml;
+        }
+
+        return implode("\n\n", array_filter($parts));
     }
 }

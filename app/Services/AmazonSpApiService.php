@@ -3107,4 +3107,102 @@ class AmazonSpApiService
 
         return ['success' => false, 'message' => (string) $lastError];
     }
+
+    /**
+     * PATCH listing product_description (SP-API Listings Items).
+     *
+     * @return array{success: bool, message: string}
+     */
+    public function updateProductDescription(string $identifier, string $description): array
+    {
+        $sku = $this->resolveAmazonSellerSkuForBullets($identifier);
+        $description = trim($description);
+        if ($sku === '' || $description === '') {
+            return ['success' => false, 'message' => 'SKU (or ASIN from amazon_metrics) and description are required.'];
+        }
+
+        $value = [[
+            'value' => $description,
+            'language_tag' => 'en_US',
+        ]];
+
+        $sellerId = config('services.amazon_sp.seller_id');
+        if (empty($sellerId)) {
+            return ['success' => false, 'message' => 'Amazon Seller ID is not configured.'];
+        }
+
+        $amazonSku = null;
+        $productType = null;
+        $lastError = null;
+
+        for ($attempt = 1; $attempt <= 2; $attempt++) {
+            try {
+                $accessToken = $this->getAccessToken($attempt > 1);
+                if (empty($accessToken)) {
+                    return ['success' => false, 'message' => 'Failed to get Amazon access token.'];
+                }
+
+                if ($amazonSku === null) {
+                    $amazonSku = $this->findAmazonSkuFormat($sku, $accessToken);
+                    if (empty($amazonSku)) {
+                        return ['success' => false, 'message' => 'SKU not found in Amazon.'];
+                    }
+                }
+
+                if ($productType === null) {
+                    $productType = $this->getAmazonProductType($sku, $amazonSku, $accessToken);
+                    if (empty($productType)) {
+                        return ['success' => false, 'message' => 'Product type not found for SKU.'];
+                    }
+                }
+
+                $encodedSku = rawurlencode($amazonSku);
+                $endpoint = "https://sellingpartnerapi-na.amazon.com/listings/2021-08-01/items/{$sellerId}/{$encodedSku}?marketplaceIds=ATVPDKIKX0DER";
+
+                $body = [
+                    'productType' => $productType,
+                    'patches' => [
+                        [
+                            'op' => 'replace',
+                            'path' => '/attributes/product_description',
+                            'value' => $value,
+                        ],
+                    ],
+                ];
+
+                $response = Http::withHeaders([
+                    'x-amz-access-token' => $accessToken,
+                    'Content-Type' => 'application/json',
+                    'Accept' => 'application/json',
+                ])->timeout(45)->patch($endpoint, $body);
+
+                $responseData = $response->json();
+
+                if ($response->failed()) {
+                    $lastError = $responseData['errors'][0]['message'] ?? $response->body();
+                    if (in_array($response->status(), [401, 403, 500, 502, 503], true) && $attempt < 2) {
+                        sleep(1);
+                        continue;
+                    }
+
+                    return ['success' => false, 'message' => is_string($lastError) ? $lastError : json_encode($responseData)];
+                }
+
+                if (isset($responseData['errors']) && ! empty($responseData['errors'])) {
+                    return ['success' => false, 'message' => json_encode($responseData['errors'])];
+                }
+
+                Log::info('Amazon product description updated', ['sku' => $sku, 'amazon_sku' => $amazonSku]);
+
+                return ['success' => true, 'message' => 'Amazon product description updated.'];
+            } catch (\Throwable $e) {
+                $lastError = $e->getMessage();
+                if ($attempt >= 2) {
+                    return ['success' => false, 'message' => $lastError];
+                }
+            }
+        }
+
+        return ['success' => false, 'message' => (string) $lastError];
+    }
 }

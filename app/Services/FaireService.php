@@ -204,4 +204,12 @@ class FaireService
         }
     }
 
+    /**
+     * @return array{success:bool,message:string,response?:mixed}
+     */
+    public function updateProductDescription(string $identifier, string $description): array
+    {
+        return $this->updateBulletPoints($identifier, $description);
+    }
+
 }

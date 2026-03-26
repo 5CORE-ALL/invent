@@ -563,4 +563,85 @@ class ReverbApiService
             return ['success' => false, 'message' => $e->getMessage(), 'listing_id' => $listingId];
         }
     }
+
+    /**
+     * Long-form description (not bullet list).
+     *
+     * @return array{success: bool, message: string, listing_id?: string}
+     */
+    public function updateProductDescription(string $identifier, string $description): array
+    {
+        $token = config('services.reverb.token');
+        if (! $token) {
+            return ['success' => false, 'message' => 'Reverb API token not configured (services.reverb.token).'];
+        }
+
+        $description = trim($description);
+        if ($description === '') {
+            return ['success' => false, 'message' => 'Description cannot be empty.'];
+        }
+
+        $trim = trim($identifier);
+        if ($trim === '') {
+            return ['success' => false, 'message' => 'SKU or listing_id is required.'];
+        }
+
+        $listingId = null;
+        $product = ReverbProduct::query()
+            ->where('sku', $trim)
+            ->orWhere('sku', strtoupper($trim))
+            ->orWhere('sku', strtolower($trim))
+            ->first();
+        if ($product && $product->reverb_listing_id) {
+            $listingId = trim((string) $product->reverb_listing_id);
+        }
+        if (! $listingId) {
+            $product = ReverbProduct::query()->where('reverb_listing_id', $trim)->first();
+            if ($product && $product->reverb_listing_id) {
+                $listingId = trim((string) $product->reverb_listing_id);
+            }
+        }
+        if (! $listingId) {
+            $listingId = $this->getListingIdBySku($trim);
+        }
+        if ($listingId === null) {
+            return ['success' => false, 'message' => 'No Reverb listing found for SKU or reverb_listing_id.'];
+        }
+
+        $html = '<div class="product-description">'.nl2br(htmlspecialchars($description, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'), false).'</div>';
+
+        $updateUrl = 'https://api.reverb.com/api/listings/'.$listingId;
+        $payload = [
+            'description' => $html,
+            'plain_text_description' => $description,
+        ];
+
+        try {
+            $response = Http::withoutVerifying()
+                ->timeout(30)
+                ->withHeaders([
+                    'Authorization' => 'Bearer '.$token,
+                    'Accept' => 'application/hal+json',
+                    'Accept-Version' => '3.0',
+                    'Content-Type' => 'application/hal+json',
+                ])
+                ->put($updateUrl, $payload);
+
+            if ($response->successful()) {
+                return [
+                    'success' => true,
+                    'message' => 'Reverb listing description updated.',
+                    'listing_id' => $listingId,
+                ];
+            }
+
+            return [
+                'success' => false,
+                'message' => 'Reverb API error (HTTP '.$response->status().'): '.$response->body(),
+                'listing_id' => $listingId,
+            ];
+        } catch (\Throwable $e) {
+            return ['success' => false, 'message' => $e->getMessage(), 'listing_id' => $listingId];
+        }
+    }
 }

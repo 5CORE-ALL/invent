@@ -158,6 +158,7 @@
                             </li>
                             <li>
                                 <a href="{{ route('bullet.points') }}">Bullet Points</a>
+                                <a href="{{ route('product.description') }}">Description Master</a>
                             </li>
                             <li>
                                 <a href="{{ route('product.description') }}">Product Description</a>

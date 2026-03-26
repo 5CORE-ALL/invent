@@ -555,4 +555,59 @@ class AliExpressApiService
             'response' => $res['response'] ?? $res,
         ];
     }
+
+    /**
+     * Long-form product detail (prose HTML, not bullet list).
+     *
+     * @return array{success: bool, message?: string, status?: int, data?: mixed}
+     */
+    public function updateProductDescription(string $identifier, string $description, ?string $language = 'en'): array
+    {
+        $description = trim($description);
+        if (trim($identifier) === '' || $description === '') {
+            return ['success' => false, 'message' => 'SKU (or AliExpress product_id) and description are required.'];
+        }
+
+        $trim = trim($identifier);
+        $row = AliexpressMetric::query()
+            ->where('sku', $trim)
+            ->orWhere('sku', strtoupper($trim))
+            ->orWhere('sku', strtolower($trim))
+            ->first();
+        if (! $row) {
+            $row = AliexpressMetric::query()->where('product_id', $trim)->first();
+        }
+        $productId = $row && $row->product_id ? (string) $row->product_id : $trim;
+
+        $html = '<div class="product-description">'.nl2br(htmlspecialchars($description, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'), false).'</div>';
+
+        $editRequest = [
+            'product_id' => (string) $productId,
+            'multi_language_description_list' => [
+                [
+                    'language' => $language ?: 'en',
+                    'mobile_detail' => $html,
+                    'web_detail' => $html,
+                ],
+            ],
+        ];
+
+        $res = $this->callSync('aliexpress.solution.product.edit', [
+            'edit_product_request' => $this->encodeRequestPayload($editRequest),
+        ]);
+
+        if (! empty($res['success'])) {
+            return [
+                'success' => true,
+                'message' => 'AliExpress product description updated.',
+                'data' => $res['data'] ?? $res['result'] ?? null,
+            ];
+        }
+
+        return [
+            'success' => false,
+            'message' => (string) ($res['message'] ?? 'AliExpress product edit failed.'),
+            'response' => $res['response'] ?? $res,
+        ];
+    }
 }

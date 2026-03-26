@@ -990,4 +990,14 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
             return ['success' => false, 'message' => $e->getMessage()];
         }
     }
+
+    /**
+     * Same partial update path as bullet copy; pushes long-form description.
+     *
+     * @return array{success: bool, message: string}
+     */
+    public function updateProductDescription(string $identifier, string $description): array
+    {
+        return $this->updateBulletPoints($identifier, $description);
+    }
 }

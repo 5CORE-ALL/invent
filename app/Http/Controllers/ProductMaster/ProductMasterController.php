@@ -5706,7 +5706,11 @@ GRAPHQL;
         try {
             $validated = $request->validate([
                 'sku' => 'required|string',
-                'product_description' => 'nullable|string|max:1500',
+                'product_description' => 'nullable|string',
+                'description_1500' => 'nullable|string',
+                'description_1000' => 'nullable|string',
+                'description_800' => 'nullable|string',
+                'description_600' => 'nullable|string',
             ]);
 
             $product = ProductMaster::where('sku', $validated['sku'])->first();
@@ -5718,12 +5722,22 @@ GRAPHQL;
                 ], 404);
             }
 
-            $product->product_description = $validated['product_description'];
+            foreach (['description_1500', 'description_1000', 'description_800', 'description_600'] as $col) {
+                if (array_key_exists($col, $validated)) {
+                    $product->{$col} = $validated[$col];
+                }
+            }
+            if (array_key_exists('description_1500', $validated)) {
+                $product->product_description = $validated['description_1500'];
+            } elseif (array_key_exists('product_description', $validated)) {
+                $product->product_description = $validated['product_description'];
+            }
+
             $product->save();
 
             return response()->json([
                 'success' => true,
-                'message' => 'Product description saved successfully.',
+                'message' => 'Product descriptions saved successfully.',
             ]);
         } catch (\Exception $e) {
             Log::error('Error saving description data: '.$e->getMessage());

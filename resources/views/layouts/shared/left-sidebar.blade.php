@@ -488,7 +488,7 @@
                             <a href="{{ route('videos.master') }}">Videos</a>
                         </li>
                         <li>
-                            <a href="{{ route('product.description') }}">Product Description</a>
+                            <a href="{{ route('product.description') }}">Description Master</a>
                         </li>
                         <li>
                             <a href="{{ route('features') }}">Features</a>
