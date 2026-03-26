@@ -359,37 +359,38 @@ class Kernel extends ConsoleKernel
         | AMAZON FBA
         |--------------------------------------------------------------------------
         */
-        // $schedule->command('amazon-fba:auto-update-over-kw-bids')
-        //     ->dailyAt('12:00')
-        //     ->timezone('Asia/Kolkata')
-        //     ->name('fba-over-kw-bids')
-        //     ->withoutOverlapping()
-        //     ->runInBackground()
-        //     ->appendOutputTo($log);
+        // AMAZON FBA bid updates (staggered to reduce API burst/rate-limits)
+        $schedule->command('amazon-fba:auto-update-under-pt-bids')
+            ->dailyAt('12:00')
+            ->timezone('Asia/Kolkata')
+            ->name('fba-under-pt-bids')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
 
-        // $schedule->command('amazon-fba:auto-update-under-kw-bids')
-        //     ->dailyAt('12:00')
-        //     ->timezone('Asia/Kolkata')
-        //     ->name('fba-under-kw-bids')
-        //     ->withoutOverlapping()
-        //     ->runInBackground()
-        //     ->appendOutputTo($log);
+        $schedule->command('amazon-fba:auto-update-over-kw-bids')
+            ->dailyAt('12:15')
+            ->timezone('Asia/Kolkata')
+            ->name('fba-over-kw-bids')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
 
-        // $schedule->command('amazon-fba:auto-update-over-pt-bids')
-        //     ->dailyAt('12:00')
-        //     ->timezone('Asia/Kolkata')
-        //     ->name('fba-over-pt-bids')
-        //     ->withoutOverlapping()
-        //     ->runInBackground()
-        //     ->appendOutputTo($log);
+        $schedule->command('amazon-fba:auto-update-over-pt-bids')
+            ->dailyAt('12:25')
+            ->timezone('Asia/Kolkata')
+            ->name('fba-over-pt-bids')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
 
-        // $schedule->command('amazon-fba:auto-update-under-pt-bids')
-        //     ->dailyAt('12:00')
-        //     ->timezone('Asia/Kolkata')
-        //     ->name('fba-under-pt-bids')
-        //     ->withoutOverlapping()
-        //     ->runInBackground()
-        //     ->appendOutputTo($log);
+        $schedule->command('amazon-fba:auto-update-under-kw-bids')
+            ->dailyAt('12:35')
+            ->timezone('Asia/Kolkata')
+            ->name('fba-under-kw-bids')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
 
         $schedule->command('app:fetch-fba-reports')
             ->dailyAt('13:30')
