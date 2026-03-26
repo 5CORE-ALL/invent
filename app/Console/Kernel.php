@@ -143,8 +143,9 @@ class Kernel extends ConsoleKernel
         | TASK MANAGEMENT
         |--------------------------------------------------------------------------
         */
+        // Run every 5 minutes; command itself time-gates to 12:01+ and duplicate checks prevent re-creation.
         $schedule->command('tasks:generate-daily-automated')
-            ->dailyAt('12:01')
+            ->everyFiveMinutes()
             ->timezone('Asia/Kolkata')
             ->name('generate-daily-automated-tasks')
             ->withoutOverlapping()

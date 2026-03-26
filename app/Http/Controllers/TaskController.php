@@ -28,11 +28,13 @@ class TaskController extends Controller
         $tasksQuery = Task::query();
         
         if (!$isAdmin) {
-            // Normal user: only see tasks they created OR tasks assigned to them
-            // Handle comma-separated assignees with LIKE
+            // Normal user: see all automated tasks, plus manual tasks they created/are assigned to.
             $tasksQuery->where(function($query) use ($user) {
-                $query->where('assignor', $user->email)
-                      ->orWhere('assign_to', 'LIKE', '%' . $user->email . '%');
+                $query->where('is_automate_task', 1)
+                      ->orWhere(function($q) use ($user) {
+                          $q->where('assignor', $user->email)
+                            ->orWhere('assign_to', 'LIKE', '%' . $user->email . '%');
+                      });
             });
         }
 
@@ -91,8 +93,11 @@ class TaskController extends Controller
         $baseTasksQuery = Task::query();
         if (!$isAdmin) {
             $baseTasksQuery->where(function($query) use ($user) {
-                $query->where('assignor', $user->email)
-                      ->orWhere('assign_to', 'LIKE', '%' . $user->email . '%');
+                $query->where('is_automate_task', 1)
+                      ->orWhere(function($q) use ($user) {
+                          $q->where('assignor', $user->email)
+                            ->orWhere('assign_to', 'LIKE', '%' . $user->email . '%');
+                      });
             });
         }
         $assignorEmails = (clone $baseTasksQuery)->whereNotNull('assignor')->where('assignor', '!=', '')
@@ -256,11 +261,13 @@ class TaskController extends Controller
         $tasksQuery = Task::query();
         
         if (!$isAdmin) {
-            // Normal user: only see tasks they created OR tasks assigned to them
-            // Handle comma-separated assignees with LIKE
+            // Normal user: see all automated tasks, plus manual tasks they created/are assigned to.
             $tasksQuery->where(function($query) use ($user) {
-                $query->where('assignor', $user->email)
-                      ->orWhere('assign_to', 'LIKE', '%' . $user->email . '%');
+                $query->where('is_automate_task', 1)
+                      ->orWhere(function($q) use ($user) {
+                          $q->where('assignor', $user->email)
+                            ->orWhere('assign_to', 'LIKE', '%' . $user->email . '%');
+                      });
             });
         }
 
@@ -274,6 +281,20 @@ class TaskController extends Controller
         // Map emails to names and avatar URLs for display
         $defaultAvatar = asset('images/users/avatar-2.jpg');
         $tasks->each(function($task) use ($defaultAvatar) {
+            // Normalize datetime fields to local string format so frontend date parsing
+            // doesn't shift dates because of UTC ISO serialization ("...Z").
+            foreach (['start_date', 'due_date', 'completion_date', 'created_at', 'updated_at'] as $dtField) {
+                if (!empty($task->{$dtField})) {
+                    try {
+                        $task->{$dtField} = \Carbon\Carbon::parse($task->{$dtField}, config('app.timezone'))
+                            ->setTimezone(config('app.timezone'))
+                            ->format('Y-m-d H:i:s');
+                    } catch (\Throwable $e) {
+                        // keep original value if parsing fails
+                    }
+                }
+            }
+
             // Find users by email and get their names + avatars
             if ($task->assignor) {
                 $assignorUser = User::where('email', $task->assignor)->first();
@@ -329,7 +350,33 @@ class TaskController extends Controller
             $task->assignee_email = $task->assign_to;
         });
 
-        return response()->json($tasks);
+        // Return raw DB attributes (not casted UTC ISO datetimes) so date filters/display
+        // align with local task dates in the blade.
+        $responseRows = $tasks->map(function ($task) {
+            $row = $task->getAttributes(); // raw DB values (e.g. "Y-m-d H:i:s")
+
+            foreach ([
+                'assignor_name',
+                'assignor_id',
+                'assignor_avatar',
+                'assignee_name',
+                'assignee_id',
+                'assignee_ids',
+                'assignee_count',
+                'assignee_avatar',
+                'assignee_avatars',
+                'assignor_email',
+                'assignee_email',
+            ] as $field) {
+                if (isset($task->{$field})) {
+                    $row[$field] = $task->{$field};
+                }
+            }
+
+            return $row;
+        })->values();
+
+        return response()->json($responseRows);
     }
 
     public function create()
@@ -1214,12 +1261,7 @@ class TaskController extends Controller
         // Calculate statistics for automated tasks
         $automatedQuery = \DB::table('automate_tasks');
         
-        if (!$isAdmin) {
-            $automatedQuery->where(function($query) use ($user) {
-                $query->where('assignor', $user->email)
-                      ->orWhere('assign_to', $user->email);
-            });
-        }
+        // Show all automated templates to everyone (admin and non-admin).
 
         $stats = [
             'total' => (clone $automatedQuery)->count(),
@@ -1239,12 +1281,7 @@ class TaskController extends Controller
 
         $query = \DB::table('automate_tasks');
         
-        if (!$isAdmin) {
-            $query->where(function($q) use ($user) {
-                $q->where('assignor', $user->email)
-                  ->orWhere('assign_to', $user->email);
-            });
-        }
+        // Show all automated templates to everyone (admin and non-admin).
 
         $tasks = $query->orderBy('id', 'desc')->get();
 
@@ -1436,6 +1473,9 @@ class TaskController extends Controller
         
         // Set default priority to Normal if not provided
         $validated['priority'] = $validated['priority'] ?? 'Normal';
+        if (($validated['schedule_type'] ?? '') === 'daily') {
+            $validated['schedule_time'] = '12:01:00';
+        }
 
         $user = Auth::user();
         $isAdmin = strtolower($user->role ?? '') === 'admin';
@@ -1568,6 +1608,9 @@ class TaskController extends Controller
         
         // Set default priority to Normal if not provided
         $validated['priority'] = $validated['priority'] ?? 'Normal';
+        if (($validated['schedule_type'] ?? '') === 'daily') {
+            $validated['schedule_time'] = '12:01:00';
+        }
 
         $user = Auth::user();
         $existing = \DB::table('automate_tasks')->where('id', $id)->first();
