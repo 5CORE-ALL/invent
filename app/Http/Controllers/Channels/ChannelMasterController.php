@@ -592,26 +592,42 @@ class ChannelMasterController extends Controller
                 }
 
                 case 'temu': {
-                    // Compute totals exactly like temu-decrease endpoint + frontend
+                    // Compute totals exactly like temu-decrease endpoint + frontend badges.
                     $request = \Illuminate\Http\Request::create('/temu-decrease-data', 'GET');
                     $temuCtrl = app(\App\Http\Controllers\MarketPlace\TemuController::class);
-                    $response = $temuCtrl->getTemuDecreaseData();
+                    $response = $temuCtrl->getTemuDecreaseData($request);
                     $responseData = json_decode($response->getContent(), true);
+                    if (!is_array($responseData)) {
+                        return $defaults;
+                    }
                     $rows = $responseData['data'] ?? [];
-                    $sp = 0; $c = 0; $s = 0; $u = 0;
+                    $sp = 0; $spSnapshot = 0; $c = 0; $s = 0; $u = 0;
                     foreach ($rows as $row) {
                         if (empty($row['sku'])) continue;
                         $sp += round((float) ($row['spend_l30'] ?? 0), 2);
+                        $spSnapshot += round((float) ($row['spend'] ?? 0), 2);
                         $c += (int) ($row['clicks_l30'] ?? 0);
                         $s += round((float) ($row['ad_sales_l30'] ?? 0), 2);
                         $u += (int) ($row['ad_sold_l30'] ?? 0);
                     }
+
+                    // Same ads% source priority as temu_decrease badge:
+                    // 1) backend aggregate_ads_percent (when positive),
+                    // 2) computed using spend_l30, else spend snapshot over sales_summary revenue.
+                    $aggregateAds = (float) ($responseData['aggregate_ads_percent'] ?? 0);
+                    $salesSummaryRevenue = (float) (($responseData['sales_summary']['total_revenue'] ?? 0));
+                    $spendForAdsPercent = $sp > 0 ? $sp : $spSnapshot;
+                    $adsPercent = $aggregateAds > 0
+                        ? $aggregateAds
+                        : ($salesSummaryRevenue > 0 ? ($spendForAdsPercent / $salesSummaryRevenue) * 100 : 0);
+
                     return array_merge($defaults, [
                         'clicks' => $c, 'ad_sales' => round($s, 2), 'ad_sold' => $u,
                         'KW Clicks' => $c, 'KW Sales' => round($s, 2), 'KW Sold' => $u,
-                        'KW Spent' => round($sp, 2), 'Total Ad Spend' => round($sp, 2),
+                        'KW Spent' => round($spendForAdsPercent, 2), 'Total Ad Spend' => round($spendForAdsPercent, 2),
                         'KW ACOS' => $s > 0 ? round(($sp / $s) * 100, 1) : 0,
                         'KW CVR' => $c > 0 ? round(($u / $c) * 100, 1) : 0,
+                        'Ads%' => round($adsPercent, 2),
                     ]);
                 }
 
@@ -2511,8 +2527,9 @@ class ChannelMasterController extends Controller
         $nRoi = $metrics->n_roi ?? $gRoi;
         $temuSpent = $metrics->kw_spent ?? 0; // Temu ad spend is stored in kw_spent field
 
-        // Total Ad Spend: fetch directly from temu_campaign_reports table
-        $totalAdSpend = $this->fetchTotalAdSpendFromTables('temu');
+        // Use same ad metrics source as temu_decrease badge logic.
+        $temuAdMetrics = $this->fetchAdMetricsFromTables('temu');
+        $totalAdSpend = (float) ($temuAdMetrics['Total Ad Spend'] ?? $this->fetchTotalAdSpendFromTables('temu'));
         
         // Calculate growth
         $growth = $l30Sales > 0 ? (($l30Sales - $l60Sales) / $l30Sales) * 100 : 0;
@@ -2521,8 +2538,10 @@ class ChannelMasterController extends Controller
         $gprofitL60 = 0;
         $gRoiL60 = 0;
 
-        // Calculate Ads %
-        $adsPercentage = $l30Sales > 0 ? ($totalAdSpend / $l30Sales) * 100 : 0;
+        // Ads% should match Temu page badge value.
+        $adsPercentage = isset($temuAdMetrics['Ads%'])
+            ? (float) $temuAdMetrics['Ads%']
+            : ($l30Sales > 0 ? ($totalAdSpend / $l30Sales) * 100 : 0);
 
         // Channel data
         $channelData = ChannelMaster::where('channel', 'Temu')->first();
