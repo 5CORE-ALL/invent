@@ -2,21 +2,27 @@
 
 namespace App\Services;
 
+use App\Models\ProductMaster;
 use App\Models\ProductStockMapping;
 use App\Models\ShopifySku;
+use App\Services\Support\Concerns\ShopifyAdminRateLimitRetry;
 use App\Services\Support\ShopifyBulletPointsFormatter;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
-use App\Models\ProductMaster;
-use Illuminate\Http\Client\Response;
-use Illuminate\Support\Facades\Cache;
 
 class ShopifyApiService
 {
+    use ShopifyAdminRateLimitRetry;
+
     protected $shopifyApiKey;
+
     protected $shopifyPassword;
+
     protected $shopifyStoreUrl;
+
     protected $shopifyStoreUrlName;
+
     protected $shopifyAccessToken;
 
     public function __construct()
@@ -41,6 +47,7 @@ class ShopifyApiService
 
             if (! $domain || ! $token) {
                 Log::warning('Main Shopify credentials not configured', ['sku' => $sku]);
+
                 return false;
             }
 
@@ -54,16 +61,17 @@ class ShopifyApiService
 
             if (! $shopifySku || ! $shopifySku->variant_id) {
                 Log::warning('Main Shopify: variant mapping not found for SKU', ['sku' => $sku]);
+
                 return false;
             }
 
-            sleep(3);
-
             $variantUrl = "https://{$domain}/admin/api/2024-01/variants/{$shopifySku->variant_id}.json";
-            $variantRes = Http::withHeaders([
-                'X-Shopify-Access-Token' => $token,
-                'Content-Type' => 'application/json',
-            ])->timeout(30)->get($variantUrl);
+            $variantRes = $this->retryOnRateLimit(function () use ($token, $variantUrl) {
+                return Http::withHeaders([
+                    'X-Shopify-Access-Token' => $token,
+                    'Content-Type' => 'application/json',
+                ])->timeout(30)->get($variantUrl);
+            });
 
             if (! $variantRes->successful()) {
                 Log::error('❌ Push to Main Shopify - Variant lookup failed', [
@@ -72,30 +80,33 @@ class ShopifyApiService
                     'status' => $variantRes->status(),
                     'body' => $variantRes->body(),
                 ]);
+
                 return false;
             }
 
             $productId = $variantRes->json('variant.product_id');
             if (! $productId) {
                 Log::error('❌ Push to Main Shopify - Product ID missing in variant response', ['sku' => $sku]);
+
                 return false;
             }
 
-            sleep(3);
-
             $productUrl = "https://{$domain}/admin/api/2024-01/products/{$productId}.json";
-            $updateRes = Http::withHeaders([
-                'X-Shopify-Access-Token' => $token,
-                'Content-Type' => 'application/json',
-            ])->timeout(30)->put($productUrl, [
-                'product' => [
-                    'id' => $productId,
-                    'title' => $title,
-                ],
-            ]);
+            $updateRes = $this->retryOnRateLimit(function () use ($token, $productUrl, $productId, $title) {
+                return Http::withHeaders([
+                    'X-Shopify-Access-Token' => $token,
+                    'Content-Type' => 'application/json',
+                ])->timeout(30)->put($productUrl, [
+                    'product' => [
+                        'id' => $productId,
+                        'title' => $title,
+                    ],
+                ]);
+            });
 
             if ($updateRes->successful()) {
                 Log::info('✅ Push to Main Shopify - Success', ['sku' => $sku, 'product_id' => $productId]);
+
                 return true;
             }
 
@@ -105,9 +116,11 @@ class ShopifyApiService
                 'status' => $updateRes->status(),
                 'body' => $updateRes->body(),
             ]);
+
             return false;
         } catch (\Throwable $e) {
             Log::error('❌ Push to Main Shopify - Exception', ['sku' => $sku, 'error' => $e->getMessage()]);
+
             return false;
         }
     }
@@ -300,29 +313,6 @@ class ShopifyApiService
     }
 
     /**
-     * Retry HTTP calls when Shopify returns 429 Too Many Requests.
-     */
-    private function retryOnRateLimit(callable $call, int $maxRetries = 3): Response
-    {
-        $attempt = 0;
-        $response = null;
-
-        while ($attempt < $maxRetries) {
-            $response = $call();
-
-            if ($response->status() !== 429) {
-                return $response;
-            }
-
-            $attempt++;
-            $wait = (int) (pow(2, $attempt) * 1000000);
-            usleep($wait);
-        }
-
-        return $response;
-    }
-
-    /**
      * Cached product title to reduce sequential API calls per store.
      */
     private function getProductTitle(string $domain, string $token, int|string $productId): string
@@ -362,7 +352,6 @@ class ShopifyApiService
     public function getInventory()
     {
 
-        
         $inventoryData = [];
         $parentVariants = [];
         $pageInfo = null;
@@ -370,20 +359,20 @@ class ShopifyApiService
         $pageCount = 0;
         $totalProducts = 0;
         $totalVariants = 0;
- $validSkus = ProductMaster::query()
-    ->selectRaw('DISTINCT TRIM(sku) as sku')
-    ->whereNotNull('sku')
-    ->whereNull('deleted_at')
-    ->whereRaw("TRIM(sku) != ''")
-    ->whereRaw("LOWER(sku) NOT LIKE '%parent%'")
-    ->orderBy('sku')
-    ->pluck('sku')
-    ->map(fn($sku) => trim($sku))
-    ->filter()
-    ->unique()
-    ->values()
-    ->toArray();
-   $validSkuLookup = array_flip($validSkus);
+        $validSkus = ProductMaster::query()
+            ->selectRaw('DISTINCT TRIM(sku) as sku')
+            ->whereNotNull('sku')
+            ->whereNull('deleted_at')
+            ->whereRaw("TRIM(sku) != ''")
+            ->whereRaw("LOWER(sku) NOT LIKE '%parent%'")
+            ->orderBy('sku')
+            ->pluck('sku')
+            ->map(fn ($sku) => trim($sku))
+            ->filter()
+            ->unique()
+            ->values()
+            ->toArray();
+        $validSkuLookup = array_flip($validSkus);
         while ($hasMore) {
             $pageCount++;
             $queryParams = [
@@ -412,7 +401,7 @@ class ShopifyApiService
                 Log::error("Failed to fetch products (Page {$pageCount}): ".$response->body());
                 break;
             }
-            
+
             $products = $response->json()['products'] ?? [];
             $productCount = count($products);
             $totalProducts += $productCount;
@@ -430,7 +419,7 @@ class ShopifyApiService
 
                     // Ensure SKU is properly formatted but preserve original case
                     $sku = trim((string) $sku);
-                    
+
                     // Skip empty SKUs or SKUs containing 'PARENT'
                     if ($sku === '' || stripos($sku, 'PARENT') !== false) {
                         continue;
@@ -462,11 +451,11 @@ class ShopifyApiService
             }
         }
 
-
         foreach ($inventoryData as $sku => $data) {
             // Check if SKU exists in our valid SKUs list
-            if (!isset($validSkuLookup[$sku])) {
+            if (! isset($validSkuLookup[$sku])) {
                 Log::info("Skipping SKU not in ProductMaster or contains 'PARENT': $sku");
+
                 continue;
             }
 
@@ -493,19 +482,23 @@ class ShopifyApiService
                 ]
             );
         }
+
         return $inventoryData;
     }
 
-    protected function sanitizeImageUrl(?string $url,$sku): ?string
-    {                     
-        if (empty($url)) {return null;}      
+    protected function sanitizeImageUrl(?string $url, $sku): ?string
+    {
+        if (empty($url)) {
+            return null;
+        }
         // Remove line breaks and spaces
         $cleanUrl = trim(preg_replace('/\s+/', '', $url));
         // Remove ?v= query string (Shopify versioning param)
         $cleanUrl = strtok($cleanUrl, '?');
+
         return $cleanUrl;
     }
-      
+
     protected function getNextPageInfo($response): ?string
     {
         if ($response->hasHeader('Link') && str_contains($response->header('Link'), 'rel="next"')) {
@@ -514,10 +507,12 @@ class ShopifyApiService
                 if (str_contains($link, 'rel="next"')) {
                     preg_match('/<(.*)>; rel="next"/', $link, $matches);
                     parse_str(parse_url($matches[1], PHP_URL_QUERY), $query);
+
                     return $query['page_info'] ?? null;
                 }
             }
         }
+
         return null;
     }
 
@@ -565,7 +560,7 @@ class ShopifyApiService
                 );
                 $title = $product['title'] ?? '';
                 $description = isset($product['body_html']) ? strip_tags($product['body_html']) : '';
-                $description = strlen($description) > 500 ? substr($description, 0, 497) . '...' : $description;
+                $description = strlen($description) > 500 ? substr($description, 0, 497).'...' : $description;
                 $brand = $product['vendor'] ?? '';
                 $productType = $product['product_type'] ?? '';
 

@@ -3,8 +3,8 @@
 namespace App\Services;
 
 use App\Models\ShopifySku;
+use App\Services\Support\Concerns\ShopifyAdminRateLimitRetry;
 use App\Services\Support\ShopifyBulletPointsFormatter;
-use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -15,13 +15,11 @@ use Illuminate\Support\Facades\Log;
  */
 class ShopifyPLSApiService
 {
+    use ShopifyAdminRateLimitRetry;
+
     /**
      * Update product title for the given SKU on PLS Shopify store.
      * Tries shopify_skus mapping first; on 404, falls back to GraphQL SKU search on PLS store.
-     *
-     * @param  string  $sku
-     * @param  string  $title
-     * @return bool
      */
     public function updateTitle(string $sku, string $title): bool
     {
@@ -50,13 +48,14 @@ class ShopifyPLSApiService
                 ->first();
 
             if ($shopifySku && $shopifySku->variant_id) {
-                sleep(3); // Rate limit
                 $variantUrl = "https://{$domain}/admin/api/2024-01/variants/{$shopifySku->variant_id}.json";
                 Log::info('ShopifyPLS: trying shopify_skus variant', ['variant_id' => $shopifySku->variant_id, 'url' => $variantUrl]);
 
-                $variantResponse = Http::withHeaders([
-                    'X-Shopify-Access-Token' => $token,
-                ])->timeout(30)->get($variantUrl);
+                $variantResponse = $this->retryOnRateLimit(function () use ($token, $variantUrl) {
+                    return Http::withHeaders([
+                        'X-Shopify-Access-Token' => $token,
+                    ])->timeout(30)->get($variantUrl);
+                });
 
                 if ($variantResponse->successful()) {
                     $variantData = $variantResponse->json();
@@ -91,18 +90,18 @@ class ShopifyPLSApiService
                 return false;
             }
 
-            sleep(3);
-
             $productUrl = "https://{$domain}/admin/api/2024-01/products/{$productId}.json";
-            $response = Http::withHeaders([
-                'X-Shopify-Access-Token' => $token,
-                'Content-Type' => 'application/json',
-            ])->timeout(30)->put($productUrl, [
-                'product' => [
-                    'id' => $productId,
-                    'title' => $title,
-                ],
-            ]);
+            $response = $this->retryOnRateLimit(function () use ($token, $productUrl, $productId, $title) {
+                return Http::withHeaders([
+                    'X-Shopify-Access-Token' => $token,
+                    'Content-Type' => 'application/json',
+                ])->timeout(30)->put($productUrl, [
+                    'product' => [
+                        'id' => $productId,
+                        'title' => $title,
+                    ],
+                ]);
+            });
 
             if ($response->successful()) {
                 Log::info('✅ Push to ShopifyPLS - Success', ['sku' => $sku, 'product_id' => $productId]);
@@ -139,7 +138,7 @@ class ShopifyPLSApiService
         ]));
 
         foreach ($skuValues as $q) {
-            foreach (['sku:"' . str_replace('"', '\\"', $q) . '"', 'sku:' . $q] as $queryStr) {
+            foreach (['sku:"'.str_replace('"', '\\"', $q).'"', 'sku:'.$q] as $queryStr) {
                 $payload = [
                     'query' => 'query ($query: String!) {
                         productVariants(first: 1, query: $query) {
@@ -165,6 +164,7 @@ class ShopifyPLSApiService
 
                 if (! $response->successful()) {
                     Log::warning('ShopifyPLS: GraphQL request failed', ['status' => $response->status(), 'query' => $queryStr]);
+
                     continue;
                 }
 
@@ -440,29 +440,6 @@ class ShopifyPLSApiService
         } catch (\Throwable $e) {
             return ['success' => false, 'message' => $e->getMessage()];
         }
-    }
-
-    /**
-     * Retry HTTP calls when Shopify returns 429 Too Many Requests.
-     */
-    private function retryOnRateLimit(callable $call, int $maxRetries = 3): Response
-    {
-        $attempt = 0;
-        $response = null;
-
-        while ($attempt < $maxRetries) {
-            $response = $call();
-
-            if ($response->status() !== 429) {
-                return $response;
-            }
-
-            $attempt++;
-            $wait = (int) (pow(2, $attempt) * 1000000);
-            usleep($wait);
-        }
-
-        return $response;
     }
 
     /**
