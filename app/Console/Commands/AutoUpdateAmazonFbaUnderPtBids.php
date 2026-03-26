@@ -102,7 +102,7 @@ class AutoUpdateAmazonFbaUnderPtBids extends Command
         $candidates = $this->getAutomateAmzFbaUnderUtilizedBgtKw();
         $candidates = array_values(array_filter($candidates, function ($c) {
             return !empty($c->campaign_id)
-                && isset($c->current_bid, $c->sbid)
+                && isset($c->current_bid, $c->sbid, $c->bid_calc)
                 && is_numeric($c->sbid)
                 && (float) $c->sbid > 0
                 && abs((float) $c->sbid - (float) $c->current_bid) >= 0.005;
@@ -154,26 +154,27 @@ class AutoUpdateAmazonFbaUnderPtBids extends Command
         $this->info('Eligible campaigns (with bid change): ' . count($candidates));
         if ($dryRun) {
             foreach ($candidates as $c) {
+                $calc = is_array($c->bid_calc ?? null) ? $c->bid_calc : [];
+                $note = $this->describeBidCpcSource($calc);
                 $this->line(sprintf(
-                    ' - %s: bid=%.2f ub7=%.2f ub1=%.2f inv=%d → would update to: $%.2f',
+                    ' - %s: current=%.2f ub1=%.1f%% → new=%.2f (%s)',
                     $c->campaign_id,
                     (float) $c->current_bid,
-                    (float) $c->ub7,
                     (float) $c->ub1,
-                    (int) $c->inv,
-                    (float) $c->sbid
+                    (float) $c->sbid,
+                    $note
                 ));
             }
         } elseif ($verbose) {
             foreach (array_slice($candidates, 0, 20) as $c) {
+                $calc = is_array($c->bid_calc ?? null) ? $c->bid_calc : [];
                 $this->info(sprintf(
-                    ' - %s: current=%.2f → new=%.2f ub7=%.2f ub1=%.2f inv=%d',
+                    ' - %s: current=%.2f → new=%.2f ub1=%.1f%% | %s',
                     $c->campaign_id,
                     (float) $c->current_bid,
                     (float) $c->sbid,
-                    (float) $c->ub7,
                     (float) $c->ub1,
-                    (int) $c->inv
+                    $this->describeBidCpcSource($calc)
                 ));
             }
             if (count($candidates) > 20) {
@@ -281,6 +282,20 @@ class AutoUpdateAmazonFbaUnderPtBids extends Command
                 })
                 ->get();
 
+            $amazonSpCampaignReportsL2 = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
+                ->where('report_date_range', 'L2')
+                ->where('campaignStatus', '!=', 'ARCHIVED')
+                ->where(function ($q) use ($sellerSkus) {
+                    foreach ($sellerSkus as $sku) {
+                        $q->orWhere('campaignName', 'LIKE', '%' . $sku . '%');
+                    }
+                })
+                ->where(function ($q) {
+                    $q->whereRaw("LOWER(campaignName) LIKE '%fba pt%'")
+                        ->orWhereRaw("LOWER(campaignName) LIKE '%fba pt.%'");
+                })
+                ->get();
+
             $candidatesByCampaignId = [];
 
             foreach ($fbaData as $fba) {
@@ -318,16 +333,24 @@ class AutoUpdateAmazonFbaUnderPtBids extends Command
                     );
                 });
 
-                $campaignId = $matchedCampaignL7->campaign_id ?? ($matchedCampaignL1->campaign_id ?? '');
+                $campaignId = (string) (($matchedCampaignL7 ? $matchedCampaignL7->campaign_id : null)
+                    ?? ($matchedCampaignL1 ? $matchedCampaignL1->campaign_id : null) ?? '');
                 if ($campaignId === '') {
                     continue;
                 }
 
-                $budget = floatval($matchedCampaignL7->campaignBudgetAmount ?? $matchedCampaignL1->campaignBudgetAmount ?? 0);
-                $l7_spend = floatval($matchedCampaignL7->spend ?? 0);
-                $l1_spend = floatval($matchedCampaignL1->spend ?? 0);
-                $l7_cpc = floatval($matchedCampaignL7->costPerClick ?? 0);
-                $l1_cpc = floatval($matchedCampaignL1->costPerClick ?? 0);
+                $budget = floatval(
+                    ($matchedCampaignL7 ? ($matchedCampaignL7->campaignBudgetAmount ?? null) : null)
+                    ?? ($matchedCampaignL1 ? ($matchedCampaignL1->campaignBudgetAmount ?? null) : null) ?? 0
+                );
+                $l7_spend = floatval($matchedCampaignL7 ? ($matchedCampaignL7->spend ?? 0) : 0);
+                $l1_spend = floatval($matchedCampaignL1 ? ($matchedCampaignL1->spend ?? 0) : 0);
+                $l7_cpcRow = floatval($matchedCampaignL7 ? ($matchedCampaignL7->costPerClick ?? 0) : 0);
+                $l1_cpcRow = floatval($matchedCampaignL1 ? ($matchedCampaignL1->costPerClick ?? 0) : 0);
+
+                $cpcL1 = $this->cpcFromCampaign($amazonSpCampaignReportsL1, $campaignId);
+                $cpcL2 = $this->cpcFromCampaign($amazonSpCampaignReportsL2, $campaignId);
+                $cpcL7 = $this->cpcFromCampaign($amazonSpCampaignReportsL7, $campaignId);
 
                 $ub7 = $budget > 0 ? ($l7_spend / ($budget * 7)) * 100 : 0;
                 $ub1 = $budget > 0 ? ($l1_spend / $budget) * 100 : 0;
@@ -335,23 +358,27 @@ class AutoUpdateAmazonFbaUnderPtBids extends Command
                     continue;
                 }
 
-                $currentBid = $this->resolveCurrentBidFromReport($matchedCampaignL7, $matchedCampaignL1, $l7_cpc, $l1_cpc);
-                $newBid = $this->calculateUnderUtilizedBid($currentBid, $ub1, $inv);
+                $currentBid = $this->resolveCurrentBidFromReport($matchedCampaignL7, $matchedCampaignL1, $l7_cpcRow, $l1_cpcRow);
+                $calc = $this->calculateUnderUtilizedBidFromCpc($cpcL1, $cpcL2, $cpcL7);
+                $newBid = $calc['bid'];
                 if ($newBid <= 0 || abs($newBid - $currentBid) < 0.001) {
                     continue;
                 }
 
                 $candidate = (object) [
-                    'campaign_id' => (string) $campaignId,
+                    'campaign_id' => $campaignId,
                     'current_bid' => round($currentBid, 2),
                     'sbid' => (float) $newBid,
                     'ub7' => round($ub7, 2),
                     'ub1' => round($ub1, 2),
-                    'l7_cpc' => $l7_cpc,
-                    'l1_cpc' => $l1_cpc,
+                    'l7_cpc' => $cpcL7,
+                    'l1_cpc' => $cpcL1,
+                    'l2_cpc' => $cpcL2,
                     'l7_spend' => $l7_spend,
                     'l1_spend' => $l1_spend,
                     'inv' => $inv,
+                    'bid_cpc_source' => $calc['source'],
+                    'bid_calc' => $calc,
                 ];
 
                 // Deduplicate by campaign_id (keep lowest ub1 = most under-utilized).
@@ -399,6 +426,7 @@ class AutoUpdateAmazonFbaUnderPtBids extends Command
             $currentBidByCampaignId = [];
             $ub1ByCampaignId = [];
             $invByCampaignId = [];
+            $bidCalcByCampaignId = [];
             $campaignIds = [];
             $bids = [];
             foreach ($chunk as $c) {
@@ -408,6 +436,7 @@ class AutoUpdateAmazonFbaUnderPtBids extends Command
                 $currentBidByCampaignId[$cid] = (float) ($c->current_bid ?? 0);
                 $ub1ByCampaignId[$cid] = (float) ($c->ub1 ?? 0);
                 $invByCampaignId[$cid] = (int) ($c->inv ?? 0);
+                $bidCalcByCampaignId[$cid] = is_array($c->bid_calc ?? null) ? $c->bid_calc : [];
                 $campaignIds[] = $cid;
                 $bids[] = $bid;
             }
@@ -466,16 +495,20 @@ class AutoUpdateAmazonFbaUnderPtBids extends Command
                 foreach ($currentCampaignIds as $cid) {
                     $old = $currentBidByCampaignId[$cid] ?? null;
                     $new = $bidByCampaignId[$cid] ?? null;
+                    $bc = $bidCalcByCampaignId[$cid] ?? [];
                     Log::info('FBA Bid Update', [
                         'campaign_id' => $cid,
                         'current_bid' => $old,
                         'utilization_1d' => $ub1ByCampaignId[$cid] ?? null,
                         'inventory' => $invByCampaignId[$cid] ?? null,
                         'new_bid' => $new,
+                        'bid_cpc_source' => $bc['source'] ?? null,
+                        'base_cpc' => $bc['base_cpc'] ?? null,
+                        'cpc_multiplier' => $bc['multiplier'] ?? null,
                         'action' => ($old !== null && $new !== null && abs((float) $old - (float) $new) >= 0.005) ? 'UPDATED' : 'NO_CHANGE',
                     ]);
                     if ($verbose) {
-                        $this->info("✓ Updated campaign {$cid} bid {$old} → {$new}");
+                        $this->info("✓ Updated campaign {$cid} bid {$old} → {$new} (" . $this->describeBidCpcSource($bc) . ')');
                     }
                 }
 

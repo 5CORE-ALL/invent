@@ -2,8 +2,13 @@
 
 namespace App\Console\Concerns;
 
+use Illuminate\Support\Collection;
+
 /**
  * Shared bid math for Amazon FBA auto bid update commands (KW + PT).
+ *
+ * CPC values come from {@see \App\Models\AmazonSpCampaignReport} rows at L1 / L2 / L7
+ * (`costPerClick`), keyed by campaign — equivalent to campaign-level CPC used in the FBA UI.
  */
 trait CalculatesAmazonFbaBidUpdates
 {
@@ -11,28 +16,34 @@ trait CalculatesAmazonFbaBidUpdates
 
     public const MAX_BID = 5.00;
 
+    public const DEFAULT_FALLBACK_BID = 0.60;
+
     public const UNDER_UTILIZED_THRESHOLD = 50;
 
     public const OVER_UTILIZED_THRESHOLD = 70;
 
-    public const OVER_UTILIZED_AGGRESSIVE_UB1 = 85;
+    public const UNDER_BID_MULTIPLIER = 1.10;
 
-    public const AGGRESSIVE_DECREASE = 0.30;
-
-    public const MODERATE_DECREASE = 0.20;
-
-    public const LIGHT_DECREASE = 0.10;
-
-    public const LIGHT_INCREASE = 0.20;
-
-    public const AGGRESSIVE_INCREASE = 0.30;
+    public const OVER_BID_MULTIPLIER = 0.90;
 
     /**
-     * Best-effort current default bid from synced report rows (not CPC).
+     * Best-effort current default bid from synced report rows (for before/after + API diff checks).
      *
      * @param object|null $l7
      * @param object|null $l1
      */
+    /**
+     * Campaign-level CPC from synced SP report rows (L1 / L2 / L7).
+     */
+    protected function cpcFromCampaign(Collection $reports, string $campaignId): float
+    {
+        $row = $reports->first(function ($r) use ($campaignId) {
+            return (string) ($r->campaign_id ?? '') === $campaignId;
+        });
+
+        return floatval($row->costPerClick ?? 0);
+    }
+
     protected function resolveCurrentBidFromReport(?object $l7, ?object $l1, float $l7Cpc = 0.0, float $l1Cpc = 0.0): float
     {
         foreach (['sbid', 'last_sbid'] as $field) {
@@ -47,7 +58,6 @@ trait CalculatesAmazonFbaBidUpdates
             }
         }
 
-        // Fallback when report has not stored bids yet: use CPC as a proxy base, else floor.
         $proxy = max($l1Cpc, $l7Cpc);
         if ($proxy > 0) {
             return max(self::MIN_BID, round($proxy, 2));
@@ -57,53 +67,88 @@ trait CalculatesAmazonFbaBidUpdates
     }
 
     /**
-     * Under-utilized: decrease bid by utilization tier (uses 1-day utilization ub1).
+     * RED / under-utilized: increase bid using CPC ladder (L1 → L2 → L7 → default).
+     *
+     * @return array{bid: float, source: string, base_cpc: float, multiplier: float}
      */
-    protected function calculateUnderUtilizedBid(float $currentBid, float $ub1, int $inv): float
+    protected function calculateUnderUtilizedBidFromCpc(float $cpcL1, float $cpcL2, float $cpcL7): array
     {
-        if ($inv <= 0) {
-            return round($currentBid, 2);
+        $mult = self::UNDER_BID_MULTIPLIER;
+        if ($cpcL1 > 0) {
+            $base = $cpcL1;
+
+            return $this->finalizeUnderOverBid($base * $mult, 'L1', $base, $mult);
+        }
+        if ($cpcL2 > 0) {
+            $base = $cpcL2;
+
+            return $this->finalizeUnderOverBid($base * $mult, 'L2', $base, $mult);
+        }
+        if ($cpcL7 > 0) {
+            $base = $cpcL7;
+
+            return $this->finalizeUnderOverBid($base * $mult, 'L7', $base, $mult);
         }
 
-        if ($ub1 >= self::UNDER_UTILIZED_THRESHOLD) {
-            return round($currentBid, 2);
-        }
-
-        $decreasePercent = 0.0;
-        if ($ub1 <= 0) {
-            $decreasePercent = self::AGGRESSIVE_DECREASE;
-        } elseif ($ub1 <= 30) {
-            $decreasePercent = self::MODERATE_DECREASE;
-        } elseif ($ub1 < self::UNDER_UTILIZED_THRESHOLD) {
-            $decreasePercent = self::LIGHT_DECREASE;
-        } else {
-            return round($currentBid, 2);
-        }
-
-        $newBid = $currentBid * (1 - $decreasePercent);
-
-        return round(max(self::MIN_BID, $newBid), 2);
+        return $this->finalizeUnderOverBid(self::DEFAULT_FALLBACK_BID, 'default', 0.0, 1.0);
     }
 
     /**
-     * Over-utilized: increase bid (uses 1-day utilization ub1).
+     * PINK / over-utilized: decrease bid using CPC ladder (L1 → L2 → L7 → default).
+     *
+     * @return array{bid: float, source: string, base_cpc: float, multiplier: float}
      */
-    protected function calculateOverUtilizedBid(float $currentBid, float $ub1, int $inv): float
+    protected function calculateOverUtilizedBidFromCpc(float $cpcL1, float $cpcL2, float $cpcL7): array
     {
-        if ($inv <= 0) {
-            return round($currentBid, 2);
+        $mult = self::OVER_BID_MULTIPLIER;
+        if ($cpcL1 > 0) {
+            $base = $cpcL1;
+
+            return $this->finalizeUnderOverBid($base * $mult, 'L1', $base, $mult);
+        }
+        if ($cpcL2 > 0) {
+            $base = $cpcL2;
+
+            return $this->finalizeUnderOverBid($base * $mult, 'L2', $base, $mult);
+        }
+        if ($cpcL7 > 0) {
+            $base = $cpcL7;
+
+            return $this->finalizeUnderOverBid($base * $mult, 'L7', $base, $mult);
         }
 
-        if ($ub1 <= self::OVER_UTILIZED_THRESHOLD) {
-            return round($currentBid, 2);
+        return $this->finalizeUnderOverBid(self::DEFAULT_FALLBACK_BID, 'default', 0.0, 1.0);
+    }
+
+    /**
+     * @return array{bid: float, source: string, base_cpc: float, multiplier: float}
+     */
+    private function finalizeUnderOverBid(float $rawBid, string $source, float $baseCpc, float $multiplier): array
+    {
+        $bid = min(self::MAX_BID, max(self::MIN_BID, round($rawBid, 2)));
+
+        return [
+            'bid' => $bid,
+            'source' => $source,
+            'base_cpc' => round($baseCpc, 4),
+            'multiplier' => $multiplier,
+        ];
+    }
+
+    /**
+     * Human-readable note for dry-run / logs (e.g. "based on L1 CPC: 0.50 × 1.10").
+     */
+    protected function describeBidCpcSource(array $calc): string
+    {
+        $src = $calc['source'] ?? 'default';
+        if ($src === 'default') {
+            return sprintf('fallback $%.2f (no L1/L2/L7 CPC)', self::DEFAULT_FALLBACK_BID);
         }
 
-        $increasePercent = $ub1 > self::OVER_UTILIZED_AGGRESSIVE_UB1
-            ? self::AGGRESSIVE_INCREASE
-            : self::LIGHT_INCREASE;
+        $base = (float) ($calc['base_cpc'] ?? 0);
+        $mult = (float) ($calc['multiplier'] ?? 1);
 
-        $newBid = $currentBid * (1 + $increasePercent);
-
-        return round(min(self::MAX_BID, max(self::MIN_BID, $newBid)), 2);
+        return sprintf('based on %s CPC: %.2f × %.2f', $src, $base, $mult);
     }
 }
+
