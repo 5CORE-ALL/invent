@@ -1461,6 +1461,79 @@
                     },
                 },
                 {
+                    title: "NRP",
+                    field: "nr",
+                    minWidth: 52,
+                    hozAlign: "center",
+                    accessor: row => {
+                        const val = row?.["nr"];
+                        if (val === null || val === undefined) return '';
+                        const strVal = String(val);
+                        const normalized = strVal.trim().toUpperCase();
+                        return normalized;
+                    },
+                    headerSort: false,
+                    headerFilter: "list",
+                    headerFilterParams: {
+                        values: { "": "All", "REQ": "REQ", "NR": "2BDC", "LATER": "LATER" },
+                        clearable: false
+                    },
+                    headerFilterEmptyCheck: function(value) {
+                        return value === "" || value === null || value === undefined;
+                    },
+                    headerFilterFunc: function(headerValue, rowValue, rowData, filterParams) {
+                        if (headerValue === "" || headerValue === null || headerValue === undefined) {
+                            return true;
+                        }
+                        const raw = rowValue ?? rowData.nr ?? '';
+                        const normalized = String(raw).trim().toUpperCase() || 'REQ';
+                        return normalized === headerValue;
+                    },
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        let value = cell.getValue();
+                        if (value === null || value === undefined || value === '') {
+                            value = rowData["nr"];
+                        }
+                        if (value === null || value === undefined) {
+                            value = '';
+                        } else {
+                            value = String(value).trim().toUpperCase();
+                        }
+                        const sku = rowData["SKU"] || '';
+                        const parent = rowData["Parent"] || '';
+                        if (!value || value === '') {
+                            value = 'REQ';
+                        }
+                        if (value !== 'REQ' && value !== 'NR' && value !== 'LATER') {
+                            value = 'REQ';
+                        }
+                        let dotColor = '#22c55e';
+                        let tip = 'REQ';
+                        if (value === 'NR') {
+                            dotColor = '#dc3545';
+                            tip = '2BDC';
+                        } else if (value === 'LATER') {
+                            dotColor = '#facc15';
+                            tip = 'LATER';
+                        }
+                        return `
+                            <div class="nrp-dot-cell position-relative d-flex justify-content-center align-items-center w-100" title="${tip} (click to change)">
+                                <span class="nrp-status-dot" style="background-color:${dotColor};" aria-hidden="true"></span>
+                                <select class="form-select form-select-sm editable-select nrp-nr-select position-absolute top-0 start-0 w-100 h-100"
+                                    data-type="NR"
+                                    data-sku='${sku}'
+                                    data-parent='${parent}'
+                                    aria-label="NRP: ${tip}">
+                                    <option value="REQ" ${value === 'REQ' ? 'selected' : ''}>REQ</option>
+                                    <option value="NR" ${value === 'NR' ? 'selected' : ''}>2BDC</option>
+                                    <option value="LATER" ${value === 'LATER' ? 'selected' : ''}>LATER</option>
+                                </select>
+                            </div>
+                        `;
+                    }
+                },
+                {
                     title: "Current Supplier",
                     field: "mfrg_supplier",
                     accessor: row => row["mfrg_supplier"] ?? '',
@@ -1780,79 +1853,6 @@
                         const col = effRoiTextColor(eff);
 
                         return `<span style="display:block;text-align:center;font-weight:700;color:${col};" title="NROI% ÷ TAT × 12 — red &lt;100, green 100–200, magenta &gt;200">${eff}%</span>`;
-                    }
-                },
-                {
-                    title: "NRP",
-                    field: "nr",
-                    minWidth: 52,
-                    hozAlign: "center",
-                    accessor: row => {
-                        const val = row?.["nr"];
-                        if (val === null || val === undefined) return '';
-                        const strVal = String(val);
-                        const normalized = strVal.trim().toUpperCase();
-                        return normalized;
-                    },
-                    headerSort: false,
-                    headerFilter: "list",
-                    headerFilterParams: {
-                        values: { "": "All", "REQ": "REQ", "NR": "2BDC", "LATER": "LATER" },
-                        clearable: false
-                    },
-                    headerFilterEmptyCheck: function(value) {
-                        return value === "" || value === null || value === undefined;
-                    },
-                    headerFilterFunc: function(headerValue, rowValue, rowData, filterParams) {
-                        if (headerValue === "" || headerValue === null || headerValue === undefined) {
-                            return true;
-                        }
-                        const raw = rowValue ?? rowData.nr ?? '';
-                        const normalized = String(raw).trim().toUpperCase() || 'REQ';
-                        return normalized === headerValue;
-                    },
-                    formatter: function(cell) {
-                        const rowData = cell.getRow().getData();
-                        let value = cell.getValue();
-                        if (value === null || value === undefined || value === '') {
-                            value = rowData["nr"];
-                        }
-                        if (value === null || value === undefined) {
-                            value = '';
-                        } else {
-                            value = String(value).trim().toUpperCase();
-                        }
-                        const sku = rowData["SKU"] || '';
-                        const parent = rowData["Parent"] || '';
-                        if (!value || value === '') {
-                            value = 'REQ';
-                        }
-                        if (value !== 'REQ' && value !== 'NR' && value !== 'LATER') {
-                            value = 'REQ';
-                        }
-                        let dotColor = '#22c55e';
-                        let tip = 'REQ';
-                        if (value === 'NR') {
-                            dotColor = '#dc3545';
-                            tip = '2BDC';
-                        } else if (value === 'LATER') {
-                            dotColor = '#facc15';
-                            tip = 'LATER';
-                        }
-                        return `
-                            <div class="nrp-dot-cell position-relative d-flex justify-content-center align-items-center w-100" title="${tip} (click to change)">
-                                <span class="nrp-status-dot" style="background-color:${dotColor};" aria-hidden="true"></span>
-                                <select class="form-select form-select-sm editable-select nrp-nr-select position-absolute top-0 start-0 w-100 h-100"
-                                    data-type="NR"
-                                    data-sku='${sku}'
-                                    data-parent='${parent}'
-                                    aria-label="NRP: ${tip}">
-                                    <option value="REQ" ${value === 'REQ' ? 'selected' : ''}>REQ</option>
-                                    <option value="NR" ${value === 'NR' ? 'selected' : ''}>2BDC</option>
-                                    <option value="LATER" ${value === 'LATER' ? 'selected' : ''}>LATER</option>
-                                </select>
-                            </div>
-                        `;
                     }
                 },
                  {

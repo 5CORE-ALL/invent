@@ -74,6 +74,9 @@ class RefundController extends Controller
 
     public function store(Request $request)
     {
+        // Backward compatibility: some clients may still send `order_jd` by mistake.
+        $this->normalizeOrderIdAlias($request);
+
         $request->validate([
             'sku' => 'required|array',
             'sku.*' => 'required|string',
@@ -144,6 +147,9 @@ class RefundController extends Controller
 
     public function updateReasonAndComment(Request $request)
     {
+        // Backward compatibility: some clients may still send `order_jd` by mistake.
+        $this->normalizeOrderIdAlias($request);
+
         $request->validate([
             'id' => 'required|integer|exists:refund_records,id',
             'reason' => 'required|string|max:255',
@@ -249,6 +255,15 @@ class RefundController extends Controller
             'updated_by' => $user,
             'updated_at' => $now,
         ]);
+    }
+
+    private function normalizeOrderIdAlias(Request $request): void
+    {
+        if ($request->filled('order_jd') && !$request->has('order_id')) {
+            $request->merge([
+                'order_id' => $request->input('order_jd'),
+            ]);
+        }
     }
 
     public function getHistory(Request $request, $id)
