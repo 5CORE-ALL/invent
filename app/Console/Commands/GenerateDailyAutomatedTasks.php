@@ -12,6 +12,8 @@ use Exception;
 
 class GenerateDailyAutomatedTasks extends Command
 {
+    private const FIXED_DAILY_TIME = '12:01:00';
+
     /**
      * The name and signature of the console command.
      *
@@ -39,7 +41,6 @@ class GenerateDailyAutomatedTasks extends Command
             // Use Asia/Kolkata timezone explicitly
             $now = Carbon::now('Asia/Kolkata');
             $today = $now->toDateString();
-
             // Ensure duplicate check and stored datetimes are compared in same timezone (Asia/Kolkata)
             try {
                 DB::statement("SET time_zone = '+05:30'");
@@ -79,8 +80,8 @@ class GenerateDailyAutomatedTasks extends Command
                                 continue;
                             }
 
-                            // Parse schedule_time (e.g. "20:30:00" or "12:01")
-                            $scheduleTime = $autoTask->schedule_time ?? '00:00:00';
+                            // Daily automation uses a single fixed time for consistency across all templates.
+                            $scheduleTime = self::FIXED_DAILY_TIME;
                             $timeParts = array_map('intval', explode(':', $scheduleTime));
                             $h = $timeParts[0] ?? 0;
                             $m = $timeParts[1] ?? 0;
@@ -137,7 +138,7 @@ class GenerateDailyAutomatedTasks extends Command
                                 'automate_task_id' => $autoTask->id,
                                 'task_type' => 'automate_task',
                                 'schedule_type' => 'daily',
-                                'schedule_time' => $autoTask->schedule_time,
+                                'schedule_time' => self::FIXED_DAILY_TIME,
                                 'status' => 'Todo',
                                 'rework_reason' => null,
                                 'delete_rating' => 0,

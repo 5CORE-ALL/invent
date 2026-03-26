@@ -646,6 +646,13 @@
                     </span>
                     @endif
 
+                    <button type="button" class="stat-card stat-card-blue border-0" style="flex: 1; min-width: 110px; padding: 10px 12px; margin-bottom: 0; cursor: pointer; display: flex; align-items: center; justify-content: center; background: linear-gradient(135deg, #6c757d 0%, #495057 100%) !important; border-left-color: #495057;" id="export-selected-btn">
+                        <div class="text-center">
+                            <i class="mdi mdi-download" style="font-size: 18px; color: white;"></i>
+                            <div style="font-size: 10px; font-weight: 600; color: white; margin-top: 2px;">EXPORT</div>
+                        </div>
+                    </button>
+
                     <button type="button" class="stat-card border-0 text-dark" style="flex: 1; min-width: 110px; padding: 10px 12px; margin-bottom: 0; cursor: pointer; display: flex; align-items: center; justify-content: center; background: linear-gradient(135deg, #ffc107 0%, #e0a800) !important; border-left-color: #e0a800 !important;" id="tasks-refresh-table-btn" title="Reload tasks from server (keeps your filters)">
                         <div class="text-center">
                             <i class="mdi mdi-refresh" style="font-size: 18px; color: #212529;"></i>
@@ -1796,6 +1803,76 @@
             $('#task-play-forward-assignee').on('click', taskNextAssignee);
             $('#task-play-backward-assignee').on('click', taskPreviousAssignee);
 
+            function escapeCsvCell(value) {
+                if (value === null || value === undefined) return '""';
+                var text = String(value).replace(/"/g, '""');
+                return '"' + text + '"';
+            }
+
+            function exportSelectedAutomatedTasksCsv() {
+                if (!selectedTasks || selectedTasks.length === 0) {
+                    return;
+                }
+
+                var selectedIdSet = new Set(selectedTasks.map(function(id) { return String(id); }));
+                var selectedRows = table.getData().filter(function(row) {
+                    return selectedIdSet.has(String(row.id));
+                });
+
+                if (selectedRows.length === 0) {
+                    return;
+                }
+
+                selectedRows.sort(function(a, b) {
+                    return String(a.title || '').localeCompare(String(b.title || ''));
+                });
+
+                var headers = [
+                    'Automated Task ID',
+                    'Group',
+                    'Task',
+                    'Assignor',
+                    'Assignee',
+                    'Frequency',
+                    'Schedule Days',
+                    'Schedule Time',
+                    'Status',
+                    'Priority',
+                    'ETC Minutes'
+                ];
+
+                var lines = [];
+                lines.push(headers.map(escapeCsvCell).join(','));
+
+                selectedRows.forEach(function(row) {
+                    lines.push([
+                        row.id || '',
+                        row.group || '',
+                        row.title || '',
+                        row.assignor_name || row.assignor || '',
+                        row.assignee_name || row.assign_to || '',
+                        row.schedule_type || '',
+                        row.schedule_days || '',
+                        row.schedule_time || '',
+                        row.status || '',
+                        row.priority || '',
+                        row.eta_time || 0
+                    ].map(escapeCsvCell).join(','));
+                });
+
+                var csv = '\uFEFF' + lines.join('\r\n');
+                var blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+                var url = URL.createObjectURL(blob);
+                var stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+                var link = document.createElement('a');
+                link.href = url;
+                link.download = 'automated-tasks-selected-' + stamp + '.csv';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                URL.revokeObjectURL(url);
+            }
+
             // Handle Row Selection
             table.on("rowSelectionChanged", function(data, rows) {
                 selectedTasks = data.map(task => task.id);
@@ -1815,12 +1892,20 @@
                         'background': 'linear-gradient(135deg, #28a745 0%, #20c997 100%)',
                         'border-left-color': '#20c997'
                     });
+                    $('#export-selected-btn').css({
+                        'background': 'linear-gradient(135deg, #28a745 0%, #20c997 100%)',
+                        'border-left-color': '#20c997'
+                    });
                 } else {
                     $('#selected-count').hide();
                     // Reset bulk button style
                     $('#bulk-actions-btn').css({
                         'background': 'linear-gradient(135deg, #0dcaf0 0%, #0891b2 100%)',
                         'border-left-color': '#0891b2'
+                    });
+                    $('#export-selected-btn').css({
+                        'background': 'linear-gradient(135deg, #6c757d 0%, #495057 100%)',
+                        'border-left-color': '#495057'
                     });
                 }
             });
@@ -1914,6 +1999,24 @@
                 
                 $('#bulk-selected-count').text(selectedTasks.length);
                 $('#bulkActionsModal').modal('show');
+            });
+
+            $('#export-selected-btn').on('click', function() {
+                if (selectedTasks.length === 0) {
+                    var alertHtml = `
+                        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                            <i class="mdi mdi-alert-circle me-2"></i><strong>Error!</strong> Please select at least one automated task to export.
+                            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                        </div>
+                    `;
+                    $('.task-card .card-body').prepend(alertHtml);
+                    setTimeout(function() {
+                        $('.alert-danger').fadeOut();
+                    }, 4000);
+                    return;
+                }
+
+                exportSelectedAutomatedTasksCsv();
             });
 
             // Bulk Duplicate

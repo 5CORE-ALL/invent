@@ -1526,6 +1526,10 @@
                                             <i class="mdi mdi-format-list-checks me-2"></i> Bulk
                                         </button>
 
+                                        <button type="button" class="btn btn-secondary ms-2" id="export-selected-btn">
+                                            <i class="mdi mdi-download me-2"></i> Export Selected
+                                        </button>
+
                                         <button type="button" class="btn btn-warning text-dark ms-2" id="tasks-refresh-table-btn" title="Reload tasks from server (keeps your filters)">
                                             <i class="mdi mdi-refresh me-2"></i> Refresh
                                         </button>
@@ -1592,6 +1596,11 @@
                                         <span>Bulk</span>
                                     </button>
 
+                                    <button type="button" class="mobile-action-btn btn-secondary" id="export-selected-btn-mobile">
+                                        <i class="mdi mdi-download"></i>
+                                        <span>Export</span>
+                                    </button>
+
                                     <button type="button" class="mobile-action-btn btn-warning text-dark" id="tasks-refresh-table-btn-mobile" title="Reload tasks (keeps filters)">
                                         <i class="mdi mdi-refresh"></i>
                                         <span>Refresh</span>
@@ -1652,6 +1661,9 @@
                             </div>
                             <div class="col-12 mb-2 d-none d-md-block">
                                 <input type="text" id="filter-task" class="form-control form-control-sm" placeholder="Task" autocomplete="off" onkeydown="if(event.key === 'Enter') { event.preventDefault(); return false; }">
+                            </div>
+                            <div class="col-12 mb-2 d-none d-md-block">
+                                <input type="date" id="filter-date" class="form-control form-control-sm" title="Filter by start date">
                             </div>
                             
                             <!-- Mobile & Desktop: Assignor / Assignee (searchable) -->
@@ -2280,6 +2292,7 @@
                         search: $('#filter-search').val() || '',
                         group: $('#filter-group').val() || '',
                         task: $('#filter-task').val() || '',
+                        date: $('#filter-date').val() || '',
                         assignor: $('#filter-assignor').val() || '',
                         assignee: $('#filter-assignee').val() || '',
                         status: $('#filter-status').val() || '',
@@ -2297,6 +2310,7 @@
                     $('#filter-search').val(s.search || '');
                     $('#filter-group').val(s.group || '');
                     $('#filter-task').val(s.task || '');
+                    $('#filter-date').val(s.date || '');
                     $('#filter-status').val(s.status || '');
                     $('#filter-priority').val(s.priority || '');
                     suppressAssignFilterApply = true;
@@ -2729,21 +2743,24 @@
                 rowFormatter: function(row) {
                     var data = row.getData();
                     
-                    // OVERDUE BASED ON completion_day
+                    // OVERDUE should match TID/statistics logic for consistent UI:
+                    // compare against start_date day (with +1 day grace for automated recurring tasks).
                     let isOverdue = false;
                     
-                    if (data.status !== 'Archived' && data.start_date && data.due_date) {
+                    if (data.status !== 'Archived' && data.start_date) {
                         const startDate = new Date(data.start_date);
-                        const dueDate = new Date(data.due_date);
-                        const expectedDays = Math.ceil((dueDate - startDate) / (1000 * 60 * 60 * 24));
-                        
-                        if (data.completion_date && data.completion_date !== '0000-00-00' && data.completion_day) {
-                            // Task completed - check if took longer than expected
-                            isOverdue = parseInt(data.completion_day) > expectedDays;
-                        } else {
-                            // Task not completed - check if past due date
+                        if (!isNaN(startDate.getTime())) {
+                            startDate.setHours(0, 0, 0, 0);
+
+                            var scheduleType = String(data.schedule_type || '').toLowerCase();
+                            var isAutomatedRecurring = !!data.is_automate_task && ['daily', 'weekly', 'monthly'].includes(scheduleType);
+                            if (isAutomatedRecurring) {
+                                startDate.setDate(startDate.getDate() + 1);
+                            }
+
                             const now = new Date();
-                            isOverdue = now > dueDate;
+                            now.setHours(0, 0, 0, 0);
+                            isOverdue = now > startDate;
                         }
                     }
                     
@@ -2752,12 +2769,10 @@
                     row.getElement().style.backgroundColor = "";
                     row.getElement().style.borderLeft = "";
 
-                    // Apply styling based on overdue status
-                    if (isOverdue) {
-                        row.getElement().style.backgroundColor = "#ffe5e5";
-                        row.getElement().style.borderLeft = "4px solid #dc3545";
-                        row.getElement().classList.add('overdue-task');
-                    } else if (data.is_automate_task) {
+                    // Apply styling:
+                    // - Automated tasks: always yellow (even if overdue)
+                    // - Non-automated overdue tasks: red highlight
+                    if (data.is_automate_task) {
                         row.getElement().classList.add('automated-task');
                         // Alternate shades among automated rows: yellow / light-yellow
                         var automatedRowsBefore = row.getTable().getRows("active").filter(function(r) {
@@ -2771,6 +2786,10 @@
                             row.getElement().classList.add('alt');
                         }
                         row.getElement().style.borderLeft = "4px solid #ffc107";
+                    } else if (isOverdue) {
+                        row.getElement().style.backgroundColor = "#ffe5e5";
+                        row.getElement().style.borderLeft = "4px solid #dc3545";
+                        row.getElement().classList.add('overdue-task');
                     } else {
                         // Keep default styling for non-automated rows
                     }
@@ -2834,6 +2853,24 @@
                         minWidth: 1,
                         visible: false,
                         sorter: "number"
+                    });
+
+                    // AT (Automated Task flag)
+                    cols.push({
+                        title: "AT",
+                        field: "is_automate_task",
+                        width: 55,
+                        minWidth: 50,
+                        hozAlign: "center",
+                        headerHozAlign: "center",
+                        sorter: "number",
+                        formatter: function(cell) {
+                            var isAutomated = Number(cell.getValue() || 0) === 1;
+                            if (!isAutomated) {
+                                return '<span style="color:#adb5bd;">-</span>';
+                            }
+                            return '<span title="Automated task" style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#198754;box-shadow:0 0 0 1px rgba(25,135,84,.25);"></span>';
+                        }
                     });
                     
                     // Column Order: GROUP, TASK, ASSIGNOR, ASSIGNEE, TID, ETC, ATC, STATUS, PRIORITY, IMAGE, LINKS, ACTION
@@ -3363,6 +3400,13 @@
                     filters.push({field:"title", type:"like", value:taskValue});
                     console.log('Filter - Task:', taskValue);
                 }
+
+                // Date filter (start_date contains YYYY-MM-DD)
+                var dateValue = $('#filter-date').val();
+                if (dateValue) {
+                    filters.push({field:"start_date", type:"like", value:dateValue});
+                    console.log('Filter - Date:', dateValue);
+                }
                 
 
                 // Assignor filter (including NULL check)
@@ -3507,6 +3551,7 @@
                     applyFilters();
                 }
             });
+            $('#filter-date').on('change', applyFilters);
             
             $('#filter-assignor, #filter-assignee').on('change', function () {
                 if (suppressAssignFilterApply) return;
@@ -3751,6 +3796,7 @@
                     case 'all':
                         $('#filter-status').val('');
                         $('#filter-priority').val('');
+                        $('#filter-date').val('');
                         $('#filter-assignor').val('');
                         $('#filter-assignee').val('');
                         console.log('✓ Showing all tasks');
@@ -3816,6 +3862,76 @@
                 }
             });
 
+            function escapeCsvCell(value) {
+                if (value === null || value === undefined) return '""';
+                var text = String(value).replace(/"/g, '""');
+                return '"' + text + '"';
+            }
+
+            function exportSelectedTasksCsv() {
+                if (!selectedTasks || selectedTasks.length === 0) {
+                    return;
+                }
+
+                var selectedIdSet = new Set(selectedTasks.map(function(id) { return String(id); }));
+                var selectedRows = table.getData().filter(function(row) {
+                    return selectedIdSet.has(String(row.id));
+                });
+
+                if (selectedRows.length === 0) {
+                    return;
+                }
+
+                selectedRows.sort(function(a, b) {
+                    return String(a.start_date || '').localeCompare(String(b.start_date || ''));
+                });
+
+                var headers = [
+                    'Task ID',
+                    'Group',
+                    'Task',
+                    'Assignor',
+                    'Assignee',
+                    'Start Date',
+                    'Due Date',
+                    'Status',
+                    'Priority',
+                    'ETC Minutes',
+                    'ATC Minutes'
+                ];
+
+                var lines = [];
+                lines.push(headers.map(escapeCsvCell).join(','));
+
+                selectedRows.forEach(function(row) {
+                    lines.push([
+                        row.id || '',
+                        row.group || '',
+                        row.title || '',
+                        row.assignor_name || row.assignor || '',
+                        row.assignee_name || row.assign_to || '',
+                        row.start_date || '',
+                        row.due_date || '',
+                        row.status || '',
+                        row.priority || '',
+                        row.eta_time || 0,
+                        row.etc_done || 0
+                    ].map(escapeCsvCell).join(','));
+                });
+
+                var csv = '\uFEFF' + lines.join('\r\n');
+                var blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+                var url = URL.createObjectURL(blob);
+                var stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+                var link = document.createElement('a');
+                link.href = url;
+                link.download = 'tasks-selected-' + stamp + '.csv';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                URL.revokeObjectURL(url);
+            }
+
             // Handle Row Selection - ONLY select FILTERED (visible) rows
             table.on("rowSelectionChanged", function(data, rows) {
                 // IMPORTANT: Only get IDs from ACTIVE (filtered) rows
@@ -3841,9 +3957,13 @@
                     $('#selected-count').show();
                     $('#count-number').text(count);
                     $('#bulk-actions-btn').removeClass('btn-info').addClass('btn-success');
+                    $('#export-selected-btn').removeClass('btn-secondary').addClass('btn-success');
+                    $('#export-selected-btn-mobile').removeClass('btn-secondary').addClass('btn-success');
                 } else {
                     $('#selected-count').hide();
                     $('#bulk-actions-btn').removeClass('btn-success').addClass('btn-info');
+                    $('#export-selected-btn').removeClass('btn-success').addClass('btn-secondary');
+                    $('#export-selected-btn-mobile').removeClass('btn-success').addClass('btn-secondary');
                 }
             });
 
@@ -4205,6 +4325,24 @@
                 $('#bulk-assignee-count').text(selectedTasks.length);
                 $('#bulk-assignor-count').text(selectedTasks.length);
                 $('#bulkActionsModal').modal('show');
+            });
+
+            $('#export-selected-btn, #export-selected-btn-mobile').on('click', function() {
+                if (selectedTasks.length === 0) {
+                    var alertHtml = `
+                        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                            <i class="mdi mdi-alert-circle me-2"></i><strong>Error!</strong> Please select at least one task to export.
+                            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                        </div>
+                    `;
+                    $('.task-card .card-body').prepend(alertHtml);
+                    setTimeout(function() {
+                        $('.alert-danger').fadeOut();
+                    }, 4000);
+                    return;
+                }
+
+                exportSelectedTasksCsv();
             });
             
             // Bulk Assign Assignee
