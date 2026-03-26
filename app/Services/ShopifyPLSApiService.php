@@ -324,6 +324,150 @@ class ShopifyPLSApiService
     }
 
     /**
+     * Description Master (Phase 2): append long-form description below existing `body_html` (e.g. Key Features from Phase 1).
+     *
+     * @return array{success: bool, message: string}
+     */
+    public function updateDescription(string $identifier, string $description): array
+    {
+        if (trim($identifier) === '' || trim($description) === '') {
+            return ['success' => false, 'message' => 'SKU (or variant_id / product_id) and description are required.'];
+        }
+
+        $descriptionPlain = trim($description);
+        if ($descriptionPlain === '') {
+            return ['success' => false, 'message' => 'Description is empty.'];
+        }
+        $descriptionHtml = '<p>'.nl2br(htmlspecialchars($descriptionPlain, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'), false).'</p>';
+
+        try {
+            $domain = config('services.prolightsounds.domain') ?? config('services.prolightsounds.store_url');
+            $token = config('services.prolightsounds.password');
+            if (! $domain || ! $token) {
+                return ['success' => false, 'message' => 'Shopify PLS credentials not configured.'];
+            }
+
+            $domain = preg_replace('#^https?://#', '', $domain);
+            $domain = rtrim($domain, '/');
+
+            $trim = trim($identifier);
+            $productId = null;
+            $hadHttp = false;
+            $shopifySku = ShopifySku::where('sku', $trim)
+                ->orWhere('sku', strtoupper($trim))
+                ->orWhere('sku', strtolower($trim))
+                ->first();
+
+            if (! $shopifySku) {
+                $shopifySku = ShopifySku::where('variant_id', $trim)->first();
+            }
+
+            if ($shopifySku && $shopifySku->variant_id) {
+                $variantUrl = "https://{$domain}/admin/api/2024-01/variants/{$shopifySku->variant_id}.json";
+                $variantResponse = $this->retryOnRateLimit(function () use ($token, $variantUrl) {
+                    return Http::withHeaders([
+                        'X-Shopify-Access-Token' => $token,
+                        'Content-Type' => 'application/json',
+                    ])->timeout(30)->get($variantUrl);
+                });
+                $hadHttp = true;
+
+                if ($variantResponse->successful()) {
+                    $productId = $variantResponse->json('variant.product_id');
+                }
+            }
+
+            if (! $productId && ctype_digit($trim)) {
+                if ($hadHttp) {
+                    usleep(500000);
+                }
+                $probeUrl = "https://{$domain}/admin/api/2024-01/products/{$trim}.json";
+                $productProbe = $this->retryOnRateLimit(function () use ($token, $probeUrl) {
+                    return Http::withHeaders([
+                        'X-Shopify-Access-Token' => $token,
+                        'Content-Type' => 'application/json',
+                    ])->timeout(30)->get($probeUrl);
+                });
+                $hadHttp = true;
+                if ($productProbe->successful() && $productProbe->json('product.id')) {
+                    $productId = (int) $productProbe->json('product.id');
+                    $probeTitle = (string) ($productProbe->json('product.title') ?? '');
+                    if ($productId && $probeTitle !== '') {
+                        Cache::put('shopify_pls_product_title_'.$productId, $probeTitle, 3600);
+                    }
+                }
+            }
+
+            if (! $productId) {
+                if ($hadHttp) {
+                    usleep(500000);
+                }
+                $found = $this->findProductBySkuViaGraphQL($domain, $token, $trim);
+                if ($found) {
+                    $productId = $found['product_id'];
+                }
+            }
+
+            if (! $productId) {
+                return ['success' => false, 'message' => 'PLS product not found for SKU, variant_id, or product_id.'];
+            }
+
+            usleep(500000);
+
+            $productUrl = "https://{$domain}/admin/api/2024-01/products/{$productId}.json";
+            $getProduct = $this->retryOnRateLimit(function () use ($token, $productUrl) {
+                return Http::withHeaders([
+                    'X-Shopify-Access-Token' => $token,
+                    'Content-Type' => 'application/json',
+                ])->timeout(30)->get($productUrl);
+            });
+
+            if (! $getProduct->successful()) {
+                $msg = $getProduct->status() === 429
+                    ? 'Product fetch rate limited after retries.'
+                    : 'Could not load product: '.$getProduct->body();
+
+                return ['success' => false, 'message' => $msg];
+            }
+
+            $currentBody = (string) ($getProduct->json('product.body_html') ?? '');
+            $title = (string) ($getProduct->json('product.title') ?? '');
+            if ($title === '') {
+                return ['success' => false, 'message' => 'Product title missing from Shopify PLS.'];
+            }
+
+            $combined = $currentBody === ''
+                ? $descriptionHtml
+                : $currentBody."\n\n".$descriptionHtml;
+
+            $response = $this->retryOnRateLimit(function () use ($token, $productUrl, $productId, $title, $combined) {
+                return Http::withHeaders([
+                    'X-Shopify-Access-Token' => $token,
+                    'Content-Type' => 'application/json',
+                ])->timeout(30)->put($productUrl, [
+                    'product' => [
+                        'id' => $productId,
+                        'title' => $title,
+                        'body_html' => $combined,
+                    ],
+                ]);
+            });
+
+            if ($response->successful()) {
+                return ['success' => true, 'message' => 'Shopify PLS product description appended.'];
+            }
+
+            $errBody = $response->status() === 429
+                ? 'PLS update rate limited after retries.'
+                : $response->body();
+
+            return ['success' => false, 'message' => 'PLS update failed: '.$errBody];
+        } catch (\Throwable $e) {
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    /**
      * Description Master: bullets (Key Features) + long description in body_html.
      *
      * @return array{success: bool, message: string}
