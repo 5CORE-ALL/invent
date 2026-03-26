@@ -154,8 +154,19 @@
                             <option value="20-30">20-30%</option>
                             <option value="30-40">30-40%</option>
                             <option value="40-50">40-50%</option>
-                            <option value="50-60">50-60%</option>
-                            <option value="60plus">60%+</option>
+                            <option value="50plus">50%+</option>
+                        </select>
+                    </div>
+
+                    <!-- GROI Filter -->
+                    <div>
+                        <select id="groi-filter" class="form-select form-select-sm" style="width: 130px;">
+                            <option value="all">All GROI%</option>
+                            <option value="negative">Negative</option>
+                            <option value="0-50">0-50%</option>
+                            <option value="50-75">50-75%</option>
+                            <option value="75-125">75-125%</option>
+                            <option value="125plus">125%+</option>
                         </select>
                     </div>
 
@@ -3288,11 +3299,15 @@
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         const sprice = parseFloat(rowData['sprice']) || 0;
+                        const currentTemuPrice = parseFloat(rowData['temu_price']) || 0;
                         
                         if (sprice === 0) return '';
                         
-                        // Calculate Suggested Temu Price (SPRICE + 2.99 if <= 26.99)
-                        const stemuPrice = sprice <= 26.99 ? sprice + 2.99 : sprice;
+                        // If user enters current Temu Price into SPRICE, treat it as final price
+                        // (avoid applying +2.99 twice). Otherwise keep normal base->Temu conversion.
+                        const stemuPrice = (currentTemuPrice > 0 && Math.abs(sprice - currentTemuPrice) < 0.01)
+                            ? sprice
+                            : (sprice <= 26.99 ? sprice + 2.99 : sprice);
                         return `$${stemuPrice.toFixed(2)}`;
                     }
                 },
@@ -3304,14 +3319,16 @@
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         const sprice = parseFloat(rowData['sprice']) || 0;
+                        const currentTemuPrice = parseFloat(rowData['temu_price']) || 0;
                         const lp = parseFloat(rowData['lp']) || 0;
                         const temuShip = parseFloat(rowData['temu_ship']) || 0;
                         const percentage = 0.96; // Temu marketplace percentage (margin 96)
                         
                         if (sprice === 0) return '';
                         
-                        // Calculate Suggested Temu Price
-                        const stemuPrice = sprice <= 26.99 ? sprice + 2.99 : sprice;
+                        const stemuPrice = (currentTemuPrice > 0 && Math.abs(sprice - currentTemuPrice) < 0.01)
+                            ? sprice
+                            : (sprice <= 26.99 ? sprice + 2.99 : sprice);
                         
                         // SGPRFT% = ((S Temu Price × percentage - LP - Temu Ship) / S Temu Price) × 100
                         const sgprft = stemuPrice > 0 ? ((stemuPrice * percentage - lp - temuShip) / stemuPrice) * 100 : 0;
@@ -3328,21 +3345,37 @@
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         const sprice = parseFloat(rowData['sprice']) || 0;
+                        const currentTemuPrice = parseFloat(rowData['temu_price']) || 0;
                         const lp = parseFloat(rowData['lp']) || 0;
                         const temuShip = parseFloat(rowData['temu_ship']) || 0;
-                        const adsPercent = parseFloat(rowData['ads_percent']) || 0;
+                        const adsPercentRow = parseFloat(rowData['ads_percent']) || 0;
+                        const spend = parseFloat(rowData['spend']) || 0;
+                        const temuL30 = parseFloat(rowData['temu_l30']) || 0;
                         const percentage = 0.96;
                         
                         if (sprice === 0) return '';
                         
-                        // Calculate Suggested Temu Price
-                        const stemuPrice = sprice <= 26.99 ? sprice + 2.99 : sprice;
+                        const isSameAsCurrentTemuPrice = currentTemuPrice > 0 && Math.abs(sprice - currentTemuPrice) < 0.01;
+                        const stemuPrice = isSameAsCurrentTemuPrice
+                            ? sprice
+                            : (sprice <= 26.99 ? sprice + 2.99 : sprice);
+
+                        // If S PRC equals current Temu Price, SPFT must match NPFT exactly.
+                        if (isSameAsCurrentTemuPrice) {
+                            const npftExact = parseFloat(rowData['npft_percent']) || 0;
+                            const colorClass = getPftColor(npftExact);
+                            return `<span class="dil-percent-value ${colorClass}">${Math.round(npftExact)}%</span>`;
+                        }
                         
                         // SGPRFT%
                         const sgprft = stemuPrice > 0 ? ((stemuPrice * percentage - lp - temuShip) / stemuPrice) * 100 : 0;
                         
-                        // SPFT% = SGPRFT% - ADS%
-                        const spft = sgprft - adsPercent;
+                        // Keep SPFT aligned with NPFT logic:
+                        // prefer aggregate ADS% badge value; if spend>0 and no sales (100% case), don't subtract ADS.
+                        const adsForSpft = (badgeAvgAds != null && Number.isFinite(Number(badgeAvgAds)))
+                            ? Number(badgeAvgAds)
+                            : adsPercentRow;
+                        const spft = (spend > 0 && temuL30 === 0) ? sgprft : (sgprft - adsForSpft);
                         
                         const colorClass = getPftColor(spft);
                         return `<span class="dil-percent-value ${colorClass}">${Math.round(spft)}%</span>`;
@@ -3355,16 +3388,24 @@
                     sorter: "number",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
-                        let sroi = parseFloat(rowData['sroi_percent']);
-                        if (Number.isNaN(sroi)) {
-                            // Same formula as GROI%: ((price * 0.96 - lp - temuShip) / lp) * 100, with price = suggested Temu price
-                            const sprice = parseFloat(rowData['sprice']) || 0;
-                            const lp = parseFloat(rowData['lp']) || 0;
-                            const temuShip = parseFloat(rowData['temu_ship']) || 0;
-                            if (sprice === 0 || lp === 0) return '';
-                            const stemuPrice = sprice <= 26.99 ? sprice + 2.99 : sprice;
-                            sroi = ((stemuPrice * 0.96 - lp - temuShip) / lp) * 100;
+                        // Always calculate from current row values to avoid stale stored sroi_percent.
+                        const sprice = parseFloat(rowData['sprice']) || 0;
+                        const currentTemuPrice = parseFloat(rowData['temu_price']) || 0;
+                        const lp = parseFloat(rowData['lp']) || 0;
+                        const temuShip = parseFloat(rowData['temu_ship']) || 0;
+                        if (sprice === 0 || lp === 0) return '';
+
+                        const isSameAsCurrentTemuPrice = currentTemuPrice > 0 && Math.abs(sprice - currentTemuPrice) < 0.01;
+                        if (isSameAsCurrentTemuPrice) {
+                            const groiExact = parseFloat(rowData['roi_percent']) || 0;
+                            const colorClass = getRoiColor(groiExact);
+                            return `<span class="dil-percent-value ${colorClass}">${Math.round(groiExact)}%</span>`;
                         }
+
+                        const stemuPrice = isSameAsCurrentTemuPrice
+                            ? sprice
+                            : (sprice <= 26.99 ? sprice + 2.99 : sprice);
+                        const sroi = ((stemuPrice * 0.96 - lp - temuShip) / lp) * 100;
                         const colorClass = getRoiColor(sroi);
                         return `<span class="dil-percent-value ${colorClass}">${Math.round(sroi)}%</span>`;
                     }
@@ -3977,6 +4018,7 @@
 
             const inventoryFilter = $('#inventory-filter').val();
             const gpftFilter = $('#gpft-filter').val();
+            const groiFilter = $('#groi-filter').val();
             const cvrFilter = $('#cvr-filter').val();
             const cvrTrendFilter = $('#cvr-trend-filter').val();
             const arrowFilter = $('#arrow-filter').val();
@@ -4019,8 +4061,20 @@
                     if (gpftFilter === '20-30') return gpft >= 20 && gpft < 30;
                     if (gpftFilter === '30-40') return gpft >= 30 && gpft < 40;
                     if (gpftFilter === '40-50') return gpft >= 40 && gpft < 50;
-                    if (gpftFilter === '50-60') return gpft >= 50 && gpft < 60;
-                    if (gpftFilter === '60plus') return gpft >= 60;
+                    if (gpftFilter === '50plus') return gpft >= 50;
+                    return true;
+                });
+            }
+
+            // GROI filter
+            if (groiFilter !== 'all') {
+                table.addFilter(function(data) {
+                    const groi = parseFloat(data.roi_percent) || 0;
+                    if (groiFilter === 'negative') return groi < 0;
+                    if (groiFilter === '0-50') return groi >= 0 && groi < 50;
+                    if (groiFilter === '50-75') return groi >= 50 && groi < 75;
+                    if (groiFilter === '75-125') return groi >= 75 && groi <= 125;
+                    if (groiFilter === '125plus') return groi > 125;
                     return true;
                 });
             }
@@ -4530,7 +4584,7 @@
             });
         });
 
-        $('#inventory-filter, #gpft-filter, #cvr-filter, #cvr-trend-filter, #arrow-filter, #ads-filter, #sprice-filter, #ads-req-filter, #ads-running-filter, #nr-req-filter').on('change', function() {
+        $('#inventory-filter, #gpft-filter, #groi-filter, #cvr-filter, #cvr-trend-filter, #arrow-filter, #ads-filter, #sprice-filter, #ads-req-filter, #ads-running-filter, #nr-req-filter').on('change', function() {
             applyFilters();
         });
 
