@@ -2763,19 +2763,19 @@
             if (!rowData || rowData.is_parent || rowData.isParent) return false;
             const raw = rowData.raw_data || {};
             const twoOrdVal = parseFloat(rowData.to_order ?? raw.to_order ?? 0);
-            if (!Number.isFinite(twoOrdVal) || twoOrdVal <= 0) return false;
+            if (!Number.isFinite(twoOrdVal) || twoOrdVal < 0) return false;
             return !apprReqHideRowForPipelineQty(rowData) &&
                 !apprReqHideRowForNrp2BdcOrLater(rowData);
         }
 
         /** Fallback rule for Appr Req cell:
-         * if 2 Ord > 0 and Order/MIP/R2S/Trn are null-or-dash, show MOQ (yellow).
+         * if 2 Ord >= 0 and Order/MIP/R2S/Trn are null-or-dash, show MOQ (yellow).
          */
         function shouldShowMoqFallbackInApprReq(rowData) {
             if (!rowData || rowData.is_parent || rowData.isParent) return false;
             const raw = rowData.raw_data || {};
             const twoOrdVal = parseFloat(rowData.to_order ?? raw.to_order ?? 0);
-            if (!Number.isFinite(twoOrdVal) || twoOrdVal <= 0) return false;
+            if (!Number.isFinite(twoOrdVal) || twoOrdVal < 0) return false;
             return !apprReqHideRowForPipelineQty(rowData);
         }
 

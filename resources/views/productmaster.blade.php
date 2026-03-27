@@ -329,15 +329,23 @@
             padding: 6px;
             box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
             display: none;
-            max-width: 180px;
-            max-height: 180px;
+            max-width: 540px;
+            max-height: 540px;
         }
 
         .sku-tooltip img {
-            max-width: 160px;
-            max-height: 160px;
+            max-width: 520px;
+            max-height: 520px;
             border-radius: 6px;
             display: block;
+            object-fit: contain;
+        }
+
+        .image-hover {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            cursor: zoom-in;
         }
 
         /* Add to your <style> section */
@@ -1714,7 +1722,7 @@
                             switch (col) {
                                 case "Image":
                                     cell.innerHTML = item.image_path 
-                                        ? `<img src="${item.image_path}" style="width:40px;height:40px;object-fit:cover;border-radius:4px;">`
+                                        ? `<span class="image-hover" data-image="${item.image_path}"><img src="${item.image_path}" style="width:40px;height:40px;object-fit:cover;border-radius:4px;"></span>`
                                         : '-';
                                     break;
                                 case "Parent":
@@ -1914,7 +1922,7 @@
                                 break;
                             case "Image":
                                 isMissing = isDataMissing(item.image_path);
-                                cellContent = isMissing ? '' : `<img src="${item.image_path}" style="width:40px;height:40px;object-fit:cover;border-radius:4px;">`;
+                                cellContent = isMissing ? '' : `<span class="image-hover" data-image="${item.image_path}"><img src="${item.image_path}" style="width:40px;height:40px;object-fit:cover;border-radius:4px;"></span>`;
                                 cell.innerHTML = addMissingIndicator(cellContent, isMissing, item.SKU || '', 'image_path', 'Image');
                                 break;
                             case "Parent":
@@ -2509,7 +2517,7 @@
                     if (cell) {
                         // Update cell content based on field type
                         if (field === 'image_path') {
-                            cell.innerHTML = `<img src="${savedValue}" style="width:40px;height:40px;object-fit:cover;border-radius:4px;">`;
+                            cell.innerHTML = `<span class="image-hover" data-image="${savedValue}"><img src="${savedValue}" style="width:40px;height:40px;object-fit:cover;border-radius:4px;"></span>`;
                         } else if (field === 'l2_url') {
                             cell.className = 'text-center';
                             cell.innerHTML = `<a href="${escapeHtml(savedValue)}" target="_blank"><i class="fas fa-external-link-alt"></i></a>`;
@@ -5902,7 +5910,7 @@
                 const isNumeric = ['lp', 'cp', 'frght', 'wt_act', 'wt_decl', 'l', 'w', 'h', 'cbm', 'upc', 'label_qty', 'moq'].includes(fieldName);
                 
                 if (fieldName === 'image_path') {
-                    cell.innerHTML = newValue ? `<img src="${newValue}" style="width:40px;height:40px;object-fit:cover;border-radius:4px;">` : '<span class="missing-data-indicator" title="Missing Data">M</span>';
+                    cell.innerHTML = newValue ? `<span class="image-hover" data-image="${newValue}"><img src="${newValue}" style="width:40px;height:40px;object-fit:cover;border-radius:4px;"></span>` : '<span class="missing-data-indicator" title="Missing Data">M</span>';
                 } else if (fieldName === 'l2_url') {
                     cell.className = 'text-center';
                     cell.innerHTML = newValue ? `<a href="${escapeHtml(newValue)}" target="_blank"><i class="fas fa-external-link-alt"></i></a>` : createMissingDataButton(sku, 'l2_url', 'Url');
@@ -6248,8 +6256,11 @@
 
             const tooltipEl = document.getElementById('skuImageTooltip');
             let tooltipRAF = null;
+            function getHoverImageTarget(eventTarget) {
+                return eventTarget.closest('.sku-hover, .image-hover');
+            }
             document.addEventListener('mouseover', function(e) {
-                const target = e.target.closest('.sku-hover');
+                const target = getHoverImageTarget(e.target);
                 if (target && tooltipEl) {
                     const image = target.getAttribute('data-image');
                     if (image) {
@@ -6270,7 +6281,9 @@
                 });
             });
             document.addEventListener('mouseout', function(e) {
-                if (e.target.closest('.sku-hover') && tooltipEl) {
+                const hoverTarget = getHoverImageTarget(e.target);
+                const relatedHoverTarget = e.relatedTarget ? getHoverImageTarget(e.relatedTarget) : null;
+                if (hoverTarget && hoverTarget !== relatedHoverTarget && tooltipEl) {
                     tooltipEl.style.display = 'none';
                 }
             });
