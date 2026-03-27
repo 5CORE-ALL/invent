@@ -252,6 +252,96 @@
             padding: 2px 3px;
             font-size: 0.7rem;
         }
+
+        .column-customize-modal {
+            border: 0;
+            border-radius: 14px;
+            overflow: hidden;
+        }
+        .column-modal-header {
+            background: #ffffff;
+            border-bottom: 1px solid #e9ecef;
+            z-index: 2;
+        }
+        .column-panel {
+            border: 1px solid #e5e7eb;
+            border-radius: 12px;
+            background: #fff;
+            padding: 12px;
+        }
+        .column-panel-title {
+            font-weight: 700;
+            font-size: 1.05rem;
+            color: #111827;
+            margin-bottom: 4px;
+        }
+        .column-panel-hint {
+            color: #6b7280;
+            font-size: 0.85rem;
+            margin-bottom: 10px;
+        }
+        .column-available-wrap {
+            max-height: 54vh;
+            overflow: auto;
+            padding-right: 4px;
+        }
+        .column-group-title {
+            font-weight: 700;
+            color: #1f2937;
+            margin: 8px 0 6px;
+        }
+        .column-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(160px, 1fr));
+            gap: 6px 10px;
+        }
+        .column-checkbox-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 8px;
+            border-radius: 8px;
+            transition: background-color .2s ease;
+        }
+        .column-checkbox-row:hover {
+            background: #f8fafc;
+        }
+        .column-arrange-wrap {
+            max-height: 56vh;
+            overflow: auto;
+            border: 1px solid #e5e7eb;
+            border-radius: 10px;
+            padding: 8px;
+            background: #fafafa;
+        }
+        .arrange-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            padding: 7px 10px;
+            background: #fff;
+            margin-bottom: 6px;
+            cursor: grab;
+            transition: all .2s ease;
+        }
+        .arrange-item.active {
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 2px rgba(59, 130, 246, .15);
+            background: #eff6ff;
+        }
+        .arrange-item .arrange-name {
+            font-weight: 600;
+            color: #111827;
+        }
+        .arrange-item:last-child {
+            margin-bottom: 0;
+        }
+        .sortable-ghost {
+            opacity: .45;
+        }
     </style>
 @endsection
 
@@ -306,15 +396,11 @@
 
                             <!-- Column Management -->
                             <div class="dropdown">
-                                <button class="btn btn-sm btn-primary dropdown-toggle d-flex align-items-center gap-1"
-                                    type="button" id="hide-column-dropdown" data-bs-toggle="dropdown">
+                                <button class="btn btn-sm btn-primary d-flex align-items-center gap-1"
+                                    type="button" id="hide-column-dropdown">
                                     <i class="bi bi-grid-3x3-gap-fill"></i>
                                      Column
                                 </button>
-                                <ul class="dropdown-menu p-3 shadow-lg border rounded-3" id="column-dropdown-menu"
-                                    style="max-height: 300px; overflow-y: auto; min-width: 250px;">
-                                    <li class="fw-semibold text-muted mb-2">Toggle Columns</li>
-                                </ul>
                             </div>
 
                             <!-- Appr Req.: filter + count in one badge -->
@@ -607,11 +693,52 @@
         </div>
     </div>
 
+    <div class="modal fade" id="columnCustomizeModal" tabindex="-1" aria-labelledby="columnCustomizeModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-centered">
+            <div class="modal-content column-customize-modal">
+                <div class="modal-header column-modal-header sticky-top">
+                    <h5 class="modal-title" id="columnCustomizeModalLabel">Customize active view</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row g-3">
+                        <div class="col-12 col-lg-7">
+                            <div class="column-panel h-100">
+                                <div class="column-panel-title">Available Options</div>
+                                <div class="column-panel-hint">Press space to select a column.</div>
+                                <div id="columnAvailableWrap" class="column-available-wrap"></div>
+                            </div>
+                        </div>
+                        <div class="col-12 col-lg-5">
+                            <div class="column-panel h-100">
+                                <div class="d-flex align-items-center justify-content-between mb-2">
+                                    <div class="column-panel-title mb-0">Arrange</div>
+                                    <div class="d-flex align-items-center gap-1">
+                                        <button type="button" class="btn btn-sm btn-outline-secondary" id="columnMoveUpBtn">Up</button>
+                                        <button type="button" class="btn btn-sm btn-outline-secondary" id="columnMoveDownBtn">Down</button>
+                                    </div>
+                                </div>
+                                <div id="columnArrangeWrap" class="column-arrange-wrap">
+                                    <ul id="columnArrangeList" class="list-unstyled m-0"></ul>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" id="columnRestoreDefaultsBtn">Restore Defaults</button>
+                    <button type="button" class="btn btn-primary" id="columnSavePrefsBtn">Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
 @endsection
 
 @section('script')
     <script src="{{ asset('js/select-searchable.js') }}"></script>
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
     <script>
         document.body.style.zoom = "95%";
         
@@ -3766,74 +3893,231 @@
         }
 
         const COLUMN_VIS_KEY = "tabulator_column_visibility";
+        const COLUMN_PREF_KEY = "column_preferences";
+        const COLUMN_DEFAULT_ORDER = ["Image", "Parent", "SKU", "INV", "L30", "ov_dil", "msl", "s_msl"];
+        const COLUMN_MODAL_ITEMS = [
+            { field: "Image", label: "#", group: "Item" },
+            { field: "Parent", label: "Parent", group: "Item" },
+            { field: "SKU", label: "SKU", group: "Item" },
+            { field: "INV", label: "INV", group: "Inventory Metrics" },
+            { field: "L30", label: "I30", group: "Inventory Metrics" },
+            { field: "ov_dil", label: "DIL", group: "Inventory Metrics" },
+            { field: "msl", label: "MSL", group: "Stock Levels" },
+            { field: "s_msl", label: "MSL Manual", group: "Stock Levels" },
+        ];
+        const columnModalState = {
+            selectedColumns: [],
+            order: [],
+            activeField: null,
+            sortable: null,
+            initialized: false,
+        };
 
-        function buildColumnDropdown() {
-            const menu = document.getElementById("column-dropdown-menu");
-            menu.innerHTML = '';
+        function normalizeColumnPrefs(rawPrefs) {
+            const defaults = [...COLUMN_DEFAULT_ORDER];
+            const selectedRaw = Array.isArray(rawPrefs?.selectedColumns) ? rawPrefs.selectedColumns : defaults;
+            const orderRaw = Array.isArray(rawPrefs?.order) ? rawPrefs.order : defaults;
+            const selected = selectedRaw.filter(f => defaults.includes(f));
+            const order = orderRaw.filter(f => defaults.includes(f));
+            defaults.forEach(f => {
+                if (!selected.includes(f)) selected.push(f);
+                if (!order.includes(f)) order.push(f);
+            });
+            return { selectedColumns: selected, order };
+        }
 
-            const savedVisibility = JSON.parse(localStorage.getItem(COLUMN_VIS_KEY) || '{}');
+        function getCurrentManagedVisibility() {
+            return COLUMN_DEFAULT_ORDER.filter(function(field) {
+                const col = table.getColumn(field);
+                return col ? col.isVisible() : false;
+            });
+        }
 
-            const columns = table.getColumns().filter(col => col.getField());
+        function renderAvailableColumns() {
+            const wrap = document.getElementById("columnAvailableWrap");
+            if (!wrap) return;
+            const groups = ["Item", "Inventory Metrics", "Stock Levels"];
+            wrap.innerHTML = groups.map(function(groupName) {
+                const rows = COLUMN_MODAL_ITEMS.filter(i => i.group === groupName).map(function(item) {
+                    const checked = columnModalState.selectedColumns.includes(item.field) ? "checked" : "";
+                    return `
+                        <label class="column-checkbox-row">
+                            <input type="checkbox" class="form-check-input column-checkbox" data-field="${item.field}" ${checked}>
+                            <span>${item.label}</span>
+                        </label>
+                    `;
+                }).join("");
+                return `
+                    <div class="mb-3">
+                        <div class="column-group-title">${groupName}</div>
+                        <div class="column-grid">${rows}</div>
+                    </div>
+                `;
+            }).join("");
+        }
 
-            columns.forEach(col => {
-                const field = col.getField();
-                const def = col.getDefinition();
-                const title = def.title;
+        function renderSelectedColumns() {
+            const list = document.getElementById("columnArrangeList");
+            if (!list) return;
+            const labelByField = Object.fromEntries(COLUMN_MODAL_ITEMS.map(i => [i.field, i.label]));
+            const selectedSet = new Set(columnModalState.selectedColumns);
+            const orderedSelected = columnModalState.order.filter(f => selectedSet.has(f));
+            list.innerHTML = orderedSelected.map(function(field) {
+                const activeClass = columnModalState.activeField === field ? "active" : "";
+                return `
+                    <li class="arrange-item ${activeClass}" data-field="${field}">
+                        <span class="arrange-name">${labelByField[field] || field}</span>
+                        <div class="d-flex align-items-center gap-1">
+                            <button type="button" class="btn btn-sm btn-outline-secondary arrange-up" data-field="${field}" title="Move up">↑</button>
+                            <button type="button" class="btn btn-sm btn-outline-secondary arrange-down" data-field="${field}" title="Move down">↓</button>
+                        </div>
+                    </li>
+                `;
+            }).join("");
+            handleDragDrop();
+        }
 
-                // Apply saved visibility, or fall back to column definition default.
-                if (savedVisibility[field] !== undefined) {
-                    if (savedVisibility[field] === false) col.hide();
-                    else col.show();
-                } else {
-                    if (def.visible === false) col.hide();
-                    else col.show();
+        function handleCheckboxChange(field, checked) {
+            if (!COLUMN_DEFAULT_ORDER.includes(field)) return;
+            const selected = columnModalState.selectedColumns;
+            const inSelected = selected.includes(field);
+            if (checked && !inSelected) selected.push(field);
+            if (!checked && inSelected) {
+                columnModalState.selectedColumns = selected.filter(f => f !== field);
+                if (columnModalState.activeField === field) columnModalState.activeField = null;
+            }
+            if (!columnModalState.order.includes(field)) {
+                columnModalState.order.push(field);
+            }
+            renderSelectedColumns();
+        }
+
+        function handleDragDrop() {
+            const listEl = document.getElementById("columnArrangeList");
+            if (!listEl || typeof Sortable === "undefined") return;
+            if (columnModalState.sortable) {
+                columnModalState.sortable.destroy();
+                columnModalState.sortable = null;
+            }
+            columnModalState.sortable = Sortable.create(listEl, {
+                animation: 150,
+                ghostClass: "sortable-ghost",
+                onEnd: function() {
+                    const orderedVisible = Array.from(listEl.querySelectorAll(".arrange-item")).map(el => el.dataset.field);
+                    const hiddenTail = columnModalState.order.filter(f => !orderedVisible.includes(f));
+                    columnModalState.order = [...orderedVisible, ...hiddenTail];
                 }
+            });
+        }
 
-                const li = document.createElement("li");
-                const div = document.createElement("div");
-                div.className = "form-check d-flex align-items-center gap-2 py-1 px-2 rounded hover-bg-light";
+        function applyColumnSettings() {
+            const selectedSet = new Set(columnModalState.selectedColumns);
+            COLUMN_DEFAULT_ORDER.forEach(function(field) {
+                const col = table.getColumn(field);
+                if (!col) return;
+                if (selectedSet.has(field)) col.show();
+                else col.hide();
+            });
 
-                const input = document.createElement("input");
-                input.className = "form-check-input shadow-sm cursor-pointer";
-                input.type = "checkbox";
-                input.id = `col-${field}`;
-                input.value = field;
-                input.checked = col.isVisible();
-                input.style.cssText = `
-                    width: 18px;
-                    height: 18px;
-                    cursor: pointer;
-                    border-color: #dee2e6;
-                `;
+            const desiredOrder = columnModalState.order.filter(f => COLUMN_DEFAULT_ORDER.includes(f));
+            for (let i = desiredOrder.length - 2; i >= 0; i--) {
+                const fromField = desiredOrder[i];
+                const toField = desiredOrder[i + 1];
+                if (!table.getColumn(fromField) || !table.getColumn(toField)) continue;
+                try {
+                    table.moveColumn(fromField, toField, false);
+                } catch (_) {}
+            }
+            saveColumnVisibilityToLocalStorage();
+        }
 
-                const label = document.createElement("label");
-                label.className = "form-check-label cursor-pointer mb-0 text-dark";
-                label.htmlFor = `col-${field}`;
-                label.innerText = title;
-                label.style.cssText = `
-                    cursor: pointer;
-                    font-size: 0.9rem;
-                    user-select: none;
-                `;
+        function saveColumnPreferences() {
+            const payload = {
+                selectedColumns: [...columnModalState.selectedColumns],
+                order: [...columnModalState.order],
+            };
+            localStorage.setItem(COLUMN_PREF_KEY, JSON.stringify(payload));
+            applyColumnSettings();
+        }
 
-                div.addEventListener('mouseover', () => {
-                    div.style.backgroundColor = '#f8f9fa';
+        function initColumnModal() {
+            if (columnModalState.initialized) return;
+            columnModalState.initialized = true;
+
+            const saved = normalizeColumnPrefs(JSON.parse(localStorage.getItem(COLUMN_PREF_KEY) || 'null'));
+            const currentVisible = getCurrentManagedVisibility();
+            columnModalState.selectedColumns = currentVisible.length ? currentVisible : saved.selectedColumns;
+            columnModalState.order = saved.order.length ? saved.order : [...COLUMN_DEFAULT_ORDER];
+
+            const trigger = document.getElementById("hide-column-dropdown");
+            if (trigger) {
+                trigger.addEventListener("click", function() {
+                    renderAvailableColumns();
+                    renderSelectedColumns();
+                    bootstrap.Modal.getOrCreateInstance(document.getElementById("columnCustomizeModal")).show();
                 });
+            }
 
-                div.addEventListener('mouseout', () => {
-                    div.style.backgroundColor = 'transparent';
-                });
+            applyColumnSettings();
 
-                div.addEventListener('click', (e) => {
-                    if (e.target !== input) {
-                        input.click();
-                    }
-                });
+            $(document).off('change.columnModal', '.column-checkbox').on('change.columnModal', '.column-checkbox', function() {
+                handleCheckboxChange(String(this.dataset.field || ''), this.checked);
+            });
 
-                div.appendChild(input);
-                div.appendChild(label);
-                li.appendChild(div);
-                menu.appendChild(li);
+            $(document).off('click.columnModalItem', '#columnArrangeList .arrange-item').on('click.columnModalItem', '#columnArrangeList .arrange-item', function(e) {
+                if (e.target.closest('button')) return;
+                columnModalState.activeField = String(this.dataset.field || '');
+                renderSelectedColumns();
+            });
+
+            $(document).off('click.columnModalUp', '.arrange-up').on('click.columnModalUp', '.arrange-up', function() {
+                const field = String(this.dataset.field || '');
+                const visible = columnModalState.order.filter(f => columnModalState.selectedColumns.includes(f));
+                const idx = visible.indexOf(field);
+                if (idx <= 0) return;
+                [visible[idx - 1], visible[idx]] = [visible[idx], visible[idx - 1]];
+                const hidden = columnModalState.order.filter(f => !visible.includes(f));
+                columnModalState.order = [...visible, ...hidden];
+                columnModalState.activeField = field;
+                renderSelectedColumns();
+            });
+
+            $(document).off('click.columnModalDown', '.arrange-down').on('click.columnModalDown', '.arrange-down', function() {
+                const field = String(this.dataset.field || '');
+                const visible = columnModalState.order.filter(f => columnModalState.selectedColumns.includes(f));
+                const idx = visible.indexOf(field);
+                if (idx < 0 || idx >= visible.length - 1) return;
+                [visible[idx], visible[idx + 1]] = [visible[idx + 1], visible[idx]];
+                const hidden = columnModalState.order.filter(f => !visible.includes(f));
+                columnModalState.order = [...visible, ...hidden];
+                columnModalState.activeField = field;
+                renderSelectedColumns();
+            });
+
+            document.getElementById("columnMoveUpBtn")?.addEventListener("click", function() {
+                if (!columnModalState.activeField) return;
+                const btn = document.querySelector(`.arrange-up[data-field="${columnModalState.activeField}"]`);
+                if (btn) btn.click();
+            });
+
+            document.getElementById("columnMoveDownBtn")?.addEventListener("click", function() {
+                if (!columnModalState.activeField) return;
+                const btn = document.querySelector(`.arrange-down[data-field="${columnModalState.activeField}"]`);
+                if (btn) btn.click();
+            });
+
+            document.getElementById("columnRestoreDefaultsBtn")?.addEventListener("click", function() {
+                columnModalState.selectedColumns = [...COLUMN_DEFAULT_ORDER];
+                columnModalState.order = [...COLUMN_DEFAULT_ORDER];
+                columnModalState.activeField = null;
+                renderAvailableColumns();
+                renderSelectedColumns();
+                saveColumnPreferences();
+            });
+
+            document.getElementById("columnSavePrefsBtn")?.addEventListener("click", function() {
+                saveColumnPreferences();
+                bootstrap.Modal.getOrCreateInstance(document.getElementById("columnCustomizeModal")).hide();
             });
         }
 
@@ -3849,19 +4133,7 @@
         }
 
         document.addEventListener("DOMContentLoaded", () => {
-            buildColumnDropdown();
-
-            // Toggle column from dropdown
-            document.getElementById("column-dropdown-menu").addEventListener("change", function(e) {
-                if (e.target.type === "checkbox") {
-                    const field = e.target.value;
-                    const col = table.getColumn(field);
-                    if (col) {
-                        e.target.checked ? col.show() : col.hide();
-                        saveColumnVisibilityToLocalStorage();
-                    }
-                }
-            });
+            initColumnModal();
 
             // Handle editable field (contenteditable cells, e.g. legacy qty fields — MOQ uses Tabulator number editor)
             $(document).off('blur', '.editable-qty').on('blur', '.editable-qty', function() {
