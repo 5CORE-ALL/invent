@@ -276,6 +276,7 @@ class ProductMasterController extends Controller
                 ->leftJoinSub($latestAmazonBySku, 'alr', function ($join) {
                     $join->on('alr.seller_sku', '=', 'psm.sku');
                 })
+                ->leftJoin('amazon_datsheets as ads', 'ads.sku', '=', 'psm.sku')
                 ->leftJoin('shopify_skus as ss', 'ss.sku', '=', 'psm.sku')
                 ->select([
                     'pm.id as pm_id',
@@ -307,6 +308,8 @@ class ProductMasterController extends Controller
                     'alr.seller_sku',
                     'alr.item_name',
                     'alr.raw_data',
+                    'ads.amazon_title as ads_amazon_title',
+                    'ads.sku as ads_sku',
                     'ss.image_src as shopify_image',
                     'psm.image as psm_image',
                 ]);
@@ -371,6 +374,9 @@ class ProductMasterController extends Controller
                 }
                 if (empty($amazonTitle) && ! empty($listing->item_name)) {
                     $amazonTitle = trim((string) $listing->item_name);
+                }
+                if (empty($amazonTitle) && ! empty($listing->ads_amazon_title)) {
+                    $amazonTitle = trim((string) $listing->ads_amazon_title);
                 }
 
                 $row = [
