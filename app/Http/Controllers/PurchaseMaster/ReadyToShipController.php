@@ -384,7 +384,16 @@ class ReadyToShipController extends Controller
         $sku = $request->input('sku');
         $column = $request->input('column');
         $value = $request->input('value');
-        $item = ReadyToShip::where('sku', $sku)->first();
+        $normalizedSku = trim((string) $sku);
+        $item = ReadyToShip::query()
+            ->whereRaw('TRIM(sku) = ?', [$normalizedSku])
+            ->where('transit_inv_status', 0)
+            ->whereNull('deleted_at')
+            ->orderByDesc('id')
+            ->first();
+        if (!$item) {
+            return response()->json(['success' => false, 'message' => 'SKU not found in ready_to_ships']);
+        }
         $qty = $item->qty;
 
         if($column === 'rec_qty'){
@@ -410,14 +419,15 @@ class ReadyToShipController extends Controller
             return response()->json(['success' => false, 'message' => 'Invalid column.']);
         }
 
-        $readyToShip = ReadyToShip::where('sku', $sku)->first();
-
-        if (!$readyToShip) {
-            return response()->json(['success' => false, 'message' => 'SKU not found in ready_to_ships']);
+        if ($column === 'pay_term') {
+            $value = strtoupper(trim((string) $value));
+            if (!in_array($value, ['EXW', 'FOB'], true)) {
+                $value = 'EXW';
+            }
         }
 
-        $readyToShip->$column = $value;
-        $readyToShip->save();
+        $item->$column = $value;
+        $item->save();
 
         return response()->json(['success' => true]);
     }
