@@ -201,12 +201,69 @@ class ForecastAnalysisController extends Controller
             return $group->first();
         });
         $movementMap = DB::table('movement_analysis')->get()->keyBy(fn($item) => $normalizeSku($item->sku));
-        $readyToShipMap = DB::table('ready_to_ship')->where('transit_inv_status', 0)->whereNull('deleted_at')->get()->keyBy(fn($item) => $normalizeSku($item->sku));
+        $readyToShipRows = DB::table('ready_to_ship')
+            ->where('transit_inv_status', 0)
+            ->whereNull('deleted_at')
+            ->get();
+        $mergeReadyToShipRows = function($rows) {
+            $preferred = $rows->first(function($r) {
+                return trim((string)($r->pay_term ?? '')) !== '';
+            }) ?? $rows->first();
+            $pick = function($field) use ($rows, $preferred) {
+                foreach ($rows as $r) {
+                    $v = $r->{$field} ?? null;
+                    if ($v !== null && trim((string)$v) !== '') return $v;
+                }
+                return $preferred->{$field} ?? null;
+            };
+            return (object)[
+                'sku' => $preferred->sku ?? '',
+                'qty' => (float)($pick('qty') ?? 0),
+                'rec_qty' => $pick('rec_qty'),
+                'rate' => (float)($pick('rate') ?? 0),
+                'payment' => $pick('payment') ?? 'No',
+                'pay_term' => $pick('pay_term') ?? '',
+                'packing_list' => $pick('packing_list') ?? 'No',
+                'photo_mail_send' => $pick('photo_mail_send') ?? 'No',
+            ];
+        };
+        $readyToShipMap = $readyToShipRows
+            ->groupBy(fn($item) => $normalizeSku($item->sku))
+            ->map($mergeReadyToShipRows);
+        $readyToShipMapCanonical = $readyToShipRows
+            ->groupBy(fn($item) => $canonicalSku($item->sku))
+            ->map($mergeReadyToShipRows);
+        $getReadyToShipForSku = function($sku) use ($readyToShipMap, $readyToShipMapCanonical, $normalizeSku, $canonicalSku) {
+            $k = $normalizeSku($sku);
+            if ($k !== '' && $readyToShipMap->has($k)) return $readyToShipMap->get($k);
+            $c = $canonicalSku($sku);
+            if ($c !== '' && $readyToShipMapCanonical->has($c)) return $readyToShipMapCanonical->get($c);
+            return null;
+        };
         $toOrderApprovedBySku = collect(DB::table('to_order_analysis')
             ->whereNull('deleted_at')
             ->get(['sku', 'approved_qty']))
             ->groupBy(fn ($r) => $normalizeSku($r->sku))
             ->map(fn ($rows) => (float) $rows->max(fn ($r) => (float) ($r->approved_qty ?? 0)));
+        $toOrderMetaBySku = collect(DB::table('to_order_analysis')
+            ->whereNull('deleted_at')
+            ->get(['sku', 'rfq_form_link', 'rfq_report_link', 'sheet_link']))
+            ->groupBy(fn($r) => $normalizeSku($r->sku))
+            ->map(function($rows) {
+                $latest = $rows->sortByDesc('id')->first();
+                $pick = function($field) use ($rows, $latest) {
+                    foreach ($rows as $r) {
+                        $v = trim((string)($r->{$field} ?? ''));
+                        if ($v !== '') return $v;
+                    }
+                    return trim((string)($latest->{$field} ?? ''));
+                };
+                return (object)[
+                    'rfq_form_link' => $pick('rfq_form_link'),
+                    'rfq_report_link' => $pick('rfq_report_link'),
+                    'sheet_link' => $pick('sheet_link'),
+                ];
+            });
         $mfrg = DB::table('mfrg_progress')->get()->keyBy(fn($item) => $normalizeSku($item->sku));
         $purchases = DB::table('purchases')->whereNull('deleted_at')
             ->select('items')
@@ -354,6 +411,7 @@ class ForecastAnalysisController extends Controller
         foreach ($productListData as $prodData) {
             $sheetSku = $normalizeSku($prodData->sku);
             if (empty($sheetSku)) continue;
+            $toOrderMeta = $toOrderMetaBySku->get($sheetSku);
 
             $item = new \stdClass();
             $item->SKU = $sheetSku;
@@ -456,8 +514,9 @@ class ForecastAnalysisController extends Controller
                 $item->notes = $forecast->notes ?? '';
                 $item->{'Clink'} = $forecast->clink ?? '';
                 $item->{'Olink'} = $forecast->olink ?? '';
-                $item->rfq_form_link = $forecast->rfq_form_link ?? '';
-                $item->rfq_report = $forecast->rfq_report ?? '';
+                $item->rfq_form_link = trim((string)($forecast->rfq_form_link ?? '')) ?: trim((string)($toOrderMeta->rfq_form_link ?? ''));
+                $item->rfq_report = trim((string)($forecast->rfq_report ?? '')) ?: trim((string)($toOrderMeta->rfq_report_link ?? ''));
+                $item->sheet_link = trim((string)($toOrderMeta->sheet_link ?? ''));
                 $item->date_apprvl = $forecast->date_apprvl ?? '';
                 // Normalize stage value: trim and convert to lowercase
                 $stageValue = $forecast->stage ?? '';
@@ -494,14 +553,18 @@ class ForecastAnalysisController extends Controller
                     $item->notes = $forecastRecord->notes ?? '';
                     $item->{'Clink'} = $forecastRecord->clink ?? '';
                     $item->{'Olink'} = $forecastRecord->olink ?? '';
-                    $item->rfq_form_link = $forecastRecord->rfq_form_link ?? '';
-                    $item->rfq_report = $forecastRecord->rfq_report ?? '';
+                    $item->rfq_form_link = trim((string)($forecastRecord->rfq_form_link ?? '')) ?: trim((string)($toOrderMeta->rfq_form_link ?? ''));
+                    $item->rfq_report = trim((string)($forecastRecord->rfq_report ?? '')) ?: trim((string)($toOrderMeta->rfq_report_link ?? ''));
+                    $item->sheet_link = trim((string)($toOrderMeta->sheet_link ?? ''));
                     $item->date_apprvl = $forecastRecord->date_apprvl ?? '';
                     // Normalize stage value: trim and convert to lowercase
                     $stageValue = $forecastRecord->stage ?? '';
                     $item->stage = !empty($stageValue) ? strtolower(trim($stageValue)) : '';
                 }
             }
+            if (!isset($item->rfq_form_link)) $item->rfq_form_link = trim((string)($toOrderMeta->rfq_form_link ?? ''));
+            if (!isset($item->rfq_report)) $item->rfq_report = trim((string)($toOrderMeta->rfq_report_link ?? ''));
+            if (!isset($item->sheet_link)) $item->sheet_link = trim((string)($toOrderMeta->sheet_link ?? ''));
 
             $transitForSku = $getTransitContainerForSku($prodData->sku ?? '');
             $item->containerName = $transitForSku->tab_name ?? '';
@@ -512,23 +575,56 @@ class ForecastAnalysisController extends Controller
 
             $readyToShipQty = 0;
             $r2sRate = 0;
-            if($readyToShipMap->has($sheetSku)){
-                $readyToShipData = $readyToShipMap->get($sheetSku);
+            $r2sHasRecord = false;
+            $r2sOrderQty = 0;
+            $r2sRecQty = 0;
+            $r2sPayment = 'No';
+            $r2sPayTerm = '';
+            $r2sPackingList = 'No';
+            $r2sNewPhoto = 'No';
+            $readyToShipData = $getReadyToShipForSku($sheetSku);
+            if($readyToShipData){
+                $r2sHasRecord = true;
                 $readyToShipQty = $readyToShipData->qty ?? 0;
                 $r2sRate = (float) ($readyToShipData->rate ?? 0);
+                $r2sOrderQty = (float) ($readyToShipData->qty ?? 0);
+                $r2sRecQty = ($readyToShipData->rec_qty !== null && $readyToShipData->rec_qty !== '')
+                    ? (float) $readyToShipData->rec_qty
+                    : (float) $r2sOrderQty;
+                $r2sPayment = $readyToShipData->payment ?? 'No';
+                $r2sPayTerm = $readyToShipData->pay_term ?? '';
+                $r2sPackingList = $readyToShipData->packing_list ?? 'No';
+                $r2sNewPhoto = $readyToShipData->photo_mail_send ?? 'No';
                 $item->readyToShipQty = $readyToShipQty;
             }
             $item->r2s_rate = $r2sRate; // Store rate for R2S Value calculation
+            $item->r2s_has_record = $r2sHasRecord;
+            $item->r2s_order_qty = $r2sOrderQty;
+            $item->r2s_rec_qty = $r2sRecQty;
+            $item->r2s_payment = $r2sPayment;
+            $item->r2s_pay_term = $r2sPayTerm;
+            $item->r2s_packing_list = $r2sPackingList;
+            $item->r2s_new_photo = $r2sNewPhoto;
 
             // MIP column should ONLY come from mfrg_progress table, no fallback to purchases
             $order_given = 0;
             $mipRate = 0;
             $mfrgReadyToShip = 'No'; // Default to 'No'
             $mfrgSupplier = '';
+            $mfrgQtyRaw = 0;
+            $mfrgPkgInst = 'No';
+            $mfrgUManual = 'No';
+            $mfrgCompliance = 'No';
+            $mfrgOrderDate = '';
             if($mfrg->has($sheetSku)){
                 $mfrgData = $mfrg->get($sheetSku);
                 $mfrgSupplier = trim($mfrgData->supplier ?? '') ?: '';
                 $mfrgReadyToShip = $mfrgData->ready_to_ship ?? 'No';
+                $mfrgQtyRaw = (float) ($mfrgData->qty ?? 0);
+                $mfrgPkgInst = $mfrgData->pkg_inst ?? 'No';
+                $mfrgUManual = $mfrgData->u_manual ?? 'No';
+                $mfrgCompliance = $mfrgData->compliance ?? 'No';
+                $mfrgOrderDate = !empty($mfrgData->created_at) ? (string)$mfrgData->created_at : '';
                 if($mfrgReadyToShip === 'No' || $mfrgReadyToShip === ''){
                     $order_given = (float) ($mfrgData->qty ?? 0);
                     $mipRate = (float) ($mfrgData->rate ?? 0);
@@ -539,6 +635,14 @@ class ForecastAnalysisController extends Controller
             $item->mip_rate = $mipRate; // Store rate for MIP Value calculation
             $item->mfrg_ready_to_ship = $mfrgReadyToShip; // Store ready_to_ship status from mfrg_progress table
             $item->mfrg_supplier = $mfrgSupplier; // Supplier from mfrg_progress (same as MIP blade)
+            $item->mfrg_qty = $mfrgQtyRaw;
+            $item->pkg_inst = $mfrgPkgInst;
+            $item->u_manual = $mfrgUManual;
+            $item->compliance = $mfrgCompliance;
+            $item->mfrg_order_date = $mfrgOrderDate;
+            $cbmNum = is_numeric($item->{'CBM MSL'} ?? null) ? (float)($item->{'CBM MSL'}) : 0.0;
+            $item->cbm = $cbmNum;
+            $item->total_cbm = round($mfrgQtyRaw * $cbmNum, 4);
 
             if ($movementMap->has($sheetSku)) {
                 $months = json_decode($movementMap->get($sheetSku)->months ?? '{}', true);
@@ -634,6 +738,7 @@ class ForecastAnalysisController extends Controller
                 // Final fallback: CP * transit (for backward compatibility)
                 $item->Transit_Value = round($cp * $transit, 2);
             }
+            $item->r2s_amount = round(((float) $r2sOrderQty) * $cp, 0);
 
             // Stage from pipeline qtys: Transit → R2S → MIP → 2 Order; none → Select (empty)
             // Never auto-overwrite appr_req — this is set from the grid and must survive refresh.

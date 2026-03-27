@@ -296,38 +296,12 @@
                             <select id="stage-filter" class="form-select-sm border border-primary" style="width: 150px;">
                                 <option value="">All</option>
                                 <option value="__blank__">Not Req Now</option>
+                                <option value="two_ord_nonneg">2 Ord</option>
                                 <option value="appr_req">Appr Req</option>
                                 <option value="mip">MIP</option>
                                 <option value="r2s">R2S</option>
                                 <option value="transit">Trn</option>
                                 <option value="to_order_analysis">Ord</option>
-                            </select>
-
-                            <!-- 2 Ord Color Filter -->
-                            <select id="two-ord-color-filter" class="form-select-sm border border-primary" style="width: 150px;" aria-label="2 Ord color filter" onchange="window.__fa_applyTwoOrdColorFilter && window.__fa_applyTwoOrdColorFilter(this.value)">
-                                <option value="">2 Ord: All</option>
-                                <option value="neg">2 Ord: Red (&lt; 0)</option>
-                                <option value="nonneg">2 Ord: Yellow (&gt;= 0)</option>
-                            </select>
-                            <select id="order-color-filter-top" class="form-select-sm border border-primary" style="width: 145px;" aria-label="Order filter">
-                                <option value="">Order: All</option>
-                                <option value="pos">Order: &gt; 0</option>
-                            </select>
-                            <select id="mip-color-filter-top" class="form-select-sm border border-primary" style="width: 135px;" aria-label="MIP filter">
-                                <option value="">MIP: All</option>
-                                <option value="pos">MIP: &gt; 0</option>
-                            </select>
-                            <select id="r2s-color-filter-top" class="form-select-sm border border-primary" style="width: 135px;" aria-label="R2S filter">
-                                <option value="">R2S: All</option>
-                                <option value="pos">R2S: &gt; 0</option>
-                            </select>
-                            <select id="trn-color-filter-top" class="form-select-sm border border-primary" style="width: 135px;" aria-label="Trn filter">
-                                <option value="">Trn: All</option>
-                                <option value="pos">Trn: &gt; 0</option>
-                            </select>
-                            <select id="moq-color-filter-top" class="form-select-sm border border-primary" style="width: 140px;" aria-label="MOQ filter">
-                                <option value="">MOQ: All</option>
-                                <option value="pos">MOQ: &gt; 0</option>
                             </select>
 
                             <!-- Column Management -->
@@ -1109,6 +1083,7 @@
                         values: {
                             "": "All",
                             "__blank__": "Not Req Now",
+                            "two_ord_nonneg": "2 Ord",
                             "appr_req": "Appr Req",
                             "mip": "MIP",
                             "r2s": "R2S",
@@ -1128,6 +1103,10 @@
                         if (selected === '__blank__') {
                             const twoOrd = parseFloat((rowData && (rowData.to_order ?? (rowData.raw_data ? rowData.raw_data.to_order : null))) ?? 0);
                             return !stageValue || (Number.isFinite(twoOrd) && twoOrd < 0);
+                        }
+                        if (selected === 'two_ord_nonneg') {
+                            const twoOrd = parseFloat((rowData && (rowData.to_order ?? (rowData.raw_data ? rowData.raw_data.to_order : null))) ?? 0);
+                            return Number.isFinite(twoOrd) ? (twoOrd >= 0) : false;
                         }
                         if (selected === 'transit') {
                             const transitValue = rowData && rowData.raw_data ? rowData.raw_data["transit"] : (rowData ? rowData["transit"] : 0);
@@ -1772,6 +1751,83 @@
                     }
                 },
                 {
+                    title: "DOA",
+                    field: "date_apprvl",
+                    width: 150,
+                    minWidth: 145,
+                    sorter: "date",
+                    sorterParams: { format: "YYYY-MM-DD", alignEmptyValues: "bottom" },
+                    formatter: function(cell) {
+                        const value = cell.getValue() || "";
+                        let displayText = "-";
+                        let textStyle = "";
+
+                        if (value) {
+                            const d = new Date(value);
+                            if (!isNaN(d.getTime())) {
+                                const day = String(d.getDate()).padStart(2, "0");
+                                const month = String(d.getMonth() + 1).padStart(2, "0");
+                                const year = d.getFullYear();
+                                displayText = `${day}-${month}-${year}`;
+
+                                const today = new Date();
+                                today.setHours(0, 0, 0, 0);
+                                d.setHours(0, 0, 0, 0);
+                                const diffTime = today - d;
+                                const daysDiff = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+
+                                if (daysDiff >= 14) {
+                                    textStyle = "color:red; font-weight:700;";
+                                } else if (daysDiff >= 7) {
+                                    textStyle = "color:#FFC106; font-weight:700;";
+                                }
+                            }
+                        }
+
+                        return `<span style="min-width:100px; display:inline-block; ${textStyle}">${displayText}</span>`;
+                    }
+                },
+                {
+                    title: "B / S",
+                    field: "Clink",
+                    hozAlign: "center",
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData() || {};
+                        const buyerLink = String(rowData.Clink || '').trim();
+                        const sellerLink = String(rowData.Olink || '').trim();
+                        if (!buyerLink && !sellerLink) {
+                            return '<span class="text-muted">-</span>';
+                        }
+                        const buyerBtn = buyerLink
+                            ? `<a href="${buyerLink}" target="_blank" class="btn btn-sm btn-outline-primary" title="Buyer Link" style="min-width:30px;padding:2px 8px;">B</a>`
+                            : '';
+                        const sellerBtn = sellerLink
+                            ? `<a href="${sellerLink}" target="_blank" class="btn btn-sm btn-outline-secondary" title="Seller Link" style="min-width:30px;padding:2px 8px;">S</a>`
+                            : '';
+                        return `<div style="display:flex;justify-content:center;gap:6px;">${buyerBtn}${sellerBtn}</div>`;
+                    }
+                },
+                {
+                    title: "RFQ Form",
+                    field: "rfq_form_link",
+                    hozAlign: "center",
+                    formatter: function(cell) {
+                        const value = String(cell.getValue() || '').trim();
+                        if (!value) return '<span class="text-muted">-</span>';
+                        return `<a href="${value}" target="_blank" class="btn btn-sm btn-outline-info" title="RFQ Form Link" style="min-width:80px;padding:2px 10px;"><i class="fas fa-link me-1"></i>Open</a>`;
+                    }
+                },
+                {
+                    title: "RFQ Report",
+                    field: "rfq_report",
+                    hozAlign: "center",
+                    formatter: function(cell) {
+                        const value = String(cell.getValue() || '').trim();
+                        if (!value) return '<span class="text-muted">-</span>';
+                        return `<a href="${value}" target="_blank" class="btn btn-sm btn-outline-info" title="RFQ Report Link" style="min-width:80px;padding:2px 10px;"><i class="fas fa-link me-1"></i>Open</a>`;
+                    }
+                },
+                {
                     title: "NPFT%",
                     field: "avg_npft_pct",
                     minWidth: 58,
@@ -1925,6 +1981,207 @@
                     formatter: function(cell) {
                         const value = cell.getValue() || 0;
                         return `<span style="display:block; text-align:center; font-weight:bold;">$${value.toLocaleString()}</span>`;
+                    }
+                },
+                {
+                    title: "CBM",
+                    field: "cbm",
+                    hozAlign: "center",
+                    formatter: function(cell) {
+                        const d = cell.getRow().getData() || {};
+                        if (d.is_parent || d.isParent) return '<span style="display:block;text-align:center;color:#6c757d;">-</span>';
+                        const v = parseFloat(cell.getValue());
+                        if (!Number.isFinite(v) || v <= 0) return '<span style="display:block;text-align:center;color:#6c757d;">N/A</span>';
+                        return `<span style="display:block;text-align:center;font-weight:700;">${v.toFixed(4)}</span>`;
+                    }
+                },
+                {
+                    title: "Total CBM",
+                    field: "total_cbm",
+                    hozAlign: "center",
+                    formatter: function(cell) {
+                        const d = cell.getRow().getData() || {};
+                        if (d.is_parent || d.isParent) return '<span style="display:block;text-align:center;color:#6c757d;">-</span>';
+                        const total = parseFloat(cell.getValue());
+                        if (!Number.isFinite(total) || total <= 0) {
+                            return '<span style="display:block;text-align:center;color:#6c757d;">-</span>';
+                        }
+                        return `<span style="display:block;text-align:center;font-weight:700;">${total.toFixed(2)}</span>`;
+                    }
+                },
+                {
+                    title: "Pkg Inst",
+                    field: "pkg_inst",
+                    hozAlign: "center",
+                    headerSort: false,
+                    formatter: function(cell) {
+                        const d = cell.getRow().getData() || {};
+                        if (d.is_parent || d.isParent) return '<span style="display:block;text-align:center;color:#6c757d;">-</span>';
+                        const yes = String(cell.getValue() || 'No').trim().toUpperCase() === 'YES';
+                        const sku = String(d.SKU || '').replace(/"/g, '&quot;');
+                        return `<span class="forecast-mfrg-toggle-dot pkg-inst-toggle-dot"
+                            data-sku="${sku}" data-column="pkg_inst" data-value="${yes ? 'Yes' : 'No'}"
+                            title="Pkg Inst: ${yes ? 'Yes' : 'No'}"
+                            style="display:inline-block;width:14px;height:14px;border-radius:50%;cursor:pointer;background-color:${yes ? '#28a745' : '#dc3545'};"></span>`;
+                    }
+                },
+                {
+                    title: "U-Manual",
+                    field: "u_manual",
+                    hozAlign: "center",
+                    headerSort: false,
+                    formatter: function(cell) {
+                        const d = cell.getRow().getData() || {};
+                        if (d.is_parent || d.isParent) return '<span style="display:block;text-align:center;color:#6c757d;">-</span>';
+                        const yes = String(cell.getValue() || 'No').trim().toUpperCase() === 'YES';
+                        const sku = String(d.SKU || '').replace(/"/g, '&quot;');
+                        return `<span class="forecast-mfrg-toggle-dot u-manual-toggle-dot"
+                            data-sku="${sku}" data-column="u_manual" data-value="${yes ? 'Yes' : 'No'}"
+                            title="U-Manual: ${yes ? 'Yes' : 'No'}"
+                            style="display:inline-block;width:14px;height:14px;border-radius:50%;cursor:pointer;background-color:${yes ? '#28a745' : '#dc3545'};"></span>`;
+                    }
+                },
+                {
+                    title: "Compliance",
+                    field: "compliance",
+                    hozAlign: "center",
+                    headerSort: false,
+                    formatter: function(cell) {
+                        const d = cell.getRow().getData() || {};
+                        if (d.is_parent || d.isParent) return '<span style="display:block;text-align:center;color:#6c757d;">-</span>';
+                        const yes = String(cell.getValue() || 'No').trim().toUpperCase() === 'YES';
+                        const sku = String(d.SKU || '').replace(/"/g, '&quot;');
+                        return `<span class="forecast-mfrg-toggle-dot compliance-toggle-dot"
+                            data-sku="${sku}" data-column="compliance" data-value="${yes ? 'Yes' : 'No'}"
+                            title="Compliance: ${yes ? 'Yes' : 'No'}"
+                            style="display:inline-block;width:14px;height:14px;border-radius:50%;cursor:pointer;background-color:${yes ? '#28a745' : '#dc3545'};"></span>`;
+                    }
+                },
+                {
+                    title: "Order Date",
+                    field: "mfrg_order_date",
+                    hozAlign: "center",
+                    sorter: "date",
+                    sorterParams: { format: "YYYY-MM-DD HH:mm:ss", alignEmptyValues: "bottom" },
+                    formatter: function(cell) {
+                        const drow = cell.getRow().getData() || {};
+                        if (drow.is_parent || drow.isParent) {
+                            return '<span style="display:block;text-align:center;color:#6c757d;">-</span>';
+                        }
+                        const raw = String(cell.getValue() || '').trim();
+                        if (!raw) {
+                            return '<span style="display:block;text-align:center;color:#6c757d;">-</span>';
+                        }
+                        const dateObj = new Date(raw);
+                        if (isNaN(dateObj.getTime())) {
+                            return '<span style="display:block;text-align:center;color:#6c757d;">-</span>';
+                        }
+                        const today = new Date();
+                        today.setHours(0, 0, 0, 0);
+                        dateObj.setHours(0, 0, 0, 0);
+                        const daysDiff = Math.floor((today - dateObj) / (1000 * 60 * 60 * 24));
+                        const day = String(dateObj.getDate()).padStart(2, '0');
+                        const month = dateObj.toLocaleString('en-US', { month: 'short' }).toUpperCase();
+                        let color = '#000';
+                        if (daysDiff > 25) color = 'red';
+                        else if (daysDiff >= 15) color = '#ffc107';
+                        return `<span style="display:block;text-align:center;font-weight:700;color:${color};">${day} ${month} (${daysDiff} D)</span>`;
+                    }
+                },
+                {
+                    title: "Or. QTY",
+                    field: "r2s_order_qty",
+                    hozAlign: "center",
+                    formatter: function(cell) {
+                        const d = cell.getRow().getData() || {};
+                        if (d.is_parent || d.isParent) return '<span style="display:block;text-align:center;color:#6c757d;">-</span>';
+                        const v = parseFloat(cell.getValue());
+                        const disp = Number.isFinite(v) ? (Number.isInteger(v) ? String(v) : String(v)) : '';
+                        return `<input type="number" readonly value="${disp}" style="width:90px;text-align:center;background:#e9ecef;cursor:not-allowed;border:none;" class="form-control form-control-sm">`;
+                    }
+                },
+                {
+                    title: "Rec. QTY",
+                    field: "r2s_rec_qty",
+                    hozAlign: "center",
+                    formatter: function(cell) {
+                        const d = cell.getRow().getData() || {};
+                        if (d.is_parent || d.isParent) return '<span style="display:block;text-align:center;color:#6c757d;">-</span>';
+                        const v = parseFloat(cell.getValue());
+                        const disp = Number.isFinite(v) ? (Number.isInteger(v) ? String(v) : String(v)) : '';
+                        return `<input type="number" readonly value="${disp}" style="font-size:0.95rem;height:36px;width:90px;text-align:center;" class="form-control form-control-sm">`;
+                    }
+                },
+                {
+                    title: "Amount",
+                    field: "r2s_amount",
+                    hozAlign: "center",
+                    formatter: function(cell) {
+                        const d = cell.getRow().getData() || {};
+                        if (d.is_parent || d.isParent) return '<span style="display:block;text-align:center;color:#6c757d;">-</span>';
+                        const v = parseFloat(cell.getValue());
+                        if (!Number.isFinite(v)) return '<span style="display:block;text-align:center;color:#6c757d;">-</span>';
+                        return `<span style="display:block;text-align:center;font-weight:700;">${Math.round(v)}</span>`;
+                    }
+                },
+                {
+                    title: "Packing List",
+                    field: "r2s_packing_list",
+                    hozAlign: "center",
+                    headerSort: false,
+                    formatter: function(cell) {
+                        const d = cell.getRow().getData() || {};
+                        if (d.is_parent || d.isParent) return '<span style="display:block;text-align:center;color:#6c757d;">-</span>';
+                        const yes = String(cell.getValue() || 'No').trim().toUpperCase() === 'YES';
+                        return `<span style="display:inline-block;width:14px;height:14px;border-radius:50%;background-color:${yes ? '#28a745' : '#dc3545'};"></span>`;
+                    }
+                },
+                {
+                    title: "PMT Confirm",
+                    field: "r2s_payment",
+                    hozAlign: "center",
+                    formatter: function(cell) {
+                        const d = cell.getRow().getData() || {};
+                        if (d.is_parent || d.isParent) return '<span style="display:block;text-align:center;color:#6c757d;">-</span>';
+                        if (!d.r2s_has_record) return '<span style="display:block;text-align:center;color:#6c757d;">-</span>';
+                        const value = String(cell.getValue() || 'No').trim().toUpperCase() === 'YES' ? 'Yes' : 'No';
+                        const sku = String(d.SKU || '').replace(/"/g, '&quot;');
+                        const isYes = value === 'Yes';
+                        return `<span class="forecast-r2s-payment-toggle"
+                            data-sku="${sku}" data-column="payment" data-value="${value}"
+                            style="display:inline-block;width:14px;height:14px;border-radius:50%;cursor:pointer;background-color:${isYes ? '#28a745' : '#dc3545'};"></span>`;
+                    }
+                },
+                {
+                    title: "Terms",
+                    field: "r2s_pay_term",
+                    hozAlign: "center",
+                    formatter: function(cell) {
+                        const d = cell.getRow().getData() || {};
+                        if (d.is_parent || d.isParent) return '<span style="display:block;text-align:center;color:#6c757d;">-</span>';
+                        if (!d.r2s_has_record) return '<span style="display:block;text-align:center;color:#6c757d;">-</span>';
+                        const value = String(cell.getValue() || '').trim().toUpperCase() || 'EXW';
+                        const sku = String(d.SKU || '').replace(/"/g, '&quot;');
+                        const isExw = value === 'EXW';
+                        const isFob = value === 'FOB';
+                        return `<select class="form-select form-select-sm forecast-r2s-payterm-select"
+                            data-sku="${sku}" data-column="pay_term" data-prev="${value}"
+                            style="min-width:90px; font-size:13px;">
+                            <option value="EXW" ${isExw ? 'selected' : ''}>EXW</option>
+                            <option value="FOB" ${isFob ? 'selected' : ''}>FOB</option>
+                        </select>`;
+                    }
+                },
+                {
+                    title: "New Photo",
+                    field: "r2s_new_photo",
+                    hozAlign: "center",
+                    headerSort: false,
+                    formatter: function(cell) {
+                        const d = cell.getRow().getData() || {};
+                        if (d.is_parent || d.isParent) return '<span style="display:block;text-align:center;color:#6c757d;">-</span>';
+                        const yes = String(cell.getValue() || 'No').trim().toUpperCase() === 'YES';
+                        return `<span style="display:inline-block;width:14px;height:14px;border-radius:50%;background-color:${yes ? '#28a745' : '#dc3545'};"></span>`;
                     }
                 },
             ],
@@ -2897,6 +3154,9 @@
                         if (currentStageFilter === '__blank__') {
                             const childTwoOrd = parseFloat(child.to_order ?? (child.raw_data ? child.raw_data.to_order : 0));
                             stageMatch = (!childStage || childStage === '') || (Number.isFinite(childTwoOrd) && childTwoOrd < 0);
+                        } else if (currentStageFilter === 'two_ord_nonneg') {
+                            const childTwoOrd = parseFloat(child.to_order ?? (child.raw_data ? child.raw_data.to_order : 0));
+                            stageMatch = Number.isFinite(childTwoOrd) && childTwoOrd >= 0;
                         } else if (currentStageFilter === 'transit') {
                             // For transit filter, check if transit value exists and > 0
                             const transitValue = child.raw_data ? child.raw_data["transit"] : child["transit"];
@@ -2962,6 +3222,9 @@
                     if (currentStageFilter === '__blank__') {
                         const dataTwoOrd = parseFloat(data.to_order ?? (data.raw_data ? data.raw_data.to_order : 0));
                         stageMatch = (!dataStage || dataStage === '') || (Number.isFinite(dataTwoOrd) && dataTwoOrd < 0);
+                    } else if (currentStageFilter === 'two_ord_nonneg') {
+                        const dataTwoOrd = parseFloat(data.to_order ?? (data.raw_data ? data.raw_data.to_order : 0));
+                        stageMatch = Number.isFinite(dataTwoOrd) && dataTwoOrd >= 0;
                     } else if (currentStageFilter === 'transit') {
                         // For transit filter, check if transit value exists and > 0
                         const transitValue = data.raw_data ? data.raw_data["transit"] : data["transit"];
@@ -3885,6 +4148,145 @@
                         alert('Failed to move MOQ to Order.');
                     }
                 );
+            });
+
+            $(document).off('click', '.forecast-mfrg-toggle-dot').on('click', '.forecast-mfrg-toggle-dot', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                const dot = this;
+                const sku = String(dot.getAttribute('data-sku') || '').trim();
+                const column = String(dot.getAttribute('data-column') || '').trim();
+                if (!sku || !column) return;
+                if (dot.dataset.busy === '1') return;
+
+                const current = String(dot.getAttribute('data-value') || 'No').trim().toUpperCase() === 'YES' ? 'Yes' : 'No';
+                const next = current === 'Yes' ? 'No' : 'Yes';
+                dot.dataset.busy = '1';
+                dot.style.opacity = '0.55';
+
+                const token = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+                fetch('/mfrg-progresses/inline-update-by-sku', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': token
+                    },
+                    body: JSON.stringify({ sku: sku, column: column, value: next })
+                })
+                .then(r => r.json())
+                .then(res => {
+                    if (!res || !res.success) throw new Error(res && res.message ? res.message : 'Update failed');
+                    dot.setAttribute('data-value', next);
+                    dot.style.backgroundColor = (next === 'Yes') ? '#28a745' : '#dc3545';
+
+                    const row = table.getRows().find(r => String(r.getData()?.SKU || '').trim() === sku);
+                    if (row) {
+                        const patch = {};
+                        patch[column] = next;
+                        row.update(patch, true);
+                    }
+                })
+                .catch(err => {
+                    alert(err && err.message ? err.message : 'Failed to update');
+                })
+                .finally(() => {
+                    dot.dataset.busy = '0';
+                    dot.style.opacity = '1';
+                });
+            });
+
+            $(document).off('change', '.forecast-r2s-payterm-select').on('change', '.forecast-r2s-payterm-select', function(e) {
+                const el = this;
+                const sku = String(el.getAttribute('data-sku') || '').trim();
+                const next = String(el.value || '').trim().toUpperCase();
+                if (!sku || !next) return;
+                const token = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+                const prev = el.getAttribute('data-prev') || 'EXW';
+                el.disabled = true;
+
+                fetch('/ready-to-ship/inline-update-by-sku', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': token,
+                        'X-Requested-With': 'XMLHttpRequest',
+                        'Accept': 'application/json'
+                    },
+                    body: JSON.stringify({ sku: sku, column: 'pay_term', value: next })
+                })
+                .then(async (r) => {
+                    const text = await r.text();
+                    let data = null;
+                    try { data = JSON.parse(text); } catch (err) {
+                        throw new Error('Server returned non-JSON response');
+                    }
+                    if (!r.ok) {
+                        throw new Error(data && data.message ? data.message : `Request failed (${r.status})`);
+                    }
+                    return data;
+                })
+                .then(res => {
+                    if (!res || !res.success) throw new Error(res && res.message ? res.message : 'Failed to update PMT Confirm');
+                    el.setAttribute('data-prev', next);
+                    const row = table.getRows().find(r => String(r.getData()?.SKU || '').trim() === sku);
+                    if (row) row.update({ r2s_pay_term: next }, true);
+                })
+                .catch(err => {
+                    el.value = prev;
+                    alert(err && err.message ? err.message : 'Failed to update PMT Confirm');
+                })
+                .finally(() => {
+                    el.disabled = false;
+                });
+            });
+
+            $(document).off('click', '.forecast-r2s-payment-toggle').on('click', '.forecast-r2s-payment-toggle', function(e) {
+                const dot = this;
+                if (dot.dataset.busy === '1') return;
+                const sku = String(dot.getAttribute('data-sku') || '').trim();
+                if (!sku) return;
+
+                const token = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+                const current = String(dot.getAttribute('data-value') || 'No').trim().toUpperCase() === 'YES' ? 'Yes' : 'No';
+                const next = current === 'Yes' ? 'No' : 'Yes';
+
+                dot.dataset.busy = '1';
+                dot.style.opacity = '0.6';
+
+                fetch('/ready-to-ship/inline-update-by-sku', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': token,
+                        'X-Requested-With': 'XMLHttpRequest',
+                        'Accept': 'application/json'
+                    },
+                    body: JSON.stringify({ sku: sku, column: 'payment', value: next })
+                })
+                .then(async (r) => {
+                    const text = await r.text();
+                    let data = null;
+                    try { data = JSON.parse(text); } catch (err) {
+                        throw new Error('Server returned non-JSON response');
+                    }
+                    if (!r.ok || !data || !data.success) {
+                        throw new Error(data && data.message ? data.message : `Request failed (${r.status})`);
+                    }
+                    return data;
+                })
+                .then(() => {
+                    dot.setAttribute('data-value', next);
+                    dot.style.backgroundColor = next === 'Yes' ? '#28a745' : '#dc3545';
+                    const row = table.getRows().find(r => String(r.getData()?.SKU || '').trim() === sku);
+                    if (row) row.update({ r2s_payment: next }, true);
+                })
+                .catch(err => {
+                    alert(err && err.message ? err.message : 'Failed to update PMT Confirm');
+                })
+                .finally(() => {
+                    dot.dataset.busy = '0';
+                    dot.style.opacity = '1';
+                });
             });
 
             // Handle notes edit modal save
