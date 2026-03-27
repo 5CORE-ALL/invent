@@ -92,6 +92,8 @@ class BulletPointMasterController extends Controller
             $sku = $this->normalizeSku($validated['sku']);
             $results = [];
 
+            $allowedMarketplaces = array_keys($this->marketplaceTableMap());
+
             foreach ($validated['updates'] as $u) {
                 $marketplace = strtolower(trim($u['marketplace']));
                 $text = trim((string) ($u['bullet_points'] ?? ''));
@@ -100,7 +102,19 @@ class BulletPointMasterController extends Controller
                     continue;
                 }
 
-                // No upper character limit — store and push full text as-is.
+                if (! in_array($marketplace, $allowedMarketplaces, true)) {
+                    $results[$marketplace] = ['success' => false, 'message' => 'Unknown or unsupported marketplace'];
+                    continue;
+                }
+
+                $limit = $this->getBulletPointLimit($marketplace);
+                if (mb_strlen($text) > $limit) {
+                    $results[$marketplace] = [
+                        'success' => false,
+                        'message' => "Bullet points exceed {$limit} character limit for this marketplace",
+                    ];
+                    continue;
+                }
 
                 $tableSaved = $this->saveToMarketplaceTable($marketplace, $sku, $text);
                 $serviceResult = $this->callMarketplaceService($marketplace, $sku, $text);
@@ -258,25 +272,31 @@ class BulletPointMasterController extends Controller
         return $this->generateBulletPoints($request);
     }
 
+    /**
+     * Character limit per marketplace for bullet point pushes (aligned with Bullet Points Master UI).
+     */
+    public function getBulletPointLimit(string $marketplace): int
+    {
+        $marketplace = strtolower(trim($marketplace));
+
+        return match ($marketplace) {
+            'shopify_main', 'shopify_pls' => 100,
+            default => 150,
+        };
+    }
+
     private function marketplaceTableMap(): array
     {
         return [
-            'shopify_main' => 'shopify_metrics',
-            'shopify_pls' => 'shopify_pls_metrics',
             'ebay' => 'ebay_metrics',
             'ebay2' => 'ebay_2_metrics',
             'ebay3' => 'ebay_3_metrics',
-            'temu' => 'temu_metrics',
-            'amazon' => 'amazon_metrics',
-            'reverb' => 'reverb_metrics',
-            'walmart' => 'walmart_metrics',
             'macy' => 'macy_metrics',
-            'aliexpress' => 'aliexpress_metrics',
-            'faire' => 'faire_metrics',
-            'bestbuy' => 'bestbuy_metrics',
-            'wayfair' => 'wayfair_metrics',
-            'shein' => 'shein_metrics',
-            'doba' => 'doba_metrics',
+            'amazon' => 'amazon_metrics',
+            'temu' => 'temu_metrics',
+            'reverb' => 'reverb_metrics',
+            'shopify_main' => 'shopify_metrics',
+            'shopify_pls' => 'shopify_pls_metrics',
         ];
     }
 
@@ -337,19 +357,12 @@ class BulletPointMasterController extends Controller
             'ebay' => \App\Services\EbayApiService::class,
             'ebay2' => \App\Services\Ebay2ApiService::class,
             'ebay3' => \App\Services\EbayThreeApiService::class,
-            'walmart' => \App\Services\WalmartService::class,
             'macy' => \App\Services\MacysApiService::class,
-            'aliexpress' => \App\Services\AliExpressApiService::class,
-            'faire' => \App\Services\FaireService::class,
+            'amazon' => \App\Services\AmazonSpApiService::class,
             'temu' => \App\Services\TemuApiService::class,
-            'doba' => \App\Services\DobaApiService::class,
-            'wayfair' => \App\Services\WayfairApiService::class,
-            'shein' => \App\Services\SheinApiService::class,
             'reverb' => \App\Services\ReverbApiService::class,
             'shopify_main' => \App\Services\ShopifyApiService::class,
             'shopify_pls' => \App\Services\ShopifyPLSApiService::class,
-            'amazon' => \App\Services\AmazonSpApiService::class,
-            'bestbuy' => \App\Services\BestBuyApiService::class,
         ];
 
         try {
