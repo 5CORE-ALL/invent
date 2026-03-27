@@ -244,13 +244,20 @@ class ProductMasterController extends Controller
         try {
             $search = trim((string) $request->query('search', ''));
 
-            $latestAmazonBySku = DB::table('amazon_listings_raw as alr1')
+            // Latest row per seller_sku via GROUP BY (avoids per-row correlated subquery). Do not select raw_data (huge JSON).
+            $latestAmazonIds = DB::table('amazon_listings_raw')
+                ->select('seller_sku', DB::raw('MAX(id) as max_id'))
+                ->groupBy('seller_sku');
+
+            $latestAmazonBySku = DB::table('amazon_listings_raw as alr')
+                ->joinSub($latestAmazonIds, 'latest', function ($join) {
+                    $join->on('alr.seller_sku', '=', 'latest.seller_sku')
+                        ->on('alr.id', '=', 'latest.max_id');
+                })
                 ->select([
-                    'alr1.seller_sku',
-                    'alr1.item_name',
-                    'alr1.raw_data',
-                ])
-                ->whereRaw('alr1.id = (SELECT MAX(alr2.id) FROM amazon_listings_raw alr2 WHERE alr2.seller_sku = alr1.seller_sku)');
+                    'alr.seller_sku',
+                    'alr.item_name',
+                ]);
 
             $pmImage7Column = Schema::hasColumn('product_master', 'image7')
                 ? 'image7'
@@ -362,17 +369,7 @@ class ProductMasterController extends Controller
                 }
 
                 $amazonTitle = null;
-                $rawData = $listing->raw_data ? (is_string($listing->raw_data) ? json_decode($listing->raw_data, true) : $listing->raw_data) : null;
-                if ($rawData && is_array($rawData)) {
-                    $possibleKeys = ['item-name', 'item_name', 'product-title', 'title', 'Item Name', 'itemName'];
-                    foreach ($possibleKeys as $key) {
-                        if (! empty($rawData[$key]) && is_string($rawData[$key])) {
-                            $amazonTitle = trim($rawData[$key]);
-                            break;
-                        }
-                    }
-                }
-                if (empty($amazonTitle) && ! empty($listing->item_name)) {
+                if (! empty($listing->item_name)) {
                     $amazonTitle = trim((string) $listing->item_name);
                 }
                 if (empty($amazonTitle) && ! empty($listing->ads_amazon_title)) {
@@ -1930,47 +1927,46 @@ class ProductMasterController extends Controller
                 'title60' => 'nullable|string',
             ]);
 
-            $sku = $validated['sku'];
+            $sku = $this->normalizeTitleMasterSku($validated['sku']);
+            if ($sku === '') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'SKU is required.',
+                ], 422);
+            }
 
-            // Build query for debug logging
-            $query = ProductMaster::query()
-                ->where('SKU', $sku)
-                ->orWhere('sku', $sku);
+            $payload = [
+                'title150' => $validated['title150'] ?? null,
+                'title100' => $validated['title100'] ?? null,
+                'title80' => $validated['title80'] ?? null,
+                'title60' => $validated['title60'] ?? null,
+                'updated_at' => now(),
+            ];
 
-            $results = $query->get();
+            // Single indexed UPDATE — no Eloquent hydration of large JSON/text columns, no external APIs.
+            $updated = DB::table('product_master')
+                ->whereNull('deleted_at')
+                ->where('sku', $sku)
+                ->update($payload);
 
-            Log::info('🔍 Title 100 Save - SKU lookup', [
-                'sku' => $sku,
-                'sku_trimmed' => trim($sku),
-                'sku_lowercase' => mb_strtolower($sku),
-                'sku_without_spaces' => str_replace(' ', '', $sku),
-                'table_queried' => 'product_master',
-                'query' => $query->toSql(),
-                'bindings' => $query->getBindings(),
-                'result_count' => $results->count(),
-                'timestamp' => now()->toIso8601String(),
-            ]);
+            if ($updated === 0) {
+                $updated = DB::table('product_master')
+                    ->whereNull('deleted_at')
+                    ->whereRaw('LOWER(TRIM(sku)) = ?', [mb_strtolower($sku)])
+                    ->update($payload);
+            }
 
-            // Use first matching product
-            $product = $results->first();
-
-            if (! $product) {
+            if ($updated === 0) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Product with SKU "'.$sku.'" not found in database.',
                 ], 404);
             }
 
-            // Update only the 4 title columns in product_master table
-            $product->title150 = $validated['title150'] ?? null;
-            $product->title100 = $validated['title100'] ?? null;
-            $product->title80 = $validated['title80'] ?? null;
-            $product->title60 = $validated['title60'] ?? null;
-            $product->save();
-
             return response()->json([
                 'success' => true,
-                'message' => 'Title data saved successfully for SKU: '.$validated['sku'],
+                'message' => 'Title data saved successfully.',
+                'sku' => $sku,
             ]);
         } catch (\Exception $e) {
             Log::error('Error saving title data: '.$e->getMessage());
@@ -1980,6 +1976,18 @@ class ProductMasterController extends Controller
                 'message' => 'Failed to save title data: '.$e->getMessage(),
             ], 500);
         }
+    }
+
+    /**
+     * Normalize SKU for Title Master (nbsp → space, trim).
+     */
+    private function normalizeTitleMasterSku(?string $sku): string
+    {
+        if ($sku === null) {
+            return '';
+        }
+
+        return str_replace("\u{00a0}", ' ', trim($sku));
     }
 
     /**
