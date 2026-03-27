@@ -35,6 +35,12 @@ class ForecastAnalysisController extends Controller
             $sku = preg_replace('/[^\S\r\n]+/u', ' ', $sku);  // remove hidden whitespace characters
             return trim($sku);
         };
+        // Canonical SKU form for robust matching across sources (handles spaces, dashes, underscores, etc.)
+        $canonicalSku = function ($sku) use ($normalizeSku) {
+            $n = $normalizeSku($sku);
+            if ($n === '') return '';
+            return preg_replace('/[^A-Z0-9]/', '', $n);
+        };
 
         $jungleScoutData = JungleScoutProductData::query()
             ->get()
@@ -216,15 +222,27 @@ class ForecastAnalysisController extends Controller
                 });
             });
 
+        // Normalize container labels to stable codes (e.g. "Container 86", "C-86" -> "C-86")
+        $normalizeContainerCode = function ($name) {
+            $raw = strtoupper(trim((string)($name ?? '')));
+            if ($raw === '') return '';
+            if (preg_match('/(\d+)/', $raw, $m)) {
+                return 'C-' . $m[1];
+            }
+            $raw = preg_replace('/\s+/u', ' ', $raw);
+            return trim($raw);
+        };
+
         // Get container records that have been successfully pushed to warehouse
         $warehousePushedRecords = DB::table('inventory_warehouse')
             ->where('push_status', 'success')
             ->select('our_sku', 'tab_name')
             ->get()
-            ->map(function($record) {
+            ->map(function($record) use ($normalizeSku, $normalizeContainerCode, $canonicalSku) {
                 return [
-                    'sku' => strtoupper(trim($record->our_sku)),
-                    'container' => strtoupper(trim($record->tab_name ?? ''))
+                    'sku' => $normalizeSku($record->our_sku ?? ''),
+                    'sku_canonical' => $canonicalSku($record->our_sku ?? ''),
+                    'container' => $normalizeContainerCode($record->tab_name ?? ''),
                 ];
             })
             ->toArray();
@@ -236,22 +254,28 @@ class ForecastAnalysisController extends Controller
             })
             ->select('our_sku', 'tab_name', 'no_of_units', 'total_ctn', 'rate')
             ->get()
-            ->filter(function ($item) use ($warehousePushedRecords) {
+            ->filter(function ($item) use ($warehousePushedRecords, $normalizeSku, $normalizeContainerCode, $canonicalSku) {
                 // Only exclude specific container records that have been pushed to warehouse
-                $normalizedSku = strtoupper(trim($item->our_sku));
-                $containerName = strtoupper(trim($item->tab_name ?? ''));
+                $normalizedSku = $normalizeSku($item->our_sku ?? '');
+                $canonicalItemSku = $canonicalSku($item->our_sku ?? '');
+                $containerCode = $normalizeContainerCode($item->tab_name ?? '');
                 
                 // Check if this specific SKU + Container combination has been pushed to warehouse
                 foreach ($warehousePushedRecords as $pushedRecord) {
-                    if ($pushedRecord['sku'] === $normalizedSku && 
-                        (strpos($containerName, $pushedRecord['container']) !== false || 
-                         strpos($pushedRecord['container'], $containerName) !== false)) {
+                    $skuMatches = (
+                        ($pushedRecord['sku'] !== '' && $pushedRecord['sku'] === $normalizedSku) ||
+                        ($pushedRecord['sku_canonical'] !== '' && $pushedRecord['sku_canonical'] === $canonicalItemSku)
+                    );
+                    if ($skuMatches &&
+                        $pushedRecord['container'] !== '' &&
+                        $containerCode !== '' &&
+                        $pushedRecord['container'] === $containerCode) {
                         return false; // Exclude this specific container record
                     }
                 }
                 return true; // Keep this record
             })
-            ->groupBy(fn($item) => strtoupper(trim($item->our_sku)))
+            ->groupBy(fn($item) => $normalizeSku($item->our_sku ?? ''))
             ->map(function ($group) {
                 $transitSum = 0;
                 $transitValueSum = 0; // Sum of (qty * rate) for each row (like transit-container-details page)
@@ -279,6 +303,49 @@ class ForecastAnalysisController extends Controller
                 ];
             })
             ->keyBy(fn($item, $key) => $key);
+
+        // Fallback map keyed by canonical SKU to absorb formatting differences between data sources.
+        $transitContainerByCanonical = collect($transitContainer)
+            ->groupBy(function ($item, $skuKey) use ($canonicalSku) {
+                return $canonicalSku($skuKey);
+            })
+            ->map(function ($group) {
+                $transitSum = 0.0;
+                $transitValueSum = 0.0;
+                $rate = 0.0;
+                $tabNames = [];
+                foreach ($group as $row) {
+                    $transitSum += (float)($row->transit ?? 0);
+                    $transitValueSum += (float)($row->transit_value ?? 0);
+                    if ((float)($row->rate ?? 0) > 0) {
+                        $rate = (float)$row->rate;
+                    }
+                    $parts = array_filter(array_map('trim', explode(',', (string)($row->tab_name ?? ''))));
+                    foreach ($parts as $p) $tabNames[$p] = true;
+                }
+                return (object)[
+                    'tab_name' => implode(', ', array_keys($tabNames)),
+                    'transit' => $transitSum,
+                    'rate' => $rate,
+                    'transit_value' => $transitValueSum,
+                ];
+            });
+        $getTransitContainerForSku = function ($sku) use ($transitContainer, $transitContainerByCanonical, $normalizeSku, $canonicalSku) {
+            $n = $normalizeSku($sku);
+            if ($n !== '' && isset($transitContainer[$n])) {
+                return $transitContainer[$n];
+            }
+            $c = $canonicalSku($sku);
+            if ($c !== '' && $transitContainerByCanonical->has($c)) {
+                return $transitContainerByCanonical->get($c);
+            }
+            return (object)[
+                'tab_name' => '',
+                'transit' => 0,
+                'rate' => 0,
+                'transit_value' => 0,
+            ];
+        };
 
 
 
@@ -436,10 +503,11 @@ class ForecastAnalysisController extends Controller
                 }
             }
 
-            $item->containerName = $transitContainer[$normalizeSku($prodData->sku)]->tab_name ?? '';
-            $item->transit = $transitContainer[$normalizeSku($prodData->sku)]->transit ?? 0;
-            $item->transit_rate = (float)($transitContainer[$normalizeSku($prodData->sku)]->rate ?? 0);
-            $item->transit_value_calculated = (float)($transitContainer[$normalizeSku($prodData->sku)]->transit_value ?? 0); // Pre-calculated value from transit_container_details
+            $transitForSku = $getTransitContainerForSku($prodData->sku ?? '');
+            $item->containerName = $transitForSku->tab_name ?? '';
+            $item->transit = $transitForSku->transit ?? 0;
+            $item->transit_rate = (float)($transitForSku->rate ?? 0);
+            $item->transit_value_calculated = (float)($transitForSku->transit_value ?? 0); // Pre-calculated value from transit_container_details
 
 
             $readyToShipQty = 0;
@@ -531,9 +599,9 @@ class ForecastAnalysisController extends Controller
             $cp = (float)($item->{'CP'} ?? 0);
             $orderQty = (float)($item->order_given ?? 0);
             $readyToShipQty = (float)($item->readyToShipQty ?? 0);
-            $transit = (float)($transitContainer[$normalizeSku($prodData->sku)]->transit ?? 0);
-            $transitRate = (float)($transitContainer[$normalizeSku($prodData->sku)]->rate ?? 0);
-            $transitValueCalculated = (float)($transitContainer[$normalizeSku($prodData->sku)]->transit_value ?? 0);
+            $transit = (float)($transitForSku->transit ?? 0);
+            $transitRate = (float)($transitForSku->rate ?? 0);
+            $transitValueCalculated = (float)($transitForSku->transit_value ?? 0);
 
             // MIP Value: Use qty * rate from mfrg_progress (like mfrg-in-progress page), fallback to CP * order_given if rate not available
             // For items with stage === 'mip', use rate * qty (matching mfrg-in-progress page calculation)

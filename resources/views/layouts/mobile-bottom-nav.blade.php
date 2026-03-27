@@ -94,14 +94,19 @@
         display: block !important;
         position: fixed !important;
         top: 0 !important;
-        left: -88vw !important;
+        left: -100vw !important;
         width: 88vw !important;
         max-width: 340px !important;
-        height: 100vh !important;
+        height: 100dvh !important;
         z-index: 1045 !important;
         transition: left 0.25s ease !important;
-        box-shadow: 6px 0 20px rgba(0, 0, 0, 0.25) !important;
+        box-shadow: none !important;
         transform: none !important;
+        visibility: hidden !important;
+        opacity: 0 !important;
+        pointer-events: none !important;
+        display: flex !important;
+        flex-direction: column !important;
     }
 
     body.mobile-menu-open .leftside-menu {
@@ -109,6 +114,8 @@
         margin-left: 0 !important;
         opacity: 1 !important;
         visibility: visible !important;
+        pointer-events: auto !important;
+        box-shadow: 6px 0 20px rgba(0, 0, 0, 0.25) !important;
     }
 
     body.mobile-menu-open {
@@ -128,7 +135,9 @@
     }
 
     .leftside-menu #leftside-menu-container {
-        height: calc(100vh - 70px) !important;
+        flex: 1 1 auto !important;
+        min-height: 0 !important;
+        height: auto !important;
     }
     
     /* Make content full width on mobile */
@@ -168,6 +177,8 @@ function toggleMobileMenu(forceClose = false) {
         return;
     }
 
+    // Force expanded sidebar mode so menu labels are shown.
+    html.setAttribute('data-sidenav-size', 'full');
     body.classList.add('mobile-menu-open');
     html.classList.add('sidebar-enable');
 }

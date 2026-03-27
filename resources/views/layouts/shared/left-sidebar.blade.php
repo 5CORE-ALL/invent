@@ -2,7 +2,7 @@
 <div class="leftside-menu">
 
     <!-- Brand Logo Light -->
-    <a href="{{ route('any', 'index') }}" class="logo logo-light">
+    <a href="javascript:void(0)" class="logo logo-light sidebar-logo-static" aria-label="Application logo">
         <span class="logo">
             <img src="/images/1920 x 557_Product Manager.png" alt="logo" style="width: 200px;
     height: auto;">
@@ -18,7 +18,7 @@
 
 
     <!-- Brand Logo Dark -->
-    <a href="{{ route('any', 'index') }}" class="logo logo-dark">
+    <a href="javascript:void(0)" class="logo logo-dark sidebar-logo-static" aria-label="Application logo">
         <span class="logo">
             <img src="/images/1920 x 557_Product Manager.png" alt="dark logo">
         </span>
@@ -28,7 +28,7 @@
     </a>
 
     <!-- Sidebar -left -->
-    <div class="h-90" id="leftside-menu-container" data-simplebar>
+    <div class="h-100" id="leftside-menu-container" data-simplebar>
         <!--- Sidemenu -->
         <ul class="side-nav">
 
@@ -2925,9 +2925,73 @@
 </div>
 <!-- ========== Left Sidebar End ========== -->
 
+<style>
+    @media (min-width: 768px) {
+        body.desktop-sidebar-collapsible .leftside-menu {
+            position: fixed !important;
+            top: 0 !important;
+            left: 0 !important;
+            height: 100vh !important;
+            display: flex !important;
+            flex-direction: column !important;
+            margin-left: 0 !important;
+            transform: translateX(calc(-100% - 12px)) !important;
+            transition: transform 0.25s ease, box-shadow 0.25s ease !important;
+            z-index: 1045 !important;
+            visibility: hidden !important;
+            opacity: 0 !important;
+            pointer-events: none !important;
+        }
+
+        body.desktop-sidebar-collapsible.desktop-menu-open .leftside-menu {
+            transform: translateX(0) !important;
+            box-shadow: 6px 0 20px rgba(0, 0, 0, 0.25) !important;
+            visibility: visible !important;
+            opacity: 1 !important;
+            pointer-events: auto !important;
+        }
+
+        body.desktop-sidebar-collapsible .content-page {
+            margin-left: 0 !important;
+        }
+
+        body.desktop-sidebar-collapsible .navbar-custom {
+            margin-left: 0 !important;
+            width: 100% !important;
+        }
+
+        body.desktop-sidebar-collapsible .leftside-menu #leftside-menu-container {
+            flex: 1 1 auto !important;
+            min-height: 0 !important;
+            height: auto !important;
+        }
+
+        body.desktop-sidebar-collapsible::before {
+            content: "";
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.35);
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.2s ease;
+            z-index: 1040;
+        }
+
+        body.desktop-sidebar-collapsible.desktop-menu-open::before {
+            opacity: 1;
+            pointer-events: auto;
+        }
+    }
+</style>
+
 <script>
     document.addEventListener('DOMContentLoaded', function() {
-        // Placeholder for future badge functionality
+        // Prevent accidental navigation/reload from sidebar logo taps.
+        document.querySelectorAll('.sidebar-logo-static').forEach(function(logoLink) {
+            logoLink.addEventListener('click', function(event) {
+                event.preventDefault();
+            });
+        });
     });
 </script>
 
@@ -3103,5 +3167,86 @@
                 e.target.setAttribute('rel', 'noopener noreferrer');
             }
         }, true);
+    });
+</script>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        var body = document.body;
+        var html = document.documentElement;
+        var sidebar = document.querySelector('.leftside-menu');
+        var toggleBtn = document.querySelector('.button-toggle-menu');
+
+        if (!body || !html || !sidebar || !toggleBtn) {
+            return;
+        }
+
+        if (!sidebar.id) {
+            sidebar.id = 'main-leftside-menu';
+        }
+
+        toggleBtn.setAttribute('aria-controls', sidebar.id);
+        toggleBtn.setAttribute('aria-expanded', 'false');
+
+        var isDesktop = function() {
+            return window.innerWidth >= 768;
+        };
+
+        var closeDesktopSidebar = function() {
+            body.classList.remove('desktop-menu-open');
+            html.classList.remove('sidebar-enable');
+            toggleBtn.setAttribute('aria-expanded', 'false');
+        };
+
+        var openDesktopSidebar = function() {
+            // Keep sidebar in expanded theme mode so text labels are visible.
+            html.setAttribute('data-sidenav-size', 'full');
+            body.classList.add('desktop-menu-open');
+            html.classList.add('sidebar-enable');
+            toggleBtn.setAttribute('aria-expanded', 'true');
+        };
+
+        body.classList.add('desktop-sidebar-collapsible');
+        html.setAttribute('data-sidenav-size', 'full');
+        closeDesktopSidebar();
+
+        toggleBtn.addEventListener('click', function(event) {
+            if (!isDesktop()) {
+                return;
+            }
+
+            event.preventDefault();
+            event.stopImmediatePropagation();
+
+            if (body.classList.contains('desktop-menu-open')) {
+                closeDesktopSidebar();
+            } else {
+                openDesktopSidebar();
+            }
+        }, true);
+
+        document.addEventListener('click', function(event) {
+            if (!isDesktop() || !body.classList.contains('desktop-menu-open')) {
+                return;
+            }
+
+            if (sidebar.contains(event.target) || toggleBtn.contains(event.target)) {
+                return;
+            }
+
+            closeDesktopSidebar();
+        }, true);
+
+        document.addEventListener('keydown', function(event) {
+            if (event.key === 'Escape' && body.classList.contains('desktop-menu-open')) {
+                closeDesktopSidebar();
+            }
+        });
+
+        window.addEventListener('resize', function() {
+            if (!isDesktop()) {
+                closeDesktopSidebar();
+            }
+        });
     });
 </script>

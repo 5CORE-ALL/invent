@@ -8,20 +8,20 @@
                 <!-- Logo light -->
                 <a href="{{ route('any', 'index') }}" class="logo-light">
                     <span class="logo-lg">
-                        <img src="/images/logo.png" alt="logo">
+                        <span style="font-size: 34px; font-weight: 700; line-height: 1; color: #0b2545;">5 Core</span>
                     </span>
                     <span class="logo-sm">
-                        <img src="/images/logo-sm.png" alt="small logo">
+                        <span style="font-size: 20px; font-weight: 700; line-height: 1; color: #0b2545;">5C</span>
                     </span>
                 </a>
 
                 <!-- Logo Dark -->
                 <a href="{{ route('any', 'index') }}" class="logo-dark">
                     <span class="logo-lg">
-                        <img src="/images/logo-dark.png" alt="dark logo">
+                        <span style="font-size: 34px; font-weight: 700; line-height: 1; color: #0b2545;">5 Core</span>
                     </span>
                     <span class="logo-sm">
-                        <img src="/images/logo-sm.png" alt="small logo">
+                        <span style="font-size: 20px; font-weight: 700; line-height: 1; color: #0b2545;">5C</span>
                     </span>
                 </a>
             </div>
