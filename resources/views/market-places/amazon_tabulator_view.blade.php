@@ -3674,8 +3674,11 @@
                             if (parseFloat(row.INV) <= 0) return '-';
                             var hasCampaign = !!(row.has_own_pt_campaign && (row.pt_campaign_id || row.pt_campaignName));
                             if (!hasCampaign) return '-';
-                            if ((row.pt_campaign_status || '').toUpperCase() !== 'ENABLED') return '-';
-                            return cell.getValue() || '-';
+                            var v = cell.getValue();
+                            var display = (!v || v === '' || v === '0' || v === 0) ? '-' : parseFloat(v).toFixed(2);
+                            if (display === '-') return '-';
+                            var paused = (row.pt_campaign_status || '').toUpperCase() !== 'ENABLED';
+                            return paused ? '<span style="color: #999;">' + display + '</span>' : display;
                         }
                     },
                     {
@@ -3691,15 +3694,13 @@
                             if (parseFloat(row.INV) <= 0) return '-';
                             var hasCampaign = !!(row.has_own_pt_campaign && (row.pt_campaign_id || row.pt_campaignName));
                             if (!hasCampaign) return '-';
-                            var ptStatus = (row.pt_campaign_status || '').toUpperCase();
-                            if (ptStatus !== 'ENABLED') {
-                                return '<span style="color: #999;">-</span>';
-                            }
+                            var paused = (row.pt_campaign_status || '').toUpperCase() !== 'ENABLED';
 
                             // Prefer Amazon suggested bid from report (amazon_sp_campaign_reports.sbid), same idea as KW sbid
                             var apiSbid = parseFloat(row.pt_sbid);
                             if (!isNaN(apiSbid) && apiSbid > 0) {
-                                return apiSbid.toFixed(2);
+                                var s = apiSbid.toFixed(2);
+                                return paused ? '<span style="color: #999;">' + s + '</span>' : s;
                             }
                             
                             // Fallback: PT SBID by 2UB and 1UB (same rules as KW SBID) when API sbid is not in report
@@ -3731,7 +3732,9 @@
                                 sbid = Math.floor(l1_cpc * 0.90 * 100) / 100;
                             }
 
-                            return sbid === 0 ? '-' : sbid.toFixed(2);
+                            if (sbid === 0) return paused ? '<span style="color: #999;">-</span>' : '-';
+                            var out = sbid.toFixed(2);
+                            return paused ? '<span style="color: #999;">' + out + '</span>' : out;
                         }
                     },
                     {
@@ -3746,8 +3749,11 @@
                             if (parseFloat(row.INV) <= 0) return '-';
                             var hasCampaign = !!(row.has_own_pt_campaign && (row.pt_campaign_id || row.pt_campaignName));
                             if (!hasCampaign) return '-';
-                            if ((row.pt_campaign_status || '').toUpperCase() !== 'ENABLED') return '-';
-                            return cell.getValue() || '-';
+                            var v = cell.getValue();
+                            var display = (!v || v === '' || v === '0' || v === 0) ? '-' : parseFloat(v).toFixed(2);
+                            if (display === '-') return '-';
+                            var paused = (row.pt_campaign_status || '').toUpperCase() !== 'ENABLED';
+                            return paused ? '<span style="color: #999;">' + display + '</span>' : display;
                         }
                     },
                     {

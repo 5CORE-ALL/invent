@@ -2462,7 +2462,9 @@ class OverallAmazonController extends Controller
             $row['hasCampaign'] = $matchedCampaignsKwL30->isNotEmpty() || $matchedCampaignsPtL30->isNotEmpty();
             // For Missing AD column: only green when THIS SKU has its own campaign (not parent-only)
             $row['has_own_kw_campaign'] = $exactKwCampaigns->isNotEmpty() || $exactKwCampaignsWithSuffix->isNotEmpty();
-            $row['has_own_pt_campaign'] = $exactPtCampaigns->isNotEmpty();
+            // PT: any L30 PT campaign match (same scope as pt_campaign_id / PT metrics). Exact "SKU PT" only
+            // was too strict — e.g. child rows matched via parent PT name had metrics but SBID columns stayed blank.
+            $row['has_own_pt_campaign'] = $matchedCampaignsPtL30->isNotEmpty();
             $row['has_own_hl_campaign'] = $matchedCampaignHlL30 && in_array(
                 $normalizeKwForMatch($matchedCampaignHlL30->campaignName ?? ''),
                 [$cleanSkuL30Norm, $cleanSkuL30Norm . ' HEAD'],
@@ -3225,6 +3227,7 @@ class OverallAmazonController extends Controller
             // Add campaign data to parent summary - use L30 when L7/L1 have no match so campaign name shows
             $sumRow['hasCampaign'] = $parentCampaignL7 || $parentCampaignL1 || $parentCampaignsL30->isNotEmpty();
             $sumRow['has_own_kw_campaign'] = $sumRow['hasCampaign'];
+            // Parent PT presence is set below after $hasParentPtCampaign is computed (see pt_campaign_status block)
             $sumRow['has_own_pt_campaign'] = false;
             $sumRow['has_own_hl_campaign'] = false;
             $sumRow['campaign_id'] = ($parentCampaignL7 ? $parentCampaignL7->campaign_id : null) ?? ($parentCampaignL1 ? $parentCampaignL1->campaign_id : null) ?? ($firstParentL30 ? $firstParentL30->campaign_id : null);
@@ -3527,6 +3530,7 @@ class OverallAmazonController extends Controller
             }
             $ptParentEnabled = $ptParentStatus && strtoupper($ptParentStatus) === 'ENABLED';
             $sumRow['pt_campaign_status'] = $ptParentEnabled ? 'ENABLED' : ($ptParentStatus ? 'PAUSED' : '');
+            $sumRow['has_own_pt_campaign'] = $hasParentPtCampaign;
             
             // --- HL (Headline/Sponsored Brands) Data for parent ---
             // Match HL campaigns using "PARENT {parent}" or "PARENT {parent} HEAD"
