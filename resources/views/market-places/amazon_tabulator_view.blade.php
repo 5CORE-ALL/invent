@@ -3684,6 +3684,8 @@
                         hozAlign: "center",
                         visible: false,
                         minWidth: 72,
+                        sorter: "number",
+                        sorterParams: { alignEmptyValues: "bottom" },
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
                             if (parseFloat(row.INV) <= 0) return '-';
@@ -3693,8 +3695,14 @@
                             if (ptStatus !== 'ENABLED') {
                                 return '<span style="color: #999;">-</span>';
                             }
+
+                            // Prefer Amazon suggested bid from report (amazon_sp_campaign_reports.sbid), same idea as KW sbid
+                            var apiSbid = parseFloat(row.pt_sbid);
+                            if (!isNaN(apiSbid) && apiSbid > 0) {
+                                return apiSbid.toFixed(2);
+                            }
                             
-                            // PT SBID by 2UB and 1UB only (same rules as KW)
+                            // Fallback: PT SBID by 2UB and 1UB (same rules as KW SBID) when API sbid is not in report
                             var l1_cpc = parseFloat(row.pt_l1_cpc) || 0;
                             var l2_cpc = parseFloat(row.pt_l2_cpc) || 0;
                             var l7_cpc = parseFloat(row.pt_l7_cpc) || 0;
