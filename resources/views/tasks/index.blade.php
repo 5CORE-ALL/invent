@@ -1847,7 +1847,7 @@
                 <p class="mb-3"><strong>How much time did you actually spend on this task?</strong></p>
                 <div class="mb-3">
                     <label for="atc-input" class="form-label">Actual Time to Complete (ATC) in minutes:</label>
-                    <input type="number" class="form-control" id="atc-input" min="1" placeholder="e.g., 45" required>
+                    <input type="number" class="form-control" id="atc-input" min="1" max="9999999999" placeholder="e.g., 45" required>
                 </div>
             </div>
             <div class="modal-footer">
@@ -2054,7 +2054,7 @@
                 <div class="modal-body">
                     <div class="alert alert-info mb-3">
                         <i class="mdi mdi-information me-2"></i>
-                        Enter one task title per line. All tasks will use the same assignee, priority, group, and date below.
+                        Enter one task title per line. All tasks will use the same assignee, priority, group, date, and link below.
                     </div>
                     <div class="mb-3">
                         <label for="bulk-task-titles" class="form-label fw-bold">Task titles <span class="text-danger">*</span></label>
@@ -2085,6 +2085,12 @@
                             <label for="bulk-task-group" class="form-label">Group</label>
                             <input type="text" class="form-control" id="bulk-task-group" name="group" placeholder="Optional group name">
                         </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="bulk-task-link1" class="form-label">Link (L1)</label>
+                            <input type="url" class="form-control" id="bulk-task-link1" name="link1" placeholder="https://example.com">
+                        </div>
+                    </div>
+                    <div class="row">
                         <div class="col-md-3 mb-3">
                             <label for="bulk-task-tid" class="form-label">TID / Start date</label>
                             <input type="datetime-local" class="form-control" id="bulk-task-tid" name="tid" value="{{ now()->format('Y-m-d\TH:i') }}">
@@ -2744,7 +2750,7 @@
                     var data = row.getData();
                     
                     // OVERDUE should match TID/statistics logic for consistent UI:
-                    // compare against start_date day (with +1 day grace for automated recurring tasks).
+                    // compare against start_date day + 1 day grace for all tasks.
                     let isOverdue = false;
                     
                     if (data.status !== 'Archived' && data.start_date) {
@@ -2752,11 +2758,8 @@
                         if (!isNaN(startDate.getTime())) {
                             startDate.setHours(0, 0, 0, 0);
 
-                            var scheduleType = String(data.schedule_type || '').toLowerCase();
-                            var isAutomatedRecurring = !!data.is_automate_task && ['daily', 'weekly', 'monthly'].includes(scheduleType);
-                            if (isAutomatedRecurring) {
-                                startDate.setDate(startDate.getDate() + 1);
-                            }
+                            // Give all tasks a 1-day grace before overdue.
+                            startDate.setDate(startDate.getDate() + 1);
 
                             const now = new Date();
                             now.setHours(0, 0, 0, 0);
@@ -3023,7 +3026,7 @@
                         }
                     });
                     
-                    // ATC (Actual Time) - Limited to 3 characters
+                    // ATC (Actual Time)
                     cols.push({
                         title: "ATC", 
                         field: "etc_done", 
@@ -3032,8 +3035,7 @@
                         formatter: function(cell) {
                             var value = cell.getValue();
                             if (value) {
-                                var displayValue = String(value).substring(0, 3);
-                                return '<strong style="color: #28a745; font-size: 11px;" title="' + value + ' minutes">' + displayValue + '</strong>';
+                                return '<strong style="color: #28a745; font-size: 11px;" title="' + value + ' minutes">' + value + '</strong>';
                             }
                             return '<span style="color: #adb5bd;">0</span>';
                         }
@@ -3234,7 +3236,7 @@
                 };
                 
                 // Overdue calculation:
-                // Task is overdue when TID/start_date has already passed and it's not archived.
+                // Task is overdue when TID/start_date + 1 day has already passed and it's not archived.
                 var now = new Date();
                 stats.overdue = filteredData.filter(function(t) {
                     if (t.start_date && t.status !== 'Archived') {
@@ -3242,11 +3244,8 @@
                         if (isNaN(tidDate.getTime())) return false;
                         tidDate.setHours(0, 0, 0, 0);
 
-                        var scheduleType = String(t.schedule_type || '').toLowerCase();
-                        var isAutomatedRecurring = !!t.is_automate_task && ['daily', 'weekly', 'monthly'].includes(scheduleType);
-                        if (isAutomatedRecurring) {
-                            tidDate.setDate(tidDate.getDate() + 1);
-                        }
+                        // Give all tasks a 1-day grace before overdue.
+                        tidDate.setDate(tidDate.getDate() + 1);
 
                         var current = new Date(now);
                         current.setHours(0, 0, 0, 0);
@@ -4870,12 +4869,17 @@
             // Confirm Done
             $('#confirm-done-btn').on('click', function() {
                 var atc = $('#atc-input').val();
-                if (!atc || atc <= 0) {
+                var atcNum = parseInt(atc, 10);
+                if (!atc || isNaN(atcNum) || atcNum <= 0) {
                     alert('Please enter the actual time spent on this task.');
                     return;
                 }
+                if (String(atc).length > 10 || atcNum > 9999999999) {
+                    alert('ATC can be up to 10 digits only.');
+                    return;
+                }
                 
-                updateTaskStatus(currentTaskId, 'Done', atc, null);
+                updateTaskStatus(currentTaskId, 'Done', atcNum, null);
                 $('#doneModal').modal('hide');
                 $('#atc-input').val('');
             });

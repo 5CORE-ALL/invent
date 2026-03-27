@@ -55,10 +55,10 @@ class TaskController extends Controller
         }
 
         // Calculate statistics based on filtered tasks (with user filter if selected)
-        // Overdue means TID/start_date is already past (matches table behavior).
+        // Overdue means TID/start_date + 1 day grace is already past.
         // Keep only archived tasks excluded from overdue stats.
         $overdueQuery = (clone $tasksQuery)->whereNotNull('start_date')
-                           ->where('start_date', '<', now())
+                           ->whereRaw('DATE_ADD(start_date, INTERVAL 1 DAY) < NOW()')
                            ->where('status', '!=', 'Archived');
 
         // Calculate statistics based on filtered tasks (with user filter if selected)
@@ -803,7 +803,7 @@ class TaskController extends Controller
 
         $validated = $request->validate([
             'status' => 'required|in:Todo,Working,Archived,Done,Need Help,Need Approval,Dependent,Approved,Hold,Rework',
-            'atc' => 'nullable|integer',
+            'atc' => 'nullable|integer|min:1|digits_between:1,10',
             'rework_reason' => 'nullable|string',
         ]);
 
@@ -2067,6 +2067,7 @@ class TaskController extends Controller
             'assignee_ids' => 'nullable|array',
             'assignee_ids.*' => 'exists:users,id',
             'group' => 'nullable|string|max:255',
+            'link1' => 'nullable|string|max:2048',
             'tid' => 'nullable|date',
             'etc_minutes' => 'nullable|integer|min:1',
         ]);
@@ -2094,6 +2095,7 @@ class TaskController extends Controller
         $completionDate = \Carbon\Carbon::parse($startDate)->addDays(5);
         $etcMinutes = (int) ($validated['etc_minutes'] ?? 10);
         $group = $validated['group'] ?? null;
+        $link1 = $validated['link1'] ?? '';
         $priority = $validated['priority'];
 
         $created = 0;
@@ -2121,7 +2123,7 @@ class TaskController extends Controller
                 'workspace' => 0,
                 'order' => 0,
                 'task_id' => '',
-                'link1' => '', 'link2' => '', 'link3' => '', 'link4' => '', 'link5' => '', 'link6' => '', 'link7' => '', 'link8' => '', 'link9' => '',
+                'link1' => $link1, 'link2' => '', 'link3' => '', 'link4' => '', 'link5' => '', 'link6' => '', 'link7' => '', 'link8' => '', 'link9' => '',
                 'image' => null,
                 'is_data_from' => 0,
                 'is_automate_task' => 0,
