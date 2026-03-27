@@ -2821,6 +2821,7 @@
         let currentRowTypeFilter = 'sku';
         let currentStageFilter = '';
         let isProgrammaticStageHeaderSync = false;
+        let afterTatVisibilitySnapshot = null;
         let isApplyingCombinedFilters = false;
         let pendingCombinedFiltersRun = false;
         function normalizeTwoOrdFilterValue(rawValue) {
@@ -2882,6 +2883,46 @@
         function normalizeStageValue(value) {
             if (value === undefined || value === null) return '';
             return String(value).trim().toLowerCase();
+        }
+        function syncColumnsAfterTatForStageFilter() {
+            if (!table || typeof table.getColumns !== 'function') return;
+
+            // Apply this hide rule only when Stage filter is specifically "2 Ord".
+            const stageActive = currentStageFilter === 'two_ord_nonneg';
+            const allCols = table.getColumns() || [];
+            const tatIdx = allCols.findIndex(function(c) {
+                return String(c.getField ? (c.getField() || '') : '').trim() === 'TAT';
+            });
+            if (tatIdx < 0) return;
+
+            const colsAfterTat = allCols.slice(tatIdx + 1).filter(function(c) {
+                const f = c.getField ? c.getField() : '';
+                return !!f;
+            });
+
+            if (stageActive) {
+                if (afterTatVisibilitySnapshot === null) {
+                    afterTatVisibilitySnapshot = {};
+                    colsAfterTat.forEach(function(c) {
+                        const f = c.getField();
+                        afterTatVisibilitySnapshot[f] = !!c.isVisible();
+                    });
+                }
+                colsAfterTat.forEach(function(c) {
+                    if (c.isVisible()) c.hide();
+                });
+            } else if (afterTatVisibilitySnapshot !== null) {
+                colsAfterTat.forEach(function(c) {
+                    const f = c.getField();
+                    const shouldShow = afterTatVisibilitySnapshot[f];
+                    if (shouldShow === true) c.show();
+                    if (shouldShow === false) c.hide();
+                });
+                afterTatVisibilitySnapshot = null;
+            }
+
+            // Do not rebuild column dropdown here: it reapplies saved localStorage visibility
+            // and can immediately undo the temporary Stage-based hide/show behavior.
         }
         function matchesTwoOrdColorFilter(data) {
             if (!currentTwoOrdColorFilter) return true;
@@ -3739,7 +3780,7 @@
                 const def = col.getDefinition();
                 const title = def.title;
 
-                // Apply saved visibility, or fall back to column definition default (e.g. CP/LP hidden by default)
+                // Apply saved visibility, or fall back to column definition default.
                 if (savedVisibility[field] !== undefined) {
                     if (savedVisibility[field] === false) col.hide();
                     else col.show();
@@ -3775,7 +3816,6 @@
                     user-select: none;
                 `;
 
-                // Add hover effect
                 div.addEventListener('mouseover', () => {
                     div.style.backgroundColor = '#f8f9fa';
                 });
@@ -3784,7 +3824,6 @@
                     div.style.backgroundColor = 'transparent';
                 });
 
-                // Add ripple effect on click
                 div.addEventListener('click', (e) => {
                     if (e.target !== input) {
                         input.click();
@@ -4491,6 +4530,7 @@
             // Stage filter (toolbar) — keep in sync with Stage column header filter
             document.getElementById('stage-filter').addEventListener('change', function(e) {
                 currentStageFilter = normalizeStageValue(e.target.value);
+                syncColumnsAfterTatForStageFilter();
                 const tbl = Tabulator.findTable("#forecast-table")[0];
                 if (tbl && typeof tbl.setHeaderFilterValue === 'function') {
                     isProgrammaticStageHeaderSync = true;
@@ -4536,6 +4576,7 @@
                         if (tbl && typeof tbl.getHeaderFilterValue === 'function') {
                             let v = tbl.getHeaderFilterValue("stage");
                             currentStageFilter = normalizeStageValue(v);
+                            syncColumnsAfterTatForStageFilter();
                             const sf = document.getElementById("stage-filter");
                             if (sf) sf.value = currentStageFilter;
                             setCombinedFilters();
