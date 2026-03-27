@@ -100,6 +100,7 @@ class OutgoingController extends Controller
             'warehouse_id' => 'required|exists:warehouses,id',
             'reason' => 'required|string',
             'comment' => 'nullable|string|max:80',
+            'replacement_tracking' => 'nullable|string|max:22',
         ]);
 
         $skus = $request->sku;
@@ -107,6 +108,7 @@ class OutgoingController extends Controller
         $warehouseId = $request->warehouse_id;
         $reason = $request->reason;
         $comment = $request->filled('comment') ? trim($request->comment) : null;
+        $replacementTracking = $request->filled('replacement_tracking') ? trim($request->replacement_tracking) : null;
 
         for ($i = 0; $i < $count; $i++) {
             $sku = trim($skus[$i]);
@@ -273,6 +275,7 @@ class OutgoingController extends Controller
                     'to_adjust' => -$outgoingQty,
                     'reason' => $reason,
                     'comment' => $comment,
+                    'replacement_tracking' => $replacementTracking,
                     'is_approved' => true,
                     'approved_by' => Auth::user()->name ?? 'N/A',
                     'approved_at' => Carbon::now('America/New_York'),
@@ -621,6 +624,7 @@ class OutgoingController extends Controller
                 'verified_stock' => $item->verified_stock,
                 'reason' => $item->reason,
                 'remarks' => $item->comment ?? $item->remarks,
+                'replacement_tracking' => $item->replacement_tracking,
                 'warehouse_name' => $item->warehouse->name ?? '',
                 'approved_by' => $item->approved_by,
                 'approved_at' => $item->approved_at

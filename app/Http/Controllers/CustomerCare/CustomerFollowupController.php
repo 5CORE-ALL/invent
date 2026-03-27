@@ -135,7 +135,8 @@ class CustomerFollowupController extends Controller
             $next = $f->next_followup_at
                 ? Carbon::parse($f->next_followup_at)->timezone($tz)->format('m-d-Y H:i')
                 : '—';
-            $followupDt = $f->followup_date->format('m-d-Y') . ($time ? ' ' . $time : '');
+            $followupDate = $f->followup_date ? $f->followup_date->format('m-d-Y') : '';
+            $followupDt = $followupDate !== '' ? $followupDate . ($time ? ' ' . $time : '') : '—';
 
             $notes = $f->comments;
             $notesStr = $notes !== null && $notes !== '' ? (string) $notes : '';
@@ -211,7 +212,7 @@ class CustomerFollowupController extends Controller
             'issue_type' => ['required', Rule::in(['Payment', 'Delivery', 'Return', 'Refund', 'Other'])],
             'status' => ['required', Rule::in(['Pending', 'In Progress', 'Resolved', 'Escalated'])],
             'priority' => ['required', Rule::in(['Low', 'Medium', 'High', 'Urgent'])],
-            'followup_date' => 'required|date',
+            'followup_date' => 'nullable|date',
             'followup_time' => 'nullable|date_format:H:i',
             'next_followup_at' => 'nullable|date',
             'assigned_executive' => 'nullable|string|max:255',
@@ -231,6 +232,9 @@ class CustomerFollowupController extends Controller
         $validated['channel_master_id'] = $this->validateChannelMasterId(
             isset($validated['channel_master_id']) ? (int) $validated['channel_master_id'] : null
         );
+        if (empty($validated['followup_date'])) {
+            $validated['followup_date'] = Carbon::today(config('app.timezone'))->toDateString();
+        }
 
         $validated['ticket_id'] = CustomerFollowup::temporaryTicketId();
         $followup = CustomerFollowup::create($validated);
@@ -264,7 +268,7 @@ class CustomerFollowupController extends Controller
             'issue_type' => $f->issue_type,
             'status' => $f->status,
             'priority' => $f->priority,
-            'followup_date' => $f->followup_date->format('Y-m-d'),
+            'followup_date' => $f->followup_date ? $f->followup_date->format('Y-m-d') : '',
             'followup_time' => $time,
             'next_followup_at' => $f->next_followup_at ? $f->next_followup_at->format('Y-m-d\TH:i') : '',
             'assigned_executive' => $f->assigned_executive,
@@ -287,7 +291,7 @@ class CustomerFollowupController extends Controller
             'issue_type' => ['required', Rule::in(['Payment', 'Delivery', 'Return', 'Refund', 'Other'])],
             'status' => ['required', Rule::in(['Pending', 'In Progress', 'Resolved', 'Escalated'])],
             'priority' => ['required', Rule::in(['Low', 'Medium', 'High', 'Urgent'])],
-            'followup_date' => 'required|date',
+            'followup_date' => 'nullable|date',
             'followup_time' => 'nullable|date_format:H:i',
             'next_followup_at' => 'nullable|date',
             'assigned_executive' => 'nullable|string|max:255',
@@ -307,6 +311,10 @@ class CustomerFollowupController extends Controller
         $validated['channel_master_id'] = $this->validateChannelMasterId(
             isset($validated['channel_master_id']) ? (int) $validated['channel_master_id'] : null
         );
+        if (empty($validated['followup_date'])) {
+            $validated['followup_date'] = $customer_followup->followup_date?->toDateString()
+                ?? Carbon::today(config('app.timezone'))->toDateString();
+        }
 
         unset($validated['ticket_id']);
 

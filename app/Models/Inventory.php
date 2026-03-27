@@ -44,6 +44,7 @@ class Inventory extends Model
         'action',
         'combo_action',
         'incoming_images',
+        'replacement_tracking',
     ];
 
     protected $casts = [

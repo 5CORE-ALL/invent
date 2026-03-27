@@ -593,9 +593,6 @@
                     issue_type: fd.get('issue_type'),
                     status: fd.get('status'),
                     priority: fd.get('priority'),
-                    followup_date: fd.get('followup_date'),
-                    followup_time: fd.get('followup_time') || null,
-                    next_followup_at: fd.get('next_followup_at') || null,
                     assigned_executive: fd.get('assigned_executive') || null,
                     comments: fd.get('comments') || null,
                     internal_remarks: fd.get('internal_remarks') || null,
@@ -794,9 +791,6 @@
                     document.getElementById('issue_type').value = d.issue_type;
                     document.getElementById('followup_status').value = d.status;
                     document.getElementById('priority').value = d.priority;
-                    document.getElementById('followup_date').value = d.followup_date;
-                    document.getElementById('followup_time').value = d.followup_time || '';
-                    document.getElementById('next_followup_at').value = d.next_followup_at || '';
                     document.getElementById('assigned_executive').value = d.assigned_executive || '';
                     document.getElementById('comments').value = d.comments || '';
                     document.getElementById('internal_remarks').value = d.internal_remarks || '';

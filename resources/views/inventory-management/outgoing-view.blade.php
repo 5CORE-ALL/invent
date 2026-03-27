@@ -295,6 +295,11 @@
                                             <input type="text" class="form-control" id="comment" name="comment" maxlength="80" placeholder="Optional (max 80 characters)">
                                             <small class="text-muted"><span id="comment-char-count">0</span>/80</small>
                                         </div>
+                                        <div class="mb-3">
+                                            <label for="replacement_tracking" class="form-label fw-bold">REPLACEMENT TRACKING</label>
+                                            <input type="text" class="form-control" id="replacement_tracking" name="replacement_tracking" maxlength="22" placeholder="Optional (max 22 characters)">
+                                            <small class="text-muted"><span id="replacement-tracking-char-count">0</span>/22</small>
+                                        </div>
                                     </div>
 
                                     <!-- type -->
@@ -436,6 +441,7 @@
                                     <th class="sortable" data-col="warehouse_name">WAREHOUSE <i class="fas fa-sort ms-1"></i></th>
                                     <th class="sortable" data-col="reason">REASON <i class="fas fa-sort ms-1"></i></th>
                                     <th class="sortable" data-col="remarks">COMMENT <i class="fas fa-sort ms-1"></i></th>
+                                    <th class="sortable" data-col="replacement_tracking">REPLACEMENT TRACKING <i class="fas fa-sort ms-1"></i></th>
                                     <th class="sortable" data-col="approved_by">CREATED BY <i class="fas fa-sort ms-1"></i></th>
                                     <th class="sortable" data-col="approved_at">DATE <i class="fas fa-sort ms-1"></i></th>
                                     <th class="sortable" data-col="value">VALUE <i class="fas fa-sort ms-1"></i></th>
@@ -699,12 +705,16 @@
                 $(document).on('click', '#openAddWarehouseModal', function () {
                     $('#outgoingForm')[0].reset();
                     $('#comment-char-count').text('0');
+                    $('#replacement-tracking-char-count').text('0');
                     $('#warehouseModalLabel').text('Create Outgoing');
                     $('#outgoing-rows-container .outgoing-row').not(':first').remove();
                     $('#addWarehouseModal').modal('show');
                 });
                 $(document).on('input', '#comment', function () {
                     $('#comment-char-count').text(this.value.length);
+                });
+                $(document).on('input', '#replacement_tracking', function () {
+                    $('#replacement-tracking-char-count').text(this.value.length);
                 });
 
                 $(document).on('click', '#add-outgoing-row', function() {
@@ -967,7 +977,7 @@
                 tbody.innerHTML = '';
 
                 if (data.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="11" class="text-center">No records found</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="12" class="text-center">No records found</td></tr>';
                     updateTotalValueFiltered(0);
                     $('#selectedRowsValue').text('$0');
                     return;
@@ -993,6 +1003,7 @@
                         <td>${item.warehouse_name  || '-'}</td>
                         <td>${item.reason || '-'}</td>
                         <td>${item.remarks || '-'}</td>
+                        <td>${item.replacement_tracking || '-'}</td>
                         <td>${item.approved_by || '-'}</td>
                         <td>${item.approved_at || '-'}</td>
                         <td>${valueFormatted}</td>

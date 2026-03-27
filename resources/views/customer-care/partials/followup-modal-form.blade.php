@@ -72,12 +72,6 @@
 
     <h6 class="text-muted text-uppercase small mb-3">Follow-up tracking</h6>
     <div class="row">
-        <x-followup.input-field label="Follow-up date" name="followup_date" type="date" :required="true" />
-        <x-followup.input-field label="Follow-up time" name="followup_time" type="time" />
-        <div class="col-md-6 mb-3">
-            <label for="next_followup_at" class="form-label">Next follow-up (date &amp; time)</label>
-            <input type="datetime-local" name="next_followup_at" id="next_followup_at" class="form-control">
-        </div>
         <div class="col-md-6 mb-3">
             <label for="assigned_executive" class="form-label">Assigned executive</label>
             <div class="input-group">
