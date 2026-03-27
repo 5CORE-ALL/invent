@@ -31,19 +31,12 @@
         .btn-amazon { background:#ff9900; color:#232f3e!important; }
         .btn-temu { background:#e02020; }
         .btn-reverb { background:#1a1a1a; }
-        .btn-wayfair { background:#7b133c; }
-        .btn-walmart { background:#0071ce; }
-        .btn-aliexpress { background:#ff4747; }
-        .btn-shein { background:#db2777; }
-        .btn-bestbuy { background:#0046be; }
         .btn-shopify { background:#96bf48; color:#1a1a1a!important; }
         .btn-shopify-pls { background:#5c6ac4; }
-        .btn-doba { background:#fd7e14; }
         .btn-ebay1 { background:#0d6efd; }
         .btn-ebay2 { background:#198754; }
         .btn-ebay3 { background:#fd7e14; }
         .btn-macy { background:#e20074; }
-        .btn-faire { background:#6f42c1; }
         .btn-push-all { background:#ff9900!important; color:#232f3e!important; font-weight:600; }
         .action-buttons-cell { white-space:nowrap; vertical-align:middle!important; }
         .action-buttons-group { display:flex; align-items:center; gap:6px; flex-wrap:nowrap; }
@@ -88,7 +81,7 @@
                             <option value="75" selected>75</option>
                             <option value="100">100</option>
                         </select>
-                        <button type="button" id="exportBtn" class="btn btn-primary btn-sm"><i class="fas fa-download"></i> Export page</button>
+                        <button type="button" id="exportBtn" class="btn btn-primary btn-sm"><i class="fas fa-download"></i> Export</button>
                         <button type="button" id="importBtn" class="btn btn-info btn-sm"><i class="fas fa-upload"></i> Import</button>
                         <button type="button" id="pushSelectedBtn" class="btn btn-secondary btn-sm"><i class="fas fa-cloud-upload-alt"></i> Push Selected</button>
                         <button type="button" id="pushAllBtn" class="btn btn-push-all btn-sm"><i class="fas fa-cloud-upload-alt"></i> Push ALL (this page)</button>
@@ -114,23 +107,23 @@
                                             <input type="text" id="previewSearchDm" class="th-sub" placeholder="Filter preview" autocomplete="off">
                                         </th>
                                         <th>Action</th>
-                                        <th>
+                                        <th title="Amazon, Temu, Reverb — max 1500 characters each">
                                             <div class="bp-mp-th-title">DESC 1500</div>
                                             <div class="bp-mp-th-icons">
-                                                <span class="bp-mp-th-pill btn-amazon">A</span><span class="bp-mp-th-pill btn-temu">T</span><span class="bp-mp-th-pill btn-reverb">R</span><span class="bp-mp-th-pill btn-wayfair">WF</span><span class="bp-mp-th-pill btn-walmart">W</span><span class="bp-mp-th-pill btn-aliexpress">AX</span><span class="bp-mp-th-pill btn-shein">S</span><span class="bp-mp-th-pill btn-bestbuy">BB</span>
+                                                <span class="bp-mp-th-pill btn-amazon">A</span><span class="bp-mp-th-pill btn-temu">T</span><span class="bp-mp-th-pill btn-reverb">R</span>
                                             </div>
                                         </th>
-                                        <th>
+                                        <th title="Shopify Main, Shopify PLS — max 1000 characters each">
                                             <div class="bp-mp-th-title">DESC 1000</div>
-                                            <div class="bp-mp-th-icons"><span class="bp-mp-th-pill btn-shopify">SM</span><span class="bp-mp-th-pill btn-shopify-pls">SP</span><span class="bp-mp-th-pill btn-doba">D</span></div>
+                                            <div class="bp-mp-th-icons"><span class="bp-mp-th-pill btn-shopify">SM</span><span class="bp-mp-th-pill btn-shopify-pls">SP</span></div>
                                         </th>
-                                        <th>
+                                        <th title="eBay1, eBay2, eBay3 — max 800 characters each">
                                             <div class="bp-mp-th-title">DESC 800</div>
                                             <div class="bp-mp-th-icons"><span class="bp-mp-th-pill btn-ebay1">E1</span><span class="bp-mp-th-pill btn-ebay2">E2</span><span class="bp-mp-th-pill btn-ebay3">E3</span></div>
                                         </th>
-                                        <th>
+                                        <th title="Macy's — max 600 characters">
                                             <div class="bp-mp-th-title">DESC 600</div>
-                                            <div class="bp-mp-th-icons"><span class="bp-mp-th-pill btn-macy">M</span><span class="bp-mp-th-pill btn-faire">F</span></div>
+                                            <div class="bp-mp-th-icons"><span class="bp-mp-th-pill btn-macy">M</span></div>
                                         </th>
                                     </tr>
                                 </thead>
@@ -165,34 +158,34 @@
 
                     <div class="border rounded p-2 mb-2 bg-light">
                         <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-1">
-                            <span class="fw-semibold small">DESC 1500 — Amazon, Temu, Reverb, Wayfair, Walmart, AliExpress, Shein, BestBuy</span>
-                            <button type="button" class="btn btn-primary btn-sm modal-ai-tier" data-tier="1500"><i class="fas fa-wand-magic-sparkles"></i> AI</button>
+                            <span class="fw-semibold small">DESC 1500 — Amazon (A), Temu (T), Reverb (R)</span>
+                            <button type="button" class="btn btn-primary btn-sm modal-ai-tier" data-tier="1500"><i class="fas fa-wand-magic-sparkles"></i> AI Generate</button>
                         </div>
-                        <textarea class="form-control form-control-sm" id="modalDesc1500" rows="5" maxlength="1500" placeholder="1400–1500 chars for AI"></textarea>
+                        <textarea class="form-control form-control-sm" id="modalDesc1500" rows="5" maxlength="1500" placeholder="1400–1500 characters (AI target)"></textarea>
                         <div class="small text-muted mt-1"><span id="modalDescCounter1500">0</span>/1500</div>
                     </div>
                     <div class="border rounded p-2 mb-2 bg-light">
                         <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-1">
-                            <span class="fw-semibold small">DESC 1000 — Shopify Main, Shopify PLS, DOBA</span>
-                            <button type="button" class="btn btn-primary btn-sm modal-ai-tier" data-tier="1000"><i class="fas fa-wand-magic-sparkles"></i> AI</button>
+                            <span class="fw-semibold small">DESC 1000 — Shopify Main (SM), Shopify PLS (SP)</span>
+                            <button type="button" class="btn btn-primary btn-sm modal-ai-tier" data-tier="1000"><i class="fas fa-wand-magic-sparkles"></i> AI Generate</button>
                         </div>
-                        <textarea class="form-control form-control-sm" id="modalDesc1000" rows="4" maxlength="1000" placeholder="900–1000 chars for AI"></textarea>
+                        <textarea class="form-control form-control-sm" id="modalDesc1000" rows="4" maxlength="1000" placeholder="900–1000 characters (AI target)"></textarea>
                         <div class="small text-muted mt-1"><span id="modalDescCounter1000">0</span>/1000</div>
                     </div>
                     <div class="border rounded p-2 mb-2 bg-light">
                         <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-1">
-                            <span class="fw-semibold small">DESC 800 — eBay1, eBay2, eBay3</span>
-                            <button type="button" class="btn btn-primary btn-sm modal-ai-tier" data-tier="800"><i class="fas fa-wand-magic-sparkles"></i> AI</button>
+                            <span class="fw-semibold small">DESC 800 — eBay1 (E1), eBay2 (E2), eBay3 (E3)</span>
+                            <button type="button" class="btn btn-primary btn-sm modal-ai-tier" data-tier="800"><i class="fas fa-wand-magic-sparkles"></i> AI Generate</button>
                         </div>
-                        <textarea class="form-control form-control-sm" id="modalDesc800" rows="4" maxlength="800" placeholder="700–800 chars for AI"></textarea>
+                        <textarea class="form-control form-control-sm" id="modalDesc800" rows="4" maxlength="800" placeholder="700–800 characters (AI target)"></textarea>
                         <div class="small text-muted mt-1"><span id="modalDescCounter800">0</span>/800</div>
                     </div>
                     <div class="border rounded p-2 mb-2 bg-light">
                         <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-1">
-                            <span class="fw-semibold small">DESC 600 — Macy's, Faire</span>
-                            <button type="button" class="btn btn-primary btn-sm modal-ai-tier" data-tier="600"><i class="fas fa-wand-magic-sparkles"></i> AI</button>
+                            <span class="fw-semibold small">DESC 600 — Macy's (M)</span>
+                            <button type="button" class="btn btn-primary btn-sm modal-ai-tier" data-tier="600"><i class="fas fa-wand-magic-sparkles"></i> AI Generate</button>
                         </div>
-                        <textarea class="form-control form-control-sm" id="modalDesc600" rows="4" maxlength="600" placeholder="500–600 chars for AI"></textarea>
+                        <textarea class="form-control form-control-sm" id="modalDesc600" rows="4" maxlength="600" placeholder="500–600 characters (AI target)"></textarea>
                         <div class="small text-muted mt-1"><span id="modalDescCounter600">0</span>/600</div>
                     </div>
                     <p class="shopify-hint mb-0"><i class="fas fa-info-circle"></i> Shopify Main &amp; PLS: listing body combines Bullet Points Master + the 1000-char description.</p>
@@ -201,7 +194,7 @@
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                     <button type="button" class="btn btn-success" id="modalSavePmBtn"><i class="fas fa-save"></i> Save to PM</button>
-                    <button type="button" class="btn btn-primary" id="modalPushBtn"><i class="fas fa-cloud-upload-alt"></i> Push to selected</button>
+                    <button type="button" class="btn btn-primary" id="modalPushBtn"><i class="fas fa-cloud-upload-alt"></i> Push to selected marketplaces</button>
                 </div>
             </div>
         </div>
@@ -234,35 +227,34 @@
 document.addEventListener('DOMContentLoaded', () => {
     const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
     const LIMITS = {
-        amazon:1500, temu:1500, reverb:1500, wayfair:1500, walmart:1500, aliexpress:1500, shein:1500, bestbuy:1500,
-        shopify_main:1000, shopify_pls:1000, doba:1000,
-        ebay:800, ebay2:800, ebay3:800,
-        macy:600, faire:600
+        amazon: 1500, temu: 1500, reverb: 1500,
+        shopify_main: 1000, shopify_pls: 1000,
+        ebay: 800, ebay2: 800, ebay3: 800,
+        macy: 600,
     };
     const LABELS = {
-        amazon:'Amazon', temu:'Temu', reverb:'Reverb', wayfair:'Wayfair', walmart:'Walmart', aliexpress:'AliExpress', shein:'Shein', bestbuy:'BestBuy',
-        shopify_main:'Shopify Main', shopify_pls:'Shopify PLS', doba:'DOBA',
-        ebay:'eBay1', ebay2:'eBay2', ebay3:'eBay3',
-        macy:"Macy's", faire:'Faire'
+        amazon: 'Amazon', temu: 'Temu', reverb: 'Reverb',
+        shopify_main: 'Shopify Main', shopify_pls: 'Shopify PLS',
+        ebay: 'eBay1', ebay2: 'eBay2', ebay3: 'eBay3',
+        macy: "Macy's",
     };
     const GROUPS = {
-        g1500: ['amazon','temu','reverb','wayfair','walmart','aliexpress','shein','bestbuy'],
-        g1000: ['shopify_main','shopify_pls','doba'],
-        g800: ['ebay','ebay2','ebay3'],
-        g600: ['macy','faire']
+        g1500: ['amazon', 'temu', 'reverb'],
+        g1000: ['shopify_main', 'shopify_pls'],
+        g800: ['ebay', 'ebay2', 'ebay3'],
+        g600: ['macy'],
     };
     const MP_TILE = {
-        amazon:'btn-amazon', temu:'btn-temu', reverb:'btn-reverb', wayfair:'btn-wayfair', walmart:'btn-walmart',
-        aliexpress:'btn-aliexpress', shein:'btn-shein', bestbuy:'btn-bestbuy',
-        shopify_main:'btn-shopify', shopify_pls:'btn-shopify-pls', doba:'btn-doba',
-        ebay:'btn-ebay1', ebay2:'btn-ebay2', ebay3:'btn-ebay3',
-        macy:'btn-macy', faire:'btn-faire'
+        amazon: 'btn-amazon', temu: 'btn-temu', reverb: 'btn-reverb',
+        shopify_main: 'btn-shopify', shopify_pls: 'btn-shopify-pls',
+        ebay: 'btn-ebay1', ebay2: 'btn-ebay2', ebay3: 'btn-ebay3',
+        macy: 'btn-macy',
     };
     const MP_SHORT = {
-        amazon:'A', temu:'T', reverb:'R', wayfair:'WF', walmart:'W', aliexpress:'AX', shein:'S', bestbuy:'BB',
-        shopify_main:'SM', shopify_pls:'SP', doba:'D',
-        ebay:'E1', ebay2:'E2', ebay3:'E3',
-        macy:'M', faire:'F'
+        amazon: 'A', temu: 'T', reverb: 'R',
+        shopify_main: 'SM', shopify_pls: 'SP',
+        ebay: 'E1', ebay2: 'E2', ebay3: 'E3',
+        macy: 'M',
     };
     const ALL_MP = Object.keys(LIMITS);
     const TIER_MIN_AI = { 1500: 1400, 1000: 900, 800: 700, 600: 500 };
