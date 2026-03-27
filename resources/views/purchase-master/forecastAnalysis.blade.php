@@ -1018,6 +1018,58 @@
                     }
                 },
                 {
+                    title: "MSL Manual",
+                    field: "s_msl",
+                    accessor: row => (row && row["s_msl"] !== undefined && row["s_msl"] !== null) ? row["s_msl"] : '',
+                    hozAlign: "center",
+                    editable: function(cell) {
+                        const d = cell.getRow().getData() || {};
+                        return !(d.is_parent || d.isParent);
+                    },
+                    editor: "input",
+                    editorParams: {
+                        elementAttributes: {
+                            maxlength: "4"
+                        }
+                    },
+                    formatter: function(cell) {
+                        const v = cell.getValue();
+                        const s = String(v == null ? '' : v).trim();
+                        if (!s) return '<div style="text-align:center;" class="text-muted">—</div>';
+                        return `<div style="text-align:center;font-weight:700;">${s}</div>`;
+                    },
+                    cellEditing: function(cell) {
+                        cell.getRow().forecastMslManualEditStart = cell.getValue();
+                    },
+                    cellEdited: function(cell) {
+                        const row = cell.getRow();
+                        const d = row.getData() || {};
+                        if (d.is_parent || d.isParent) return;
+                        const oldVal = row.forecastMslManualEditStart;
+                        delete row.forecastMslManualEditStart;
+
+                        const next = String(cell.getValue() == null ? '' : cell.getValue()).trim().slice(0, 4);
+                        const prev = String(oldVal == null ? '' : oldVal).trim().slice(0, 4);
+                        if (next === prev) {
+                            cell.setValue(next, true);
+                            return;
+                        }
+                        cell.setValue(next, true);
+
+                        const sku = d.SKU || '';
+                        const parent = d.Parent || '';
+                        updateForecastField(
+                            { sku: sku, parent: parent, column: 'S-MSL', value: next },
+                            function() {
+                                row.update({ s_msl: next }, true);
+                            },
+                            function() {
+                                cell.setValue(prev, true);
+                            }
+                        );
+                    }
+                },
+                {
                     title: "2 Ord",
                     field: "to_order",
                     formatter: function(cell) {
@@ -2083,6 +2135,8 @@
                     const orderGiven = parseFloat(item["order_given"] ?? item["Order Given"]) || 0;
                     const r2s = parseFloat(item["readyToShipQty"] ?? item["readyToShipQty"]) || 0;
                     const msl = totalMonth > 0 ? (total / totalMonth) * 4 : 0;
+                    const s_msl_val = parseFloat(item["s_msl"] ?? item["s-msl"]) || 0;
+                    const effectiveMslForToOrder = Math.max(msl, s_msl_val);
                     const m_avg = totalMonth > 0 ? total / totalMonth : 0;
 
                     // Get stage from item to determine which fields to use for to_order calculation
@@ -2101,7 +2155,7 @@
                     }
                     // Note: Transit is always included regardless of stage
 
-                    const toOrder = Math.round(msl - inv - effectiveTransit - effectiveOrderGiven - effectiveR2s);
+                    const toOrder = Math.round(effectiveMslForToOrder - inv - effectiveTransit - effectiveOrderGiven - effectiveR2s);
 
                     const stageNorm = String(itemStage || '').trim().toLowerCase();
                     const twoOrderQty = stageNorm === 'to_order_analysis'
@@ -2118,7 +2172,6 @@
                     if (!groupedMSL[parentKey]) groupedMSL[parentKey] = 0;
                     groupedMSL[parentKey] += msl;
 
-                    const s_msl_val = parseFloat(item["s-msl"]) || 0;
                     if (!groupedS_MSL[parentKey]) groupedS_MSL[parentKey] = 0;
                     groupedS_MSL[parentKey] += s_msl_val;
 

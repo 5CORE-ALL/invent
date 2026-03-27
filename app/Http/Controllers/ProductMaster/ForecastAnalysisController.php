@@ -889,6 +889,9 @@ class ForecastAnalysisController extends Controller
         if (!$columnKey) {
             return response()->json(['success' => false, 'message' => 'Invalid column']);
         }
+        if ($columnKey === 's_msl') {
+            $value = mb_substr((string) $value, 0, 4);
+        }
 
         // Match by SKU only - prefer record with stage value if multiple exist
         $existing = DB::table('forecast_analysis')
