@@ -427,7 +427,7 @@ class MFRGInProgressController extends Controller
         $validColumns = [
             'advance_amt', 'pay_conf_date', 'o_links', 'adv_date', 'del_date', 'total_cbm',
             'barcode_sku', 'artwork_manual_book', 'notes', 'ready_to_ship', 'rate', 'rate_currency',
-            'photo_packing', 'photo_int_sale','supplier','supplier_sku','created_at',
+            'photo_packing', 'photo_int_sale','supplier','supplier_sku','created_at', 'qty',
             'pkg_inst', 'u_manual', 'compliance'
         ];
 
@@ -470,7 +470,11 @@ class MFRGInProgressController extends Controller
             return response()->json(['success' => true, 'message' => 'Advance updated.']);
         }
 
-        $progress->{$column} = $request->input('value');
+        $value = $request->input('value');
+        if ($column === 'qty') {
+            $value = is_numeric($value) ? (float) $value : 0;
+        }
+        $progress->{$column} = $value;
         $progress->save();
 
         return response()->json(['success' => true]);

@@ -311,9 +311,12 @@
                                     <td data-column="4" data-qty="{{ $item->qty ?? 0 }}" class="text-center" style="background-color: #e9ecef;">
                                         <input type="number" 
                                             value="{{ $item->qty ?? 0 }}" 
-                                            readonly
-                                            style="width:80px; text-align:center; background-color: #e9ecef; cursor: not-allowed; border: none;"
-                                            class="form-control form-control-sm">
+                                            data-sku="{{ $item->sku }}"
+                                            data-column="qty"
+                                            min="0"
+                                            step="1"
+                                            style="width:80px; text-align:center; background-color: #fff;"
+                                            class="form-control form-control-sm auto-save">
                                     </td>
                                     @php
                                         $textColor = '';
@@ -982,10 +985,32 @@
                             if (column === 'rate') {
                                 const qtyCell = row.querySelector('td[data-column="4"]');
                                 const totalCell = row.querySelector('td[data-column="12"]');
-                                const qty = parseFloat(qtyCell?.innerText?.trim() || '0');
+                                const qtyInput = qtyCell?.querySelector('input[data-column="qty"]');
+                                const qty = parseFloat(qtyInput?.value || qtyCell?.innerText?.trim() || '0');
                                 const rate = parseFloat(value);
                                 if (!isNaN(qty) && !isNaN(rate)) {
                                     totalCell.innerText = (qty * rate).toFixed(2);
+                                }
+                            }
+                            if (column === 'qty') {
+                                const qtyNum = parseFloat(value) || 0;
+                                const rateInput = row.querySelector('td[data-column="5"] input[data-column="rate"]');
+                                const rateNum = parseFloat(rateInput?.value || '0') || 0;
+                                const totalCell = row.querySelector('td[data-column="12"]');
+                                if (totalCell) {
+                                    totalCell.innerText = (qtyNum * rateNum).toFixed(2);
+                                }
+                                const cbmCell = row.querySelector('td[data-column="14"]');
+                                const cbmNum = parseFloat(cbmCell?.textContent?.trim() || '0') || 0;
+                                const totalCbmInput = row.querySelector('input[data-column="total_cbm"]');
+                                if (totalCbmInput) {
+                                    totalCbmInput.value = (qtyNum * cbmNum).toFixed(2);
+                                }
+                                if (typeof calculateTotalCBM === 'function') {
+                                    calculateTotalCBM();
+                                }
+                                if (typeof updateFollowSupplierCount === 'function') {
+                                    updateFollowSupplierCount();
                                 }
                             }
 
@@ -1006,7 +1031,7 @@
                                 const skuVal = row.querySelector('td[data-column="3"]')?.innerText?.trim() || '';
                                 const supplierSelect = row.querySelector('td[data-column="6"] select[data-column="supplier"]');
                                 const supplier = supplierSelect ? supplierSelect.value.trim() : '';
-                                const qty = row.querySelector('td[data-column="4"]')?.innerText?.trim() || '';
+                                const qty = row.querySelector('td[data-column="4"] input[data-column="qty"]')?.value?.trim() || '';
                                 const totalCbm = row.querySelector('td[data-column="15"] input')?.value?.trim() || '';
                                 const rate = row.querySelector('td[data-column="5"] input')?.value?.trim() || '';                                
 
