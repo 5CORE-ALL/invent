@@ -73,6 +73,30 @@ class TaskController extends Controller
             'done_atc' => (clone $tasksQuery)->where('status', 'Done')->sum('etc_done') ?? 0,
         ];
 
+        // 30-day ETC/ATC badges from deleted_tasks only (by deleted_at)
+        $deletedLast30ForTimeQuery = DeletedTask::query()
+            ->where('deleted_at', '>=', now()->subDays(30));
+
+        if (!$isAdmin) {
+            $deletedLast30ForTimeQuery->where(function($query) use ($user) {
+                $query->where('assignor', $user->email)
+                    ->orWhere('assign_to', 'LIKE', '%' . $user->email . '%');
+            });
+        }
+
+        if ($selectedUserEmail) {
+            $deletedLast30ForTimeQuery->where(function($query) use ($selectedUserEmail) {
+                $query->where('assignor', $selectedUserEmail)
+                    ->orWhere('assign_to', 'LIKE', '%' . $selectedUserEmail . '%');
+            });
+        }
+
+        $deletedEtcLast30 = (clone $deletedLast30ForTimeQuery)->sum('eta_time') ?? 0;
+        $deletedAtcLast30 = (clone $deletedLast30ForTimeQuery)->sum('etc_done') ?? 0;
+
+        $stats['etc_last_30'] = (float) $deletedEtcLast30;
+        $stats['atc_last_30'] = (float) $deletedAtcLast30;
+
         // Calculate R&R hours (tasks with group containing "R&R" or "R&R" in group name)
         $rrQuery = (clone $tasksQuery)->where(function($q) {
             $q->where('group', 'LIKE', '%R&R%')
@@ -1799,6 +1823,64 @@ class TaskController extends Controller
             Session::forget('selected_user_name');
         }
         return response()->json(['success' => true, 'user_name' => $userName]);
+    }
+
+    /**
+     * Badge stats from deleted_tasks only (last 30 days by deleted_at).
+     */
+    public function deletedBadgeStats(Request $request)
+    {
+        $user = Auth::user();
+        $isAdmin = strtolower($user->role ?? '') === 'admin';
+
+        $assignorName = trim((string) $request->query('assignor', ''));
+        $assigneeName = trim((string) $request->query('assignee', ''));
+        $assignorEmail = $assignorName && $assignorName !== '__NULL__'
+            ? User::where('name', $assignorName)->value('email')
+            : null;
+        $assigneeEmail = $assigneeName && $assigneeName !== '__NULL__'
+            ? User::where('name', $assigneeName)->value('email')
+            : null;
+
+        $query = DeletedTask::query()
+            ->where('deleted_at', '>=', now()->subDays(30));
+
+        if (!$isAdmin) {
+            $query->where(function($q) use ($user) {
+                $q->where('assignor', $user->email)
+                    ->orWhere('assign_to', 'LIKE', '%' . $user->email . '%');
+            });
+        }
+
+        if ($assignorName !== '') {
+            if ($assignorName === '__NULL__') {
+                $query->where(function($q) {
+                    $q->whereNull('assignor')->orWhere('assignor', '');
+                });
+            } else {
+                $query->where('assignor', $assignorEmail ?: $assignorName);
+            }
+        }
+
+        if ($assigneeName !== '') {
+            if ($assigneeName === '__NULL__') {
+                $query->where(function($q) {
+                    $q->whereNull('assign_to')->orWhere('assign_to', '');
+                });
+            } else {
+                $query->where('assign_to', 'LIKE', '%' . ($assigneeEmail ?: $assigneeName) . '%');
+            }
+        }
+
+        $etcMinutes = (float) ((clone $query)->sum('eta_time') ?? 0);
+        $atcMinutes = (float) ((clone $query)->sum('etc_done') ?? 0);
+
+        return response()->json([
+            'etc_minutes' => $etcMinutes,
+            'atc_minutes' => $atcMinutes,
+            'etc_hours' => round($etcMinutes / 60, 1),
+            'atc_hours' => round($atcMinutes / 60, 1),
+        ]);
     }
 
     /**

@@ -1417,9 +1417,9 @@
                         <i class="mdi mdi-briefcase-clock"></i>
                     </div>
                     <div class="stat-content">
-                        <div class="stat-label">ETC</div>
-                        <div class="stat-value">{{ number_format($stats['etc_total'] / 60, 1) }}</div>
-                        <div class="stat-unit">hours</div>
+                        <div class="stat-label">ETC 30D</div>
+                        <div class="stat-value">{{ number_format(($stats['etc_last_30'] ?? 0) / 60, 1) }}h</div>
+                        <div class="stat-unit" title="Last 30 days ETC including deleted tasks">hours</div>
                     </div>
                 </div>
             </div>
@@ -1431,9 +1431,9 @@
                         <i class="mdi mdi-timer"></i>
                     </div>
                     <div class="stat-content">
-                        <div class="stat-label">ATC</div>
-                        <div class="stat-value">{{ number_format($stats['atc_total'] / 60, 1) }}</div>
-                        <div class="stat-unit">hours</div>
+                        <div class="stat-label">ATC 30D</div>
+                        <div class="stat-value">{{ number_format(($stats['atc_last_30'] ?? 0) / 60, 1) }}h</div>
+                        <div class="stat-unit" title="Last 30 days ATC including deleted tasks">hours</div>
                     </div>
                 </div>
             </div>
@@ -3276,6 +3276,8 @@
                     
                     return completionDate >= thirtyDaysAgo;
                 });
+
+                // ETC 30D / ATC 30D badges are fetched from deleted_tasks via AJAX.
                 
                 var tatValues = [];
                 last30DoneTasks.forEach(function(t) {
@@ -3344,14 +3346,12 @@
                         case 'DONE':
                             valueEl.text(stats.done);
                             break;
-                        case 'ETC':
-                            valueEl.text(Math.round(stats.etc_total / 60 * 10) / 10);
+                        case 'ETC 30D':
                             break;
                         case 'R&R':
                             valueEl.text(stats.rr != null ? Math.round(stats.rr / 60) : (stats.etc_rr != null ? Math.round(stats.etc_rr / 60) : '-'));
                             break;
-                        case 'ATC':
-                            valueEl.text(Math.round(stats.atc_total / 60 * 10) / 10);
+                        case 'ATC 30D':
                             break;
                         case 'DONE ETC':
                             valueEl.text(Math.round(stats.done_etc / 60));
@@ -3373,6 +3373,35 @@
                         case 'MISSED':
                             valueEl.text(stats.missed_count_30);
                             break;
+                    }
+                });
+                refreshDeletedBadgeStats();
+            }
+
+            function refreshDeletedBadgeStats() {
+                $.ajax({
+                    url: '{{ route("tasks.deletedBadgeStats") }}',
+                    method: 'GET',
+                    dataType: 'json',
+                    data: {
+                        assignor: $('#filter-assignor').val() || '',
+                        assignee: $('#filter-assignee').val() || ''
+                    },
+                    success: function(resp) {
+                        var etcHours = Number(resp && resp.etc_hours != null ? resp.etc_hours : 0);
+                        var atcHours = Number(resp && resp.atc_hours != null ? resp.atc_hours : 0);
+                        if (isNaN(etcHours)) etcHours = 0;
+                        if (isNaN(atcHours)) atcHours = 0;
+
+                        $('.stat-card').each(function() {
+                            var label = $(this).find('.stat-label').text().trim();
+                            var valueEl = $(this).find('.stat-value');
+                            if (label === 'ETC 30D') {
+                                valueEl.text(etcHours.toFixed(1) + 'h');
+                            } else if (label === 'ATC 30D') {
+                                valueEl.text(atcHours.toFixed(1) + 'h');
+                            }
+                        });
                     }
                 });
             }

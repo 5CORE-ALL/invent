@@ -197,6 +197,7 @@
                                     <th class="orders-hold-col-mp">MKT2</th>
                                     <th class="orders-hold-col-what">What?</th>
                                     <th class="orders-hold-col-action">Action</th>
+                                    <th class="orders-hold-col-action">Replacement Tracking</th>
                                     <th class="orders-hold-col-issue">Root Cause<br>Found</th>
                                     <th class="orders-hold-col-action">Root Cause Fixed</th>
                                     <th class="orders-hold-col-close">Close</th>
@@ -206,7 +207,7 @@
                             </thead>
                             <tbody id="hold_issue_table_body">
                                 <tr id="hold_issue_empty_row">
-                                    <td colspan="14" class="text-center text-muted py-4">No records found.</td>
+                                    <td colspan="15" class="text-center text-muted py-4">No records found.</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -233,6 +234,7 @@
                                     <th class="orders-hold-col-mp">MKT2</th>
                                     <th class="orders-hold-col-what">What?</th>
                                     <th class="orders-hold-col-action">Action</th>
+                                    <th class="orders-hold-col-action">Replacement Tracking</th>
                                     <th class="orders-hold-col-issue">Root Cause<br>Found</th>
                                     <th class="orders-hold-col-action">Root Cause Fixed</th>
                                     <th class="orders-hold-col-action">Close</th>
@@ -243,7 +245,7 @@
                             </thead>
                             <tbody id="hold_issue_history_table_body">
                                 <tr id="hold_issue_history_empty_row">
-                                    <td colspan="15" class="text-center text-muted py-4">No history found.</td>
+                                    <td colspan="16" class="text-center text-muted py-4">No history found.</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -342,6 +344,12 @@
                                     placeholder="Write remark for Other">
                             </div>
 
+                            <div class="col-md-6">
+                                <label for="hold_issue_replacement_tracking" class="form-label">Replacement Tracking Number</label>
+                                <input type="text" class="form-control" id="hold_issue_replacement_tracking"
+                                    name="replacement_tracking" maxlength="50" placeholder="Optional tracking number">
+                            </div>
+
                             <div class="col-12">
                                 <label for="hold_issue_text" class="form-label">Root Cause Found <span class="text-danger">*</span></label>
                                 <select class="form-select" id="hold_issue_text" name="issue" required>
@@ -422,6 +430,7 @@
             const action1Input = document.getElementById('hold_issue_action_1');
             const action1RemarkInput = document.getElementById('hold_issue_action_1_remark');
             const action1RemarkWrap = document.getElementById('action1RemarkWrap');
+            const replacementTrackingInput = document.getElementById('hold_issue_replacement_tracking');
             const cAction1Input = document.getElementById('hold_issue_c_action_1');
             const cAction1RemarkInput = document.getElementById('hold_issue_c_action_1_remark');
             const cAction1RemarkWrap = document.getElementById('cAction1RemarkWrap');
@@ -594,6 +603,7 @@
                         '<td>' + escapeHtml(row.marketplace_2) + '</td>' +
                         '<td>' + whatHappenedDotHtml(row.what_happened) + '</td>' +
                         '<td>' + action1DisplayHtml(row.action_1, row.action_1_remark) + '</td>' +
+                        '<td>' + escapeHtml(row.replacement_tracking || '—') + '</td>' +
                         '<td>' + rootCauseDisplayHtml(row.issue, row.issue_remark) + '</td>' +
                         '<td>' + rootCauseFixedDisplayHtml(row.c_action_1, row.c_action_1_remark) + '</td>' +
                         '<td class="orders-hold-close-cell">' + buttonsHtml + '</td>' +
@@ -636,6 +646,7 @@
                         '<td>' + escapeHtml(row.marketplace_2) + '</td>' +
                         '<td>' + whatHappenedDotHtml(row.what_happened) + '</td>' +
                         '<td>' + action1DisplayHtml(row.action_1, row.action_1_remark) + '</td>' +
+                        '<td>' + escapeHtml(row.replacement_tracking || '—') + '</td>' +
                         '<td>' + rootCauseDisplayHtml(row.issue, row.issue_remark) + '</td>' +
                         '<td>' + rootCauseFixedDisplayHtml(row.c_action_1, row.c_action_1_remark) + '</td>' +
                         '<td>' + escapeHtml(row.close_note) + '</td>' +
@@ -665,6 +676,7 @@
                     issue_remark: row?.issue_remark ?? '',
                     action_1: row?.action_1 ?? '',
                     action_1_remark: row?.action_1_remark ?? '',
+                    replacement_tracking: row?.replacement_tracking ?? '',
                     c_action_1: row?.c_action_1 ?? '',
                     c_action_1_remark: row?.c_action_1_remark ?? '',
                     close_note: row?.close_note ?? '',
@@ -691,6 +703,7 @@
                     issue_remark: row?.issue_remark ?? '',
                     action_1: row?.action_1 ?? '',
                     action_1_remark: row?.action_1_remark ?? '',
+                    replacement_tracking: row?.replacement_tracking ?? '',
                     c_action_1: row?.c_action_1 ?? '',
                     c_action_1_remark: row?.c_action_1_remark ?? '',
                     close_note: row?.close_note ?? '',
@@ -750,6 +763,7 @@
                 action1Input.value = '';
                 action1RemarkInput.value = '';
                 toggleAction1RemarkField();
+                replacementTrackingInput.value = '';
                 cAction1Input.value = '';
                 cAction1RemarkInput.value = '';
                 toggleCAction1RemarkField();
@@ -777,6 +791,7 @@
                 action1Input.value = record.action_1 || '';
                 action1RemarkInput.value = record.action_1_remark || '';
                 toggleAction1RemarkField();
+                replacementTrackingInput.value = record.replacement_tracking || '';
                 cAction1Input.value = record.c_action_1 || '';
                 cAction1RemarkInput.value = record.c_action_1_remark || '';
                 toggleCAction1RemarkField();
@@ -937,6 +952,7 @@
                         issue_remark: issueRemarkInput.value.trim(),
                         action_1: action1Input.value.trim(),
                         action_1_remark: action1RemarkInput.value.trim(),
+                        replacement_tracking: replacementTrackingInput.value.trim(),
                         c_action_1: cAction1Input.value.trim(),
                         c_action_1_remark: cAction1RemarkInput.value.trim(),
                     };
