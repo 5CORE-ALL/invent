@@ -106,6 +106,13 @@
             line-height: 1.35;
             color: #475569;
         }
+        /* Widen SKU column (4th column) */
+        #title-master-table thead th:nth-child(4),
+        #title-master-table tbody td:nth-child(4) {
+            min-width: 180px;
+            width: 180px;
+            white-space: nowrap;
+        }
         #title-master-table .table-img-cell {
             width: 48px;
             text-align: center;
