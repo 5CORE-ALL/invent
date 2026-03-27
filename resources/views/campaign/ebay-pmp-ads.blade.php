@@ -1752,6 +1752,7 @@
                                     </div>
                                 </th>
                                 <th data-field="esbid">ES BID</th>
+                                <th data-field="pt_sbid" title="Product targeting suggested bid (from campaign listings / apicentral)">PT SBID</th>
                                 <th data-field="s_bid">S BID</th>
 
                                 <th data-field="l60_views" style="vertical-align: middle; white-space: nowrap;"
@@ -3033,6 +3034,9 @@
                                     YESTERDAY_VIEWS: item.yesterday_views != null ? Number(item.yesterday_views) : 0,
                                     CBID: item.bid_percentage || 0,
                                     ESBID: item.suggested_bid || 0,
+                                    PTSBID: (item.pt_sbid !== null && item.pt_sbid !== undefined && item.pt_sbid !== '')
+                                        ? item.pt_sbid
+                                        : (item.raw_data && item.raw_data.pt_sbid != null ? item.raw_data.pt_sbid : ''),
                                     TPFT: item.TPFT || 0,
                                 };
                             });
@@ -3109,12 +3113,12 @@
                 $tbody.empty();
 
                 if (isLoading) {
-                    $tbody.append('<tr><td colspan="24" class="text-center">Loading data...</td></tr>');
+                    $tbody.append('<tr><td colspan="25" class="text-center">Loading data...</td></tr>');
                     return;
                 }
 
                 if (filteredData.length === 0) {
-                    $tbody.append('<tr><td colspan="24" class="text-center">No matching records found</td></tr>');
+                    $tbody.append('<tr><td colspan="25" class="text-center">No matching records found</td></tr>');
                     return;
                 }
 
@@ -3303,6 +3307,12 @@
                     $row.append($('<td data-field="cbid">').text(item.CBID));
 
                     $row.append($('<td data-field="esbid">').text(item.ESBID));
+
+                    const ptSbidRaw = item.PTSBID;
+                    const ptSbidDisplay = (ptSbidRaw !== null && ptSbidRaw !== undefined && ptSbidRaw !== '' && !isNaN(parseFloat(ptSbidRaw)))
+                        ? parseFloat(ptSbidRaw)
+                        : '';
+                    $row.append($('<td data-field="pt_sbid">').text(ptSbidDisplay === '' ? '' : ptSbidDisplay));
 
                     // Calculate CVR first
                     let ebayL30 = Number(item['eBay L30']) || 0;
@@ -5192,6 +5202,7 @@
                         'c_bid': 'CBID',
                         'cbid': 'CBID',
                         'esbid': 'ESBID',
+                        'pt_sbid': 'PTSBID',
                         's_bid': 'SBID', // S BID is calculated, not ESBID
                         'l30_views': 'L30_VIEWS',
                         'l7_views': 'L7_VIEWS',
@@ -5270,8 +5281,8 @@
                         'eBay Price', 'PFT %', 'Roi', 'Tacos30', 'SCVR', 'PmtClkL30', 'PmtClkL7',
                         'SPRICE', 'SPFT', 'SROI', 'Sales L30', 'Profit', 'VIEWS', 'L30_VIEWS', 'L7_VIEWS',
                         'L60_VIEWS', 'L45_VIEWS', 'L1_VIEWS', 'YESTERDAY_VIEWS',
-                        'CBID', 'ESBID', 'SBID', 'TPFT',
-                        'inv', 'ov_l30', 'el_30', 'c_bid', 'cbid', 'esbid', 's_bid', 'l30_views',
+                        'CBID', 'ESBID', 'PTSBID', 'SBID', 'TPFT',
+                        'inv', 'ov_l30', 'el_30', 'c_bid', 'cbid', 'esbid', 'pt_sbid', 's_bid', 'l30_views',
                         'l7_views', 'l60_views', 'l1545_views', 'l1_views',
                         'cvr', 'pmtclkl7', 'views', 'price', 'pft', 'roi', 'tpft', 'troi'
                     ]);
@@ -5903,6 +5914,7 @@
                         'c_bid': 'CBID',
                         'cbid': 'CBID',
                         'esbid': 'ESBID',
+                        'pt_sbid': 'PTSBID',
                         's_bid': 'SBID',
                         'l30_views': 'L30_VIEWS',
                         'l7_views': 'L7_VIEWS',
@@ -5967,8 +5979,8 @@
                         'eBay Price', 'PFT %', 'Roi', 'Tacos30', 'SCVR', 'PmtClkL30', 'PmtClkL7',
                         'SPRICE', 'SPFT', 'SROI', 'Sales L30', 'Profit', 'VIEWS', 'L30_VIEWS', 'L7_VIEWS',
                         'L60_VIEWS', 'L45_VIEWS', 'L1_VIEWS', 'YESTERDAY_VIEWS',
-                        'CBID', 'ESBID', 'SBID', 'TPFT',
-                        'inv', 'ov_l30', 'el_30', 'c_bid', 'cbid', 'esbid', 's_bid', 'l30_views',
+                        'CBID', 'ESBID', 'PTSBID', 'SBID', 'TPFT',
+                        'inv', 'ov_l30', 'el_30', 'c_bid', 'cbid', 'esbid', 'pt_sbid', 's_bid', 'l30_views',
                         'l7_views', 'l60_views', 'l1545_views', 'l1_views',
                         'cvr', 'pmtclkl7', 'views', 'price', 'pft', 'roi', 'tpft', 'troi'
                     ]);
@@ -6050,6 +6062,9 @@
                         'L1 VIEWS': Math.round(Number(item.L1_VIEWS || item.YESTERDAY_VIEWS || 0)) || 0,
                         CBID: item.CBID != null ? item.CBID : '',
                         ESBID: item.ESBID != null ? item.ESBID : '',
+                        'PT SBID': (item.PTSBID !== null && item.PTSBID !== undefined && item.PTSBID !== '')
+                            ? item.PTSBID
+                            : '',
                         SBID: (function() {
                             const l7Views = Number(item.L7_VIEWS || item.l7_views || 0) || 0;
                             let sbidValue;

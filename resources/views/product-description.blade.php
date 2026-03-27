@@ -66,8 +66,8 @@
         'sub_title' => 'Product descriptions by marketplace',
     ])
 
-    <div class="row">
-        <div class="col-12">
+        <div class="row">
+            <div class="col-12">
             <div class="card dm-master-card">
                 <div class="card-body">
                     <div id="loadErrorBanner" class="alert alert-danger mb-3 py-2" style="display:none;" role="alert">
@@ -87,7 +87,7 @@
                         <button type="button" id="pushAllBtn" class="btn btn-push-all btn-sm"><i class="fas fa-cloud-upload-alt"></i> Push ALL (this page)</button>
                         <span class="text-muted small" id="rowCountBadge">0 products</span>
                         <input type="file" id="importFile" accept=".csv,.xlsx,.xls" style="display:none;">
-                    </div>
+        </div>
 
                     <div id="dmTableShell">
                         <div id="dmSkeleton" class="mb-2" style="display:none;">
@@ -168,10 +168,10 @@
                         <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-1">
                             <span class="fw-semibold small">DESC 1000 — Shopify Main (SM), Shopify PLS (SP)</span>
                             <button type="button" class="btn btn-primary btn-sm modal-ai-tier" data-tier="1000"><i class="fas fa-wand-magic-sparkles"></i> AI Generate</button>
-                        </div>
+                            </div>
                         <textarea class="form-control form-control-sm" id="modalDesc1000" rows="4" maxlength="1000" placeholder="900–1000 characters (AI target)"></textarea>
                         <div class="small text-muted mt-1"><span id="modalDescCounter1000">0</span>/1000</div>
-                    </div>
+                            </div>
                     <div class="border rounded p-2 mb-2 bg-light">
                         <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-1">
                             <span class="fw-semibold small">DESC 800 — eBay1 (E1), eBay2 (E2), eBay3 (E3)</span>
@@ -221,11 +221,11 @@
 @endsection
 
 @section('script')
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-<script>
+    <script>
 document.addEventListener('DOMContentLoaded', () => {
-    const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+        const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
     const LIMITS = {
         amazon: 1500, temu: 1500, reverb: 1500,
         shopify_main: 1000, shopify_pls: 1000,
@@ -259,7 +259,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const ALL_MP = Object.keys(LIMITS);
     const TIER_MIN_AI = { 1500: 1400, 1000: 900, 800: 700, 600: 500 };
 
-    let tableData = [];
+        let tableData = [];
     const bySku = new Map();
     let editModal, viewDescModal;
     let tableBodyBound = false;
@@ -391,7 +391,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function bindTableBodyOnce() {
         if (tableBodyBound) return;
         tableBodyBound = true;
-        const tbody = document.getElementById('table-body');
+            const tbody = document.getElementById('table-body');
         if (!tbody) return;
 
         tbody.addEventListener('click', (e) => {
@@ -404,8 +404,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const editBtn = e.target.closest('[data-edit]');
             if (editBtn) {
                 openEditModal(editBtn.getAttribute('data-edit'));
-                return;
-            }
+                    return;
+                }
             const pushBtn = e.target.closest('.bp-mp-stack[data-push-mp]');
             if (pushBtn) {
                 e.preventDefault();
@@ -666,7 +666,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (wrap) wrap.classList.remove('d-none');
         if (tierEl) tierEl.textContent = 'Generating ' + tier + '-char description…';
         fetch('/product-description/generate', {
-            method: 'POST',
+                method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json' },
             body: JSON.stringify({ product_name: name, current_text: current, tier })
         })
@@ -872,5 +872,5 @@ document.addEventListener('DOMContentLoaded', () => {
 
     loadData(1);
 });
-</script>
+    </script>
 @endsection
