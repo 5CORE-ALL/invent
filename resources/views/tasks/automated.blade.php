@@ -617,6 +617,19 @@
                         </div>
                     </div>
 
+                    <!-- ETC Monthly Total -->
+                    <div class="stat-card stat-card-yellow" style="flex: 1; min-width: 110px; padding: 10px 12px; margin-bottom: 0;">
+                        <div class="d-flex align-items-center">
+                            <div class="stat-icon" style="width: 36px; height: 36px; font-size: 18px; margin-right: 8px;">
+                                <i class="mdi mdi-calculator-variant"></i>
+                            </div>
+                            <div class="stat-content">
+                                <div class="stat-label" style="font-size: 9px;">ETC MONTHLY</div>
+                                <div class="stat-value" style="font-size: 20px;">0</div>
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- Manual Task Button -->
                     <a href="{{ route('tasks.index') }}" class="stat-card stat-card-blue" style="flex: 1; min-width: 110px; padding: 10px 12px; margin-bottom: 0; text-decoration: none; display: flex; align-items: center; justify-content: center; background: linear-gradient(135deg, #6c757d 0%, #495057 100%) !important; border-left-color: #495057;">
                         <div class="text-center">
@@ -1031,6 +1044,24 @@
                 } catch (e) { /* ignore */ }
             }
 
+            function getEtcMonthlyMultiplier(scheduleType) {
+                var normalized = String(scheduleType || '').trim().toLowerCase();
+                if (normalized === 'daily' || normalized === 'd') return 25;
+                if (normalized === 'weekly' || normalized === 'w') return 6;
+                if (normalized === 'monthly' || normalized === 'm') return 1;
+                return 0;
+            }
+
+            function calculateEtcMonthly(rowData) {
+                var etcMinutes = parseFloat(rowData && rowData.eta_time ? rowData.eta_time : 0);
+                if (isNaN(etcMinutes)) etcMinutes = 0;
+                var freq = '';
+                if (rowData) {
+                    freq = rowData.freq != null && rowData.freq !== '' ? rowData.freq : rowData.schedule_type;
+                }
+                return etcMinutes * getEtcMonthlyMultiplier(freq);
+            }
+
             // Initialize Tabulator
             var table = new Tabulator("#tasks-table", {
                 selectable: isAdmin,
@@ -1201,6 +1232,20 @@
                         formatter: function(cell) {
                             var value = cell.getValue();
                             return value ? '<strong>' + value + '</strong>' : '-';
+                        }
+                    });
+
+                    // ETC MONTHLY (ETC x frequency multiplier)
+                    cols.push({
+                        title: "ETC MONTHLY",
+                        field: "etc_monthly",
+                        width: 110,
+                        hozAlign: "center",
+                        headerSort: false,
+                        formatter: function(cell) {
+                            var rowData = cell.getRow().getData();
+                            var etcMonthly = calculateEtcMonthly(rowData);
+                            return '<strong>' + etcMonthly + '</strong>';
                         }
                     });
                     
@@ -1517,6 +1562,9 @@
                 var weekly = filteredData.filter(t => t.schedule_type === 'weekly').length;
                 var monthly = filteredData.filter(t => t.schedule_type === 'monthly').length;
                 var active = filteredData.filter(t => t.status === 'Todo').length;
+                var etcMonthlyTotal = filteredData.reduce(function(sum, task) {
+                    return sum + calculateEtcMonthly(task);
+                }, 0);
                 
                 // Update stat cards
                 $('.stat-card').each(function() {
@@ -1529,6 +1577,7 @@
                         case 'WEEKLY': valueEl.text(weekly); break;
                         case 'MONTHLY': valueEl.text(monthly); break;
                         case 'ACTIVE': valueEl.text(active); break;
+                        case 'ETC MONTHLY': valueEl.text((etcMonthlyTotal / 60).toFixed(1)); break;
                     }
                 });
             }
