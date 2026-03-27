@@ -41,14 +41,12 @@
         .btn-ebay1 { background-color:#0d6efd; }
         .btn-ebay2 { background-color:#198754; }
         .btn-ebay3 { background-color:#fd7e14; }
-        .btn-walmart { background-color:#0071ce; }
         .btn-macy { background-color:#0d6efd; }
-        .btn-aliexpress { background-color:#0ea5e9; }
-        .btn-faire { background-color:#6f42c1; }
-        .btn-bestbuy { background-color:#0f172a; }
-        .btn-wayfair { background-color:#dc3545; }
-        .btn-shein { background-color:#db2777; }
-        .btn-doba { background-color:#fd7e14; }
+        .btn-amazon { background-color:#ff9900; }
+        .btn-temu { background-color:#ff6b00; }
+        .btn-reverb { background-color:#333333; }
+        .btn-shopify { background-color:#7cb342; }
+        .btn-shopify-pls { background-color:#5c6bc0; }
         .mp-counter { font-size:10px; color:#6c757d; }
         .mp-counter.warning { color:#b8860b; font-weight:600; }
         .mp-counter.error { color:#dc3545; font-weight:700; }
@@ -119,23 +117,17 @@
                                         <input type="text" id="previewSearchBp" class="th-sub" placeholder="Search preview">
                                     </th>
                                     <th>Action</th>
-                                    <th title="eBay 1–3, Walmart, Macy's, AliExpress, Faire, BestBuy">
+                                    <th title="eBay1–3, Macy's, Amazon, Temu, Reverb (150 characters each)">
                                         <div class="bp-mp-th-title">MARKET PLACES [150]</div>
                                         <div class="bp-mp-th-icons">
-                                            <span class="bp-mp-th-pill btn-ebay1">E1</span><span class="bp-mp-th-pill btn-ebay2">E2</span><span class="bp-mp-th-pill btn-ebay3">E3</span><span class="bp-mp-th-pill btn-walmart">W</span><span class="bp-mp-th-pill btn-macy">M</span><span class="bp-mp-th-pill btn-aliexpress">A</span><span class="bp-mp-th-pill btn-faire">F</span><span class="bp-mp-th-pill btn-bestbuy">BB</span>
+                                            <span class="bp-mp-th-pill btn-ebay1">E1</span><span class="bp-mp-th-pill btn-ebay2">E2</span><span class="bp-mp-th-pill btn-ebay3">E3</span><span class="bp-mp-th-pill btn-macy">M</span><span class="bp-mp-th-pill btn-amazon">A</span><span class="bp-mp-th-pill btn-temu">T</span><span class="bp-mp-th-pill btn-reverb">R</span>
                                         </div>
                                     </th>
-                                    <th title="Wayfair">
+                                    <th title="Shopify Main, Shopify PLS (100 characters each)">
                                         <div class="bp-mp-th-title">MARKET PLACES [100]</div>
-                                        <div class="bp-mp-th-icons"><span class="bp-mp-th-pill btn-wayfair">WF</span></div>
-                                    </th>
-                                    <th title="Shein">
-                                        <div class="bp-mp-th-title">MARKET PLACES [80]</div>
-                                        <div class="bp-mp-th-icons"><span class="bp-mp-th-pill btn-shein">S</span></div>
-                                    </th>
-                                    <th title="DOBA">
-                                        <div class="bp-mp-th-title">MARKET PLACES [60]</div>
-                                        <div class="bp-mp-th-icons"><span class="bp-mp-th-pill btn-doba">D</span></div>
+                                        <div class="bp-mp-th-icons">
+                                            <span class="bp-mp-th-pill btn-shopify">SM</span><span class="bp-mp-th-pill btn-shopify-pls">PLS</span>
+                                        </div>
                                     </th>
                                 </tr>
                             </thead>
@@ -211,43 +203,39 @@
 <script>
 document.addEventListener('DOMContentLoaded', () => {
     const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
-    const LIMITS = { ebay:150, ebay2:150, ebay3:150, walmart:150, macy:150, aliexpress:150, faire:150, bestbuy:150, wayfair:100, shein:80, doba:60 };
-    const LABELS = { ebay:'eBay 1', ebay2:'eBay 2', ebay3:'eBay 3', walmart:'Walmart', macy:"Macy's", aliexpress:'AliExpress', faire:'Faire', bestbuy:'BestBuy', wayfair:'Wayfair', shein:'Shein', doba:'DOBA' };
-    /** Labels in view modal (match requested naming: eBay1, BestBuy, etc.) */
-    const VIEW_LABELS = { ebay:'eBay1', ebay2:'eBay2', ebay3:'eBay3', walmart:'Walmart', macy:"Macy's", aliexpress:'AliExpress', faire:'Faire', bestbuy:'BestBuy', wayfair:'Wayfair', shein:'Shein', doba:'DOBA' };
-    const OTHER_MARKETPLACES = [
-        { key: 'shopify_main', label: 'Shopify Main' },
-        { key: 'shopify_pls', label: 'Shopify PLS' },
-        { key: 'temu', label: 'Temu' },
-        { key: 'amazon', label: 'Amazon' },
-        { key: 'reverb', label: 'Reverb' },
-    ];
+    const LIMITS = {
+        ebay: 150, ebay2: 150, ebay3: 150, macy: 150, amazon: 150, temu: 150, reverb: 150,
+        shopify_main: 100, shopify_pls: 100,
+    };
+    const LABELS = {
+        ebay: 'eBay 1', ebay2: 'eBay 2', ebay3: 'eBay 3', macy: "Macy's", amazon: 'Amazon', temu: 'Temu', reverb: 'Reverb',
+        shopify_main: 'Shopify Main', shopify_pls: 'Shopify PLS',
+    };
+    /** Labels in view modal (eBay1-style names) */
+    const VIEW_LABELS = {
+        ebay: 'eBay1', ebay2: 'eBay2', ebay3: 'eBay3', macy: "Macy's", amazon: 'Amazon', temu: 'Temu', reverb: 'Reverb',
+        shopify_main: 'Shopify Main', shopify_pls: 'Shopify PLS',
+    };
     const VIEW_SECTIONS = [
-        { limit: 150, banner: '========== 150 Character Marketplaces ==========', keys: ['ebay', 'ebay2', 'ebay3', 'walmart', 'macy', 'aliexpress', 'faire', 'bestbuy'] },
-        { limit: 100, banner: '========== 100 Character Marketplaces ==========', keys: ['wayfair'] },
-        { limit: 80, banner: '========== 80 Character Marketplaces ==========', keys: ['shein'] },
-        { limit: 60, banner: '========== 60 Character Marketplaces ==========', keys: ['doba'] },
+        { limit: 150, banner: '========== 150 Character Marketplaces ==========', keys: ['ebay', 'ebay2', 'ebay3', 'macy', 'amazon', 'temu', 'reverb'] },
+        { limit: 100, banner: '========== 100 Character Marketplaces ==========', keys: ['shopify_main', 'shopify_pls'] },
     ];
     const MARKETPLACES = Object.keys(LIMITS);
     const GROUPS = {
-        g150: ['ebay', 'ebay2', 'ebay3', 'walmart', 'macy', 'aliexpress', 'faire', 'bestbuy'],
-        g100: ['wayfair'],
-        g80: ['shein'],
-        g60: ['doba']
+        g150: ['ebay', 'ebay2', 'ebay3', 'macy', 'amazon', 'temu', 'reverb'],
+        g100: ['shopify_main', 'shopify_pls'],
     };
     /** Short labels on tiles (horizontal row, Title Master style) */
     const MP_TILE = {
         ebay: { cls: 'btn-ebay1', short: 'E1' },
         ebay2: { cls: 'btn-ebay2', short: 'E2' },
         ebay3: { cls: 'btn-ebay3', short: 'E3' },
-        walmart: { cls: 'btn-walmart', short: 'W' },
         macy: { cls: 'btn-macy', short: 'M' },
-        aliexpress: { cls: 'btn-aliexpress', short: 'A' },
-        faire: { cls: 'btn-faire', short: 'F' },
-        bestbuy: { cls: 'btn-bestbuy', short: 'BB' },
-        wayfair: { cls: 'btn-wayfair', short: 'WF' },
-        shein: { cls: 'btn-shein', short: 'S' },
-        doba: { cls: 'btn-doba', short: 'D' }
+        amazon: { cls: 'btn-amazon', short: 'A' },
+        temu: { cls: 'btn-temu', short: 'T' },
+        reverb: { cls: 'btn-reverb', short: 'R' },
+        shopify_main: { cls: 'btn-shopify', short: 'SM' },
+        shopify_pls: { cls: 'btn-shopify-pls', short: 'PLS' },
     };
     let tableData = [];
     let editRowModal, viewRowModal;
@@ -295,7 +283,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 } catch (e) {
                     console.error('renderTable failed', e);
                     const tbody = document.getElementById('table-body');
-                    tbody.innerHTML = `<tr><td colspan="8" class="text-danger">Render failed: ${esc(e.message || e)}</td></tr>`;
+                    tbody.innerHTML = `<tr><td colspan="6" class="text-danger">Render failed: ${esc(e.message || e)}</td></tr>`;
                 }
                 const badge = document.getElementById('rowCountBadge');
                 if (badge) badge.textContent = `${tableData.length} products`;
@@ -306,7 +294,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function mpStackHtml(sku, mp, val) {
         const pushed = (val || '').trim() !== '';
-        const tile = MP_TILE[mp] || { cls: 'btn-doba', short: '?' };
+        const tile = MP_TILE[mp] || { cls: 'btn-secondary', short: '?' };
         const tip = `${LABELS[mp]}. ${pushed ? 'Pushed' : 'Not pushed'}. Click to push.`;
         return `
             <button type="button" class="bp-mp-stack" data-push-mp="${mp}" data-sku="${esc(sku)}" title="${esc(tip)}">
@@ -335,7 +323,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (sc) sc.textContent = `(${rows.length})`;
         const tbody = document.getElementById('table-body');
         if (!rows.length) {
-            tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-3">No products found</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-3">No products found</td></tr>';
             return;
         }
         tbody.innerHTML = rows.map(r => {
@@ -354,8 +342,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 </td>
                 <td>${groupCell('g150', sku, bp)}</td>
                 <td>${groupCell('g100', sku, bp)}</td>
-                <td>${groupCell('g80', sku, bp)}</td>
-                <td>${groupCell('g60', sku, bp)}</td>
             </tr>`;
         }).join('');
 
@@ -417,20 +403,8 @@ document.addEventListener('DOMContentLoaded', () => {
             html += `</div>`;
         });
 
-        html += `<div class="bp-view-section">`;
-        html += `<div class="bp-view-section-title">${esc('========== Additional marketplaces ==========')}</div>`;
-        lines.push('========== Additional marketplaces ==========');
-        OTHER_MARKETPLACES.forEach(({ key, label }) => {
-            const text = bp[key];
-            html += renderViewMarketplaceBlock(key, label, text, null);
-            lines.push(`${label}: ${(text && String(text).trim()) ? String(text) : 'No bullet points saved yet'}`);
-            lines.push('');
-        });
-        html += `</div>`;
-
         const extraKeys = Object.keys(bp).filter((k) => {
             if (VIEW_SECTIONS.some((s) => s.keys.includes(k))) return false;
-            if (OTHER_MARKETPLACES.some((o) => o.key === k)) return false;
             return true;
         });
         if (extraKeys.length) {
@@ -572,6 +546,15 @@ document.addEventListener('DOMContentLoaded', () => {
         return bullets.join('\n');
     }
 
+    /** Client-side check against LIMITS before save/push (server also validates). */
+    function validateCombinedForMarketplace(mp, combined) {
+        const limit = LIMITS[mp];
+        if (limit != null && combined.length > limit) {
+            return `${LABELS[mp] || mp} allows ${limit} characters; combined text is ${combined.length}.`;
+        }
+        return null;
+    }
+
     function pushSingleMarketplace(sku, mp) {
         const row = bySku.get(String(sku));
         if (!row) return;
@@ -586,6 +569,8 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
         const combined = buildCombinedBulletText(bullets);
+        const limitErr = validateCombinedForMarketplace(mp, combined);
+        if (limitErr) { toast(limitErr, false); return; }
         const payload = { sku, updates: [{ marketplace: mp, bullet_points: combined }] };
         fetch('/bullet-point-master/update', {
             method: 'POST',
@@ -682,11 +667,12 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!aiBullets.length) { toast('Add at least one bullet point before saving.', false); return; }
 
         const combined = buildCombinedBulletText(aiBullets);
-        const updates = [];
-        document.querySelectorAll('.modal-mp-check:checked').forEach(chk => {
-            const mp = chk.dataset.mp;
-            updates.push({ marketplace: mp, bullet_points: combined });
-        });
+        const selected = Array.from(document.querySelectorAll('.modal-mp-check:checked')).map(chk => chk.dataset.mp);
+        for (const mp of selected) {
+            const limitErr = validateCombinedForMarketplace(mp, combined);
+            if (limitErr) { toast(limitErr, false); return; }
+        }
+        const updates = selected.map(mp => ({ marketplace: mp, bullet_points: combined }));
         if (!updates.length) { toast('Select at least one marketplace.', false); return; }
 
         const btn = this; const old = btn.innerHTML; btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
