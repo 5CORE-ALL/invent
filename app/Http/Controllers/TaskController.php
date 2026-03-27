@@ -1255,8 +1255,11 @@ class TaskController extends Controller
         $user = Auth::user();
         $isAdmin = strtolower($user->role ?? '') === 'admin';
 
-        // Get all users for filter dropdowns
-        $users = User::select('id', 'name')->orderBy('name')->get();
+        // Get active users for filter dropdowns (same behavior as task page)
+        $users = User::where('is_active', true)
+            ->select('id', 'name')
+            ->orderBy('name')
+            ->get();
 
         // Calculate statistics for automated tasks
         $automatedQuery = \DB::table('automate_tasks');
