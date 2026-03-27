@@ -369,9 +369,9 @@ class Kernel extends ConsoleKernel
         | AMAZON FBA
         |--------------------------------------------------------------------------
         */
-        // AMAZON FBA bid updates (staggered to reduce API burst/rate-limits)
+        // AMAZON FBA bid updates (staggered 1:00–1:35 PM IST; reduces API burst/rate-limits)
         $schedule->command('amazon-fba:auto-update-under-pt-bids')
-            ->dailyAt('12:00')
+            ->dailyAt('13:00')
             ->timezone('Asia/Kolkata')
             ->name('fba-under-pt-bids')
             ->withoutOverlapping()
@@ -379,7 +379,7 @@ class Kernel extends ConsoleKernel
             ->appendOutputTo($log);
 
         $schedule->command('amazon-fba:auto-update-over-kw-bids')
-            ->dailyAt('12:15')
+            ->dailyAt('13:15')
             ->timezone('Asia/Kolkata')
             ->name('fba-over-kw-bids')
             ->withoutOverlapping()
@@ -387,7 +387,7 @@ class Kernel extends ConsoleKernel
             ->appendOutputTo($log);
 
         $schedule->command('amazon-fba:auto-update-over-pt-bids')
-            ->dailyAt('12:25')
+            ->dailyAt('13:25')
             ->timezone('Asia/Kolkata')
             ->name('fba-over-pt-bids')
             ->withoutOverlapping()
@@ -395,7 +395,7 @@ class Kernel extends ConsoleKernel
             ->appendOutputTo($log);
 
         $schedule->command('amazon-fba:auto-update-under-kw-bids')
-            ->dailyAt('12:35')
+            ->dailyAt('13:35')
             ->timezone('Asia/Kolkata')
             ->name('fba-under-kw-bids')
             ->withoutOverlapping()

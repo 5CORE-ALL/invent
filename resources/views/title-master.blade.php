@@ -218,6 +218,73 @@
             min-width: 120px;
         }
 
+        /* Title Master: align status dots with buttons (same grid per row) */
+        #title-master-table .marketplaces-150-cell,
+        #title-master-table .marketplaces-100-cell,
+        #title-master-table .marketplaces-80-cell {
+            vertical-align: middle !important;
+            padding: 10px 8px !important;
+            min-width: 148px;
+        }
+        #title-master-table .marketplaces-dots-wrapper {
+            width: 100%;
+            margin-bottom: 12px;
+            padding-bottom: 2px;
+            box-sizing: border-box;
+        }
+        #title-master-table .marketplaces-150-cell .marketplaces-dots,
+        #title-master-table .marketplaces-100-cell .marketplaces-dots,
+        #title-master-table .marketplaces-80-cell .marketplaces-dots {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(32px, 1fr));
+            column-gap: 12px;
+            row-gap: 0;
+            align-items: center;
+            justify-items: center;
+            width: 100%;
+            min-height: 16px;
+        }
+        #title-master-table .marketplaces-150-cell .marketplace-buttons,
+        #title-master-table .marketplaces-100-cell .marketplace-buttons,
+        #title-master-table .marketplaces-80-cell .marketplace-buttons {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(32px, 1fr));
+            column-gap: 12px;
+            row-gap: 8px;
+            align-items: center;
+            justify-items: center;
+            justify-content: center;
+            min-width: 0;
+            flex-wrap: nowrap;
+            width: 100%;
+        }
+        #title-master-table .marketplaces-150-cell .mp-dot,
+        #title-master-table .marketplaces-100-cell .mp-dot,
+        #title-master-table .marketplaces-80-cell .mp-dot {
+            flex-shrink: 0;
+        }
+        /* PLS label is wider than icon-only buttons — keep column alignment */
+        #title-master-table .marketplaces-100-cell .marketplace-btn.btn-shopify-pls {
+            width: auto;
+            min-width: 36px;
+            padding: 0 6px;
+        }
+        @media (max-width: 768px) {
+            #title-master-table .marketplaces-150-cell .marketplaces-dots,
+            #title-master-table .marketplaces-100-cell .marketplaces-dots,
+            #title-master-table .marketplaces-80-cell .marketplaces-dots,
+            #title-master-table .marketplaces-150-cell .marketplace-buttons,
+            #title-master-table .marketplaces-100-cell .marketplace-buttons,
+            #title-master-table .marketplaces-80-cell .marketplace-buttons {
+                column-gap: 8px;
+            }
+            #title-master-table .marketplaces-150-cell,
+            #title-master-table .marketplaces-100-cell,
+            #title-master-table .marketplaces-80-cell {
+                min-width: 0;
+            }
+        }
+
         .marketplace-btn {
             width: 28px;
             height: 28px;
@@ -266,23 +333,11 @@
         .mp-dot.macy { color: #0d6efd; }
         .mp-dot.faire { color: #6f42c1; }
 
-        .marketplace-btn[data-tooltip] {
-            position: relative;
-        }
-
-        .marketplace-btn[data-tooltip]:hover:after {
-            content: attr(data-tooltip);
-            position: absolute;
-            bottom: -26px;
-            left: 50%;
-            transform: translateX(-50%);
-            background: #111827;
-            color: #fff;
-            padding: 3px 6px;
-            border-radius: 4px;
-            font-size: 10px;
-            white-space: nowrap;
-            z-index: 1000;
+        /* Tooltips use Bootstrap (container: body, top) — see initMarketplaceTooltips() */
+        #title-master-table .marketplaces-cell,
+        #title-master-table .marketplaces-100-cell,
+        #title-master-table .marketplaces-80-cell {
+            overflow: visible;
         }
         .action-btn i {
             font-size: 11px;
@@ -337,7 +392,7 @@
             .action-buttons-group { flex-direction: column; gap: 4px; }
             .push-button-cell { min-width: 85px; }
         }
-        /* Marketplaces column: dot indicators */
+        /* Marketplaces column: dot indicators (default; Title Master overrides with grid) */
         .marketplaces-cell { white-space: nowrap; vertical-align: middle !important; }
         .marketplaces-dots { display: flex; align-items: center; justify-content: center; gap: 6px; }
         .mp-dot {
@@ -354,6 +409,9 @@
         .mp-dot.temu { color: #28a745; }
         .mp-dot.reverb { color: #ffc107; }
         .mp-dot.wayfair { color: #dc3545; }
+        .mp-dot.shopify_main { color: #95bf47; }
+        .mp-dot.shopify_pls { color: #2b6cb0; }
+        .mp-dot.doba { color: #6f42c1; }
         .mp-dot[title] { cursor: help; }
         .btn-push-all {
             background: #ff9900 !important;
@@ -619,10 +677,9 @@
                                         </select>
                                     </th>
                                     <th>ACTION</th>
-                                    <th title="Amazon, Temu, Reverb, Wayfair, Walmart">MARKETPLACES (150)</th>
-                                    <th title="Shopify Main, Shopify PLS, Doba">MARKETPLACES (100)</th>
+                                    <th title="Amazon, Temu, Reverb">MARKETPLACES (150)</th>
+                                    <th title="Shopify Main, Shopify PLS, Macy's (Title 60 push)">MARKETPLACES (100)</th>
                                     <th title="eBay 1 (AmarjitK), eBay 2 (ProLight), eBay 3 (KaneerKa)">MARKETPLACES (80)</th>
-                                    <th title="Macy's, Faire">MARKETPLACES (60)</th>
                                     <th>PUSH TO ALL</th>
                                 </tr>
                             </thead>
@@ -1378,7 +1435,7 @@
                         alert('No titles to push. Ensure rows have Title 150 data.');
                         return;
                     }
-                    document.getElementById('pushConfirmMessage').textContent = 'Push ' + items.length + ' titles to Amazon, Temu, Reverb & Wayfair? This may take several minutes.';
+                    document.getElementById('pushConfirmMessage').textContent = 'Push ' + items.length + ' titles to Amazon, Temu & Reverb? This may take several minutes.';
                     const confirmModalEl = document.getElementById('pushConfirmModal');
                     const confirmModal = bootstrap.Modal.getOrCreateInstance(confirmModalEl);
                     document.getElementById('pushConfirmBtn').onclick = function() {
@@ -1404,7 +1461,7 @@
                         alert('No titles to push. Selected rows need Title 150 data.');
                         return;
                     }
-                    document.getElementById('pushConfirmMessage').textContent = 'Push ' + items.length + ' selected titles to all marketplaces (Amazon, Temu, Reverb, Wayfair)?';
+                    document.getElementById('pushConfirmMessage').textContent = 'Push ' + items.length + ' selected titles to Amazon, Temu & Reverb?';
                     const confirmModalEl = document.getElementById('pushConfirmModal');
                     const confirmModal = bootstrap.Modal.getOrCreateInstance(confirmModalEl);
                     document.getElementById('pushConfirmBtn').onclick = function() {
@@ -2292,14 +2349,36 @@
                 });
         }
 
+        function escapeTooltipAttr(text) {
+            return String(text == null ? '' : text).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+        }
+
+        /** Bootstrap tooltips on body so they are not clipped by .table-responsive */
+        function initMarketplaceTooltips(root) {
+            if (typeof bootstrap === 'undefined' || !bootstrap.Tooltip) return;
+            root = root || document;
+            root.querySelectorAll('.marketplace-tooltip').forEach(function(el) {
+                var t = bootstrap.Tooltip.getInstance(el);
+                if (t) t.dispose();
+                new bootstrap.Tooltip(el, {
+                    container: 'body',
+                    placement: 'top',
+                    trigger: 'hover focus',
+                    boundary: 'viewport',
+                    fallbackPlacements: ['bottom', 'left', 'right'],
+                    popperConfig: { strategy: 'fixed' }
+                });
+            });
+        }
+
         function renderMarketplaceDots(sku, statusMap) {
-            const mps = ['amazon', 'temu', 'reverb', 'wayfair', 'walmart'];
-            const labels = { amazon: 'Amazon', temu: 'Temu', reverb: 'Reverb', wayfair: 'Wayfair', walmart: 'Walmart' };
+            const mps = ['amazon', 'temu', 'reverb'];
+            const labels = { amazon: 'Amazon', temu: 'Temu', reverb: 'Reverb' };
             let html = '<div class="marketplaces-dots" data-sku="' + (sku || '') + '">';
             mps.forEach(function(mp) {
                 const st = (statusMap && statusMap[mp]) ? statusMap[mp] : 'pending';
                 const title = labels[mp] + ': ' + (st === 'success' ? 'Pushed' : st === 'failed' ? 'Failed' : st === 'loading' ? 'In progress...' : 'Not pushed');
-                html += '<span class="mp-dot ' + mp + ' ' + st + '" data-marketplace="' + mp + '" title="' + title + '"></span>';
+                html += '<span class="mp-dot marketplace-tooltip ' + mp + ' ' + st + '" data-marketplace="' + mp + '" title="' + escapeTooltipAttr(title) + '"></span>';
             });
             html += '</div>';
             return html;
@@ -2312,35 +2391,49 @@
             mps.forEach(function(mp) {
                 const st = (statusMap && statusMap[mp]) ? statusMap[mp] : 'pending';
                 const title = labels[mp] + ': ' + (st === 'success' ? 'Pushed' : st === 'failed' ? 'Failed' : st === 'loading' ? 'In progress...' : 'Not pushed');
-                html += '<span class="mp-dot ' + mp + ' ' + st + '" data-marketplace="' + mp + '" title="' + title + '"></span>';
+                html += '<span class="mp-dot marketplace-tooltip ' + mp + ' ' + st + '" data-marketplace="' + mp + '" title="' + escapeTooltipAttr(title) + '"></span>';
             });
             html += '</div>';
             return html;
         }
 
-        function renderMarketplaceDots60(sku, statusMap) {
-            const mps = ['macy', 'faire'];
-            const labels = { macy: "Macy's", faire: 'Faire' };
+        function renderMarketplaceDots100(sku, statusMap) {
+            const mps = ['shopify_main', 'shopify_pls', 'macy'];
+            const labels = { shopify_main: 'Shopify Main', shopify_pls: 'Shopify PLS', macy: "Macy's" };
             let html = '<div class="marketplaces-dots" data-sku="' + (sku || '') + '">';
             mps.forEach(function(mp) {
                 const st = (statusMap && statusMap[mp]) ? statusMap[mp] : 'pending';
                 const title = labels[mp] + ': ' + (st === 'success' ? 'Pushed' : st === 'failed' ? 'Failed' : st === 'loading' ? 'In progress...' : 'Not pushed');
-                html += '<span class="mp-dot ' + mp + ' ' + st + '" data-marketplace="' + mp + '" title="' + title + '"></span>';
+                html += '<span class="mp-dot marketplace-tooltip ' + mp + ' ' + st + '" data-marketplace="' + mp + '" title="' + escapeTooltipAttr(title) + '"></span>';
             });
             html += '</div>';
             return html;
         }
 
         function updateMarketplaceDotsInRow(row, results) {
-            const wrapper = row.querySelector('.marketplaces-dots-wrapper');
+            const wrapper = row.querySelector('.marketplaces-150-cell .marketplaces-dots-wrapper');
             if (!wrapper || !results) return;
             const btn = row.querySelector('.push-all-marketplaces-btn');
             const skuVal = (btn && btn.getAttribute('data-sku')) ? btn.getAttribute('data-sku') : '';
             const statusMap = {};
-            ['amazon', 'temu', 'reverb', 'wayfair', 'walmart'].forEach(function(mp) {
+            ['amazon', 'temu', 'reverb'].forEach(function(mp) {
                 statusMap[mp] = (results[mp] && results[mp].status) ? results[mp].status : 'pending';
             });
             wrapper.innerHTML = renderMarketplaceDots(skuVal, statusMap);
+            initMarketplaceTooltips(wrapper);
+        }
+
+        function updateMarketplaceDots100InRow(row, results) {
+            const wrapper100 = row.querySelector('.marketplaces-dots-100');
+            if (!wrapper100 || !results) return;
+            const btn = row.querySelector('.push-all-marketplaces-btn');
+            const skuVal = (btn && btn.getAttribute('data-sku')) ? btn.getAttribute('data-sku') : '';
+            const statusMap100 = {};
+            ['shopify_main', 'shopify_pls', 'macy'].forEach(function(mp) {
+                statusMap100[mp] = (results[mp] && results[mp].status) ? results[mp].status : 'pending';
+            });
+            wrapper100.innerHTML = renderMarketplaceDots100(skuVal, statusMap100);
+            initMarketplaceTooltips(wrapper100);
         }
 
         function formatTitleWithIndicator(title) {
@@ -2447,7 +2540,7 @@
                     '</div>';
                 row.appendChild(actionCell);
 
-                // MARKETPLACES (150): dot indicators + individual buttons for Amazon, Temu, Reverb, Wayfair, Walmart
+                // MARKETPLACES (150): Amazon, Temu, Reverb only
                 const marketplaces150Cell = document.createElement('td');
                 marketplaces150Cell.className = 'marketplaces-cell marketplaces-150-cell';
                 const skuEscaped = escapeHtml(item.SKU);
@@ -2456,23 +2549,23 @@
                     renderMarketplaceDots(skuEscaped, null) +
                     '</div>';
                 mp150Html += '<div class="marketplace-buttons">';
-                mp150Html += '<button type="button" class="marketplace-btn marketplace-btn-150 btn-amazon" data-sku="' + skuEscaped + '" data-marketplace="amazon" data-title-type="150" data-tooltip="Amazon (Title 150)" ' + (hasTitle150 ? '' : 'disabled') + '><i class="fab fa-amazon"></i></button>';
-                mp150Html += '<button type="button" class="marketplace-btn marketplace-btn-150 btn-temu" data-sku="' + skuEscaped + '" data-marketplace="temu" data-title-type="150" data-tooltip="Temu (Title 150)" ' + (hasTitle150 ? '' : 'disabled') + '>T</button>';
-                mp150Html += '<button type="button" class="marketplace-btn marketplace-btn-150 btn-reverb" data-sku="' + skuEscaped + '" data-marketplace="reverb" data-title-type="150" data-tooltip="Reverb (Title 150)" ' + (hasTitle150 ? '' : 'disabled') + '><i class="fas fa-guitar"></i></button>';
-                mp150Html += '<button type="button" class="marketplace-btn marketplace-btn-150 btn-wayfair" data-sku="' + skuEscaped + '" data-marketplace="wayfair" data-title-type="150" data-tooltip="Wayfair (Title 150)" ' + (hasTitle150 ? '' : 'disabled') + '><i class="fas fa-home"></i></button>';
-                mp150Html += '<button type="button" class="marketplace-btn marketplace-btn-150 btn-walmart" data-sku="' + skuEscaped + '" data-marketplace="walmart" data-title-type="150" data-tooltip="Walmart (Title 150)" ' + (hasTitle150 ? '' : 'disabled') + '>W</button>';
+                mp150Html += '<button type="button" class="marketplace-btn marketplace-tooltip marketplace-btn-150 btn-amazon" data-sku="' + skuEscaped + '" data-marketplace="amazon" data-title-type="150" title="Amazon (Title 150)" ' + (hasTitle150 ? '' : 'disabled') + '><i class="fab fa-amazon"></i></button>';
+                mp150Html += '<button type="button" class="marketplace-btn marketplace-tooltip marketplace-btn-150 btn-temu" data-sku="' + skuEscaped + '" data-marketplace="temu" data-title-type="150" title="Temu (Title 150)" ' + (hasTitle150 ? '' : 'disabled') + '>T</button>';
+                mp150Html += '<button type="button" class="marketplace-btn marketplace-tooltip marketplace-btn-150 btn-reverb" data-sku="' + skuEscaped + '" data-marketplace="reverb" data-title-type="150" title="Reverb (Title 150)" ' + (hasTitle150 ? '' : 'disabled') + '><i class="fas fa-guitar"></i></button>';
                 mp150Html += '</div>';
                 marketplaces150Cell.innerHTML = mp150Html;
                 row.appendChild(marketplaces150Cell);
 
-                // MARKETPLACES (100): individual buttons for Shopify Main, Shopify PLS, Doba (Title 100)
+                // MARKETPLACES (100): Shopify Main, PLS + Macy's (Title 60 push)
                 const marketplaces100Cell = document.createElement('td');
                 marketplaces100Cell.className = 'marketplaces-100-cell';
                 const hasTitle100 = !!(item.title100 && String(item.title100).trim() !== '');
-                let mp100Html = '<div class="marketplace-buttons">';
-                mp100Html += '<button type="button" class="marketplace-btn marketplace-btn-100 btn-shopify-pls" data-sku="' + skuEscaped + '" data-marketplace="shopify_pls" data-title-type="100" data-tooltip="Push Title 100 to ProLight Sounds" ' + (hasTitle100 ? '' : 'disabled') + '>PLS</button>';
-                mp100Html += '<button type="button" class="marketplace-btn marketplace-btn-100 btn-shopify-main" data-sku="' + skuEscaped + '" data-marketplace="shopify_main" data-title-type="100" data-tooltip="Push Title 100 to Main Shopify" ' + (hasTitle100 ? '' : 'disabled') + '><i class="fab fa-shopify"></i></button>';
-                mp100Html += '<button type="button" class="marketplace-btn marketplace-btn-100 btn-doba" data-sku="' + skuEscaped + '" data-marketplace="doba" data-title-type="100" data-tooltip="Doba (Title 100)" ' + (hasTitle100 ? '' : 'disabled') + '><i class="fas fa-box"></i></button>';
+                const hasTitle60 = !!(item.title60 && String(item.title60).trim() !== '');
+                let mp100Html = '<div class="marketplaces-dots-wrapper marketplaces-dots-100" data-sku="' + skuEscaped + '">' + renderMarketplaceDots100(skuEscaped, null) + '</div>';
+                mp100Html += '<div class="marketplace-buttons">';
+                mp100Html += '<button type="button" class="marketplace-btn marketplace-tooltip marketplace-btn-100 btn-shopify-pls" data-sku="' + skuEscaped + '" data-marketplace="shopify_pls" data-title-type="100" title="Push Title 100 to ProLight Sounds" ' + (hasTitle100 ? '' : 'disabled') + '>PLS</button>';
+                mp100Html += '<button type="button" class="marketplace-btn marketplace-tooltip marketplace-btn-100 btn-shopify-main" data-sku="' + skuEscaped + '" data-marketplace="shopify_main" data-title-type="100" title="Push Title 100 to Main Shopify" ' + (hasTitle100 ? '' : 'disabled') + '><i class="fab fa-shopify"></i></button>';
+                mp100Html += '<button type="button" class="marketplace-btn marketplace-tooltip marketplace-btn-100 btn-macy" data-sku="' + skuEscaped + '" data-marketplace="macy" data-title-type="60" title="Push Title 60 to Macy&#39;s" ' + (hasTitle60 ? '' : 'disabled') + '>M</button>';
                 mp100Html += '</div>';
                 marketplaces100Cell.innerHTML = mp100Html;
                 row.appendChild(marketplaces100Cell);
@@ -2483,29 +2576,17 @@
                 const hasTitle80 = !!(item.title80 && String(item.title80).trim() !== '');
                 let mp80Html = '<div class="marketplaces-dots-wrapper marketplaces-dots-80" data-sku="' + skuEscaped + '">' + renderMarketplaceDots80(skuEscaped, null) + '</div>';
                 mp80Html += '<div class="marketplace-buttons">';
-                mp80Html += '<button type="button" class="marketplace-btn marketplace-btn-80 btn-ebay1" data-sku="' + skuEscaped + '" data-marketplace="ebay1" data-title-type="80" data-tooltip="Push Title 80 to eBay Account 1 (AmarjitK)" ' + (hasTitle80 ? '' : 'disabled') + '>E1</button>';
-                mp80Html += '<button type="button" class="marketplace-btn marketplace-btn-80 btn-ebay2" data-sku="' + skuEscaped + '" data-marketplace="ebay2" data-title-type="80" data-tooltip="Push Title 80 to eBay Account 2 (ProLight)" ' + (hasTitle80 ? '' : 'disabled') + '>E2</button>';
-                mp80Html += '<button type="button" class="marketplace-btn marketplace-btn-80 btn-ebay3" data-sku="' + skuEscaped + '" data-marketplace="ebay3" data-title-type="80" data-tooltip="Push Title 80 to eBay Account 3 (KaneerKa)" ' + (hasTitle80 ? '' : 'disabled') + '>E3</button>';
+                mp80Html += '<button type="button" class="marketplace-btn marketplace-tooltip marketplace-btn-80 btn-ebay1" data-sku="' + skuEscaped + '" data-marketplace="ebay1" data-title-type="80" title="Push Title 80 to eBay Account 1 (AmarjitK)" ' + (hasTitle80 ? '' : 'disabled') + '>E1</button>';
+                mp80Html += '<button type="button" class="marketplace-btn marketplace-tooltip marketplace-btn-80 btn-ebay2" data-sku="' + skuEscaped + '" data-marketplace="ebay2" data-title-type="80" title="Push Title 80 to eBay Account 2 (ProLight)" ' + (hasTitle80 ? '' : 'disabled') + '>E2</button>';
+                mp80Html += '<button type="button" class="marketplace-btn marketplace-tooltip marketplace-btn-80 btn-ebay3" data-sku="' + skuEscaped + '" data-marketplace="ebay3" data-title-type="80" title="Push Title 80 to eBay Account 3 (KaneerKa)" ' + (hasTitle80 ? '' : 'disabled') + '>E3</button>';
                 mp80Html += '</div>';
                 marketplaces80Cell.innerHTML = mp80Html;
                 row.appendChild(marketplaces80Cell);
 
-                // MARKETPLACES (60): status dots + Macy/Faire buttons
-                const marketplaces60Cell = document.createElement('td');
-                marketplaces60Cell.className = 'marketplaces-60-cell';
-                const hasTitle60 = !!(item.title60 && String(item.title60).trim() !== '');
-                let mp60Html = '<div class="marketplaces-dots-wrapper marketplaces-dots-60" data-sku="' + skuEscaped + '">' + renderMarketplaceDots60(skuEscaped, null) + '</div>';
-                mp60Html += '<div class="marketplace-buttons">';
-                mp60Html += '<button type="button" class="marketplace-btn marketplace-btn-60 btn-macy" data-sku="' + skuEscaped + '" data-marketplace="macy" data-title-type="60" data-tooltip="Push Title 60 to Macy\'s" ' + (hasTitle60 ? '' : 'disabled') + '>M</button>';
-                mp60Html += '<button type="button" class="marketplace-btn marketplace-btn-60 btn-faire" data-sku="' + skuEscaped + '" data-marketplace="faire" data-title-type="60" data-tooltip="Push Title 60 to Faire" ' + (hasTitle60 ? '' : 'disabled') + '>F</button>';
-                mp60Html += '</div>';
-                marketplaces60Cell.innerHTML = mp60Html;
-                row.appendChild(marketplaces60Cell);
-
                 // PUSH TO ALL MARKETPLACES column
                 const pushCell = document.createElement('td');
                 pushCell.className = 'push-button-cell';
-                pushCell.innerHTML = '<button type="button" class="action-btn push-amazon-btn push-all-marketplaces-btn" data-sku="' + escapeHtml(item.SKU) + '" title="Push Title 150 to Amazon, Temu, Reverb, Wayfair"><i class="fas fa-cloud-upload-alt"></i> Push to All</button>';
+                pushCell.innerHTML = '<button type="button" class="action-btn push-amazon-btn push-all-marketplaces-btn" data-sku="' + escapeHtml(item.SKU) + '" title="Push Title 150 to Amazon, Temu, Reverb"><i class="fas fa-cloud-upload-alt"></i> Push to All</button>';
                 row.appendChild(pushCell);
 
                 tbody.appendChild(row);
@@ -2516,6 +2597,7 @@
             setupPushAmazonButtons();
             setupIndividualMarketplaceButtons();
             updateSelectedCount();
+            initMarketplaceTooltips(document.getElementById('title-master-table'));
         }
 
         const marketplaceLabels = {
@@ -2605,16 +2687,10 @@
                                                 statusMap80[mp] = (data.statuses[mp] && data.statuses[mp].status) ? data.statuses[mp].status : 'pending';
                                             });
                                             wrapper80.innerHTML = renderMarketplaceDots80(sku, statusMap80);
+                                            initMarketplaceTooltips(wrapper80);
                                         }
-                                    } else if (marketplace === 'macy' || marketplace === 'faire') {
-                                        const wrapper60 = row.querySelector('.marketplaces-dots-60');
-                                        if (wrapper60) {
-                                            const statusMap60 = {};
-                                            ['macy', 'faire'].forEach(function(mp) {
-                                                statusMap60[mp] = (data.statuses[mp] && data.statuses[mp].status) ? data.statuses[mp].status : 'pending';
-                                            });
-                                            wrapper60.innerHTML = renderMarketplaceDots60(sku, statusMap60);
-                                        }
+                                    } else if (marketplace === 'macy' || marketplace === 'shopify' || marketplace === 'shopify_main' || marketplace === 'shopify_pls') {
+                                        updateMarketplaceDots100InRow(row, data.statuses);
                                     } else {
                                         updateMarketplaceDotsInRow(row, data.statuses);
                                     }
@@ -2688,9 +2764,11 @@
             btn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status"></span>';
             const row = btn.closest('tr');
             if (row) {
-                const cell = row.querySelector('.marketplaces-cell');
-                if (cell) {
-                    cell.innerHTML = renderMarketplaceDots(sku, { amazon: 'loading', temu: 'loading', reverb: 'loading', wayfair: 'loading', walmart: 'loading' });
+                const cell = row.querySelector('.marketplaces-150-cell');
+                const wrap = cell ? cell.querySelector('.marketplaces-dots-wrapper') : null;
+                if (wrap) {
+                    wrap.innerHTML = renderMarketplaceDots(sku, { amazon: 'loading', temu: 'loading', reverb: 'loading' });
+                    initMarketplaceTooltips(wrap);
                 }
             }
 
@@ -2707,21 +2785,29 @@
                 if (data.success && data.results) {
                     if (row) updateMarketplaceDotsInRow(row, data.results);
                     const r = data.results;
-                    const ok = [r.amazon, r.temu, r.reverb, r.wayfair].filter(x => x && x.status === 'success').length;
-                    const fail = [r.amazon, r.temu, r.reverb, r.wayfair].filter(x => x && x.status === 'failed').length;
+                    const ok = [r.amazon, r.temu, r.reverb].filter(x => x && x.status === 'success').length;
+                    const fail = [r.amazon, r.temu, r.reverb].filter(x => x && x.status === 'failed').length;
                     alert('Push completed for ' + sku + ': ' + ok + ' succeeded, ' + fail + ' failed.');
                 } else {
                     if (row) {
-                        const cell = row.querySelector('.marketplaces-cell');
-                        if (cell) cell.innerHTML = renderMarketplaceDots(sku, null);
+                        const cell = row.querySelector('.marketplaces-150-cell');
+                        const wrap = cell ? cell.querySelector('.marketplaces-dots-wrapper') : null;
+                        if (wrap) {
+                            wrap.innerHTML = renderMarketplaceDots(sku, null);
+                            initMarketplaceTooltips(wrap);
+                        }
                     }
                     alert('Failed: ' + (data.message || 'Unknown error'));
                 }
             })
             .catch(err => {
                 if (row) {
-                    const cell = row.querySelector('.marketplaces-cell');
-                    if (cell) cell.innerHTML = renderMarketplaceDots(sku, null);
+                    const cell = row.querySelector('.marketplaces-150-cell');
+                    const wrap = cell ? cell.querySelector('.marketplaces-dots-wrapper') : null;
+                    if (wrap) {
+                        wrap.innerHTML = renderMarketplaceDots(sku, null);
+                        initMarketplaceTooltips(wrap);
+                    }
                 }
                 alert('Error: ' + err.message);
             })
@@ -2740,7 +2826,7 @@
             const progressBar = document.getElementById('pushProgressBar');
             const progressText = document.getElementById('pushProgressText');
             progressModal.show();
-            progressText.textContent = 'Pushing to Amazon, Temu, Reverb, Wayfair...';
+            progressText.textContent = 'Pushing to Amazon, Temu, Reverb...';
 
             function updateProgress(done) {
                 const pct = total ? Math.round((done / total) * 100) : 0;
@@ -2757,7 +2843,7 @@
             function doNext(start) {
                 if (start >= total) {
                     progressModal.hide();
-                    alert(successCount + ' successful, ' + failedCount + ' failed (across all 4 marketplaces)');
+                    alert(successCount + ' successful, ' + failedCount + ' failed (Amazon, Temu, Reverb)');
                     document.querySelectorAll('.row-checkbox:checked').forEach(function(cb) { cb.checked = false; });
                     document.getElementById('selectAll').checked = false;
                     updateSelectedCount();
