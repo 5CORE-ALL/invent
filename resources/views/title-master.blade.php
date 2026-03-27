@@ -2353,22 +2353,12 @@
             return String(text == null ? '' : text).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
         }
 
-        /** Bootstrap tooltips on body so they are not clipped by .table-responsive */
+        /**
+         * Previously instantiated Bootstrap Tooltip on every marketplace cell (1000+ rows × many buttons),
+         * which blocked the main thread for minutes. Native `title` attributes already provide hover text.
+         */
         function initMarketplaceTooltips(root) {
-            if (typeof bootstrap === 'undefined' || !bootstrap.Tooltip) return;
-            root = root || document;
-            root.querySelectorAll('.marketplace-tooltip').forEach(function(el) {
-                var t = bootstrap.Tooltip.getInstance(el);
-                if (t) t.dispose();
-                new bootstrap.Tooltip(el, {
-                    container: 'body',
-                    placement: 'top',
-                    trigger: 'hover focus',
-                    boundary: 'viewport',
-                    fallbackPlacements: ['bottom', 'left', 'right'],
-                    popperConfig: { strategy: 'fixed' }
-                });
-            });
+            return;
         }
 
         function renderMarketplaceDots(sku, statusMap) {
@@ -2477,6 +2467,9 @@
 
             filteredData.forEach(item => {
                 const row = document.createElement('tr');
+                if (item.SKU) {
+                    row.setAttribute('data-sku', item.SKU);
+                }
 
                 // Checkbox
                 const checkboxCell = document.createElement('td');
@@ -2992,6 +2985,32 @@
             titleModal.show();
         }
 
+        function resetTitleModalForm() {
+            const form = document.getElementById('titleForm');
+            if (form) {
+                form.reset();
+            }
+            const editSku = document.getElementById('editSku');
+            const selectSku = document.getElementById('selectSku');
+            if (editSku) {
+                editSku.value = '';
+            }
+            if (selectSku) {
+                if (typeof $ !== 'undefined' && $(selectSku).hasClass('select2-hidden-accessible')) {
+                    $(selectSku).val(null).trigger('change');
+                }
+                selectSku.selectedIndex = 0;
+            }
+            ['title150', 'title100', 'title80', 'title60'].forEach(function(field) {
+                const maxLength = field === 'title150' ? 150 : parseInt(field.replace('title', ''), 10);
+                const counter = document.getElementById('counter' + maxLength);
+                if (counter) {
+                    counter.textContent = '0/' + (field === 'title150' ? 150 : maxLength);
+                    counter.classList.remove('error');
+                }
+            });
+        }
+
         function saveTitleFromModal() {
             const form = document.getElementById('titleForm');
             const selectSku = document.getElementById('selectSku');
@@ -3033,13 +3052,19 @@
                     if (index !== -1) {
                         tableData[index].title150 = title150;
                         tableData[index].amazon_title = title150;
-                        tableData[index].title100 = title100 || tableData[index].title100;
-                        tableData[index].title80 = title80 || tableData[index].title80;
-                        tableData[index].title60 = title60 || tableData[index].title60;
+                        tableData[index].title100 = title100;
+                        tableData[index].title80 = title80;
+                        tableData[index].title60 = title60;
                     }
-                    renderTable(tableData);
                     titleModal.hide();
-                    alert('Title saved successfully!');
+                    resetTitleModalForm();
+                    applyFilters();
+                    updateCounts();
+                    if (typeof showToast === 'function') {
+                        showToast('success', 'Titles saved for ' + sku + '.');
+                    } else {
+                        alert('Title saved successfully!');
+                    }
                 } else {
                     alert(data.message || 'Failed to save title');
                 }
@@ -3245,24 +3270,21 @@
                 console.log('✓ Detected title columns:', titleColumns);
             }
 
-            const savePromises = jsonData.map((row, index) => {
-                // Get SKU from detected column
+            const saveJobs = [];
+            jsonData.forEach((row, index) => {
                 const sku = row[skuColumnName];
-                
-                // Check if SKU contains the word "PARENT" (case-insensitive, as a whole word)
                 const skuStr = sku ? sku.toString().trim() : '';
                 const isParentSKU = /\bPARENT\b/i.test(skuStr);
-                
+
                 if (!sku || skuStr === '' || sku === '__EMPTY' || skuStr === '0' || isParentSKU) {
                     skippedCount++;
                     if (skippedCount <= 3) {
                         const reason = !sku || skuStr === '' ? 'Empty' : isParentSKU ? 'Parent' : 'Invalid';
                         console.log('⊘ Skipped row ' + (index + 2) + ': "' + skuStr + '" (' + reason + ')');
                     }
-                    return Promise.resolve();
+                    return;
                 }
 
-                // Extract title data using detected columns
                 const title150 = titleColumns.title150 ? (row[titleColumns.title150] || '').toString().substring(0, 150) : '';
                 const title100 = titleColumns.title100 ? (row[titleColumns.title100] || '').toString().substring(0, 100) : '';
                 const title80 = titleColumns.title80 ? (row[titleColumns.title80] || '').toString().substring(0, 80) : '';
@@ -3272,65 +3294,85 @@
                     console.log('→ Processing row ' + (index + 2) + ': SKU="' + skuStr + '"');
                 }
 
-                return fetch('/title-master/save', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRF-TOKEN': csrfToken
-                    },
-                    body: JSON.stringify({
-                        sku: skuStr,
-                        title150: title150,
-                        title100: title100,
-                        title80: title80,
-                        title60: title60
+                saveJobs.push(function() {
+                    return fetch('/title-master/save', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': csrfToken
+                        },
+                        body: JSON.stringify({
+                            sku: skuStr,
+                            title150: title150,
+                            title100: title100,
+                            title80: title80,
+                            title60: title60
+                        })
                     })
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        successCount++;
-                        if (successCount <= 3) {
-                            console.log('✓ Row ' + (index + 2) + ' success: ' + skuStr);
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            successCount++;
+                            if (successCount <= 3) {
+                                console.log('✓ Row ' + (index + 2) + ' success: ' + skuStr);
+                            }
+                        } else {
+                            errorCount++;
+                            const errorMsg = 'Row ' + (index + 2) + ' (' + skuStr + '): ' + (data.message || 'Unknown error');
+                            if (errorCount <= 10) {
+                                console.error('✗ ' + errorMsg);
+                                errors.push(errorMsg);
+                            }
                         }
-                    } else {
+                    })
+                    .catch(err => {
                         errorCount++;
-                        const errorMsg = 'Row ' + (index + 2) + ' (' + skuStr + '): ' + (data.message || 'Unknown error');
+                        const errorMsg = 'Row ' + (index + 2) + ' (' + skuStr + '): ' + err.message;
                         if (errorCount <= 10) {
                             console.error('✗ ' + errorMsg);
                             errors.push(errorMsg);
                         }
-                    }
-                })
-                .catch(err => {
-                    errorCount++;
-                    const errorMsg = 'Row ' + (index + 2) + ' (' + skuStr + '): ' + err.message;
-                    if (errorCount <= 10) {
-                        console.error('✗ ' + errorMsg);
-                        errors.push(errorMsg);
-                    }
+                    });
                 });
             });
 
-            Promise.all(savePromises).then(() => {
+            const importConcurrency = 8;
+            (async function runImportBatches() {
+                for (let i = 0; i < saveJobs.length; i += importConcurrency) {
+                    const batch = saveJobs.slice(i, i + importConcurrency).map(function(fn) { return fn(); });
+                    await Promise.all(batch);
+                }
+
                 let message = `Import completed!\n\nSuccess: ${successCount}\nErrors: ${errorCount}\nSkipped (Parent/Empty): ${skippedCount}\nTotal: ${totalRows}`;
-                
+
                 if (errors.length > 0) {
                     message += '\n\nFirst errors:\n' + errors.join('\n');
                 }
-                
+
                 console.log('=== IMPORT SUMMARY ===');
                 console.log('Success:', successCount);
                 console.log('Errors:', errorCount);
                 console.log('Skipped:', skippedCount);
                 console.log('Total:', totalRows);
-                
+
                 alert(message);
-                
+
                 if (successCount > 0) {
-                    loadTitleData(); // Reload data to show updates
+                    loadTitleData();
                 }
-            });
+            })();
+        }
+
+        let titleMasterFilterDebounce = null;
+
+        function scheduleApplyFilters() {
+            if (titleMasterFilterDebounce) {
+                clearTimeout(titleMasterFilterDebounce);
+            }
+            titleMasterFilterDebounce = setTimeout(function() {
+                titleMasterFilterDebounce = null;
+                applyFilters();
+            }, 280);
         }
 
         // Apply all filters
@@ -3393,8 +3435,8 @@
             const parentSearch = document.getElementById('parentSearch');
             const skuSearch = document.getElementById('skuSearch');
 
-            parentSearch.addEventListener('input', applyFilters);
-            skuSearch.addEventListener('input', applyFilters);
+            parentSearch.addEventListener('input', scheduleApplyFilters);
+            skuSearch.addEventListener('input', scheduleApplyFilters);
 
             // Column filters
             document.getElementById('filterTitle150').addEventListener('change', function() {

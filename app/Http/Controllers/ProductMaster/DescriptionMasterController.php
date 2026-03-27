@@ -4,22 +4,15 @@ namespace App\Http\Controllers\ProductMaster;
 
 use App\Http\Controllers\Controller;
 use App\Models\ProductMaster;
-use App\Services\AliExpressApiService;
 use App\Services\AmazonSpApiService;
-use App\Services\BestBuyApiService;
-use App\Services\DobaApiService;
 use App\Services\Ebay2ApiService;
 use App\Services\EbayApiService;
 use App\Services\EbayThreeApiService;
-use App\Services\FaireService;
 use App\Services\MacysApiService;
 use App\Services\ReverbApiService;
-use App\Services\SheinApiService;
 use App\Services\ShopifyApiService;
 use App\Services\ShopifyPLSApiService;
 use App\Services\TemuApiService;
-use App\Services\WalmartService;
-use App\Services\WayfairApiService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -172,12 +165,19 @@ class DescriptionMasterController extends Controller
 
             $sku = $this->normalizeSku($validated['sku']);
             $results = [];
+            $allowedMarketplaces = array_keys($this->marketplaceTableMap());
 
             foreach ($validated['updates'] as $u) {
                 $marketplace = strtolower(trim($u['marketplace']));
                 $text = trim((string) ($u['description'] ?? ''));
                 if ($text === '') {
                     $results[$marketplace] = ['success' => false, 'message' => 'Description cannot be empty'];
+
+                    continue;
+                }
+
+                if (! in_array($marketplace, $allowedMarketplaces, true)) {
+                    $results[$marketplace] = ['success' => false, 'message' => 'Unknown or unsupported marketplace'];
 
                     continue;
                 }
@@ -305,32 +305,25 @@ class DescriptionMasterController extends Controller
     private function marketplaceTableMap(): array
     {
         return [
+            'amazon' => 'amazon_metrics',
+            'temu' => 'temu_metrics',
+            'reverb' => 'reverb_metrics',
             'shopify_main' => 'shopify_metrics',
             'shopify_pls' => 'shopify_pls_metrics',
             'ebay' => 'ebay_metrics',
             'ebay2' => 'ebay_2_metrics',
             'ebay3' => 'ebay_3_metrics',
-            'temu' => 'temu_metrics',
-            'amazon' => 'amazon_metrics',
-            'reverb' => 'reverb_metrics',
-            'walmart' => 'walmart_metrics',
             'macy' => 'macy_metrics',
-            'aliexpress' => 'aliexpress_metrics',
-            'faire' => 'faire_metrics',
-            'bestbuy' => 'bestbuy_metrics',
-            'wayfair' => 'wayfair_metrics',
-            'shein' => 'shein_metrics',
-            'doba' => 'doba_metrics',
         ];
     }
 
     private function maxCharsForMarketplace(string $marketplace): int
     {
         return match ($marketplace) {
-            'amazon', 'temu', 'reverb', 'wayfair', 'walmart', 'aliexpress', 'shein', 'bestbuy' => 1500,
-            'shopify_main', 'shopify_pls', 'doba' => 1000,
+            'amazon', 'temu', 'reverb' => 1500,
+            'shopify_main', 'shopify_pls' => 1000,
             'ebay', 'ebay2', 'ebay3' => 800,
-            'macy', 'faire' => 600,
+            'macy' => 600,
             default => 1500,
         };
     }
@@ -451,14 +444,7 @@ class DescriptionMasterController extends Controller
             'amazon' => [AmazonSpApiService::class, 'updateProductDescription'],
             'temu' => [TemuApiService::class, 'updateProductDescription'],
             'reverb' => [ReverbApiService::class, 'updateProductDescription'],
-            'walmart' => [WalmartService::class, 'updateProductDescription'],
             'macy' => [MacysApiService::class, 'updateProductDescription'],
-            'aliexpress' => [AliExpressApiService::class, 'updateProductDescription'],
-            'faire' => [FaireService::class, 'updateProductDescription'],
-            'doba' => [DobaApiService::class, 'updateProductDescription'],
-            'wayfair' => [WayfairApiService::class, 'updateProductDescription'],
-            'shein' => [SheinApiService::class, 'updateProductDescription'],
-            'bestbuy' => [BestBuyApiService::class, 'updateProductDescription'],
             'ebay' => [EbayApiService::class, 'updateProductDescription'],
             'ebay2' => [Ebay2ApiService::class, 'updateProductDescription'],
             'ebay3' => [EbayThreeApiService::class, 'updateProductDescription'],
