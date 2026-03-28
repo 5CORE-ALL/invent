@@ -217,6 +217,44 @@ class DescriptionMasterController extends Controller
     }
 
     /**
+     * POST /product-description/reset-marketplace — clear saved description_master for one SKU + marketplace (metrics only).
+     */
+    public function resetMarketplaceDescription(Request $request)
+    {
+        try {
+            $validated = $request->validate([
+                'sku' => 'required|string',
+                'marketplace' => 'required|string',
+            ]);
+
+            $sku = $this->normalizeSku($validated['sku']);
+            $marketplace = strtolower(trim($validated['marketplace']));
+            $allowed = array_keys($this->marketplaceTableMap());
+
+            if (! in_array($marketplace, $allowed, true)) {
+                return response()->json(['success' => false, 'message' => 'Unknown or unsupported marketplace'], 422);
+            }
+
+            if ($sku === '') {
+                return response()->json(['success' => false, 'message' => 'Invalid SKU'], 422);
+            }
+
+            $cleared = $this->clearDescriptionInMarketplaceTable($marketplace, $sku);
+
+            return response()->json([
+                'success' => $cleared,
+                'message' => $cleared
+                    ? 'Saved description cleared for this marketplace.'
+                    : 'Could not clear description (table missing or error).',
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('resetMarketplaceDescription failed', ['error' => $e->getMessage()]);
+
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+    }
+
+    /**
      * POST /product-description/generate — Anthropic Claude; tier sets min/max length (1500 / 1000 / 800 / 600 groups).
      */
     public function generateDescriptionWithAI(Request $request)
@@ -423,6 +461,39 @@ class DescriptionMasterController extends Controller
             return true;
         } catch (\Throwable $e) {
             Log::warning("DescriptionMaster: save failed for {$table}", ['sku' => $sku, 'error' => $e->getMessage()]);
+
+            return false;
+        }
+    }
+
+    /**
+     * Set description_master to empty for an existing metrics row (does not call external APIs).
+     */
+    private function clearDescriptionInMarketplaceTable(string $marketplace, string $sku): bool
+    {
+        $table = $this->marketplaceTableMap()[$marketplace] ?? null;
+        if (! $table) {
+            return false;
+        }
+
+        try {
+            if (! Schema::hasTable($table) || ! Schema::hasColumn($table, 'sku')) {
+                return false;
+            }
+            if (! Schema::hasColumn($table, 'description_master')) {
+                return false;
+            }
+
+            $exists = DB::table($table)->where('sku', $sku)->exists();
+            if (! $exists) {
+                return true;
+            }
+
+            DB::table($table)->where('sku', $sku)->update(['description_master' => '', 'updated_at' => now()]);
+
+            return true;
+        } catch (\Throwable $e) {
+            Log::warning("DescriptionMaster: clear failed for {$table}", ['sku' => $sku, 'error' => $e->getMessage()]);
 
             return false;
         }
