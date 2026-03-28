@@ -18,6 +18,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use App\Services\MacysApiService;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
@@ -389,11 +390,16 @@ class MacyController extends Controller
         $dataView->value = $merged;
         $dataView->save();
 
+        $pushResult = $this->pushPriceToMacy($sku, $spriceFloat);
+
         return response()->json([
             'success' => true,
             'spft_percent' => $spft,
             'sroi_percent' => $sroi,
-            'sgpft_percent' => $sgpft
+            'sgpft_percent' => $sgpft,
+            'price_push_success' => (bool) ($pushResult['success'] ?? false),
+            'price_push_message' => (string) ($pushResult['message'] ?? ''),
+            'price_push_status_code' => $pushResult['status_code'] ?? null,
         ]);
     }
 
@@ -527,6 +533,7 @@ class MacyController extends Controller
 
             $updated = 0;
             $errors = [];
+            $pricePushQueue = [];
 
             DB::beginTransaction();
             
@@ -640,6 +647,7 @@ class MacyController extends Controller
                     ]);
                 }
                 $updated++;
+                $pricePushQueue[] = ['sku' => $sku, 'sprice' => (float) $sprice];
                 
                 // Store last calculated metrics for single update response
                 if (count($updates) === 1) {
@@ -653,10 +661,29 @@ class MacyController extends Controller
 
             DB::commit();
 
+            $pricePushSuccess = 0;
+            $pricePushFailed = 0;
+            $pricePushErrors = [];
+            $singlePushResult = null;
+            foreach ($pricePushQueue as $pushItem) {
+                $pushResult = $this->pushPriceToMacy($pushItem['sku'], (float) $pushItem['sprice']);
+                if (count($pricePushQueue) === 1) {
+                    $singlePushResult = $pushResult;
+                }
+                if (($pushResult['success'] ?? false) === true) {
+                    $pricePushSuccess++;
+                } else {
+                    $pricePushFailed++;
+                    $pricePushErrors[] = $pushItem['sku'] . ': ' . ($pushResult['message'] ?? 'Price push failed');
+                }
+            }
+
             $response = [
                 'success' => true,
                 'updated' => $updated,
-                'message' => "Successfully saved {$updated} SPRICE update(s)"
+                'message' => "Successfully saved {$updated} SPRICE update(s)",
+                'price_push_success_count' => $pricePushSuccess,
+                'price_push_failed_count' => $pricePushFailed,
             ];
 
             // Include calculated metrics for single updates (manual cell edits)
@@ -667,6 +694,14 @@ class MacyController extends Controller
             if (!empty($errors)) {
                 $response['errors'] = $errors;
                 $response['message'] .= ' with ' . count($errors) . ' error(s)';
+            }
+            if (!empty($pricePushErrors)) {
+                $response['price_push_errors'] = $pricePushErrors;
+            }
+            if (is_array($singlePushResult)) {
+                $response['price_push_success'] = (bool) ($singlePushResult['success'] ?? false);
+                $response['price_push_message'] = (string) ($singlePushResult['message'] ?? '');
+                $response['price_push_status_code'] = $singlePushResult['status_code'] ?? null;
             }
 
             Log::info("Macys SPRICE updates saved to macy_data_views: {$updated} records updated");
@@ -1053,7 +1088,33 @@ class MacyController extends Controller
         $macyDataView->value = $merged;
         $macyDataView->save();
 
-        return response()->json(['message' => 'Data saved successfully.']);
+        $pushResult = $this->pushPriceToMacy((string) $sku, (float) $spriceData['sprice']);
+
+        return response()->json([
+            'message' => 'Data saved successfully.',
+            'price_push_success' => (bool) ($pushResult['success'] ?? false),
+            'price_push_message' => (string) ($pushResult['message'] ?? ''),
+            'price_push_status_code' => $pushResult['status_code'] ?? null,
+        ]);
+    }
+
+    /**
+     * Push saved SPRICE to Macy marketplace API.
+     *
+     * @return array{success:bool,message:string}
+     */
+    private function pushPriceToMacy(string $sku, float $sprice): array
+    {
+        if ($sprice <= 0) {
+            return ['success' => false, 'message' => 'Skipping push for non-positive price'];
+        }
+
+        try {
+            return app(MacysApiService::class)->updatePrice($sku, $sprice);
+        } catch (\Throwable $e) {
+            Log::error('Macy price push call failed', ['sku' => $sku, 'error' => $e->getMessage()]);
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
     }
 
     public function saveLowProfit(Request $request)

@@ -13,19 +13,7 @@ class RequisitionController extends Controller
 {
     public function index()
     {
-        $rows = Requisition::query()
-            ->with([
-                'requester:id,name',
-                'items.part' => static function ($q) {
-                    $q->select('id', 'sku', 'category_id')
-                        ->with(['productCategory' => static fn ($c) => $c->select('id', 'category_name')]);
-                },
-            ])
-            ->latest()
-            ->limit(100)
-            ->get();
-
-        return response()->json(['data' => $rows]);
+        return redirect()->route('spare.parts.index');
     }
 
     public function store(Request $request)
@@ -34,9 +22,10 @@ class RequisitionController extends Controller
             'department' => 'nullable|string|max:255',
             'priority' => 'required|in:low,medium,high',
             'notes' => 'nullable|string',
-            'items' => 'required|array|min:1',
-            'items.*.part_id' => 'required|exists:product_master,id',
-            'items.*.quantity_requested' => 'required|integer|min:1',
+            'part_id' => 'required|array|min:1',
+            'part_id.*' => 'nullable|exists:product_master,id',
+            'qty' => 'required|array|min:1',
+            'qty.*' => 'nullable|integer|min:1',
         ]);
 
         $req = DB::transaction(function () use ($validated) {
@@ -48,11 +37,15 @@ class RequisitionController extends Controller
                 'notes' => $validated['notes'] ?? null,
             ]);
 
-            foreach ($validated['items'] as $line) {
+            foreach ($validated['part_id'] as $i => $partId) {
+                $qty = isset($validated['qty'][$i]) ? (int) $validated['qty'][$i] : 0;
+                if (!$partId || $qty <= 0) {
+                    continue;
+                }
                 RequisitionItem::query()->create([
                     'requisition_id' => $r->id,
-                    'part_id' => $line['part_id'],
-                    'quantity_requested' => $line['quantity_requested'],
+                    'part_id' => $partId,
+                    'quantity_requested' => $qty,
                     'quantity_issued' => 0,
                 ]);
             }
@@ -60,23 +53,23 @@ class RequisitionController extends Controller
             return $r->load('items.part');
         });
 
-        return response()->json(['message' => 'Requisition created', 'requisition' => $req], 201);
+        return redirect()->back()->with('success', 'Requisition Created');
     }
 
     public function submit(Requisition $requisition)
     {
         if ($requisition->status !== 'draft') {
-            return response()->json(['message' => 'Only draft requisitions can be submitted.'], 422);
+            return redirect()->back()->with('error', 'Only draft requisitions can be submitted.');
         }
         $requisition->update(['status' => 'submitted']);
 
-        return response()->json(['message' => 'Submitted', 'requisition' => $requisition]);
+        return redirect()->back()->with('success', 'Requisition submitted.');
     }
 
     public function approve(Request $request, Requisition $requisition)
     {
         if (!in_array($requisition->status, ['submitted', 'draft'], true)) {
-            return response()->json(['message' => 'Requisition cannot be approved in its current state.'], 422);
+            return redirect()->back()->with('error', 'Requisition cannot be approved in its current state.');
         }
 
         $validated = $request->validate([
@@ -112,16 +105,16 @@ class RequisitionController extends Controller
             ]);
         });
 
-        return response()->json(['message' => 'Approved', 'requisition' => $requisition->fresh(['items.part'])]);
+        return redirect()->back()->with('success', 'Requisition approved.');
     }
 
     public function close(Requisition $requisition)
     {
         if ($requisition->status === 'closed') {
-            return response()->json(['message' => 'Already closed.'], 422);
+            return redirect()->back()->with('error', 'Already closed.');
         }
         $requisition->update(['status' => 'closed']);
 
-        return response()->json(['message' => 'Closed', 'requisition' => $requisition]);
+        return redirect()->back()->with('success', 'Requisition closed.');
     }
 }

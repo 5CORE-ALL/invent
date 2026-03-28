@@ -1,0 +1,8 @@
+@php($ordersOnHoldTitle = 'QC / Packing issue')
+@php($ordersOnHoldRecordsTitle = 'QC & Packing Records')
+@php($ordersOnHoldAddButtonText = 'QC & Packing')
+@php($ordersOnHoldHistoryButtonText = 'QC & Packing History')
+@php($ordersOnHoldIntroText = 'Use QC & Packing to record SKU hold issues. SKU lookup auto-fills Parent and available QTY.')
+@php($ordersOnHoldTopActionText = 'Add Claim / Reimbursement')
+@php($ordersOnHoldTopActionUrl = route('claim.reimbursement'))
+@include('customer-care.orders_on_hold')

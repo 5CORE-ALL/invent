@@ -632,6 +632,58 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
         return view('customer-care.orders_on_hold', compact('marketplaces'));
     })->name('customer.care.orders.on.hold');
+    Route::get('/customer-care/qc-and-packing', function () {
+        $marketplaces = \Illuminate\Support\Facades\DB::table('marketplace_percentages')
+            ->whereNotNull('marketplace')
+            ->where('marketplace', '!=', '')
+            ->orderBy('marketplace')
+            ->pluck('marketplace')
+            ->map(fn ($m) => trim((string) $m))
+            ->filter()
+            ->unique()
+            ->values();
+
+        return view('customer-care.qc_and_packing', compact('marketplaces'));
+    })->name('customer.care.qc.and.packing');
+    Route::get('/customer-care/label-issues', function () {
+        $marketplaces = \Illuminate\Support\Facades\DB::table('marketplace_percentages')
+            ->whereNotNull('marketplace')
+            ->where('marketplace', '!=', '')
+            ->orderBy('marketplace')
+            ->pluck('marketplace')
+            ->map(fn ($m) => trim((string) $m))
+            ->filter()
+            ->unique()
+            ->values();
+
+        return view('customer-care.label_issues', compact('marketplaces'));
+    })->name('customer.care.label.issues');
+    Route::get('/customer-care/dispatch-issues', function () {
+        $marketplaces = \Illuminate\Support\Facades\DB::table('marketplace_percentages')
+            ->whereNotNull('marketplace')
+            ->where('marketplace', '!=', '')
+            ->orderBy('marketplace')
+            ->pluck('marketplace')
+            ->map(fn ($m) => trim((string) $m))
+            ->filter()
+            ->unique()
+            ->values();
+
+        return view('customer-care.dispatch_issues', compact('marketplaces'));
+    })->name('customer.care.dispatch.issues');
+    Route::get('/customer-care/carrier-issues', function () {
+        $marketplaces = \Illuminate\Support\Facades\DB::table('marketplace_percentages')
+            ->whereNotNull('marketplace')
+            ->where('marketplace', '!=', '')
+            ->orderBy('marketplace')
+            ->pluck('marketplace')
+            ->map(fn ($m) => trim((string) $m))
+            ->filter()
+            ->unique()
+            ->values();
+
+        return view('customer-care.carrier_issues', compact('marketplaces'));
+    })->name('customer.care.carrier.issues');
     Route::get('/customer-care/orders-on-hold/sku-details', function (\Illuminate\Http\Request $request) {
         $sku = trim((string) $request->query('sku', ''));
         if ($sku === '') {
@@ -697,6 +749,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
                 'sku',
                 'qty',
                 'order_qty',
+                'order_number',
                 'parent',
                 'marketplace_1',
                 'marketplace_2',
@@ -720,6 +773,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
                 'sku' => $row->sku,
                 'qty' => (float) $row->qty,
                 'order_qty' => $row->order_qty !== null ? (float) $row->order_qty : null,
+                'order_number' => $row->order_number,
                 'parent' => $row->parent,
                 'marketplace_1' => $row->marketplace_1,
                 'marketplace_2' => $row->marketplace_2,
@@ -754,6 +808,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
                 'sku',
                 'qty',
                 'order_qty',
+                'order_number',
                 'parent',
                 'marketplace_1',
                 'marketplace_2',
@@ -787,6 +842,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
                 'sku' => $row->sku,
                 'qty' => (float) $row->qty,
                 'order_qty' => $row->order_qty !== null ? (float) $row->order_qty : null,
+                'order_number' => $row->order_number,
                 'parent' => $row->parent,
                 'marketplace_1' => $row->marketplace_1,
                 'marketplace_2' => $row->marketplace_2,
@@ -814,6 +870,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
             'sku' => 'required|string|max:128',
             'qty' => 'required|numeric|min:0',
             'order_qty' => 'nullable|numeric|min:0',
+            'order_number' => 'nullable|string|max:25',
             'parent' => 'nullable|string|max:255',
             'marketplace_1' => 'nullable|string|max:255',
             'marketplace_2' => 'nullable|string|max:255',
@@ -874,6 +931,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
                 'sku' => trim($validated['sku']),
                 'qty' => (float) $validated['qty'],
                 'order_qty' => isset($validated['order_qty']) ? (float) $validated['order_qty'] : null,
+                'order_number' => isset($validated['order_number']) ? trim((string) $validated['order_number']) : null,
                 'parent' => isset($validated['parent']) ? trim((string) $validated['parent']) : null,
                 'marketplace_1' => isset($validated['marketplace_1']) ? trim((string) $validated['marketplace_1']) : null,
                 'marketplace_2' => isset($validated['marketplace_2']) ? trim((string) $validated['marketplace_2']) : null,
@@ -901,6 +959,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
                 'sku' => $payload['sku'],
                 'qty' => $payload['qty'],
                 'order_qty' => $payload['order_qty'],
+                'order_number' => $payload['order_number'],
                 'parent' => $payload['parent'],
                 'marketplace_1' => $payload['marketplace_1'],
                 'marketplace_2' => $payload['marketplace_2'],
@@ -930,6 +989,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
                 'sku',
                 'qty',
                 'order_qty',
+                'order_number',
                 'parent',
                 'marketplace_1',
                 'marketplace_2',
@@ -955,6 +1015,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
                 'sku' => $row->sku,
                 'qty' => (float) $row->qty,
                 'order_qty' => $row->order_qty !== null ? (float) $row->order_qty : null,
+                'order_number' => $row->order_number,
                 'parent' => $row->parent,
                 'marketplace_1' => $row->marketplace_1,
                 'marketplace_2' => $row->marketplace_2,
@@ -980,6 +1041,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
             'sku' => 'required|string|max:128',
             'qty' => 'required|numeric|min:0',
             'order_qty' => 'nullable|numeric|min:0',
+            'order_number' => 'nullable|string|max:25',
             'parent' => 'nullable|string|max:255',
             'marketplace_1' => 'nullable|string|max:255',
             'marketplace_2' => 'nullable|string|max:255',
@@ -1047,6 +1109,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
                 'sku' => trim($validated['sku']),
                 'qty' => (float) $validated['qty'],
                 'order_qty' => isset($validated['order_qty']) ? (float) $validated['order_qty'] : null,
+                'order_number' => isset($validated['order_number']) ? trim((string) $validated['order_number']) : null,
                 'parent' => isset($validated['parent']) ? trim((string) $validated['parent']) : null,
                 'marketplace_1' => isset($validated['marketplace_1']) ? trim((string) $validated['marketplace_1']) : null,
                 'marketplace_2' => isset($validated['marketplace_2']) ? trim((string) $validated['marketplace_2']) : null,
@@ -1071,6 +1134,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
                 'sku' => $payload['sku'],
                 'qty' => $payload['qty'],
                 'order_qty' => $payload['order_qty'],
+                'order_number' => $payload['order_number'],
                 'parent' => $payload['parent'],
                 'marketplace_1' => $payload['marketplace_1'],
                 'marketplace_2' => $payload['marketplace_2'],
@@ -1126,6 +1190,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
                 'sku' => $row->sku,
                 'qty' => (float) $row->qty,
                 'order_qty' => $row->order_qty !== null ? (float) $row->order_qty : null,
+                'order_number' => $row->order_number ?? null,
                 'parent' => $row->parent,
                 'marketplace_1' => $row->marketplace_1 ?? null,
                 'marketplace_2' => $row->marketplace_2 ?? null,
@@ -1182,31 +1247,28 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::put('/outgoing-update-reason-comment', [OutgoingController::class, 'updateReasonAndComment']);
     Route::get('/outgoing-history/{id}', [OutgoingController::class, 'getHistory']);
 
-    // Spare parts (inventory management)
-    Route::get('/inventory/spare-parts', [SparePartController::class, 'index'])->name('inventory.spare-parts.index');
-    Route::get('/inventory/spare-parts/api/summary', [SparePartController::class, 'summary'])->name('inventory.spare-parts.api.summary');
-    Route::get('/inventory/spare-parts/api/spare-parts', [SparePartController::class, 'sparePartsData'])->name('inventory.spare-parts.api.parts');
-    Route::get('/inventory/spare-parts/api/low-stock', [SparePartController::class, 'lowStockData'])->name('inventory.spare-parts.api.low-stock');
-    Route::get('/inventory/spare-parts/api/tree', [SparePartController::class, 'tree'])->name('inventory.spare-parts.api.tree');
-    Route::get('/inventory/spare-parts/api/search-parts', [SparePartController::class, 'searchParts'])->name('inventory.spare-parts.api.search-parts');
-    Route::get('/inventory/spare-parts/api/part-skus', [SparePartController::class, 'allPartSkus'])->name('inventory.spare-parts.api.part-skus');
-    Route::get('/inventory/spare-parts/api/suppliers', [SparePartController::class, 'suppliers'])->name('inventory.spare-parts.api.suppliers');
-    Route::patch('/inventory/spare-parts/api/parts/{id}', [SparePartController::class, 'updatePart'])->name('inventory.spare-parts.api.parts.update');
-    Route::post('/inventory/spare-parts/api/spare-part-details', [SparePartController::class, 'storeSparePartDetail'])->name('inventory.spare-parts.api.spare-part-details.store');
+    // Spare parts (inventory management) - pure web routes (no API/AJAX)
+    Route::middleware(['auth'])->prefix('inventory/spare-parts')->group(function () {
+        Route::get('/', [SparePartController::class, 'index'])->name('spare.parts.index');
 
-    Route::get('/inventory/spare-parts/api/requisitions', [SparePartsRequisitionController::class, 'index'])->name('inventory.spare-parts.api.requisitions.index');
-    Route::post('/inventory/spare-parts/api/requisitions', [SparePartsRequisitionController::class, 'store'])->name('inventory.spare-parts.api.requisitions.store');
-    Route::post('/inventory/spare-parts/api/requisitions/{requisition}/submit', [SparePartsRequisitionController::class, 'submit'])->name('inventory.spare-parts.api.requisitions.submit');
-    Route::post('/inventory/spare-parts/api/requisitions/{requisition}/approve', [SparePartsRequisitionController::class, 'approve'])->name('inventory.spare-parts.api.requisitions.approve');
-    Route::post('/inventory/spare-parts/api/requisitions/{requisition}/close', [SparePartsRequisitionController::class, 'close'])->name('inventory.spare-parts.api.requisitions.close');
+        // Requisitions
+        Route::post('/requisition', [SparePartsRequisitionController::class, 'store'])->name('requisition.store');
+        Route::post('/requisition/{requisition}/submit', [SparePartsRequisitionController::class, 'submit'])->name('requisition.submit');
+        Route::post('/requisition/{requisition}/approve', [SparePartsRequisitionController::class, 'approve'])->name('requisition.approve');
+        Route::post('/requisition/{requisition}/close', [SparePartsRequisitionController::class, 'close'])->name('requisition.close');
 
-    Route::get('/inventory/spare-parts/api/issues/pending', [SparePartsIssueController::class, 'pending'])->name('inventory.spare-parts.api.issues.pending');
-    Route::post('/inventory/spare-parts/api/issues', [SparePartsIssueController::class, 'store'])->name('inventory.spare-parts.api.issues.store');
+        // Issue
+        Route::post('/issue', [SparePartsIssueController::class, 'store'])->name('issue.store');
 
-    Route::get('/inventory/spare-parts/api/purchase-orders', [SparePartPurchaseOrderController::class, 'index'])->name('inventory.spare-parts.api.purchase-orders.index');
-    Route::post('/inventory/spare-parts/api/purchase-orders', [SparePartPurchaseOrderController::class, 'store'])->name('inventory.spare-parts.api.purchase-orders.store');
-    Route::post('/inventory/spare-parts/api/purchase-orders/{sparePartPurchaseOrder}/send', [SparePartPurchaseOrderController::class, 'send'])->name('inventory.spare-parts.api.purchase-orders.send');
-    Route::post('/inventory/spare-parts/api/purchase-orders/{sparePartPurchaseOrder}/receive', [SparePartPurchaseOrderController::class, 'receive'])->name('inventory.spare-parts.api.purchase-orders.receive');
+        // Purchase Orders
+        Route::post('/po', [SparePartPurchaseOrderController::class, 'store'])->name('po.store');
+        Route::post('/po/{sparePartPurchaseOrder}/send', [SparePartPurchaseOrderController::class, 'send'])->name('po.send');
+        Route::post('/po/{sparePartPurchaseOrder}/receive', [SparePartPurchaseOrderController::class, 'receive'])->name('po.receive');
+
+        // Spare Parts
+        Route::post('/parts', [SparePartController::class, 'store'])->name('parts.store');
+        Route::patch('/parts/{id}', [SparePartController::class, 'update'])->name('parts.update');
+    });
     Route::post('/outgoing-archive', [OutgoingController::class, 'archive']);
 
     Route::get('/refunds-view', [RefundController::class, 'index'])->name('refunds.view');
@@ -2690,7 +2752,13 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/faire-analytics/export', [FaireController::class, 'exportFaireAnalytics'])->name('faire.analytics.export');
     Route::get('/faire-analytics/sample', [FaireController::class, 'downloadSample'])->name('faire.analytics.sample');
 
-    // pls
+    // Faire Daily Data routes
+    Route::post('/faire/upload-daily-data', [FaireController::class, 'uploadDailyDataChunk'])->name('faire.upload.daily.data');
+    Route::get('/faire/daily-data', [FaireController::class, 'getDailyData'])->name('faire.get.daily.data');
+    Route::get('/faire-tabulator', [FaireController::class, 'faireTabulatorView'])->name('faire.tabulator.view');
+
+
+    //pls
     Route::get('plsAnalysis', action: [PlsController::class, 'overallPls']);
     Route::get('/pls/view-data', [PlsController::class, 'getViewPlsData']);
     Route::get('plsPricingCVR', [PlsController::class, 'plsPricingCVR'])->name('pls.pricing.cvr');

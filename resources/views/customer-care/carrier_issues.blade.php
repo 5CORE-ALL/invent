@@ -1,0 +1,8 @@
+@php($ordersOnHoldTitle = 'Carrier Issues')
+@php($ordersOnHoldRecordsTitle = 'Carrier Issues Records')
+@php($ordersOnHoldAddButtonText = 'Add Carrier Issues')
+@php($ordersOnHoldHistoryButtonText = 'Carrier Issues History')
+@php($ordersOnHoldHistoryTitle = 'Carrier Issues History')
+@php($ordersOnHoldModalTitle = 'Carrier Issues')
+@php($ordersOnHoldIntroText = 'Use Add Carrier Issues to record SKU carrier issues. SKU lookup auto-fills Parent and available QTY.')
+@include('customer-care.orders_on_hold')

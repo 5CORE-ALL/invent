@@ -565,6 +565,19 @@
                         if (response.errors && response.errors.length > 0) {
                             console.warn('Some updates had errors:', response.errors);
                         }
+                        if (response.price_push_success_count !== undefined || response.price_push_failed_count !== undefined) {
+                            const pushOk = Number(response.price_push_success_count || 0);
+                            const pushFail = Number(response.price_push_failed_count || 0);
+                            if (pushFail > 0) {
+                                let pushMsg = `BestBuy price push: ${pushOk} success, ${pushFail} failed`;
+                                if (response.price_push_errors && response.price_push_errors.length > 0) {
+                                    pushMsg += ` (${response.price_push_errors[0]})`;
+                                }
+                                showToast(pushMsg, 'warning');
+                            } else if (pushOk > 0) {
+                                showToast(`BestBuy price push successful for ${pushOk} SKU(s)`, 'success');
+                            }
+                        }
                     }
                 },
                 error: function(xhr) {
@@ -638,6 +651,14 @@
                 },
                 success: function(response) {
                     showToast(`SPRICE saved for ${sku}`, 'success');
+                    if (response.price_push_success !== undefined) {
+                        const codeSuffix = response.price_push_status_code ? ` [code: ${response.price_push_status_code}]` : '';
+                        if (response.price_push_success) {
+                            showToast(`BestBuy price pushed for ${sku}${codeSuffix}`, 'success');
+                        } else {
+                            showToast(`BestBuy push failed for ${sku}${codeSuffix}: ${response.price_push_message || 'Unknown error'}`, 'warning');
+                        }
+                    }
                     if (response.spft_percent !== undefined) {
                         row.update({ SPFT: response.spft_percent });
                     }
@@ -1092,6 +1113,30 @@
                     width: 80
                 },
                 {
+                    title: "Send",
+                    field: "_send_price",
+                    hozAlign: "center",
+                    headerSort: false,
+                    width: 75,
+                    formatter: function() {
+                        return '<button type="button" class="btn btn-sm btn-primary" style="padding:2px 8px;">Send</button>';
+                    },
+                    cellClick: function(e, cell) {
+                        e.stopPropagation();
+                        const row = cell.getRow();
+                        const rowData = row.getData();
+                        const sku = rowData['(Child) sku'];
+                        const sprice = parseFloat(rowData.SPRICE) || 0;
+
+                        if (sprice <= 0) {
+                            showToast(`Enter valid SPRICE for ${sku} before push`, 'warning');
+                            return;
+                        }
+
+                        saveSpriceWithRetry(sku, sprice, row);
+                    }
+                },
+                {
                     title: "SGPFT",
                     field: "SGPFT",
                     hozAlign: "center",
@@ -1189,7 +1234,7 @@
             });
         });
 
-        // SPRICE cell edited - save to database
+        // SPRICE cell edited - recalculate metrics only.
         table.on('cellEdited', function(cell) {
             if (cell.getField() === 'SPRICE') {
                 const row = cell.getRow();
@@ -1212,9 +1257,7 @@
                     SROI: sroi,
                     has_custom_sprice: true
                 });
-                
-                // Save to database
-                saveSpriceWithRetry(sku, newSprice, row);
+                showToast(`SPRICE updated for ${sku}. Click Send to push.`, 'info');
             }
         });
 
