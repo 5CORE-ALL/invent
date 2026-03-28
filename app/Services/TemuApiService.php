@@ -876,11 +876,6 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
     }
 
     /**
-     * Push bullet copy via goods partial update (goodsSummary / description). Mirrors updateTitle flow.
-     *
-     * @return array{success: bool, message: string}
-     */
-    /**
      * Resolve seller SKU and goods_id from SKU, goods_id, or internal sku_id (Temu metrics).
      *
      * @return array{sku: string, goods_id: ?string}
@@ -924,6 +919,36 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
             return ['success' => false, 'message' => 'SKU (or goods_id) and bullet points are required.'];
         }
 
+        $field = config('services.temu.goods_summary_field', 'goodsSummary');
+
+        return $this->pushTemuGoodsBasicField(
+            $identifier,
+            $bulletPoints,
+            $field,
+            'Temu bullet points updated.',
+            'SKU (or goods_id) and bullet points are required.',
+            'Temu updateBulletPoints'
+        );
+    }
+
+    /**
+     * Partial goods update: one field inside `goodsBasic` (e.g. goodsSummary for bullets, goodsDesc for long description).
+     *
+     * @return array{success: bool, message: string}
+     */
+    private function pushTemuGoodsBasicField(
+        string $identifier,
+        string $text,
+        string $basicFieldKey,
+        string $successMessage,
+        string $emptyIdentifierMessage,
+        string $logContext
+    ): array {
+        $text = trim($text);
+        if (trim($identifier) === '' || $text === '') {
+            return ['success' => false, 'message' => $emptyIdentifierMessage];
+        }
+
         $resolved = $this->resolveTemuGoodsAndSku($identifier);
         $sku = $resolved['sku'];
         $goodsId = $resolved['goods_id'] ?? $this->getGoodsIdBySku($sku);
@@ -937,12 +962,11 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
         $skuListField = config('services.temu.update_sku_list_field', 'skuList');
         $goodsBasicField = config('services.temu.goods_basic_field', 'goodsBasic');
 
-        $summaryField = config('services.temu.goods_summary_field', 'goodsSummary');
         $requestBody = [
             'type' => $apiType,
             'goodsId' => (int) $goodsId,
             $goodsBasicField => [
-                $summaryField => $bulletPoints,
+                $basicFieldKey => $text,
             ],
         ];
 
@@ -977,27 +1001,61 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
             if (config('filesystems.default') === 'local') {
                 $request = $request->withoutVerifying();
             }
-            $response = $request->post($url, $signedRequest);
-            $data = $response->json();
-            if ($response->successful() && ($data['success'] ?? false)) {
-                return ['success' => true, 'message' => 'Temu bullet points updated.'];
+
+            $lastBody = '';
+            for ($attempt = 1; $attempt <= 2; $attempt++) {
+                $response = $request->post($url, $signedRequest);
+                $data = $response->json();
+                $lastBody = (string) ($data['errorMsg'] ?? $data['message'] ?? $response->body());
+                if ($response->successful() && ($data['success'] ?? false)) {
+                    return ['success' => true, 'message' => $successMessage];
+                }
+                if ($attempt < 2) {
+                    usleep(500000);
+                }
             }
 
-            return ['success' => false, 'message' => (string) ($data['errorMsg'] ?? $data['message'] ?? $response->body())];
+            return ['success' => false, 'message' => $lastBody];
         } catch (\Throwable $e) {
-            Log::error('Temu updateBulletPoints', ['sku' => $sku, 'error' => $e->getMessage()]);
+            Log::error($logContext, ['sku' => $sku, 'error' => $e->getMessage()]);
 
             return ['success' => false, 'message' => $e->getMessage()];
         }
     }
 
     /**
-     * Same partial update path as bullet copy; pushes long-form description.
+     * Long-form description via `goodsDesc` (configurable) in goods partial update — not `goodsSummary` / bullets.
      *
+     * @return array{success: bool, message: string}
+     */
+    public function updateDescription(string $identifier, string $description): array
+    {
+        if (trim($identifier) === '' || trim($description) === '') {
+            return ['success' => false, 'message' => 'SKU (or goods_id) and description are required.'];
+        }
+
+        $description = trim($description);
+        if ($description === '') {
+            return ['success' => false, 'message' => 'Description is empty.'];
+        }
+
+        $field = config('services.temu.goods_desc_field', 'goodsDesc');
+
+        return $this->pushTemuGoodsBasicField(
+            $identifier,
+            $description,
+            $field,
+            'Temu product description updated.',
+            'SKU (or goods_id) and description are required.',
+            'Temu updateDescription'
+        );
+    }
+
+    /**
      * @return array{success: bool, message: string}
      */
     public function updateProductDescription(string $identifier, string $description): array
     {
-        return $this->updateBulletPoints($identifier, $description);
+        return $this->updateDescription($identifier, $description);
     }
 }

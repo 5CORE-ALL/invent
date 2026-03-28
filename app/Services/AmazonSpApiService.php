@@ -3109,12 +3109,16 @@ class AmazonSpApiService
     }
 
     /**
-     * PATCH listing product_description (SP-API Listings Items).
+     * PATCH listing `product_description` (SP-API Listings Items API). Retries token / transient errors like other listing patches.
      *
      * @return array{success: bool, message: string}
      */
-    public function updateProductDescription(string $identifier, string $description): array
+    public function updateDescription(string $identifier, string $description): array
     {
+        if (trim($identifier) === '' || trim($description) === '') {
+            return ['success' => false, 'message' => 'SKU (or ASIN from amazon_metrics) and description are required.'];
+        }
+
         $sku = $this->resolveAmazonSellerSkuForBullets($identifier);
         $description = trim($description);
         if ($sku === '' || $description === '') {
@@ -3204,5 +3208,13 @@ class AmazonSpApiService
         }
 
         return ['success' => false, 'message' => (string) $lastError];
+    }
+
+    /**
+     * @return array{success: bool, message: string}
+     */
+    public function updateProductDescription(string $identifier, string $description): array
+    {
+        return $this->updateDescription($identifier, $description);
     }
 }
