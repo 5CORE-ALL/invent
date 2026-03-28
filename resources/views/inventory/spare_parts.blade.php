@@ -377,7 +377,9 @@
         const poActionUrl = (id, action) => `${SP.poIndex}/${id}/${action}`;
         const poReceiveUrl = (id) => SP.poReceive0.replace(/\/0\/receive$/, '/' + id + '/receive');
         const partUpdateUrl = (id) => SP.partUpdate0.replace(/\/0$/, '/' + id);
-        let isRedirectingToLogin = false;
+        let refreshSummaryInFlight = null;
+        let loadRequisitionsInFlight = null;
+        let loadPartsInFlight = null;
 
         function toast(msg) {
             const el = document.getElementById('toast-ok');
@@ -437,41 +439,55 @@
 
         async function fetchJson(url, options = {}) {
             const headers = {
-                'X-CSRF-TOKEN': csrf,
                 'Accept': 'application/json',
+                'X-CSRF-TOKEN': csrf,
                 'X-Requested-With': 'XMLHttpRequest',
-                ...(options.headers || {}),
+                ...(options.headers || {})
             };
+
             if (options.body && !(options.body instanceof FormData)) {
                 headers['Content-Type'] = 'application/json';
             }
+
             const res = await fetch(url, {
                 credentials: 'same-origin',
                 cache: 'no-store',
                 ...options,
                 headers,
             });
-            if (res.redirected && /\/login(?:\?|$)/.test(res.url || '')) {
-                if (!isRedirectingToLogin) {
-                    isRedirectingToLogin = true;
-                    window.location.assign(res.url);
-                }
-                throw new Error('Session expired. Redirecting to login.');
+
+            // Handle auth properly
+            if (res.status === 401) {
+                window.location.href = '/login';
+                return;
             }
+
             const data = await res.json().catch(() => ({}));
+
             if (!res.ok) {
-                const msg = data.message || data.error || (data.errors && JSON.stringify(data.errors)) || res.statusText;
-                throw new Error(typeof msg === 'string' ? msg : 'Request failed');
+                throw new Error(data.message || 'Request failed');
             }
+
             return data;
         }
 
         async function refreshSummary() {
-            const s = await fetchJson(SP.summary);
-            document.getElementById('card-total-spare').textContent = s.total_spare_parts;
-            document.getElementById('card-low-stock').textContent = s.low_stock_items;
-            document.getElementById('card-pending-req').textContent = s.pending_requisitions;
-            document.getElementById('card-pending-po').textContent = s.pending_purchase_orders;
+            if (refreshSummaryInFlight) {
+                return refreshSummaryInFlight;
+            }
+            refreshSummaryInFlight = (async () => {
+                const s = await fetchJson(SP.summary);
+                if (!s) return;
+                document.getElementById('card-total-spare').textContent = s.total_spare_parts;
+                document.getElementById('card-low-stock').textContent = s.low_stock_items;
+                document.getElementById('card-pending-req').textContent = s.pending_requisitions;
+                document.getElementById('card-pending-po').textContent = s.pending_purchase_orders;
+            })();
+            try {
+                return await refreshSummaryInFlight;
+            } finally {
+                refreshSummaryInFlight = null;
+            }
         }
 
         document.getElementById('btn-refresh-summary').addEventListener('click', () => refreshSummary().catch(e => alert(e.message)));
@@ -548,7 +564,12 @@
         });
 
         async function loadRequisitions() {
+            if (loadRequisitionsInFlight) {
+                return loadRequisitionsInFlight;
+            }
+            loadRequisitionsInFlight = (async () => {
             const r = await fetchJson(SP.reqIndex);
+            if (!r) return;
             const tb = document.querySelector('#table-requisitions tbody');
             tb.innerHTML = '';
             r.data.forEach(row => {
@@ -580,6 +601,12 @@
                     } catch (err) { alert(err.message); }
                 });
             });
+            })();
+            try {
+                return await loadRequisitionsInFlight;
+            } finally {
+                loadRequisitionsInFlight = null;
+            }
         }
 
         async function loadIssues() {
@@ -766,7 +793,12 @@
         }
 
         async function loadParts() {
+            if (loadPartsInFlight) {
+                return loadPartsInFlight;
+            }
+            loadPartsInFlight = (async () => {
             const r = await fetchJson(partsQuery());
+            if (!r) return;
             const tb = document.querySelector('#table-parts tbody');
             tb.innerHTML = '';
             r.data.forEach(p => {
@@ -801,6 +833,12 @@
                     } catch (e) { alert(e.message); }
                 });
             });
+            })();
+            try {
+                return await loadPartsInFlight;
+            } finally {
+                loadPartsInFlight = null;
+            }
         }
 
         async function loadLow() {
