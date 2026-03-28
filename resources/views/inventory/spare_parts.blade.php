@@ -352,29 +352,32 @@
         const csrfMeta = document.querySelector('meta[name="csrf-token"]');
         const csrf = csrfMeta ? csrfMeta.getAttribute('content') : '';
 
-        /** Same-origin relative paths (works with subfolders & avoids APP_URL vs browser host mismatch) */
+        /** Use Laravel-generated endpoints to avoid proxy/subfolder redirect loops. */
         const SP = {
-            summary: @json(route('inventory.spare-parts.api.summary', [], false)),
-            searchParts: @json(route('inventory.spare-parts.api.search-parts', [], false)),
-            partSkus: @json(route('inventory.spare-parts.api.part-skus', [], false)),
-            parts: @json(route('inventory.spare-parts.api.parts', [], false)),
-            lowStock: @json(route('inventory.spare-parts.api.low-stock', [], false)),
-            tree: @json(route('inventory.spare-parts.api.tree', [], false)),
-            suppliers: @json(route('inventory.spare-parts.api.suppliers', [], false)),
-            reqIndex: @json(route('inventory.spare-parts.api.requisitions.index', [], false)),
-            reqStore: @json(route('inventory.spare-parts.api.requisitions.store', [], false)),
-            issuesPending: @json(route('inventory.spare-parts.api.issues.pending', [], false)),
-            issueStore: @json(route('inventory.spare-parts.api.issues.store', [], false)),
-            poIndex: @json(route('inventory.spare-parts.api.purchase-orders.index', [], false)),
-            poStore: @json(route('inventory.spare-parts.api.purchase-orders.store', [], false)),
-            partUpdate0: @json(route('inventory.spare-parts.api.parts.update', ['id' => 0], false)),
-            sparePartDetailsStore: @json(route('inventory.spare-parts.api.spare-part-details.store', [], false)),
-            supplierForSku: @json(route('refunds.supplier-for-sku', [], false)),
+            summary: @json(route('inventory.spare-parts.api.summary')),
+            searchParts: @json(route('inventory.spare-parts.api.search-parts')),
+            partSkus: @json(route('inventory.spare-parts.api.part-skus')),
+            parts: @json(route('inventory.spare-parts.api.parts')),
+            lowStock: @json(route('inventory.spare-parts.api.low-stock')),
+            tree: @json(route('inventory.spare-parts.api.tree')),
+            suppliers: @json(route('inventory.spare-parts.api.suppliers')),
+            reqIndex: @json(route('inventory.spare-parts.api.requisitions.index')),
+            reqStore: @json(route('inventory.spare-parts.api.requisitions.store')),
+            issuesPending: @json(route('inventory.spare-parts.api.issues.pending')),
+            issueStore: @json(route('inventory.spare-parts.api.issues.store')),
+            poIndex: @json(route('inventory.spare-parts.api.purchase-orders.index')),
+            poStore: @json(route('inventory.spare-parts.api.purchase-orders.store')),
+            poReceive0: @json(route('inventory.spare-parts.api.purchase-orders.receive', ['sparePartPurchaseOrder' => 0])),
+            partUpdate0: @json(route('inventory.spare-parts.api.parts.update', ['id' => 0])),
+            sparePartDetailsStore: @json(route('inventory.spare-parts.api.spare-part-details.store')),
+            supplierForSku: @json(route('refunds.supplier-for-sku')),
         };
         const SP_PARENT_OPTIONS = @json($parentSelectJson ?? []);
         const reqActionUrl = (id, action) => `${SP.reqIndex}/${id}/${action}`;
         const poActionUrl = (id, action) => `${SP.poIndex}/${id}/${action}`;
+        const poReceiveUrl = (id) => SP.poReceive0.replace(/\/0\/receive$/, '/' + id + '/receive');
         const partUpdateUrl = (id) => SP.partUpdate0.replace(/\/0$/, '/' + id);
+        let isRedirectingToLogin = false;
 
         function toast(msg) {
             const el = document.getElementById('toast-ok');
@@ -448,6 +451,13 @@
                 ...options,
                 headers,
             });
+            if (res.redirected && /\/login(?:\?|$)/.test(res.url || '')) {
+                if (!isRedirectingToLogin) {
+                    isRedirectingToLogin = true;
+                    window.location.assign(res.url);
+                }
+                throw new Error('Session expired. Redirecting to login.');
+            }
             const data = await res.json().catch(() => ({}));
             if (!res.ok) {
                 const msg = data.message || data.error || (data.errors && JSON.stringify(data.errors)) || res.statusText;
@@ -735,7 +745,7 @@
                     const div = btn.closest('div');
                     const qty = parseInt(div.querySelector('.recv-qty').value, 10);
                     try {
-                        await fetchJson(`/inventory/spare-parts/api/purchase-orders/${btn.getAttribute('data-po')}/receive`, {
+                        await fetchJson(poReceiveUrl(btn.getAttribute('data-po')), {
                             method: 'POST',
                             body: JSON.stringify({item_id: parseInt(btn.getAttribute('data-item'), 10), quantity: qty})
                         });
