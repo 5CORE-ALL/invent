@@ -2737,6 +2737,12 @@
                         return;
                     }
 
+                    if (marketplace === 'ebay3') {
+                        if (!confirm('Warning! This is a Variation Platform, ARE YOU SURE?')) {
+                            return;
+                        }
+                    }
+
                     const originalHtml = button.innerHTML;
                     button.disabled = true;
                     button.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>';
