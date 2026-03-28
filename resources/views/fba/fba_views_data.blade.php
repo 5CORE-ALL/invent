@@ -1786,7 +1786,6 @@
                             formatter: function(cell) {
                                 const rowData = cell.getRow().getData();
                                 const value = cell.getValue();
-                                const lmpLink = rowData.LMP_Link;
                                 const sku = rowData.SKU || '';
                                 
                                 if (rowData.is_parent) {
@@ -1798,8 +1797,12 @@
                                     ? parseFloat(value) 
                                     : parseFloat(rowData.lmp_1 || 0);
                                 
+                                const baseSku = sku
+                                    .replace(/(?:\s+FBA)+\s*$/i, '')
+                                    .trim();
+
                                 if (lmpValue <= 0) {
-                                    const skuEnc = encodeURIComponent(sku);
+                                    const skuEnc = encodeURIComponent(baseSku || sku);
                                     const url = '/repricer/amazon-search' + (skuEnc ? '?sku=' + skuEnc : '');
                                     return '<a href="' + url + '" target="_blank" rel="noopener" class="lmp-no-data-link" title="No LMP – open Amazon repricer search"><i class="fas fa-circle" style="color: #ff9c00; font-size: 10px;"></i></a>';
                                 }
@@ -1808,7 +1811,6 @@
                                 const color = (fbaPrice > 0 && lmpValue < fbaPrice) ? '#dc3545' : '#28a745';
                                 
                                 // Make LMP price clickable to show all competitors in modal
-                                const baseSku = sku.replace(/\s*FBA\s*/i, '').trim();
                                 return '<a href="#" class="lmp-price-link" data-sku="' + baseSku.replace(/"/g, '&quot;') + '" data-marketplace="amazon" style="color: ' + color + '; text-decoration: none; cursor: pointer; font-weight: 600;">$' + lmpValue.toFixed(2) + '</a>';
                             },
                             minWidth: 70

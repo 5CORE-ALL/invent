@@ -752,7 +752,18 @@ class FbaDataController extends Controller
             $tcosPercentage = round(($totalSpendSum / $priceL30) * 100, 2);
          }
 
-         $lmpaData = $this->lmpaDataService->getLmpaData($sku);
+        $lmpaData = $this->lmpaDataService->getLmpaData($sku);
+
+        // Match Amazon LMP by exact SKU first, then by base SKU without trailing "FBA FBA ...".
+        $normalizedSkuForLmp = strtoupper(preg_replace('/\s+/', ' ', trim($sku)));
+        $baseSkuForLmp = strtoupper(preg_replace('/\s+/', ' ', trim(
+           preg_replace('/(?:\s+FBA)+\s*$/i', '', $sku)
+        )));
+        $amazonLmpRecord = $amazonLmpLookup->get($normalizedSkuForLmp);
+        if (!$amazonLmpRecord && $baseSkuForLmp !== '') {
+           $amazonLmpRecord = $amazonLmpLookup->get($baseSkuForLmp);
+        }
+        $amazonLmpPrice = $amazonLmpRecord ? round(floatval($amazonLmpRecord->price ?? 0), 2) : null;
 
          // Debug logging for ET 6FT BLU LMP data
          if (stripos($sku, 'ET 6FT BLU') !== false) {
@@ -953,8 +964,10 @@ class FbaDataController extends Controller
             'SPft%' => $this->colorService->getValueHtml($spftPercentage),
             'SROI%' => $this->colorService->getRoiHtmlForView($sroiPercentage),
             'SGROI%' => $this->colorService->getRoiHtmlForView($sgroiPercentage),
-            'lmp_1' => $lmpaData['lowest_price'],
+            'lmp_1' => $amazonLmpPrice ?: ($lmpaData['lowest_price'] ?? null),
             'lmp_data' => $lmpaData['data'],
+            'LMP' => $amazonLmpPrice ?: ($lmpaData['lowest_price'] ?? null),
+            'LMP_Link' => $amazonLmpRecord->product_link ?? null,
             'ACTION_ACTION' => $manual ? ($manual->data['action_action'] ?? '') : '',
             'REV_COUNT' => $manual ? ($manual->data['rev_count'] ?? '') : '',
             'RATING' => $manual ? ($manual->data['rating'] ?? '') : '',

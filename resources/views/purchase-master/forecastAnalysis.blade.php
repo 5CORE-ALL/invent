@@ -983,7 +983,7 @@
                 {
                     title: "SKU",
                     field: "SKU",
-                    width: 118,
+                    width: 198,
                     minWidth: 88,
                     maxWidth: 260,
                     widthGrow: 0,
@@ -1935,23 +1935,51 @@
                     }
                 },
                 {
-                    title: "RFQ Form",
+                    title: "RFQ",
                     field: "rfq_form_link",
                     hozAlign: "center",
                     formatter: function(cell) {
-                        const value = String(cell.getValue() || '').trim();
-                        if (!value) return '<span class="text-muted">-</span>';
-                        return `<a href="${value}" target="_blank" class="btn btn-sm btn-outline-info" title="RFQ Form Link" style="min-width:80px;padding:2px 10px;"><i class="fas fa-link me-1"></i>Open</a>`;
+                        const rowData = cell.getRow().getData() || {};
+                        const formLink = String(rowData.rfq_form_link || '').trim();
+                        const reportLink = String(rowData.rfq_report || '').trim();
+                        if (!formLink && !reportLink) {
+                            return '<span class="text-muted">-</span>';
+                        }
+                        const formDot = formLink
+                            ? `<a href="${formLink}" target="_blank" title="RFQ Form" style="display:inline-block;width:12px;height:12px;border-radius:50%;background:#fbc02d;border:1px solid #f9a825;"></a>`
+                            : '';
+                        const reportDot = reportLink
+                            ? `<a href="${reportLink}" target="_blank" title="RFQ Report" style="display:inline-block;width:12px;height:12px;border-radius:50%;background:#2e7d32;border:1px solid #1b5e20;"></a>`
+                            : '';
+                        return `<div style="display:flex;justify-content:center;align-items:center;gap:8px;">${formDot}${reportDot}</div>`;
                     }
                 },
                 {
-                    title: "RFQ Report",
-                    field: "rfq_report",
+                    title: "GPFT%",
+                    field: "avg_gpft_pct",
+                    minWidth: 58,
+                    width: 62,
+                    headerSort: true,
                     hozAlign: "center",
+                    sorter: "number",
+                    titleFormatter: function() {
+                        const span = document.createElement("span");
+                        span.textContent = "GPFT%";
+                        span.setAttribute("title", "GPFT% (amazon_data_view)");
+                        return span;
+                    },
+                    accessor: function(row) {
+                        if (!row) return null;
+                        const v = parseFloat(row.avg_gpft_pct);
+                        return Number.isFinite(v) ? v : null;
+                    },
                     formatter: function(cell) {
-                        const value = String(cell.getValue() || '').trim();
-                        if (!value) return '<span class="text-muted">-</span>';
-                        return `<a href="${value}" target="_blank" class="btn btn-sm btn-outline-info" title="RFQ Report Link" style="min-width:80px;padding:2px 10px;"><i class="fas fa-link me-1"></i>Open</a>`;
+                        const v = cell.getValue();
+                        if (v === null || v === undefined || v === '' || (typeof v === 'number' && isNaN(v))) {
+                            return '<span style="display:block;text-align:center;color:#6c757d">—</span>';
+                        }
+                        const n = Math.round(parseFloat(v));
+                        return `<span style="display:block;text-align:center;font-weight:700;color:#1b5e20;" title="GPFT% from amazon_data_view">${n}%</span>`;
                     }
                 },
                 {
@@ -2636,6 +2664,12 @@
                         const sumApprReqQty = children.reduce((s, c) => s + (parseFloat(c.appr_req_qty) || 0), 0);
                         row.m_avg = 0;
                         row.TAT = null;
+                        const gpftKids = children.map(c => c.avg_gpft_pct).filter(function(v) {
+                            return v != null && v !== '' && Number.isFinite(parseFloat(v));
+                        });
+                        row.avg_gpft_pct = gpftKids.length
+                            ? Math.round(gpftKids.reduce(function(s, x) { return s + parseFloat(x); }, 0) / gpftKids.length)
+                            : null;
                         const npftKids = children.map(c => c.avg_npft_pct).filter(function(v) {
                             return v != null && v !== '' && Number.isFinite(parseFloat(v));
                         });
