@@ -294,19 +294,18 @@
 
                 <!-- Summary Stats -->
                 <div id="summary-stats" class="mt-2 p-3 bg-light rounded">
-                    <h6 class="mb-3">Summary (80% Margin)</h6>
+                    <h6 class="mb-3">Summary ({{ rtrim(rtrim(number_format((float)($tiktokPercentage ?? 80), 2, '.', ''), '0'), '.') }}% Margin)</h6>
                     <div class="d-flex flex-wrap gap-2">
-                        <span class="badge bg-success fs-6 p-2" id="total-pft-amt-badge" style="color: black; font-weight: bold;">Total PFT: $0</span>
-                        <span class="badge bg-primary fs-6 p-2" id="total-sales-amt-badge" style="color: black; font-weight: bold;">Total Sales: $0</span>
-                        <span class="badge bg-info fs-6 p-2" id="avg-gpft-badge" style="color: black; font-weight: bold;">AVG GPFT: 0%</span>
-                        <span class="badge bg-warning fs-6 p-2" id="avg-price-badge" style="color: black; font-weight: bold;">Avg Price: $0</span>
-                        <span class="badge bg-primary fs-6 p-2" id="total-inv-badge" style="color: black; font-weight: bold;">Total INV: 0</span>
-                        <span class="badge bg-success fs-6 p-2" id="total-l30-badge" style="color: black; font-weight: bold;">Total TT L30: 0</span>
+                        <span class="badge bg-success fs-6 p-2 tt-badge-chart" data-metric="total_pft" id="total-pft-amt-badge" style="color: black; font-weight: bold; cursor: pointer;" title="View trend">Total PFT: $0</span>
+                        <span class="badge bg-primary fs-6 p-2 tt-badge-chart" data-metric="total_sales" id="total-sales-amt-badge" style="color: black; font-weight: bold; cursor: pointer;" title="View trend">Total Sales: $0</span>
+                        <span class="badge bg-info fs-6 p-2 tt-badge-chart" data-metric="avg_gpft" id="avg-gpft-badge" style="color: black; font-weight: bold; cursor: pointer;" title="View trend">AVG GPFT: 0%</span>
+                        <span class="badge bg-warning fs-6 p-2 tt-badge-chart" data-metric="avg_price" id="avg-price-badge" style="color: black; font-weight: bold; cursor: pointer;" title="View trend">Avg Price: $0</span>
+                        <span class="badge bg-success fs-6 p-2 tt-badge-chart" data-metric="total_l30" id="total-l30-badge" style="color: black; font-weight: bold; cursor: pointer;" title="View trend">Total TT L30: 0</span>
                         <span class="badge bg-danger fs-6 p-2" id="zero-sold-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter 0 sold items">0 Sold: 0</span>
                         <span class="badge fs-6 p-2" id="more-sold-count-badge" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="Click to filter items with sales">&gt; 0 Sold: 0</span>
-                        <span class="badge bg-warning fs-6 p-2" id="avg-dil-badge" style="color: black; font-weight: bold;">DIL%: 0%</span>
-                        <span class="badge bg-info fs-6 p-2" id="total-cogs-badge" style="color: black; font-weight: bold;">COGS: $0</span>
-                        <span class="badge bg-secondary fs-6 p-2" id="roi-percent-badge" style="color: black; font-weight: bold;">ROI%: 0%</span>
+                        <span class="badge bg-warning fs-6 p-2 tt-badge-chart" data-metric="avg_dil" id="avg-dil-badge" style="color: black; font-weight: bold; cursor: pointer;" title="View trend">DIL%: 0%</span>
+                        <span class="badge bg-info fs-6 p-2 tt-badge-chart" data-metric="total_cogs" id="total-cogs-badge" style="color: black; font-weight: bold; cursor: pointer;" title="View trend">COGS: $0</span>
+                        <span class="badge bg-secondary fs-6 p-2 tt-badge-chart" data-metric="avg_roi" id="roi-percent-badge" style="color: black; font-weight: bold; cursor: pointer;" title="View trend">ROI%: 0%</span>
                         <span class="badge bg-danger fs-6 p-2" id="missing-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter missing SKUs">Missing: 0</span>
                         <span class="badge bg-success fs-6 p-2" id="map-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter mapped SKUs">Map: 0</span>
                         <span class="badge bg-warning fs-6 p-2" id="inv-tt-stock-badge" style="color: black; font-weight: bold; cursor: pointer;" title="Click to filter INV > TT Stock">INV > TT Stock: 0</span>
@@ -341,11 +340,52 @@
             </div>
         </div>
     </div>
+
+    <!-- Badge Trend Modal -->
+    <div class="modal fade" id="ttBadgeChartModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h6 class="modal-title mb-0" id="ttBadgeChartModalTitle">TikTok - Badge Trend</h6>
+                    <div class="d-flex align-items-center gap-2 me-2">
+                        <select id="ttBadgeChartRangeSelect" class="form-select form-select-sm bg-white" style="width: 110px; height: 26px; font-size: 11px; padding: 1px 8px;">
+                            <option value="7">7 Days</option>
+                            <option value="14">14 Days</option>
+                            <option value="30" selected>30 Days</option>
+                            <option value="60">60 Days</option>
+                            <option value="90">90 Days</option>
+                        </select>
+                    </div>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body pt-2 pb-2">
+                    <div id="ttBadgeChartContainer" style="height: 38vh; display: none; align-items: stretch;">
+                        <div style="flex: 1; min-width: 0;">
+                            <canvas id="ttBadgeChartCanvas"></canvas>
+                        </div>
+                        <div style="width: 100px; display: flex; flex-direction: column; justify-content: center; gap: 8px; padding: 6px 8px; border-left: 1px solid #e9ecef; background: #f8f9fa; border-radius: 0 4px 4px 0;">
+                            <div><div style="font-size: 10px; color: #6c757d; text-transform: uppercase;">Highest</div><div id="ttBadgeChartHighest" style="font-size: 13px; font-weight: 700; color: #dc3545;">-</div></div>
+                            <div><div style="font-size: 10px; color: #6c757d; text-transform: uppercase;">Median</div><div id="ttBadgeChartMedian" style="font-size: 13px; font-weight: 700; color: #6c757d;">-</div></div>
+                            <div><div style="font-size: 10px; color: #6c757d; text-transform: uppercase;">Lowest</div><div id="ttBadgeChartLowest" style="font-size: 13px; font-weight: 700; color: #198754;">-</div></div>
+                        </div>
+                    </div>
+                    <div id="ttBadgeChartLoading" class="text-center py-3" style="display: none;">
+                        <span class="spinner-border spinner-border-sm me-2"></span>Loading chart...
+                    </div>
+                    <div id="ttBadgeChartNoData" class="text-center py-3 text-muted" style="display: none;">
+                        No trend data available.
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 @endsection
 
 @section('script-bottom')
 <script>
     const COLUMN_VIS_KEY = "tiktok_tabulator_column_visibility";
+    const DEFAULT_TIKTOK_MARGIN_PERCENT = Number(@json($tiktokPercentage ?? 80));
+    const DEFAULT_TIKTOK_MARGIN_FACTOR = DEFAULT_TIKTOK_MARGIN_PERCENT / 100;
     // Ads section columns: hidden by default, only show when "Show Ads Columns" btn is clicked
     const ADS_ONLY_COLUMN_FIELDS = ['hasCampaign', 'NR', 'ad_cvr_pct', 'ads_price', 'budget', 'spend', 'ad_sold', 'ad_clicks', 'acos', 'out_roas', 'in_roas', 'status', 'campaign_name'];
     const ALWAYS_HIDDEN_COLUMNS = []; // Parent column visible like CVR/pricing master
@@ -375,7 +415,142 @@
         toast.addEventListener('hidden.bs.toast', () => toast.remove());
     }
 
+    function getRowMarginFactor(rowData) {
+        const rowMarginFactor = Number(rowData?.percentage);
+        return Number.isFinite(rowMarginFactor) && rowMarginFactor > 0
+            ? rowMarginFactor
+            : DEFAULT_TIKTOK_MARGIN_FACTOR;
+    }
+
     $(document).ready(function() {
+        let ttBadgeChartInstance = null;
+        let ttBadgeChartDays = 30;
+        let ttBadgeChartMetricKey = '';
+        let ttBadgeChartAjax = null;
+        const ttBadgeDollarMetrics = ['total_pft', 'total_sales', 'avg_price', 'total_cogs'];
+        const ttBadgePercentMetrics = ['avg_gpft', 'avg_dil', 'avg_roi'];
+        const ttBadgeMetricLabels = {
+            total_pft: 'Total PFT',
+            total_sales: 'Total Sales',
+            avg_gpft: 'AVG GPFT',
+            avg_price: 'Avg Price',
+            total_l30: 'Total TT L30',
+            avg_dil: 'DIL%',
+            total_cogs: 'COGS',
+            avg_roi: 'ROI%',
+        };
+
+        function ttFormatChartValue(v) {
+            const num = Number(v) || 0;
+            if (ttBadgeDollarMetrics.includes(ttBadgeChartMetricKey)) return '$' + Math.round(num).toLocaleString('en-US');
+            if (ttBadgePercentMetrics.includes(ttBadgeChartMetricKey)) return num.toFixed(1) + '%';
+            return Math.round(num).toLocaleString('en-US');
+        }
+
+        function renderTtBadgeChart(points) {
+            if (!Array.isArray(points) || !points.length) return false;
+            const labels = points.map(p => p.date);
+            const values = points.map(p => Number(p.value) || 0);
+            const sorted = [...values].sort((a, b) => a - b);
+            const min = sorted[0];
+            const max = sorted[sorted.length - 1];
+            const mid = Math.floor(sorted.length / 2);
+            const median = sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+            $('#ttBadgeChartHighest').text(ttFormatChartValue(max));
+            $('#ttBadgeChartMedian').text(ttFormatChartValue(median));
+            $('#ttBadgeChartLowest').text(ttFormatChartValue(min));
+
+            const canvas = document.getElementById('ttBadgeChartCanvas');
+            if (!canvas || typeof Chart === 'undefined') return false;
+            if (ttBadgeChartInstance) ttBadgeChartInstance.destroy();
+
+            ttBadgeChartInstance = new Chart(canvas.getContext('2d'), {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: ttBadgeMetricLabels[ttBadgeChartMetricKey] || ttBadgeChartMetricKey,
+                        data: values,
+                        borderColor: '#06b6d4',
+                        backgroundColor: 'rgba(6, 182, 212, 0.12)',
+                        pointBackgroundColor: '#0891b2',
+                        pointRadius: 3,
+                        pointHoverRadius: 5,
+                        borderWidth: 2,
+                        tension: 0.25,
+                        fill: true
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            ticks: {
+                                callback: function(value) { return ttFormatChartValue(value); }
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                label: function(ctx) {
+                                    return (ttBadgeMetricLabels[ttBadgeChartMetricKey] || 'Value') + ': ' + ttFormatChartValue(ctx.parsed.y);
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+            return true;
+        }
+
+        function loadTtBadgeChart() {
+            if (!ttBadgeChartMetricKey) return;
+            if (ttBadgeChartAjax) ttBadgeChartAjax.abort();
+            $('#ttBadgeChartNoData').hide();
+            $('#ttBadgeChartContainer').hide();
+            $('#ttBadgeChartLoading').show();
+
+            ttBadgeChartAjax = $.ajax({
+                url: '/tiktok-badge-chart-data',
+                method: 'GET',
+                data: { metric: ttBadgeChartMetricKey, days: ttBadgeChartDays },
+                success: function(res) {
+                    ttBadgeChartAjax = null;
+                    $('#ttBadgeChartLoading').hide();
+                    const points = (res && res.success && Array.isArray(res.data)) ? res.data : [];
+                    if (renderTtBadgeChart(points)) {
+                        $('#ttBadgeChartContainer').show();
+                    } else {
+                        $('#ttBadgeChartNoData').show();
+                    }
+                },
+                error: function() {
+                    ttBadgeChartAjax = null;
+                    $('#ttBadgeChartLoading').hide();
+                    $('#ttBadgeChartNoData').show();
+                }
+            });
+        }
+
+        $(document).on('click', '.tt-badge-chart', function() {
+            ttBadgeChartMetricKey = $(this).data('metric');
+            ttBadgeChartDays = 30;
+            $('#ttBadgeChartRangeSelect').val('30');
+            $('#ttBadgeChartModalTitle').text(`TikTok - ${ttBadgeMetricLabels[ttBadgeChartMetricKey] || ttBadgeChartMetricKey} Trend`);
+            bootstrap.Modal.getOrCreateInstance(document.getElementById('ttBadgeChartModal')).show();
+            loadTtBadgeChart();
+        });
+
+        $(document).on('change', '#ttBadgeChartRangeSelect', function() {
+            const days = parseInt($(this).val(), 10) || 30;
+            if (days === ttBadgeChartDays) return;
+            ttBadgeChartDays = days;
+            loadTtBadgeChart();
+        });
+
         // Discount type dropdown change handler
         $('#discount-type-select').on('change', function() {
             const discountType = $(this).val();
@@ -695,7 +870,7 @@
                         newSprice = roundToRetailPrice(newSprice);
                         newSprice = Math.max(0.99, newSprice);
                         
-                        const percentage = rowData['percentage'] || 0.80;
+                        const percentage = getRowMarginFactor(rowData);
                         const lp = rowData['LP_productmaster'] || 0;
                         const ship = rowData['Ship_productmaster'] || 0;
                         
@@ -1304,6 +1479,32 @@
                     width: 70
                 },
                 {
+                    title: "T Profit",
+                    field: "T Profit",
+                    hozAlign: "center",
+                    sorter: function(a, b, aRow, bRow) {
+                        const aData = aRow.getData();
+                        const bData = bRow.getData();
+                        const aProfit = parseFloat(aData.Profit || 0);
+                        const bProfit = parseFloat(bData.Profit || 0);
+                        const aTtl30 = parseFloat(aData['TT L30'] || 0);
+                        const bTtl30 = parseFloat(bData['TT L30'] || 0);
+                        return (aTtl30 * aProfit) - (bTtl30 * bProfit);
+                    },
+                    visible: false,
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        const isParent = rowData.Parent && String(rowData.Parent).startsWith('PARENT ');
+                        const profit = parseFloat(rowData.Profit || 0);
+                        const ttl30 = parseFloat(rowData['TT L30'] || 0);
+                        const value = ttl30 * profit;
+                        if (isParent && !Number.isFinite(value)) return '<span style="color:#6c757d;">-</span>';
+                        const color = value >= 0 ? '#28a745' : '#a00211';
+                        return `<span style="color: ${color}; font-weight: 600;">$${value.toFixed(2)}</span>`;
+                    },
+                    width: 85
+                },
+                {
                     title: "Sales",
                     field: "Sales L30",
                     hozAlign: "center",
@@ -1527,7 +1728,7 @@
                 const sku = rowData['(Child) sku'];
                 const newSprice = parseFloat(cell.getValue()) || 0;
                 
-                const percentage = rowData['percentage'] || 0.80;
+                const percentage = getRowMarginFactor(rowData);
                 const lp = rowData['LP_productmaster'] || 0;
                 const ship = rowData['Ship_productmaster'] || 0;
                 
@@ -2010,7 +2211,9 @@
             let missingCount = 0, mapCount = 0, invTTStockCount = 0;
 
             data.forEach(row => {
-                totalPft += parseFloat(row.Profit) || 0;
+                const profit = parseFloat(row.Profit) || 0;
+                const l30 = parseFloat(row['TT L30']) || 0;
+                totalPft += l30 * profit;
                 totalSales += parseFloat(row['Sales L30']) || 0;
                 totalGpft += parseFloat(row['GPFT%']) || 0;
                 
@@ -2023,7 +2226,6 @@
                 totalInv += parseFloat(row.INV) || 0;
                 totalL30 += parseFloat(row['TT L30']) || 0;
                 
-                const l30 = parseFloat(row['TT L30']) || 0;
                 if (l30 === 0) {
                     zeroSoldCount++;
                 } else {
@@ -2068,7 +2270,6 @@
             $('#total-sales-amt-badge').text(`Total Sales: $${Math.round(totalSales).toLocaleString()}`);
             $('#avg-gpft-badge').text(`AVG GPFT: ${avgGpft.toFixed(1)}%`);
             $('#avg-price-badge').text(`Avg Price: $${avgPrice.toFixed(2)}`);
-            $('#total-inv-badge').text(`Total INV: ${totalInv.toLocaleString()}`);
             $('#total-l30-badge').text(`Total TT L30: ${totalL30.toLocaleString()}`);
             $('#zero-sold-count-badge').text(`0 Sold: ${zeroSoldCount}`);
             $('#more-sold-count-badge').text(`> 0 Sold: ${moreSoldCount}`);

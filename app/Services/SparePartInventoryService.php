@@ -6,9 +6,13 @@ use App\Models\Inventory;
 use App\Models\ProductMaster;
 use App\Models\Wms\StockMovement;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class SparePartInventoryService
 {
+    /** @var array<string, bool> */
+    private static array $inventoryColumnCache = [];
+
     public function totalAvailableForSku(string $sku): int
     {
         return (int) Inventory::query()
@@ -20,6 +24,9 @@ class SparePartInventoryService
     public function rowAvailable(Inventory $row): int
     {
         foreach (['available_qty', 'on_hand', 'verified_stock'] as $field) {
+            if (!$this->hasInventoryColumn($field)) {
+                continue;
+            }
             $v = $row->{$field};
             if ($v !== null && (int) $v > 0) {
                 return (int) $v;
@@ -123,8 +130,12 @@ class SparePartInventoryService
             if (!$row) {
                 $row = new Inventory;
                 $row->sku = $sku;
-                $row->available_qty = 0;
-                $row->on_hand = 0;
+                if ($this->hasInventoryColumn('available_qty')) {
+                    $row->available_qty = 0;
+                }
+                if ($this->hasInventoryColumn('on_hand')) {
+                    $row->on_hand = 0;
+                }
                 $row->is_approved = true;
             }
 
@@ -201,8 +212,12 @@ class SparePartInventoryService
                 if (!$row) {
                     $row = new Inventory;
                     $row->sku = $sku;
-                    $row->available_qty = 0;
-                    $row->on_hand = 0;
+                    if ($this->hasInventoryColumn('available_qty')) {
+                        $row->available_qty = 0;
+                    }
+                    if ($this->hasInventoryColumn('on_hand')) {
+                        $row->on_hand = 0;
+                    }
                     $row->is_approved = true;
                 }
 
@@ -229,11 +244,11 @@ class SparePartInventoryService
 
     private function decrementInventoryRow(Inventory $inv, int $take): void
     {
-        if ($inv->available_qty !== null && (int) $inv->available_qty > 0) {
+        if ($this->hasInventoryColumn('available_qty') && $inv->available_qty !== null && (int) $inv->available_qty > 0) {
             $inv->available_qty = max(0, (int) $inv->available_qty - $take);
-        } elseif ($inv->on_hand !== null && (int) $inv->on_hand > 0) {
+        } elseif ($this->hasInventoryColumn('on_hand') && $inv->on_hand !== null && (int) $inv->on_hand > 0) {
             $inv->on_hand = max(0, (int) $inv->on_hand - $take);
-        } elseif ($inv->verified_stock !== null && (int) $inv->verified_stock > 0) {
+        } elseif ($this->hasInventoryColumn('verified_stock') && $inv->verified_stock !== null && (int) $inv->verified_stock > 0) {
             $inv->verified_stock = max(0, (int) $inv->verified_stock - $take);
         }
         $inv->save();
@@ -241,15 +256,27 @@ class SparePartInventoryService
 
     private function incrementInventoryRow(Inventory $inv, int $add): void
     {
-        if ($inv->available_qty !== null) {
-            $inv->available_qty = (int) $inv->available_qty + $add;
-        } else {
-            $inv->available_qty = $add;
+        if ($this->hasInventoryColumn('available_qty')) {
+            if ($inv->available_qty !== null) {
+                $inv->available_qty = (int) $inv->available_qty + $add;
+            } else {
+                $inv->available_qty = $add;
+            }
         }
-        if ($inv->on_hand !== null) {
+
+        if ($this->hasInventoryColumn('on_hand') && $inv->on_hand !== null) {
             $inv->on_hand = (int) $inv->on_hand + $add;
-        } else {
+        } elseif ($this->hasInventoryColumn('on_hand')) {
             $inv->on_hand = $add;
         }
+    }
+
+    private function hasInventoryColumn(string $column): bool
+    {
+        if (!array_key_exists($column, self::$inventoryColumnCache)) {
+            self::$inventoryColumnCache[$column] = Schema::hasColumn('inventories', $column);
+        }
+
+        return self::$inventoryColumnCache[$column];
     }
 }

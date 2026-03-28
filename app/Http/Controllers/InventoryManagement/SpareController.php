@@ -538,9 +538,9 @@ class SpareController extends Controller
             return Supplier::query()->find((int) $supplierInput);
         }
 
-        return Supplier::query()->firstOrCreate(
-            ['name' => $supplierInput],
-            ['company' => $supplierInput]
-        );
+        return Supplier::query()
+            ->whereRaw('LOWER(name) = ?', [strtolower($supplierInput)])
+            ->orWhereRaw('LOWER(company) = ?', [strtolower($supplierInput)])
+            ->first();
     }
 }

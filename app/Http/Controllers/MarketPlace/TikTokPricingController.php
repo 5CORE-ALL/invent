@@ -29,9 +29,11 @@ class TikTokPricingController extends Controller
         $mode = $request->query("mode");
         $demo = $request->query("demo");
 
-        // Get percentage from MarketplacePercentage table (consistent with other marketplaces)
-        $marketplaceData = MarketplacePercentage::where('marketplace', 'TikTok')->first();
-        $percentage = $marketplaceData ? $marketplaceData->percentage : 80;
+        // Use TiktokShop marketplace key (fallback to TikTok for legacy rows)
+        $marketplaceData = MarketplacePercentage::where('marketplace', 'TiktokShop')
+            ->orWhere('marketplace', 'TikTok')
+            ->first();
+        $percentage = $marketplaceData ? $marketplaceData->percentage : 85;
 
         return view("market-places.tiktok_tabulator_view", [
             "mode" => $mode,
@@ -87,12 +89,74 @@ class TikTokPricingController extends Controller
     }
 
     /**
+     * Return daily badge chart data from saved TikTok snapshots.
+     */
+    public function tiktokBadgeChartData(Request $request)
+    {
+        try {
+            $metric = (string) $request->input('metric', 'total_pft');
+            $days = max(0, intval($request->input('days', 30)));
+
+            $metricMap = [
+                'total_pft' => 'total_pft',
+                'total_sales' => 'total_sales',
+                'avg_gpft' => 'avg_gpft',
+                'avg_price' => 'avg_price',
+                'total_l30' => 'total_l30',
+                'zero_sold_count' => 'zero_sold_count',
+                'sold_count' => 'sold_count',
+                'avg_dil' => 'avg_dil',
+                'total_cogs' => 'total_cogs',
+                'avg_roi' => 'avg_roi',
+                'missing_count' => 'missing_count',
+                'map_count' => 'map_count',
+                'inv_tt_stock_count' => 'inv_tt_stock_count',
+            ];
+
+            $summaryKey = $metricMap[$metric] ?? null;
+            if (!$summaryKey) {
+                return response()->json(['success' => false, 'message' => 'Invalid metric'], 400);
+            }
+
+            $query = AmazonChannelSummary::where('channel', 'tiktok')
+                ->orderBy('snapshot_date', 'asc');
+
+            if ($days > 0) {
+                $startDate = now('America/Los_Angeles')->subDays($days)->toDateString();
+                $query->where('snapshot_date', '>=', $startDate);
+            }
+
+            $rows = $query->get(['snapshot_date', 'summary_data']);
+
+            $data = [];
+            foreach ($rows as $row) {
+                $summaryData = is_array($row->summary_data)
+                    ? $row->summary_data
+                    : (json_decode($row->summary_data ?? '{}', true) ?: []);
+
+                $value = floatval($summaryData[$summaryKey] ?? 0);
+                $data[] = [
+                    'date' => optional($row->snapshot_date)->format('M d'),
+                    'value' => $value,
+                ];
+            }
+
+            return response()->json(['success' => true, 'data' => $data]);
+        } catch (\Exception $e) {
+            Log::error('Error fetching TikTok badge chart data: ' . $e->getMessage());
+            return response()->json(['success' => false, 'data' => []], 500);
+        }
+    }
+
+    /**
      * Get TikTok Tabular Data (similar to Reverb)
      */
     public function  getViewTikTokTabularData(Request $request)
     {
-        // Get percentage from MarketplacePercentage table (consistent with other marketplaces)
-        $marketplaceData = MarketplacePercentage::where('marketplace', 'TikTok')->first();
+        // Use TiktokShop marketplace key (fallback to TikTok for legacy rows)
+        $marketplaceData = MarketplacePercentage::where('marketplace', 'TiktokShop')
+            ->orWhere('marketplace', 'TikTok')
+            ->first();
         $percentage = $marketplaceData ? $marketplaceData->percentage : 80;
         $percentageValue = $percentage / 100;
 
@@ -945,9 +1009,11 @@ class TikTokPricingController extends Controller
             $mapCount = 0;
             $invTTStockCount = 0;
             
-            // Loop through each row (EXACT JavaScript forEach logic)
+            // Loop through each row (mirror JavaScript updateSummary logic)
             foreach ($filteredData as $row) {
-                $totalPft += floatval($row['Profit'] ?? 0);
+                $profit = floatval($row['Profit'] ?? 0);
+                $l30 = floatval($row['TT L30'] ?? 0);
+                $totalPft += ($l30 * $profit);
                 $totalSales += floatval($row['Sales L30'] ?? 0);
                 $totalGpft += floatval($row['GPFT%'] ?? 0);
                 
@@ -960,7 +1026,6 @@ class TikTokPricingController extends Controller
                 $totalInv += floatval($row['INV'] ?? 0);
                 $totalL30 += floatval($row['TT L30'] ?? 0);
                 
-                $l30 = floatval($row['TT L30'] ?? 0);
                 if ($l30 == 0) {
                     $zeroSoldCount++;
                 } else {

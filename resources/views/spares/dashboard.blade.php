@@ -221,7 +221,7 @@
                     </div>
                     <div class="col-12">
                         <label class="form-label">Parent SKU</label>
-                        <input type="text" class="form-control" name="parent_sku">
+                        <input type="text" list="spareSkuOptions" class="form-control" name="parent_sku">
                     </div>
                     <div class="col-12">
                         <label class="form-label">Supplier</label>
@@ -253,7 +253,15 @@
                 <div class="modal-body row g-2">
                     <div class="col-12">
                         <label class="form-label">SKU</label>
-                        <input type="text" class="form-control" name="sku" required>
+                        <input type="text" list="spareSkuOptions" class="form-control" name="sku" id="requisitionSkuInput" required>
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label">Parent SKU</label>
+                        <input type="text" class="form-control" id="requisitionParentSku" readonly>
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label">Supplier</label>
+                        <input type="text" class="form-control" id="requisitionSupplier" readonly>
                     </div>
                     <div class="col-6">
                         <label class="form-label">Qty</label>
@@ -305,7 +313,11 @@
                     </div>
                     <div class="col-12">
                         <label class="form-label">SKU</label>
-                        <input type="text" class="form-control" name="sku" required>
+                        <input type="text" list="spareSkuOptions" class="form-control" name="sku" id="poSkuInput" required>
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label">Parent SKU</label>
+                        <input type="text" class="form-control" id="poParentSku" readonly>
                     </div>
                     <div class="col-6">
                         <label class="form-label">Qty</label>
@@ -345,6 +357,7 @@
     </div>
 
     <datalist id="supplierOptions"></datalist>
+    <datalist id="spareSkuOptions"></datalist>
 @endsection
 
 @section('script')
@@ -414,6 +427,33 @@
             function renderSuppliers() {
                 const rows = (dashboardData.suppliers || []).map(s => `<option value="${safe(s.label || s.id)}"></option>`);
                 $('#supplierOptions').html(rows.join(''));
+            }
+
+            function renderSkuOptions() {
+                const rows = (dashboardData.spares || []).map(row => `<option value="${safe(row.sku)}"></option>`);
+                $('#spareSkuOptions').html(rows.join(''));
+            }
+
+            function findSpareBySku(skuInput) {
+                const needle = String(skuInput || '').trim().toLowerCase();
+                if (!needle) {
+                    return null;
+                }
+                return (dashboardData.spares || []).find(row => String(row.sku || '').trim().toLowerCase() === needle) || null;
+            }
+
+            function syncRequisitionSkuMeta() {
+                const selected = findSpareBySku($('#requisitionSkuInput').val());
+                $('#requisitionParentSku').val(selected?.parent_sku || '');
+                $('#requisitionSupplier').val(selected?.supplier || '');
+            }
+
+            function syncPoSkuMeta() {
+                const selected = findSpareBySku($('#poSkuInput').val());
+                $('#poParentSku').val(selected?.parent_sku || '');
+                if (selected?.supplier) {
+                    $('#createPoForm [name="supplier"]').val(selected.supplier);
+                }
             }
 
             function renderSpares() {
@@ -529,6 +569,7 @@
             function renderAll() {
                 renderSummary();
                 renderSuppliers();
+                renderSkuOptions();
                 renderSpares();
                 renderRequisitions();
                 renderIssueItems();
@@ -590,6 +631,8 @@
                     .fail(xhr => showToast(parseError(xhr), true));
             });
 
+            $('#requisitionSkuInput').on('input change', syncRequisitionSkuMeta);
+
             $(document).on('click', '.req-status-btn', function() {
                 const id = $(this).data('id');
                 const status = $(this).data('status');
@@ -633,6 +676,8 @@
                     .fail(xhr => showToast(parseError(xhr), true));
             });
 
+            $('#poSkuInput').on('input change', syncPoSkuMeta);
+
             $(document).on('click', '.po-sent-btn', function() {
                 const poId = $(this).data('po-id');
                 const url = routes.poAction.replace('__ID__', poId);
@@ -665,6 +710,8 @@
             });
 
             renderAll();
+            syncRequisitionSkuMeta();
+            syncPoSkuMeta();
         })();
     </script>
 @endsection
