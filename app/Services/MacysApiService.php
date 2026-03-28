@@ -182,47 +182,95 @@ class MacysApiService
                 return ['success' => false, 'message' => 'SKU (or marketplace product id) and bullet points are required.'];
             }
 
-            $token = $this->getAccessToken();
-            if (! $token) {
-                return ['success' => false, 'message' => 'Macy access token not available'];
-            }
-
-            $baseUrl = 'https://miraklconnect.com/api/products';
-            $productPayload = [
-                'id' => $sku,
-                'attributes' => [
-                    'longDescription' => $bulletPoints,
-                    'productDescription' => $bulletPoints,
-                    'bulletPoints' => $bulletPoints,
-                ],
+            $attributes = [
+                'longDescription' => $bulletPoints,
+                'productDescription' => $bulletPoints,
+                'bulletPoints' => $bulletPoints,
             ];
 
-            $headers = [
-                'Accept' => 'application/json',
-                'Content-Type' => 'application/json',
-            ];
-            $channelId = config('services.macy.company_id');
-            if (! empty($channelId)) {
-                $headers['channel_id'] = $channelId;
-            }
-
-            $request = Http::withoutVerifying()->withToken($token)->withHeaders($headers)->timeout(60);
-
-            $response = $request->post($baseUrl, ['products' => [$productPayload]]);
-            if (! $response->successful()) {
-                $response = $request->patch("{$baseUrl}/{$sku}", $productPayload);
-            }
-            if (! $response->successful()) {
-                $response = $request->put("{$baseUrl}/{$sku}", $productPayload);
-            }
-
-            if (! $response->successful()) {
-                return ['success' => false, 'message' => 'Macy bullet update failed: ' . $response->body()];
-            }
-
-            return ['success' => true, 'message' => 'Macy bullet points updated', 'response' => $response->json()];
+            return $this->pushMacyMiraklProductAttributes($sku, $attributes, 'Macy bullet points updated', 'Macy bullet update failed');
         } catch (\Throwable $e) {
-            Log::error('Macy bullet update failed', ['sku' => $sku, 'error' => $e->getMessage()]);
+            Log::error('Macy bullet update failed', ['identifier' => $identifier, 'error' => $e->getMessage()]);
+
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    /**
+     * Mirakl Connect product upsert: POST batch, then PATCH/PUT by SKU (same as title/bullet flows).
+     *
+     * @param  array<string, string>  $attributes
+     * @return array{success: bool, message: string, response?: mixed}
+     */
+    private function pushMacyMiraklProductAttributes(string $sku, array $attributes, string $successMessage, string $failurePrefix): array
+    {
+        $token = $this->getAccessToken();
+        if (! $token) {
+            return ['success' => false, 'message' => 'Macy access token not available'];
+        }
+
+        $baseUrl = 'https://miraklconnect.com/api/products';
+        $productPayload = [
+            'id' => $sku,
+            'attributes' => $attributes,
+        ];
+
+        $headers = [
+            'Accept' => 'application/json',
+            'Content-Type' => 'application/json',
+        ];
+        $channelId = config('services.macy.company_id');
+        if (! empty($channelId)) {
+            $headers['channel_id'] = $channelId;
+        }
+
+        $request = Http::withoutVerifying()->withToken($token)->withHeaders($headers)->timeout(60);
+
+        $response = $request->post($baseUrl, ['products' => [$productPayload]]);
+        if (! $response->successful()) {
+            $response = $request->patch("{$baseUrl}/{$sku}", $productPayload);
+        }
+        if (! $response->successful()) {
+            $response = $request->put("{$baseUrl}/{$sku}", $productPayload);
+        }
+
+        if (! $response->successful()) {
+            return ['success' => false, 'message' => $failurePrefix.': '.$response->body()];
+        }
+
+        return ['success' => true, 'message' => $successMessage, 'response' => $response->json()];
+    }
+
+    /**
+     * Description Master: long-form copy via Mirakl `longDescription` / `productDescription` only (no bullet field).
+     *
+     * @return array{success: bool, message: string}
+     */
+    public function updateDescription(string $identifier, string $description): array
+    {
+        if (trim($identifier) === '' || trim($description) === '') {
+            return ['success' => false, 'message' => 'SKU (or marketplace product id) and description are required.'];
+        }
+
+        $description = trim($description);
+        if ($description === '') {
+            return ['success' => false, 'message' => 'Description is empty.'];
+        }
+
+        try {
+            $sku = $this->resolveMacyMiraklSku($identifier);
+            if ($sku === '') {
+                return ['success' => false, 'message' => 'SKU (or marketplace product id) and description are required.'];
+            }
+
+            $attributes = [
+                'longDescription' => $description,
+                'productDescription' => $description,
+            ];
+
+            return $this->pushMacyMiraklProductAttributes($sku, $attributes, 'Macy product description updated.', 'Macy description update failed');
+        } catch (\Throwable $e) {
+            Log::error('Macy description update failed', ['identifier' => $identifier, 'error' => $e->getMessage()]);
 
             return ['success' => false, 'message' => $e->getMessage()];
         }
@@ -233,6 +281,6 @@ class MacysApiService
      */
     public function updateProductDescription(string $identifier, string $description): array
     {
-        return $this->updateBulletPoints($identifier, $description);
+        return $this->updateDescription($identifier, $description);
     }
 }
