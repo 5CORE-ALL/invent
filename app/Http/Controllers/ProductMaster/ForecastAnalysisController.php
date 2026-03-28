@@ -465,6 +465,7 @@ class ForecastAnalysisController extends Controller
             $item->lp_value = $lp * $item->INV;
 
             $adv = $getAmazonAdv($sheetSku);
+            $item->avg_gpft_pct = null;
             $item->avg_npft_pct = null;
             $item->avg_nroi_pct = null;
             if (is_array($adv)) {
@@ -474,6 +475,7 @@ class ForecastAnalysisController extends Controller
                 $hasAdv = array_key_exists('GPFT', $adv) || array_key_exists('ROI', $adv)
                     || array_key_exists('AD_percent', $adv) || array_key_exists('AD%', $adv);
                 if ($hasAdv || $gpft != 0.0 || $roiPct != 0.0 || $adPct != 0.0) {
+                    $item->avg_gpft_pct = (int) round($gpft);
                     $item->avg_npft_pct = (int) round($gpft - $adPct);
                     $item->avg_nroi_pct = (int) round($roiPct - $adPct);
                 }

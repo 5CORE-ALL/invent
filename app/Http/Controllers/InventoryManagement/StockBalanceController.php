@@ -1027,18 +1027,24 @@ class StockBalanceController extends Controller
             $sku = $normalizeSku($request->sku);
             $action = $request->action;
 
-            // Find or create inventory record - use the normalized SKU
-            // Since SKU is not unique anymore, we need to update all records with this SKU or get the latest one
-            $inventory = Inventory::where('sku', $sku)->first();
-            
-            if (!$inventory) {
-                // Create new record if it doesn't exist
+            // inventories.sku can exist in mixed case / spacing variants (e.g. "1Pc" vs "1PC").
+            // Read APIs normalize SKUs, so update every normalized match to keep UI values consistent.
+            $matchedRows = Inventory::select('id', 'sku')->get()->filter(function ($inv) use ($normalizeSku, $sku) {
+                return $normalizeSku($inv->sku ?? '') === $sku;
+            });
+
+            if ($matchedRows->isEmpty()) {
                 $inventory = new Inventory();
-                $inventory->sku = $sku;
+                $inventory->sku = trim((string) $request->sku);
+                $inventory->action = $action;
+                $inventory->save();
+            } else {
+                $matchedIds = $matchedRows->pluck('id')->all();
+                Inventory::whereIn('id', $matchedIds)->update([
+                    'action' => $action,
+                    'updated_at' => now(),
+                ]);
             }
-            
-            $inventory->action = $action;
-            $inventory->save();
 
             Log::info("Action updated successfully", [
                 'sku' => $sku,
@@ -1199,13 +1205,24 @@ class StockBalanceController extends Controller
             $sku = $normalizeSku($request->sku);
             $action = $request->action;
 
-            $inventory = Inventory::where('sku', $sku)->first();
-            if (!$inventory) {
+            // inventories.sku can exist in mixed case / spacing variants (e.g. "1Pc" vs "1PC").
+            // Read APIs normalize SKUs, so update every normalized match to keep UI values consistent.
+            $matchedRows = Inventory::select('id', 'sku')->get()->filter(function ($inv) use ($normalizeSku, $sku) {
+                return $normalizeSku($inv->sku ?? '') === $sku;
+            });
+
+            if ($matchedRows->isEmpty()) {
                 $inventory = new Inventory();
-                $inventory->sku = $sku;
+                $inventory->sku = trim((string) $request->sku);
+                $inventory->combo_action = $action;
+                $inventory->save();
+            } else {
+                $matchedIds = $matchedRows->pluck('id')->all();
+                Inventory::whereIn('id', $matchedIds)->update([
+                    'combo_action' => $action,
+                    'updated_at' => now(),
+                ]);
             }
-            $inventory->combo_action = $action;
-            $inventory->save();
 
             Log::info("Combo TRF action updated", ['sku' => $sku, 'action' => $action]);
 
