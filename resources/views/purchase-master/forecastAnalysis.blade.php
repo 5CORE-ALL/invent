@@ -977,6 +977,28 @@
                         return '<span title="' + title + '" style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;">' + esc + '</span>';
                     }
                 },
+                {
+                    title: "Supplier",
+                    field: "mfrg_supplier",
+                    accessor: row => row["mfrg_supplier"] ?? '',
+                    minWidth: 96,
+                    width: 118,
+                    maxWidth: 180,
+                    widthGrow: 0,
+                    hozAlign: "center",
+                    vertAlign: "middle",
+                    cssClass: "forecast-current-supplier-cell",
+                    headerSort: false,
+                    headerFilter: "input",
+                    headerFilterPlaceholder: "Filter",
+                    headerFilterFunc: "like",
+                    formatter: function(cell) {
+                        const value = cell.getValue() || '';
+                        const esc = String(value).replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                        const display = esc || '-';
+                        return '<span class="forecast-supplier-name" title="' + esc.replace(/"/g, '&quot;') + '">' + display + '</span>';
+                    }
+                },
 
 
            
@@ -1689,35 +1711,6 @@
                                 </select>
                             </div>
                         `;
-                    }
-                },
-                {
-                    title: "Current Supplier",
-                    field: "mfrg_supplier",
-                    accessor: row => row["mfrg_supplier"] ?? '',
-                    minWidth: 68,
-                    width: 76,
-                    maxWidth: 92,
-                    widthGrow: 0,
-                    hozAlign: "center",
-                    vertAlign: "middle",
-                    cssClass: "forecast-current-supplier-cell",
-                    headerSort: false,
-                    titleFormatter: function() {
-                        const span = document.createElement('span');
-                        span.textContent = 'Cur Supp';
-                        span.setAttribute('title', 'Current Supplier');
-                        span.style.fontWeight = '700';
-                        return span;
-                    },
-                    headerFilter: "input",
-                    headerFilterPlaceholder: "Filter",
-                    headerFilterFunc: "like",
-                    formatter: function(cell) {
-                        const value = cell.getValue() || '';
-                        const esc = String(value).replace(/</g, '&lt;').replace(/>/g, '&gt;');
-                        const display = esc || '-';
-                        return '<span class="forecast-supplier-name" title="' + esc.replace(/"/g, '&quot;') + '">' + display + '</span>';
                     }
                 },
                 {
@@ -3928,10 +3921,11 @@
 
         const COLUMN_VIS_KEY = "tabulator_column_visibility";
         const COLUMN_PREF_KEY = "column_preferences";
-        const COLUMN_DEFAULT_ORDER = ["Image", "Parent", "SKU", "INV", "L30", "ov_dil", "msl", "s_msl"];
+        const COLUMN_DEFAULT_ORDER = ["Image", "Parent", "mfrg_supplier", "SKU", "INV", "L30", "ov_dil", "msl", "s_msl"];
         const COLUMN_MODAL_ITEMS = [
             { field: "Image", label: "#", group: "Item" },
             { field: "Parent", label: "Parent", group: "Item" },
+            { field: "mfrg_supplier", label: "Supplier", group: "Item" },
             { field: "SKU", label: "SKU", group: "Item" },
             { field: "INV", label: "INV", group: "Inventory Metrics" },
             { field: "L30", label: "I30", group: "Inventory Metrics" },

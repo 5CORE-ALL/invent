@@ -93,7 +93,7 @@ class BestBuyApiService
     /**
      * Mirakl Connect product update for Best Buy channel (bullet / long description).
      *
-     * @return array{success: bool, message: string}
+     * @return array{success: bool, message: string, status_code?: int|null}
      */
     public function updateBulletPoints(string $sku, string $bulletPoints): array
     {
@@ -149,5 +149,92 @@ class BestBuyApiService
     public function updateProductDescription(string $sku, string $description): array
     {
         return $this->updateBulletPoints($sku, $description);
+    }
+
+    /**
+     * Push price update to Best Buy (Mirakl Connect).
+     *
+     * @return array{success: bool, message: string}
+     */
+    public function updatePrice(string $sku, float $price): array
+    {
+        $sku = trim($sku);
+        if ($sku === '' || $price <= 0) {
+            return ['success' => false, 'message' => 'Valid SKU and price are required.', 'status_code' => 422];
+        }
+
+        $token = $this->getAccessToken();
+        if (! $token) {
+            return ['success' => false, 'message' => 'Best Buy / Mirakl access token not available.', 'status_code' => 401];
+        }
+
+        $baseUrl = 'https://miraklconnect.com/api/products';
+        $productPayload = [
+            'id' => $sku,
+            'attributes' => [
+                'price' => round($price, 2),
+            ],
+        ];
+
+        $headers = [
+            'Accept' => 'application/json',
+            'Content-Type' => 'application/json',
+            'channel_id' => 'bestbuyusa',
+        ];
+
+        try {
+            $request = Http::withoutVerifying()->withToken($token)->withHeaders($headers)->timeout(60);
+            $response = $request->post($baseUrl, ['products' => [$productPayload]]);
+            if (! $response->successful()) {
+                $response = $request->patch("{$baseUrl}/{$sku}", $productPayload);
+            }
+            if (! $response->successful()) {
+                $response = $request->put("{$baseUrl}/{$sku}", $productPayload);
+            }
+
+            if (! $response->successful()) {
+                return [
+                    'success' => false,
+                    'message' => 'Best Buy price update failed: ' . $response->body(),
+                    'status_code' => $response->status(),
+                ];
+            }
+
+            $json = $response->json();
+            $hasApiError = false;
+            $apiErrorMessage = '';
+            if (is_array($json)) {
+                $hasApiError = ! empty($json['errors'])
+                    || ! empty($json['error'])
+                    || ! empty($json['error_message'])
+                    || (isset($json['success']) && $json['success'] === false)
+                    || ((isset($json['status']) && is_string($json['status'])) && strtolower($json['status']) === 'error');
+
+                if ($hasApiError) {
+                    $apiErrorMessage = (string) ($json['error_message']
+                        ?? $json['error']
+                        ?? (is_array($json['errors']) ? json_encode($json['errors']) : $json['errors'])
+                        ?? 'Unknown API error');
+                }
+            }
+
+            if ($hasApiError) {
+                Log::warning('Best Buy price update returned API error payload', [
+                    'sku' => $sku,
+                    'status' => $response->status(),
+                    'response' => $json,
+                ]);
+                return [
+                    'success' => false,
+                    'message' => 'Best Buy price update failed: ' . $apiErrorMessage,
+                    'status_code' => $response->status(),
+                ];
+                
+            }
+
+            return ['success' => true, 'message' => 'Best Buy price updated.', 'status_code' => $response->status()];
+        } catch (\Throwable $e) {
+            return ['success' => false, 'message' => $e->getMessage(), 'status_code' => null];
+        }
     }
 }

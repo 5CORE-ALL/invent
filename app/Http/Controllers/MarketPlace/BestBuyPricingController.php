@@ -15,6 +15,7 @@ use App\Models\BestbuyPriceData;
 use App\Models\AmazonDatasheet;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use App\Services\BestBuyApiService;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use App\Models\AmazonChannelSummary;
 
@@ -364,11 +365,16 @@ class BestBuyPricingController extends Controller
         $dataView->value = $merged;
         $dataView->save();
 
+        $pushResult = $this->pushPriceToBestBuy($sku, $spriceFloat);
+
         return response()->json([
             'success' => true,
             'spft_percent' => $spft,
             'sroi_percent' => $sroi,
-            'sgpft_percent' => $sgpft
+            'sgpft_percent' => $sgpft,
+            'price_push_success' => (bool) ($pushResult['success'] ?? false),
+            'price_push_message' => (string) ($pushResult['message'] ?? ''),
+            'price_push_status_code' => $pushResult['status_code'] ?? null,
         ]);
     }
 
@@ -612,6 +618,7 @@ class BestBuyPricingController extends Controller
 
             $updated = 0;
             $errors = [];
+            $pricePushQueue = [];
 
             DB::beginTransaction();
             
@@ -723,6 +730,7 @@ class BestBuyPricingController extends Controller
                     ]);
                 }
                 $updated++;
+                $pricePushQueue[] = ['sku' => $sku, 'sprice' => (float) $sprice];
                 
                 // Store last calculated metrics for single update response
                 if (count($updates) === 1) {
@@ -736,10 +744,29 @@ class BestBuyPricingController extends Controller
 
             DB::commit();
 
+            $pricePushSuccess = 0;
+            $pricePushFailed = 0;
+            $pricePushErrors = [];
+            $singlePushResult = null;
+            foreach ($pricePushQueue as $pushItem) {
+                $pushResult = $this->pushPriceToBestBuy($pushItem['sku'], (float) $pushItem['sprice']);
+                if (count($pricePushQueue) === 1) {
+                    $singlePushResult = $pushResult;
+                }
+                if (($pushResult['success'] ?? false) === true) {
+                    $pricePushSuccess++;
+                } else {
+                    $pricePushFailed++;
+                    $pricePushErrors[] = $pushItem['sku'] . ': ' . ($pushResult['message'] ?? 'Price push failed');
+                }
+            }
+
             $response = [
                 'success' => true,
                 'updated' => $updated,
-                'message' => "Successfully saved {$updated} SPRICE update(s)"
+                'message' => "Successfully saved {$updated} SPRICE update(s)",
+                'price_push_success_count' => $pricePushSuccess,
+                'price_push_failed_count' => $pricePushFailed,
             ];
 
             // Include calculated metrics for single updates (manual cell edits)
@@ -751,6 +778,14 @@ class BestBuyPricingController extends Controller
                 $response['errors'] = $errors;
                 $response['message'] .= ' with ' . count($errors) . ' error(s)';
             }
+            if (!empty($pricePushErrors)) {
+                $response['price_push_errors'] = $pricePushErrors;
+            }
+            if (is_array($singlePushResult)) {
+                $response['price_push_success'] = (bool) ($singlePushResult['success'] ?? false);
+                $response['price_push_message'] = (string) ($singlePushResult['message'] ?? '');
+                $response['price_push_status_code'] = $singlePushResult['status_code'] ?? null;
+            }
 
             Log::info("BestBuy SPRICE updates saved to bestbuy_usa_data_view: {$updated} records updated");
 
@@ -760,6 +795,25 @@ class BestBuyPricingController extends Controller
             DB::rollBack();
             Log::error('Error saving SPRICE updates: ' . $e->getMessage());
             return response()->json(['error' => 'Error saving updates: ' . $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * Push saved SPRICE to Best Buy marketplace API.
+     *
+     * @return array{success:bool,message:string}
+     */
+    private function pushPriceToBestBuy(string $sku, float $sprice): array
+    {
+        if ($sprice <= 0) {
+            return ['success' => false, 'message' => 'Skipping push for non-positive price'];
+        }
+
+        try {
+            return app(BestBuyApiService::class)->updatePrice($sku, $sprice);
+        } catch (\Throwable $e) {
+            Log::error('Best Buy price push call failed', ['sku' => $sku, 'error' => $e->getMessage()]);
+            return ['success' => false, 'message' => $e->getMessage()];
         }
     }
 

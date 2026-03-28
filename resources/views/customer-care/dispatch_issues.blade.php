@@ -1,0 +1,5 @@
+@php($ordersOnHoldTitle = 'Dispatch Issues')
+@php($ordersOnHoldRecordsTitle = 'Dispatch Issues Records')
+@php($ordersOnHoldAddButtonText = 'Add Dispatch Issues')
+@php($ordersOnHoldHistoryButtonText = 'Dispatch Issues History')
+@include('customer-care.orders_on_hold')

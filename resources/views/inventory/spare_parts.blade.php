@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Spare Parts', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
+@extends('layouts.vertical', ['title' => 'Spare Parts & Packing', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
 
 @section('css')
     <meta name="csrf-token" content="{{ csrf_token() }}">
@@ -42,11 +42,11 @@
     <div class="container-fluid py-3">
         <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
             <div>
-                <h4 class="mb-0">Spare Parts</h4>
+                <h4 class="mb-0">Spare Parts & Packing</h4>
                 <nav class="breadcrumb-sm text-muted" aria-label="breadcrumb">
                     <span>Inventory Management</span>
                     <span class="mx-1">/</span>
-                    <span class="text-body">Spare Parts</span>
+                    <span class="text-body">Spare Parts & Packing</span>
                 </nav>
             </div>
             <button type="button" class="btn btn-outline-secondary btn-sm" id="btn-refresh-summary">Refresh summary</button>

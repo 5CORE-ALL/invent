@@ -4,6 +4,7 @@
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
 <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
+<link href="{{ asset('css/select-searchable.css') }}" rel="stylesheet">
 <link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
 <style>
     /* Custom styles for the Tabulator table */
@@ -48,6 +49,17 @@
                     <button id="add-new-row" class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#claimModal">
                         <i class="fas fa-plus-circle me-1"></i>Add Claim / Reimbursement
                     </button>
+                </div>
+                <div class="row mb-3">
+                    <div class="col-md-4 col-lg-3">
+                        <label for="supplier-filter" class="form-label fw-semibold mb-1">Suppler</label>
+                        <select id="supplier-filter" class="form-select form-select-sm select-searchable">
+                            <option value="">All Supplers</option>
+                            @foreach($suppliers as $supplier)
+                                <option value="{{ $supplier->id }}">{{ $supplier->name }}</option>
+                            @endforeach
+                        </select>
+                    </div>
                 </div>
                 <div id="claim-reimbursement-table"></div>
             </div>
@@ -173,9 +185,11 @@
 @endsection
 
 @section('script')
+<script src="{{ asset('js/select-searchable.js') }}"></script>
 <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
 <script>
     document.addEventListener('DOMContentLoaded', function () {
+        const supplierFilter = document.getElementById('supplier-filter');
         const table = new Tabulator("#claim-reimbursement-table", {
             ajaxURL: "/claim-reimbursement/view-data",
             ajaxConfig: "GET",
@@ -210,6 +224,14 @@
                 },
             ],
         });
+
+        if (supplierFilter) {
+            supplierFilter.addEventListener('change', function () {
+                const supplierId = this.value || '';
+                table.setData("/claim-reimbursement/view-data", { supplier_id: supplierId });
+            });
+        }
+
         addNewRow();
     });
 

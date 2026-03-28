@@ -22,9 +22,15 @@ class ClaimReimbursementController extends Controller
         return view('purchase-master.claim-reimbursement', compact('suppliers', 'claimNumber'));
     }
 
-    public function getViewClaimReimbursementData()
+    public function getViewClaimReimbursementData(Request $request)
     {
-        $claims = ClaimReimbursement::with('supplier:id,name')->get();
+        $claimsQuery = ClaimReimbursement::with('supplier:id,name');
+
+        if ($request->filled('supplier_id')) {
+            $claimsQuery->where('supplier_id', $request->supplier_id);
+        }
+
+        $claims = $claimsQuery->get();
 
         $formatted = $claims->map(function ($claim) {
             return [

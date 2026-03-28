@@ -82,7 +82,7 @@ class MacysApiService
     /**
      * Update Macy's product title by SKU.
      *
-     * @return array{success:bool,message:string,response?:mixed}
+     * @return array{success:bool,message:string,status_code?:int|null,response?:mixed}
      */
     public function updateTitle(string $sku, string $title): array
     {
@@ -139,6 +139,104 @@ class MacysApiService
         } catch (\Throwable $e) {
             Log::error('❌ Macy push failed', ['sku' => $sku, 'error' => $e->getMessage()]);
             return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    /**
+     * Update Macy's price by SKU.
+     *
+     * @return array{success:bool,message:string,response?:mixed}
+     */
+    public function updatePrice(string $sku, float $price): array
+    {
+        Log::info('Macy price update started', ['sku' => $sku, 'price' => $price]);
+
+        try {
+            $token = $this->getAccessToken();
+            if (! $token) {
+                return ['success' => false, 'message' => 'Macy access token not available', 'status_code' => 401];
+            }
+
+            $sku = trim($sku);
+            if ($sku === '' || $price <= 0) {
+                return ['success' => false, 'message' => 'Valid SKU and price are required', 'status_code' => 422];
+            }
+
+            $baseUrl = 'https://miraklconnect.com/api/products';
+            $productPayload = [
+                'id' => $sku,
+                'attributes' => [
+                    'price' => round($price, 2),
+                ],
+            ];
+
+            $headers = [
+                'Accept' => 'application/json',
+                'Content-Type' => 'application/json',
+            ];
+            $channelId = config('services.macy.company_id');
+            if (! empty($channelId)) {
+                $headers['channel_id'] = $channelId;
+            }
+
+            $request = Http::withoutVerifying()->withToken($token)->withHeaders($headers)->timeout(45);
+            $response = $request->post($baseUrl, ['products' => [$productPayload]]);
+            if (! $response->successful()) {
+                $response = $request->patch("{$baseUrl}/{$sku}", $productPayload);
+            }
+            if (! $response->successful()) {
+                $response = $request->put("{$baseUrl}/{$sku}", $productPayload);
+            }
+
+            if (! $response->successful()) {
+                return [
+                    'success' => false,
+                    'message' => 'Macy price update failed: ' . $response->body(),
+                    'status_code' => $response->status(),
+                ];
+            }
+
+            $json = $response->json();
+            $hasApiError = false;
+            $apiErrorMessage = '';
+            if (is_array($json)) {
+                $hasApiError = ! empty($json['errors'])
+                    || ! empty($json['error'])
+                    || ! empty($json['error_message'])
+                    || (isset($json['success']) && $json['success'] === false)
+                    || ((isset($json['status']) && is_string($json['status'])) && strtolower($json['status']) === 'error');
+
+                if ($hasApiError) {
+                    $apiErrorMessage = (string) ($json['error_message']
+                        ?? $json['error']
+                        ?? (is_array($json['errors']) ? json_encode($json['errors']) : $json['errors'])
+                        ?? 'Unknown API error');
+                }
+            }
+
+            if ($hasApiError) {
+                Log::warning('Macy price update returned API error payload', [
+                    'sku' => $sku,
+                    'status' => $response->status(),
+                    'response' => $json,
+                ]);
+                return [
+                    'success' => false,
+                    'message' => 'Macy price update failed: ' . $apiErrorMessage,
+                    'status_code' => $response->status(),
+                ];
+                
+            }
+
+            return [
+                'success' => true,
+                'message' => 'Macy price updated',
+                'status_code' => $response->status(),
+                'response' => $json ?? $response->body(),
+            ];
+        } catch (\Throwable $e) {
+            Log::error('Macy price update failed', ['sku' => $sku, 'error' => $e->getMessage()]);
+            return ['success' => false, 'message' => $e->getMessage(), 'status_code' => null];
         }
     }
 

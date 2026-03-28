@@ -862,16 +862,34 @@
                             <a href="{{ route('customer.care.orders.on.hold') }}">Orders On Hold</a>
                         </li>
                         <li>
+                            <a href="{{ route('customer.care.qc.and.packing') }}">QC And Packing</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('customer.care.label.issues') }}">Label Issues</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('customer.care.dispatch.issues') }}">Dispatch Issues</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('customer.care.carrier.issues') }}">Carrier Issues</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('inventory.spare-parts.index') }}">Spare Parts</a>
+                        </li>
+                        <li>
                             <a href="{{ route('customer.care.followups') }}">Follow UP</a>
                         </li>
                         <li>
                             <a href="{{ route('dar.index') }}">DAR</a>
                         </li>
                         <li>
-                            <a href="{{ route('incoming.view') }}">Incoming View</a>
+                            <a href="{{ route('incoming.view') }}">Incoming</a>
                         </li>
                         <li>
-                            <a href="{{ route('outgoing.view') }}">Outgoing View</a>
+                            <a href="{{ route('outgoing.view') }}">Outgoing</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('claim.reimbursement') }}">Claim & Reimbursement</a>
                         </li>
                     </ul>
                 </div>
