@@ -259,7 +259,7 @@
                                 <button type="button" class="btn btn-sm btn-secondary" id="btn-reload-parts">Apply</button>
                             </div>
                             <div class="col-md-auto d-flex align-items-end">
-                                <button type="button" class="btn btn-sm btn-primary" id="btn-open-create-spare-part">Create Spare Part</button>
+                                <button type="button" class="btn btn-sm btn-primary" id="btn-open-create-spare-part" data-bs-toggle="modal" data-bs-target="#modal-create-spare-part">Create Spare Part</button>
                             </div>
                         </div>
                     </div>
@@ -359,625 +359,117 @@
 
 @section('script')
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="{{ asset('js/select-searchable.js') }}"></script>
     <script>
-        const csrfMeta = document.querySelector('meta[name="csrf-token"]');
-        const csrf = csrfMeta ? csrfMeta.getAttribute('content') : '';
+        (function () {
+            const skuSelect = document.getElementById('create-spare-sku');
+            const supplierDisplay = document.getElementById('create-spare-supplier-display');
+            const supplierIdInput = document.getElementById('create-spare-supplier-id');
+            const saveButton = document.getElementById('btn-submit-create-spare-part');
+            const parentSelect = document.getElementById('create-spare-parent');
+            const partNameInput = document.getElementById('create-spare-part-name');
+            const mslPartInput = document.getElementById('create-spare-msl-part');
+            const qtyInput = document.getElementById('create-spare-qty');
+            const csrfMeta = document.querySelector('meta[name="csrf-token"]');
+            const csrf = csrfMeta ? csrfMeta.getAttribute('content') : '';
 
-        const URL_SUMMARY = "{{ url('/inventory/spare-parts/api/summary') }}";
-        const URL_PARTS = "{{ url('/inventory/spare-parts/api/spare-parts') }}";
-        const URL_LOW_STOCK = "{{ url('/inventory/spare-parts/api/low-stock') }}";
-        const URL_TREE = "{{ url('/inventory/spare-parts/api/tree') }}";
-        const URL_SUPPLIERS = "{{ url('/inventory/spare-parts/api/suppliers') }}";
-        const URL_REQ_INDEX = "{{ url('/inventory/spare-parts/api/requisitions') }}";
-        const URL_REQ_STORE = "{{ url('/inventory/spare-parts/api/requisitions') }}";
-        const URL_ISSUES_PENDING = "{{ url('/inventory/spare-parts/api/issues/pending') }}";
-        const URL_ISSUE_STORE = "{{ url('/inventory/spare-parts/api/issues') }}";
-        const URL_PO_INDEX = "{{ url('/inventory/spare-parts/api/purchase-orders') }}";
-        const URL_PO_STORE = "{{ url('/inventory/spare-parts/api/purchase-orders') }}";
-        const URL_PART_UPDATE_BASE = "{{ url('/inventory/spare-parts/api/parts') }}";
-        const URL_SPARE_PART_DETAILS_STORE = "{{ url('/inventory/spare-parts/api/spare-part-details') }}";
-        const URL_SUPPLIER_FOR_SKU = "{{ url('/refunds-supplier-for-sku') }}";
-        const reqActionUrl = (id, action) => `${URL_REQ_INDEX}/${id}/${action}`;
-        const poActionUrl = (id, action) => `${URL_PO_INDEX}/${id}/${action}`;
-        const partUpdateUrl = (id) => `${URL_PART_UPDATE_BASE}/${id}`;
-
-        function toast(msg) {
-            const el = document.getElementById('toast-ok');
-            document.getElementById('toast-ok-body').textContent = msg;
-            new bootstrap.Toast(el, {delay: 3500}).show();
-        }
-
-        function ensurePartSkusLoaded() {
-            const source = document.getElementById('sp-part-sku-source');
-            if (!source) {
-                return Promise.resolve([]);
+            if (!skuSelect || !supplierDisplay || !supplierIdInput || !saveButton || !parentSelect || !partNameInput || !mslPartInput || !qtyInput) {
+                return;
             }
-            const data = [];
-            for (let i = 0; i < source.options.length; i++) {
-                const option = source.options[i];
-                if (!option.value) {
-                    continue;
-                }
-                data.push({
-                    id: parseInt(option.value, 10),
-                    sku: option.textContent.trim(),
-                });
-            }
-            return Promise.resolve(data);
-        }
 
-        function fillPartSelect(sel, data) {
-            if (!sel) return;
-            if (window.SelectSearchable) {
-                window.SelectSearchable.destroy(sel);
-            }
-            sel.innerHTML = '';
-            const o0 = document.createElement('option');
-            o0.value = '';
-            o0.textContent = '— Select SKU —';
-            sel.appendChild(o0);
-            for (let i = 0; i < data.length; i++) {
-                const p = data[i];
-                const o = document.createElement('option');
-                o.value = String(p.id);
-                o.textContent = p.sku || ('#' + p.id);
-                sel.appendChild(o);
-            }
-            if (window.SelectSearchable) {
-                window.SelectSearchable.refresh(sel);
-            }
-        }
+            async function loadSupplierForSku() {
+                const selected = skuSelect.options[skuSelect.selectedIndex];
+                const sku = selected ? selected.textContent.trim() : '';
 
-        function resolvePartFromRow(row) {
-            const sel = row.querySelector('.part-select');
-            if (!sel || !sel.value) {
-                return { ok: false, reason: 'empty' };
-            }
-            return { ok: true, partId: parseInt(sel.value, 10) };
-        }
-
-        async function fetchJson(url, options = {}) {
-            const headers = {
-                'X-CSRF-TOKEN': csrf,
-                'Accept': 'application/json',
-                'X-Requested-With': 'XMLHttpRequest',
-                ...(options.headers || {}),
-            };
-            if (options.body && !(options.body instanceof FormData)) {
-                headers['Content-Type'] = 'application/json';
-            }
-            const res = await fetch(url, {
-                credentials: 'same-origin',
-                cache: 'no-store',
-                ...options,
-                headers,
-            });
-            const data = await res.json().catch(() => ({}));
-            if (!res.ok) {
-                const msg = data.message || data.error || (data.errors && JSON.stringify(data.errors)) || res.statusText;
-                throw new Error(typeof msg === 'string' ? msg : 'Request failed');
-            }
-            return data;
-        }
-
-        async function refreshSummary() {
-            const s = await fetchJson(URL_SUMMARY);
-            document.getElementById('card-total-spare').textContent = s.total_spare_parts;
-            document.getElementById('card-low-stock').textContent = s.low_stock_items;
-            document.getElementById('card-pending-req').textContent = s.pending_requisitions;
-            document.getElementById('card-pending-po').textContent = s.pending_purchase_orders;
-        }
-
-        document.getElementById('btn-refresh-summary').addEventListener('click', () => refreshSummary().catch(e => alert(e.message)));
-
-        function addReqLine() {
-            const wrap = document.createElement('div');
-            wrap.className = 'row g-1 mb-1 align-items-center';
-            wrap.innerHTML = `
-                <div class="col-md-8 col-7">
-                    <select class="form-select form-select-sm part-select select-searchable" aria-label="Product SKU">
-                        <option value="">Loading SKUs…</option>
-                    </select>
-                </div>
-                <div class="col-md-2 col-2"><input type="number" min="1" class="form-control form-control-sm qty-inp" value="1"></div>
-                <div class="col-md-1 col-1"><button type="button" class="btn btn-sm btn-link text-danger rm" title="Remove line">✕</button></div>`;
-            wrap.querySelector('.rm').onclick = () => wrap.remove();
-            document.getElementById('req-lines').appendChild(wrap);
-            const sel = wrap.querySelector('.part-select');
-            ensurePartSkusLoaded()
-                .then((data) => fillPartSelect(sel, data))
-                .catch((err) => {
-                    if (window.SelectSearchable) {
-                        window.SelectSearchable.destroy(sel);
-                    }
-                    sel.innerHTML = '';
-                    const o = document.createElement('option');
-                    o.value = '';
-                    o.textContent = 'Failed to load SKUs';
-                    sel.appendChild(o);
-                    if (window.SelectSearchable) {
-                        window.SelectSearchable.refresh(sel);
-                    }
-                    alert(err.message || 'Could not load product_master SKUs');
-                });
-        }
-        document.getElementById('btn-add-req-line').addEventListener('click', addReqLine);
-        addReqLine();
-
-        document.getElementById('form-requisition').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const fd = new FormData(e.target);
-            const items = [];
-            for (const row of document.querySelectorAll('#req-lines .row')) {
-                const qty = parseInt(row.querySelector('.qty-inp').value, 10);
-                if (!(qty > 0)) {
-                    continue;
-                }
-                const resolved = resolvePartFromRow(row);
-                if (!resolved.ok) {
-                    alert('Each line with a quantity needs a SKU chosen from the dropdown.');
+                if (!sku) {
+                    supplierDisplay.value = '';
+                    supplierIdInput.value = '';
                     return;
                 }
-                items.push({ part_id: resolved.partId, quantity_requested: qty });
-            }
-            if (!items.length) {
-                alert('Add at least one line: choose a SKU from the dropdown and enter quantity.');
-                return;
-            }
-            const body = {
-                department: fd.get('department') || null,
-                priority: fd.get('priority'),
-                notes: fd.get('notes') || null,
-                items
-            };
-            try {
-                await fetchJson(URL_REQ_STORE, {
-                    method: 'POST',
-                    body: JSON.stringify(body)
-                });
-                toast('Requisition saved');
-                loadRequisitions();
-                refreshSummary();
-            } catch (err) { alert(err.message); }
-        });
 
-        async function loadRequisitions() {
-            const r = await fetchJson(URL_REQ_INDEX);
-            const tb = document.querySelector('#table-requisitions tbody');
-            tb.innerHTML = '';
-            r.data.forEach(row => {
-                const tr = document.createElement('tr');
-                const items = (row.items || []).map(i => i.part?.sku || i.part_id).join(', ');
-                tr.innerHTML = `<td>${row.id}</td><td>${row.status}</td><td>${row.priority}</td><td>${row.department || ''}</td><td>${items}</td><td class="text-nowrap"></td>`;
-                const td = tr.querySelector('td:last-child');
-                if (row.status === 'draft') {
-                    td.innerHTML += `<button class="btn btn-sm btn-outline-secondary me-1" data-act="submit" data-id="${row.id}">Submit</button>`;
-                }
-                if (row.status === 'submitted' || row.status === 'draft') {
-                    td.innerHTML += `<button class="btn btn-sm btn-outline-success me-1" data-act="approve" data-id="${row.id}">Approve</button>`;
-                }
-                td.innerHTML += `<button class="btn btn-sm btn-outline-dark" data-act="close" data-id="${row.id}">Close</button>`;
-                tb.appendChild(tr);
-            });
-            tb.querySelectorAll('button[data-act]').forEach(btn => {
-                btn.addEventListener('click', async () => {
-                    const id = btn.getAttribute('data-id');
-                    const act = btn.getAttribute('data-act');
-                    try {
-                        if (act === 'submit') await fetchJson(reqActionUrl(id, 'submit'), {method: 'POST', body: JSON.stringify({})});
-                        if (act === 'approve') await fetchJson(reqActionUrl(id, 'approve'), {method: 'POST', body: JSON.stringify({})});
-                        if (act === 'close') await fetchJson(reqActionUrl(id, 'close'), {method: 'POST', body: JSON.stringify({})});
-                        toast('Updated');
-                        loadRequisitions();
-                        loadIssues();
-                        refreshSummary();
-                    } catch (err) { alert(err.message); }
-                });
-            });
-        }
+                try {
+                    const response = await fetch(`/refunds-supplier-for-sku?sku=${encodeURIComponent(sku)}`, {
+                        credentials: 'same-origin',
+                        headers: {
+                            'Accept': 'application/json',
+                            'X-Requested-With': 'XMLHttpRequest',
+                        },
+                    });
 
-        async function loadIssues() {
-            const r = await fetchJson(URL_ISSUES_PENDING);
-            const tb = document.querySelector('#table-issues tbody');
-            tb.innerHTML = '';
-            r.data.forEach(row => {
-                const tr = document.createElement('tr');
-                tr.innerHTML = `
-                    <td>${row.requisition_id}</td>
-                    <td>${row.sku}</td>
-                    <td>${row.quantity_approved}</td>
-                    <td>${row.quantity_issued}</td>
-                    <td>${row.remaining}</td>
-                    <td>${row.stock_available}</td>
-                    <td><input type="number" class="form-control form-control-sm issue-qty" style="width:70px" min="1" max="${row.remaining}" value="${Math.min(1, row.remaining)}"></td>
-                    <td><button class="btn btn-sm btn-primary btn-issue" data-item="${row.item_id}">Issue</button></td>`;
-                tb.appendChild(tr);
-            });
-            tb.querySelectorAll('.btn-issue').forEach(btn => {
-                btn.addEventListener('click', async () => {
-                    const tr = btn.closest('tr');
-                    const qty = parseInt(tr.querySelector('.issue-qty').value, 10);
-                    try {
-                        await fetchJson(URL_ISSUE_STORE, {
-                            method: 'POST',
-                            body: JSON.stringify({requisition_item_id: parseInt(btn.getAttribute('data-item'), 10), quantity: qty})
-                        });
-                        toast('Issued');
-                        loadIssues();
-                        refreshSummary();
-                    } catch (err) { alert(err.message); }
-                });
-            });
-        }
-
-        async function loadSuppliers() {
-            const r = await fetchJson(URL_SUPPLIERS);
-            const sel = document.getElementById('po-supplier');
-            sel.innerHTML = '<option value="">Select…</option>';
-            r.data.forEach(s => {
-                const o = document.createElement('option');
-                o.value = s.id;
-                o.textContent = (s.name || s.company || 'Supplier') + ' (#' + s.id + ')';
-                sel.appendChild(o);
-            });
-        }
-
-        function addPoLine() {
-            const wrap = document.createElement('div');
-            wrap.className = 'row g-1 mb-1 align-items-center';
-            wrap.innerHTML = `
-                <div class="col-md-6 col-6">
-                    <select class="form-select form-select-sm part-select select-searchable" aria-label="Product SKU">
-                        <option value="">Loading SKUs…</option>
-                    </select>
-                </div>
-                <div class="col-md-2 col-2"><input type="number" min="1" class="form-control form-control-sm qty-ord" value="1"></div>
-                <div class="col-md-2 col-2"><input type="number" step="0.01" class="form-control form-control-sm unit-cost" placeholder="Cost"></div>
-                <div class="col-md-1 col-1"><button type="button" class="btn btn-sm btn-link text-danger rm" title="Remove line">✕</button></div>`;
-            wrap.querySelector('.rm').onclick = () => wrap.remove();
-            document.getElementById('po-lines').appendChild(wrap);
-            const sel = wrap.querySelector('.part-select');
-            ensurePartSkusLoaded()
-                .then((data) => fillPartSelect(sel, data))
-                .catch((err) => {
-                    if (window.SelectSearchable) {
-                        window.SelectSearchable.destroy(sel);
+                    const data = await response.json().catch(() => ({}));
+                    if (!response.ok) {
+                        throw new Error(data.message || 'Failed to load supplier');
                     }
-                    sel.innerHTML = '';
-                    const o = document.createElement('option');
-                    o.value = '';
-                    o.textContent = 'Failed to load SKUs';
-                    sel.appendChild(o);
-                    if (window.SelectSearchable) {
-                        window.SelectSearchable.refresh(sel);
-                    }
-                    alert(err.message || 'Could not load product_master SKUs');
-                });
-        }
-        document.getElementById('btn-add-po-line').addEventListener('click', addPoLine);
-        addPoLine();
-        ensurePartSkusLoaded().catch(() => {});
 
-        document.getElementById('form-po').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const fd = new FormData(e.target);
-            const items = [];
-            for (const row of document.querySelectorAll('#po-lines .row')) {
-                const qty = parseInt(row.querySelector('.qty-ord').value, 10);
-                if (!(qty > 0)) {
-                    continue;
+                    supplierDisplay.value = data.supplier_name || '';
+                    supplierIdInput.value = data.supplier_id != null ? String(data.supplier_id) : '';
+                } catch (error) {
+                    supplierDisplay.value = '';
+                    supplierIdInput.value = '';
                 }
-                const resolved = resolvePartFromRow(row);
-                if (!resolved.ok) {
-                    alert('Each PO line with a quantity needs a SKU from the dropdown.');
+            }
+
+            skuSelect.addEventListener('change', loadSupplierForSku);
+
+            saveButton.addEventListener('click', async function () {
+                const parentId = parentSelect.value;
+                const productMasterId = skuSelect.value;
+                const partName = partNameInput.value.trim();
+                const mslPart = mslPartInput.value.trim();
+                const quantity = parseInt(qtyInput.value, 10);
+                const supplierId = supplierIdInput.value ? parseInt(supplierIdInput.value, 10) : null;
+
+                if (!parentId || !productMasterId) {
+                    alert('Choose parent and SKU.');
                     return;
                 }
-                const cost = row.querySelector('.unit-cost').value;
-                items.push({
-                    part_id: resolved.partId,
-                    qty_ordered: qty,
-                    unit_cost: cost ? parseFloat(cost) : null,
-                });
-            }
-            if (!items.length) {
-                alert('Add at least one line: choose a SKU and quantity.');
-                return;
-            }
-            const body = {
-                supplier_id: parseInt(fd.get('supplier_id'), 10),
-                expected_at: fd.get('expected_at') || null,
-                notes: fd.get('notes') || null,
-                items
-            };
-            try {
-                await fetchJson(URL_PO_STORE, {
-                    method: 'POST',
-                    body: JSON.stringify(body)
-                });
-                toast('PO created');
-                loadPo();
-                refreshSummary();
-            } catch (err) { alert(err.message); }
-        });
-
-        async function loadPo() {
-            const r = await fetchJson(URL_PO_INDEX);
-            const tb = document.querySelector('#table-po tbody');
-            tb.innerHTML = '';
-            r.data.forEach(po => {
-                const tr = document.createElement('tr');
-                const sup = po.supplier ? (po.supplier.name || po.supplier.company) : '';
-                let receiveCell = '';
-                if (po.status === 'draft') {
-                    receiveCell = `<button class="btn btn-sm btn-outline-secondary btn-send-po" data-id="${po.id}">Mark sent</button>`;
-                } else if (po.status === 'sent' || po.status === 'partially_received') {
-                    receiveCell = (po.items || []).map(it => {
-                        const left = (it.qty_ordered || 0) - (it.qty_received || 0);
-                        if (left <= 0) return '';
-                        return `<div class="mb-1">${it.part?.sku || it.part_id}: left ${left}
-                            <input type="number" class="form-control form-control-sm d-inline-block recv-qty" style="width:65px" min="1" max="${left}" value="${left}">
-                            <button type="button" class="btn btn-sm btn-success btn-recv" data-po="${po.id}" data-item="${it.id}">Recv</button></div>`;
-                    }).join('') || '—';
-                } else {
-                    receiveCell = '—';
+                if (!partName) {
+                    alert('Enter part name.');
+                    return;
                 }
-                tr.innerHTML = `<td>${po.po_number}</td><td>${sup}</td><td>${po.status}</td><td>${receiveCell}</td>`;
-                tb.appendChild(tr);
-            });
-            tb.querySelectorAll('.btn-send-po').forEach(btn => {
-                btn.addEventListener('click', async () => {
-                    try {
-                        await fetchJson(poActionUrl(btn.getAttribute('data-id'), 'send'), {method: 'POST', body: JSON.stringify({})});
-                        toast('PO sent');
-                        loadPo();
-                        refreshSummary();
-                    } catch (e) { alert(e.message); }
-                });
-            });
-            tb.querySelectorAll('.btn-recv').forEach(btn => {
-                btn.addEventListener('click', async () => {
-                    const div = btn.closest('div');
-                    const qty = parseInt(div.querySelector('.recv-qty').value, 10);
-                    try {
-                        await fetchJson(`/inventory/spare-parts/api/purchase-orders/${btn.getAttribute('data-po')}/receive`, {
-                            method: 'POST',
-                            body: JSON.stringify({item_id: parseInt(btn.getAttribute('data-item'), 10), quantity: qty})
-                        });
-                        toast('Received');
-                        loadPo();
-                        refreshSummary();
-                    } catch (e) { alert(e.message); }
-                });
-            });
-        }
+                if (!(quantity >= 1)) {
+                    alert('Quantity must be at least 1.');
+                    return;
+                }
 
-        function partsQuery() {
-            const pid = document.getElementById('filter-parts-parent').value;
-            const type = document.getElementById('filter-parts-type').value;
-            let url = URL_PARTS + '?type=' + encodeURIComponent(type);
-            if (pid) url += '&parent_id=' + encodeURIComponent(pid);
-            return url;
-        }
-
-        async function loadParts() {
-            const r = await fetchJson(partsQuery());
-            const tb = document.querySelector('#table-parts tbody');
-            tb.innerHTML = '';
-            r.data.forEach(p => {
-                const tr = document.createElement('tr');
-                tr.innerHTML = `
-                    <td class="td-part-name"></td>
-                    <td class="td-sku"></td>
-                    <td class="td-qty"></td>
-                    <td class="td-supplier"></td>
-                    <td>${p.stock}</td><td>${p.parent_sku || '—'}</td><td>${p.reorder_level ?? '—'}</td>
-                    <td>
-                        <button class="btn btn-sm btn-outline-primary btn-edit-part" data-id="${p.id}">Flags</button>
-                    </td>`;
-                tr.querySelector('.td-part-name').textContent = (p.part_name && String(p.part_name).trim()) ? p.part_name : '—';
-                tr.querySelector('.td-sku').textContent = p.sku ?? '';
-                tr.querySelector('.td-qty').textContent = (p.quantity != null && p.quantity !== '') ? String(p.quantity) : '—';
-                tr.querySelector('.td-supplier').textContent = (p.supplier_name && String(p.supplier_name).trim()) ? p.supplier_name : '—';
-                tb.appendChild(tr);
-            });
-            tb.querySelectorAll('.btn-edit-part').forEach(btn => {
-                btn.addEventListener('click', async () => {
-                    const id = btn.getAttribute('data-id');
-                    const isSpare = confirm('Mark this SKU as spare part?');
-                    const parentSel = prompt('Parent product ID (optional, blank to skip):', '');
-                    const body = {is_spare_part: isSpare};
-                    if (parentSel && parentSel.trim() !== '') body.parent_id = parseInt(parentSel.trim(), 10);
-                    try {
-                        await fetchJson(partUpdateUrl(id), {method: 'PATCH', body: JSON.stringify(body)});
-                        toast('Updated');
-                        loadParts();
-                        refreshSummary();
-                    } catch (e) { alert(e.message); }
-                });
-            });
-        }
-
-        async function loadLow() {
-            const pid = document.getElementById('filter-low-parent').value;
-            let url = URL_LOW_STOCK;
-            if (pid) url += '?parent_id=' + encodeURIComponent(pid);
-            const r = await fetchJson(url);
-            const tb = document.querySelector('#table-low tbody');
-            tb.innerHTML = '';
-            r.data.forEach(p => {
-                const tr = document.createElement('tr');
-                tr.innerHTML = `<td>${p.sku}</td><td>${p.parent_sku || '—'}</td><td>${p.stock}</td><td>${p.reorder_level}</td>`;
-                tb.appendChild(tr);
-            });
-        }
-
-        function renderTree(nodes) {
-            const ul = document.createElement('ul');
-            nodes.forEach(n => {
-                const li = document.createElement('li');
-                li.textContent = n.sku;
-                if (n.children && n.children.length) li.appendChild(renderTree(n.children));
-                ul.appendChild(li);
-            });
-            return ul;
-        }
-
-        async function loadTree() {
-            const r = await fetchJson(URL_TREE);
-            const wrap = document.getElementById('tree-wrap');
-            wrap.innerHTML = '';
-            if (r.data && r.data.length) wrap.appendChild(renderTree(r.data));
-            else wrap.textContent = 'No top-level spare parts (set parent / flags on the Parts tab).';
-        }
-
-        function fillCreateSpareSkuSelect(data) {
-            const sel = document.getElementById('create-spare-sku');
-            if (window.SelectSearchable) {
-                window.SelectSearchable.destroy(sel);
-            }
-            sel.innerHTML = '<option value="">Select SKU…</option>';
-            for (let i = 0; i < data.length; i++) {
-                const p = data[i];
-                const o = document.createElement('option');
-                o.value = String(p.id);
-                o.textContent = p.sku || ('#' + p.id);
-                sel.appendChild(o);
-            }
-            if (window.SelectSearchable) {
-                window.SelectSearchable.refresh(sel);
-            }
-        }
-
-        async function loadSupplierForSelectedCreateSpareSku() {
-            const sel = document.getElementById('create-spare-sku');
-            const supInp = document.getElementById('create-spare-supplier-display');
-            const supIdEl = document.getElementById('create-spare-supplier-id');
-            if (!sel || !supInp || !supIdEl) {
-                return;
-            }
-            if (!sel.value) {
-                supInp.value = '';
-                supIdEl.value = '';
-                return;
-            }
-            const opt = sel.options[sel.selectedIndex];
-            const skuText = opt ? opt.textContent.trim() : '';
-            if (!skuText || skuText === 'Loading SKUs…' || skuText === 'Failed to load SKUs' || skuText.indexOf('—') === 0) {
-                supInp.value = '';
-                supIdEl.value = '';
-                return;
-            }
-            try {
-                const r = await fetchJson(URL_SUPPLIER_FOR_SKU + '?sku=' + encodeURIComponent(skuText));
-                supInp.value = r.supplier_name || '';
-                supIdEl.value = r.supplier_id != null ? String(r.supplier_id) : '';
-            } catch (e) {
-                supInp.value = '';
-                supIdEl.value = '';
-            }
-        }
-
-        document.getElementById('create-spare-sku').addEventListener('change', () => {
-            loadSupplierForSelectedCreateSpareSku();
-        });
-
-        document.getElementById('btn-open-create-spare-part').addEventListener('click', () => {
-            document.getElementById('create-spare-part-name').value = '';
-            document.getElementById('create-spare-msl-part').value = '';
-            document.getElementById('create-spare-qty').value = '1';
-            document.getElementById('create-spare-supplier-display').value = '';
-            document.getElementById('create-spare-supplier-id').value = '';
-            const skuSel = document.getElementById('create-spare-sku');
-            if (window.SelectSearchable) {
-                window.SelectSearchable.destroy(skuSel);
-            }
-            skuSel.innerHTML = '<option value="">Loading SKUs…</option>';
-            if (window.SelectSearchable) {
-                window.SelectSearchable.refresh(skuSel);
-            }
-            ensurePartSkusLoaded()
-                .then((data) => {
-                    fillCreateSpareSkuSelect(data);
-                    loadSupplierForSelectedCreateSpareSku();
-                })
-                .catch(() => {
-                    if (window.SelectSearchable) {
-                        window.SelectSearchable.destroy(skuSel);
-                    }
-                    skuSel.innerHTML = '<option value="">Failed to load SKUs</option>';
-                    if (window.SelectSearchable) {
-                        window.SelectSearchable.refresh(skuSel);
-                    }
-                });
-            const modalEl = document.getElementById('modal-create-spare-part');
-            let m = bootstrap.Modal.getInstance(modalEl);
-            if (!m) {
-                m = new bootstrap.Modal(modalEl);
-            }
-            m.show();
-        });
-
-        document.getElementById('btn-submit-create-spare-part').addEventListener('click', async () => {
-            const parentId = document.getElementById('create-spare-parent').value;
-            const productMasterId = document.getElementById('create-spare-sku').value;
-            const partName = document.getElementById('create-spare-part-name').value.trim();
-            const mslPart = document.getElementById('create-spare-msl-part').value.trim();
-            const qtyRaw = document.getElementById('create-spare-qty').value;
-            const qty = parseInt(qtyRaw, 10);
-            const supplierIdRaw = document.getElementById('create-spare-supplier-id').value;
-            const supplierId = supplierIdRaw ? parseInt(supplierIdRaw, 10) : null;
-            if (!parentId || !productMasterId) {
-                alert('Choose a parent and a SKU.');
-                return;
-            }
-            if (!partName) {
-                alert('Enter a part name.');
-                return;
-            }
-            if (!(qty >= 1)) {
-                alert('Enter a valid quantity (at least 1).');
-                return;
-            }
-            try {
-                const body = {
+                const payload = {
                     parent_id: parseInt(parentId, 10),
                     product_master_id: parseInt(productMasterId, 10),
                     part_name: partName,
                     msl_part: mslPart || null,
-                    quantity: qty,
+                    quantity: quantity,
                 };
                 if (supplierId) {
-                    body.supplier_id = supplierId;
+                    payload.supplier_id = supplierId;
                 }
-                await fetchJson(URL_SPARE_PART_DETAILS_STORE, {
-                    method: 'POST',
-                    body: JSON.stringify(body),
-                });
-                toast('Spare part created');
-                bootstrap.Modal.getInstance(document.getElementById('modal-create-spare-part'))?.hide();
-                loadParts();
-                loadTree();
-                refreshSummary();
-            } catch (e) {
-                alert(e.message);
-            }
-        });
 
-        document.getElementById('btn-reload-parts').addEventListener('click', () => { loadParts(); loadTree(); });
-        document.getElementById('btn-reload-low').addEventListener('click', loadLow);
+                try {
+                    const response = await fetch('/inventory/spare-parts/api/spare-part-details', {
+                        method: 'POST',
+                        credentials: 'same-origin',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json',
+                            'X-Requested-With': 'XMLHttpRequest',
+                            'X-CSRF-TOKEN': csrf,
+                        },
+                        body: JSON.stringify(payload),
+                    });
+                    const data = await response.json().catch(() => ({}));
+                    if (!response.ok) {
+                        throw new Error(data.message || 'Save failed');
+                    }
 
-        document.querySelectorAll('button[data-bs-toggle="tab"]').forEach(tab => {
-            tab.addEventListener('shown.bs.tab', (e) => {
-                const id = e.target.getAttribute('data-bs-target');
-                if (id === '#tab-requisitions') loadRequisitions();
-                if (id === '#tab-issue') loadIssues();
-                if (id === '#tab-po') { loadSuppliers(); loadPo(); }
-                if (id === '#tab-low') loadLow();
-                if (id === '#tab-parts') { loadParts(); loadTree(); }
+                    const modalEl = document.getElementById('modal-create-spare-part');
+                    const modal = bootstrap.Modal.getInstance(modalEl);
+                    if (modal) {
+                        modal.hide();
+                    }
+                    alert('Spare part saved.');
+                    window.location.reload();
+                } catch (error) {
+                    alert(error.message || 'Save failed');
+                }
             });
-        });
-
-        loadRequisitions();
+        })();
     </script>
 @endsection
