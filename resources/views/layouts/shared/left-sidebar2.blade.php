@@ -865,16 +865,22 @@
                             <a href="{{ route('customer.care.qc.and.packing') }}">QC And Packing</a>
                         </li>
                         <li>
+                            <a href="{{ route('customer.care.carrier.issue') }}">Carrier Issue</a>
+                        </li>
+                        <li>
                             <a href="{{ route('customer.care.label.issues') }}">Label Issues</a>
                         </li>
                         <li>
                             <a href="{{ route('customer.care.dispatch.issues') }}">Dispatch Issues</a>
                         </li>
                         <li>
-                            <a href="{{ route('customer.care.carrier.issues') }}">Carrier Issues</a>
+                            <a href="{{ route('customer.care.listing.issue') }}">Listing Issue</a>
                         </li>
                         <li>
-                            <a href="{{ route('spare.parts.index') }}">Spare Parts</a>
+                            <a href="{{ route('customer.care.c.care.issues') }}">C-care Issues</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('customer.care.other.issues') }}">Other Issues</a>
                         </li>
                         <li>
                             <a href="{{ route('customer.care.followups') }}">Follow UP</a>

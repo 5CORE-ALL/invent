@@ -1,5 +1,16 @@
-@php($ordersOnHoldTitle = 'Dispatch Issues')
-@php($ordersOnHoldRecordsTitle = 'Dispatch Issues Records')
-@php($ordersOnHoldAddButtonText = 'Add Dispatch Issues')
-@php($ordersOnHoldHistoryButtonText = 'Dispatch Issues History')
-@include('customer-care.orders_on_hold')
+{!! view('customer-care.qc_and_packing', [
+    'pageTitle' => 'Dispatch Issues',
+    'addIssueButtonText' => 'Add Dispatch Issue',
+    'introText' => 'Use Add Dispatch Issue to record SKU issues. SKU lookup auto-fills Parent and available QTY.',
+    'recordsTitle' => 'Dispatch Issues Records',
+    'modalTitle' => 'Dispatch Issue',
+    'skuDetailsUrl' => route('customer.care.dispatch.issues.sku.details'),
+    'recordsListUrl' => route('customer.care.dispatch.issues.list.index'),
+    'recordsStoreUrl' => route('customer.care.dispatch.issues.list.store'),
+    'recordsUpdateBaseUrl' => url('/customer-care/dispatch-issues/issues'),
+    'historyListUrl' => route('customer.care.dispatch.issues.history.index'),
+    'dropdownOptionsListUrl' => route('customer.care.dispatch.issues.dropdown.options.index'),
+    'dropdownOptionsStoreUrl' => route('customer.care.dispatch.issues.dropdown.options.store'),
+    'dropdownOptionsDeleteUrl' => route('customer.care.dispatch.issues.dropdown.options.delete'),
+    'marketplaces' => $marketplaces ?? collect(),
+])->render() !!}

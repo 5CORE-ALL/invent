@@ -1,6 +1,9 @@
-@extends('layouts.vertical', ['title' => 'Spare Parts & Packing', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
+@extends('layouts.vertical', ['title' => 'Spare Parts', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
 
 @section('css')
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="{{ asset('css/select-searchable.css') }}" rel="stylesheet">
     <style>
         .sp-card {
             border-radius: 0.5rem;
@@ -10,6 +13,9 @@
             font-size: 1.75rem;
             margin-bottom: 0;
         }
+        .nav-tabs .nav-link.active {
+            font-weight: 600;
+        }
         .tree ul {
             list-style: none;
             padding-left: 1.25rem;
@@ -18,6 +24,17 @@
         .tree li {
             padding: 0.15rem 0;
         }
+        .breadcrumb-sm {
+            font-size: 0.875rem;
+        }
+        #tab-requisitions .card,
+        #tab-requisitions .card-body,
+        #tab-po .card,
+        #tab-po .card-body,
+        #req-lines,
+        #po-lines {
+            overflow: visible !important;
+        }
     </style>
 @endsection
 
@@ -25,58 +42,76 @@
     <div class="container-fluid py-3">
         <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
             <div>
-                <h4 class="mb-0">Spare Parts & Packing</h4>
-                <div class="text-muted">Inventory Management / Spare Parts & Packing</div>
+                <h4 class="mb-0">Spare Parts</h4>
+                <nav class="breadcrumb-sm text-muted" aria-label="breadcrumb">
+                    <span>Inventory Management</span>
+                    <span class="mx-1">/</span>
+                    <span class="text-body">Spare Parts</span>
+                </nav>
             </div>
-            <a href="{{ route('spare.parts.index') }}" class="btn btn-outline-secondary btn-sm">Refresh</a>
+            <button type="button" class="btn btn-outline-secondary btn-sm" id="btn-refresh-summary">Refresh summary</button>
         </div>
 
-        @if(session('success'))
-            <div class="alert alert-success">{{ session('success') }}</div>
-        @endif
-        @if(session('error'))
-            <div class="alert alert-danger">{{ session('error') }}</div>
-        @endif
-        @if($errors->any())
-            <div class="alert alert-danger">
-                <ul class="mb-0">
-                    @foreach($errors->all() as $error)
-                        <li>{{ $error }}</li>
-                    @endforeach
-                </ul>
-            </div>
-        @endif
-
-        @php $s = $summary ?? []; @endphp
-        <div class="row g-3 mb-4">
+        <div class="row g-3 mb-4" id="dashboard-cards">
+            @php $s = $initialSummary ?? []; @endphp
             <div class="col-6 col-md-3">
-                <div class="card sp-card h-100"><div class="card-body"><div class="text-muted small">Total Spare Parts</div><h3>{{ $s['total_spare_parts'] ?? 0 }}</h3></div></div>
+                <div class="card sp-card h-100">
+                    <div class="card-body">
+                        <div class="text-muted small">Total Spare Parts</div>
+                        <h3 id="card-total-spare">{{ $s['total_spare_parts'] ?? 0 }}</h3>
+                    </div>
+                </div>
             </div>
             <div class="col-6 col-md-3">
-                <div class="card sp-card h-100 border-warning"><div class="card-body"><div class="text-muted small">Low Stock Items</div><h3 class="text-warning">{{ $s['low_stock_items'] ?? 0 }}</h3></div></div>
+                <div class="card sp-card h-100 border-warning">
+                    <div class="card-body">
+                        <div class="text-muted small">Low Stock Items</div>
+                        <h3 class="text-warning" id="card-low-stock">{{ $s['low_stock_items'] ?? 0 }}</h3>
+                    </div>
+                </div>
             </div>
             <div class="col-6 col-md-3">
-                <div class="card sp-card h-100"><div class="card-body"><div class="text-muted small">Pending Requisitions</div><h3>{{ $s['pending_requisitions'] ?? 0 }}</h3></div></div>
+                <div class="card sp-card h-100">
+                    <div class="card-body">
+                        <div class="text-muted small">Pending Requisitions</div>
+                        <h3 id="card-pending-req">{{ $s['pending_requisitions'] ?? 0 }}</h3>
+                    </div>
+                </div>
             </div>
             <div class="col-6 col-md-3">
-                <div class="card sp-card h-100"><div class="card-body"><div class="text-muted small">Pending Purchase Orders</div><h3>{{ $s['pending_purchase_orders'] ?? 0 }}</h3></div></div>
+                <div class="card sp-card h-100">
+                    <div class="card-body">
+                        <div class="text-muted small">Pending Purchase Orders</div>
+                        <h3 id="card-pending-po">{{ $s['pending_purchase_orders'] ?? 0 }}</h3>
+                    </div>
+                </div>
             </div>
         </div>
 
         <ul class="nav nav-tabs mb-3" role="tablist">
-            <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tab-requisitions" type="button">Requisitions</button></li>
-            <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-issue" type="button">Issue Parts</button></li>
-            <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-po" type="button">Purchase Orders</button></li>
-            <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-low" type="button">Low Stock</button></li>
-            <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-parts" type="button">Spare Parts & Parents</button></li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tab-requisitions" type="button">Requisitions</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-issue" type="button">Issue Parts</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-po" type="button">Purchase Orders</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-low" type="button">Low Stock</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-parts" type="button">Spare Parts &amp; Parents</button>
+            </li>
         </ul>
 
         <div class="tab-content">
             <div class="tab-pane fade show active" id="tab-requisitions">
-                <div class="card mb-3">
+                <div class="card">
                     <div class="card-body">
-                        <h5 class="card-title">New Requisition</h5>
-                        <form method="POST" action="{{ route('requisition.store') }}" class="row g-2">
+                        <h5 class="card-title">New requisition</h5>
+                        <form id="form-requisition" class="row g-2 mb-4">
                             @csrf
                             <div class="col-md-3">
                                 <label class="form-label">Department</label>
@@ -94,60 +129,21 @@
                                 <label class="form-label">Notes</label>
                                 <input type="text" name="notes" class="form-control form-control-sm">
                             </div>
-                            @for($i = 0; $i < 3; $i++)
-                                <div class="col-md-5">
-                                    <label class="form-label">Part SKU {{ $i + 1 }}</label>
-                                    <select name="part_id[]" class="form-select form-select-sm">
-                                        <option value="">Select SKU</option>
-                                        @foreach($products as $p)
-                                            <option value="{{ $p->id }}">{{ $p->sku }}</option>
-                                        @endforeach
-                                    </select>
-                                </div>
-                                <div class="col-md-2">
-                                    <label class="form-label">Qty</label>
-                                    <input type="number" name="qty[]" min="1" class="form-control form-control-sm">
-                                </div>
-                            @endfor
                             <div class="col-12">
-                                <button type="submit" class="btn btn-primary btn-sm">Save Draft</button>
+                                <label class="form-label">Lines (select part from Product Master)</label>
+                                <p class="small text-muted mb-1">Each line uses a dropdown of all SKUs from <code>product_master</code> (same catalog as Product Master). Large lists may take a moment to load once.</p>
+                                <div id="req-lines"></div>
+                                <button type="button" class="btn btn-sm btn-outline-primary mt-1" id="btn-add-req-line">Add line</button>
+                            </div>
+                            <div class="col-12">
+                                <button type="submit" class="btn btn-primary btn-sm">Save draft</button>
                             </div>
                         </form>
-                    </div>
-                </div>
-
-                <div class="card">
-                    <div class="card-body">
-                        <h5 class="card-title">Recent Requisitions</h5>
+                        <h5 class="card-title">Recent requisitions</h5>
                         <div class="table-responsive">
-                            <table class="table table-sm table-striped">
+                            <table class="table table-sm table-striped" id="table-requisitions">
                                 <thead><tr><th>ID</th><th>Status</th><th>Priority</th><th>Dept</th><th>Items</th><th>Actions</th></tr></thead>
-                                <tbody>
-                                    @forelse($requisitions as $req)
-                                        <tr>
-                                            <td>{{ $req->id }}</td>
-                                            <td>{{ $req->status }}</td>
-                                            <td>{{ $req->priority }}</td>
-                                            <td>{{ $req->department }}</td>
-                                            <td>
-                                                @foreach($req->items as $item)
-                                                    {{ $item->part->sku ?? $item->part_id }}@if(!$loop->last), @endif
-                                                @endforeach
-                                            </td>
-                                            <td class="d-flex gap-1">
-                                                @if($req->status === 'draft')
-                                                    <form method="POST" action="{{ route('requisition.submit', $req->id) }}">@csrf<button class="btn btn-sm btn-outline-secondary">Submit</button></form>
-                                                @endif
-                                                @if(in_array($req->status, ['draft','submitted'], true))
-                                                    <form method="POST" action="{{ route('requisition.approve', $req->id) }}">@csrf<button class="btn btn-sm btn-outline-success">Approve</button></form>
-                                                @endif
-                                                <form method="POST" action="{{ route('requisition.close', $req->id) }}">@csrf<button class="btn btn-sm btn-outline-dark">Close</button></form>
-                                            </td>
-                                        </tr>
-                                    @empty
-                                        <tr><td colspan="6" class="text-center text-muted">No requisitions found.</td></tr>
-                                    @endforelse
-                                </tbody>
+                                <tbody></tbody>
                             </table>
                         </div>
                     </div>
@@ -157,33 +153,11 @@
             <div class="tab-pane fade" id="tab-issue">
                 <div class="card">
                     <div class="card-body">
-                        <h5 class="card-title">Issue Against Approved Requisitions</h5>
+                        <h5 class="card-title">Issue against approved requisitions</h5>
                         <div class="table-responsive">
-                            <table class="table table-sm">
-                                <thead><tr><th>Req</th><th>SKU</th><th>Approved</th><th>Issued</th><th>Remaining</th><th>Qty</th><th>Action</th></tr></thead>
-                                <tbody>
-                                    @forelse($issues as $row)
-                                        @php $remaining = $row->quantityRemainingToIssue(); @endphp
-                                        <tr>
-                                            <td>{{ $row->requisition_id }}</td>
-                                            <td>{{ $row->part->sku ?? '' }}</td>
-                                            <td>{{ $row->quantity_approved ?? 0 }}</td>
-                                            <td>{{ $row->quantity_issued }}</td>
-                                            <td>{{ $remaining }}</td>
-                                            <td>
-                                                <form method="POST" action="{{ route('issue.store') }}" class="d-flex gap-1 align-items-center">
-                                                    @csrf
-                                                    <input type="hidden" name="requisition_item_id" value="{{ $row->id }}">
-                                                    <input type="number" name="quantity" min="1" max="{{ max(1, $remaining) }}" value="1" class="form-control form-control-sm" style="width:90px;">
-                                                    <button class="btn btn-sm btn-primary">Issue</button>
-                                                </form>
-                                            </td>
-                                            <td></td>
-                                        </tr>
-                                    @empty
-                                        <tr><td colspan="7" class="text-center text-muted">No pending issue lines.</td></tr>
-                                    @endforelse
-                                </tbody>
+                            <table class="table table-sm" id="table-issues">
+                                <thead><tr><th>Req</th><th>SKU</th><th>Approved</th><th>Issued</th><th>Remaining</th><th>Stock</th><th>Qty</th><th></th></tr></thead>
+                                <tbody></tbody>
                             </table>
                         </div>
                     </div>
@@ -193,17 +167,12 @@
             <div class="tab-pane fade" id="tab-po">
                 <div class="card mb-3">
                     <div class="card-body">
-                        <h5 class="card-title">New Spare Parts PO</h5>
-                        <form method="POST" action="{{ route('po.store') }}" class="row g-2">
+                        <h5 class="card-title">New spare parts PO</h5>
+                        <form id="form-po" class="row g-2">
                             @csrf
                             <div class="col-md-4">
                                 <label class="form-label">Supplier</label>
-                                <select name="supplier_id" class="form-select form-select-sm" required>
-                                    <option value="">Select...</option>
-                                    @foreach($suppliers as $sup)
-                                        <option value="{{ $sup->id }}">{{ $sup->name ?: $sup->company }}</option>
-                                    @endforeach
-                                </select>
+                                <select name="supplier_id" id="po-supplier" class="form-select form-select-sm" required></select>
                             </div>
                             <div class="col-md-3">
                                 <label class="form-label">Expected</label>
@@ -213,70 +182,25 @@
                                 <label class="form-label">Notes</label>
                                 <input type="text" name="notes" class="form-control form-control-sm">
                             </div>
-                            @for($i = 0; $i < 3; $i++)
-                                <div class="col-md-4">
-                                    <label class="form-label">Part SKU {{ $i + 1 }}</label>
-                                    <select name="part_id[]" class="form-select form-select-sm">
-                                        <option value="">Select SKU</option>
-                                        @foreach($products as $p)
-                                            <option value="{{ $p->id }}">{{ $p->sku }}</option>
-                                        @endforeach
-                                    </select>
-                                </div>
-                                <div class="col-md-2">
-                                    <label class="form-label">Qty</label>
-                                    <input type="number" name="qty[]" min="1" class="form-control form-control-sm">
-                                </div>
-                                <div class="col-md-2">
-                                    <label class="form-label">Unit Cost</label>
-                                    <input type="number" step="0.01" name="unit_cost[]" class="form-control form-control-sm">
-                                </div>
-                            @endfor
+                            <div class="col-12">
+                                <label class="form-label">Lines (SKU from Product Master)</label>
+                                <p class="small text-muted mb-1">Same <code>product_master</code> SKU dropdown as requisitions.</p>
+                                <div id="po-lines"></div>
+                                <button type="button" class="btn btn-sm btn-outline-primary mt-1" id="btn-add-po-line">Add line</button>
+                            </div>
                             <div class="col-12">
                                 <button type="submit" class="btn btn-primary btn-sm">Create PO</button>
                             </div>
                         </form>
                     </div>
                 </div>
-
                 <div class="card">
                     <div class="card-body">
-                        <h5 class="card-title">Purchase Orders</h5>
+                        <h5 class="card-title">Purchase orders</h5>
                         <div class="table-responsive">
-                            <table class="table table-sm table-striped">
-                                <thead><tr><th>PO #</th><th>Supplier</th><th>Status</th><th>Actions</th></tr></thead>
-                                <tbody>
-                                    @forelse($purchaseOrders as $po)
-                                        <tr>
-                                            <td>{{ $po->po_number }}</td>
-                                            <td>{{ $po->supplier?->name ?: $po->supplier?->company }}</td>
-                                            <td>{{ $po->status }}</td>
-                                            <td>
-                                                <div class="d-flex flex-wrap gap-1">
-                                                    @if($po->status === 'draft')
-                                                        <form method="POST" action="{{ route('po.send', $po->id) }}">@csrf<button class="btn btn-sm btn-outline-secondary">Mark Sent</button></form>
-                                                    @endif
-                                                    @if(in_array($po->status, ['sent','partially_received'], true))
-                                                        @foreach($po->items as $item)
-                                                            @php $left = $item->quantityRemainingToReceive(); @endphp
-                                                            @if($left > 0)
-                                                                <form method="POST" action="{{ route('po.receive', $po->id) }}" class="d-flex gap-1 align-items-center">
-                                                                    @csrf
-                                                                    <input type="hidden" name="item_id" value="{{ $item->id }}">
-                                                                    <span class="small">{{ $item->part?->sku }} left {{ $left }}</span>
-                                                                    <input type="number" name="quantity" min="1" max="{{ $left }}" value="{{ $left }}" class="form-control form-control-sm" style="width:80px;">
-                                                                    <button class="btn btn-sm btn-success">Recv</button>
-                                                                </form>
-                                                            @endif
-                                                        @endforeach
-                                                    @endif
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    @empty
-                                        <tr><td colspan="4" class="text-center text-muted">No purchase orders found.</td></tr>
-                                    @endforelse
-                                </tbody>
+                            <table class="table table-sm table-striped" id="table-po">
+                                <thead><tr><th>PO #</th><th>Supplier</th><th>Status</th><th>Receive</th></tr></thead>
+                                <tbody></tbody>
                             </table>
                         </div>
                     </div>
@@ -286,22 +210,24 @@
             <div class="tab-pane fade" id="tab-low">
                 <div class="card">
                     <div class="card-body">
-                        <h5 class="card-title">Low Stock</h5>
+                        <div class="row g-2 mb-2">
+                            <div class="col-md-4">
+                                <label class="form-label">Parent group</label>
+                                <select id="filter-low-parent" class="form-select form-select-sm">
+                                    <option value="">All</option>
+                                    @foreach ($parentOptions as $p)
+                                        <option value="{{ $p->id }}">{{ $p->sku }} @if($p->productCategory?->category_name) — {{ $p->productCategory->category_name }} @endif</option>
+                                    @endforeach
+                                </select>
+                            </div>
+                            <div class="col-md-2 d-flex align-items-end">
+                                <button type="button" class="btn btn-sm btn-secondary" id="btn-reload-low">Apply</button>
+                            </div>
+                        </div>
                         <div class="table-responsive">
-                            <table class="table table-sm">
-                                <thead><tr><th>SKU</th><th>Parent</th><th>Stock</th><th>Reorder At</th></tr></thead>
-                                <tbody>
-                                    @forelse($lowStock as $p)
-                                        <tr>
-                                            <td>{{ $p->sku }}</td>
-                                            <td>{{ $p->parentPart?->sku ?? '—' }}</td>
-                                            <td>{{ app(\App\Services\SparePartInventoryService::class)->totalAvailableForSku($p->sku) }}</td>
-                                            <td>{{ $p->reorder_level }}</td>
-                                        </tr>
-                                    @empty
-                                        <tr><td colspan="4" class="text-center text-muted">No low stock items.</td></tr>
-                                    @endforelse
-                                </tbody>
+                            <table class="table table-sm" id="table-low">
+                                <thead><tr><th>SKU</th><th>Parent</th><th>Stock</th><th>Reorder at</th></tr></thead>
+                                <tbody></tbody>
                             </table>
                         </div>
                     </div>
@@ -311,88 +237,42 @@
             <div class="tab-pane fade" id="tab-parts">
                 <div class="card mb-3">
                     <div class="card-body">
-                        <h5 class="card-title">Create Spare Part</h5>
-                        <form method="POST" action="{{ route('parts.store') }}" class="row g-2">
-                            @csrf
+                        <div class="row g-2 align-items-end">
                             <div class="col-md-3">
-                                <label class="form-label">Parent</label>
-                                <select name="parent_id" class="form-select form-select-sm" required>
-                                    <option value="">Select parent...</option>
-                                    @foreach($parentOptions as $p)
+                                <label class="form-label">Parent group</label>
+                                <select id="filter-parts-parent" class="form-select form-select-sm">
+                                    <option value="">All</option>
+                                    @foreach ($parentOptions as $p)
                                         <option value="{{ $p->id }}">{{ $p->sku }}</option>
                                     @endforeach
                                 </select>
                             </div>
                             <div class="col-md-3">
-                                <label class="form-label">SKU</label>
-                                <select name="part_id" class="form-select form-select-sm" required>
-                                    <option value="">Select SKU...</option>
-                                    @foreach($products as $p)
-                                        <option value="{{ $p->id }}">{{ $p->sku }}</option>
-                                    @endforeach
+                                <label class="form-label">Spare part type</label>
+                                <select id="filter-parts-type" class="form-select form-select-sm">
+                                    <option value="spare">Spare parts only</option>
+                                    <option value="all">All (linked to parent filter)</option>
+                                    <option value="parent">Parents with children</option>
                                 </select>
                             </div>
                             <div class="col-md-2">
-                                <label class="form-label">Qty</label>
-                                <input type="number" name="quantity" min="1" value="1" class="form-control form-control-sm" required>
+                                <button type="button" class="btn btn-sm btn-secondary" id="btn-reload-parts">Apply</button>
                             </div>
-                            <div class="col-md-4">
-                                <label class="form-label">Part Name</label>
-                                <input type="text" name="part_name" class="form-control form-control-sm" required>
+                            <div class="col-md-auto d-flex align-items-end">
+                                <button type="button" class="btn btn-sm btn-primary" id="btn-open-create-spare-part" data-bs-toggle="modal" data-bs-target="#modal-create-spare-part">Create Spare Part</button>
                             </div>
-                            <div class="col-md-4">
-                                <label class="form-label">MSL-Part</label>
-                                <input type="text" name="msl_part" class="form-control form-control-sm">
-                            </div>
-                            <div class="col-md-4">
-                                <label class="form-label">Supplier</label>
-                                <select name="supplier_id" class="form-select form-select-sm">
-                                    <option value="">Select supplier...</option>
-                                    @foreach($suppliers as $sup)
-                                        <option value="{{ $sup->id }}">{{ $sup->name ?: $sup->company }}</option>
-                                    @endforeach
-                                </select>
-                            </div>
-                            <div class="col-12">
-                                <button class="btn btn-primary btn-sm" type="submit">Save</button>
-                            </div>
-                        </form>
+                        </div>
                     </div>
                 </div>
-
                 <div class="row g-3">
                     <div class="col-lg-7">
                         <div class="card">
                             <div class="card-body">
-                                <h5 class="card-title">Parts List</h5>
+                                <h5 class="card-title">Parts list</h5>
                                 <div class="table-responsive" style="max-height:420px;overflow:auto;">
-                                    <table class="table table-sm table-hover">
-                                        <thead class="sticky-top bg-light"><tr><th>Part Name</th><th>SKU</th><th>Qty</th><th>Supplier</th><th>Parent</th><th>Reorder</th><th>Edit</th></tr></thead>
-                                        <tbody>
-                                            @forelse($parts as $p)
-                                                <tr>
-                                                    <td>{{ $p->sparePartDetail?->part_name ?: '—' }}</td>
-                                                    <td>{{ $p->sku }}</td>
-                                                    <td>{{ $p->sparePartDetail?->quantity ?? '—' }}</td>
-                                                    <td>{{ $p->sparePartDetail?->supplier?->name ?: $p->sparePartDetail?->supplier?->company ?: '—' }}</td>
-                                                    <td>{{ $p->parentPart?->sku ?: '—' }}</td>
-                                                    <td>{{ $p->reorder_level ?? '—' }}</td>
-                                                    <td>
-                                                        <form method="POST" action="{{ route('parts.update', $p->id) }}" class="d-flex gap-1">
-                                                            @csrf
-                                                            @method('PATCH')
-                                                            <select name="is_spare_part" class="form-select form-select-sm" style="width:120px;">
-                                                                <option value="1" {{ $p->is_spare_part ? 'selected' : '' }}>Spare</option>
-                                                                <option value="0" {{ !$p->is_spare_part ? 'selected' : '' }}>Normal</option>
-                                                            </select>
-                                                            <button class="btn btn-sm btn-outline-primary">Save</button>
-                                                        </form>
-                                                    </td>
-                                                </tr>
-                                            @empty
-                                                <tr><td colspan="7" class="text-center text-muted">No spare parts found.</td></tr>
-                                            @endforelse
-                                        </tbody>
+                                    <table class="table table-sm table-hover" id="table-parts">
+                                        <thead class="sticky-top bg-light"><tr><th>Part name</th><th>SKU</th><th>Qty</th><th>Supplier</th><th>Stock</th><th>Parent</th><th>Reorder</th><th>Edit</th></tr></thead>
+                                        <tbody></tbody>
                                     </table>
                                 </div>
                             </div>
@@ -401,32 +281,195 @@
                     <div class="col-lg-5">
                         <div class="card">
                             <div class="card-body">
-                                <h5 class="card-title">Tree (Top-level Spares)</h5>
-                                <div class="tree small border rounded p-2" style="max-height:420px;overflow:auto;">
-                                    @if(($tree ?? collect())->count())
-                                        <ul>
-                                            @foreach($tree as $node)
-                                                <li>
-                                                    {{ $node->sku }}
-                                                    @if($node->childParts->count())
-                                                        <ul>
-                                                            @foreach($node->childParts as $child)
-                                                                <li>{{ $child->sku }}</li>
-                                                            @endforeach
-                                                        </ul>
-                                                    @endif
-                                                </li>
-                                            @endforeach
-                                        </ul>
-                                    @else
-                                        <span class="text-muted">No top-level spare parts.</span>
-                                    @endif
-                                </div>
+                                <h5 class="card-title">Tree (top-level spares)</h5>
+                                <div id="tree-wrap" class="tree small border rounded p-2" style="max-height:420px;overflow:auto;"></div>
                             </div>
                         </div>
                     </div>
                 </div>
             </div>
         </div>
+
+        <div class="modal fade" id="modal-create-spare-part" tabindex="-1" aria-labelledby="modal-create-spare-part-label" aria-hidden="true">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header py-2">
+                        <h5 class="modal-title fs-6" id="modal-create-spare-part-label">Create spare part</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <p class="small text-muted mb-2">Chooses a parent product and SKU from Product Master, then stores the display name and MSL-Part in <code>spare_part_details</code>.</p>
+                        <div class="mb-2">
+                            <label class="form-label small mb-0" for="create-spare-parent">Parent</label>
+                            <select class="form-select form-select-sm select-searchable" id="create-spare-parent" required>
+                                <option value="">Select parent…</option>
+                                @foreach ($parentOptions as $p)
+                                    <option value="{{ $p->id }}">{{ $p->sku }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label small mb-0" for="create-spare-sku">SKU</label>
+                            <select class="form-select form-select-sm select-searchable" id="create-spare-sku" required>
+                                <option value="">Select SKU…</option>
+                                @foreach ($partSkus as $sku)
+                                    <option value="{{ $sku->id }}">{{ $sku->sku }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label small mb-0" for="create-spare-supplier-display">Supplier</label>
+                            <input type="text" class="form-control form-control-sm" id="create-spare-supplier-display" readonly placeholder="Select a SKU to load supplier">
+                            <input type="hidden" id="create-spare-supplier-id" value="">
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label small mb-0" for="create-spare-qty">Qty</label>
+                            <input type="number" class="form-control form-control-sm" id="create-spare-qty" min="1" value="1" required>
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label small mb-0" for="create-spare-part-name">Part name</label>
+                            <input type="text" class="form-control form-control-sm" id="create-spare-part-name" required maxlength="255" placeholder="Shown in Parts list">
+                        </div>
+                        <div class="mb-0">
+                            <label class="form-label small mb-0" for="create-spare-msl-part">MSL-Part</label>
+                            <input type="text" class="form-control form-control-sm" id="create-spare-msl-part" maxlength="255" placeholder="Optional">
+                        </div>
+                    </div>
+                    <div class="modal-footer py-2">
+                        <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="button" class="btn btn-sm btn-primary" id="btn-submit-create-spare-part">Save</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="toast-container position-fixed bottom-0 end-0 p-3">
+            <div id="toast-ok" class="toast align-items-center text-bg-success border-0" role="alert">
+                <div class="d-flex"><div class="toast-body" id="toast-ok-body"></div></div>
+            </div>
+        </div>
+        <select id="sp-part-sku-source" class="d-none" aria-hidden="true">
+            <option value="">Select SKU…</option>
+            @foreach ($partSkus as $sku)
+                <option value="{{ $sku->id }}">{{ $sku->sku }}</option>
+            @endforeach
+        </select>
     </div>
+@endsection
+
+@section('script')
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        (function () {
+            const skuSelect = document.getElementById('create-spare-sku');
+            const supplierDisplay = document.getElementById('create-spare-supplier-display');
+            const supplierIdInput = document.getElementById('create-spare-supplier-id');
+            const saveButton = document.getElementById('btn-submit-create-spare-part');
+            const parentSelect = document.getElementById('create-spare-parent');
+            const partNameInput = document.getElementById('create-spare-part-name');
+            const mslPartInput = document.getElementById('create-spare-msl-part');
+            const qtyInput = document.getElementById('create-spare-qty');
+            const csrfMeta = document.querySelector('meta[name="csrf-token"]');
+            const csrf = csrfMeta ? csrfMeta.getAttribute('content') : '';
+
+            if (!skuSelect || !supplierDisplay || !supplierIdInput || !saveButton || !parentSelect || !partNameInput || !mslPartInput || !qtyInput) {
+                return;
+            }
+
+            async function loadSupplierForSku() {
+                const selected = skuSelect.options[skuSelect.selectedIndex];
+                const sku = selected ? selected.textContent.trim() : '';
+
+                if (!sku) {
+                    supplierDisplay.value = '';
+                    supplierIdInput.value = '';
+                    return;
+                }
+
+                try {
+                    const response = await fetch(`/refunds-supplier-for-sku?sku=${encodeURIComponent(sku)}`, {
+                        credentials: 'same-origin',
+                        headers: {
+                            'Accept': 'application/json',
+                            'X-Requested-With': 'XMLHttpRequest',
+                        },
+                    });
+
+                    const data = await response.json().catch(() => ({}));
+                    if (!response.ok) {
+                        throw new Error(data.message || 'Failed to load supplier');
+                    }
+
+                    supplierDisplay.value = data.supplier_name || '';
+                    supplierIdInput.value = data.supplier_id != null ? String(data.supplier_id) : '';
+                } catch (error) {
+                    supplierDisplay.value = '';
+                    supplierIdInput.value = '';
+                }
+            }
+
+            skuSelect.addEventListener('change', loadSupplierForSku);
+
+            saveButton.addEventListener('click', async function () {
+                const parentId = parentSelect.value;
+                const productMasterId = skuSelect.value;
+                const partName = partNameInput.value.trim();
+                const mslPart = mslPartInput.value.trim();
+                const quantity = parseInt(qtyInput.value, 10);
+                const supplierId = supplierIdInput.value ? parseInt(supplierIdInput.value, 10) : null;
+
+                if (!parentId || !productMasterId) {
+                    alert('Choose parent and SKU.');
+                    return;
+                }
+                if (!partName) {
+                    alert('Enter part name.');
+                    return;
+                }
+                if (!(quantity >= 1)) {
+                    alert('Quantity must be at least 1.');
+                    return;
+                }
+
+                const payload = {
+                    parent_id: parseInt(parentId, 10),
+                    product_master_id: parseInt(productMasterId, 10),
+                    part_name: partName,
+                    msl_part: mslPart || null,
+                    quantity: quantity,
+                };
+                if (supplierId) {
+                    payload.supplier_id = supplierId;
+                }
+
+                try {
+                    const response = await fetch('/inventory/spare-parts/api/spare-part-details', {
+                        method: 'POST',
+                        credentials: 'same-origin',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json',
+                            'X-Requested-With': 'XMLHttpRequest',
+                            'X-CSRF-TOKEN': csrf,
+                        },
+                        body: JSON.stringify(payload),
+                    });
+                    const data = await response.json().catch(() => ({}));
+                    if (!response.ok) {
+                        throw new Error(data.message || 'Save failed');
+                    }
+
+                    const modalEl = document.getElementById('modal-create-spare-part');
+                    const modal = bootstrap.Modal.getInstance(modalEl);
+                    if (modal) {
+                        modal.hide();
+                    }
+                    alert('Spare part saved.');
+                    window.location.reload();
+                } catch (error) {
+                    alert(error.message || 'Save failed');
+                }
+            });
+        })();
+    </script>
 @endsection

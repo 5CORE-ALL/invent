@@ -1,0 +1,16 @@
+{!! view('customer-care.qc_and_packing', [
+    'pageTitle' => 'C-care Issues',
+    'addIssueButtonText' => 'Add C-care Issue',
+    'introText' => 'Use Add C-care Issue to record SKU issues. SKU lookup auto-fills Parent and available QTY.',
+    'recordsTitle' => 'C-care Issues Records',
+    'modalTitle' => 'C-care Issue',
+    'skuDetailsUrl' => route('customer.care.c.care.issues.sku.details'),
+    'recordsListUrl' => route('customer.care.c.care.issues.list.index'),
+    'recordsStoreUrl' => route('customer.care.c.care.issues.list.store'),
+    'recordsUpdateBaseUrl' => url('/customer-care/c-care-issues/issues'),
+    'historyListUrl' => route('customer.care.c.care.issues.history.index'),
+    'dropdownOptionsListUrl' => route('customer.care.c.care.issues.dropdown.options.index'),
+    'dropdownOptionsStoreUrl' => route('customer.care.c.care.issues.dropdown.options.store'),
+    'dropdownOptionsDeleteUrl' => route('customer.care.c.care.issues.dropdown.options.delete'),
+    'marketplaces' => $marketplaces ?? collect(),
+])->render() !!}

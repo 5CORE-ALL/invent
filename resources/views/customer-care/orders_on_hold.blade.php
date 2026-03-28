@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => ($ordersOnHoldTitle ?? 'Orders On Hold'), 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
+@extends('layouts.vertical', ['title' => $pageTitle ?? 'Orders On Hold', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
 
 @section('css')
     <meta name="csrf-token" content="{{ csrf_token() }}">
@@ -158,36 +158,29 @@
 
 @section('content')
     @include('layouts.shared.page-title', [
-        'page_title' => ($ordersOnHoldTitle ?? 'Orders On Hold'),
+        'page_title' => $pageTitle ?? 'Orders On Hold',
         'sub_title' => 'Customer Care',
     ])
 
     <div class="row">
         <div class="col-12">
-            <div class="d-flex justify-content-between align-items-center gap-2 mb-3 flex-wrap">
-                <div class="d-flex justify-content-start align-items-center gap-2">
-                    <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#ordersOnHoldIssueModal">
-                        <i class="bi bi-plus-lg me-1"></i> {{ $ordersOnHoldAddButtonText ?? 'Add Hold Issue' }}
-                    </button>
-                    <button type="button" class="btn btn-outline-secondary" id="btnShowHistory">
-                        <i class="bi bi-clock-history me-1"></i> {{ $ordersOnHoldHistoryButtonText ?? 'History' }}
-                    </button>
-                </div>
-                @if(!empty($ordersOnHoldTopActionUrl) && !empty($ordersOnHoldTopActionText))
-                    <a href="{{ $ordersOnHoldTopActionUrl }}" class="btn btn-primary">
-                        <i class="bi bi-plus-circle-fill me-1"></i> {{ $ordersOnHoldTopActionText }}
-                    </a>
-                @endif
+            <div class="d-flex justify-content-start align-items-center gap-2 mb-3">
+                <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#ordersOnHoldIssueModal">
+                    <i class="bi bi-plus-lg me-1"></i> Add Hold Issue
+                </button>
+                <button type="button" class="btn btn-outline-secondary" id="btnShowHistory">
+                    <i class="bi bi-clock-history me-1"></i> History
+                </button>
             </div>
             <div class="card">
                 <div class="card-body">
-                    <p class="text-muted mb-0">{{ $ordersOnHoldIntroText ?? 'Use Add Hold Issue to record SKU hold issues. SKU lookup auto-fills Parent and available QTY.' }}</p>
+                    <p class="text-muted mb-0">Use <strong>Add Hold Issue</strong> to record SKU hold issues. SKU lookup auto-fills Parent and available QTY.</p>
                 </div>
             </div>
 
             <div class="card mt-3">
                 <div class="card-header d-flex align-items-center justify-content-between">
-                    <h5 class="mb-0">{{ $ordersOnHoldRecordsTitle ?? 'Orders On Hold Records' }}</h5>
+                    <h5 class="mb-0">{{ $recordsTitle ?? 'Orders On Hold Records' }}</h5>
                     <span class="badge bg-light text-dark" id="hold_issue_total_count">0</span>
                 </div>
                 <div class="card-body p-0">
@@ -200,11 +193,11 @@
                                     <th class="orders-hold-col-qty">QTY</th>
                                     <th class="orders-hold-col-qty">Order Qty</th>
                                     <th class="orders-hold-col-parent">Parent</th>
-                                    <th class="orders-hold-col-parent">Order Number</th>
                                     <th class="orders-hold-col-mp">MKT1</th>
                                     <th class="orders-hold-col-mp">MKT2</th>
                                     <th class="orders-hold-col-what">What?</th>
                                     <th class="orders-hold-col-action">Action</th>
+                                    <th class="orders-hold-col-action">Replacement Tracking</th>
                                     <th class="orders-hold-col-issue">Root Cause<br>Found</th>
                                     <th class="orders-hold-col-action">Root Cause Fixed</th>
                                     <th class="orders-hold-col-close">Close</th>
@@ -224,7 +217,7 @@
 
             <div class="card mt-3 d-none" id="holdIssueHistoryCard">
                 <div class="card-header d-flex align-items-center justify-content-between">
-                    <h5 class="mb-0">{{ $ordersOnHoldHistoryTitle ?? 'Order History' }}</h5>
+                    <h5 class="mb-0">Order History</h5>
                     <span class="badge bg-light text-dark" id="hold_issue_history_total_count">0</span>
                 </div>
                 <div class="card-body p-0">
@@ -237,11 +230,11 @@
                                     <th class="orders-hold-col-qty">QTY</th>
                                     <th class="orders-hold-col-qty">Order Qty</th>
                                     <th class="orders-hold-col-parent">Parent</th>
-                                    <th class="orders-hold-col-parent">Order Number</th>
                                     <th class="orders-hold-col-mp">MKT1</th>
                                     <th class="orders-hold-col-mp">MKT2</th>
                                     <th class="orders-hold-col-what">What?</th>
                                     <th class="orders-hold-col-action">Action</th>
+                                    <th class="orders-hold-col-action">Replacement Tracking</th>
                                     <th class="orders-hold-col-issue">Root Cause<br>Found</th>
                                     <th class="orders-hold-col-action">Root Cause Fixed</th>
                                     <th class="orders-hold-col-action">Close</th>
@@ -267,7 +260,7 @@
         <div class="modal-dialog modal-lg modal-dialog-scrollable">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title" id="ordersOnHoldIssueModalLabel">{{ $ordersOnHoldModalTitle ?? 'Orders On Hold Issue' }}</h5>
+                    <h5 class="modal-title" id="ordersOnHoldIssueModalLabel">Orders On Hold Issue</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <form id="ordersOnHoldIssueForm" autocomplete="off">
@@ -294,12 +287,6 @@
                                 <label for="hold_issue_order_qty" class="form-label">Order Qty</label>
                                 <input type="number" class="form-control" id="hold_issue_order_qty" name="order_qty"
                                     min="0" step="1" placeholder="Enter order qty">
-                            </div>
-
-                            <div class="col-md-3">
-                                <label for="hold_issue_order_number" class="form-label">Order Number</label>
-                                <input type="text" class="form-control" id="hold_issue_order_number" name="order_number"
-                                    maxlength="25" placeholder="Enter order number">
                             </div>
 
                             <div class="col-md-3">
@@ -433,7 +420,6 @@
             const skuImage = document.getElementById('hold_issue_sku_image');
             const qtyInput = document.getElementById('hold_issue_qty');
             const orderQtyInput = document.getElementById('hold_issue_order_qty');
-            const orderNumberInput = document.getElementById('hold_issue_order_number');
             const parentInput = document.getElementById('hold_issue_parent');
             const marketplace1Input = document.getElementById('hold_issue_marketplace_1');
             const marketplace2Input = document.getElementById('hold_issue_marketplace_2');
@@ -613,11 +599,11 @@
                         '<td>' + escapeHtml(row.qty) + '</td>' +
                         '<td>' + escapeHtml(row.order_qty) + '</td>' +
                         '<td>' + escapeHtml(row.parent) + '</td>' +
-                        '<td>' + escapeHtml(row.order_number || '—') + '</td>' +
                         '<td>' + escapeHtml(row.marketplace_1) + '</td>' +
                         '<td>' + escapeHtml(row.marketplace_2) + '</td>' +
                         '<td>' + whatHappenedDotHtml(row.what_happened) + '</td>' +
                         '<td>' + action1DisplayHtml(row.action_1, row.action_1_remark) + '</td>' +
+                        '<td>' + escapeHtml(row.replacement_tracking || '—') + '</td>' +
                         '<td>' + rootCauseDisplayHtml(row.issue, row.issue_remark) + '</td>' +
                         '<td>' + rootCauseFixedDisplayHtml(row.c_action_1, row.c_action_1_remark) + '</td>' +
                         '<td class="orders-hold-close-cell">' + buttonsHtml + '</td>' +
@@ -656,11 +642,11 @@
                         '<td>' + escapeHtml(row.qty) + '</td>' +
                         '<td>' + escapeHtml(row.order_qty) + '</td>' +
                         '<td>' + escapeHtml(row.parent) + '</td>' +
-                        '<td>' + escapeHtml(row.order_number || '—') + '</td>' +
                         '<td>' + escapeHtml(row.marketplace_1) + '</td>' +
                         '<td>' + escapeHtml(row.marketplace_2) + '</td>' +
                         '<td>' + whatHappenedDotHtml(row.what_happened) + '</td>' +
                         '<td>' + action1DisplayHtml(row.action_1, row.action_1_remark) + '</td>' +
+                        '<td>' + escapeHtml(row.replacement_tracking || '—') + '</td>' +
                         '<td>' + rootCauseDisplayHtml(row.issue, row.issue_remark) + '</td>' +
                         '<td>' + rootCauseFixedDisplayHtml(row.c_action_1, row.c_action_1_remark) + '</td>' +
                         '<td>' + escapeHtml(row.close_note) + '</td>' +
@@ -682,7 +668,6 @@
                     sku: row?.sku ?? '',
                     qty: row?.qty ?? 0,
                     order_qty: row?.order_qty ?? '',
-                    order_number: row?.order_number ?? '',
                     parent: row?.parent ?? '',
                     marketplace_1: row?.marketplace_1 ?? '',
                     marketplace_2: row?.marketplace_2 ?? '',
@@ -710,7 +695,6 @@
                     sku: row?.sku ?? '',
                     qty: row?.qty ?? 0,
                     order_qty: row?.order_qty ?? '',
-                    order_number: row?.order_number ?? '',
                     parent: row?.parent ?? '',
                     marketplace_1: row?.marketplace_1 ?? '',
                     marketplace_2: row?.marketplace_2 ?? '',
@@ -769,7 +753,6 @@
                 if (submitBtn) submitBtn.textContent = 'Save';
                 qtyInput.value = '';
                 orderQtyInput.value = '';
-                orderNumberInput.value = '';
                 parentInput.value = '';
                 resetSkuImage();
                 marketplace1Input.value = '';
@@ -798,7 +781,6 @@
                 skuInput.value = record.sku || '';
                 qtyInput.value = record.qty ?? '';
                 orderQtyInput.value = record.order_qty ?? '';
-                orderNumberInput.value = record.order_number ?? '';
                 parentInput.value = record.parent || '';
                 marketplace1Input.value = record.marketplace_1 || '';
                 marketplace2Input.value = record.marketplace_2 || '';
@@ -962,7 +944,6 @@
                         sku: sku,
                         qty: qtyInput.value === '' ? 0 : Number(qtyInput.value),
                         order_qty: orderQtyInput.value === '' ? null : Number(orderQtyInput.value),
-                        order_number: String(orderNumberInput.value || '').trim(),
                         parent: parentInput.value.trim(),
                         marketplace_1: marketplace1Input.value.trim(),
                         marketplace_2: marketplace2Input.value.trim(),
