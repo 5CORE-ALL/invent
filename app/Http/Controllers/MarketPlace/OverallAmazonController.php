@@ -2032,9 +2032,9 @@ class OverallAmazonController extends Controller
             }
         }
 
-        // Fetch HL-specific last_sbid and sbid_m from day-before-yesterday and yesterday records
+        // Fetch HL-specific last_sbid, sbid_m, and sbid (suggested bid) from day-before-yesterday and yesterday records
         $hlLastSbidReports = DB::table('amazon_sb_campaign_reports')
-            ->select('campaignName', 'campaign_id', 'last_sbid', 'sbid_m')
+            ->select('campaignName', 'campaign_id', 'last_sbid', 'sbid_m', 'sbid')
             ->where('ad_type', 'SPONSORED_BRANDS')
             ->where(function($q) use ($dayBeforeYesterday, $yesterday) {
                 $q->where('report_date_range', $dayBeforeYesterday)
@@ -2046,14 +2046,18 @@ class OverallAmazonController extends Controller
                   ->orWhere(function($q2) {
                       $q2->whereNotNull('sbid_m')
                          ->where('sbid_m', '!=', '');
+                  })
+                  ->orWhere(function($q3) {
+                      $q3->whereNotNull('sbid')->where('sbid', '!=', '')->where('sbid', '>', 0);
                   });
             })
             ->orderByRaw("CASE WHEN report_date_range = ? THEN 0 ELSE 1 END", [$dayBeforeYesterday])
             ->get();
 
-        // Build HL last_sbid and sbid_m maps
+        // Build HL last_sbid, sbid_m, and sbid maps (mirrors PT / KW sbid maps)
         $hlLastSbidMap = [];
         $hlSbidMMap = [];
+        $hlSbidMap = [];
         foreach ($hlLastSbidReports as $report) {
             $campaignIdStr = (string)$report->campaign_id;
             if (!empty($campaignIdStr) && !isset($hlLastSbidMap[$campaignIdStr]) && !empty($report->last_sbid)) {
@@ -2061,6 +2065,9 @@ class OverallAmazonController extends Controller
             }
             if (!empty($campaignIdStr) && !isset($hlSbidMMap[$campaignIdStr]) && !empty($report->sbid_m)) {
                 $hlSbidMMap[$campaignIdStr] = $report->sbid_m;
+            }
+            if (!empty($campaignIdStr) && !isset($hlSbidMap[$campaignIdStr]) && isset($report->sbid) && (float)($report->sbid ?? 0) > 0) {
+                $hlSbidMap[$campaignIdStr] = $report->sbid;
             }
             // Also map by normalized campaign name for fallback
             if (!empty($report->campaignName)) {
@@ -2071,18 +2078,24 @@ class OverallAmazonController extends Controller
                 if (!isset($hlSbidMMap['name_' . $normalizedName]) && !empty($report->sbid_m)) {
                     $hlSbidMMap['name_' . $normalizedName] = $report->sbid_m;
                 }
+                if (!isset($hlSbidMap['name_' . $normalizedName]) && isset($report->sbid) && (float)($report->sbid ?? 0) > 0) {
+                    $hlSbidMap['name_' . $normalizedName] = $report->sbid;
+                }
             }
         }
 
-        // Fallback: fetch HL last_sbid from L1/L7 so saved value shows when no day-specific row exists yet
+        // Fallback: fetch HL last_sbid / sbid from L1/L7 so saved value shows when no day-specific row exists yet
         $hlLastSbidFallback = DB::table('amazon_sb_campaign_reports')
-            ->select('campaign_id', 'campaignName', 'last_sbid', 'sbid_m')
+            ->select('campaign_id', 'campaignName', 'last_sbid', 'sbid_m', 'sbid')
             ->where('ad_type', 'SPONSORED_BRANDS')
             ->whereIn('report_date_range', ['L1', 'L7'])
             ->where(function($q) {
                 $q->whereNotNull('last_sbid')->where('last_sbid', '!=', '')
                   ->orWhere(function($q2) {
                       $q2->whereNotNull('sbid_m')->where('sbid_m', '!=', '');
+                  })
+                  ->orWhere(function($q3) {
+                      $q3->whereNotNull('sbid')->where('sbid', '!=', '')->where('sbid', '>', 0);
                   });
             })
             ->orderByRaw("CASE WHEN report_date_range = 'L1' THEN 0 ELSE 1 END")
@@ -2095,6 +2108,9 @@ class OverallAmazonController extends Controller
             if (!empty($campaignIdStr) && !isset($hlSbidMMap[$campaignIdStr]) && !empty($report->sbid_m)) {
                 $hlSbidMMap[$campaignIdStr] = $report->sbid_m;
             }
+            if (!empty($campaignIdStr) && !isset($hlSbidMap[$campaignIdStr]) && isset($report->sbid) && (float)($report->sbid ?? 0) > 0) {
+                $hlSbidMap[$campaignIdStr] = $report->sbid;
+            }
             if (!empty($report->campaignName)) {
                 $normalizedName = strtoupper(trim(rtrim($report->campaignName, '.')));
                 if (!isset($hlLastSbidMap['name_' . $normalizedName]) && !empty($report->last_sbid)) {
@@ -2102,6 +2118,52 @@ class OverallAmazonController extends Controller
                 }
                 if (!isset($hlSbidMMap['name_' . $normalizedName]) && !empty($report->sbid_m)) {
                     $hlSbidMMap['name_' . $normalizedName] = $report->sbid_m;
+                }
+                if (!isset($hlSbidMap['name_' . $normalizedName]) && isset($report->sbid) && (float)($report->sbid ?? 0) > 0) {
+                    $hlSbidMap['name_' . $normalizedName] = $report->sbid;
+                }
+            }
+        }
+
+        // L30 SB rows: last_sbid / sbid / sbid_m often exist only on the L30 aggregate row (same row used for HL spend metrics)
+        $hlL30BidRows = DB::table('amazon_sb_campaign_reports')
+            ->select('campaign_id', 'campaignName', 'last_sbid', 'sbid_m', 'sbid')
+            ->where('ad_type', 'SPONSORED_BRANDS')
+            ->where('report_date_range', 'L30')
+            ->where(function ($q) {
+                $q->where(function ($q1) {
+                    $q1->whereNotNull('last_sbid')->where('last_sbid', '!=', '');
+                })
+                    ->orWhere(function ($q2) {
+                        $q2->whereNotNull('sbid_m')->where('sbid_m', '!=', '');
+                    })
+                    ->orWhere(function ($q3) {
+                        $q3->whereNotNull('sbid')->where('sbid', '!=', '')->where('sbid', '>', 0);
+                    });
+            })
+            ->orderBy('id', 'desc')
+            ->get();
+        foreach ($hlL30BidRows as $report) {
+            $campaignIdStr = (string) $report->campaign_id;
+            if (! empty($campaignIdStr) && ! isset($hlLastSbidMap[$campaignIdStr]) && ! empty($report->last_sbid)) {
+                $hlLastSbidMap[$campaignIdStr] = $report->last_sbid;
+            }
+            if (! empty($campaignIdStr) && ! isset($hlSbidMMap[$campaignIdStr]) && ! empty($report->sbid_m)) {
+                $hlSbidMMap[$campaignIdStr] = $report->sbid_m;
+            }
+            if (! empty($campaignIdStr) && ! isset($hlSbidMap[$campaignIdStr]) && isset($report->sbid) && (float) ($report->sbid ?? 0) > 0) {
+                $hlSbidMap[$campaignIdStr] = $report->sbid;
+            }
+            if (! empty($report->campaignName)) {
+                $normalizedName = strtoupper(trim(rtrim($report->campaignName, '.')));
+                if (! isset($hlLastSbidMap['name_'.$normalizedName]) && ! empty($report->last_sbid)) {
+                    $hlLastSbidMap['name_'.$normalizedName] = $report->last_sbid;
+                }
+                if (! isset($hlSbidMMap['name_'.$normalizedName]) && ! empty($report->sbid_m)) {
+                    $hlSbidMMap['name_'.$normalizedName] = $report->sbid_m;
+                }
+                if (! isset($hlSbidMap['name_'.$normalizedName]) && isset($report->sbid) && (float) ($report->sbid ?? 0) > 0) {
+                    $hlSbidMap['name_'.$normalizedName] = $report->sbid;
                 }
             }
         }
@@ -2159,14 +2221,35 @@ class OverallAmazonController extends Controller
         $parentHlSpendData = [];
 
         // First loop: collect parent HL spend data
+        $normalizeKwForMatchParentHl = function ($s) {
+            $s = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $s ?? '');
+            $s = preg_replace('/\s+/', ' ', $s);
+            $s = preg_replace('/\s+PCS\b/i', 'PCS', $s);
+            return strtoupper(trim(rtrim($s, '.')));
+        };
         foreach ($productMasters as $pm) {
             $sku = strtoupper($pm->sku);
             $parent = trim($pm->parent);
 
-            $matchedCampaignHlL30 = $amazonHlL30->first(function ($item) use ($sku) {
-                $cleanName = strtoupper(trim($item->campaignName));
-                return in_array($cleanName, [$sku, $sku . ' HEAD']) && strtoupper($item->campaignStatus) === 'ENABLED';
+            $cleanSkuL30 = strtoupper(trim(rtrim($sku, '.')));
+            $cleanSkuL30Norm = $normalizeKwForMatchParentHl($cleanSkuL30);
+            $cleanParentL30Norm = $normalizeKwForMatchParentHl(strtoupper(trim($parent)));
+            $isParentRowHl = str_starts_with($cleanSkuL30, 'PARENT');
+            $matchedCampaignsHlL30First = $amazonHlL30->filter(function ($item) use ($cleanSkuL30Norm, $cleanParentL30Norm, $isParentRowHl, $normalizeKwForMatchParentHl) {
+                $cn = $normalizeKwForMatchParentHl($item->campaignName ?? '');
+                if ($isParentRowHl) {
+                    return $cn === $cleanSkuL30Norm || $cn === $cleanSkuL30Norm . ' HEAD'
+                        || rtrim($cn, '.') === $cleanSkuL30Norm || rtrim($cn, '.') === $cleanSkuL30Norm . ' HEAD';
+                }
+
+                return $cn === $cleanSkuL30Norm || $cn === $cleanSkuL30Norm . ' HEAD'
+                    || $cn === $cleanParentL30Norm || $cn === $cleanParentL30Norm . ' HEAD'
+                    || rtrim($cn, '.') === $cleanSkuL30Norm || rtrim($cn, '.') === $cleanSkuL30Norm . ' HEAD'
+                    || rtrim($cn, '.') === $cleanParentL30Norm || rtrim($cn, '.') === $cleanParentL30Norm . ' HEAD';
             });
+            $matchedCampaignHlL30 = $matchedCampaignsHlL30First->first(function ($item) {
+                return strtoupper($item->campaignStatus ?? 'PAUSED') === 'ENABLED';
+            }) ?? $matchedCampaignsHlL30First->first();
 
             if (str_starts_with($sku, 'PARENT')) {
                 $childCount = $parentSkuCounts[$parent] ?? 0;
@@ -2402,13 +2485,23 @@ class OverallAmazonController extends Controller
                     || $cleanNameNoDot === $cleanParentL30Norm . ' PT';
             });
 
-            $matchedCampaignHlL30 = $amazonHlL30->first(function ($item) use ($cleanSkuL30, $cleanParentL30) {
-                $cleanName = strtoupper(trim($item->campaignName));
-                // Check SKU and parent for HL campaigns
-                return (in_array($cleanName, [$cleanSkuL30, $cleanSkuL30 . ' HEAD']) 
-                    || in_array($cleanName, [$cleanParentL30, $cleanParentL30 . ' HEAD'])) 
-                    && strtoupper($item->campaignStatus) === 'ENABLED';
-            });
+            // HL (Headline): all L30 matches for this SKU/parent (any status). Primary = ENABLED if any, else first — same idea as PT.
+            $hlCampaignMatchesHlL30 = function ($item) use ($cleanSkuL30Norm, $cleanParentL30Norm, $isParentRow, $normalizeKwForMatch) {
+                $cn = $normalizeKwForMatch($item->campaignName ?? '');
+                if ($isParentRow) {
+                    return $cn === $cleanSkuL30Norm || $cn === $cleanSkuL30Norm . ' HEAD'
+                        || rtrim($cn, '.') === $cleanSkuL30Norm || rtrim($cn, '.') === $cleanSkuL30Norm . ' HEAD';
+                }
+
+                return $cn === $cleanSkuL30Norm || $cn === $cleanSkuL30Norm . ' HEAD'
+                    || $cn === $cleanParentL30Norm || $cn === $cleanParentL30Norm . ' HEAD'
+                    || rtrim($cn, '.') === $cleanSkuL30Norm || rtrim($cn, '.') === $cleanSkuL30Norm . ' HEAD'
+                    || rtrim($cn, '.') === $cleanParentL30Norm || rtrim($cn, '.') === $cleanParentL30Norm . ' HEAD';
+            };
+            $matchedCampaignsHlL30 = $amazonHlL30->filter($hlCampaignMatchesHlL30);
+            $matchedCampaignHlL30 = $matchedCampaignsHlL30->first(function ($item) {
+                return strtoupper($item->campaignStatus ?? 'PAUSED') === 'ENABLED';
+            }) ?? $matchedCampaignsHlL30->first();
 
             // Sum spend from all matching KW campaigns
             $row['kw_spend_L30'] = $matchedCampaignsKwL30->sum('spend');
@@ -2465,11 +2558,8 @@ class OverallAmazonController extends Controller
             // PT: any L30 PT campaign match (same scope as pt_campaign_id / PT metrics). Exact "SKU PT" only
             // was too strict — e.g. child rows matched via parent PT name had metrics but SBID columns stayed blank.
             $row['has_own_pt_campaign'] = $matchedCampaignsPtL30->isNotEmpty();
-            $row['has_own_hl_campaign'] = $matchedCampaignHlL30 && in_array(
-                $normalizeKwForMatch($matchedCampaignHlL30->campaignName ?? ''),
-                [$cleanSkuL30Norm, $cleanSkuL30Norm . ' HEAD'],
-                true
-            );
+            // HL: same — any L30 HL match (SKU/parent HEAD) so parent-matched rows get SBID columns.
+            $row['has_own_hl_campaign'] = $matchedCampaignsHlL30->isNotEmpty();
             
             // Match L7 campaign data for utilization - use same normalization as KW page
             $cleanSku = strtoupper(trim(rtrim($sku, '.')));
@@ -2783,24 +2873,18 @@ class OverallAmazonController extends Controller
             }
 
             // --- HL Campaign Details (for HL Ads section) ---
-            // Match HL L7 campaign for this row (check SKU and parent, same as HL L30 match)
-            $hlCleanParent = strtoupper(trim($parent ?? ''));
-            $matchedHlL7 = $amazonHlL7->first(function ($item) use ($cleanSku, $hlCleanParent) {
-                $cleanName = strtoupper(trim($item->campaignName));
-                return (in_array($cleanName, [$cleanSku, $cleanSku . ' HEAD'])
-                    || ($hlCleanParent && in_array($cleanName, [$hlCleanParent, $hlCleanParent . ' HEAD'])))
-                    && strtoupper($item->campaignStatus) === 'ENABLED';
-            });
-            // Match HL L1 campaign
-            $matchedHlL1 = $amazonHlL1->first(function ($item) use ($cleanSku, $hlCleanParent) {
-                $cleanName = strtoupper(trim($item->campaignName));
-                return (in_array($cleanName, [$cleanSku, $cleanSku . ' HEAD'])
-                    || ($hlCleanParent && in_array($cleanName, [$hlCleanParent, $hlCleanParent . ' HEAD'])))
-                    && strtoupper($item->campaignStatus) === 'ENABLED';
-            });
+            // Match HL L7 / L1 with same name rules as L30; prefer ENABLED row for budget/CPC, else any status (paused campaigns still show metrics).
+            $matchedCampaignsHlL7 = $amazonHlL7->filter($hlCampaignMatchesHlL30);
+            $matchedHlL7 = $matchedCampaignsHlL7->first(function ($item) {
+                return strtoupper($item->campaignStatus ?? 'PAUSED') === 'ENABLED';
+            }) ?? $matchedCampaignsHlL7->first();
+            $matchedCampaignsHlL1 = $amazonHlL1->filter($hlCampaignMatchesHlL30);
+            $matchedHlL1 = $matchedCampaignsHlL1->first(function ($item) {
+                return strtoupper($item->campaignStatus ?? 'PAUSED') === 'ENABLED';
+            }) ?? $matchedCampaignsHlL1->first();
 
             // HL Campaign name, budget, campaign_id, status - only from L30 (no L7/L1 fallback) so deleted campaigns don't show as active
-            if ($matchedCampaignHlL30) {
+            if ($matchedCampaignsHlL30->isNotEmpty() && $matchedCampaignHlL30) {
                 $row['hl_campaignName'] = $matchedCampaignHlL30->campaignName ?? null;
                 $row['hl_campaignBudgetAmount'] = ($matchedCampaignHlL30->campaignBudgetAmount ?? null)
                     ?? ($matchedHlL7 ? ($matchedHlL7->campaignBudgetAmount ?? null) : null)
@@ -2834,10 +2918,10 @@ class OverallAmazonController extends Controller
             $hlSold30 = (int)($row['hl_sold_L30'] ?? 0);
             $row['hl_ad_cvr'] = $hlClicks30 > 0 ? round(($hlSold30 / $hlClicks30) * 100, 2) : 0;
 
-            // HL SBID fields - only when HL campaign exists in L30 and INV > 0 (do not show SBID when INV is 0)
+            // HL SBID fields when HL L30 campaign exists (do not gate on INV — Shopify INV can be 0 while ads run; Tabulator showed "-" for all rows)
             $hlLastSbid = '';
             $hlSbidM = '';
-            if ($matchedCampaignHlL30 && $inv > 0) {
+            if ($matchedCampaignsHlL30->isNotEmpty()) {
                 $hlCampaignIdStr = $row['hl_campaign_id'] ? (string)$row['hl_campaign_id'] : null;
                 if ($hlCampaignIdStr && isset($hlLastSbidMap[$hlCampaignIdStr])) {
                     $hlLastSbid = $hlLastSbidMap[$hlCampaignIdStr];
@@ -2864,6 +2948,27 @@ class OverallAmazonController extends Controller
             }
             $row['hl_last_sbid'] = $hlLastSbid;
             $row['hl_sbid_m'] = $hlSbidM;
+
+            // HL SBID: Amazon suggested bid (sbid) from SB campaign reports — same pattern as PT sbid
+            $hlSbidFromDb = 0.0;
+            if ($matchedCampaignsHlL30->isNotEmpty()) {
+                $hlCampaignIdStrForSbid = $row['hl_campaign_id'] ? (string) $row['hl_campaign_id'] : null;
+                if ($hlCampaignIdStrForSbid && isset($hlSbidMap[$hlCampaignIdStrForSbid])) {
+                    $hlSbidFromDb = (float) $hlSbidMap[$hlCampaignIdStrForSbid];
+                } else {
+                    $hlCampaignNameForSbid = $row['hl_campaignName'];
+                    if ($hlCampaignNameForSbid) {
+                        $hlNormNameForSbid = strtoupper(trim(rtrim($hlCampaignNameForSbid, '.')));
+                        if (isset($hlSbidMap['name_'.$hlNormNameForSbid])) {
+                            $hlSbidFromDb = (float) $hlSbidMap['name_'.$hlNormNameForSbid];
+                        }
+                    }
+                }
+            }
+            if ($hlSbidFromDb <= 0 && $hlLastSbid !== '' && is_numeric($hlLastSbid)) {
+                $hlSbidFromDb = (float) $hlLastSbid;
+            }
+            $row['hl_sbid'] = $hlSbidFromDb;
 
             // SPEND_L30 and SALES_L30 include HL (like AmazonAdRunningController)
             $row['SPEND_L30'] = ($row['kw_spend_L30'] ?? 0) + ($row['pmt_spend_L30'] ?? 0) + ($row['hl_spend_L30'] ?? 0);
@@ -3229,6 +3334,7 @@ class OverallAmazonController extends Controller
             $sumRow['has_own_kw_campaign'] = $sumRow['hasCampaign'];
             // Parent PT presence is set below after $hasParentPtCampaign is computed (see pt_campaign_status block)
             $sumRow['has_own_pt_campaign'] = false;
+            // HL parent flag set in HL block below (same pattern as PT)
             $sumRow['has_own_hl_campaign'] = false;
             $sumRow['campaign_id'] = ($parentCampaignL7 ? $parentCampaignL7->campaign_id : null) ?? ($parentCampaignL1 ? $parentCampaignL1->campaign_id : null) ?? ($firstParentL30 ? $firstParentL30->campaign_id : null);
             $sumRow['campaignName'] = ($parentCampaignL7 ? $parentCampaignL7->campaignName : null) ?? ($parentCampaignL1 ? $parentCampaignL1->campaignName : null) ?? ($firstParentL30 ? $firstParentL30->campaignName : null);
@@ -3537,26 +3643,34 @@ class OverallAmazonController extends Controller
             $hlParentName = $parentCampaignName;  // e.g. "PARENT 12 WF PP"
             $hlParentNameNoDot = $parentCampaignNameNoDot;
             
-            // Match HL L30 campaign for parent
-            $parentHlL30 = $amazonHlL30->first(function ($item) use ($hlParentName, $hlParentNameNoDot) {
+            // Match HL L30 / L7 / L1 for parent: any status, prefer ENABLED for primary row (paused still counts)
+            $parentHlCandidatesL30 = $amazonHlL30->filter(function ($item) use ($hlParentName, $hlParentNameNoDot) {
                 $cleanName = strtoupper(trim($item->campaignName));
-                return (in_array($cleanName, [$hlParentName, $hlParentName . ' HEAD', $hlParentNameNoDot, $hlParentNameNoDot . ' HEAD']))
-                    && strtoupper($item->campaignStatus) === 'ENABLED';
+
+                return in_array($cleanName, [$hlParentName, $hlParentName . ' HEAD', $hlParentNameNoDot, $hlParentNameNoDot . ' HEAD']);
             });
-            // Match HL L7 campaign for parent
-            $parentHlL7 = $amazonHlL7->first(function ($item) use ($hlParentName, $hlParentNameNoDot) {
+            $parentHlL30 = $parentHlCandidatesL30->first(function ($item) {
+                return strtoupper($item->campaignStatus ?? 'PAUSED') === 'ENABLED';
+            }) ?? $parentHlCandidatesL30->first();
+            $parentHlCandidatesL7 = $amazonHlL7->filter(function ($item) use ($hlParentName, $hlParentNameNoDot) {
                 $cleanName = strtoupper(trim($item->campaignName));
-                return (in_array($cleanName, [$hlParentName, $hlParentName . ' HEAD', $hlParentNameNoDot, $hlParentNameNoDot . ' HEAD']))
-                    && strtoupper($item->campaignStatus) === 'ENABLED';
+
+                return in_array($cleanName, [$hlParentName, $hlParentName . ' HEAD', $hlParentNameNoDot, $hlParentNameNoDot . ' HEAD']);
             });
-            // Match HL L1 campaign for parent
-            $parentHlL1 = $amazonHlL1->first(function ($item) use ($hlParentName, $hlParentNameNoDot) {
+            $parentHlL7 = $parentHlCandidatesL7->first(function ($item) {
+                return strtoupper($item->campaignStatus ?? 'PAUSED') === 'ENABLED';
+            }) ?? $parentHlCandidatesL7->first();
+            $parentHlCandidatesL1 = $amazonHlL1->filter(function ($item) use ($hlParentName, $hlParentNameNoDot) {
                 $cleanName = strtoupper(trim($item->campaignName));
-                return (in_array($cleanName, [$hlParentName, $hlParentName . ' HEAD', $hlParentNameNoDot, $hlParentNameNoDot . ' HEAD']))
-                    && strtoupper($item->campaignStatus) === 'ENABLED';
+
+                return in_array($cleanName, [$hlParentName, $hlParentName . ' HEAD', $hlParentNameNoDot, $hlParentNameNoDot . ' HEAD']);
             });
-            
+            $parentHlL1 = $parentHlCandidatesL1->first(function ($item) {
+                return strtoupper($item->campaignStatus ?? 'PAUSED') === 'ENABLED';
+            }) ?? $parentHlCandidatesL1->first();
+
             $hasParentHlCampaign = $parentHlL30 || $parentHlL7 || $parentHlL1;
+            $sumRow['has_own_hl_campaign'] = $hasParentHlCampaign;
             
             // HL Campaign name, budget, ID, status
             $sumRow['hl_campaignName'] = ($parentHlL30 ? $parentHlL30->campaignName : null)
@@ -3646,6 +3760,20 @@ class OverallAmazonController extends Controller
             }
             $sumRow['hl_last_sbid'] = $hlParentLastSbid;
             $sumRow['hl_sbid_m'] = $hlParentSbidM;
+
+            $hlParentSbidFromDb = 0.0;
+            if ($hlParentCampaignIdStr && isset($hlSbidMap[$hlParentCampaignIdStr])) {
+                $hlParentSbidFromDb = (float) $hlSbidMap[$hlParentCampaignIdStr];
+            } elseif (!empty($sumRow['hl_campaignName'])) {
+                $hlNormParentSbid = strtoupper(trim(rtrim($sumRow['hl_campaignName'], '.')));
+                if (isset($hlSbidMap['name_'.$hlNormParentSbid])) {
+                    $hlParentSbidFromDb = (float) $hlSbidMap['name_'.$hlNormParentSbid];
+                }
+            }
+            if ($hlParentSbidFromDb <= 0 && $hlParentLastSbid !== '' && is_numeric($hlParentLastSbid)) {
+                $hlParentSbidFromDb = (float) $hlParentLastSbid;
+            }
+            $sumRow['hl_sbid'] = $hlParentSbidFromDb;
             
             // ad_pause: true if neither KW nor PT nor HL is ENABLED
             $sumRow['ad_pause'] = !($kwParentEnabled || $ptParentEnabled || $hlParentHasEnabled);

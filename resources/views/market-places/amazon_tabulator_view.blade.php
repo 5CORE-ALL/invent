@@ -4004,11 +4004,14 @@
                         minWidth: 80,
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
-                            if (parseFloat(row.INV) <= 0) return '-';
-                            var hasCampaign = !!(row.has_own_hl_campaign && (row.hl_campaign_id || row.hl_campaignName));
+                            var hasCampaign = !!(row.has_own_hl_campaign && (row.hl_campaign_id || row.hl_campaignName))
+                                || ((parseFloat(row.hl_spend_L30 || 0) > 0 || parseFloat(row.hl_sales_L30 || 0) > 0) && !!(row.hl_campaign_id || row.hl_campaignName));
                             if (!hasCampaign) return '-';
-                            if ((row.hl_campaign_status || '').toUpperCase() !== 'ENABLED') return '-';
-                            return cell.getValue() || '-';
+                            var v = cell.getValue();
+                            var display = (!v || v === '' || v === '0' || v === 0) ? '-' : parseFloat(v).toFixed(2);
+                            if (display === '-') return '-';
+                            var paused = (row.hl_campaign_status || '').toUpperCase() !== 'ENABLED';
+                            return paused ? '<span style="color: #999;">' + display + '</span>' : display;
                         }
                     },
                     {
@@ -4017,29 +4020,34 @@
                         hozAlign: "center",
                         visible: false,
                         minWidth: 72,
+                        sorter: "number",
+                        sorterParams: { alignEmptyValues: "bottom" },
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
-                            if (parseFloat(row.INV) <= 0) return '-';
-                            var hasCampaign = !!(row.has_own_hl_campaign && (row.hl_campaign_id || row.hl_campaignName));
+                            var hasCampaign = !!(row.has_own_hl_campaign && (row.hl_campaign_id || row.hl_campaignName))
+                                || ((parseFloat(row.hl_spend_L30 || 0) > 0 || parseFloat(row.hl_sales_L30 || 0) > 0) && !!(row.hl_campaign_id || row.hl_campaignName));
                             if (!hasCampaign) return '-';
-                            var hlStatus = (row.hl_campaign_status || '').toUpperCase();
-                            if (hlStatus !== 'ENABLED') {
-                                return '<span style="color: #999;">-</span>';
+                            var paused = (row.hl_campaign_status || '').toUpperCase() !== 'ENABLED';
+
+                            // Prefer Amazon suggested bid from report (amazon_sb_campaign_reports.sbid), same idea as PT SBID
+                            var apiSbid = parseFloat(row.hl_sbid);
+                            if (!isNaN(apiSbid) && apiSbid > 0) {
+                                var s = apiSbid.toFixed(2);
+                                return paused ? '<span style="color: #999;">' + s + '</span>' : s;
                             }
-                            
+
                             var l1_cpc = parseFloat(row.hl_l1_cpc) || 0;
                             var l7_cpc = parseFloat(row.hl_l7_cpc) || 0;
-                            var avg_cpc = parseFloat(row.hl_avg_cpc) || 0;
                             var budget = parseFloat(row.hl_campaignBudgetAmount) || 0;
                             var l7_spend = parseFloat(row.hl_spend_L7) || 0;
                             var l1_spend = parseFloat(row.hl_spend_L1) || 0;
                             var price = parseFloat(row.price) || 0;
-                            
+
                             var ub7 = budget > 0 ? (l7_spend / (budget * 7)) * 100 : 0;
                             var ub1 = budget > 0 ? (l1_spend / budget) * 100 : 0;
-                            
+
                             var sbid = 0;
-                            
+
                             var rowUtilizationType = 'all';
                             if (ub7 > 99 && ub1 > 99) {
                                 rowUtilizationType = 'over';
@@ -4048,8 +4056,7 @@
                             } else if (ub7 >= 66 && ub7 <= 99 && ub1 >= 66 && ub1 <= 99) {
                                 rowUtilizationType = 'correctly';
                             }
-                            
-                            // Special case: If UB7 and UB1 = 0% (L1 and L7 both 0), use price-based default; price < 50 → 0.60
+
                             if (ub7 === 0 && ub1 === 0) {
                                 if (price < 50) {
                                     sbid = 0.60;
@@ -4066,11 +4073,9 @@
                                 } else if (l7_cpc > 0) {
                                     sbid = Math.floor(l7_cpc * 0.90 * 100) / 100;
                                 } else {
-                                    // When both L1 and L7 CPC are 0, use 0.60 (not avg_cpc)
                                     sbid = 0.60;
                                 }
                             } else if (rowUtilizationType === 'under') {
-                                // L1 0.01–0.20 → +0.10; L1 0.201–0.30 → +0.05; L1=0 and L7 0.20–0.30 → +0.05; else 10%
                                 if (l1_cpc >= 0.01 && l1_cpc <= 0.20) {
                                     sbid = Math.floor((l1_cpc + 0.10) * 100) / 100;
                                 } else if (l1_cpc >= 0.201 && l1_cpc <= 0.30) {
@@ -4082,12 +4087,23 @@
                                 } else if (l7_cpc > 0) {
                                     sbid = Math.floor(l7_cpc * 1.10 * 100) / 100;
                                 } else {
-                                    // When both L1 and L7 CPC are 0, use 0.60 (not avg_cpc)
                                     sbid = 0.60;
                                 }
                             }
-                            
-                            return sbid === 0 ? '-' : sbid.toFixed(2);
+
+                            // "Correctly" / middle utilization leaves sbid at 0 — use last SBID from report or CPC (server also maps hl_sbid from last_sbid when sbid missing)
+                            if (sbid === 0) {
+                                var lastBid = parseFloat(row.hl_last_sbid);
+                                if (!isNaN(lastBid) && lastBid > 0) sbid = lastBid;
+                            }
+                            if (sbid === 0) {
+                                var acpc = parseFloat(row.hl_l1_cpc || 0) || parseFloat(row.hl_l7_cpc || 0) || parseFloat(row.hl_avg_cpc || 0);
+                                if (acpc > 0) sbid = Math.round(acpc * 100) / 100;
+                            }
+
+                            if (sbid === 0) return paused ? '<span style="color: #999;">-</span>' : '-';
+                            var out = sbid.toFixed(2);
+                            return paused ? '<span style="color: #999;">' + out + '</span>' : out;
                         }
                     },
                     {
@@ -4099,11 +4115,14 @@
                         editor: "input",
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
-                            if (parseFloat(row.INV) <= 0) return '-';
-                            var hasCampaign = !!(row.has_own_hl_campaign && (row.hl_campaign_id || row.hl_campaignName));
+                            var hasCampaign = !!(row.has_own_hl_campaign && (row.hl_campaign_id || row.hl_campaignName))
+                                || ((parseFloat(row.hl_spend_L30 || 0) > 0 || parseFloat(row.hl_sales_L30 || 0) > 0) && !!(row.hl_campaign_id || row.hl_campaignName));
                             if (!hasCampaign) return '-';
-                            if ((row.hl_campaign_status || '').toUpperCase() !== 'ENABLED') return '-';
-                            return cell.getValue() || '-';
+                            var v = cell.getValue();
+                            var display = (!v || v === '' || v === '0' || v === 0) ? '-' : parseFloat(v).toFixed(2);
+                            if (display === '-') return '-';
+                            var paused = (row.hl_campaign_status || '').toUpperCase() !== 'ENABLED';
+                            return paused ? '<span style="color: #999;">' + display + '</span>' : display;
                         }
                     },
                     {
