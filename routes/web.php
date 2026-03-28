@@ -1256,34 +1256,27 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::put('/outgoing-update-reason-comment', [OutgoingController::class, 'updateReasonAndComment']);
     Route::get('/outgoing-history/{id}', [OutgoingController::class, 'getHistory']);
 
-    // Spare parts (inventory management)
-    Route::middleware(['auth'])->group(function () {
-        Route::prefix('inventory/spare-parts')->group(function () {
-            Route::get('/', [SparePartController::class, 'index'])->name('inventory.spare-parts.index');
-            Route::get('/api/summary', [SparePartController::class, 'summary'])->name('inventory.spare-parts.api.summary');
-            Route::get('/api/spare-parts', [SparePartController::class, 'sparePartsData'])->name('inventory.spare-parts.api.parts');
-            Route::get('/api/low-stock', [SparePartController::class, 'lowStockData'])->name('inventory.spare-parts.api.low-stock');
-            Route::get('/api/tree', [SparePartController::class, 'tree'])->name('inventory.spare-parts.api.tree');
-            Route::get('/api/search-parts', [SparePartController::class, 'searchParts'])->name('inventory.spare-parts.api.search-parts');
-            Route::get('/api/part-skus', [SparePartController::class, 'allPartSkus'])->name('inventory.spare-parts.api.part-skus');
-            Route::get('/api/suppliers', [SparePartController::class, 'suppliers'])->name('inventory.spare-parts.api.suppliers');
-            Route::patch('/api/parts/{id}', [SparePartController::class, 'updatePart'])->name('inventory.spare-parts.api.parts.update');
-            Route::post('/api/spare-part-details', [SparePartController::class, 'storeSparePartDetail'])->name('inventory.spare-parts.api.spare-part-details.store');
+    // Spare parts (inventory management) - pure web routes (no API/AJAX)
+    Route::middleware(['auth'])->prefix('inventory/spare-parts')->group(function () {
+        Route::get('/', [SparePartController::class, 'index'])->name('spare.parts.index');
 
-            Route::get('/api/requisitions', [SparePartsRequisitionController::class, 'index'])->name('inventory.spare-parts.api.requisitions.index');
-            Route::post('/api/requisitions', [SparePartsRequisitionController::class, 'store'])->name('inventory.spare-parts.api.requisitions.store');
-            Route::post('/api/requisitions/{requisition}/submit', [SparePartsRequisitionController::class, 'submit'])->name('inventory.spare-parts.api.requisitions.submit');
-            Route::post('/api/requisitions/{requisition}/approve', [SparePartsRequisitionController::class, 'approve'])->name('inventory.spare-parts.api.requisitions.approve');
-            Route::post('/api/requisitions/{requisition}/close', [SparePartsRequisitionController::class, 'close'])->name('inventory.spare-parts.api.requisitions.close');
+        // Requisitions
+        Route::post('/requisition', [SparePartsRequisitionController::class, 'store'])->name('requisition.store');
+        Route::post('/requisition/{requisition}/submit', [SparePartsRequisitionController::class, 'submit'])->name('requisition.submit');
+        Route::post('/requisition/{requisition}/approve', [SparePartsRequisitionController::class, 'approve'])->name('requisition.approve');
+        Route::post('/requisition/{requisition}/close', [SparePartsRequisitionController::class, 'close'])->name('requisition.close');
 
-            Route::get('/api/issues/pending', [SparePartsIssueController::class, 'pending'])->name('inventory.spare-parts.api.issues.pending');
-            Route::post('/api/issues', [SparePartsIssueController::class, 'store'])->name('inventory.spare-parts.api.issues.store');
+        // Issue
+        Route::post('/issue', [SparePartsIssueController::class, 'store'])->name('issue.store');
 
-            Route::get('/api/purchase-orders', [SparePartPurchaseOrderController::class, 'index'])->name('inventory.spare-parts.api.purchase-orders.index');
-            Route::post('/api/purchase-orders', [SparePartPurchaseOrderController::class, 'store'])->name('inventory.spare-parts.api.purchase-orders.store');
-            Route::post('/api/purchase-orders/{sparePartPurchaseOrder}/send', [SparePartPurchaseOrderController::class, 'send'])->name('inventory.spare-parts.api.purchase-orders.send');
-            Route::post('/api/purchase-orders/{sparePartPurchaseOrder}/receive', [SparePartPurchaseOrderController::class, 'receive'])->name('inventory.spare-parts.api.purchase-orders.receive');
-        });
+        // Purchase Orders
+        Route::post('/po', [SparePartPurchaseOrderController::class, 'store'])->name('po.store');
+        Route::post('/po/{sparePartPurchaseOrder}/send', [SparePartPurchaseOrderController::class, 'send'])->name('po.send');
+        Route::post('/po/{sparePartPurchaseOrder}/receive', [SparePartPurchaseOrderController::class, 'receive'])->name('po.receive');
+
+        // Spare Parts
+        Route::post('/parts', [SparePartController::class, 'store'])->name('parts.store');
+        Route::patch('/parts/{id}', [SparePartController::class, 'update'])->name('parts.update');
     });
     Route::post('/outgoing-archive', [OutgoingController::class, 'archive']);
 

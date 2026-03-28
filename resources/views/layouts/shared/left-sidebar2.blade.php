@@ -874,7 +874,7 @@
                             <a href="{{ route('customer.care.carrier.issues') }}">Carrier Issues</a>
                         </li>
                         <li>
-                            <a href="{{ route('inventory.spare-parts.index') }}">Spare Parts</a>
+                            <a href="{{ route('spare.parts.index') }}">Spare Parts</a>
                         </li>
                         <li>
                             <a href="{{ route('customer.care.followups') }}">Follow UP</a>

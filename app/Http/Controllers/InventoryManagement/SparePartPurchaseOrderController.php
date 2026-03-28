@@ -18,13 +18,7 @@ class SparePartPurchaseOrderController extends Controller
 
     public function index()
     {
-        $rows = SparePartPurchaseOrder::query()
-            ->with(['supplier:id,name,company', 'items.part:id,sku'])
-            ->latest()
-            ->limit(100)
-            ->get();
-
-        return response()->json(['data' => $rows]);
+        return redirect()->route('spare.parts.index');
     }
 
     public function store(Request $request)
@@ -33,10 +27,12 @@ class SparePartPurchaseOrderController extends Controller
             'supplier_id' => 'required|exists:suppliers,id',
             'expected_at' => 'nullable|date',
             'notes' => 'nullable|string',
-            'items' => 'required|array|min:1',
-            'items.*.part_id' => 'required|exists:product_master,id',
-            'items.*.qty_ordered' => 'required|integer|min:1',
-            'items.*.unit_cost' => 'nullable|numeric|min:0',
+            'part_id' => 'required|array|min:1',
+            'part_id.*' => 'nullable|exists:product_master,id',
+            'qty' => 'required|array|min:1',
+            'qty.*' => 'nullable|integer|min:1',
+            'unit_cost' => 'nullable|array',
+            'unit_cost.*' => 'nullable|numeric|min:0',
         ]);
 
         $po = DB::transaction(function () use ($validated) {
@@ -56,36 +52,40 @@ class SparePartPurchaseOrderController extends Controller
                 'created_by' => Auth::id(),
             ]);
 
-            foreach ($validated['items'] as $line) {
+            foreach ($validated['part_id'] as $i => $partId) {
+                $qty = isset($validated['qty'][$i]) ? (int) $validated['qty'][$i] : 0;
+                if (!$partId || $qty <= 0) {
+                    continue;
+                }
                 SparePartPurchaseOrderItem::query()->create([
                     'po_id' => $po->id,
-                    'part_id' => $line['part_id'],
-                    'qty_ordered' => $line['qty_ordered'],
+                    'part_id' => $partId,
+                    'qty_ordered' => $qty,
                     'qty_received' => 0,
-                    'unit_cost' => $line['unit_cost'] ?? null,
+                    'unit_cost' => isset($validated['unit_cost'][$i]) ? $validated['unit_cost'][$i] : null,
                 ]);
             }
 
             return $po->load(['items.part', 'supplier']);
         });
 
-        return response()->json(['message' => 'Purchase order created', 'purchase_order' => $po], 201);
+        return redirect()->back()->with('success', 'Purchase order created.');
     }
 
     public function send(SparePartPurchaseOrder $sparePartPurchaseOrder)
     {
         if ($sparePartPurchaseOrder->status !== 'draft') {
-            return response()->json(['message' => 'Only draft orders can be sent.'], 422);
+            return redirect()->back()->with('error', 'Only draft orders can be sent.');
         }
         $sparePartPurchaseOrder->update(['status' => 'sent']);
 
-        return response()->json(['message' => 'Marked as sent', 'purchase_order' => $sparePartPurchaseOrder]);
+        return redirect()->back()->with('success', 'PO marked as sent.');
     }
 
     public function receive(Request $request, SparePartPurchaseOrder $sparePartPurchaseOrder)
     {
         if (!in_array($sparePartPurchaseOrder->status, ['sent', 'partially_received'], true)) {
-            return response()->json(['message' => 'Order is not open for receiving.'], 422);
+            return redirect()->back()->with('error', 'Order is not open for receiving.');
         }
 
         $validated = $request->validate([
@@ -100,7 +100,7 @@ class SparePartPurchaseOrderController extends Controller
 
         $qty = min((int) $validated['quantity'], $line->quantityRemainingToReceive());
         if ($qty <= 0) {
-            return response()->json(['message' => 'Nothing left to receive on this line.'], 422);
+            return redirect()->back()->with('error', 'Nothing left to receive on this line.');
         }
 
         DB::transaction(function () use ($line, $sparePartPurchaseOrder, $qty) {
@@ -129,9 +129,6 @@ class SparePartPurchaseOrderController extends Controller
             }
         });
 
-        return response()->json([
-            'message' => 'Received '.$qty.' unit(s).',
-            'purchase_order' => $sparePartPurchaseOrder->fresh(['items', 'supplier']),
-        ]);
+        return redirect()->back()->with('success', 'Received '.$qty.' unit(s).');
     }
 }
