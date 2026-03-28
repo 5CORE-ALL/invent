@@ -290,6 +290,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let currentPage = 1;
     let listMeta = { total: 0, last_page: 1, per_page: 75 };
     let searchDebounce = null;
+    let descriptionMasterLoadSeq = 0;
 
     const esc = (s) => {
         if (s == null) return '';
@@ -621,6 +622,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function loadData(page) {
         hideLoadError();
+        const mySeq = ++descriptionMasterLoadSeq;
         const p = page != null ? page : currentPage;
         currentPage = p;
         const perPage = parseInt(document.getElementById('perPageSelect')?.value || '75', 10) || 75;
@@ -671,7 +673,11 @@ document.addEventListener('DOMContentLoaded', () => {
             .catch((e) => {
                 clearTimeout(abortTimer);
                 setLoadingUi(false);
+                if (e.name === 'AbortError' && mySeq !== descriptionMasterLoadSeq) {
+                    return;
+                }
                 const msg = e.name === 'AbortError' ? 'Request timed out (2 min).' : (e.message || 'Error');
+                console.error('Description Master: load failed', e);
                 showLoadError(msg);
                 toast('Failed to load: ' + msg, false);
                 const tbody = document.getElementById('table-body');

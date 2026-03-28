@@ -140,7 +140,7 @@ class DescriptionMasterController extends Controller
                 ],
             ]);
         } catch (\Throwable $e) {
-            Log::error('getDescriptionMasterData failed', ['error' => $e->getMessage()]);
+            Log::error('DescriptionMaster: getDescriptionMasterData failed', ['error' => $e->getMessage()]);
 
             return response()->json([
                 'message' => 'Failed to load description master data.',
@@ -202,6 +202,15 @@ class DescriptionMasterController extends Controller
             $totalSuccess = collect($results)->where('success', true)->count();
             $totalFailed = collect($results)->where('success', false)->count();
 
+            if ($totalFailed > 0) {
+                Log::warning('DescriptionMaster: push completed with failures', [
+                    'sku' => $sku,
+                    'total_success' => $totalSuccess,
+                    'total_failed' => $totalFailed,
+                    'results' => $results,
+                ]);
+            }
+
             return response()->json([
                 'success' => $totalFailed === 0,
                 'results' => $results,
@@ -210,7 +219,7 @@ class DescriptionMasterController extends Controller
                 'message' => "Updated {$totalSuccess} marketplace(s).".($totalFailed > 0 ? " {$totalFailed} failed." : ''),
             ]);
         } catch (\Throwable $e) {
-            Log::error('pushDescriptionToMarketplaces failed', ['error' => $e->getMessage()]);
+            Log::error('DescriptionMaster: pushDescriptionToMarketplaces failed', ['error' => $e->getMessage()]);
 
             return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
         }
@@ -248,7 +257,7 @@ class DescriptionMasterController extends Controller
                     : 'Could not clear description (table missing or error).',
             ]);
         } catch (\Throwable $e) {
-            Log::error('resetMarketplaceDescription failed', ['error' => $e->getMessage()]);
+            Log::error('DescriptionMaster: resetMarketplaceDescription failed', ['error' => $e->getMessage()]);
 
             return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
         }
@@ -285,6 +294,8 @@ class DescriptionMasterController extends Controller
 
             $apiKey = config('services.anthropic.key') ?: env('ANTHROPIC_API_KEY');
             if (! $apiKey) {
+                Log::warning('DescriptionMaster: generateDescriptionWithAI skipped, ANTHROPIC_API_KEY not configured');
+
                 return response()->json([
                     'success' => false,
                     'message' => 'Anthropic API key is not configured.',
@@ -308,6 +319,11 @@ class DescriptionMasterController extends Controller
             ])->timeout(120)->post($url, $params);
 
             if (! $resp->successful()) {
+                Log::warning('DescriptionMaster: Anthropic API error', [
+                    'status' => $resp->status(),
+                    'body_preview' => mb_substr($resp->body(), 0, 500),
+                ]);
+
                 return response()->json([
                     'success' => false,
                     'message' => 'AI request failed: '.$resp->body(),
@@ -334,7 +350,7 @@ class DescriptionMasterController extends Controller
                 'tier' => $tier,
             ]);
         } catch (\Throwable $e) {
-            Log::error('generateDescriptionWithAI failed', ['error' => $e->getMessage()]);
+            Log::error('DescriptionMaster: generateDescriptionWithAI failed', ['error' => $e->getMessage()]);
 
             return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
         }
@@ -419,6 +435,8 @@ class DescriptionMasterController extends Controller
                 })
                 ->toArray();
         } catch (\Throwable $e) {
+            Log::warning("DescriptionMaster: unable to load bullet_points from {$table}", ['error' => $e->getMessage()]);
+
             return [];
         }
     }

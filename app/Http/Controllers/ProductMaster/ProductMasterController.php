@@ -5636,6 +5636,8 @@ GRAPHQL;
             $product = ProductMaster::where('sku', $validated['sku'])->first();
 
             if (! $product) {
+                Log::warning('DescriptionMaster: save skipped, product not found', ['sku' => $validated['sku']]);
+
                 return response()->json([
                     'success' => false,
                     'message' => 'Product not found.',
@@ -5660,7 +5662,7 @@ GRAPHQL;
                 'message' => 'Product descriptions saved successfully.',
             ]);
         } catch (\Exception $e) {
-            Log::error('Error saving description data: '.$e->getMessage());
+            Log::error('saveDescriptionData failed', ['error' => $e->getMessage()]);
 
             return response()->json([
                 'success' => false,

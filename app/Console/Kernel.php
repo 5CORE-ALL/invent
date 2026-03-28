@@ -254,6 +254,7 @@ class Kernel extends ConsoleKernel
         /*
         |--------------------------------------------------------------------------
         | AMAZON BIDS / BUDGET AUTO-UPDATE (Staggered IST for reliability)
+        | Standard PT bids + PT budget: 12:15–13:00 IST (see AMAZON FBA block for FBA PT)
         |--------------------------------------------------------------------------
         */
         // Over-utilized KW bids: 2:00 AM IST
@@ -283,18 +284,18 @@ class Kernel extends ConsoleKernel
         //     ->runInBackground()
         //     ->appendOutputTo($log);
 
-        // Over-utilized PT bids: 4:00 AM IST
+        // Over-utilized PT bids: 12:15 PM IST
         $schedule->command('amazon:auto-update-over-pt-bids')
-            ->dailyAt('04:00')
+            ->dailyAt('12:15')
             ->timezone('Asia/Kolkata')
             ->name('amazon-over-pt-bids')
             ->withoutOverlapping(60)
             ->runInBackground()
             ->appendOutputTo($log);
 
-        // Under-utilized PT bids: 4:30 AM IST
+        // Under-utilized PT bids: 12:45 PM IST
         $schedule->command('amazon:auto-update-under-pt-bids')
-            ->dailyAt('04:30')
+            ->dailyAt('12:45')
             ->timezone('Asia/Kolkata')
             ->name('amazon-under-pt-bids')
             ->withoutOverlapping(60)
@@ -346,9 +347,9 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
-        // Amazon budget PT: 8:30 AM IST
+        // Amazon budget PT: 1:00 PM IST (after PT bid updates)
         $schedule->command('amazon:auto-update-amz-bgt-pt')
-            ->dailyAt('08:30')
+            ->dailyAt('13:00')
             ->timezone('Asia/Kolkata')
             ->name('amazon-bgt-pt')
             ->withoutOverlapping(60)
@@ -369,7 +370,7 @@ class Kernel extends ConsoleKernel
         | AMAZON FBA
         |--------------------------------------------------------------------------
         */
-        // AMAZON FBA bid updates (staggered 12:00–12:35 PM IST)
+        // FBA PT bids: 12:00 & 12:30 PM IST (with standard Amazon PT jobs 12:15–13:00 IST)
         $schedule->command('amazon-fba:auto-update-under-pt-bids')
             ->dailyAt('12:00')
             ->timezone('Asia/Kolkata')
@@ -378,24 +379,25 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
-        $schedule->command('amazon-fba:auto-update-over-kw-bids')
-            ->dailyAt('12:15')
-            ->timezone('Asia/Kolkata')
-            ->name('fba-over-kw-bids')
-            ->withoutOverlapping()
-            ->runInBackground()
-            ->appendOutputTo($log);
-
         $schedule->command('amazon-fba:auto-update-over-pt-bids')
-            ->dailyAt('12:25')
+            ->dailyAt('12:30')
             ->timezone('Asia/Kolkata')
             ->name('fba-over-pt-bids')
             ->withoutOverlapping()
             ->runInBackground()
             ->appendOutputTo($log);
 
+        // FBA KW bids: 3:00 PM–3:30 PM IST (moved from 12:15/12:35 to avoid overlap with PT afternoon window)
+        $schedule->command('amazon-fba:auto-update-over-kw-bids')
+            ->dailyAt('15:00')
+            ->timezone('Asia/Kolkata')
+            ->name('fba-over-kw-bids')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
         $schedule->command('amazon-fba:auto-update-under-kw-bids')
-            ->dailyAt('12:35')
+            ->dailyAt('15:30')
             ->timezone('Asia/Kolkata')
             ->name('fba-under-kw-bids')
             ->withoutOverlapping()
