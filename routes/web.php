@@ -2743,6 +2743,11 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/faire-analytics/export', [FaireController::class, 'exportFaireAnalytics'])->name('faire.analytics.export');
     Route::get('/faire-analytics/sample', [FaireController::class, 'downloadSample'])->name('faire.analytics.sample');
 
+    // Faire Daily Data routes
+    Route::post('/faire/upload-daily-data', [FaireController::class, 'uploadDailyDataChunk'])->name('faire.upload.daily.data');
+    Route::get('/faire/daily-data', [FaireController::class, 'getDailyData'])->name('faire.get.daily.data');
+    Route::get('/faire-tabulator', [FaireController::class, 'faireTabulatorView'])->name('faire.tabulator.view');
+
 
     //pls
     Route::get('plsAnalysis', action: [PlsController::class, 'overallPls']);

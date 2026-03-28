@@ -1016,6 +1016,8 @@
 
                         <li><a href="{{ route('tiktok.daily.sales') }}">TikTok Sales Data</a></li>
 
+                        <li><a href="{{ route('faire.tabulator.view') }}">Faire Sales Data</a></li>
+
                         <li><a href="{{ route('tiktok.two.daily.sales') }}">TikTok 2 Sales Data</a></li>
 
                         <li><a href="{{ route('depop.sheet') }}">Depop Sheet Data</a></li>

@@ -8,12 +8,15 @@ use App\Http\Controllers\ApiController;
 use App\Models\ChannelMaster;
 use App\Models\FaireDataView;
 use App\Models\MarketplacePercentage;
+use App\Models\FaireDailyData;
 use Illuminate\Support\Facades\Cache;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
+use Illuminate\Support\Facades\Log;
+use Carbon\Carbon;
 
 
 class FaireController extends Controller
@@ -412,5 +415,240 @@ class FaireController extends Controller
         $writer = new Xlsx($spreadsheet);
         $writer->save('php://output');
         exit;
+    }
+
+    /**
+     * Upload Faire daily data file in chunks
+     */
+    public function uploadDailyDataChunk(Request $request)
+    {
+        try {
+            $file = $request->file('file');
+            $chunk = $request->input('chunk', 0);
+            $totalChunks = $request->input('totalChunks', 1);
+
+            if (!$file) {
+                return response()->json(['success' => false, 'message' => 'No file uploaded'], 400);
+            }
+
+            $spreadsheet = IOFactory::load($file->getPathname());
+            $sheet = $spreadsheet->getActiveSheet();
+            $rows = $sheet->toArray();
+
+            if (empty($rows)) {
+                return response()->json(['success' => false, 'message' => 'File is empty'], 400);
+            }
+
+            $headers = array_shift($rows);
+            $normalizedHeaders = array_map(function ($header) {
+                return strtolower(trim((string) $header));
+            }, $headers);
+
+            if ($chunk == 0) {
+                FaireDailyData::truncate();
+                Log::info('Faire daily data table truncated');
+            }
+
+            $imported = 0;
+            $errors = [];
+
+            foreach ($rows as $index => $row) {
+                try {
+                    if (empty(array_filter($row, function ($value) {
+                        return $value !== null && trim((string) $value) !== '';
+                    }))) {
+                        continue;
+                    }
+
+                    $rowData = [];
+                    foreach ($normalizedHeaders as $i => $key) {
+                        $rowData[$key] = $row[$i] ?? null;
+                    }
+
+                    $data = [
+                        'order_date' => $this->parseFaireDate($rowData['order date'] ?? null),
+                        'order_number' => $rowData['order number'] ?? null,
+                        'purchase_order_number' => $rowData['purchase order number'] ?? null,
+                        'retailer_name' => $rowData['retailer name'] ?? null,
+                        'address_1' => $rowData['address 1'] ?? null,
+                        'address_2' => $rowData['address 2'] ?? null,
+                        'city' => $rowData['city'] ?? null,
+                        'state' => $rowData['state'] ?? null,
+                        'zip_code' => $rowData['zip code'] ?? null,
+                        'country' => $rowData['country'] ?? null,
+                        'product_name' => $rowData['product name'] ?? null,
+                        'option_name' => $rowData['option name'] ?? null,
+                        'sku' => $rowData['sku'] ?? null,
+                        'gtin' => $rowData['gtin'] ?? null,
+                        'status' => $rowData['status'] ?? null,
+                        'quantity' => (int) ($rowData['quantity'] ?? 0),
+                        'wholesale_price' => $this->sanitizeFairePrice($rowData['wholesale price'] ?? null),
+                        'retail_price' => $this->sanitizeFairePrice($rowData['retail price'] ?? null),
+                        'ship_date' => $this->parseFaireDate($rowData['ship date'] ?? null),
+                        'scheduled_order_date' => $this->parseFaireDate($rowData['scheduled order date'] ?? null),
+                        'notes' => $rowData['notes'] ?? null,
+                    ];
+
+                    FaireDailyData::create($data);
+                    $imported++;
+                } catch (\Exception $e) {
+                    $errors[] = "Row " . ($index + 2) . ": " . $e->getMessage();
+                    Log::error("Error importing Faire row " . ($index + 2) . ": " . $e->getMessage());
+                }
+            }
+
+            $isLastChunk = ($chunk + 1) >= $totalChunks;
+
+            return response()->json([
+                'success' => true,
+                'message' => "Chunk $chunk uploaded. Imported: $imported records" . ($errors ? ", Errors: " . count($errors) : ""),
+                'imported' => $imported,
+                'errors' => $errors,
+                'isLastChunk' => $isLastChunk
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Faire upload error: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Upload failed: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Get daily data for Faire tabulator view
+     */
+    public function getDailyData(Request $request)
+    {
+        try {
+            $data = FaireDailyData::orderBy('order_date', 'desc')
+                ->orderBy('id', 'desc')
+                ->get();
+
+            $skus = $data->pluck('sku')->filter()->unique()->values()->toArray();
+            $productMasters = [];
+
+            if (!empty($skus)) {
+                $productMasters = ProductMaster::whereIn('sku', $skus)
+                    ->get()
+                    ->keyBy('sku');
+            }
+
+            $data = $data->map(function ($item) use ($productMasters) {
+                $sku = $item->sku;
+                $lp = 0.0;
+
+                if (!empty($sku) && isset($productMasters[$sku])) {
+                    $productMaster = $productMasters[$sku];
+                    $values = is_array($productMaster->Values)
+                        ? $productMaster->Values
+                        : (is_string($productMaster->Values) ? json_decode($productMaster->Values, true) : []);
+
+                    foreach ($values as $k => $v) {
+                        if (strtolower($k) === "lp") {
+                            $lp = floatval($v);
+                            break;
+                        }
+                    }
+
+                    if ($lp === 0.0 && isset($productMaster->lp)) {
+                        $lp = floatval($productMaster->lp);
+                    }
+                }
+
+                $price = floatval($item->retail_price) ?: 0.0;
+                $quantity = floatval($item->quantity) ?: 0.0;
+
+                // User-requested formula (without ship):
+                // PFT base amount = (price * 0.75) - LP
+                $pftEachAmount = ($price * 0.75) - $lp;
+                $pftEachPct = $price > 0 ? ($pftEachAmount / $price) * 100 : 0;
+                $roi = $lp > 0 ? ($pftEachAmount / $lp) * 100 : 0;
+                $totalPft = $pftEachAmount * $quantity;
+                $cogs = $lp * $quantity;
+
+                $item->lp = round($lp, 2);
+                $item->price = round($price, 2);
+                $item->cogs = round($cogs, 2);
+                $item->pft_each = round($pftEachAmount, 2);
+                $item->pft_each_pct = round($pftEachPct, 2);
+                $item->pft = round($totalPft, 2);
+                $item->roi = round($roi, 2);
+
+                return $item;
+            });
+
+            return response()->json($data)->header('Content-Type', 'application/json');
+        } catch (\Exception $e) {
+            Log::error('Error fetching Faire daily data: ' . $e->getMessage(), [
+                'trace' => $e->getTraceAsString()
+            ]);
+            return response()->json(['error' => 'Failed to fetch data: ' . $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * Show Faire tabulator view
+     */
+    public function faireTabulatorView()
+    {
+        return view('market-places.faire_tabulator_view');
+    }
+
+    private function sanitizeFairePrice($value)
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        $cleaned = preg_replace('/[^\d.\-]/', '', (string) $value);
+        return is_numeric($cleaned) ? (float) $cleaned : null;
+    }
+
+    private function parseFaireDate($dateString)
+    {
+        if (empty($dateString) || $dateString === null || $dateString === '') {
+            return null;
+        }
+
+        $dateString = trim((string) $dateString);
+        $lower = strtolower($dateString);
+
+        if ($lower === 'no ship date' || $lower === 'no scheduled order date') {
+            return null;
+        }
+
+        try {
+            if (is_numeric($dateString)) {
+                $baseDate = Carbon::create(1899, 12, 30);
+                return $baseDate->addDays((int) $dateString);
+            }
+
+            $formats = [
+                'd-M-y',
+                'd-M-Y',
+                'Y-m-d',
+                'm/d/Y',
+                'd/m/Y',
+                'Y-m-d H:i:s',
+                'd-M-y H:i',
+            ];
+
+            foreach ($formats as $format) {
+                try {
+                    $parsed = Carbon::createFromFormat($format, $dateString);
+                    if ($parsed) {
+                        return $parsed;
+                    }
+                } catch (\Exception $e) {
+                    continue;
+                }
+            }
+
+            return Carbon::parse($dateString);
+        } catch (\Exception $e) {
+            Log::warning("Failed to parse Faire date: {$dateString}");
+            return null;
+        }
     }
 }
