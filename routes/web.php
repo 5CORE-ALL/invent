@@ -642,58 +642,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
         return view('customer-care.orders_on_hold', compact('marketplaces'));
     })->name('customer.care.orders.on.hold');
-    Route::get('/customer-care/qc-and-packing', function () {
-        $marketplaces = \Illuminate\Support\Facades\DB::table('marketplace_percentages')
-            ->whereNotNull('marketplace')
-            ->where('marketplace', '!=', '')
-            ->orderBy('marketplace')
-            ->pluck('marketplace')
-            ->map(fn ($m) => trim((string) $m))
-            ->filter()
-            ->unique()
-            ->values();
-
-        return view('customer-care.qc_and_packing', compact('marketplaces'));
-    })->name('customer.care.qc.and.packing');
-    Route::get('/customer-care/label-issues', function () {
-        $marketplaces = \Illuminate\Support\Facades\DB::table('marketplace_percentages')
-            ->whereNotNull('marketplace')
-            ->where('marketplace', '!=', '')
-            ->orderBy('marketplace')
-            ->pluck('marketplace')
-            ->map(fn ($m) => trim((string) $m))
-            ->filter()
-            ->unique()
-            ->values();
-
-        return view('customer-care.label_issues', compact('marketplaces'));
-    })->name('customer.care.label.issues');
-    Route::get('/customer-care/dispatch-issues', function () {
-        $marketplaces = \Illuminate\Support\Facades\DB::table('marketplace_percentages')
-            ->whereNotNull('marketplace')
-            ->where('marketplace', '!=', '')
-            ->orderBy('marketplace')
-            ->pluck('marketplace')
-            ->map(fn ($m) => trim((string) $m))
-            ->filter()
-            ->unique()
-            ->values();
-
-        return view('customer-care.dispatch_issues', compact('marketplaces'));
-    })->name('customer.care.dispatch.issues');
-    Route::get('/customer-care/carrier-issues', function () {
-        $marketplaces = \Illuminate\Support\Facades\DB::table('marketplace_percentages')
-            ->whereNotNull('marketplace')
-            ->where('marketplace', '!=', '')
-            ->orderBy('marketplace')
-            ->pluck('marketplace')
-            ->map(fn ($m) => trim((string) $m))
-            ->filter()
-            ->unique()
-            ->values();
-
-        return view('customer-care.carrier_issues', compact('marketplaces'));
-    })->name('customer.care.carrier.issues');
     Route::get('/customer-care/orders-on-hold/sku-details', function (\Illuminate\Http\Request $request) {
         $sku = trim((string) $request->query('sku', ''));
         if ($sku === '') {
@@ -758,7 +706,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
                 'sku',
                 'qty',
                 'order_qty',
-                'order_number',
                 'parent',
                 'marketplace_1',
                 'marketplace_2',
@@ -782,7 +729,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
                 'sku' => $row->sku,
                 'qty' => (float) $row->qty,
                 'order_qty' => $row->order_qty !== null ? (float) $row->order_qty : null,
-                'order_number' => $row->order_number,
                 'parent' => $row->parent,
                 'marketplace_1' => $row->marketplace_1,
                 'marketplace_2' => $row->marketplace_2,
@@ -817,7 +763,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
                 'sku',
                 'qty',
                 'order_qty',
-                'order_number',
                 'parent',
                 'marketplace_1',
                 'marketplace_2',
@@ -851,7 +796,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
                 'sku' => $row->sku,
                 'qty' => (float) $row->qty,
                 'order_qty' => $row->order_qty !== null ? (float) $row->order_qty : null,
-                'order_number' => $row->order_number,
                 'parent' => $row->parent,
                 'marketplace_1' => $row->marketplace_1,
                 'marketplace_2' => $row->marketplace_2,
@@ -879,7 +823,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
             'sku' => 'required|string|max:128',
             'qty' => 'required|numeric|min:0',
             'order_qty' => 'nullable|numeric|min:0',
-            'order_number' => 'nullable|string|max:25',
             'parent' => 'nullable|string|max:255',
             'marketplace_1' => 'nullable|string|max:255',
             'marketplace_2' => 'nullable|string|max:255',
@@ -940,7 +883,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
                 'sku' => trim($validated['sku']),
                 'qty' => (float) $validated['qty'],
                 'order_qty' => isset($validated['order_qty']) ? (float) $validated['order_qty'] : null,
-                'order_number' => isset($validated['order_number']) ? trim((string) $validated['order_number']) : null,
                 'parent' => isset($validated['parent']) ? trim((string) $validated['parent']) : null,
                 'marketplace_1' => isset($validated['marketplace_1']) ? trim((string) $validated['marketplace_1']) : null,
                 'marketplace_2' => isset($validated['marketplace_2']) ? trim((string) $validated['marketplace_2']) : null,
@@ -968,7 +910,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
                 'sku' => $payload['sku'],
                 'qty' => $payload['qty'],
                 'order_qty' => $payload['order_qty'],
-                'order_number' => $payload['order_number'],
                 'parent' => $payload['parent'],
                 'marketplace_1' => $payload['marketplace_1'],
                 'marketplace_2' => $payload['marketplace_2'],
@@ -998,7 +939,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
                 'sku',
                 'qty',
                 'order_qty',
-                'order_number',
                 'parent',
                 'marketplace_1',
                 'marketplace_2',
@@ -1024,7 +964,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
                 'sku' => $row->sku,
                 'qty' => (float) $row->qty,
                 'order_qty' => $row->order_qty !== null ? (float) $row->order_qty : null,
-                'order_number' => $row->order_number,
                 'parent' => $row->parent,
                 'marketplace_1' => $row->marketplace_1,
                 'marketplace_2' => $row->marketplace_2,
@@ -1050,7 +989,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
             'sku' => 'required|string|max:128',
             'qty' => 'required|numeric|min:0',
             'order_qty' => 'nullable|numeric|min:0',
-            'order_number' => 'nullable|string|max:25',
             'parent' => 'nullable|string|max:255',
             'marketplace_1' => 'nullable|string|max:255',
             'marketplace_2' => 'nullable|string|max:255',
@@ -1118,7 +1056,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
                 'sku' => trim($validated['sku']),
                 'qty' => (float) $validated['qty'],
                 'order_qty' => isset($validated['order_qty']) ? (float) $validated['order_qty'] : null,
-                'order_number' => isset($validated['order_number']) ? trim((string) $validated['order_number']) : null,
                 'parent' => isset($validated['parent']) ? trim((string) $validated['parent']) : null,
                 'marketplace_1' => isset($validated['marketplace_1']) ? trim((string) $validated['marketplace_1']) : null,
                 'marketplace_2' => isset($validated['marketplace_2']) ? trim((string) $validated['marketplace_2']) : null,
@@ -1143,7 +1080,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
                 'sku' => $payload['sku'],
                 'qty' => $payload['qty'],
                 'order_qty' => $payload['order_qty'],
-                'order_number' => $payload['order_number'],
                 'parent' => $payload['parent'],
                 'marketplace_1' => $payload['marketplace_1'],
                 'marketplace_2' => $payload['marketplace_2'],
@@ -1199,7 +1135,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
                 'sku' => $row->sku,
                 'qty' => (float) $row->qty,
                 'order_qty' => $row->order_qty !== null ? (float) $row->order_qty : null,
-                'order_number' => $row->order_number ?? null,
                 'parent' => $row->parent,
                 'marketplace_1' => $row->marketplace_1 ?? null,
                 'marketplace_2' => $row->marketplace_2 ?? null,
@@ -1222,6 +1157,579 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
         return response()->json(['message' => 'Hold issue archived successfully.']);
     })->name('customer.care.orders.on.hold.issues.archive');
+    Route::get('/customer-care/carrier-issue', [\App\Http\Controllers\CustomerCare\CarrierIssueController::class, 'index'])
+        ->name('customer.care.carrier.issue');
+    Route::get('/customer-care/carrier-issue/sku-details', [\App\Http\Controllers\CustomerCare\CarrierIssueController::class, 'skuDetails'])
+        ->name('customer.care.carrier.issue.sku.details');
+    Route::get('/customer-care/carrier-issue/issues', [\App\Http\Controllers\CustomerCare\CarrierIssueController::class, 'issuesIndex'])
+        ->name('customer.care.carrier.issue.issues.index');
+    Route::get('/customer-care/carrier-issue/history', [\App\Http\Controllers\CustomerCare\CarrierIssueController::class, 'historyIndex'])
+        ->name('customer.care.carrier.issue.history.index');
+    Route::post('/customer-care/carrier-issue/issues', [\App\Http\Controllers\CustomerCare\CarrierIssueController::class, 'store'])
+        ->name('customer.care.carrier.issue.issues.store');
+    Route::put('/customer-care/carrier-issue/issues/{id}', [\App\Http\Controllers\CustomerCare\CarrierIssueController::class, 'update'])
+        ->name('customer.care.carrier.issue.issues.update');
+    Route::post('/customer-care/carrier-issue/issues/{id}/archive', [\App\Http\Controllers\CustomerCare\CarrierIssueController::class, 'archive'])
+        ->name('customer.care.carrier.issue.issues.archive');
+
+    Route::get('/customer-care/label-issues', [\App\Http\Controllers\CustomerCare\LabelIssuesController::class, 'index'])
+        ->name('customer.care.label.issues');
+    Route::get('/customer-care/label-issues/sku-details', [\App\Http\Controllers\CustomerCare\LabelIssuesController::class, 'skuDetails'])
+        ->name('customer.care.label.issues.sku.details');
+    Route::get('/customer-care/label-issues/issues', [\App\Http\Controllers\CustomerCare\LabelIssuesController::class, 'issuesIndex'])
+        ->name('customer.care.label.issues.list.index');
+    Route::get('/customer-care/label-issues/history', [\App\Http\Controllers\CustomerCare\LabelIssuesController::class, 'historyIndex'])
+        ->name('customer.care.label.issues.history.index');
+    Route::post('/customer-care/label-issues/issues', [\App\Http\Controllers\CustomerCare\LabelIssuesController::class, 'store'])
+        ->name('customer.care.label.issues.list.store');
+    Route::put('/customer-care/label-issues/issues/{id}', [\App\Http\Controllers\CustomerCare\LabelIssuesController::class, 'update'])
+        ->name('customer.care.label.issues.list.update');
+    Route::post('/customer-care/label-issues/issues/{id}/archive', [\App\Http\Controllers\CustomerCare\LabelIssuesController::class, 'archive'])
+        ->name('customer.care.label.issues.list.archive');
+
+    Route::get('/customer-care/dispatch-issues', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'index'])
+        ->name('customer.care.dispatch.issues');
+    Route::get('/customer-care/dispatch-issues/sku-details', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'skuDetails'])
+        ->name('customer.care.dispatch.issues.sku.details');
+    Route::get('/customer-care/dispatch-issues/issues', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'issuesIndex'])
+        ->name('customer.care.dispatch.issues.list.index');
+    Route::get('/customer-care/dispatch-issues/history', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'historyIndex'])
+        ->name('customer.care.dispatch.issues.history.index');
+    Route::post('/customer-care/dispatch-issues/issues', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'store'])
+        ->name('customer.care.dispatch.issues.list.store');
+    Route::put('/customer-care/dispatch-issues/issues/{id}', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'update'])
+        ->name('customer.care.dispatch.issues.list.update');
+    Route::post('/customer-care/dispatch-issues/issues/{id}/archive', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'archive'])
+        ->name('customer.care.dispatch.issues.list.archive');
+
+    Route::get('/customer-care/qc-and-packing', function () {
+        $marketplaces = \Illuminate\Support\Facades\DB::table('marketplace_percentages')
+            ->whereNotNull('marketplace')
+            ->where('marketplace', '!=', '')
+            ->orderBy('marketplace')
+            ->pluck('marketplace')
+            ->map(fn ($m) => trim((string) $m))
+            ->filter()
+            ->unique()
+            ->values();
+
+        return view('customer-care.qc_and_packing', compact('marketplaces'));
+    })->name('customer.care.qc.and.packing');
+    Route::get('/customer-care/qc-and-packing/sku-details', function (\Illuminate\Http\Request $request) {
+        $sku = trim((string) $request->query('sku', ''));
+        if ($sku === '') {
+            return response()->json(['found' => false, 'message' => 'SKU is required.'], 422);
+        }
+
+        $row = \Illuminate\Support\Facades\DB::table('product_master as pm')
+            ->selectRaw('pm.sku, pm.parent, pm.Values as values_json, pm.main_image, pm.image1')
+            ->whereRaw('LOWER(TRIM(pm.sku)) = ?', [strtolower($sku)])
+            ->first();
+
+        if (! $row) {
+            return response()->json(['found' => false, 'message' => 'SKU not found.']);
+        }
+
+        $shopify = \Illuminate\Support\Facades\DB::table('shopify_skus')
+            ->selectRaw('COALESCE(inv, 0) as qty, image_src')
+            ->whereRaw('LOWER(TRIM(sku)) = ?', [strtolower((string) $row->sku)])
+            ->first();
+
+        $normalizeImage = static function ($path) {
+            $p = trim((string) ($path ?? ''));
+            if ($p === '') {
+                return null;
+            }
+            if (preg_match('/^(https?:)?\/\//i', $p) || str_starts_with($p, 'data:')) {
+                return $p;
+            }
+            return '/' . ltrim($p, '/');
+        };
+
+        $values = [];
+        if (isset($row->values_json) && is_string($row->values_json) && trim($row->values_json) !== '') {
+            $decoded = json_decode($row->values_json, true);
+            if (is_array($decoded)) {
+                $values = $decoded;
+            }
+        }
+
+        $imageUrl = $normalizeImage($shopify?->image_src)
+            ?? $normalizeImage($values['image_path'] ?? null)
+            ?? $normalizeImage($row->main_image ?? null)
+            ?? $normalizeImage($row->image1 ?? null);
+
+        return response()->json([
+            'found' => true,
+            'sku' => $row->sku,
+            'parent' => $row->parent,
+            'qty' => (float) ($shopify?->qty ?? 0),
+            'image_url' => $imageUrl,
+        ]);
+    })->name('customer.care.qc.and.packing.sku.details');
+    Route::get('/customer-care/qc-and-packing/issues', function () {
+        $rows = \Illuminate\Support\Facades\DB::table('qc_and_packing_issues')
+            ->where(function ($q) {
+                $q->whereNull('is_archived')->orWhere('is_archived', false);
+            })
+            ->orderByDesc('id')
+            ->limit(1000)
+            ->get([
+                'id',
+                'sku',
+                'qty',
+                'order_qty',
+                'parent',
+                'marketplace_1',
+                'marketplace_2',
+                'what_happened',
+                'issue',
+                'issue_remark',
+                'action_1',
+                'action_1_remark',
+                'replacement_tracking',
+                'c_action_1',
+                'c_action_1_remark',
+                'close_note',
+                'created_by',
+                'created_at',
+            ]);
+
+        $tz = config('app.timezone');
+        $data = $rows->map(function ($row) use ($tz) {
+            return [
+                'id' => (int) $row->id,
+                'sku' => $row->sku,
+                'qty' => (float) $row->qty,
+                'order_qty' => $row->order_qty !== null ? (float) $row->order_qty : null,
+                'parent' => $row->parent,
+                'marketplace_1' => $row->marketplace_1,
+                'marketplace_2' => $row->marketplace_2,
+                'what_happened' => $row->what_happened,
+                'issue' => $row->issue,
+                'issue_remark' => $row->issue_remark,
+                'action_1' => $row->action_1,
+                'action_1_remark' => $row->action_1_remark,
+                'replacement_tracking' => $row->replacement_tracking,
+                'c_action_1' => $row->c_action_1,
+                'c_action_1_remark' => $row->c_action_1_remark,
+                'close_note' => $row->close_note,
+                'created_by' => $row->created_by,
+                'created_at' => $row->created_at,
+                'created_at_display' => $row->created_at
+                    ? \Carbon\Carbon::parse($row->created_at)->timezone($tz)->format('d-m-Y H:i')
+                    : '',
+            ];
+        })->values();
+
+        return response()->json(['data' => $data]);
+    })->name('customer.care.qc.and.packing.issues.index');
+    Route::get('/customer-care/qc-and-packing/history', function () {
+        $rows = \Illuminate\Support\Facades\DB::table('qc_and_packing_issue_histories')
+            ->orderByDesc('id')
+            ->limit(1000)
+            ->get([
+                'id',
+                'orders_on_hold_issue_id',
+                'event_type',
+                'revision_no',
+                'sku',
+                'qty',
+                'order_qty',
+                'parent',
+                'marketplace_1',
+                'marketplace_2',
+                'what_happened',
+                'issue',
+                'issue_remark',
+                'action_1',
+                'action_1_remark',
+                'replacement_tracking',
+                'c_action_1',
+                'c_action_1_remark',
+                'close_note',
+                'created_by',
+                'logged_at',
+            ]);
+
+        $tz = config('app.timezone');
+        $data = $rows->map(function ($row) use ($tz) {
+            return [
+                'id' => (int) $row->id,
+                'orders_on_hold_issue_id' => $row->orders_on_hold_issue_id ? (int) $row->orders_on_hold_issue_id : null,
+                'event_type' => $row->event_type,
+                'revision_no' => $row->revision_no !== null ? (int) $row->revision_no : null,
+                'issue_ref' => ($row->orders_on_hold_issue_id
+                    ? (
+                        ((int) ($row->revision_no ?? 0) > 0)
+                            ? ((string) $row->orders_on_hold_issue_id . '.' . (string) ((int) $row->revision_no))
+                            : (string) $row->orders_on_hold_issue_id
+                    )
+                    : null),
+                'sku' => $row->sku,
+                'qty' => (float) $row->qty,
+                'order_qty' => $row->order_qty !== null ? (float) $row->order_qty : null,
+                'parent' => $row->parent,
+                'marketplace_1' => $row->marketplace_1,
+                'marketplace_2' => $row->marketplace_2,
+                'what_happened' => $row->what_happened,
+                'issue' => $row->issue,
+                'issue_remark' => $row->issue_remark,
+                'action_1' => $row->action_1,
+                'action_1_remark' => $row->action_1_remark,
+                'replacement_tracking' => $row->replacement_tracking,
+                'c_action_1' => $row->c_action_1,
+                'c_action_1_remark' => $row->c_action_1_remark,
+                'close_note' => $row->close_note,
+                'created_by' => $row->created_by,
+                'logged_at' => $row->logged_at,
+                'logged_at_display' => $row->logged_at
+                    ? \Carbon\Carbon::parse($row->logged_at)->timezone($tz)->format('d-m-Y H:i')
+                    : '',
+            ];
+        })->values();
+
+        return response()->json(['data' => $data]);
+    })->name('customer.care.qc.and.packing.history.index');
+    Route::post('/customer-care/qc-and-packing/issues', function (\Illuminate\Http\Request $request) {
+        $validated = $request->validate([
+            'sku' => 'required|string|max:128',
+            'qty' => 'required|numeric|min:0',
+            'order_qty' => 'nullable|numeric|min:0',
+            'parent' => 'nullable|string|max:255',
+            'marketplace_1' => 'nullable|string|max:255',
+            'marketplace_2' => 'nullable|string|max:255',
+            'what_happened' => 'nullable|string|max:50',
+            'issue' => 'required|string|max:255',
+            'issue_remark' => 'nullable|string|max:255',
+            'action_1' => 'nullable|string|in:Offer Customer Alterntive / Updgrade,Upgraded + Stock Alternate,Alternate Sent + Stock Alternate,Sent Wrong Item + Stock Outgoing,Cancelled,Other|max:255',
+            'action_1_remark' => 'nullable|string|max:255',
+            'replacement_tracking' => 'nullable|string|max:50',
+            'c_action_1' => 'nullable|string|max:255',
+            'c_action_1_remark' => 'nullable|string|max:255',
+            'close_note' => 'nullable|string|max:255',
+        ]);
+        $allowedRootCauses = [
+            'Mapping',
+            'Replacement Issued But not Entered',
+            'FBA stock Issued But not Entered',
+            'Alternate Issued But not Entered',
+            'Stock Balance not Entered',
+            'Reserve Stock Issue',
+            'Other',
+        ];
+        if (!in_array((string) ($validated['issue'] ?? ''), $allowedRootCauses, true)) {
+            return response()->json([
+                'message' => 'Invalid Root Cause Found selection.',
+                'errors' => ['issue' => ['Invalid Root Cause Found selection.']],
+            ], 422);
+        }
+        if (($validated['issue'] ?? null) === 'Other' && trim((string) ($validated['issue_remark'] ?? '')) === '') {
+            return response()->json([
+                'message' => 'Root Cause Found remark is required when Other is selected.',
+                'errors' => ['issue_remark' => ['Root Cause Found remark is required when Other is selected.']],
+            ], 422);
+        }
+        if (($validated['action_1'] ?? null) === 'Other' && trim((string) ($validated['action_1_remark'] ?? '')) === '') {
+            return response()->json([
+                'message' => 'Action remark is required when Action is Other.',
+                'errors' => ['action_1_remark' => ['Action remark is required when Action is Other.']],
+            ], 422);
+        }
+        if (($validated['c_action_1'] ?? null) === 'Other' && trim((string) ($validated['c_action_1_remark'] ?? '')) === '') {
+            return response()->json([
+                'message' => 'Root Cause Fixed remark is required when Root Cause Fixed is Other.',
+                'errors' => ['c_action_1_remark' => ['Root Cause Fixed remark is required when Root Cause Fixed is Other.']],
+            ], 422);
+        }
+
+        $user = auth()->user();
+        $createdBy = trim((string) ($user?->name ?? 'System'));
+        if ($createdBy === '') {
+            $createdBy = 'System';
+        }
+
+        $id = \Illuminate\Support\Facades\DB::transaction(function () use ($validated, $createdBy, $user) {
+            $now = now();
+
+            $payload = [
+                'sku' => trim($validated['sku']),
+                'qty' => (float) $validated['qty'],
+                'order_qty' => isset($validated['order_qty']) ? (float) $validated['order_qty'] : null,
+                'parent' => isset($validated['parent']) ? trim((string) $validated['parent']) : null,
+                'marketplace_1' => isset($validated['marketplace_1']) ? trim((string) $validated['marketplace_1']) : null,
+                'marketplace_2' => isset($validated['marketplace_2']) ? trim((string) $validated['marketplace_2']) : null,
+                'what_happened' => isset($validated['what_happened']) ? trim((string) $validated['what_happened']) : null,
+                'issue' => trim($validated['issue']),
+                'issue_remark' => isset($validated['issue_remark']) ? trim((string) $validated['issue_remark']) : null,
+                'action_1' => isset($validated['action_1']) ? trim((string) $validated['action_1']) : null,
+                'action_1_remark' => isset($validated['action_1_remark']) ? trim((string) $validated['action_1_remark']) : null,
+                'replacement_tracking' => isset($validated['replacement_tracking']) ? trim((string) $validated['replacement_tracking']) : null,
+                'c_action_1' => isset($validated['c_action_1']) ? trim((string) $validated['c_action_1']) : null,
+                'c_action_1_remark' => isset($validated['c_action_1_remark']) ? trim((string) $validated['c_action_1_remark']) : null,
+                'close_note' => isset($validated['close_note']) ? trim((string) $validated['close_note']) : null,
+                'created_by' => $createdBy,
+                'created_by_user_id' => $user?->id,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ];
+
+            $issueId = \Illuminate\Support\Facades\DB::table('qc_and_packing_issues')->insertGetId($payload);
+
+            \Illuminate\Support\Facades\DB::table('qc_and_packing_issue_histories')->insert([
+                'orders_on_hold_issue_id' => $issueId,
+                'event_type' => 'created',
+                'revision_no' => 0,
+                'sku' => $payload['sku'],
+                'qty' => $payload['qty'],
+                'order_qty' => $payload['order_qty'],
+                'parent' => $payload['parent'],
+                'marketplace_1' => $payload['marketplace_1'],
+                'marketplace_2' => $payload['marketplace_2'],
+                'what_happened' => $payload['what_happened'],
+                'issue' => $payload['issue'],
+                'issue_remark' => $payload['issue_remark'],
+                'action_1' => $payload['action_1'],
+                'action_1_remark' => $payload['action_1_remark'],
+                'replacement_tracking' => $payload['replacement_tracking'],
+                'c_action_1' => $payload['c_action_1'],
+                'c_action_1_remark' => $payload['c_action_1_remark'],
+                'close_note' => $payload['close_note'],
+                'created_by' => $createdBy,
+                'created_by_user_id' => $user?->id,
+                'logged_at' => $now,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ]);
+
+            return $issueId;
+        });
+
+        $row = \Illuminate\Support\Facades\DB::table('qc_and_packing_issues')
+            ->where('id', $id)
+            ->first([
+                'id',
+                'sku',
+                'qty',
+                'order_qty',
+                'parent',
+                'marketplace_1',
+                'marketplace_2',
+                'what_happened',
+                'issue',
+                'issue_remark',
+                'action_1',
+                'action_1_remark',
+                'replacement_tracking',
+                'c_action_1',
+                'c_action_1_remark',
+                'close_note',
+                'created_by',
+                'created_at',
+            ]);
+
+        $tz = config('app.timezone');
+
+        return response()->json([
+            'message' => 'Hold issue saved successfully.',
+            'row' => [
+                'id' => (int) $row->id,
+                'sku' => $row->sku,
+                'qty' => (float) $row->qty,
+                'order_qty' => $row->order_qty !== null ? (float) $row->order_qty : null,
+                'parent' => $row->parent,
+                'marketplace_1' => $row->marketplace_1,
+                'marketplace_2' => $row->marketplace_2,
+                'what_happened' => $row->what_happened,
+                'issue' => $row->issue,
+                'issue_remark' => $row->issue_remark,
+                'action_1' => $row->action_1,
+                'action_1_remark' => $row->action_1_remark,
+                'replacement_tracking' => $row->replacement_tracking,
+                'c_action_1' => $row->c_action_1,
+                'c_action_1_remark' => $row->c_action_1_remark,
+                'close_note' => $row->close_note,
+                'created_by' => $row->created_by,
+                'created_at' => $row->created_at,
+                'created_at_display' => $row->created_at
+                    ? \Carbon\Carbon::parse($row->created_at)->timezone($tz)->format('d-m-Y H:i')
+                    : '',
+            ],
+        ], 201);
+    })->name('customer.care.qc.and.packing.issues.store');
+    Route::put('/customer-care/qc-and-packing/issues/{id}', function (\Illuminate\Http\Request $request, int $id) {
+        $validated = $request->validate([
+            'sku' => 'required|string|max:128',
+            'qty' => 'required|numeric|min:0',
+            'order_qty' => 'nullable|numeric|min:0',
+            'parent' => 'nullable|string|max:255',
+            'marketplace_1' => 'nullable|string|max:255',
+            'marketplace_2' => 'nullable|string|max:255',
+            'what_happened' => 'nullable|string|max:50',
+            'issue' => 'required|string|max:255',
+            'issue_remark' => 'nullable|string|max:255',
+            'action_1' => 'nullable|string|in:Offer Customer Alterntive / Updgrade,Upgraded + Stock Alternate,Alternate Sent + Stock Alternate,Sent Wrong Item + Stock Outgoing,Cancelled,Other|max:255',
+            'action_1_remark' => 'nullable|string|max:255',
+            'replacement_tracking' => 'nullable|string|max:50',
+            'c_action_1' => 'nullable|string|max:255',
+            'c_action_1_remark' => 'nullable|string|max:255',
+            'close_note' => 'nullable|string|max:255',
+        ]);
+        $allowedRootCauses = [
+            'Mapping',
+            'Replacement Issued But not Entered',
+            'FBA stock Issued But not Entered',
+            'Alternate Issued But not Entered',
+            'Stock Balance not Entered',
+            'Reserve Stock Issue',
+            'Other',
+        ];
+        if (!in_array((string) ($validated['issue'] ?? ''), $allowedRootCauses, true)) {
+            return response()->json([
+                'message' => 'Invalid Root Cause Found selection.',
+                'errors' => ['issue' => ['Invalid Root Cause Found selection.']],
+            ], 422);
+        }
+        if (($validated['issue'] ?? null) === 'Other' && trim((string) ($validated['issue_remark'] ?? '')) === '') {
+            return response()->json([
+                'message' => 'Root Cause Found remark is required when Other is selected.',
+                'errors' => ['issue_remark' => ['Root Cause Found remark is required when Other is selected.']],
+            ], 422);
+        }
+        if (($validated['action_1'] ?? null) === 'Other' && trim((string) ($validated['action_1_remark'] ?? '')) === '') {
+            return response()->json([
+                'message' => 'Action remark is required when Action is Other.',
+                'errors' => ['action_1_remark' => ['Action remark is required when Action is Other.']],
+            ], 422);
+        }
+        if (($validated['c_action_1'] ?? null) === 'Other' && trim((string) ($validated['c_action_1_remark'] ?? '')) === '') {
+            return response()->json([
+                'message' => 'Root Cause Fixed remark is required when Root Cause Fixed is Other.',
+                'errors' => ['c_action_1_remark' => ['Root Cause Fixed remark is required when Root Cause Fixed is Other.']],
+            ], 422);
+        }
+
+        $existing = \Illuminate\Support\Facades\DB::table('qc_and_packing_issues')->where('id', $id)->first();
+        if (! $existing) {
+            return response()->json(['message' => 'Record not found.'], 404);
+        }
+
+        $user = auth()->user();
+        $actorName = trim((string) ($user?->name ?? 'System'));
+        if ($actorName === '') {
+            $actorName = 'System';
+        }
+
+        \Illuminate\Support\Facades\DB::transaction(function () use ($id, $validated, $actorName, $user) {
+            $now = now();
+            $nextRevision = ((int) (\Illuminate\Support\Facades\DB::table('qc_and_packing_issue_histories')
+                ->where('orders_on_hold_issue_id', $id)
+                ->max('revision_no'))) + 1;
+            $payload = [
+                'sku' => trim($validated['sku']),
+                'qty' => (float) $validated['qty'],
+                'order_qty' => isset($validated['order_qty']) ? (float) $validated['order_qty'] : null,
+                'parent' => isset($validated['parent']) ? trim((string) $validated['parent']) : null,
+                'marketplace_1' => isset($validated['marketplace_1']) ? trim((string) $validated['marketplace_1']) : null,
+                'marketplace_2' => isset($validated['marketplace_2']) ? trim((string) $validated['marketplace_2']) : null,
+                'what_happened' => isset($validated['what_happened']) ? trim((string) $validated['what_happened']) : null,
+                'issue' => trim($validated['issue']),
+                'issue_remark' => isset($validated['issue_remark']) ? trim((string) $validated['issue_remark']) : null,
+                'action_1' => isset($validated['action_1']) ? trim((string) $validated['action_1']) : null,
+                'action_1_remark' => isset($validated['action_1_remark']) ? trim((string) $validated['action_1_remark']) : null,
+                'replacement_tracking' => isset($validated['replacement_tracking']) ? trim((string) $validated['replacement_tracking']) : null,
+                'c_action_1' => isset($validated['c_action_1']) ? trim((string) $validated['c_action_1']) : null,
+                'c_action_1_remark' => isset($validated['c_action_1_remark']) ? trim((string) $validated['c_action_1_remark']) : null,
+                'close_note' => isset($validated['close_note']) ? trim((string) $validated['close_note']) : null,
+                'updated_at' => $now,
+            ];
+
+            \Illuminate\Support\Facades\DB::table('qc_and_packing_issues')->where('id', $id)->update($payload);
+
+            \Illuminate\Support\Facades\DB::table('qc_and_packing_issue_histories')->insert([
+                'orders_on_hold_issue_id' => $id,
+                'event_type' => 'updated',
+                'revision_no' => $nextRevision,
+                'sku' => $payload['sku'],
+                'qty' => $payload['qty'],
+                'order_qty' => $payload['order_qty'],
+                'parent' => $payload['parent'],
+                'marketplace_1' => $payload['marketplace_1'],
+                'marketplace_2' => $payload['marketplace_2'],
+                'what_happened' => $payload['what_happened'],
+                'issue' => $payload['issue'],
+                'issue_remark' => $payload['issue_remark'],
+                'action_1' => $payload['action_1'],
+                'action_1_remark' => $payload['action_1_remark'],
+                'replacement_tracking' => $payload['replacement_tracking'],
+                'c_action_1' => $payload['c_action_1'],
+                'c_action_1_remark' => $payload['c_action_1_remark'],
+                'close_note' => $payload['close_note'],
+                'created_by' => $actorName,
+                'created_by_user_id' => $user?->id,
+                'logged_at' => $now,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ]);
+        });
+
+        return response()->json(['message' => 'Hold issue updated successfully.']);
+    })->name('customer.care.qc.and.packing.issues.update');
+    Route::post('/customer-care/qc-and-packing/issues/{id}/archive', function (int $id) {
+        $row = \Illuminate\Support\Facades\DB::table('qc_and_packing_issues')->where('id', $id)->first();
+        if (! $row) {
+            return response()->json(['message' => 'Record not found.'], 404);
+        }
+
+        $user = auth()->user();
+        $actorName = trim((string) ($user?->name ?? 'System'));
+        if ($actorName === '') {
+            $actorName = 'System';
+        }
+
+        \Illuminate\Support\Facades\DB::transaction(function () use ($id, $row, $actorName, $user) {
+            $now = now();
+            $nextRevision = ((int) (\Illuminate\Support\Facades\DB::table('qc_and_packing_issue_histories')
+                ->where('orders_on_hold_issue_id', $id)
+                ->max('revision_no'))) + 1;
+            \Illuminate\Support\Facades\DB::table('qc_and_packing_issues')
+                ->where('id', $id)
+                ->update([
+                    'is_archived' => true,
+                    'archived_at' => $now,
+                    'archived_by' => $actorName,
+                    'updated_at' => $now,
+                ]);
+
+            \Illuminate\Support\Facades\DB::table('qc_and_packing_issue_histories')->insert([
+                'orders_on_hold_issue_id' => $id,
+                'event_type' => 'archived',
+                'revision_no' => $nextRevision,
+                'sku' => $row->sku,
+                'qty' => (float) $row->qty,
+                'order_qty' => $row->order_qty !== null ? (float) $row->order_qty : null,
+                'parent' => $row->parent,
+                'marketplace_1' => $row->marketplace_1 ?? null,
+                'marketplace_2' => $row->marketplace_2 ?? null,
+                'what_happened' => $row->what_happened ?? null,
+                'issue' => $row->issue,
+                'issue_remark' => $row->issue_remark ?? null,
+                'action_1' => $row->action_1 ?? null,
+                'action_1_remark' => $row->action_1_remark ?? null,
+                'replacement_tracking' => $row->replacement_tracking ?? null,
+                'c_action_1' => $row->c_action_1 ?? null,
+                'c_action_1_remark' => $row->c_action_1_remark ?? null,
+                'close_note' => $row->close_note ?? null,
+                'created_by' => $actorName,
+                'created_by_user_id' => $user?->id,
+                'logged_at' => $now,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ]);
+        });
+
+        return response()->json(['message' => 'Hold issue archived successfully.']);
+    })->name('customer.care.qc.and.packing.issues.archive');
     Route::get('/customer-care/followups', [CustomerFollowupController::class, 'index'])->name('customer.care.followups');
     Route::get('/customer-care/followups/data', [CustomerFollowupController::class, 'data'])->name('customer.care.followups.data');
     Route::get('/customer-care/followups/skus', [CustomerFollowupController::class, 'searchProductSkus'])->name('customer.care.followups.skus');
@@ -1256,28 +1764,31 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::put('/outgoing-update-reason-comment', [OutgoingController::class, 'updateReasonAndComment']);
     Route::get('/outgoing-history/{id}', [OutgoingController::class, 'getHistory']);
 
-    // Spare parts (inventory management) - pure web routes (no API/AJAX)
-    Route::middleware(['auth'])->prefix('inventory/spare-parts')->group(function () {
-        Route::get('/', [SparePartController::class, 'index'])->name('spare.parts.index');
+    // Spare parts (inventory management)
+    Route::get('/inventory/spare-parts', [SparePartController::class, 'index'])->name('inventory.spare-parts.index');
+    Route::get('/inventory/spare-parts/api/summary', [SparePartController::class, 'summary'])->name('inventory.spare-parts.api.summary');
+    Route::get('/inventory/spare-parts/api/spare-parts', [SparePartController::class, 'sparePartsData'])->name('inventory.spare-parts.api.parts');
+    Route::get('/inventory/spare-parts/api/low-stock', [SparePartController::class, 'lowStockData'])->name('inventory.spare-parts.api.low-stock');
+    Route::get('/inventory/spare-parts/api/tree', [SparePartController::class, 'tree'])->name('inventory.spare-parts.api.tree');
+    Route::get('/inventory/spare-parts/api/search-parts', [SparePartController::class, 'searchParts'])->name('inventory.spare-parts.api.search-parts');
+    Route::get('/inventory/spare-parts/api/part-skus', [SparePartController::class, 'allPartSkus'])->name('inventory.spare-parts.api.part-skus');
+    Route::get('/inventory/spare-parts/api/suppliers', [SparePartController::class, 'suppliers'])->name('inventory.spare-parts.api.suppliers');
+    Route::patch('/inventory/spare-parts/api/parts/{id}', [SparePartController::class, 'updatePart'])->name('inventory.spare-parts.api.parts.update');
+    Route::post('/inventory/spare-parts/api/spare-part-details', [SparePartController::class, 'storeSparePartDetail'])->name('inventory.spare-parts.api.spare-part-details.store');
 
-        // Requisitions
-        Route::post('/requisition', [SparePartsRequisitionController::class, 'store'])->name('requisition.store');
-        Route::post('/requisition/{requisition}/submit', [SparePartsRequisitionController::class, 'submit'])->name('requisition.submit');
-        Route::post('/requisition/{requisition}/approve', [SparePartsRequisitionController::class, 'approve'])->name('requisition.approve');
-        Route::post('/requisition/{requisition}/close', [SparePartsRequisitionController::class, 'close'])->name('requisition.close');
+    Route::get('/inventory/spare-parts/api/requisitions', [SparePartsRequisitionController::class, 'index'])->name('inventory.spare-parts.api.requisitions.index');
+    Route::post('/inventory/spare-parts/api/requisitions', [SparePartsRequisitionController::class, 'store'])->name('inventory.spare-parts.api.requisitions.store');
+    Route::post('/inventory/spare-parts/api/requisitions/{requisition}/submit', [SparePartsRequisitionController::class, 'submit'])->name('inventory.spare-parts.api.requisitions.submit');
+    Route::post('/inventory/spare-parts/api/requisitions/{requisition}/approve', [SparePartsRequisitionController::class, 'approve'])->name('inventory.spare-parts.api.requisitions.approve');
+    Route::post('/inventory/spare-parts/api/requisitions/{requisition}/close', [SparePartsRequisitionController::class, 'close'])->name('inventory.spare-parts.api.requisitions.close');
 
-        // Issue
-        Route::post('/issue', [SparePartsIssueController::class, 'store'])->name('issue.store');
+    Route::get('/inventory/spare-parts/api/issues/pending', [SparePartsIssueController::class, 'pending'])->name('inventory.spare-parts.api.issues.pending');
+    Route::post('/inventory/spare-parts/api/issues', [SparePartsIssueController::class, 'store'])->name('inventory.spare-parts.api.issues.store');
 
-        // Purchase Orders
-        Route::post('/po', [SparePartPurchaseOrderController::class, 'store'])->name('po.store');
-        Route::post('/po/{sparePartPurchaseOrder}/send', [SparePartPurchaseOrderController::class, 'send'])->name('po.send');
-        Route::post('/po/{sparePartPurchaseOrder}/receive', [SparePartPurchaseOrderController::class, 'receive'])->name('po.receive');
-
-        // Spare Parts
-        Route::post('/parts', [SparePartController::class, 'store'])->name('parts.store');
-        Route::patch('/parts/{id}', [SparePartController::class, 'update'])->name('parts.update');
-    });
+    Route::get('/inventory/spare-parts/api/purchase-orders', [SparePartPurchaseOrderController::class, 'index'])->name('inventory.spare-parts.api.purchase-orders.index');
+    Route::post('/inventory/spare-parts/api/purchase-orders', [SparePartPurchaseOrderController::class, 'store'])->name('inventory.spare-parts.api.purchase-orders.store');
+    Route::post('/inventory/spare-parts/api/purchase-orders/{sparePartPurchaseOrder}/send', [SparePartPurchaseOrderController::class, 'send'])->name('inventory.spare-parts.api.purchase-orders.send');
+    Route::post('/inventory/spare-parts/api/purchase-orders/{sparePartPurchaseOrder}/receive', [SparePartPurchaseOrderController::class, 'receive'])->name('inventory.spare-parts.api.purchase-orders.receive');
     Route::post('/outgoing-archive', [OutgoingController::class, 'archive']);
 
     Route::get('/refunds-view', [RefundController::class, 'index'])->name('refunds.view');

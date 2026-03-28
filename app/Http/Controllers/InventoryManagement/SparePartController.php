@@ -4,9 +4,6 @@ namespace App\Http\Controllers\InventoryManagement;
 
 use App\Http\Controllers\Controller;
 use App\Models\ProductMaster;
-use App\Models\Requisition;
-use App\Models\RequisitionItem;
-use App\Models\SparePartPurchaseOrder;
 use App\Models\SparePartDetail;
 use App\Models\Supplier;
 use App\Services\SparePartInventoryService;
@@ -37,147 +34,14 @@ class SparePartController extends Controller
             ->limit(500)
             ->get(['id', 'sku', 'parent', 'category_id']);
 
-        $requisitions = Requisition::query()
-            ->with(['requester:id,name', 'items.part:id,sku,parent_id'])
-            ->latest()
-            ->limit(200)
-            ->get();
-
-        $issues = RequisitionItem::query()
-            ->with(['requisition:id,status', 'part:id,sku'])
-            ->whereHas('requisition', function ($q) {
-                $q->whereIn('status', ['approved', 'issued']);
-            })
-            ->get()
-            ->filter(function (RequisitionItem $item) {
-                return $item->quantityRemainingToIssue() > 0;
-            })
-            ->values();
-
-        $purchaseOrders = SparePartPurchaseOrder::query()
-            ->with(['supplier:id,name,company', 'items.part:id,sku'])
-            ->latest()
-            ->limit(200)
-            ->get();
-
-        $spareParts = ProductMaster::query()
-            ->whereNull('deleted_at')
-            ->where('is_spare_part', true)
-            ->with(['parentPart:id,sku', 'sparePartDetail.supplier:id,name,company'])
-            ->orderBy('sku')
-            ->limit(1000)
-            ->get();
-
-        $lowStock = $spareParts->filter(function (ProductMaster $p) {
-            if (!$p->sku || $p->reorder_level === null) {
-                return false;
-            }
-
-            return $this->inventoryService->totalAvailableForSku($p->sku) <= (int) $p->reorder_level;
-        })->values();
-
-        $treeNodes = ProductMaster::query()
-            ->whereNull('deleted_at')
-            ->where('is_spare_part', true)
-            ->whereNull('parent_id')
-            ->with(['childParts' => function ($q) {
-                $q->whereNull('deleted_at')->where('is_spare_part', true)->orderBy('sku');
-            }])
-            ->orderBy('sku')
-            ->limit(300)
-            ->get();
-
-        $products = ProductMaster::query()
-            ->whereNull('deleted_at')
-            ->whereNotNull('sku')
-            ->where('sku', '!=', '')
-            ->orderBy('sku')
-            ->limit(2000)
-            ->get(['id', 'sku', 'parent_id']);
-
         return view('inventory.spare_parts', [
             'parentOptions' => $parentOptions,
-            'summary' => $this->buildSummary(),
-            'requisitions' => $requisitions,
-            'issues' => $issues,
-            'purchaseOrders' => $purchaseOrders,
-            'lowStock' => $lowStock,
-            'parts' => $spareParts,
-            'tree' => $treeNodes,
-            'suppliers' => Supplier::query()->orderBy('name')->get(['id', 'name', 'company']),
-            'products' => $products,
+            'parentSelectJson' => $parentOptions->map(fn ($p) => [
+                'id' => $p->id,
+                'sku' => $p->sku,
+            ])->values(),
+            'initialSummary' => $this->buildSummary(),
         ]);
-    }
-
-    public function store(Request $request)
-    {
-        if (! Schema::hasTable('spare_part_details')) {
-            return redirect()->back()->with('error', 'spare_part_details table is missing.');
-        }
-
-        $validated = $request->validate([
-            'parent_id' => [
-                'required',
-                'integer',
-                Rule::exists('product_master', 'id')->whereNull('deleted_at'),
-            ],
-            'part_id' => [
-                'required',
-                'integer',
-                Rule::exists('product_master', 'id')->whereNull('deleted_at'),
-            ],
-            'part_name' => 'required|string|max:255',
-            'msl_part' => 'nullable|string|max:255',
-            'quantity' => 'required|integer|min:1',
-            'supplier_id' => 'nullable|integer|exists:suppliers,id',
-        ]);
-
-        $parentId = (int) $validated['parent_id'];
-        $partId = (int) $validated['part_id'];
-
-        if ($parentId === $partId) {
-            return redirect()->back()->with('error', 'Parent and SKU must be different.');
-        }
-
-        $product = ProductMaster::query()->whereNull('deleted_at')->findOrFail($partId);
-
-        DB::transaction(function () use ($product, $parentId, $validated) {
-            $product->is_spare_part = true;
-            $product->parent_id = $parentId;
-            $product->save();
-
-            SparePartDetail::query()->updateOrCreate(
-                ['product_master_id' => $product->id],
-                [
-                    'part_name' => $validated['part_name'],
-                    'msl_part' => $validated['msl_part'] ?? null,
-                    'quantity' => (int) $validated['quantity'],
-                    'supplier_id' => isset($validated['supplier_id']) ? (int) $validated['supplier_id'] : null,
-                ]
-            );
-        });
-
-        return redirect()->back()->with('success', 'Spare part saved successfully.');
-    }
-
-    public function update(Request $request, int $id)
-    {
-        $part = ProductMaster::query()->whereNull('deleted_at')->findOrFail($id);
-
-        $validated = $request->validate([
-            'is_spare_part' => 'nullable|boolean',
-            'parent_id' => 'nullable|exists:product_master,id',
-            'reorder_level' => 'nullable|integer|min:0',
-        ]);
-
-        if (isset($validated['parent_id']) && (int) $validated['parent_id'] === $part->id) {
-            return redirect()->back()->with('error', 'Part cannot be its own parent.');
-        }
-
-        $part->fill($validated);
-        $part->save();
-
-        return redirect()->back()->with('success', 'Part updated successfully.');
     }
 
     public function summary()

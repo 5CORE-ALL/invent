@@ -1488,16 +1488,13 @@
                             <a href="{{ route('customer.care.qc.and.packing') }}">QC And Packing</a>
                         </li>
                         <li>
+                            <a href="{{ route('customer.care.carrier.issue') }}">Carrier Issue</a>
+                        </li>
+                        <li>
                             <a href="{{ route('customer.care.label.issues') }}">Label Issues</a>
                         </li>
                         <li>
                             <a href="{{ route('customer.care.dispatch.issues') }}">Dispatch Issues</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('customer.care.carrier.issues') }}">Carrier Issues</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('spare.parts.index') }}">Spare Parts</a>
                         </li>
                         <li>
                             <a href="{{ route('customer.care.followups') }}">Follow UP</a>
@@ -1573,7 +1570,7 @@
                             </a>
                         </li> --}}
                         <li>
-                            <a href="{{ route('spare.parts.index') }}">Spare Parts</a>
+                            <a href="{{ route('inventory.spare-parts.index') }}">Spare Parts</a>
                         </li>
                         <li>
                             <a href="{{ route('verify-adjust') }}">Verifications & Adjustments</a>
