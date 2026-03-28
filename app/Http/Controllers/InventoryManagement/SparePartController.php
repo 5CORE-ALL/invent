@@ -33,13 +33,17 @@ class SparePartController extends Controller
         $parentOptions = $parentQuery->orderBy('sku')
             ->limit(500)
             ->get(['id', 'sku', 'parent', 'category_id']);
+        $allPartSkus = ProductMaster::query()
+            ->whereNull('deleted_at')
+            ->whereNotNull('sku')
+            ->where('sku', '!=', '')
+            ->orderBy('sku')
+            ->limit(100000)
+            ->get(['id', 'sku']);
 
         return view('inventory.spare_parts', [
             'parentOptions' => $parentOptions,
-            'parentSelectJson' => $parentOptions->map(fn ($p) => [
-                'id' => $p->id,
-                'sku' => $p->sku,
-            ])->values(),
+            'partSkus' => $allPartSkus,
             'initialSummary' => $this->buildSummary(),
         ]);
     }

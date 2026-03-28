@@ -303,12 +303,18 @@
                             <label class="form-label small mb-0" for="create-spare-parent">Parent</label>
                             <select class="form-select form-select-sm select-searchable" id="create-spare-parent" required>
                                 <option value="">Select parent…</option>
+                                @foreach ($parentOptions as $p)
+                                    <option value="{{ $p->id }}">{{ $p->sku }}</option>
+                                @endforeach
                             </select>
                         </div>
                         <div class="mb-2">
                             <label class="form-label small mb-0" for="create-spare-sku">SKU</label>
                             <select class="form-select form-select-sm select-searchable" id="create-spare-sku" required>
-                                <option value="">Loading SKUs…</option>
+                                <option value="">Select SKU…</option>
+                                @foreach ($partSkus as $sku)
+                                    <option value="{{ $sku->id }}">{{ $sku->sku }}</option>
+                                @endforeach
                             </select>
                         </div>
                         <div class="mb-2">
@@ -342,6 +348,12 @@
                 <div class="d-flex"><div class="toast-body" id="toast-ok-body"></div></div>
             </div>
         </div>
+        <select id="sp-part-sku-source" class="d-none" aria-hidden="true">
+            <option value="">Select SKU…</option>
+            @foreach ($partSkus as $sku)
+                <option value="{{ $sku->id }}">{{ $sku->sku }}</option>
+            @endforeach
+        </select>
     </div>
 @endsection
 
@@ -352,29 +364,23 @@
         const csrfMeta = document.querySelector('meta[name="csrf-token"]');
         const csrf = csrfMeta ? csrfMeta.getAttribute('content') : '';
 
-        /** Same-origin relative paths (works with subfolders & avoids APP_URL vs browser host mismatch) */
-        const SP = {
-            summary: @json(route('inventory.spare-parts.api.summary', [], false)),
-            searchParts: @json(route('inventory.spare-parts.api.search-parts', [], false)),
-            partSkus: @json(route('inventory.spare-parts.api.part-skus', [], false)),
-            parts: @json(route('inventory.spare-parts.api.parts', [], false)),
-            lowStock: @json(route('inventory.spare-parts.api.low-stock', [], false)),
-            tree: @json(route('inventory.spare-parts.api.tree', [], false)),
-            suppliers: @json(route('inventory.spare-parts.api.suppliers', [], false)),
-            reqIndex: @json(route('inventory.spare-parts.api.requisitions.index', [], false)),
-            reqStore: @json(route('inventory.spare-parts.api.requisitions.store', [], false)),
-            issuesPending: @json(route('inventory.spare-parts.api.issues.pending', [], false)),
-            issueStore: @json(route('inventory.spare-parts.api.issues.store', [], false)),
-            poIndex: @json(route('inventory.spare-parts.api.purchase-orders.index', [], false)),
-            poStore: @json(route('inventory.spare-parts.api.purchase-orders.store', [], false)),
-            partUpdate0: @json(route('inventory.spare-parts.api.parts.update', ['id' => 0], false)),
-            sparePartDetailsStore: @json(route('inventory.spare-parts.api.spare-part-details.store', [], false)),
-            supplierForSku: @json(route('refunds.supplier-for-sku', [], false)),
-        };
-        const SP_PARENT_OPTIONS = @json($parentSelectJson ?? []);
-        const reqActionUrl = (id, action) => `${SP.reqIndex}/${id}/${action}`;
-        const poActionUrl = (id, action) => `${SP.poIndex}/${id}/${action}`;
-        const partUpdateUrl = (id) => SP.partUpdate0.replace(/\/0$/, '/' + id);
+        const URL_SUMMARY = "{{ url('/inventory/spare-parts/api/summary') }}";
+        const URL_PARTS = "{{ url('/inventory/spare-parts/api/spare-parts') }}";
+        const URL_LOW_STOCK = "{{ url('/inventory/spare-parts/api/low-stock') }}";
+        const URL_TREE = "{{ url('/inventory/spare-parts/api/tree') }}";
+        const URL_SUPPLIERS = "{{ url('/inventory/spare-parts/api/suppliers') }}";
+        const URL_REQ_INDEX = "{{ url('/inventory/spare-parts/api/requisitions') }}";
+        const URL_REQ_STORE = "{{ url('/inventory/spare-parts/api/requisitions') }}";
+        const URL_ISSUES_PENDING = "{{ url('/inventory/spare-parts/api/issues/pending') }}";
+        const URL_ISSUE_STORE = "{{ url('/inventory/spare-parts/api/issues') }}";
+        const URL_PO_INDEX = "{{ url('/inventory/spare-parts/api/purchase-orders') }}";
+        const URL_PO_STORE = "{{ url('/inventory/spare-parts/api/purchase-orders') }}";
+        const URL_PART_UPDATE_BASE = "{{ url('/inventory/spare-parts/api/parts') }}";
+        const URL_SPARE_PART_DETAILS_STORE = "{{ url('/inventory/spare-parts/api/spare-part-details') }}";
+        const URL_SUPPLIER_FOR_SKU = "{{ url('/refunds-supplier-for-sku') }}";
+        const reqActionUrl = (id, action) => `${URL_REQ_INDEX}/${id}/${action}`;
+        const poActionUrl = (id, action) => `${URL_PO_INDEX}/${id}/${action}`;
+        const partUpdateUrl = (id) => `${URL_PART_UPDATE_BASE}/${id}`;
 
         function toast(msg) {
             const el = document.getElementById('toast-ok');
@@ -382,24 +388,23 @@
             new bootstrap.Toast(el, {delay: 3500}).show();
         }
 
-        let __partSkusPromise = null;
-        let __partSkusData = null;
-
         function ensurePartSkusLoaded() {
-            if (__partSkusData !== null) {
-                return Promise.resolve(__partSkusData);
+            const source = document.getElementById('sp-part-sku-source');
+            if (!source) {
+                return Promise.resolve([]);
             }
-            if (__partSkusPromise) {
-                return __partSkusPromise;
+            const data = [];
+            for (let i = 0; i < source.options.length; i++) {
+                const option = source.options[i];
+                if (!option.value) {
+                    continue;
+                }
+                data.push({
+                    id: parseInt(option.value, 10),
+                    sku: option.textContent.trim(),
+                });
             }
-            __partSkusPromise = fetchJson(SP.partSkus + '?limit=100000').then((r) => {
-                __partSkusData = r.data || [];
-                return __partSkusData;
-            }).catch((e) => {
-                __partSkusPromise = null;
-                throw e;
-            });
-            return __partSkusPromise;
+            return Promise.resolve(data);
         }
 
         function fillPartSelect(sel, data) {
@@ -457,7 +462,7 @@
         }
 
         async function refreshSummary() {
-            const s = await fetchJson(SP.summary);
+            const s = await fetchJson(URL_SUMMARY);
             document.getElementById('card-total-spare').textContent = s.total_spare_parts;
             document.getElementById('card-low-stock').textContent = s.low_stock_items;
             document.getElementById('card-pending-req').textContent = s.pending_requisitions;
@@ -527,7 +532,7 @@
                 items
             };
             try {
-                await fetchJson(SP.reqStore, {
+                await fetchJson(URL_REQ_STORE, {
                     method: 'POST',
                     body: JSON.stringify(body)
                 });
@@ -538,7 +543,7 @@
         });
 
         async function loadRequisitions() {
-            const r = await fetchJson(SP.reqIndex);
+            const r = await fetchJson(URL_REQ_INDEX);
             const tb = document.querySelector('#table-requisitions tbody');
             tb.innerHTML = '';
             r.data.forEach(row => {
@@ -573,7 +578,7 @@
         }
 
         async function loadIssues() {
-            const r = await fetchJson(SP.issuesPending);
+            const r = await fetchJson(URL_ISSUES_PENDING);
             const tb = document.querySelector('#table-issues tbody');
             tb.innerHTML = '';
             r.data.forEach(row => {
@@ -594,7 +599,7 @@
                     const tr = btn.closest('tr');
                     const qty = parseInt(tr.querySelector('.issue-qty').value, 10);
                     try {
-                        await fetchJson(SP.issueStore, {
+                        await fetchJson(URL_ISSUE_STORE, {
                             method: 'POST',
                             body: JSON.stringify({requisition_item_id: parseInt(btn.getAttribute('data-item'), 10), quantity: qty})
                         });
@@ -607,7 +612,7 @@
         }
 
         async function loadSuppliers() {
-            const r = await fetchJson(SP.suppliers);
+            const r = await fetchJson(URL_SUPPLIERS);
             const sel = document.getElementById('po-supplier');
             sel.innerHTML = '<option value="">Select…</option>';
             r.data.forEach(s => {
@@ -686,7 +691,7 @@
                 items
             };
             try {
-                await fetchJson(SP.poStore, {
+                await fetchJson(URL_PO_STORE, {
                     method: 'POST',
                     body: JSON.stringify(body)
                 });
@@ -697,7 +702,7 @@
         });
 
         async function loadPo() {
-            const r = await fetchJson(SP.poIndex);
+            const r = await fetchJson(URL_PO_INDEX);
             const tb = document.querySelector('#table-po tbody');
             tb.innerHTML = '';
             r.data.forEach(po => {
@@ -750,7 +755,7 @@
         function partsQuery() {
             const pid = document.getElementById('filter-parts-parent').value;
             const type = document.getElementById('filter-parts-type').value;
-            let url = SP.parts + '?type=' + encodeURIComponent(type);
+            let url = URL_PARTS + '?type=' + encodeURIComponent(type);
             if (pid) url += '&parent_id=' + encodeURIComponent(pid);
             return url;
         }
@@ -795,7 +800,7 @@
 
         async function loadLow() {
             const pid = document.getElementById('filter-low-parent').value;
-            let url = SP.lowStock;
+            let url = URL_LOW_STOCK;
             if (pid) url += '?parent_id=' + encodeURIComponent(pid);
             const r = await fetchJson(url);
             const tb = document.querySelector('#table-low tbody');
@@ -819,28 +824,11 @@
         }
 
         async function loadTree() {
-            const r = await fetchJson(SP.tree);
+            const r = await fetchJson(URL_TREE);
             const wrap = document.getElementById('tree-wrap');
             wrap.innerHTML = '';
             if (r.data && r.data.length) wrap.appendChild(renderTree(r.data));
             else wrap.textContent = 'No top-level spare parts (set parent / flags on the Parts tab).';
-        }
-
-        function fillCreateSpareParentSelect() {
-            const sel = document.getElementById('create-spare-parent');
-            if (window.SelectSearchable) {
-                window.SelectSearchable.destroy(sel);
-            }
-            sel.innerHTML = '<option value="">Select parent…</option>';
-            (SP_PARENT_OPTIONS || []).forEach((row) => {
-                const o = document.createElement('option');
-                o.value = String(row.id);
-                o.textContent = row.sku || ('#' + row.id);
-                sel.appendChild(o);
-            });
-            if (window.SelectSearchable) {
-                window.SelectSearchable.refresh(sel);
-            }
         }
 
         function fillCreateSpareSkuSelect(data) {
@@ -881,7 +869,7 @@
                 return;
             }
             try {
-                const r = await fetchJson(SP.supplierForSku + '?sku=' + encodeURIComponent(skuText));
+                const r = await fetchJson(URL_SUPPLIER_FOR_SKU + '?sku=' + encodeURIComponent(skuText));
                 supInp.value = r.supplier_name || '';
                 supIdEl.value = r.supplier_id != null ? String(r.supplier_id) : '';
             } catch (e) {
@@ -895,7 +883,6 @@
         });
 
         document.getElementById('btn-open-create-spare-part').addEventListener('click', () => {
-            fillCreateSpareParentSelect();
             document.getElementById('create-spare-part-name').value = '';
             document.getElementById('create-spare-msl-part').value = '';
             document.getElementById('create-spare-qty').value = '1';
@@ -963,7 +950,7 @@
                 if (supplierId) {
                     body.supplier_id = supplierId;
                 }
-                await fetchJson(SP.sparePartDetailsStore, {
+                await fetchJson(URL_SPARE_PART_DETAILS_STORE, {
                     method: 'POST',
                     body: JSON.stringify(body),
                 });
