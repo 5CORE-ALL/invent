@@ -42,12 +42,15 @@
         .action-buttons-group { display:flex; align-items:center; gap:6px; flex-wrap:nowrap; }
         .action-btn { padding:5px 10px; border:none; border-radius:6px; font-size:11px; font-weight:500; display:inline-flex; align-items:center; gap:4px; cursor:pointer; }
         .view-btn { background:#17a2b8; color:#fff; }
-        .edit-btn { background:linear-gradient(135deg,#2c6ed5 0%,#1a56b7 100%); color:#fff; }
+        .edit-mp-btn { background:linear-gradient(135deg,#2c6ed5 0%,#1a56b7 100%); color:#fff; }
         .modal-header-gradient { background:linear-gradient(135deg,#6B73FF 0%,#000DFF 100%); color:#fff; }
         .shopify-hint { font-size:10px; color:#64748b; }
         #loadErrorBanner { display:none; }
         #viewDescModal .dm-view-body { font-size:12px; line-height:1.45; color:#334155; white-space:pre-wrap; word-break:break-word; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:.75rem; min-height:2rem; max-height:min(50vh,360px); overflow-y:auto; }
         #viewDescModal .dm-view-section-title { font-size:11px; font-weight:700; color:#1e40af; padding:.35rem .5rem; background:#eff6ff; border-radius:6px; border-left:4px solid #2563eb; margin-bottom:.5rem; margin-top:.75rem; }
+        #editMarketplaceDescModal .mp-edit-block { border:1px solid #e2e8f0; border-radius:8px; padding:.75rem; margin-bottom:.75rem; background:#fafbfc; }
+        #editMarketplaceDescModal .mp-edit-textarea { font-size:12px; line-height:1.45; }
+        #editMarketplaceDescModal .pm-tier-btn { background:#64748b; color:#fff; }
         #dmSkeleton { min-height:200px; }
         .dm-skel-table { width:100%; border-collapse:collapse; }
         .dm-skel-table td { padding:10px 8px; }
@@ -218,6 +221,25 @@
             </div>
         </div>
     </div>
+
+    <div class="modal fade" id="editMarketplaceDescModal" tabindex="-1">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header modal-header-gradient">
+                    <h5 class="modal-title"><i class="fas fa-store me-2"></i>Edit marketplace descriptions</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p id="mpEditSubtitle" class="small text-muted mb-2"></p>
+                    <p class="small text-muted mb-3 border-bottom pb-2">Each block saves and pushes that marketplace only. Reset clears the stored copy in metrics (live listings may still show the old text until you push).</p>
+                    <div id="mpEditFields"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                </div>
+            </div>
+        </div>
+    </div>
 @endsection
 
 @section('script')
@@ -261,7 +283,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
         let tableData = [];
     const bySku = new Map();
-    let editModal, viewDescModal;
+    let editModal, viewDescModal, marketplaceEditModal;
+    let mpEditCurrentSku = '';
     let tableBodyBound = false;
     let lastViewPlainText = '';
     let currentPage = 1;
@@ -378,7 +401,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 <td class="action-buttons-cell">
                     <div class="action-buttons-group">
                         <button type="button" class="action-btn view-btn" data-view-row="${esc(sku)}" title="View descriptions (read-only)"><i class="fas fa-eye"></i></button>
-                        <button type="button" class="action-btn edit-btn" data-edit="${esc(sku)}"><i class="fas fa-edit"></i> Edit</button>
+                        <button type="button" class="action-btn edit-mp-btn" data-edit-mp="${esc(sku)}" title="Edit marketplace descriptions (push per channel)"><i class="fas fa-pen"></i></button>
+                        <button type="button" class="action-btn pm-tier-btn" data-edit-pm="${esc(sku)}" title="Edit Product Master tiers (1500–600) &amp; push"><i class="fas fa-align-left"></i></button>
                     </div>
                 </td>
                 ${groupCell('g1500', sku, r)}
@@ -401,11 +425,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 openViewModal(viewRow.getAttribute('data-view-row'));
                 return;
             }
-            const editBtn = e.target.closest('[data-edit]');
-            if (editBtn) {
-                openEditModal(editBtn.getAttribute('data-edit'));
-                    return;
-                }
+            const editMpBtn = e.target.closest('[data-edit-mp]');
+            if (editMpBtn) {
+                openMarketplaceEditModal(editMpBtn.getAttribute('data-edit-mp'));
+                return;
+            }
+            const editPmBtn = e.target.closest('[data-edit-pm]');
+            if (editPmBtn) {
+                openEditModal(editPmBtn.getAttribute('data-edit-pm'));
+                return;
+            }
             const pushBtn = e.target.closest('.bp-mp-stack[data-push-mp]');
             if (pushBtn) {
                 e.preventDefault();
@@ -452,12 +481,114 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    function updateMpEditCounter(ta, mp) {
+        const max = LIMITS[mp] || 1500;
+        const cnt = document.getElementById('mp-edit-cnt-' + mp);
+        if (!cnt || !ta) return;
+        const n = ta.value.length;
+        cnt.textContent = (max - n) + ' remaining · ' + n + '/' + max;
+    }
+
+    function openMarketplaceEditModal(sku) {
+        mpEditCurrentSku = String(sku);
+        const row = bySku.get(mpEditCurrentSku);
+        if (!row) return;
+        document.getElementById('mpEditSubtitle').textContent = 'SKU: ' + sku + ' — ' + (row.Parent || row.title150 || '');
+        const container = document.getElementById('mpEditFields');
+        container.innerHTML = ALL_MP.map((mp) => {
+            const max = LIMITS[mp] || 1500;
+            const shopifyHint = (mp === 'shopify_main' || mp === 'shopify_pls')
+                ? '<p class="shopify-hint mb-1"><i class="fas fa-info-circle"></i> Shopify listing body combines Bullet Points Master + this description (editable).</p>'
+                : '';
+            return `
+                <div class="mp-edit-block" data-mp="${esc(mp)}">
+                    <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-1">
+                        <strong>${esc(LABELS[mp])}</strong>
+                        <span class="small text-muted" id="mp-edit-cnt-${esc(mp)}">0/${max}</span>
+                    </div>
+                    ${shopifyHint}
+                    <textarea class="form-control form-control-sm mp-edit-textarea" id="mp-edit-ta-${esc(mp)}" data-mp="${esc(mp)}" rows="4" maxlength="${max}"></textarea>
+                    <div class="d-flex flex-wrap gap-2 mt-2">
+                        <button type="button" class="btn btn-sm btn-primary save-mp-btn" data-mp="${esc(mp)}"><i class="fas fa-cloud-upload-alt"></i> Save &amp; push</button>
+                        <button type="button" class="btn btn-sm btn-outline-danger reset-mp-btn" data-mp="${esc(mp)}"><i class="fas fa-eraser"></i> Reset</button>
+                    </div>
+                </div>`;
+        }).join('');
+        ALL_MP.forEach((mp) => {
+            const ta = document.getElementById('mp-edit-ta-' + mp);
+            if (ta) {
+                ta.value = getDisplayDescForMp(row, mp);
+                updateMpEditCounter(ta, mp);
+            }
+        });
+        if (!marketplaceEditModal) marketplaceEditModal = new bootstrap.Modal(document.getElementById('editMarketplaceDescModal'));
+        marketplaceEditModal.show();
+    }
+
+    document.getElementById('editMarketplaceDescModal')?.addEventListener('input', (e) => {
+        const ta = e.target.closest('.mp-edit-textarea');
+        if (!ta) return;
+        const mp = ta.getAttribute('data-mp');
+        if (mp) updateMpEditCounter(ta, mp);
+    });
+
+    document.getElementById('editMarketplaceDescModal')?.addEventListener('click', (e) => {
+        const saveBtn = e.target.closest('.save-mp-btn');
+        const resetBtn = e.target.closest('.reset-mp-btn');
+        const sku = mpEditCurrentSku;
+        const row = bySku.get(String(sku));
+        if (!sku || !row) return;
+
+        if (saveBtn) {
+            const mp = saveBtn.getAttribute('data-mp');
+            const ta = document.getElementById('mp-edit-ta-' + mp);
+            const raw = ta ? ta.value : '';
+            const text = String(raw).trim();
+            if (!text) {
+                toast('Description cannot be empty. Use Reset to clear the stored copy.', false);
+                return;
+            }
+            const lim = LIMITS[mp] || 1500;
+            const chunk = text.length > lim ? text.slice(0, lim) : text;
+            pushPayload(sku, [{ marketplace: mp, description: chunk }], null, false);
+            return;
+        }
+
+        if (resetBtn) {
+            const mp = resetBtn.getAttribute('data-mp');
+            if (!mp) return;
+            const label = LABELS[mp] || mp;
+            if (!confirm('Clear saved description for ' + label + '? This removes the stored copy in Description Master. Live listings may still show the previous text until you push new content.')) return;
+            fetch('/product-description/reset-marketplace', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json' },
+                body: JSON.stringify({ sku, marketplace: mp }),
+            })
+                .then((r) => r.json())
+                .then((res) => {
+                    if (res.success) {
+                        toast(res.message || 'Cleared');
+                        if (!row.descriptions) row.descriptions = {};
+                        row.descriptions[mp] = '';
+                        const ta = document.getElementById('mp-edit-ta-' + mp);
+                        if (ta) {
+                            ta.value = getDisplayDescForMp(row, mp);
+                            updateMpEditCounter(ta, mp);
+                        }
+                        renderTable();
+                        loadData(currentPage);
+                    } else toast(res.message || 'Reset failed', false);
+                })
+                .catch((err) => toast('Reset failed: ' + err.message, false));
+        }
+    });
+
     function pushSingleMarketplace(sku, mp) {
         const row = bySku.get(String(sku));
         if (!row) return;
-        const text = getPmTextForMp(row, mp);
-        if (!text) {
-            toast('Add text for this tier in Edit (Product Master).', false);
+        const text = getDisplayDescForMp(row, mp);
+        if (!text || !String(text).trim()) {
+            toast('Add text for this tier in Product Master tiers (align-left) or edit marketplace copy.', false);
             openEditModal(sku);
             return;
         }
