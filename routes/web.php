@@ -78,7 +78,7 @@ use App\Http\Controllers\InventoryManagement\IssueController as SparePartsIssueC
 use App\Http\Controllers\InventoryManagement\OutgoingController;
 use App\Http\Controllers\InventoryManagement\RefundController;
 use App\Http\Controllers\InventoryManagement\RequisitionController as SparePartsRequisitionController;
-use App\Http\Controllers\InventoryManagement\SparePartController;
+use App\Http\Controllers\InventoryManagement\SpareController;
 use App\Http\Controllers\InventoryManagement\SparePartPurchaseOrderController;
 use App\Http\Controllers\InventoryManagement\StockAdjustmentController;
 use App\Http\Controllers\InventoryManagement\StockBalanceController;
@@ -1864,18 +1864,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::put('/outgoing-update-reason-comment', [OutgoingController::class, 'updateReasonAndComment']);
     Route::get('/outgoing-history/{id}', [OutgoingController::class, 'getHistory']);
 
-    // Spare parts (inventory management)
-    Route::get('/inventory/spare-parts', [SparePartController::class, 'index'])->name('inventory.spare-parts.index');
-    Route::get('/inventory/spare-parts/api/summary', [SparePartController::class, 'summary'])->name('inventory.spare-parts.api.summary');
-    Route::get('/inventory/spare-parts/api/spare-parts', [SparePartController::class, 'sparePartsData'])->name('inventory.spare-parts.api.parts');
-    Route::get('/inventory/spare-parts/api/low-stock', [SparePartController::class, 'lowStockData'])->name('inventory.spare-parts.api.low-stock');
-    Route::get('/inventory/spare-parts/api/tree', [SparePartController::class, 'tree'])->name('inventory.spare-parts.api.tree');
-    Route::get('/inventory/spare-parts/api/search-parts', [SparePartController::class, 'searchParts'])->name('inventory.spare-parts.api.search-parts');
-    Route::get('/inventory/spare-parts/api/part-skus', [SparePartController::class, 'allPartSkus'])->name('inventory.spare-parts.api.part-skus');
-    Route::get('/inventory/spare-parts/api/suppliers', [SparePartController::class, 'suppliers'])->name('inventory.spare-parts.api.suppliers');
-    Route::patch('/inventory/spare-parts/api/parts/{id}', [SparePartController::class, 'updatePart'])->name('inventory.spare-parts.api.parts.update');
-    Route::post('/inventory/spare-parts/api/spare-part-details', [SparePartController::class, 'storeSparePartDetail'])->name('inventory.spare-parts.api.spare-part-details.store');
-
     Route::get('/inventory/spare-parts/api/requisitions', [SparePartsRequisitionController::class, 'index'])->name('inventory.spare-parts.api.requisitions.index');
     Route::post('/inventory/spare-parts/api/requisitions', [SparePartsRequisitionController::class, 'store'])->name('inventory.spare-parts.api.requisitions.store');
     Route::post('/inventory/spare-parts/api/requisitions/{requisition}/submit', [SparePartsRequisitionController::class, 'submit'])->name('inventory.spare-parts.api.requisitions.submit');
@@ -1889,6 +1877,14 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/inventory/spare-parts/api/purchase-orders', [SparePartPurchaseOrderController::class, 'store'])->name('inventory.spare-parts.api.purchase-orders.store');
     Route::post('/inventory/spare-parts/api/purchase-orders/{sparePartPurchaseOrder}/send', [SparePartPurchaseOrderController::class, 'send'])->name('inventory.spare-parts.api.purchase-orders.send');
     Route::post('/inventory/spare-parts/api/purchase-orders/{sparePartPurchaseOrder}/receive', [SparePartPurchaseOrderController::class, 'receive'])->name('inventory.spare-parts.api.purchase-orders.receive');
+
+    Route::get('/inventory/spares/dashboard', [SpareController::class, 'index'])->name('inventory.spares.dashboard');
+    Route::post('/inventory/spares/store', [SpareController::class, 'storeSpare'])->name('inventory.spares.store');
+    Route::post('/inventory/spares/requisitions/create', [SpareController::class, 'createRequisition'])->name('inventory.spares.requisitions.create');
+    Route::post('/inventory/spares/requisitions/{requisition}/status', [SpareController::class, 'updateRequisitionStatus'])->name('inventory.spares.requisitions.status');
+    Route::post('/inventory/spares/issue', [SpareController::class, 'issueSpare'])->name('inventory.spares.issue');
+    Route::post('/inventory/spares/purchase-orders/create', [SpareController::class, 'createPO'])->name('inventory.spares.purchase-orders.create');
+    Route::post('/inventory/spares/purchase-orders/{purchaseOrder}/receive', [SpareController::class, 'receivePO'])->name('inventory.spares.purchase-orders.receive');
     Route::post('/outgoing-archive', [OutgoingController::class, 'archive']);
 
     Route::get('/refunds-view', [RefundController::class, 'index'])->name('refunds.view');
