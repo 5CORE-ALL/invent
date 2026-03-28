@@ -272,8 +272,15 @@ class EbayPMPAdsController extends Controller
 
         // Get campaign listings with bid_percentage. Prioritize COST_PER_SALE rows
         // since they have bid_percentage, but fallback to latest row if no COST_PER_SALE exists.
+        // pt_sbid: dedicated column on apicentral (if present), else suggested_bid from a second row per listing.
         $campaignListings = collect();
+        $ptSbidAlternateByListingId = [];
         try {
+            $ptCol = $this->resolveEbayCampaignAdsListingPtSuggestedBidColumn();
+            $selectSql = 't.listing_id, t.bid_percentage, t.suggested_bid';
+            if ($ptCol !== null && $ptCol !== '') {
+                $selectSql .= ', t.`'.$ptCol.'` as pt_sbid';
+            }
             $campaignListings = DB::connection('apicentral')
                 ->table('ebay_campaign_ads_listings as t')
                 ->join(DB::raw('(SELECT listing_id, 
@@ -281,12 +288,18 @@ class EbayPMPAdsController extends Controller
                                         MAX(id) AS max_id
                                  FROM ebay_campaign_ads_listings 
                                  GROUP BY listing_id) x'), 
-                    function($join) {
+                    function ($join) {
                         $join->on('t.id', '=', DB::raw('COALESCE(x.max_cps_id, x.max_id)'));
                     })
-                ->select('t.listing_id', 't.bid_percentage', 't.suggested_bid')
+                ->selectRaw($selectSql)
                 ->get()
                 ->keyBy('listing_id');
+            $ptSbidAlternateByListingId = $this->fetchEbayPmpAlternatePtSuggestedBidByListingId();
+            foreach ($this->fetchEbayPmpPtSuggestedBidByListingIdFromProductTargetingFilter() as $lid => $v) {
+                if ($v !== null && $v !== '' && is_numeric($v)) {
+                    $ptSbidAlternateByListingId[$lid] = $v;
+                }
+            }
         } catch (\Throwable $e) {
             Log::warning('ebay_pmp_apicentral_campaign_listings_unavailable', [
                 'message' => $e->getMessage(),
@@ -388,13 +401,23 @@ class EbayPMPAdsController extends Controller
             $row['campaign_id'] = ($ebayMetric && isset($listingToCampaignId[$ebayMetric->item_id])) 
                 ? $listingToCampaignId[$ebayMetric->item_id] : null;
 
-            if ($ebayMetric && $campaignListings->has($ebayMetric->item_id)) {
-                $listing = $campaignListings->get($ebayMetric->item_id);
-                $row['bid_percentage'] = $listing->bid_percentage ?? null;
-                $row['suggested_bid']  = $listing->suggested_bid ?? null;
+            $listingRow = null;
+            if ($ebayMetric && $ebayMetric->item_id !== null && $ebayMetric->item_id !== '') {
+                $lid = $ebayMetric->item_id;
+                $listingRow = $campaignListings->get($lid)
+                    ?? $campaignListings->get((string) $lid)
+                    ?? (is_numeric($lid) ? $campaignListings->get((int) $lid) : null);
+            }
+            if ($listingRow) {
+                $row['bid_percentage'] = $listingRow->bid_percentage ?? null;
+                $row['suggested_bid'] = $listingRow->suggested_bid ?? null;
+                $row['pt_sbid'] = $this->resolveEbayPmpPtSbidValue($listingRow, $ebayMetric->item_id ?? null, $ptSbidAlternateByListingId);
             } else {
                 $row['bid_percentage'] = null;
-                $row['suggested_bid']  = null;
+                $row['suggested_bid'] = null;
+                $row['pt_sbid'] = $ebayMetric && $ebayMetric->item_id !== null && $ebayMetric->item_id !== ''
+                    ? ($this->numericOrNull($ptSbidAlternateByListingId[(string) $ebayMetric->item_id] ?? null))
+                    : null;
             }
 
 
@@ -1163,6 +1186,200 @@ class EbayPMPAdsController extends Controller
                 'error' => $e->getMessage()
             ], 500);
         }
+    }
+
+    /**
+     * Product-targeting suggested bid column on apicentral ebay_campaign_ads_listings (if migrated in).
+     */
+    private function resolveEbayCampaignAdsListingPtSuggestedBidColumn(): ?string
+    {
+        return Cache::remember('ebay_campaign_ads_listings_pt_sb_col_v3', 86400, function () {
+            $candidates = [
+                'pt_suggested_bid',
+                'product_targeting_suggested_bid',
+                'suggested_bid_product_targeting',
+                'pt_targeting_suggested_bid',
+                'suggested_bid_pt',
+                'suggested_bid_product',
+                'product_suggested_bid',
+                'pt_sb',
+                'pmt_suggested_bid',
+            ];
+            foreach ($candidates as $col) {
+                try {
+                    if (Schema::connection('apicentral')->hasColumn('ebay_campaign_ads_listings', $col)) {
+                        return $col;
+                    }
+                } catch (\Throwable $e) {
+                    return null;
+                }
+            }
+
+            return $this->discoverPtSuggestedBidColumnFromApicentralSchema();
+        });
+    }
+
+    /**
+     * Last resort: find a column on apicentral whose name suggests PT / product-targeting suggested bid.
+     */
+    private function discoverPtSuggestedBidColumnFromApicentralSchema(): ?string
+    {
+        try {
+            $dbName = DB::connection('apicentral')->getDatabaseName();
+            $rows = DB::connection('apicentral')->select(
+                'SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?',
+                [$dbName, 'ebay_campaign_ads_listings']
+            );
+            foreach ($rows as $r) {
+                $name = (string) ($r->COLUMN_NAME ?? '');
+                if ($name === '') {
+                    continue;
+                }
+                $l = strtolower($name);
+                if (! preg_match('/suggest|sbid|bid/', $l)) {
+                    continue;
+                }
+                if (preg_match('/pt|product|target|pmt|listing/', $l) && ! preg_match('/^suggested_bid$/', $l)) {
+                    if (Schema::connection('apicentral')->hasColumn('ebay_campaign_ads_listings', $name)) {
+                        return $name;
+                    }
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::warning('ebay_pmp_pt_sbid_schema_discovery_failed', ['message' => $e->getMessage()]);
+        }
+
+        return null;
+    }
+
+    /**
+     * Prefer suggested_bid from COST_PER_SALE rows that look like product-targeting line items (when columns exist).
+     *
+     * @return array<string, mixed>
+     */
+    private function fetchEbayPmpPtSuggestedBidByListingIdFromProductTargetingFilter(): array
+    {
+        $map = [];
+        try {
+            $conn = Schema::connection('apicentral');
+            if (! $conn->hasTable('ebay_campaign_ads_listings')) {
+                return $map;
+            }
+
+            $q = DB::connection('apicentral')->table('ebay_campaign_ads_listings')
+                ->where('funding_strategy', 'COST_PER_SALE');
+
+            $scoped = false;
+            if ($conn->hasColumn('ebay_campaign_ads_listings', 'ad_type')) {
+                $q->where(function ($sub) {
+                    $sub->whereIn('ad_type', [
+                        'PRODUCT_TARGETING',
+                        'PRODUCT_TARGET',
+                        'PRODUCT',
+                        'ITEM',
+                        'PLA',
+                    ])
+                        ->orWhere('ad_type', 'like', '%PRODUCT%')
+                        ->orWhere('ad_type', 'like', '%TARGET%');
+                });
+                $scoped = true;
+            } elseif ($conn->hasColumn('ebay_campaign_ads_listings', 'listing_type')) {
+                $q->where(function ($sub) {
+                    $sub->where('listing_type', 'like', '%PRODUCT%')
+                        ->orWhere('listing_type', 'like', '%TARGET%');
+                });
+                $scoped = true;
+            }
+
+            if (! $scoped) {
+                return $map;
+            }
+
+            $rows = $q->select('listing_id', 'suggested_bid')->orderBy('id')->get();
+            foreach ($rows as $r) {
+                $lid = (string) ($r->listing_id ?? '');
+                if ($lid === '') {
+                    continue;
+                }
+                if (! array_key_exists($lid, $map)) {
+                    $map[$lid] = $r->suggested_bid;
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::warning('ebay_pmp_pt_sbid_ad_type_filter_failed', ['message' => $e->getMessage()]);
+        }
+
+        return $map;
+    }
+
+    /**
+     * When multiple rows exist per listing_id, suggested_bid on a non-primary row (primary = same CPS rule as ES BID).
+     *
+     * @return array<string, mixed>
+     */
+    private function fetchEbayPmpAlternatePtSuggestedBidByListingId(): array
+    {
+        $map = [];
+        try {
+            $rows = DB::connection('apicentral')->select('
+                SELECT t.listing_id, t.suggested_bid AS pt_sbid
+                FROM ebay_campaign_ads_listings t
+                INNER JOIN (
+                    SELECT listing_id,
+                        COALESCE(MAX(CASE WHEN funding_strategy = \'COST_PER_SALE\' THEN id END), MAX(id)) AS primary_id
+                    FROM ebay_campaign_ads_listings
+                    GROUP BY listing_id
+                ) p ON t.listing_id = p.listing_id AND t.id <> p.primary_id
+            ');
+            foreach ($rows as $r) {
+                $lid = (string) ($r->listing_id ?? '');
+                if ($lid === '') {
+                    continue;
+                }
+                if (! array_key_exists($lid, $map)) {
+                    $map[$lid] = $r->pt_sbid;
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::warning('ebay_pmp_pt_sbid_alternate_rows_failed', [
+                'message' => $e->getMessage(),
+            ]);
+        }
+
+        return $map;
+    }
+
+    /**
+     * @param  object|null  $listing  Primary CPS row from ebay_campaign_ads_listings (may include pt_sbid alias).
+     * @param  array<string, mixed>  $alternateByListingId
+     */
+    private function resolveEbayPmpPtSbidValue(?object $listing, $itemId, array $alternateByListingId): ?float
+    {
+        if ($itemId === null || $itemId === '') {
+            return null;
+        }
+        if ($listing && property_exists($listing, 'pt_sbid')) {
+            $v = $listing->pt_sbid;
+            $num = $this->numericOrNull($v);
+            if ($num !== null) {
+                return $num;
+            }
+        }
+        $alt = $alternateByListingId[(string) $itemId] ?? null;
+
+        return $this->numericOrNull($alt);
+    }
+
+    private function numericOrNull($value): ?float
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+        if (is_numeric($value)) {
+            return (float) $value;
+        }
+
+        return null;
     }
 
 }

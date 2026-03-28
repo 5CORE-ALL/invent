@@ -25,6 +25,7 @@ use App\Services\WalmartService;
 use App\Services\WayfairApiService;
 use App\Models\ShopifySku;
 use App\Models\User;
+use App\Services\TitleMasterDataService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
@@ -236,219 +237,37 @@ class ProductMasterController extends Controller
     }
 
     /**
-     * Title Master table data: all Amazon listings (seller_sku + resolved title) with Product Master joined by SKU.
-     * Returns one row per Amazon listing so all 833+ Amazon titles are visible; PM fields (Parent, title150, etc.) when SKU exists in PM.
+     * Title Master: paginated list + server-side filters (see TitleMasterDataService).
      */
     public function getTitleMasterData(Request $request)
     {
         try {
-            $search = trim((string) $request->query('search', ''));
-
-            // Latest row per seller_sku via GROUP BY (avoids per-row correlated subquery). Do not select raw_data (huge JSON).
-            $latestAmazonIds = DB::table('amazon_listings_raw')
-                ->select('seller_sku', DB::raw('MAX(id) as max_id'))
-                ->groupBy('seller_sku');
-
-            $latestAmazonBySku = DB::table('amazon_listings_raw as alr')
-                ->joinSub($latestAmazonIds, 'latest', function ($join) {
-                    $join->on('alr.seller_sku', '=', 'latest.seller_sku')
-                        ->on('alr.id', '=', 'latest.max_id');
-                })
-                ->select([
-                    'alr.seller_sku',
-                    'alr.item_name',
-                ]);
-
-            $pmImage7Column = Schema::hasColumn('product_master', 'image7')
-                ? 'image7'
-                : (Schema::hasColumn('product_master', 'images7') ? 'images7' : null);
-            $pmImage8Column = Schema::hasColumn('product_master', 'image8')
-                ? 'image8'
-                : (Schema::hasColumn('product_master', 'images8') ? 'images8' : null);
-            $pmImage9Column = Schema::hasColumn('product_master', 'image9')
-                ? 'image9'
-                : (Schema::hasColumn('product_master', 'images9') ? 'images9' : null);
-            $pmImage10Column = Schema::hasColumn('product_master', 'image10')
-                ? 'image10'
-                : (Schema::hasColumn('product_master', 'images10') ? 'images10' : null);
-            $pmImage11Column = Schema::hasColumn('product_master', 'image11')
-                ? 'image11'
-                : (Schema::hasColumn('product_master', 'images11') ? 'images11' : null);
-            $pmImage12Column = Schema::hasColumn('product_master', 'image12')
-                ? 'image12'
-                : (Schema::hasColumn('product_master', 'images12') ? 'images12' : null);
-
-            $query = DB::table('product_stock_mappings as psm')
-                ->leftJoin('product_master as pm', 'pm.sku', '=', 'psm.sku')
-                ->leftJoinSub($latestAmazonBySku, 'alr', function ($join) {
-                    $join->on('alr.seller_sku', '=', 'psm.sku');
-                })
-                ->leftJoin('amazon_datsheets as ads', 'ads.sku', '=', 'psm.sku')
-                ->leftJoin('shopify_skus as ss', 'ss.sku', '=', 'psm.sku')
-                ->select([
-                    'pm.id as pm_id',
-                    'psm.sku as psm_sku',
-                    'pm.parent',
-                    'pm.title150',
-                    'pm.title100',
-                    'pm.title80',
-                    'pm.title60',
-                    'pm.bullet1',
-                    'pm.bullet2',
-                    'pm.bullet3',
-                    'pm.bullet4',
-                    'pm.bullet5',
-                    'pm.product_description',
-                    'pm.feature1',
-                    'pm.feature2',
-                    'pm.feature3',
-                    'pm.feature4',
-                    'pm.main_image',
-                    'pm.main_image_brand',
-                    'pm.image1',
-                    'pm.image2',
-                    'pm.image3',
-                    'pm.image4',
-                    'pm.image5',
-                    'pm.image6',
-                    'pm.Values as pm_values',
-                    'alr.seller_sku',
-                    'alr.item_name',
-                    'alr.raw_data',
-                    'ads.amazon_title as ads_amazon_title',
-                    'ads.sku as ads_sku',
-                    'ss.image_src as shopify_image',
-                    'psm.image as psm_image',
-                ]);
-            if ($pmImage7Column) {
-                $query->addSelect(DB::raw("pm.`{$pmImage7Column}` as image7"));
-            } else {
-                $query->addSelect(DB::raw('NULL as image7'));
-            }
-            if ($pmImage8Column) {
-                $query->addSelect(DB::raw("pm.`{$pmImage8Column}` as image8"));
-            } else {
-                $query->addSelect(DB::raw('NULL as image8'));
-            }
-            if ($pmImage9Column) {
-                $query->addSelect(DB::raw("pm.`{$pmImage9Column}` as image9"));
-            } else {
-                $query->addSelect(DB::raw('NULL as image9'));
-            }
-            if ($pmImage10Column) {
-                $query->addSelect(DB::raw("pm.`{$pmImage10Column}` as image10"));
-            } else {
-                $query->addSelect(DB::raw('NULL as image10'));
-            }
-            if ($pmImage11Column) {
-                $query->addSelect(DB::raw("pm.`{$pmImage11Column}` as image11"));
-            } else {
-                $query->addSelect(DB::raw('NULL as image11'));
-            }
-            if ($pmImage12Column) {
-                $query->addSelect(DB::raw("pm.`{$pmImage12Column}` as image12"));
-            } else {
-                $query->addSelect(DB::raw('NULL as image12'));
-            }
-
-            if ($search !== '') {
-                $query->where(function ($q) use ($search) {
-                    $q->where('psm.sku', 'like', "%{$search}%")
-                        ->orWhere('pm.sku', 'like', "%{$search}%")
-                        ->orWhere('alr.seller_sku', 'like', "%{$search}%");
-                });
-            }
-
-            $listings = $query->orderBy('psm.sku')->get();
-
-            $result = [];
-            foreach ($listings as $listing) {
-                $sku = $listing->psm_sku ?: $listing->seller_sku;
-                if (empty($sku)) {
-                    continue;
-                }
-
-                $amazonTitle = null;
-                if (! empty($listing->item_name)) {
-                    $amazonTitle = trim((string) $listing->item_name);
-                }
-                if (empty($amazonTitle) && ! empty($listing->ads_amazon_title)) {
-                    $amazonTitle = trim((string) $listing->ads_amazon_title);
-                }
-
-                $row = [
-                    'id' => $listing->pm_id,
-                    'Parent' => $listing->parent,
-                    'SKU' => $sku,
-                    'amazon_title' => $amazonTitle,
-                    'title150' => $listing->title150,
-                    'title100' => $listing->title100,
-                    'title80' => $listing->title80,
-                    'title60' => $listing->title60,
-                    'bullet1' => $listing->bullet1,
-                    'bullet2' => $listing->bullet2,
-                    'bullet3' => $listing->bullet3,
-                    'bullet4' => $listing->bullet4,
-                    'bullet5' => $listing->bullet5,
-                    'product_description' => $listing->product_description,
-                    'feature1' => $listing->feature1,
-                    'feature2' => $listing->feature2,
-                    'feature3' => $listing->feature3,
-                    'feature4' => $listing->feature4,
-                    'main_image' => $listing->main_image,
-                    'main_image_brand' => $listing->main_image_brand,
-                    'image1' => $listing->image1,
-                    'image2' => $listing->image2,
-                    'image3' => $listing->image3,
-                    'image4' => $listing->image4,
-                    'image5' => $listing->image5,
-                    'image6' => $listing->image6,
-                    'image7' => $listing->image7,
-                    'image8' => $listing->image8,
-                    'image9' => $listing->image9,
-                    'image10' => $listing->image10,
-                    'image11' => $listing->image11,
-                    'image12' => $listing->image12,
-                ];
-
-                if (is_array($listing->pm_values)) {
-                    $row = array_merge($row, $listing->pm_values);
-                } elseif (is_string($listing->pm_values)) {
-                    $values = json_decode($listing->pm_values, true);
-                    if (is_array($values)) {
-                        $row = array_merge($row, $values);
-                    }
-                }
-
-                $localImage = isset($row['image_path']) && $row['image_path'] ? $row['image_path'] : null;
-                if ($localImage && (strpos($localImage, 'storage/') !== false || strpos($localImage, '/storage/') !== false)) {
-                    $row['image_path'] = '/'.ltrim($localImage, '/');
-                } elseif (! empty($listing->shopify_image)) {
-                    $row['image_path'] = $listing->shopify_image;
-                } elseif ($localImage) {
-                    $row['image_path'] = '/'.ltrim($localImage, '/');
-                } else {
-                    $row['image_path'] = $row['image_path'] ?? $listing->main_image ?? $listing->psm_image ?? null;
-                }
-
-                $result[] = $row;
-            }
-
-            return response()->json([
-                'message' => 'Title Master data (product_stock_mappings base + left joins)',
-                'data' => $result,
-                'status' => 200,
-            ]);
+            return app(TitleMasterDataService::class)->getList($request);
         } catch (\Throwable $e) {
             Log::error('getTitleMasterData failed', [
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
             ]);
+
             return response()->json([
                 'message' => 'Failed to load title master data.',
                 'error' => $e->getMessage(),
                 'status' => 500,
             ], 500);
+        }
+    }
+
+    /**
+     * Lightweight SKU list for Add Title modal (searchable).
+     */
+    public function getTitleMasterSkuOptions(Request $request)
+    {
+        try {
+            return app(TitleMasterDataService::class)->skuOptions($request);
+        } catch (\Throwable $e) {
+            Log::error('getTitleMasterSkuOptions failed', ['error' => $e->getMessage()]);
+
+            return response()->json(['data' => [], 'message' => $e->getMessage()], 500);
         }
     }
 

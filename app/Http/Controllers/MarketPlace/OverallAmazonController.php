@@ -1935,29 +1935,33 @@ class OverallAmazonController extends Controller
             }
         }
 
-        // Fetch PT-specific last_sbid and sbid_m from day-before-yesterday and yesterday records
+        // Fetch PT-specific last_sbid, sbid_m, and sbid (Amazon suggested bid for PT SBID column) from day-specific + fallback windows
         $ptLastSbidReports = DB::table('amazon_sp_campaign_reports')
-            ->select('campaignName', 'campaign_id', 'last_sbid', 'sbid_m')
+            ->select('campaignName', 'campaign_id', 'last_sbid', 'sbid_m', 'sbid')
             ->where('ad_type', 'SPONSORED_PRODUCTS')
             ->where(function($q) use ($dayBeforeYesterday, $yesterday) {
                 $q->where('report_date_range', $dayBeforeYesterday)
                   ->orWhere('report_date_range', $yesterday);
             })
             ->where(function($q) {
-                $q->whereNotNull('last_sbid')
-                  ->where('last_sbid', '!=', '')
+                $q->where(function($q1) {
+                    $q1->whereNotNull('last_sbid')->where('last_sbid', '!=', '');
+                })
                   ->orWhere(function($q2) {
-                      $q2->whereNotNull('sbid_m')
-                         ->where('sbid_m', '!=', '');
+                      $q2->whereNotNull('sbid_m')->where('sbid_m', '!=', '');
+                  })
+                  ->orWhere(function($q3) {
+                      $q3->whereNotNull('sbid')->where('sbid', '!=', '')->where('sbid', '>', 0);
                   });
             })
             ->whereRaw("(campaignName REGEXP '(PT\\.?$)' OR campaignName LIKE '% PT' OR campaignName LIKE '% PT.')")
             ->orderByRaw("CASE WHEN report_date_range = ? THEN 0 ELSE 1 END", [$dayBeforeYesterday])
             ->get();
         
-        // Build PT last_sbid and sbid_m maps
+        // Build PT last_sbid, sbid_m, and sbid (suggested bid) maps — mirrors KW $sbidMap for product-targeting campaigns
         $ptLastSbidMap = [];
         $ptSbidMMap = [];
+        $ptSbidMap = [];
         foreach ($ptLastSbidReports as $report) {
             $campaignIdStr = (string)$report->campaign_id;
             if (!empty($campaignIdStr) && !isset($ptLastSbidMap[$campaignIdStr]) && !empty($report->last_sbid)) {
@@ -1965,6 +1969,9 @@ class OverallAmazonController extends Controller
             }
             if (!empty($campaignIdStr) && !isset($ptSbidMMap[$campaignIdStr]) && !empty($report->sbid_m)) {
                 $ptSbidMMap[$campaignIdStr] = $report->sbid_m;
+            }
+            if (!empty($campaignIdStr) && !isset($ptSbidMap[$campaignIdStr]) && isset($report->sbid) && (float)($report->sbid ?? 0) > 0) {
+                $ptSbidMap[$campaignIdStr] = $report->sbid;
             }
             // Also map by normalized campaign name for fallback
             if (!empty($report->campaignName)) {
@@ -1975,19 +1982,27 @@ class OverallAmazonController extends Controller
                 if (!isset($ptSbidMMap['name_' . $normalizedName]) && !empty($report->sbid_m)) {
                     $ptSbidMMap['name_' . $normalizedName] = $report->sbid_m;
                 }
+                if (!isset($ptSbidMap['name_' . $normalizedName]) && isset($report->sbid) && (float)($report->sbid ?? 0) > 0) {
+                    $ptSbidMap['name_' . $normalizedName] = $report->sbid;
+                }
             }
         }
 
-        // Fallback: PT last_sbid from L1/L7 when no day-specific row exists yet
+        // Fallback: PT last_sbid / sbid from L1/L7 when no day-specific row exists yet
         $ptLastSbidFallback = DB::table('amazon_sp_campaign_reports')
-            ->select('campaignName', 'campaign_id', 'last_sbid', 'sbid_m')
+            ->select('campaignName', 'campaign_id', 'last_sbid', 'sbid_m', 'sbid')
             ->where('ad_type', 'SPONSORED_PRODUCTS')
             ->whereIn('report_date_range', ['L1', 'L7'])
             ->whereRaw("(campaignName REGEXP '(PT\\.?$)' OR campaignName LIKE '% PT' OR campaignName LIKE '% PT.')")
             ->where(function($q) {
-                $q->whereNotNull('last_sbid')->where('last_sbid', '!=', '')
+                $q->where(function($q1) {
+                    $q1->whereNotNull('last_sbid')->where('last_sbid', '!=', '');
+                })
                   ->orWhere(function($q2) {
                       $q2->whereNotNull('sbid_m')->where('sbid_m', '!=', '');
+                  })
+                  ->orWhere(function($q3) {
+                      $q3->whereNotNull('sbid')->where('sbid', '!=', '')->where('sbid', '>', 0);
                   });
             })
             ->orderByRaw("CASE WHEN report_date_range = 'L1' THEN 0 ELSE 1 END")
@@ -2000,6 +2015,9 @@ class OverallAmazonController extends Controller
             if (!empty($campaignIdStr) && !isset($ptSbidMMap[$campaignIdStr]) && !empty($report->sbid_m)) {
                 $ptSbidMMap[$campaignIdStr] = $report->sbid_m;
             }
+            if (!empty($campaignIdStr) && !isset($ptSbidMap[$campaignIdStr]) && isset($report->sbid) && (float)($report->sbid ?? 0) > 0) {
+                $ptSbidMap[$campaignIdStr] = $report->sbid;
+            }
             if (!empty($report->campaignName)) {
                 $normalizedName = strtoupper(trim(rtrim($report->campaignName, '.')));
                 if (!isset($ptLastSbidMap['name_' . $normalizedName]) && !empty($report->last_sbid)) {
@@ -2007,6 +2025,9 @@ class OverallAmazonController extends Controller
                 }
                 if (!isset($ptSbidMMap['name_' . $normalizedName]) && !empty($report->sbid_m)) {
                     $ptSbidMMap['name_' . $normalizedName] = $report->sbid_m;
+                }
+                if (!isset($ptSbidMap['name_' . $normalizedName]) && isset($report->sbid) && (float)($report->sbid ?? 0) > 0) {
+                    $ptSbidMap['name_' . $normalizedName] = $report->sbid;
                 }
             }
         }
@@ -2441,7 +2462,9 @@ class OverallAmazonController extends Controller
             $row['hasCampaign'] = $matchedCampaignsKwL30->isNotEmpty() || $matchedCampaignsPtL30->isNotEmpty();
             // For Missing AD column: only green when THIS SKU has its own campaign (not parent-only)
             $row['has_own_kw_campaign'] = $exactKwCampaigns->isNotEmpty() || $exactKwCampaignsWithSuffix->isNotEmpty();
-            $row['has_own_pt_campaign'] = $exactPtCampaigns->isNotEmpty();
+            // PT: any L30 PT campaign match (same scope as pt_campaign_id / PT metrics). Exact "SKU PT" only
+            // was too strict — e.g. child rows matched via parent PT name had metrics but SBID columns stayed blank.
+            $row['has_own_pt_campaign'] = $matchedCampaignsPtL30->isNotEmpty();
             $row['has_own_hl_campaign'] = $matchedCampaignHlL30 && in_array(
                 $normalizeKwForMatch($matchedCampaignHlL30->campaignName ?? ''),
                 [$cleanSkuL30Norm, $cleanSkuL30Norm . ' HEAD'],
@@ -2672,6 +2695,24 @@ class OverallAmazonController extends Controller
             }
             $row['pt_last_sbid'] = $ptLastSbid;
             $row['pt_sbid_m'] = $ptSbidM;
+
+            // PT SBID: Amazon suggested bid (sbid) for product-targeting campaigns — same source as KW sbidMap
+            $ptSbidFromDb = 0.0;
+            if ($matchedCampaignsPtL30->isNotEmpty() && $inv > 0) {
+                $ptCampaignIdStrForSbid = $row['pt_campaign_id'] ? (string) $row['pt_campaign_id'] : null;
+                if ($ptCampaignIdStrForSbid && isset($ptSbidMap[$ptCampaignIdStrForSbid])) {
+                    $ptSbidFromDb = (float) $ptSbidMap[$ptCampaignIdStrForSbid];
+                } else {
+                    $ptCampaignNameForSbid = $row['pt_campaignName'];
+                    if ($ptCampaignNameForSbid) {
+                        $ptNormNameForSbid = strtoupper(trim(rtrim($ptCampaignNameForSbid, '.')));
+                        if (isset($ptSbidMap['name_'.$ptNormNameForSbid])) {
+                            $ptSbidFromDb = (float) $ptSbidMap['name_'.$ptNormNameForSbid];
+                        }
+                    }
+                }
+            }
+            $row['pt_sbid'] = $ptSbidFromDb;
             
             // SBID fields - only for KW campaigns that exist in L30 and INV > 0 (do not show SBID when INV is 0)
             $sbidFromDb = 0;
@@ -3186,6 +3227,7 @@ class OverallAmazonController extends Controller
             // Add campaign data to parent summary - use L30 when L7/L1 have no match so campaign name shows
             $sumRow['hasCampaign'] = $parentCampaignL7 || $parentCampaignL1 || $parentCampaignsL30->isNotEmpty();
             $sumRow['has_own_kw_campaign'] = $sumRow['hasCampaign'];
+            // Parent PT presence is set below after $hasParentPtCampaign is computed (see pt_campaign_status block)
             $sumRow['has_own_pt_campaign'] = false;
             $sumRow['has_own_hl_campaign'] = false;
             $sumRow['campaign_id'] = ($parentCampaignL7 ? $parentCampaignL7->campaign_id : null) ?? ($parentCampaignL1 ? $parentCampaignL1->campaign_id : null) ?? ($firstParentL30 ? $firstParentL30->campaign_id : null);
@@ -3418,6 +3460,16 @@ class OverallAmazonController extends Controller
             // Use parent PT campaign values only - do NOT fallback to children
             $sumRow['pt_last_sbid'] = $ptParentLastSbid ?: '';
             $sumRow['pt_sbid_m'] = $ptParentSbidM ?: '';
+
+            $ptParentSbidFromDb = 0.0;
+            if ($ptParentCampaignIdStr && isset($ptSbidMap[$ptParentCampaignIdStr])) {
+                $ptParentSbidFromDb = (float) $ptSbidMap[$ptParentCampaignIdStr];
+            } elseif (isset($ptSbidMap['name_'.$parentPtCampaignName])) {
+                $ptParentSbidFromDb = (float) $ptSbidMap['name_'.$parentPtCampaignName];
+            } elseif (isset($ptSbidMap['name_'.$parentPtCampaignNameNoDot])) {
+                $ptParentSbidFromDb = (float) $ptSbidMap['name_'.$parentPtCampaignNameNoDot];
+            }
+            $sumRow['pt_sbid'] = $ptParentSbidFromDb;
             
             // AD CVR and ACOS for parent
             $sumRow['ad_cvr'] = $sumRow['l30_clicks'] > 0 ? round(($sumRow['l30_purchases'] / $sumRow['l30_clicks']) * 100, 2) : 0;
@@ -3478,6 +3530,7 @@ class OverallAmazonController extends Controller
             }
             $ptParentEnabled = $ptParentStatus && strtoupper($ptParentStatus) === 'ENABLED';
             $sumRow['pt_campaign_status'] = $ptParentEnabled ? 'ENABLED' : ($ptParentStatus ? 'PAUSED' : '');
+            $sumRow['has_own_pt_campaign'] = $hasParentPtCampaign;
             
             // --- HL (Headline/Sponsored Brands) Data for parent ---
             // Match HL campaigns using "PARENT {parent}" or "PARENT {parent} HEAD"

@@ -617,6 +617,12 @@
                                 <i class="fas fa-sync"></i> Update Titles (<span id="selectedCount">0</span> selected)
                             </button>
                             <input type="file" id="importFile" accept=".csv,.xlsx,.xls" style="display: none;">
+                            <label class="small text-muted mb-0 ms-2 me-1">Per page</label>
+                            <select id="perPageSelect" class="form-select form-select-sm" style="width:88px;display:inline-block;vertical-align:middle;">
+                                <option value="50">50</option>
+                                <option value="75" selected>75</option>
+                                <option value="100">100</option>
+                            </select>
                     </div>
 
                     <div class="table-responsive">
@@ -685,6 +691,11 @@
                             </thead>
                             <tbody id="table-body"></tbody>
                         </table>
+                    </div>
+
+                    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mt-2 px-1" id="tmPaginationWrap">
+                        <div class="small text-muted" id="tmPageInfo"></div>
+                        <nav><ul class="pagination pagination-sm mb-0" id="tmPagination"></ul></nav>
                     </div>
 
                     <div id="rainbow-loader" class="rainbow-loader">
@@ -1383,6 +1394,9 @@
         @verbatim
         const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
         let tableData = [];
+        let listMeta = { current_page: 1, last_page: 1, per_page: 75, total: 0, from: null, to: null };
+        let titleMasterLoadAbort = null;
+        const titleFormatCache = new Map();
         let titleModal;
         let platformModal;
         let aiTitleModalInstance;
@@ -1405,7 +1419,8 @@
             if (aiTitle80ModalEl) aiTitle80ModalInstance = new bootstrap.Modal(aiTitle80ModalEl);
             const aiTitle60ModalEl = document.getElementById('aiTitle60Modal');
             if (aiTitle60ModalEl) aiTitle60ModalInstance = new bootstrap.Modal(aiTitle60ModalEl);
-            loadTitleData();
+            loadTitleData(1);
+            document.getElementById('perPageSelect')?.addEventListener('change', function() { loadTitleData(1); });
             setupSearchHandlers();
             setupModalHandlers();
             setupButtonHandlers();
@@ -1435,7 +1450,7 @@
                         alert('No titles to push. Ensure rows have Title 150 data.');
                         return;
                     }
-                    document.getElementById('pushConfirmMessage').textContent = 'Push ' + items.length + ' titles to Amazon, Temu & Reverb? This may take several minutes.';
+                    document.getElementById('pushConfirmMessage').textContent = 'Push ' + items.length + ' title(s) on this page to Amazon, Temu & Reverb? This may take several minutes.';
                     const confirmModalEl = document.getElementById('pushConfirmModal');
                     const confirmModal = bootstrap.Modal.getOrCreateInstance(confirmModalEl);
                     document.getElementById('pushConfirmBtn').onclick = function() {
@@ -1461,7 +1476,7 @@
                         alert('No titles to push. Selected rows need Title 150 data.');
                         return;
                     }
-                    document.getElementById('pushConfirmMessage').textContent = 'Push ' + items.length + ' selected titles to Amazon, Temu & Reverb?';
+                    document.getElementById('pushConfirmMessage').textContent = 'Push ' + items.length + ' selected title(s) on this page to Amazon, Temu & Reverb?';
                     const confirmModalEl = document.getElementById('pushConfirmModal');
                     const confirmModal = bootstrap.Modal.getOrCreateInstance(confirmModalEl);
                     document.getElementById('pushConfirmBtn').onclick = function() {
@@ -1671,7 +1686,7 @@
                     updateSelectedCount();
                     
                     // Reload data
-                    loadTitleData();
+                    loadTitleData(listMeta.current_page || 1);
                 } else {
                     alert('Error: ' + (data.message || 'Failed to update platforms'));
                 }
@@ -2318,31 +2333,104 @@
             if (aiTitle60ModalInstance) aiTitle60ModalInstance.show();
         }
 
-        function loadTitleData() {
+        function buildTitleMasterQueryParams(forPage) {
+            const params = new URLSearchParams();
+            const perPage = document.getElementById('perPageSelect')?.value || 75;
+            params.set('per_page', String(perPage));
+            params.set('page', String(forPage != null ? forPage : 1));
+            const qParent = (document.getElementById('parentSearch')?.value || '').trim();
+            const qSku = (document.getElementById('skuSearch')?.value || '').trim();
+            if (qParent) params.set('q_parent', qParent);
+            if (qSku) params.set('q_sku', qSku);
+            const f150 = document.getElementById('filterTitle150')?.value;
+            const f100 = document.getElementById('filterTitle100')?.value;
+            const f80 = document.getElementById('filterTitle80')?.value;
+            const f60 = document.getElementById('filterTitle60')?.value;
+            if (f150 && f150 !== 'all') params.set('filter_title150', f150);
+            if (f100 && f100 !== 'all') params.set('filter_title100', f100);
+            if (f80 && f80 !== 'all') params.set('filter_title80', f80);
+            if (f60 && f60 !== 'all') params.set('filter_title60', f60);
+            return params;
+        }
+
+        function updateCountsFromStats(stats) {
+            if (!stats) return;
+            document.getElementById('parentCount').textContent = '(' + (stats.distinct_parents != null ? stats.distinct_parents : 0) + ')';
+            document.getElementById('skuCount').textContent = '(' + (stats.total_rows != null ? stats.total_rows : 0) + ')';
+            document.getElementById('title150MissingCount').textContent = '(' + (stats.title150_missing != null ? stats.title150_missing : 0) + ' missing)';
+            document.getElementById('title100MissingCount').textContent = '(' + (stats.title100_missing != null ? stats.title100_missing : 0) + ')';
+            document.getElementById('title80MissingCount').textContent = '(' + (stats.title80_missing != null ? stats.title80_missing : 0) + ')';
+            document.getElementById('title60MissingCount').textContent = '(' + (stats.title60_missing != null ? stats.title60_missing : 0) + ')';
+        }
+
+        function renderPagination() {
+            const info = document.getElementById('tmPageInfo');
+            const ul = document.getElementById('tmPagination');
+            if (!info || !ul) return;
+            const cur = listMeta.current_page || 1;
+            const last = listMeta.last_page || 1;
+            const total = listMeta.total || 0;
+            const from = listMeta.from;
+            const to = listMeta.to;
+            info.textContent = (from != null && to != null && total != null)
+                ? ('Showing ' + from + '–' + to + ' of ' + total)
+                : ('Page ' + cur + ' of ' + last);
+            let html = '';
+            const addLi = function(label, page, disabled, active) {
+                html += '<li class="page-item' + (disabled ? ' disabled' : '') + (active ? ' active' : '') + '">';
+                html += '<a class="page-link" href="#" data-tm-page="' + page + '">' + label + '</a></li>';
+            };
+            addLi('«', cur - 1, cur <= 1, false);
+            const windowSize = 5;
+            let start = Math.max(1, cur - Math.floor(windowSize / 2));
+            let end = Math.min(last, start + windowSize - 1);
+            start = Math.max(1, end - windowSize + 1);
+            for (let i = start; i <= end; i++) addLi(String(i), i, false, i === cur);
+            addLi('»', cur + 1, cur >= last, false);
+            ul.innerHTML = html;
+            ul.querySelectorAll('a.page-link').forEach(function(a) {
+                a.addEventListener('click', function(ev) {
+                    ev.preventDefault();
+                    const pg = parseInt(a.getAttribute('data-tm-page'), 10);
+                    if (!pg || pg < 1 || pg > last || pg === cur) return;
+                    loadTitleData(pg);
+                });
+            });
+        }
+
+        function loadTitleData(page) {
+            if (titleMasterLoadAbort) {
+                try { titleMasterLoadAbort.abort(); } catch (e) {}
+            }
+            titleMasterLoadAbort = new AbortController();
+            const p = page != null ? page : 1;
+            const params = buildTitleMasterQueryParams(p);
             document.getElementById('rainbow-loader').style.display = 'block';
-            
-            fetch('/title-master-data')
-                .then(response => {
-                    if (!response.ok) {
-                        throw new Error('Network response was not ok');
-                    }
+
+            fetch('/title-master-data?' + params.toString(), {
+                signal: titleMasterLoadAbort.signal,
+                headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
+            })
+                .then(function(response) {
+                    if (!response.ok) throw new Error('Network response was not ok');
                     return response.json();
                 })
-                .then(response => {
-                    // Handle both direct array and wrapped response
-                    const data = response.data ? response.data : response;
-                    
+                .then(function(response) {
+                    const data = response.data;
                     if (data && Array.isArray(data)) {
                         tableData = data;
+                        listMeta = response.meta || listMeta;
                         renderTable(tableData);
-                        updateCounts();
+                        updateCountsFromStats(response.stats);
+                        renderPagination();
                     } else {
                         console.error('Invalid data:', response);
                         showError('Invalid data format received from server');
                     }
                     document.getElementById('rainbow-loader').style.display = 'none';
                 })
-                .catch(error => {
+                .catch(function(error) {
+                    if (error.name === 'AbortError') return;
                     console.error('Error:', error);
                     showError('Failed to load product data: ' + error.message);
                     document.getElementById('rainbow-loader').style.display = 'none';
@@ -2430,25 +2518,33 @@
             if (!title || (typeof title === 'string' && title.trim() === '')) {
                 return { html: '-', tooltip: '' };
             }
+            const key = typeof title === 'string' ? title : String(title);
+            if (titleFormatCache.has(key)) {
+                return titleFormatCache.get(key);
+            }
             const maxLength = 150;
             const totalChars = title.length;
             const excess = totalChars - maxLength;
+            let out;
             if (totalChars <= maxLength) {
-                return {
+                out = {
                     html: '<span class="title-indicator success">✅</span> ' + escapeHtml(title),
                     tooltip: '✓ ' + totalChars + '/' + maxLength + ' characters — within limit\n\n' + title
                 };
             } else {
-                return {
+                out = {
                     html: '<span class="title-indicator danger">❌</span> <span class="excess-badge">(+' + excess + ')</span> ' + escapeHtml(title),
                     tooltip: '⚠️ ' + totalChars + '/' + maxLength + ' characters\n' + excess + ' characters above limit\n\nFull title:\n' + title
                 };
             }
+            titleFormatCache.set(key, out);
+            return out;
         }
 
         function renderTable(data) {
+            titleFormatCache.clear();
             const tbody = document.getElementById('table-body');
-            tbody.innerHTML = '';
+            const frag = document.createDocumentFragment();
 
             if (data.length === 0) {
                 tbody.innerHTML = '<tr><td colspan="13" class="text-center">No products found</td></tr>';
@@ -2479,19 +2575,19 @@
                 // Images
                 const imageCell = document.createElement('td');
                 imageCell.className = 'table-img-cell';
-                imageCell.innerHTML = item.image_path 
-                    ? '<img src="' + item.image_path + '" alt="">'
+                imageCell.innerHTML = item.image_path
+                    ? '<img src="' + escapeHtml(item.image_path) + '" alt="" loading="lazy" decoding="async">'
                     : '-';
                 row.appendChild(imageCell);
 
                 // Parent
                 const parentCell = document.createElement('td');
-                parentCell.textContent = escapeHtml(item.Parent) || '-';
+                parentCell.textContent = (item.Parent != null && item.Parent !== '') ? String(item.Parent) : '-';
                 row.appendChild(parentCell);
 
                 // SKU
                 const skuCell = document.createElement('td');
-                skuCell.textContent = escapeHtml(item.SKU) || '-';
+                skuCell.textContent = (item.SKU != null && item.SKU !== '') ? String(item.SKU) : '-';
                 row.appendChild(skuCell);
 
                 // Title 150 (Amazon title with ✅/❌ and (+X) excess, tooltip with char count)
@@ -2582,8 +2678,11 @@
                 pushCell.innerHTML = '<button type="button" class="action-btn push-amazon-btn push-all-marketplaces-btn" data-sku="' + escapeHtml(item.SKU) + '" title="Push Title 150 to Amazon, Temu, Reverb"><i class="fas fa-cloud-upload-alt"></i> Push to All</button>';
                 row.appendChild(pushCell);
 
-                tbody.appendChild(row);
+                frag.appendChild(row);
             });
+
+            tbody.innerHTML = '';
+            tbody.appendChild(frag);
 
             setupEditButtons();
             setupViewButtons();
@@ -2636,6 +2735,12 @@
                             alert(`No Title ${titleType} available for SKU ${sku}.`);
                         }
                         return;
+                    }
+
+                    if (marketplace === 'ebay3') {
+                        if (!confirm('Warning! This is a Variation Platform, ARE YOU SURE?')) {
+                            return;
+                        }
                     }
 
                     const originalHtml = button.innerHTML;
@@ -2907,7 +3012,16 @@
             const modalTitle = document.getElementById('modalTitle');
             const selectSku = document.getElementById('selectSku');
             const editSku = document.getElementById('editSku');
-            
+
+            function attachSelect2DestroyOnHide() {
+                const modalElement = document.getElementById('titleModal');
+                modalElement.addEventListener('hidden.bs.modal', function() {
+                    if ($(selectSku).hasClass('select2-hidden-accessible')) {
+                        $(selectSku).select2('destroy');
+                    }
+                }, { once: true });
+            }
+
             // Reset form
             document.getElementById('titleForm').reset();
             ['title150', 'title100', 'title80', 'title60'].forEach(field => {
@@ -2921,28 +3035,48 @@
                 selectSku.style.display = 'block';
                 selectSku.required = true;
                 editSku.value = '';
-                
-                // Destroy Select2 if already initialized
+
                 if ($(selectSku).hasClass('select2-hidden-accessible')) {
                     $(selectSku).select2('destroy');
                 }
-                
-                // Populate SKU dropdown
-                selectSku.innerHTML = '<option value="">Choose SKU...</option>';
-                tableData.forEach(item => {
-                    if (item.SKU && !item.SKU.toUpperCase().includes('PARENT')) {
-                        selectSku.innerHTML += '<option value="' + escapeHtml(item.SKU) + '">' + escapeHtml(item.SKU) + '</option>';
-                    }
-                });
-                
-                // Initialize Select2 with searchable dropdown
-                $(selectSku).select2({
-                    theme: 'bootstrap-5',
-                    placeholder: 'Choose SKU...',
-                    allowClear: true,
-                    width: '100%',
-                    dropdownParent: $('#titleModal')
-                });
+
+                selectSku.innerHTML = '<option value="">Loading SKUs...</option>';
+
+                fetch('/title-master/sku-options', {
+                    headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
+                })
+                    .then(function(r) { return r.json(); })
+                    .then(function(resp) {
+                        const skus = resp.data || [];
+                        selectSku.innerHTML = '<option value="">Choose SKU...</option>';
+                        skus.forEach(function(skuVal) {
+                            const s = String(skuVal);
+                            if (s && !s.toUpperCase().includes('PARENT')) {
+                                selectSku.innerHTML += '<option value="' + escapeHtml(s) + '">' + escapeHtml(s) + '</option>';
+                            }
+                        });
+                    })
+                    .catch(function(err) {
+                        console.error('sku-options:', err);
+                        selectSku.innerHTML = '<option value="">Choose SKU...</option>';
+                        tableData.forEach(function(item) {
+                            if (item.SKU && !item.SKU.toUpperCase().includes('PARENT')) {
+                                selectSku.innerHTML += '<option value="' + escapeHtml(item.SKU) + '">' + escapeHtml(item.SKU) + '</option>';
+                            }
+                        });
+                    })
+                    .finally(function() {
+                        $(selectSku).select2({
+                            theme: 'bootstrap-5',
+                            placeholder: 'Choose SKU...',
+                            allowClear: true,
+                            width: '100%',
+                            dropdownParent: $('#titleModal')
+                        });
+                        attachSelect2DestroyOnHide();
+                        titleModal.show();
+                    });
+                return;
             } else if (mode === 'edit' && sku) {
                 modalTitle.textContent = 'Edit Title';
                 selectSku.style.display = 'none';
@@ -2974,14 +3108,7 @@
                 }
             }
 
-            // Clean up Select2 when modal is hidden
-            const modalElement = document.getElementById('titleModal');
-            modalElement.addEventListener('hidden.bs.modal', function() {
-                if ($(selectSku).hasClass('select2-hidden-accessible')) {
-                    $(selectSku).select2('destroy');
-                }
-            }, { once: true });
-
+            attachSelect2DestroyOnHide();
             titleModal.show();
         }
 
@@ -3058,8 +3185,7 @@
                     }
                     titleModal.hide();
                     resetTitleModalForm();
-                    applyFilters();
-                    updateCounts();
+                    loadTitleData(listMeta.current_page || 1);
                     if (typeof showToast === 'function') {
                         showToast('success', 'Titles saved for ' + sku + '.');
                     } else {
@@ -3080,21 +3206,50 @@
         }
 
         function exportToExcel() {
-            const exportData = tableData
-                .filter(item => item.SKU && !item.SKU.toUpperCase().includes('PARENT'))
-                .map(item => ({
-                    'Parent': item.Parent || '',
-                    'SKU': item.SKU || '',
-                    'Title 150': (item.amazon_title != null && item.amazon_title !== '') ? item.amazon_title : (item.title150 || ''),
-                    'Title 100': item.title100 || '',
-                    'Title 80': item.title80 || '',
-                    'Title 60': item.title60 || ''
-                }));
+            const params = buildTitleMasterQueryParams(1);
+            params.set('export', '1');
+            const loader = document.getElementById('rainbow-loader');
+            if (loader) loader.style.display = 'block';
 
-            const ws = XLSX.utils.json_to_sheet(exportData);
-            const wb = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(wb, ws, 'Titles');
-            XLSX.writeFile(wb, 'title_master_' + new Date().toISOString().split('T')[0] + '.xlsx');
+            fetch('/title-master-data?' + params.toString(), {
+                headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
+            })
+                .then(function(response) {
+                    if (!response.ok) throw new Error('Export request failed');
+                    return response.json();
+                })
+                .then(function(response) {
+                    const rows = response.data;
+                    if (!Array.isArray(rows)) {
+                        throw new Error('Invalid export data');
+                    }
+                    const exportData = rows
+                        .filter(function(item) {
+                            return item.SKU && !String(item.SKU).toUpperCase().includes('PARENT');
+                        })
+                        .map(function(item) {
+                            return {
+                                'Parent': item.Parent || '',
+                                'SKU': item.SKU || '',
+                                'Title 150': (item.amazon_title != null && item.amazon_title !== '') ? item.amazon_title : (item.title150 || ''),
+                                'Title 100': item.title100 || '',
+                                'Title 80': item.title80 || '',
+                                'Title 60': item.title60 || ''
+                            };
+                        });
+
+                    const ws = XLSX.utils.json_to_sheet(exportData);
+                    const wb = XLSX.utils.book_new();
+                    XLSX.utils.book_append_sheet(wb, ws, 'Titles');
+                    XLSX.writeFile(wb, 'title_master_' + new Date().toISOString().split('T')[0] + '.xlsx');
+                })
+                .catch(function(err) {
+                    console.error(err);
+                    alert('Export failed: ' + (err.message || 'Unknown error'));
+                })
+                .finally(function() {
+                    if (loader) loader.style.display = 'none';
+                });
         }
 
         function importFromExcel(file) {
@@ -3358,7 +3513,7 @@
                 alert(message);
 
                 if (successCount > 0) {
-                    loadTitleData();
+                    loadTitleData(1);
                 }
             })();
         }
@@ -3371,64 +3526,13 @@
             }
             titleMasterFilterDebounce = setTimeout(function() {
                 titleMasterFilterDebounce = null;
-                applyFilters();
-            }, 280);
+                loadTitleData(1);
+            }, 500);
         }
 
-        // Apply all filters
+        /** Server-side filters — reload page 1 */
         function applyFilters() {
-            const parentFilter = document.getElementById('parentSearch').value.toLowerCase();
-            const skuFilter = document.getElementById('skuSearch').value.toLowerCase();
-            const filterTitle150 = document.getElementById('filterTitle150').value;
-            const filterTitle100 = document.getElementById('filterTitle100').value;
-            const filterTitle80 = document.getElementById('filterTitle80').value;
-            const filterTitle60 = document.getElementById('filterTitle60').value;
-
-            const filteredData = tableData.filter(item => {
-                // Skip parent rows
-                if (item.SKU && item.SKU.toUpperCase().includes('PARENT')) {
-                    return false;
-                }
-
-                // Parent search filter
-                if (parentFilter && !(item.Parent && item.Parent.toLowerCase().includes(parentFilter))) {
-                    return false;
-                }
-
-                // SKU search filter
-                if (skuFilter && !(item.SKU && item.SKU.toLowerCase().includes(skuFilter))) {
-                    return false;
-                }
-
-                // Title 150 filter (Amazon titles: missing or exceeds 150 chars)
-                if (filterTitle150 === 'missing' && !isMissing(item.amazon_title)) {
-                    return false;
-                }
-                if (filterTitle150 === 'exceeds') {
-                    if (isMissing(item.amazon_title) || item.amazon_title.length <= 150) {
-                        return false;
-                    }
-                }
-
-                // Title 100 filter
-                if (filterTitle100 === 'missing' && !isMissing(item.title100)) {
-                    return false;
-                }
-
-                // Title 80 filter
-                if (filterTitle80 === 'missing' && !isMissing(item.title80)) {
-                    return false;
-                }
-
-                // Title 60 filter
-                if (filterTitle60 === 'missing' && !isMissing(item.title60)) {
-                    return false;
-                }
-
-                return true;
-            });
-
-            renderTable(filteredData);
+            loadTitleData(1);
         }
 
         function setupSearchHandlers() {
@@ -3438,59 +3542,30 @@
             parentSearch.addEventListener('input', scheduleApplyFilters);
             skuSearch.addEventListener('input', scheduleApplyFilters);
 
-            // Column filters
             document.getElementById('filterTitle150').addEventListener('change', function() {
-                applyFilters();
+                loadTitleData(1);
             });
 
             document.getElementById('filterTitle100').addEventListener('change', function() {
-                applyFilters();
+                loadTitleData(1);
             });
 
             document.getElementById('filterTitle80').addEventListener('change', function() {
-                applyFilters();
+                loadTitleData(1);
             });
 
             document.getElementById('filterTitle60').addEventListener('change', function() {
-                applyFilters();
+                loadTitleData(1);
             });
         }
 
         function filterTable() {
-            applyFilters();
+            loadTitleData(1);
         }
 
         // Check if value is missing (null, undefined, empty)
         function isMissing(value) {
             return value === null || value === undefined || value === '' || (typeof value === 'string' && value.trim() === '');
-        }
-
-        function updateCounts() {
-            const parentSet = new Set();
-            let skuCount = 0;
-            let title150MissingCount = 0;
-            let title100MissingCount = 0;
-            let title80MissingCount = 0;
-            let title60MissingCount = 0;
-
-            tableData.forEach(item => {
-                if (item.Parent) parentSet.add(item.Parent);
-                if (item.SKU && !String(item.SKU).toUpperCase().includes('PARENT')) {
-                    skuCount++;
-                    // Title 150 = Amazon title (from amazon_listings_raw); Title 100/80/60 = Product Master
-                    if (isMissing(item.amazon_title)) title150MissingCount++;
-                    if (isMissing(item.title100)) title100MissingCount++;
-                    if (isMissing(item.title80)) title80MissingCount++;
-                    if (isMissing(item.title60)) title60MissingCount++;
-                }
-            });
-
-            document.getElementById('parentCount').textContent = `(${parentSet.size})`;
-            document.getElementById('skuCount').textContent = `(${skuCount})`;
-            document.getElementById('title150MissingCount').textContent = `(${title150MissingCount} missing)`;
-            document.getElementById('title100MissingCount').textContent = `(${title100MissingCount})`;
-            document.getElementById('title80MissingCount').textContent = `(${title80MissingCount})`;
-            document.getElementById('title60MissingCount').textContent = `(${title60MissingCount})`;
         }
 
         function escapeHtml(text) {

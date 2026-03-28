@@ -1680,6 +1680,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/bullet-point-master/update-bulk', [BulletPointMasterController::class, 'updateBulk'])->name('bullet.point.master.update.bulk');
     Route::post('/bullet-point-master/generate', [BulletPointMasterController::class, 'generateBulletPoints'])->name('bullet.point.master.generate');
     Route::get('/title-master-data', [ProductMasterController::class, 'getTitleMasterData'])->name('title.master.data');
+    Route::get('/title-master/sku-options', [ProductMasterController::class, 'getTitleMasterSkuOptions'])->name('title.master.sku.options');
     Route::post('/title-master/save', [ProductMasterController::class, 'saveTitleData'])->name('title.master.save');
     Route::post('/title-master/ai/generate-titles', [ProductMasterController::class, 'generateTitlesWithAI'])->name('title.master.ai.generate');
     Route::post('/title-master/ai/generate-title-150', [ProductMasterController::class, 'generateTitle150WithAI'])->name('title.master.ai.generate.title150');
