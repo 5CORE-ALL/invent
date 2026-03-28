@@ -12,6 +12,7 @@ use Illuminate\Support\Facades\Log;
 use App\Models\ProductStockMapping;
 use App\Models\ReverbProduct;
 use App\Models\ReverbListingStatus;
+use Illuminate\Http\Client\Response;
 
 class ReverbApiService
 {
@@ -529,22 +530,13 @@ class ReverbApiService
         }
         $html .= '</ul>';
 
-        $updateUrl = 'https://api.reverb.com/api/listings/'.$listingId;
         $payload = [
             'description' => $html,
             'plain_text_description' => $bulletPoints,
         ];
 
         try {
-            $response = Http::withoutVerifying()
-                ->timeout(30)
-                ->withHeaders([
-                    'Authorization' => 'Bearer '.$token,
-                    'Accept' => 'application/hal+json',
-                    'Accept-Version' => '3.0',
-                    'Content-Type' => 'application/hal+json',
-                ])
-                ->put($updateUrl, $payload);
+            $response = $this->reverbPutListingWithRetry($token, $listingId, $payload);
 
             if ($response->successful()) {
                 return [
@@ -565,11 +557,49 @@ class ReverbApiService
     }
 
     /**
-     * Long-form description (not bullet list).
+     * PUT /api/listings/{id} with 429/503 retry (same spirit as Shopify rate-limit retries).
+     *
+     * @param  array<string, mixed>  $payload
+     */
+    private function reverbPutListingWithRetry(string $token, string $listingId, array $payload, int $maxRetries = 4): Response
+    {
+        $updateUrl = 'https://api.reverb.com/api/listings/'.$listingId;
+        $last = null;
+        for ($attempt = 0; $attempt < $maxRetries; $attempt++) {
+            $last = Http::withoutVerifying()
+                ->timeout(30)
+                ->withHeaders([
+                    'Authorization' => 'Bearer '.$token,
+                    'Accept' => 'application/hal+json',
+                    'Accept-Version' => '3.0',
+                    'Content-Type' => 'application/hal+json',
+                ])
+                ->put($updateUrl, $payload);
+
+            if ($last->successful()) {
+                return $last;
+            }
+            if (in_array($last->status(), [429, 503], true) && $attempt < $maxRetries - 1) {
+                $waitMs = (int) (500000 * ($attempt + 1));
+                if ($last->status() === 429 && is_numeric($last->header('Retry-After'))) {
+                    $waitMs = min(2_000_000, (int) ((float) $last->header('Retry-After') * 1_000_000));
+                }
+                usleep($waitMs);
+
+                continue;
+            }
+            break;
+        }
+
+        return $last;
+    }
+
+    /**
+     * Long-form description (not bullet list). PUT listing `description` / `plain_text_description`.
      *
      * @return array{success: bool, message: string, listing_id?: string}
      */
-    public function updateProductDescription(string $identifier, string $description): array
+    public function updateDescription(string $identifier, string $description): array
     {
         $token = config('services.reverb.token');
         if (! $token) {
@@ -610,22 +640,13 @@ class ReverbApiService
 
         $html = '<div class="product-description">'.nl2br(htmlspecialchars($description, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'), false).'</div>';
 
-        $updateUrl = 'https://api.reverb.com/api/listings/'.$listingId;
         $payload = [
             'description' => $html,
             'plain_text_description' => $description,
         ];
 
         try {
-            $response = Http::withoutVerifying()
-                ->timeout(30)
-                ->withHeaders([
-                    'Authorization' => 'Bearer '.$token,
-                    'Accept' => 'application/hal+json',
-                    'Accept-Version' => '3.0',
-                    'Content-Type' => 'application/hal+json',
-                ])
-                ->put($updateUrl, $payload);
+            $response = $this->reverbPutListingWithRetry($token, $listingId, $payload);
 
             if ($response->successful()) {
                 return [
@@ -643,5 +664,13 @@ class ReverbApiService
         } catch (\Throwable $e) {
             return ['success' => false, 'message' => $e->getMessage(), 'listing_id' => $listingId];
         }
+    }
+
+    /**
+     * @return array{success: bool, message: string, listing_id?: string}
+     */
+    public function updateProductDescription(string $identifier, string $description): array
+    {
+        return $this->updateDescription($identifier, $description);
     }
 }
