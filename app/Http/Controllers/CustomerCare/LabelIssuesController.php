@@ -18,4 +18,9 @@ class LabelIssuesController extends IssueBoardControllerBase
     {
         return 'label_issue_issue_histories';
     }
+
+    protected function moduleKey(): string
+    {
+        return 'label_issues';
+    }
 }

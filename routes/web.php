@@ -1162,6 +1162,12 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         ->name('customer.care.carrier.issue.issues.update');
     Route::post('/customer-care/carrier-issue/issues/{id}/archive', [\App\Http\Controllers\CustomerCare\CarrierIssueController::class, 'archive'])
         ->name('customer.care.carrier.issue.issues.archive');
+    Route::get('/customer-care/carrier-issue/dropdown-options', [\App\Http\Controllers\CustomerCare\CarrierIssueController::class, 'dropdownOptionsIndex'])
+        ->name('customer.care.carrier.issue.dropdown.options.index');
+    Route::post('/customer-care/carrier-issue/dropdown-options', [\App\Http\Controllers\CustomerCare\CarrierIssueController::class, 'dropdownOptionsStore'])
+        ->name('customer.care.carrier.issue.dropdown.options.store');
+    Route::post('/customer-care/carrier-issue/dropdown-options/delete', [\App\Http\Controllers\CustomerCare\CarrierIssueController::class, 'dropdownOptionsDelete'])
+        ->name('customer.care.carrier.issue.dropdown.options.delete');
 
     Route::get('/customer-care/label-issues', [\App\Http\Controllers\CustomerCare\LabelIssuesController::class, 'index'])
         ->name('customer.care.label.issues');
@@ -1177,6 +1183,12 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         ->name('customer.care.label.issues.list.update');
     Route::post('/customer-care/label-issues/issues/{id}/archive', [\App\Http\Controllers\CustomerCare\LabelIssuesController::class, 'archive'])
         ->name('customer.care.label.issues.list.archive');
+    Route::get('/customer-care/label-issues/dropdown-options', [\App\Http\Controllers\CustomerCare\LabelIssuesController::class, 'dropdownOptionsIndex'])
+        ->name('customer.care.label.issues.dropdown.options.index');
+    Route::post('/customer-care/label-issues/dropdown-options', [\App\Http\Controllers\CustomerCare\LabelIssuesController::class, 'dropdownOptionsStore'])
+        ->name('customer.care.label.issues.dropdown.options.store');
+    Route::post('/customer-care/label-issues/dropdown-options/delete', [\App\Http\Controllers\CustomerCare\LabelIssuesController::class, 'dropdownOptionsDelete'])
+        ->name('customer.care.label.issues.dropdown.options.delete');
 
     Route::get('/customer-care/dispatch-issues', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'index'])
         ->name('customer.care.dispatch.issues');
@@ -1192,6 +1204,74 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         ->name('customer.care.dispatch.issues.list.update');
     Route::post('/customer-care/dispatch-issues/issues/{id}/archive', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'archive'])
         ->name('customer.care.dispatch.issues.list.archive');
+    Route::get('/customer-care/dispatch-issues/dropdown-options', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'dropdownOptionsIndex'])
+        ->name('customer.care.dispatch.issues.dropdown.options.index');
+    Route::post('/customer-care/dispatch-issues/dropdown-options', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'dropdownOptionsStore'])
+        ->name('customer.care.dispatch.issues.dropdown.options.store');
+    Route::post('/customer-care/dispatch-issues/dropdown-options/delete', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'dropdownOptionsDelete'])
+        ->name('customer.care.dispatch.issues.dropdown.options.delete');
+    Route::get('/customer-care/listing-issue', [\App\Http\Controllers\CustomerCare\ListingIssueController::class, 'index'])
+        ->name('customer.care.listing.issue');
+    Route::get('/customer-care/listing-issue/sku-details', [\App\Http\Controllers\CustomerCare\ListingIssueController::class, 'skuDetails'])
+        ->name('customer.care.listing.issue.sku.details');
+    Route::get('/customer-care/listing-issue/issues', [\App\Http\Controllers\CustomerCare\ListingIssueController::class, 'issuesIndex'])
+        ->name('customer.care.listing.issue.issues.index');
+    Route::get('/customer-care/listing-issue/history', [\App\Http\Controllers\CustomerCare\ListingIssueController::class, 'historyIndex'])
+        ->name('customer.care.listing.issue.history.index');
+    Route::post('/customer-care/listing-issue/issues', [\App\Http\Controllers\CustomerCare\ListingIssueController::class, 'store'])
+        ->name('customer.care.listing.issue.issues.store');
+    Route::put('/customer-care/listing-issue/issues/{id}', [\App\Http\Controllers\CustomerCare\ListingIssueController::class, 'update'])
+        ->name('customer.care.listing.issue.issues.update');
+    Route::post('/customer-care/listing-issue/issues/{id}/archive', [\App\Http\Controllers\CustomerCare\ListingIssueController::class, 'archive'])
+        ->name('customer.care.listing.issue.issues.archive');
+    Route::get('/customer-care/listing-issue/dropdown-options', [\App\Http\Controllers\CustomerCare\ListingIssueController::class, 'dropdownOptionsIndex'])
+        ->name('customer.care.listing.issue.dropdown.options.index');
+    Route::post('/customer-care/listing-issue/dropdown-options', [\App\Http\Controllers\CustomerCare\ListingIssueController::class, 'dropdownOptionsStore'])
+        ->name('customer.care.listing.issue.dropdown.options.store');
+    Route::post('/customer-care/listing-issue/dropdown-options/delete', [\App\Http\Controllers\CustomerCare\ListingIssueController::class, 'dropdownOptionsDelete'])
+        ->name('customer.care.listing.issue.dropdown.options.delete');
+
+    Route::get('/customer-care/c-care-issues', [\App\Http\Controllers\CustomerCare\CCareIssuesController::class, 'index'])
+        ->name('customer.care.c.care.issues');
+    Route::get('/customer-care/c-care-issues/sku-details', [\App\Http\Controllers\CustomerCare\CCareIssuesController::class, 'skuDetails'])
+        ->name('customer.care.c.care.issues.sku.details');
+    Route::get('/customer-care/c-care-issues/issues', [\App\Http\Controllers\CustomerCare\CCareIssuesController::class, 'issuesIndex'])
+        ->name('customer.care.c.care.issues.list.index');
+    Route::get('/customer-care/c-care-issues/history', [\App\Http\Controllers\CustomerCare\CCareIssuesController::class, 'historyIndex'])
+        ->name('customer.care.c.care.issues.history.index');
+    Route::post('/customer-care/c-care-issues/issues', [\App\Http\Controllers\CustomerCare\CCareIssuesController::class, 'store'])
+        ->name('customer.care.c.care.issues.list.store');
+    Route::put('/customer-care/c-care-issues/issues/{id}', [\App\Http\Controllers\CustomerCare\CCareIssuesController::class, 'update'])
+        ->name('customer.care.c.care.issues.list.update');
+    Route::post('/customer-care/c-care-issues/issues/{id}/archive', [\App\Http\Controllers\CustomerCare\CCareIssuesController::class, 'archive'])
+        ->name('customer.care.c.care.issues.list.archive');
+    Route::get('/customer-care/c-care-issues/dropdown-options', [\App\Http\Controllers\CustomerCare\CCareIssuesController::class, 'dropdownOptionsIndex'])
+        ->name('customer.care.c.care.issues.dropdown.options.index');
+    Route::post('/customer-care/c-care-issues/dropdown-options', [\App\Http\Controllers\CustomerCare\CCareIssuesController::class, 'dropdownOptionsStore'])
+        ->name('customer.care.c.care.issues.dropdown.options.store');
+    Route::post('/customer-care/c-care-issues/dropdown-options/delete', [\App\Http\Controllers\CustomerCare\CCareIssuesController::class, 'dropdownOptionsDelete'])
+        ->name('customer.care.c.care.issues.dropdown.options.delete');
+
+    Route::get('/customer-care/other-issues', [\App\Http\Controllers\CustomerCare\OtherIssuesController::class, 'index'])
+        ->name('customer.care.other.issues');
+    Route::get('/customer-care/other-issues/sku-details', [\App\Http\Controllers\CustomerCare\OtherIssuesController::class, 'skuDetails'])
+        ->name('customer.care.other.issues.sku.details');
+    Route::get('/customer-care/other-issues/issues', [\App\Http\Controllers\CustomerCare\OtherIssuesController::class, 'issuesIndex'])
+        ->name('customer.care.other.issues.list.index');
+    Route::get('/customer-care/other-issues/history', [\App\Http\Controllers\CustomerCare\OtherIssuesController::class, 'historyIndex'])
+        ->name('customer.care.other.issues.history.index');
+    Route::post('/customer-care/other-issues/issues', [\App\Http\Controllers\CustomerCare\OtherIssuesController::class, 'store'])
+        ->name('customer.care.other.issues.list.store');
+    Route::put('/customer-care/other-issues/issues/{id}', [\App\Http\Controllers\CustomerCare\OtherIssuesController::class, 'update'])
+        ->name('customer.care.other.issues.list.update');
+    Route::post('/customer-care/other-issues/issues/{id}/archive', [\App\Http\Controllers\CustomerCare\OtherIssuesController::class, 'archive'])
+        ->name('customer.care.other.issues.list.archive');
+    Route::get('/customer-care/other-issues/dropdown-options', [\App\Http\Controllers\CustomerCare\OtherIssuesController::class, 'dropdownOptionsIndex'])
+        ->name('customer.care.other.issues.dropdown.options.index');
+    Route::post('/customer-care/other-issues/dropdown-options', [\App\Http\Controllers\CustomerCare\OtherIssuesController::class, 'dropdownOptionsStore'])
+        ->name('customer.care.other.issues.dropdown.options.store');
+    Route::post('/customer-care/other-issues/dropdown-options/delete', [\App\Http\Controllers\CustomerCare\OtherIssuesController::class, 'dropdownOptionsDelete'])
+        ->name('customer.care.other.issues.dropdown.options.delete');
 
     Route::get('/customer-care/qc-and-packing', function () {
         $marketplaces = \Illuminate\Support\Facades\DB::table('marketplace_percentages')
@@ -1400,27 +1480,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
             'c_action_1_remark' => 'nullable|string|max:255',
             'close_note' => 'nullable|string|max:255',
         ]);
-        $allowedRootCauses = [
-            'Mapping',
-            'Replacement Issued But not Entered',
-            'FBA stock Issued But not Entered',
-            'Alternate Issued But not Entered',
-            'Stock Balance not Entered',
-            'Reserve Stock Issue',
-            'Other',
-        ];
-        if (!in_array((string) ($validated['issue'] ?? ''), $allowedRootCauses, true)) {
-            return response()->json([
-                'message' => 'Invalid Root Cause Found selection.',
-                'errors' => ['issue' => ['Invalid Root Cause Found selection.']],
-            ], 422);
-        }
-        if (($validated['issue'] ?? null) === 'Other' && trim((string) ($validated['issue_remark'] ?? '')) === '') {
-            return response()->json([
-                'message' => 'Root Cause Found remark is required when Other is selected.',
-                'errors' => ['issue_remark' => ['Root Cause Found remark is required when Other is selected.']],
-            ], 422);
-        }
         if (($validated['action_1'] ?? null) === 'Other' && trim((string) ($validated['action_1_remark'] ?? '')) === '') {
             return response()->json([
                 'message' => 'Action remark is required when Action is Other.',
@@ -1566,27 +1625,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
             'c_action_1_remark' => 'nullable|string|max:255',
             'close_note' => 'nullable|string|max:255',
         ]);
-        $allowedRootCauses = [
-            'Mapping',
-            'Replacement Issued But not Entered',
-            'FBA stock Issued But not Entered',
-            'Alternate Issued But not Entered',
-            'Stock Balance not Entered',
-            'Reserve Stock Issue',
-            'Other',
-        ];
-        if (!in_array((string) ($validated['issue'] ?? ''), $allowedRootCauses, true)) {
-            return response()->json([
-                'message' => 'Invalid Root Cause Found selection.',
-                'errors' => ['issue' => ['Invalid Root Cause Found selection.']],
-            ], 422);
-        }
-        if (($validated['issue'] ?? null) === 'Other' && trim((string) ($validated['issue_remark'] ?? '')) === '') {
-            return response()->json([
-                'message' => 'Root Cause Found remark is required when Other is selected.',
-                'errors' => ['issue_remark' => ['Root Cause Found remark is required when Other is selected.']],
-            ], 422);
-        }
         if (($validated['action_1'] ?? null) === 'Other' && trim((string) ($validated['action_1_remark'] ?? '')) === '') {
             return response()->json([
                 'message' => 'Action remark is required when Action is Other.',
@@ -1721,6 +1759,77 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
         return response()->json(['message' => 'Hold issue archived successfully.']);
     })->name('customer.care.qc.and.packing.issues.archive');
+    Route::get('/customer-care/qc-and-packing/dropdown-options', function (\Illuminate\Http\Request $request) {
+        $fieldType = trim((string) $request->query('field_type', ''));
+        if (!in_array($fieldType, ['root_cause_found', 'root_cause_fixed'], true)) {
+            return response()->json(['message' => 'Invalid field type.'], 422);
+        }
+
+        $options = \Illuminate\Support\Facades\DB::table('customer_care_issue_dropdown_options')
+            ->where('module_key', 'qc_and_packing')
+            ->where('field_type', $fieldType)
+            ->orderBy('option_value')
+            ->pluck('option_value')
+            ->values();
+
+        return response()->json(['data' => $options]);
+    })->name('customer.care.qc.and.packing.dropdown.options.index');
+    Route::post('/customer-care/qc-and-packing/dropdown-options', function (\Illuminate\Http\Request $request) {
+        $validated = $request->validate([
+            'field_type' => 'required|string',
+            'option_value' => 'required|string|max:255',
+        ]);
+
+        $fieldType = trim((string) $validated['field_type']);
+        if (!in_array($fieldType, ['root_cause_found', 'root_cause_fixed'], true)) {
+            return response()->json(['message' => 'Invalid field type.'], 422);
+        }
+        $optionValue = trim((string) $validated['option_value']);
+        if ($optionValue === '') {
+            return response()->json(['message' => 'Option value is required.'], 422);
+        }
+
+        $exists = \Illuminate\Support\Facades\DB::table('customer_care_issue_dropdown_options')
+            ->where('module_key', 'qc_and_packing')
+            ->where('field_type', $fieldType)
+            ->whereRaw('LOWER(option_value) = ?', [strtolower($optionValue)])
+            ->exists();
+
+        if ($exists) {
+            return response()->json(['message' => 'Option already exists.'], 409);
+        }
+
+        \Illuminate\Support\Facades\DB::table('customer_care_issue_dropdown_options')->insert([
+            'module_key' => 'qc_and_packing',
+            'field_type' => $fieldType,
+            'option_value' => $optionValue,
+            'created_by_user_id' => auth()->id(),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        return response()->json(['message' => 'Option added successfully.']);
+    })->name('customer.care.qc.and.packing.dropdown.options.store');
+    Route::post('/customer-care/qc-and-packing/dropdown-options/delete', function (\Illuminate\Http\Request $request) {
+        $validated = $request->validate([
+            'field_type' => 'required|string',
+            'option_value' => 'required|string|max:255',
+        ]);
+
+        $fieldType = trim((string) $validated['field_type']);
+        if (!in_array($fieldType, ['root_cause_found', 'root_cause_fixed'], true)) {
+            return response()->json(['message' => 'Invalid field type.'], 422);
+        }
+        $optionValue = trim((string) $validated['option_value']);
+
+        \Illuminate\Support\Facades\DB::table('customer_care_issue_dropdown_options')
+            ->where('module_key', 'qc_and_packing')
+            ->where('field_type', $fieldType)
+            ->whereRaw('LOWER(option_value) = ?', [strtolower($optionValue)])
+            ->delete();
+
+        return response()->json(['message' => 'Option deleted successfully.']);
+    })->name('customer.care.qc.and.packing.dropdown.options.delete');
     Route::get('/customer-care/followups', [CustomerFollowupController::class, 'index'])->name('customer.care.followups');
     Route::get('/customer-care/followups/data', [CustomerFollowupController::class, 'data'])->name('customer.care.followups.data');
     Route::get('/customer-care/followups/skus', [CustomerFollowupController::class, 'searchProductSkus'])->name('customer.care.followups.skus');

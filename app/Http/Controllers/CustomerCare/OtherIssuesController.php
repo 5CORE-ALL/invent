@@ -2,25 +2,25 @@
 
 namespace App\Http\Controllers\CustomerCare;
 
-class CarrierIssueController extends IssueBoardControllerBase
+class OtherIssuesController extends IssueBoardControllerBase
 {
     protected function viewName(): string
     {
-        return 'customer-care.carrier_issue';
+        return 'customer-care.other_issues';
     }
 
     protected function issuesTable(): string
     {
-        return 'carrier_issue_issues';
+        return 'other_issue_issues';
     }
 
     protected function historyTable(): string
     {
-        return 'carrier_issue_issue_histories';
+        return 'other_issue_issue_histories';
     }
 
     protected function moduleKey(): string
     {
-        return 'carrier_issue';
+        return 'other_issues';
     }
 }

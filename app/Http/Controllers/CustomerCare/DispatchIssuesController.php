@@ -18,4 +18,9 @@ class DispatchIssuesController extends IssueBoardControllerBase
     {
         return 'dispatch_issue_issue_histories';
     }
+
+    protected function moduleKey(): string
+    {
+        return 'dispatch_issues';
+    }
 }

@@ -351,16 +351,15 @@
                             </div>
 
                             <div class="col-12">
-                                <label for="hold_issue_text" class="form-label">Root Cause Found <span class="text-danger">*</span></label>
+                                <div class="d-flex align-items-center justify-content-between">
+                                    <label for="hold_issue_text" class="form-label mb-1">Root Cause Found <span class="text-danger">*</span></label>
+                                    <div class="btn-group btn-group-sm mb-1" role="group" aria-label="Root Cause Found actions">
+                                        <button type="button" class="btn btn-outline-success" id="add-root-cause-found-option">Add</button>
+                                        <button type="button" class="btn btn-outline-danger" id="delete-root-cause-found-option">Delete</button>
+                                    </div>
+                                </div>
                                 <select class="form-select" id="hold_issue_text" name="issue" required>
                                     <option value="">Select Root Cause Found</option>
-                                    <option value="Mapping">Mapping</option>
-                                    <option value="Replacement Issued But not Entered">Replacement Issued But not Entered</option>
-                                    <option value="FBA stock Issued But not Entered">FBA stock Issued But not Entered</option>
-                                    <option value="Alternate Issued But not Entered">Alternate Issued But not Entered</option>
-                                    <option value="Stock Balance not Entered">Stock Balance not Entered</option>
-                                    <option value="Reserve Stock Issue">Reserve Stock Issue</option>
-                                    <option value="Other">Other</option>
                                 </select>
                             </div>
 
@@ -371,18 +370,17 @@
                             </div>
 
                             <div class="col-md-4">
-                                <label for="hold_issue_c_action_1" class="form-label">Root Cause Fixed</label>
-                                <input type="text" class="form-control" id="hold_issue_c_action_1" name="c_action_1"
-                                    list="hold_issue_root_cause_fixed_datalist" placeholder="Select Root Cause Fixed">
-                                <datalist id="hold_issue_root_cause_fixed_datalist">
-                                    <option value="Mapping Fixed"></option>
-                                    <option value="Replacement Entry Fixed"></option>
-                                    <option value="FBA Entry Fixed"></option>
-                                    <option value="Alternate Entry Fixed"></option>
-                                    <option value="Stock Balance Fixed"></option>
-                                    <option value="Reserve Stock Fixed"></option>
-                                    <option value="Other"></option>
-                                </datalist>
+                                <div class="d-flex align-items-center justify-content-between">
+                                    <label for="hold_issue_c_action_1" class="form-label mb-1">Root Cause Fixed</label>
+                                    <div class="btn-group btn-group-sm mb-1" role="group" aria-label="Root Cause Fixed actions">
+                                        <button type="button" class="btn btn-outline-success" id="add-root-cause-fixed-option">Add</button>
+                                        <button type="button" class="btn btn-outline-danger" id="delete-root-cause-fixed-option">Delete</button>
+                                    </div>
+                                </div>
+                                <select class="form-select" id="hold_issue_c_action_1" name="c_action_1">
+                                    <option value="">Select Root Cause Fixed</option>
+                                </select>
+                                <datalist id="hold_issue_root_cause_fixed_datalist" class="d-none"></datalist>
                             </div>
 
                             <div class="col-md-8 d-none" id="cAction1RemarkWrap">
@@ -412,6 +410,9 @@
             const recordsStoreUrl = @json($recordsStoreUrl ?? route('customer.care.qc.and.packing.issues.store'));
             const recordsUpdateBaseUrl = @json($recordsUpdateBaseUrl ?? url('/customer-care/qc-and-packing/issues'));
             const historyListUrl = @json($historyListUrl ?? route('customer.care.qc.and.packing.history.index'));
+            const dropdownOptionsListUrl = @json($dropdownOptionsListUrl ?? route('customer.care.qc.and.packing.dropdown.options.index'));
+            const dropdownOptionsStoreUrl = @json($dropdownOptionsStoreUrl ?? route('customer.care.qc.and.packing.dropdown.options.store'));
+            const dropdownOptionsDeleteUrl = @json($dropdownOptionsDeleteUrl ?? route('customer.care.qc.and.packing.dropdown.options.delete'));
             const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
 
             const skuInput = document.getElementById('hold_issue_sku');
@@ -427,6 +428,8 @@
             const issueInput = document.getElementById('hold_issue_text');
             const issueRemarkInput = document.getElementById('hold_issue_remark');
             const rootCauseRemarkWrap = document.getElementById('rootCauseRemarkWrap');
+            const addRootCauseFoundOptionBtn = document.getElementById('add-root-cause-found-option');
+            const deleteRootCauseFoundOptionBtn = document.getElementById('delete-root-cause-found-option');
             const action1Input = document.getElementById('hold_issue_action_1');
             const action1RemarkInput = document.getElementById('hold_issue_action_1_remark');
             const action1RemarkWrap = document.getElementById('action1RemarkWrap');
@@ -434,6 +437,8 @@
             const cAction1Input = document.getElementById('hold_issue_c_action_1');
             const cAction1RemarkInput = document.getElementById('hold_issue_c_action_1_remark');
             const cAction1RemarkWrap = document.getElementById('cAction1RemarkWrap');
+            const addRootCauseFixedOptionBtn = document.getElementById('add-root-cause-fixed-option');
+            const deleteRootCauseFixedOptionBtn = document.getElementById('delete-root-cause-fixed-option');
             const form = document.getElementById('ordersOnHoldIssueForm');
             const alertBox = document.getElementById('ordersOnHoldIssueAlert');
             const tableBody = document.getElementById('hold_issue_table_body');
@@ -474,6 +479,81 @@
                 const el = document.createElement('div');
                 el.textContent = String(value ?? '');
                 return el.innerHTML;
+            }
+
+            function getStaticOptionValues(selectEl) {
+                if (!selectEl) return [];
+                return Array.from(selectEl.options)
+                    .map(opt => String(opt.value || '').trim())
+                    .filter(v => v !== '');
+            }
+
+            function mergeUniqueOptions(baseOptions, dynamicOptions) {
+                const set = new Set();
+                const merged = [];
+                [...baseOptions, ...dynamicOptions].forEach((value) => {
+                    const v = String(value || '').trim();
+                    if (!v || set.has(v.toLowerCase())) return;
+                    set.add(v.toLowerCase());
+                    merged.push(v);
+                });
+                return merged;
+            }
+
+            function rebuildSelectOptions(selectEl, options, placeholder) {
+                if (!selectEl) return;
+                const currentValue = selectEl.value;
+                selectEl.innerHTML = '';
+                const placeholderOption = document.createElement('option');
+                placeholderOption.value = '';
+                placeholderOption.textContent = placeholder;
+                selectEl.appendChild(placeholderOption);
+
+                options.forEach((optValue) => {
+                    const opt = document.createElement('option');
+                    opt.value = optValue;
+                    opt.textContent = optValue;
+                    selectEl.appendChild(opt);
+                });
+
+                if (currentValue && options.includes(currentValue)) {
+                    selectEl.value = currentValue;
+                } else {
+                    selectEl.value = '';
+                }
+            }
+
+            async function fetchDropdownOptions(fieldType) {
+                try {
+                    const response = await fetch(`${dropdownOptionsListUrl}?field_type=${encodeURIComponent(fieldType)}`, {
+                        headers: {
+                            'Accept': 'application/json',
+                            'X-Requested-With': 'XMLHttpRequest',
+                        },
+                    });
+                    const data = await response.json();
+                    if (!response.ok) {
+                        return [];
+                    }
+                    return Array.isArray(data?.data) ? data.data : [];
+                } catch (error) {
+                    return [];
+                }
+            }
+
+            async function postDropdownOption(url, payload) {
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: {
+                        'Accept': 'application/json',
+                        'Content-Type': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest',
+                        'X-CSRF-TOKEN': csrfToken,
+                    },
+                    body: JSON.stringify(payload),
+                });
+                const data = await response.json();
+                return { response, data };
             }
 
             function whatHappenedDotHtml(value) {
@@ -568,6 +648,64 @@
                     cAction1RemarkInput.required = isOther;
                     if (!isOther) cAction1RemarkInput.value = '';
                 }
+            }
+
+            async function addRootCauseOption(selectEl, fieldType, placeholderText) {
+                const newOption = prompt('Enter new option');
+                const value = String(newOption || '').trim();
+                if (!value) return;
+
+                try {
+                    const { response, data } = await postDropdownOption(dropdownOptionsStoreUrl, {
+                        field_type: fieldType,
+                        option_value: value,
+                    });
+                    if (!response.ok) {
+                        showAlert(data?.message || 'Unable to add option.');
+                        return;
+                    }
+                    await initializeDynamicRootCauseOptions();
+                    selectEl.value = value;
+                    selectEl.dispatchEvent(new Event('change', { bubbles: true }));
+                } catch (error) {
+                    showAlert('Unable to add option.');
+                }
+            }
+
+            async function deleteRootCauseOption(selectEl, fieldType, placeholderText) {
+                const selected = String(selectEl?.value || '').trim();
+                if (!selected) {
+                    showAlert('Please select an option to delete.');
+                    return;
+                }
+                if (!confirm('Delete selected option?')) {
+                    return;
+                }
+
+                try {
+                    const { response, data } = await postDropdownOption(dropdownOptionsDeleteUrl, {
+                        field_type: fieldType,
+                        option_value: selected,
+                    });
+                    if (!response.ok) {
+                        showAlert(data?.message || 'Unable to delete option.');
+                        return;
+                    }
+                    await initializeDynamicRootCauseOptions();
+                    selectEl.dispatchEvent(new Event('change', { bubbles: true }));
+                } catch (error) {
+                    showAlert('Unable to delete option.');
+                }
+            }
+
+            async function initializeDynamicRootCauseOptions() {
+                const issueStatic = getStaticOptionValues(issueInput);
+                const issueDynamic = await fetchDropdownOptions('root_cause_found');
+                rebuildSelectOptions(issueInput, mergeUniqueOptions(issueStatic, issueDynamic), 'Select Root Cause Found');
+
+                const fixedStatic = getStaticOptionValues(cAction1Input);
+                const fixedDynamic = await fetchDropdownOptions('root_cause_fixed');
+                rebuildSelectOptions(cAction1Input, mergeUniqueOptions(fixedStatic, fixedDynamic), 'Select Root Cause Fixed');
             }
 
             function updateTotalCount() {
@@ -900,11 +1038,23 @@
             skuInput.addEventListener('blur', fillSkuDetails);
 
             issueInput.addEventListener('change', toggleRootCauseRemarkField);
+            addRootCauseFoundOptionBtn?.addEventListener('click', function () {
+                addRootCauseOption(issueInput, 'root_cause_found', 'Select Root Cause Found');
+            });
+            deleteRootCauseFoundOptionBtn?.addEventListener('click', function () {
+                deleteRootCauseOption(issueInput, 'root_cause_found', 'Select Root Cause Found');
+            });
 
             action1Input.addEventListener('change', toggleAction1RemarkField);
 
             cAction1Input.addEventListener('input', toggleCAction1RemarkField);
             cAction1Input.addEventListener('change', toggleCAction1RemarkField);
+            addRootCauseFixedOptionBtn?.addEventListener('click', function () {
+                addRootCauseOption(cAction1Input, 'root_cause_fixed', 'Select Root Cause Fixed');
+            });
+            deleteRootCauseFixedOptionBtn?.addEventListener('click', function () {
+                deleteRootCauseOption(cAction1Input, 'root_cause_fixed', 'Select Root Cause Fixed');
+            });
 
             form.addEventListener('submit', async (event) => {
                 event.preventDefault();
@@ -1030,6 +1180,7 @@
             });
 
             modalEl.addEventListener('hidden.bs.modal', resetForm);
+            initializeDynamicRootCauseOptions();
             toggleRootCauseRemarkField();
             toggleAction1RemarkField();
             toggleCAction1RemarkField();

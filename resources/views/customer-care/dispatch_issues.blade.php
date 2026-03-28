@@ -9,5 +9,8 @@
     'recordsStoreUrl' => route('customer.care.dispatch.issues.list.store'),
     'recordsUpdateBaseUrl' => url('/customer-care/dispatch-issues/issues'),
     'historyListUrl' => route('customer.care.dispatch.issues.history.index'),
+    'dropdownOptionsListUrl' => route('customer.care.dispatch.issues.dropdown.options.index'),
+    'dropdownOptionsStoreUrl' => route('customer.care.dispatch.issues.dropdown.options.store'),
+    'dropdownOptionsDeleteUrl' => route('customer.care.dispatch.issues.dropdown.options.delete'),
     'marketplaces' => $marketplaces ?? collect(),
 ])->render() !!}

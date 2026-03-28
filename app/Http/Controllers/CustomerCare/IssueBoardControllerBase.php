@@ -12,6 +12,14 @@ abstract class IssueBoardControllerBase extends Controller
     abstract protected function viewName(): string;
     abstract protected function issuesTable(): string;
     abstract protected function historyTable(): string;
+    abstract protected function moduleKey(): string;
+
+    protected function normalizeFieldType(string $fieldType): string
+    {
+        $value = trim($fieldType);
+        abort_unless(in_array($value, ['root_cause_found', 'root_cause_fixed'], true), 422, 'Invalid field type.');
+        return $value;
+    }
 
     protected function validatePayload(Request $request): array
     {
@@ -32,30 +40,6 @@ abstract class IssueBoardControllerBase extends Controller
             'c_action_1_remark' => 'nullable|string|max:255',
             'close_note' => 'nullable|string|max:255',
         ]);
-
-        $allowedRootCauses = [
-            'Mapping',
-            'Replacement Issued But not Entered',
-            'FBA stock Issued But not Entered',
-            'Alternate Issued But not Entered',
-            'Stock Balance not Entered',
-            'Reserve Stock Issue',
-            'Other',
-        ];
-
-        if (!in_array((string) ($validated['issue'] ?? ''), $allowedRootCauses, true)) {
-            abort(response()->json([
-                'message' => 'Invalid Root Cause Found selection.',
-                'errors' => ['issue' => ['Invalid Root Cause Found selection.']],
-            ], 422));
-        }
-
-        if (($validated['issue'] ?? null) === 'Other' && trim((string) ($validated['issue_remark'] ?? '')) === '') {
-            abort(response()->json([
-                'message' => 'Root Cause Found remark is required when Other is selected.',
-                'errors' => ['issue_remark' => ['Root Cause Found remark is required when Other is selected.']],
-            ], 422));
-        }
 
         if (($validated['action_1'] ?? null) === 'Other' && trim((string) ($validated['action_1_remark'] ?? '')) === '') {
             abort(response()->json([
@@ -87,6 +71,73 @@ abstract class IssueBoardControllerBase extends Controller
             ->values();
 
         return view($this->viewName(), compact('marketplaces'));
+    }
+
+    public function dropdownOptionsIndex(Request $request): JsonResponse
+    {
+        $fieldType = $this->normalizeFieldType((string) $request->query('field_type', ''));
+        $options = DB::table('customer_care_issue_dropdown_options')
+            ->where('module_key', $this->moduleKey())
+            ->where('field_type', $fieldType)
+            ->orderBy('option_value')
+            ->pluck('option_value')
+            ->values();
+
+        return response()->json(['data' => $options]);
+    }
+
+    public function dropdownOptionsStore(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'field_type' => 'required|string',
+            'option_value' => 'required|string|max:255',
+        ]);
+
+        $fieldType = $this->normalizeFieldType((string) $validated['field_type']);
+        $optionValue = trim((string) $validated['option_value']);
+        if ($optionValue === '') {
+            return response()->json(['message' => 'Option value is required.'], 422);
+        }
+
+        $exists = DB::table('customer_care_issue_dropdown_options')
+            ->where('module_key', $this->moduleKey())
+            ->where('field_type', $fieldType)
+            ->whereRaw('LOWER(option_value) = ?', [strtolower($optionValue)])
+            ->exists();
+
+        if ($exists) {
+            return response()->json(['message' => 'Option already exists.'], 409);
+        }
+
+        DB::table('customer_care_issue_dropdown_options')->insert([
+            'module_key' => $this->moduleKey(),
+            'field_type' => $fieldType,
+            'option_value' => $optionValue,
+            'created_by_user_id' => auth()->id(),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        return response()->json(['message' => 'Option added successfully.']);
+    }
+
+    public function dropdownOptionsDelete(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'field_type' => 'required|string',
+            'option_value' => 'required|string|max:255',
+        ]);
+
+        $fieldType = $this->normalizeFieldType((string) $validated['field_type']);
+        $optionValue = trim((string) $validated['option_value']);
+
+        DB::table('customer_care_issue_dropdown_options')
+            ->where('module_key', $this->moduleKey())
+            ->where('field_type', $fieldType)
+            ->whereRaw('LOWER(option_value) = ?', [strtolower($optionValue)])
+            ->delete();
+
+        return response()->json(['message' => 'Option deleted successfully.']);
     }
 
     public function skuDetails(Request $request): JsonResponse
