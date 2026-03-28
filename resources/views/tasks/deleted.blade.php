@@ -386,6 +386,7 @@
         var tatLineChart = null;
         var missedChartData = @json($missedChartData ?? []);
         var missedLineChart = null;
+        var canReviveArchivedTasks = @json($canReviveArchivedTasks ?? false);
 
         // Clear user filter and reload page
         function clearUserFilter() {
@@ -710,6 +711,21 @@
                             return '<span style="color: #adb5bd;">-</span>';
                         }
                     },
+                    {
+                        title: "ACTION",
+                        field: "id",
+                        width: 120,
+                        hozAlign: "center",
+                        headerSort: false,
+                        formatter: function(cell) {
+                            if (!canReviveArchivedTasks) {
+                                return '<span style="color: #adb5bd;">-</span>';
+                            }
+                            var id = cell.getValue();
+                            return '<button class="btn btn-sm btn-success revive-archived-task" data-id="' + id + '">' +
+                                '<i class="mdi mdi-restore me-1"></i>Revive</button>';
+                        }
+                    },
                 ],
             });
 
@@ -777,6 +793,30 @@
             $('#filter-assignor').on('keyup', applyFilters);
             $('#filter-assignee').on('keyup', applyFilters);
             $('#filter-priority').on('change', applyFilters);
+
+            // Revive archived task (president access only)
+            $(document).on('click', '.revive-archived-task', function() {
+                if (!canReviveArchivedTasks) return;
+                var id = $(this).data('id');
+                if (!id) return;
+                if (!confirm('Revive this archived task?')) return;
+
+                $.ajax({
+                    url: '/tasks/deleted/' + id + '/revive',
+                    type: 'POST',
+                    data: { _token: '{{ csrf_token() }}' },
+                    success: function(resp) {
+                        alert((resp && resp.message) ? resp.message : 'Task revived successfully.');
+                        table.replaceData();
+                    },
+                    error: function(xhr) {
+                        var msg = (xhr.responseJSON && xhr.responseJSON.message)
+                            ? xhr.responseJSON.message
+                            : 'Failed to revive task.';
+                        alert(msg);
+                    }
+                });
+            });
         });
     </script>
 @endsection

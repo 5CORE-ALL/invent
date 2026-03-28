@@ -1991,7 +1991,9 @@ class TaskController extends Controller
             ];
         }
 
-        return view('tasks.deleted', compact('stats', 'isAdmin', 'tatChartData', 'missedChartData', 'selectedUserName'));
+        $canReviveArchivedTasks = strtolower((string) ($user->email ?? '')) === 'president@5core.com';
+
+        return view('tasks.deleted', compact('stats', 'isAdmin', 'tatChartData', 'missedChartData', 'selectedUserName', 'canReviveArchivedTasks'));
     }
 
     /**
@@ -2043,6 +2045,97 @@ class TaskController extends Controller
         });
 
         return response()->json($deletedTasks);
+    }
+
+    /**
+     * Revive a deleted/archived task back to active tasks.
+     * Access: president@5core.com only.
+     */
+    public function reviveDeletedTask($id)
+    {
+        $user = Auth::user();
+        if (strtolower((string) ($user->email ?? '')) !== 'president@5core.com') {
+            return response()->json([
+                'success' => false,
+                'message' => 'You are not authorized to revive archived tasks.'
+            ], 403);
+        }
+
+        $deletedTask = DeletedTask::findOrFail($id);
+
+        try {
+            \DB::beginTransaction();
+
+            // Prefer restoring original soft-deleted task when available.
+            $restored = false;
+            if (!empty($deletedTask->original_task_id)) {
+                $existing = Task::withTrashed()->find($deletedTask->original_task_id);
+                if ($existing && $existing->trashed()) {
+                    $existing->restore();
+                    $restored = true;
+                }
+            }
+
+            // Fallback: recreate task from archived snapshot.
+            if (!$restored) {
+                Task::create([
+                    'task_id' => (string) ($deletedTask->task_id ?? ''),
+                    'title' => (string) ($deletedTask->title ?? ''),
+                    'description' => $deletedTask->description,
+                    'group' => $deletedTask->group,
+                    'priority' => $deletedTask->priority ?: 'normal',
+                    'assignor' => $deletedTask->assignor,
+                    'assign_to' => $deletedTask->assign_to,
+                    'split_tasks' => (int) ($deletedTask->split_tasks ?? 0),
+                    'status' => $deletedTask->status ?: 'Todo',
+                    'eta_time' => (int) ($deletedTask->eta_time ?? 0),
+                    'start_date' => $deletedTask->start_date,
+                    'completion_date' => $deletedTask->completion_date,
+                    'due_date' => $deletedTask->completion_date,
+                    'completion_day' => (int) ($deletedTask->completion_day ?? 0),
+                    'etc_done' => (int) ($deletedTask->etc_done ?? 0),
+                    'is_missed' => (int) ($deletedTask->is_missed ?? 0),
+                    'is_missed_track' => (int) ($deletedTask->is_missed_track ?? 0),
+                    'link1' => $deletedTask->link1,
+                    'link2' => $deletedTask->link2,
+                    'link3' => $deletedTask->link3,
+                    'link4' => $deletedTask->link4,
+                    'link5' => $deletedTask->link5,
+                    'link6' => $deletedTask->link6,
+                    'link7' => $deletedTask->link7,
+                    'link8' => $deletedTask->link8,
+                    'link9' => $deletedTask->link9,
+                    'image' => $deletedTask->image,
+                    'task_type' => $deletedTask->task_type ?: 'manual',
+                    'rework_reason' => $deletedTask->rework_reason,
+                    'workspace' => 0,
+                    'order' => 0,
+                    'is_data_from' => 0,
+                    'is_automate_task' => 0,
+                ]);
+            }
+
+            // Remove from archived table after successful revive.
+            $deletedTask->delete();
+
+            \DB::commit();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Task revived successfully.'
+            ]);
+        } catch (\Throwable $e) {
+            \DB::rollBack();
+            \Log::error('Failed to revive archived task', [
+                'deleted_task_id' => $id,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to revive task. Please try again.'
+            ], 500);
+        }
     }
 
     /**
