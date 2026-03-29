@@ -354,7 +354,9 @@ class TikTokPricingController extends Controller
             // Add values from product_master
             $values = $productMaster->Values ?: [];
             $processedItem["LP_productmaster"] = $values["lp"] ?? 0;
-            $processedItem["Ship_productmaster"] = $values["ship"] ?? 0;
+            $ttShip = $values["tt_ship"] ?? ($values["ship"] ?? 0);
+            $processedItem["Ship_productmaster"] = $ttShip;
+            $processedItem["TT Ship"] = $ttShip;
             $processedItem["COGS"] = $values["cogs"] ?? 0;
             
             // Image path
@@ -674,6 +676,7 @@ class TikTokPricingController extends Controller
             'TT Dil%' => $dilPct,
             'TT L30' => $dash,
             'TT Stock' => $dash,
+            'TT Ship' => $dash,
             'TT Price' => $dash,
             'Missing' => $dash,
             'NR' => $dash,

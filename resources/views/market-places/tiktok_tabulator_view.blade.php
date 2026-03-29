@@ -1124,7 +1124,16 @@
                     field: "TT L30",
                     hozAlign: "center",
                     width: 50,
-                    sorter: "number"
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const raw = cell.getValue();
+                        const rowData = cell.getRow().getData();
+                        const isParent = rowData.Parent && String(rowData.Parent).startsWith('PARENT ');
+                        if (isParent && (raw === null || raw === undefined || raw === '' || raw === '-')) return '<span style="color:#6c757d;">-</span>';
+                        const value = parseFloat(raw || 0);
+                        if (isParent && isNaN(value)) return '<span style="color:#6c757d;">-</span>';
+                        return `<span style="font-weight: 700;">${value}</span>`;
+                    }
                 },
                 {
                     title: "TT Stock",
@@ -1141,6 +1150,22 @@
                             return '<span style="color: #dc3545; font-weight: 600;">0</span>';
                         }
                         return `<span style="font-weight: 600;">${value}</span>`;
+                    }
+                },
+                {
+                    title: "TT ship",
+                    field: "TT Ship",
+                    hozAlign: "center",
+                    sorter: "number",
+                    width: 70,
+                    formatter: function(cell) {
+                        const raw = cell.getValue();
+                        const rowData = cell.getRow().getData();
+                        const isParent = rowData.Parent && String(rowData.Parent).startsWith('PARENT ');
+                        if (isParent && (raw === '-' || raw === null || raw === undefined || raw === '')) return '<span style="color:#6c757d;">-</span>';
+                        const value = parseFloat(raw || 0);
+                        if (isParent && isNaN(value)) return '<span style="color:#6c757d;">-</span>';
+                        return `$${value.toFixed(2)}`;
                     }
                 },
                 {
@@ -1440,9 +1465,9 @@
                         const value = parseFloat(raw || 0);
                         if (isParent && isNaN(value)) return '<span style="color:#6c757d;">-</span>';
                         if (value === 0) {
-                            return `<span style="color: #a00211; font-weight: 600;">$0.00 <i class="fas fa-exclamation-triangle" style="margin-left: 4px;"></i></span>`;
+                            return `<span style="color: #a00211; font-weight: 700;">$0.00 <i class="fas fa-exclamation-triangle" style="margin-left: 4px;"></i></span>`;
                         }
-                        return `$${value.toFixed(2)}`;
+                        return `<span style="font-weight: 700;">$${value.toFixed(2)}</span>`;
                     },
                     width: 70
                 },
@@ -1464,7 +1489,7 @@
                         else if (percent >= 15 && percent < 20) color = '#3591dc';
                         else if (percent >= 20 && percent <= 40) color = '#28a745';
                         else color = '#e83e8c';
-                        return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
+                        return `<span style="color: ${color}; font-weight: 700;">${percent.toFixed(0)}%</span>`;
                     },
                     width: 50
                 },

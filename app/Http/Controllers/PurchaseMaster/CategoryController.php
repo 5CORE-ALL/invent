@@ -630,6 +630,7 @@ class CategoryController extends Controller
                 'ctn_weight_kg' => 'nullable|numeric',
                 'ctn_weight_lb' => 'nullable|numeric',
                 'ship' => 'nullable|numeric',
+                'tt_ship' => 'nullable|numeric',
                 'temu_ship' => 'nullable|numeric',
                 'ebay2_ship' => 'nullable|numeric',
                 'fba_ship_calculation' => 'nullable|numeric',
@@ -716,7 +717,7 @@ class CategoryController extends Controller
                 $values['ctn_weight_lb'] = $validated['ctn_weight_lb'];
             }
 
-            foreach (['ship', 'temu_ship', 'ebay2_ship'] as $shipField) {
+            foreach (['ship', 'tt_ship', 'temu_ship', 'ebay2_ship'] as $shipField) {
                 if (array_key_exists($shipField, $validated)) {
                     $v = $validated[$shipField];
                     $values[$shipField] = ($v !== null && $v !== '') ? (float) $v : null;
@@ -968,6 +969,7 @@ class CategoryController extends Controller
         $validated = $request->validate([
             'sku' => 'required|string',
             'ship' => 'nullable|numeric',
+            'tt_ship' => 'nullable|numeric',
             'temu_ship' => 'nullable|numeric',
             'ebay2_ship' => 'nullable|numeric',
             'label_qty' => 'nullable|integer'
@@ -993,6 +995,9 @@ class CategoryController extends Controller
             if (isset($validated['ship'])) {
                 $values['ship'] = $validated['ship'] !== null && $validated['ship'] !== '' ? (float)$validated['ship'] : null;
             }
+            if (isset($validated['tt_ship'])) {
+                $values['tt_ship'] = $validated['tt_ship'] !== null && $validated['tt_ship'] !== '' ? (float)$validated['tt_ship'] : null;
+            }
             if (isset($validated['temu_ship'])) {
                 $values['temu_ship'] = $validated['temu_ship'] !== null && $validated['temu_ship'] !== '' ? (float)$validated['temu_ship'] : null;
             }
@@ -1013,6 +1018,7 @@ class CategoryController extends Controller
                 'data' => [
                     'sku' => $product->sku,
                     'ship' => $values['ship'] ?? null,
+                    'tt_ship' => $values['tt_ship'] ?? null,
                     'temu_ship' => $values['temu_ship'] ?? null,
                     'ebay2_ship' => $values['ebay2_ship'] ?? null,
                     'label_qty' => $values['label_qty'] ?? null
@@ -1060,6 +1066,7 @@ class CategoryController extends Controller
         $validated = $request->validate([
             'sku' => 'required|string',
             'ship' => 'nullable|numeric',
+            'tt_ship' => 'nullable|numeric',
             'temu_ship' => 'nullable|numeric',
             'ebay2_ship' => 'nullable|numeric',
             'label_qty' => 'nullable|integer'
@@ -1085,6 +1092,9 @@ class CategoryController extends Controller
             if (isset($validated['ship'])) {
                 $values['ship'] = $validated['ship'] !== null && $validated['ship'] !== '' ? (float)$validated['ship'] : null;
             }
+            if (isset($validated['tt_ship'])) {
+                $values['tt_ship'] = $validated['tt_ship'] !== null && $validated['tt_ship'] !== '' ? (float)$validated['tt_ship'] : null;
+            }
             if (isset($validated['temu_ship'])) {
                 $values['temu_ship'] = $validated['temu_ship'] !== null && $validated['temu_ship'] !== '' ? (float)$validated['temu_ship'] : null;
             }
@@ -1105,6 +1115,7 @@ class CategoryController extends Controller
                 'data' => [
                     'sku' => $product->sku,
                     'ship' => $values['ship'] ?? null,
+                    'tt_ship' => $values['tt_ship'] ?? null,
                     'temu_ship' => $values['temu_ship'] ?? null,
                     'ebay2_ship' => $values['ebay2_ship'] ?? null,
                     'label_qty' => $values['label_qty'] ?? null
@@ -1155,6 +1166,7 @@ class CategoryController extends Controller
             $columnMap = [
                 'sku' => 'sku',
                 'ship' => 'ship',
+                'tt_ship' => 'tt_ship',
                 'temu_ship' => 'temu_ship',
                 'ebay2_ship' => 'ebay2_ship',
                 'label_qty' => 'label_qty'
@@ -1211,6 +1223,15 @@ class CategoryController extends Controller
                     $shipValue = trim($row[$columnIndices['ship']]);
                     if ($shipValue !== '') {
                         $values['ship'] = $shipValue;
+                        $hasChanges = true;
+                    }
+                }
+
+                // Update TT SHIP if column exists and has value
+                if (isset($columnIndices['tt_ship']) && isset($row[$columnIndices['tt_ship']])) {
+                    $ttShipValue = trim($row[$columnIndices['tt_ship']]);
+                    if ($ttShipValue !== '') {
+                        $values['tt_ship'] = $ttShipValue;
                         $hasChanges = true;
                     }
                 }
@@ -4940,7 +4961,11 @@ class CategoryController extends Controller
                 'ctn_cbm_each' => 'ctn_cbm_each',
                 'cbm_e' => 'cbm_e',
                 'ctn_gwt' => 'ctn_gwt',
-                'ctn_weight_kg' => 'ctn_weight_kg'
+                'ctn_weight_kg' => 'ctn_weight_kg',
+                'ship' => 'ship',
+                'tt_ship' => 'tt_ship',
+                'temu_ship' => 'temu_ship',
+                'ebay2_ship' => 'ebay2_ship'
             ];
 
             // Find column indices
@@ -4997,7 +5022,7 @@ class CategoryController extends Controller
                         $value = trim($row[$colIndex]);
                         if ($value !== '') {
                             // Convert to float for numeric fields
-                            if (in_array($field, ['wt_act', 'wt_act_kg', 'wt_decl', 'l', 'w', 'h', 'l_cm', 'w_cm', 'h_cm', 'cbm', 'ctn_l', 'ctn_w', 'ctn_h', 'ctn_cbm', 'ctn_qty', 'ctn_cbm_each', 'cbm_e', 'ctn_gwt', 'ctn_weight_kg'])) {
+                            if (in_array($field, ['wt_act', 'wt_act_kg', 'wt_decl', 'l', 'w', 'h', 'l_cm', 'w_cm', 'h_cm', 'cbm', 'ctn_l', 'ctn_w', 'ctn_h', 'ctn_cbm', 'ctn_qty', 'ctn_cbm_each', 'cbm_e', 'ctn_gwt', 'ctn_weight_kg', 'ship', 'tt_ship', 'temu_ship', 'ebay2_ship'])) {
                                 $value = is_numeric($value) ? (float)$value : null;
                             }
                             if ($value !== null) {
