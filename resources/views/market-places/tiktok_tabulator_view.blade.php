@@ -249,12 +249,8 @@
                         <i class="fas fa-file-excel"></i> Export CSV
                     </button>
 
-                    <button id="decrease-btn" class="btn btn-sm btn-warning">
-                        <i class="fas fa-arrow-down"></i> Decrease Mode
-                    </button>
-                    
-                    <button id="increase-btn" class="btn btn-sm btn-success">
-                        <i class="fas fa-arrow-up"></i> Increase Mode
+                    <button id="price-mode-btn" class="btn btn-sm btn-secondary" title="Cycle mode: Off → Decrease → Increase">
+                        <i class="fas fa-exchange-alt"></i> Price Mode
                     </button>
 
                     <button type="button" id="toggle-utilized-columns-btn" class="btn btn-sm btn-secondary">
@@ -569,40 +565,41 @@
             }
         });
 
-        // Decrease button toggle
-        $('#decrease-btn').on('click', function() {
-            decreaseModeActive = !decreaseModeActive;
-            increaseModeActive = false;
+        // Single Price Mode button: Off -> Decrease ON -> Increase ON -> Off
+        function syncPriceModeUi() {
+            const $btn = $('#price-mode-btn');
             const selectColumn = table.getColumn('_select');
-            
             if (decreaseModeActive) {
-                $(this).removeClass('btn-warning').addClass('btn-danger').html('<i class="fas fa-arrow-down"></i> Decrease ON');
+                $btn.removeClass('btn-secondary btn-primary').addClass('btn-danger')
+                    .html('<i class="fas fa-arrow-down"></i> Decrease ON');
                 selectColumn.show();
-                $('#increase-btn').removeClass('btn-danger').addClass('btn-success').html('<i class="fas fa-arrow-up"></i> Increase Mode');
-            } else {
-                $(this).removeClass('btn-danger').addClass('btn-warning').html('<i class="fas fa-arrow-down"></i> Decrease Mode');
-                selectColumn.hide();
-                selectedSkus.clear();
-                updateSelectedCount();
+                return;
             }
-        });
-        
-        // Increase Mode Toggle
-        $('#increase-btn').on('click', function() {
-            increaseModeActive = !increaseModeActive;
-            decreaseModeActive = false;
-            const selectColumn = table.getColumn('_select');
-            
             if (increaseModeActive) {
-                $(this).removeClass('btn-success').addClass('btn-danger').html('<i class="fas fa-arrow-up"></i> Increase ON');
+                $btn.removeClass('btn-secondary btn-danger').addClass('btn-primary')
+                    .html('<i class="fas fa-arrow-up"></i> Increase ON');
                 selectColumn.show();
-                $('#decrease-btn').removeClass('btn-danger').addClass('btn-warning').html('<i class="fas fa-arrow-down"></i> Decrease Mode');
-            } else {
-                $(this).removeClass('btn-danger').addClass('btn-success').html('<i class="fas fa-arrow-up"></i> Increase Mode');
-                selectColumn.hide();
-                selectedSkus.clear();
-                updateSelectedCount();
+                return;
             }
+            $btn.removeClass('btn-danger btn-primary').addClass('btn-secondary')
+                .html('<i class="fas fa-exchange-alt"></i> Price Mode');
+            selectColumn.hide();
+            selectedSkus.clear();
+            updateSelectedCount();
+        }
+
+        $('#price-mode-btn').on('click', function() {
+            if (!decreaseModeActive && !increaseModeActive) {
+                decreaseModeActive = true;
+                increaseModeActive = false;
+            } else if (decreaseModeActive) {
+                decreaseModeActive = false;
+                increaseModeActive = true;
+            } else {
+                decreaseModeActive = false;
+                increaseModeActive = false;
+            }
+            syncPriceModeUi();
         });
 
         // Toggle Utilized Columns - Show only columns that match tiktok/utilized page (like temu-decrease Show Ads Columns)
