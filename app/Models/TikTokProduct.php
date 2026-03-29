@@ -15,6 +15,9 @@ class TikTokProduct extends Model
         'stock',
         'sold',
         'views',
+        'video_views',
+        'ads_views',
+        'affl_views',
         'reviews',
         'rating'
     ];
@@ -24,6 +27,9 @@ class TikTokProduct extends Model
         'stock' => 'integer',
         'sold' => 'integer',
         'views' => 'decimal:2',
+        'video_views' => 'integer',
+        'ads_views' => 'integer',
+        'affl_views' => 'integer',
         'reviews' => 'integer',
         'rating' => 'decimal:2'
     ];

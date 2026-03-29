@@ -147,7 +147,7 @@
                                 <i class="fas fa-download"></i> Download Sample
                             </a>
                         </div>
-                        <small class="text-muted">Upload CSV with columns: sku, price, stock (updates existing SKUs or adds new ones)</small>
+                        <small class="text-muted">Upload CSV with columns: sku, price, Inv/stock, Video Views, Ads Views, Affl Views (updates existing SKUs or adds new ones)</small>
                     </form>
                 </div>
 
@@ -166,6 +166,12 @@
                 @endif
 
                 <div class="d-flex align-items-center flex-wrap gap-2">
+                    <select id="row-type-filter" class="form-select form-select-sm" style="width: 130px;">
+                        <option value="all">All Rows</option>
+                        <option value="parent">Parent Rows</option>
+                        <option value="sku" selected>SKU Rows</option>
+                    </select>
+
                     <select id="inventory-filter" class="form-select form-select-sm"
                         style="width: 130px;">
                         <option value="all">All Inventory</option>
@@ -1013,7 +1019,7 @@
             rowFormatter: function(row) {
                 const d = row.getData();
                 if (d.is_parent === true || (d.Parent && String(d.Parent).startsWith('PARENT '))) {
-                    row.getElement().style.backgroundColor = "rgba(69, 233, 255, 0.15)";
+                    row.getElement().style.backgroundColor = "rgba(255, 243, 205, 0.85)";
                 }
             },
             columns: [
@@ -1358,6 +1364,68 @@
                         }
                         return isParent ? '<span style="color:#6c757d;">-</span>' : '';
                     }
+                },
+                {
+                    title: "Video Views",
+                    field: "video_views",
+                    hozAlign: "center",
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        const isParent = rowData.Parent && String(rowData.Parent).startsWith('PARENT ');
+                        const value = parseInt(cell.getValue(), 10) || 0;
+                        if (isParent && !cell.getValue()) return '<span style="color:#6c757d;">-</span>';
+                        return value.toLocaleString();
+                    },
+                    width: 95
+                },
+                {
+                    title: "Ads Views",
+                    field: "ads_views",
+                    hozAlign: "center",
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        const isParent = rowData.Parent && String(rowData.Parent).startsWith('PARENT ');
+                        const value = parseInt(cell.getValue(), 10) || 0;
+                        if (isParent && !cell.getValue()) return '<span style="color:#6c757d;">-</span>';
+                        return value.toLocaleString();
+                    },
+                    width: 90
+                },
+                {
+                    title: "Affl Views",
+                    field: "affl_views",
+                    hozAlign: "center",
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        const isParent = rowData.Parent && String(rowData.Parent).startsWith('PARENT ');
+                        const value = parseInt(cell.getValue(), 10) || 0;
+                        if (isParent && !cell.getValue()) return '<span style="color:#6c757d;">-</span>';
+                        return value.toLocaleString();
+                    },
+                    width: 90
+                },
+                {
+                    title: "T views",
+                    field: "t_views",
+                    hozAlign: "center",
+                    sorter: function(a, b, aRow, bRow) {
+                        const aData = aRow.getData();
+                        const bData = bRow.getData();
+                        const aTotal = (parseInt(aData.video_views, 10) || 0) + (parseInt(aData.ads_views, 10) || 0) + (parseInt(aData.affl_views, 10) || 0);
+                        const bTotal = (parseInt(bData.video_views, 10) || 0) + (parseInt(bData.ads_views, 10) || 0) + (parseInt(bData.affl_views, 10) || 0);
+                        return aTotal - bTotal;
+                    },
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        const isParent = rowData.Parent && String(rowData.Parent).startsWith('PARENT ');
+                        const totalViews = (parseInt(rowData.video_views, 10) || 0) + (parseInt(rowData.ads_views, 10) || 0) + (parseInt(rowData.affl_views, 10) || 0);
+                        if (isParent && totalViews === 0) return '<span style="color:#6c757d;">-</span>';
+                        return totalViews.toLocaleString();
+                    },
+                    width: 85
                 },
                 {
                     title: "Prc",
@@ -1944,12 +2012,24 @@
 
         // Apply filters
         function applyFilters() {
+            const rowTypeFilter = $('#row-type-filter').val();
             const inventoryFilter = $('#inventory-filter').val();
             const gpftFilter = $('#gpft-filter').val();
             const adClickFilter = $('#ad-click-filter').val();
             const dilFilter = $('.column-filter[data-column="dil_percent"].active')?.data('color') || 'all';
 
             table.clearFilter();
+
+            // Row type filter
+            if (rowTypeFilter === 'parent') {
+                table.addFilter(function(data) {
+                    return isParentRow(data);
+                });
+            } else if (rowTypeFilter === 'sku') {
+                table.addFilter(function(data) {
+                    return !isParentRow(data);
+                });
+            }
 
             // Inventory filter (parent rows always visible)
             if (inventoryFilter === 'zero') {
@@ -2195,7 +2275,7 @@
             updateSummary();
         }
 
-        $('#inventory-filter, #gpft-filter, #tiktok-stock-filter, #ad-click-filter, #tl30-filter').on('change', function() {
+        $('#row-type-filter, #inventory-filter, #gpft-filter, #tiktok-stock-filter, #ad-click-filter, #tl30-filter').on('change', function() {
             applyFilters();
         });
 

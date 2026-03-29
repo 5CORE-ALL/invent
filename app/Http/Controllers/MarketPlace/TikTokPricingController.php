@@ -378,10 +378,16 @@ class TikTokPricingController extends Controller
                 $tiktokItem = $tiktokData[$skuUpper];
                 $processedItem["TT Price"] = $tiktokItem->price ?? 0;
                 $processedItem["TT Stock"] = $tiktokItem->stock ?? 0;
+                $processedItem["video_views"] = intval($tiktokItem->video_views ?? $tiktokItem->views ?? 0);
+                $processedItem["ads_views"] = intval($tiktokItem->ads_views ?? 0);
+                $processedItem["affl_views"] = intval($tiktokItem->affl_views ?? 0);
                 $processedItem["Missing"] = ''; // SKU exists in TikTok
             } else {
                 $processedItem["TT Price"] = 0;
                 $processedItem["TT Stock"] = 0;
+                $processedItem["video_views"] = 0;
+                $processedItem["ads_views"] = 0;
+                $processedItem["affl_views"] = 0;
                 $processedItem["Missing"] = 'M'; // SKU NOT in TikTok - mark as Missing
             }
 
@@ -417,6 +423,15 @@ class TikTokPricingController extends Controller
                 $processedItem["SGPFT"] = isset($tiktokValArr["SGPFT"]) ? floatval($tiktokValArr["SGPFT"]) : 0;
                 $processedItem["SPFT"] = isset($tiktokValArr["SPFT"]) ? floatval(str_replace("%", "", $tiktokValArr["SPFT"])) : 0;
                 $processedItem["SROI"] = isset($tiktokValArr["SROI"]) ? floatval(str_replace("%", "", $tiktokValArr["SROI"])) : 0;
+                if (array_key_exists('video_views', $tiktokValArr)) {
+                    $processedItem["video_views"] = intval($tiktokValArr["video_views"]);
+                }
+                if (array_key_exists('ads_views', $tiktokValArr)) {
+                    $processedItem["ads_views"] = intval($tiktokValArr["ads_views"]);
+                }
+                if (array_key_exists('affl_views', $tiktokValArr)) {
+                    $processedItem["affl_views"] = intval($tiktokValArr["affl_views"]);
+                }
                 if (array_key_exists('NR', $tiktokValArr)) {
                     $nrVal = $tiktokValArr['NR'];
                     $processedItem["NR"] = is_bool($nrVal) ? ($nrVal ? 'RA' : 'NRA') : (string) $nrVal;
@@ -714,8 +729,21 @@ class TikTokPricingController extends Controller
             $file = $request->file('csv_file');
             $handle = fopen($file->getPathname(), 'r');
             
-            // Skip header row
             $header = fgetcsv($handle);
+            $headerMap = [];
+            if (is_array($header)) {
+                foreach ($header as $idx => $col) {
+                    $key = strtolower(trim((string)$col));
+                    $key = str_replace([' ', '-'], '_', $key);
+                    $headerMap[$key] = $idx;
+                }
+            }
+            $skuIndex = $headerMap['sku'] ?? 0;
+            $priceIndex = $headerMap['price'] ?? 1;
+            $stockIndex = $headerMap['inv'] ?? ($headerMap['stock'] ?? 2);
+            $videoViewsIndex = $headerMap['video_views'] ?? ($headerMap['views'] ?? null);
+            $adsViewsIndex = $headerMap['ads_views'] ?? null;
+            $afflViewsIndex = $headerMap['affl_views'] ?? ($headerMap['affiliate_views'] ?? null);
             
             $imported = 0;
             $updated = 0;
@@ -723,9 +751,10 @@ class TikTokPricingController extends Controller
             $processedSkus = []; // Track SKUs we've already processed
             
             while (($row = fgetcsv($handle)) !== false) {
-                if (count($row) >= 2 && !empty($row[0])) {
+                $rawSku = $row[$skuIndex] ?? null;
+                if ($rawSku !== null && trim((string)$rawSku) !== '') {
                     // Clean the SKU: remove non-breaking spaces, control characters, and other problematic characters
-                    $sku = $row[0];
+                    $sku = $rawSku;
                     
                     // Replace non-breaking spaces (0xA0) with regular spaces
                     $sku = str_replace("\xA0", ' ', $sku);
@@ -740,8 +769,11 @@ class TikTokPricingController extends Controller
                     // Normalize to uppercase
                     $sku = strtoupper($sku);
                     
-                    $price = isset($row[1]) ? floatval($row[1]) : 0;
-                    $stock = isset($row[2]) ? intval($row[2]) : 0; // Column 3 = Inv (stock)
+                    $price = isset($row[$priceIndex]) ? floatval($row[$priceIndex]) : 0;
+                    $stock = isset($row[$stockIndex]) ? intval($row[$stockIndex]) : 0; // Inv/Stock
+                    $videoViews = ($videoViewsIndex !== null && isset($row[$videoViewsIndex])) ? intval($row[$videoViewsIndex]) : null;
+                    $adsViews = ($adsViewsIndex !== null && isset($row[$adsViewsIndex])) ? intval($row[$adsViewsIndex]) : null;
+                    $afflViews = ($afflViewsIndex !== null && isset($row[$afflViewsIndex])) ? intval($row[$afflViewsIndex]) : null;
                     
                     // Skip if SKU already processed (handle duplicates in CSV)
                     if (isset($processedSkus[$sku])) {
@@ -753,14 +785,40 @@ class TikTokPricingController extends Controller
                     $existingRecord = TikTokProduct::where('sku', $sku)->first();
                     
                     // Update existing or create new record
+                    $productUpdateData = [
+                        'price' => $price,
+                        'stock' => $stock, // Stock from CSV column 3 (Inv)
+                        'sold' => 0,  // Always 0, calculated from ShipHub in real-time
+                    ];
+                    if ($videoViews !== null) {
+                        $productUpdateData['views'] = $videoViews;
+                        $productUpdateData['video_views'] = $videoViews;
+                    }
+                    if ($adsViews !== null) {
+                        $productUpdateData['ads_views'] = $adsViews;
+                    }
+                    if ($afflViews !== null) {
+                        $productUpdateData['affl_views'] = $afflViews;
+                    }
                     TikTokProduct::updateOrCreate(
                         ['sku' => $sku],
-                        [
-                            'price' => $price,
-                            'stock' => $stock, // Stock from CSV column 3 (Inv)
-                            'sold' => 0,  // Always 0, calculated from ShipHub in real-time
-                        ]
+                        $productUpdateData
                     );
+
+                    // Save ads/affiliate views in tiktok_shop_data_views JSON value
+                    $view = TiktokShopDataView::firstOrNew(['sku' => $sku]);
+                    $values = is_array($view->value) ? $view->value : (json_decode($view->value, true) ?: []);
+                    if ($videoViews !== null) {
+                        $values['video_views'] = $videoViews;
+                    }
+                    if ($adsViews !== null) {
+                        $values['ads_views'] = $adsViews;
+                    }
+                    if ($afflViews !== null) {
+                        $values['affl_views'] = $afflViews;
+                    }
+                    $view->value = $values;
+                    $view->save();
                     
                     $processedSkus[$sku] = true;
                     
@@ -809,16 +867,16 @@ class TikTokPricingController extends Controller
         $sheet = $spreadsheet->getActiveSheet();
 
         // Header Row
-        $headers = ['sku', 'price', 'Inv'];
+        $headers = ['sku', 'price', 'Inv', 'Video Views', 'Ads Views', 'Affl Views'];
         $sheet->fromArray($headers, NULL, 'A1');
 
         // Sample Data (from tiktok file)
         $sampleData = [
-            ['20R WoB', '25.99', '6'],
-            ['6R', '16.99', '10'],
-            ['HW 1 SKY BLU', '14.47', '1'],
-            ['SUH-400 1Pc', '50.19', '99'],
-            ['HW 1', '14.24', '0'],
+            ['20R WoB', '25.99', '6', '1250', '420', '95'],
+            ['6R', '16.99', '10', '980', '310', '60'],
+            ['HW 1 SKY BLU', '14.47', '1', '340', '110', '15'],
+            ['SUH-400 1Pc', '50.19', '99', '2100', '760', '180'],
+            ['HW 1', '14.24', '0', '560', '190', '25'],
         ];
 
         $sheet->fromArray($sampleData, NULL, 'A2');
@@ -827,6 +885,9 @@ class TikTokPricingController extends Controller
         $sheet->getColumnDimension('A')->setWidth(20);
         $sheet->getColumnDimension('B')->setWidth(15);
         $sheet->getColumnDimension('C')->setWidth(10);
+        $sheet->getColumnDimension('D')->setWidth(14);
+        $sheet->getColumnDimension('E')->setWidth(12);
+        $sheet->getColumnDimension('F')->setWidth(12);
 
         // Output Download
         $fileName = 'TikTok_Sample.csv';
