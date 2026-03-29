@@ -8,6 +8,7 @@ use App\Http\Controllers\ApiController;
 use App\Models\MarketplacePercentage;
 use App\Models\AliexpressDataView;
 use App\Models\AliexpressDailyData;
+use App\Models\AliexpressPricingPrice;
 use App\Models\ChannelMaster;
 use Illuminate\Support\Facades\Cache;
 use App\Models\ProductMaster;
@@ -756,15 +757,10 @@ class AliexpressController extends Controller
                 $priceRaw = isset($row[$priceIndex]) ? (string) $row[$priceIndex] : '';
                 $price = (float) preg_replace('/[^0-9.\-]/', '', $priceRaw);
 
-                $record = AliexpressDataView::firstOrNew(['sku' => $sku]);
-                $value = is_array($record->value)
-                    ? $record->value
-                    : (json_decode($record->value, true) ?: []);
-
-                $value['SPRICE'] = max(0, $price);
-
-                $record->value = $value;
-                $record->save();
+                AliexpressPricingPrice::updateOrCreate(
+                    ['sku' => $sku],
+                    ['price' => max(0, $price)]
+                );
                 $updated++;
             }
 
@@ -828,6 +824,14 @@ class AliexpressController extends Controller
                     ->keyBy(fn($row) => $normalizeSku($row->sku));
             }
 
+            $uploadedPriceBySku = collect();
+            if ($allNormalizedSkus->isNotEmpty()) {
+                $uploadedPriceBySku = AliexpressPricingPrice::query()
+                    ->whereIn(DB::raw('UPPER(TRIM(sku))'), $allNormalizedSkus)
+                    ->get()
+                    ->keyBy(fn($row) => $normalizeSku($row->sku));
+            }
+
             $marketplaceData = MarketplacePercentage::query()
                 ->where('marketplace', 'Aliexpress')
                 ->orWhere('marketplace', 'AliExpress')
@@ -858,8 +862,10 @@ class AliexpressController extends Controller
                 $derivedUnitPrice = $al30 > 0 ? ($productTotalSum / $al30) : 0;
 
                 $sprice = isset($meta['SPRICE']) ? (float) $meta['SPRICE'] : 0;
+                $priceRow = $uploadedPriceBySku->get($normalizedSku);
+                $uploadedPrice = $priceRow ? (float) $priceRow->price : 0;
 
-                $price = $sprice > 0 ? $sprice : $derivedUnitPrice;
+                $price = $uploadedPrice > 0 ? $uploadedPrice : $derivedUnitPrice;
                 $profit = ($price * $margin) - $lp - $ship;
                 $gpft = $price > 0 ? ($profit / $price) * 100 : 0;
                 $groi = $lp > 0 ? ($profit / $lp) * 100 : 0;
