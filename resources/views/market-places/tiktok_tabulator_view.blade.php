@@ -1374,7 +1374,9 @@
                         const value = cell.getValue();
                         const rowData = cell.getRow().getData();
                         const isParent = rowData.Parent && String(rowData.Parent).startsWith('PARENT ');
+                        const isMissing = String(rowData.Missing || '').trim().toUpperCase() === 'M';
                         if (isParent && (!value || value === '-')) return '<span style="color:#6c757d;">-</span>';
+                        if (!isParent && isMissing) return '';
                         if (value === 'Map') {
                             return '<span style="color: #28a745; font-weight: bold;">Map</span>';
                         } else if (value && value.startsWith('N Map|')) {
@@ -2164,7 +2166,8 @@
             if (mapFilterActive) {
                 table.addFilter(function(data) {
                     if (isParentRow(data)) return true;
-                    return data.MAP === 'Map';
+                    const isMissing = String(data.Missing || '').trim().toUpperCase() === 'M';
+                    return data.MAP === 'Map' && !isMissing;
                 });
             }
 
@@ -2172,8 +2175,9 @@
             if (invTTStockFilterActive) {
                 table.addFilter(function(data) {
                     if (isParentRow(data)) return true;
+                    const isMissing = String(data.Missing || '').trim().toUpperCase() === 'M';
                     const mapValue = data['MAP'];
-                    return mapValue && mapValue.startsWith('Diff|');
+                    return mapValue && mapValue.startsWith('Diff|') && !isMissing;
                 });
             }
 
@@ -2349,16 +2353,17 @@
                     roiCount++;
                 }
                 
-                if (row['Missing'] === 'M') {
+                const isMissing = String(row['Missing'] || '').trim().toUpperCase() === 'M';
+                if (isMissing) {
                     missingCount++;
                 }
                 
                 const mapValue = row['MAP'];
-                if (mapValue === 'Map') {
+                if (mapValue === 'Map' && !isMissing) {
                     mapCount++;
                 }
                 
-                if (mapValue && mapValue.startsWith('Diff|')) {
+                if (mapValue && mapValue.startsWith('Diff|') && !isMissing) {
                     invTTStockCount++;
                 }
             });

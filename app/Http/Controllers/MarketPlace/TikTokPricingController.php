@@ -1113,18 +1113,20 @@ class TikTokPricingController extends Controller
                 }
                 
                 // Count Missing
-                if (($row['Missing'] ?? '') === 'M') {
+                if (strtoupper(trim((string)($row['Missing'] ?? ''))) === 'M') {
                     $missingCount++;
                 }
                 
+                $isMissing = (strtoupper(trim((string)($row['Missing'] ?? ''))) === 'M');
+
                 // Count Map
                 $mapValue = $row['MAP'] ?? '';
-                if ($mapValue === 'Map') {
+                if ($mapValue === 'Map' && !$isMissing) {
                     $mapCount++;
                 }
                 
                 // Count INV > TT Stock (check if MAP starts with 'Diff|')
-                if ($mapValue && str_starts_with($mapValue, 'Diff|')) {
+                if ($mapValue && str_starts_with($mapValue, 'Diff|') && !$isMissing) {
                     $invTTStockCount++;
                 }
             }

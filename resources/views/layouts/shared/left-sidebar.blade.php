@@ -1004,6 +1004,7 @@
 
                         <li><a href="{{ url('aliexpress-tabulator') }}">Aliexpress Sales Data</a></li>
 
+
                         <li><a href="{{ url('shopify-b2c/daily-sales') }}">Shopify B2C Sales</a></li>
 
                         <li><a href="{{ url('shopify-b2b/daily-sales') }}">Shopify B2B Sales</a></li>
@@ -2646,6 +2647,9 @@
                         </li>
 
                         <li><a href="{{ route('listing.aliexpress') }}">Listing Aliexpress</a>
+                        </li>
+
+                        <li><a href="{{ route('aliexpress.pricing.view') }}">Alixpress Pricing</a>
                         </li>
                     </ul>
                 </div>
