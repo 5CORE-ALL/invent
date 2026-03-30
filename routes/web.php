@@ -3210,6 +3210,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/aliexpress/pricing-price-sample', [AliexpressController::class, 'downloadPricingPriceSample'])->name('aliexpress.pricing.price.sample');
     Route::post('/aliexpress/pricing-upload-price', [AliexpressController::class, 'uploadPricingPriceSheet'])->name('aliexpress.pricing.upload.price');
     Route::post('/aliexpress/save-sprice', [AliexpressController::class, 'saveSpriceUpdates'])->name('aliexpress.pricing.save.sprice');
+    Route::get('/aliexpress/badge-chart-data', [AliexpressController::class, 'badgeChartData'])->name('aliexpress.badge.chart');
     Route::post('/aliexpress-column-visibility', [AliexpressController::class, 'saveAliexpressColumnVisibility'])->name('aliexpress.save.column.visibility');
     Route::get('/aliexpress-column-visibility', [AliexpressController::class, 'getAliexpressColumnVisibility'])->name('aliexpress.get.column.visibility');
 

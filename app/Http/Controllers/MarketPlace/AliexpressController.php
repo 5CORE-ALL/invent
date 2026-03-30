@@ -10,6 +10,7 @@ use App\Models\AliexpressDataView;
 use App\Models\AliexpressDailyData;
 use App\Models\AliexpressPricingPrice;
 use App\Models\ChannelMaster;
+use App\Models\AmazonChannelSummary;
 use Illuminate\Support\Facades\Cache;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
@@ -1098,6 +1099,9 @@ class AliexpressController extends Controller
             // Insert parent summary rows after each group (mirrors TikTok insertTikTokParentRows)
             $rows = $this->insertAeParentRows($rows);
 
+            // Auto-save daily snapshot (non-blocking, same as TikTok)
+            $this->saveDailySnapshot($rows);
+
             return response()->json($rows);
         } catch (\Exception $e) {
             Log::error('Error fetching AliExpress pricing data: ' . $e->getMessage(), [
@@ -1171,6 +1175,133 @@ class AliexpressController extends Controller
         } catch (\Exception $e) {
             Log::error('AliExpress SPRICE save failed: ' . $e->getMessage());
             return response()->json(['success' => false, 'error' => $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * Save daily AliExpress pricing snapshot (called automatically from getPricingData).
+     * Mirrors TikTok's saveDailySummaryIfNeeded — stores to amazon_channel_summary_data
+     * with channel = 'aliexpress'.
+     */
+    private function saveDailySnapshot(array $rows): void
+    {
+        try {
+            $today = now()->toDateString();
+
+            // All non-parent child rows (including missing — needed for missing_count)
+            $allChildRows = collect($rows)->filter(fn($r) => !($r['is_parent'] ?? false));
+            if ($allChildRows->isEmpty()) return;
+
+            // Non-missing rows for financial metrics
+            $listedRows = $allChildRows->filter(fn($r) => ($r['missing'] ?? '') !== 'M');
+
+            $totalSales  = 0; $totalProfit = 0; $totalAl30 = 0;
+            $gpftSum     = 0; $gpftCount   = 0;
+            $roiSum      = 0; $roiCount    = 0;
+            $dilSum      = 0; $dilCount    = 0;
+            $totalCogs   = 0;
+            $missingCount= 0; $mapCount    = 0;
+            $zeroSold    = 0; $moreSold    = 0;
+
+            // Financial metrics — listed rows only (non-missing)
+            foreach ($listedRows as $r) {
+                $profit = (float) ($r['profit'] ?? 0);
+                $lp     = (float) ($r['lp']     ?? 0);
+                $gpft   = (float) ($r['gpft']   ?? 0);
+                $groi   = (float) ($r['groi']   ?? 0);
+                $sales  = (float) ($r['sales']  ?? 0);
+                $al30r  = (float) ($r['al30']   ?? 0);
+
+                $totalSales  += $sales;
+                $totalProfit += $al30r * $profit;
+                $totalCogs   += $lp * $al30r;
+
+                if ($gpft !== 0.0) { $gpftSum += $gpft; $gpftCount++; }
+                if ($groi !== 0.0) { $roiSum  += $groi; $roiCount++;  }
+            }
+
+            // ALL child rows — matches JS updateSummary exactly
+            // (totalAl30, zeroSold, moreSold, DIL, missing, map all from all rows)
+            foreach ($allChildRows as $r) {
+                $inv   = (float) ($r['inv']    ?? 0);
+                $ovL30 = (float) ($r['ov_l30'] ?? 0);
+                $al30  = (float) ($r['al30']   ?? 0);
+
+                $totalAl30 += $al30;
+                if ($al30 === 0.0) $zeroSold++; else $moreSold++;
+                if ($inv > 0) { $dilSum += ($ovL30 / $inv) * 100; $dilCount++; }
+                if (($r['missing'] ?? '') === 'M')  $missingCount++;
+                if (($r['map']     ?? '') === 'Map') $mapCount++;
+            }
+
+            $totalSkuCount = $allChildRows->count();
+
+            $summaryData = [
+                'total_sku'    => $totalSkuCount,
+                'total_sales'  => round($totalSales,  2),
+                'total_pft'    => round($totalProfit, 2),
+                'total_al30'   => round($totalAl30,   0),
+                'total_cogs'   => round($totalCogs,   2),
+                'avg_gpft'     => $gpftCount > 0 ? round($gpftSum  / $gpftCount, 2) : 0,
+                'avg_roi'      => $roiCount  > 0 ? round($roiSum   / $roiCount,  2) : 0,
+                'avg_dil'      => $dilCount  > 0 ? round($dilSum   / $dilCount,  2) : 0,
+                'missing_count'=> $missingCount,
+                'map_count'    => $mapCount,
+                'zero_sold'    => $zeroSold,
+                'more_sold'    => $moreSold,
+                'calculated_at'=> now()->toDateTimeString(),
+            ];
+
+            AmazonChannelSummary::updateOrCreate(
+                ['channel' => 'aliexpress', 'snapshot_date' => $today],
+                ['summary_data' => $summaryData, 'notes' => 'Auto-saved daily snapshot']
+            );
+        } catch (\Exception $e) {
+            Log::error('AliExpress daily snapshot save failed: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Return daily badge chart data from AliExpress snapshots.
+     * GET /aliexpress/badge-chart-data?metric=avg_gpft&days=30
+     */
+    public function badgeChartData(Request $request)
+    {
+        try {
+            $metric = (string) $request->input('metric', 'avg_gpft');
+            $days   = max(1, (int) $request->input('days', 30));
+
+            $validMetrics = [
+                'total_pft', 'total_sales', 'avg_gpft', 'avg_roi',
+                'total_al30', 'avg_dil', 'total_cogs', 'missing_count', 'map_count',
+                'total_sku', 'zero_sold', 'more_sold',
+            ];
+            if (!in_array($metric, $validMetrics, true)) {
+                return response()->json(['success' => false, 'message' => 'Invalid metric'], 400);
+            }
+
+            $startDate = now('America/Los_Angeles')->subDays($days)->toDateString();
+            $rows = AmazonChannelSummary::where('channel', 'aliexpress')
+                ->where('snapshot_date', '>=', $startDate)
+                ->orderBy('snapshot_date', 'asc')
+                ->get(['snapshot_date', 'summary_data']);
+
+            $data = [];
+            foreach ($rows as $row) {
+                $sd    = is_array($row->summary_data)
+                       ? $row->summary_data
+                       : (json_decode($row->summary_data ?? '{}', true) ?: []);
+                $value = (float) ($sd[$metric] ?? 0);
+                $data[] = [
+                    'date'  => optional($row->snapshot_date)->format('M d'),
+                    'value' => $value,
+                ];
+            }
+
+            return response()->json(['success' => true, 'data' => $data]);
+        } catch (\Exception $e) {
+            Log::error('AliExpress badge chart data error: ' . $e->getMessage());
+            return response()->json(['success' => false, 'data' => []], 500);
         }
     }
 
