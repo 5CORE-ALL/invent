@@ -351,6 +351,15 @@
         .sortable-ghost {
             opacity: .45;
         }
+        /* Ensure frozen column header filter stays visible */
+        .tabulator-col.tabulator-frozen .tabulator-header-filter {
+            position: relative;
+            z-index: 11;
+        }
+        .tabulator-col.tabulator-frozen .tabulator-header-filter input {
+            position: relative;
+            z-index: 11;
+        }
     </style>
 @endsection
 
@@ -392,7 +401,11 @@
 
                         <div class="d-flex align-items-center flex-wrap gap-2">
                             <span id="top-row-counter">Showing 0-0 of 0 rows</span>
-                            <!-- Stage Filter (before Column) -->
+
+                            <!-- Column Searches -->
+                            <input type="text" id="search-sku" class="form-control form-control-sm border-primary" placeholder="SKU…" autocomplete="off" style="width:150px;" title="Filter by SKU">
+                            <input type="text" id="search-parent" class="form-control form-control-sm border-primary" placeholder="Parent…" autocomplete="off" style="width:140px;" title="Filter by Parent">
+                            <input type="text" id="search-supplier" class="form-control form-control-sm border-primary" placeholder="Supplier…" autocomplete="off" style="width:140px;" title="Filter by Supplier">
                             <select id="stage-filter" class="form-select-sm border border-primary" style="width: 150px;">
                                 <option value="">All</option>
                                 <option value="__blank__">Not Req Now</option>
@@ -947,7 +960,7 @@
                         return checkbox;
                     },
                     hozAlign: "center",
-                    headerSort: false,
+                    headerSort: true,
                     width: 40,
                     minWidth: 40,
                     cellClick: function(e, cell) {
@@ -960,7 +973,7 @@
                 {
                     title: "#",
                     field: "Image",
-                    headerSort: false,
+                    headerSort: true,
                     formatter: function(cell) {
                         const url = cell.getValue();
                         if (!url) return `<span class="text-muted">N/A</span>`;
@@ -1013,9 +1026,6 @@
                     minWidth: 72,
                     maxWidth: 180,
                     widthGrow: 0,
-                    headerFilter: "input",
-                    headerFilterPlaceholder: "Filter",
-                    headerFilterFunc: "like",
                     accessor: row => (row ? row["Parent"] : ''),
                     formatter: function(cell) {
                         const v = cell.getValue() == null ? '' : String(cell.getValue());
@@ -1034,11 +1044,9 @@
                     title: "SKU",
                     field: "SKU",
                     frozen: true,
+                    movable: false,
                     minWidth: 180,
                     widthGrow: 1,
-                    headerFilter: "input",
-                    headerFilterPlaceholder: "Filter",
-                    headerFilterFunc: "like",
                     accessor: row => (row ? row["SKU"] : ''),
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData() || {};
@@ -1075,10 +1083,7 @@
                     title: "INV",
                     field: "INV",
                     accessor: row => (row ? row["INV"] : 0),
-                    headerSort: false,
-                    headerFilter: "input",
-                    headerFilterPlaceholder: "All · 0 · >0",
-                    headerFilterFunc: function() { return true; },
+                    headerSort: true,
                     formatter: function(cell) {
                         const value = cell.getValue();
                         return `<span style="display:block; text-align:center;">${value}</span>`;
@@ -1276,46 +1281,7 @@
                         const stageValue = row?.["stage"] ?? '';
                         return stageValue ? String(stageValue).trim().toLowerCase() : '';
                     },
-                    headerSort: false,
-                    headerFilter: "list",
-                    headerFilterParams: {
-                        values: {
-                            "": "All",
-                            "__blank__": "Not Req Now",
-                            "two_ord_nonneg": "2 Ord",
-                            "appr_req": "Appr Req",
-                            "mip": "MIP",
-                            "r2s": "R2S",
-                            "transit": "Trn",
-                            "to_order_analysis": "Order"
-                        },
-                        clearable: false
-                    },
-                    headerFilterEmptyCheck: function(value) {
-                        return value === "" || value === null || value === undefined;
-                    },
-                    headerFilterFunc: function(headerValue, rowValue, rowData) {
-                        const selected = normalizeStageValue(headerValue);
-                        if (!selected) return true;
-
-                        const stageValue = normalizeStageValue(rowValue);
-                        if (selected === '__blank__') {
-                            const twoOrd = parseFloat((rowData && (rowData.to_order ?? (rowData.raw_data ? rowData.raw_data.to_order : null))) ?? 0);
-                            return !stageValue || (Number.isFinite(twoOrd) && twoOrd < 0);
-                        }
-                        if (selected === 'two_ord_nonneg') {
-                            const twoOrd = parseFloat((rowData && (rowData.to_order ?? (rowData.raw_data ? rowData.raw_data.to_order : null))) ?? 0);
-                            return Number.isFinite(twoOrd) ? (twoOrd >= 0) : false;
-                        }
-                        if (selected === 'transit') {
-                            const transitValue = rowData && rowData.raw_data ? rowData.raw_data["transit"] : (rowData ? rowData["transit"] : 0);
-                            return (parseFloat(transitValue) || 0) > 0;
-                        }
-                        if (selected === 'appr_req') {
-                            return getEffectiveApprReqValue(rowData) > 0;
-                        }
-                        return stageValue === selected;
-                    },
+                    headerSort: true,
                     formatter: function(cell) {
                         let value = cell.getValue() ?? '';
                         value = String(value).trim().toLowerCase();
@@ -1484,7 +1450,7 @@
                 //   {
                 //     title: "S-MSL",
                 //     field: "s_msl",
-                //     headerSort: false,
+                //     headerSort: true,
                 //     formatter: function(cell) {
                 //         const value = cell.getValue();
                 //         const rowData = cell.getRow().getData();
@@ -1760,7 +1726,7 @@
                     title: "MOQ",
                     field: "MOQ",
                     accessor: row => (row ? row["MOQ"] : ''),
-                    headerSort: false,
+                    headerSort: true,
                     hozAlign: "center",
                     editable: function(cell) {
                         const d = cell.getRow().getData();
@@ -1868,23 +1834,7 @@
                         const normalized = strVal.trim().toUpperCase();
                         return normalized;
                     },
-                    headerSort: false,
-                    headerFilter: "list",
-                    headerFilterParams: {
-                        values: { "": "All", "REQ": "REQ", "NR": "2BDC", "LATER": "LATER" },
-                        clearable: false
-                    },
-                    headerFilterEmptyCheck: function(value) {
-                        return value === "" || value === null || value === undefined;
-                    },
-                    headerFilterFunc: function(headerValue, rowValue, rowData, filterParams) {
-                        if (headerValue === "" || headerValue === null || headerValue === undefined) {
-                            return true;
-                        }
-                        const raw = rowValue ?? rowData.nr ?? '';
-                        const normalized = String(raw).trim().toUpperCase() || 'REQ';
-                        return normalized === headerValue;
-                    },
+                    headerSort: true,
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         let value = cell.getValue();
@@ -1958,9 +1908,6 @@
                         span.style.fontWeight = '700';
                         return span;
                     },
-                    headerFilter: "input",
-                    headerFilterPlaceholder: "Filter",
-                    headerFilterFunc: "like",
                     formatter: function(cell) {
                         const value = cell.getValue() || '';
                         const esc = String(value).replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -2396,7 +2343,7 @@
                     title: "Pkg Inst",
                     field: "pkg_inst",
                     hozAlign: "center",
-                    headerSort: false,
+                    headerSort: true,
                     formatter: function(cell) {
                         const d = cell.getRow().getData() || {};
                         if (d.is_parent || d.isParent) return '<span style="display:block;text-align:center;color:#6c757d;">-</span>';
@@ -2412,7 +2359,7 @@
                     title: "U-Manual",
                     field: "u_manual",
                     hozAlign: "center",
-                    headerSort: false,
+                    headerSort: true,
                     formatter: function(cell) {
                         const d = cell.getRow().getData() || {};
                         if (d.is_parent || d.isParent) return '<span style="display:block;text-align:center;color:#6c757d;">-</span>';
@@ -2428,7 +2375,7 @@
                     title: "Compliance",
                     field: "compliance",
                     hozAlign: "center",
-                    headerSort: false,
+                    headerSort: true,
                     formatter: function(cell) {
                         const d = cell.getRow().getData() || {};
                         if (d.is_parent || d.isParent) return '<span style="display:block;text-align:center;color:#6c757d;">-</span>';
@@ -2511,7 +2458,7 @@
                     title: "Packing List",
                     field: "r2s_packing_list",
                     hozAlign: "center",
-                    headerSort: false,
+                    headerSort: true,
                     formatter: function(cell) {
                         const d = cell.getRow().getData() || {};
                         if (d.is_parent || d.isParent) return '<span style="display:block;text-align:center;color:#6c757d;">-</span>';
@@ -2559,7 +2506,7 @@
                     title: "New Photo",
                     field: "r2s_new_photo",
                     hozAlign: "center",
-                    headerSort: false,
+                    headerSort: true,
                     formatter: function(cell) {
                         const d = cell.getRow().getData() || {};
                         if (d.is_parent || d.isParent) return '<span style="display:block;text-align:center;color:#6c757d;">-</span>';
@@ -3214,6 +3161,10 @@
 
         let currentParentFilter = null;
         let currentColorFilter = null;
+        let currentSearchQuery = '';
+        let currentSearchSku = '';
+        let currentSearchParent = '';
+        let currentSearchSupplier = '';
         let currentTwoOrdColorFilter = '';
         let currentTopQtySignFilters = {
             order: '',
@@ -3744,6 +3695,20 @@
             table.setFilter(function(row) {
                 const data = typeof row.getData === 'function' ? row.getData() : row;
 
+                // Global search: match SKU, Parent, or Supplier
+                if (currentSearchQuery) {
+                    const sku      = String(data.SKU || '').toLowerCase();
+                    const parent   = String(data.Parent || '').toLowerCase();
+                    const supplier = String(data.mfrg_supplier || '').toLowerCase();
+                    if (!sku.includes(currentSearchQuery) && !parent.includes(currentSearchQuery) && !supplier.includes(currentSearchQuery)) {
+                        return false;
+                    }
+                }
+
+                // Per-column searches
+                if (currentSearchSku      && !String(data.SKU            || '').toLowerCase().includes(currentSearchSku))      return false;
+                if (currentSearchParent   && !String(data.Parent         || '').toLowerCase().includes(currentSearchParent))   return false;
+                if (currentSearchSupplier && !String(data.mfrg_supplier  || '').toLowerCase().includes(currentSearchSupplier)) return false;
                 const isChild = !data.is_parent;
                 const isParent = data.is_parent;
                 const twoOrdRaw = data.to_order ?? (data.raw_data ? data.raw_data.to_order : 0);
@@ -5182,17 +5147,35 @@
             });
 
             // Stage filter (toolbar) — keep in sync with Stage column header filter
+            // Per-column search inputs
+            (function() {
+                function makeSearchHandler(inputId, setter) {
+                    const el = document.getElementById(inputId);
+                    if (!el) return;
+                    let timer;
+                    el.addEventListener('input', function() {
+                        clearTimeout(timer);
+                        timer = setTimeout(function() {
+                            setter(el.value.trim().toLowerCase());
+                            setCombinedFilters();
+                        }, 200);
+                    });
+                    el.addEventListener('keydown', function(e) {
+                        if (e.key === 'Escape') {
+                            el.value = '';
+                            setter('');
+                            setCombinedFilters();
+                        }
+                    });
+                }
+                makeSearchHandler('search-sku',      function(v) { currentSearchSku      = v; });
+                makeSearchHandler('search-parent',   function(v) { currentSearchParent   = v; });
+                makeSearchHandler('search-supplier', function(v) { currentSearchSupplier = v; });
+            })();
+
             document.getElementById('stage-filter').addEventListener('change', function(e) {
                 currentStageFilter = normalizeStageValue(e.target.value);
                 syncColumnsAfterTatForStageFilter();
-                const tbl = Tabulator.findTable("#forecast-table")[0];
-                if (tbl && typeof tbl.setHeaderFilterValue === 'function') {
-                    isProgrammaticStageHeaderSync = true;
-                    tbl.setHeaderFilterValue("stage", currentStageFilter || "");
-                    setTimeout(function() {
-                        isProgrammaticStageHeaderSync = false;
-                    }, 0);
-                }
                 setCombinedFilters();
                 saveForecastFilterPrefs();
             });
@@ -5204,11 +5187,6 @@
                         document.querySelectorAll('.nrp-ms-opt').forEach(x => { x.checked = true; });
                     }
                     updateNRPMultiselectLabel();
-                    const tbl = Tabulator.findTable("#forecast-table")[0];
-                    if (tbl && typeof tbl.setHeaderFilterValue === 'function') {
-                        const vals = [...document.querySelectorAll('.nrp-ms-opt:checked')].map(b => b.value);
-                        tbl.setHeaderFilterValue("nr", vals.length === 1 ? vals[0] : '');
-                    }
                     setCombinedFilters();
                     saveForecastFilterPrefs();
                 });
