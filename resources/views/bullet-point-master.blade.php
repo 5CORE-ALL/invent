@@ -71,8 +71,6 @@
         #viewRowModal .bp-view-mp:last-child { border-bottom:none; padding-bottom:0; margin-bottom:0; }
         #viewRowModal .bp-view-mp-label { font-weight:600; color:#0f172a; font-size:13px; margin-bottom:.35rem; display:flex; align-items:center; justify-content:space-between; gap:.5rem; flex-wrap:wrap; }
         #viewRowModal .bp-view-char { font-size:11px; font-weight:500; color:#64748b; }
-        #viewRowModal .bp-view-char.at-min { color:#15803d; font-weight:600; }
-        #viewRowModal .bp-view-char.under-min { color:#b45309; font-weight:600; }
         #viewRowModal .bp-view-body {
             font-size:12px; line-height:1.45; color:#334155; white-space:pre-wrap; word-break:break-word;
             background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:.65rem .75rem; min-height:2.25rem;
@@ -117,13 +115,13 @@
                                         <input type="text" id="previewSearchBp" class="th-sub" placeholder="Search preview">
                                     </th>
                                     <th>Action</th>
-                                    <th title="eBay1–3, Macy's, Amazon, Temu, Reverb — min 190 chars per bullet">
+                                    <th title="eBay1–3, Macy's, Amazon, Temu, Reverb">
                                         <div class="bp-mp-th-title">MARKET PLACES</div>
                                         <div class="bp-mp-th-icons">
                                             <span class="bp-mp-th-pill btn-ebay1">E1</span><span class="bp-mp-th-pill btn-ebay2">E2</span><span class="bp-mp-th-pill btn-ebay3">E3</span><span class="bp-mp-th-pill btn-macy">M</span><span class="bp-mp-th-pill btn-amazon">A</span><span class="bp-mp-th-pill btn-temu">T</span><span class="bp-mp-th-pill btn-reverb">R</span>
                                         </div>
                                     </th>
-                                    <th title="Shopify Main, Shopify PLS — min 190 chars per bullet">
+                                    <th title="Shopify Main, Shopify PLS">
                                         <div class="bp-mp-th-title">SHOPIFY</div>
                                         <div class="bp-mp-th-icons">
                                             <span class="bp-mp-th-pill btn-shopify">SM</span><span class="bp-mp-th-pill btn-shopify-pls">PLS</span>
@@ -166,7 +164,7 @@
                         </div>
                         <div id="editModalAiFields" class="row g-2"></div>
                     </div>
-                    <div class="small text-muted">Each non-empty bullet: minimum 190 characters; no maximum. Empty slots are ignored.</div>
+                    <div class="small text-muted">Edit bullet fields and push to selected marketplaces. Empty slots are allowed.</div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
@@ -203,7 +201,6 @@
 <script>
 document.addEventListener('DOMContentLoaded', () => {
     const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
-    const MIN_BULLET_CHARS = 190;
     const MARKETPLACES = ['ebay', 'ebay2', 'ebay3', 'macy', 'amazon', 'temu', 'reverb', 'shopify_main', 'shopify_pls'];
     const LABELS = {
         ebay: 'eBay 1', ebay2: 'eBay 2', ebay3: 'eBay 3', macy: "Macy's", amazon: 'Amazon', temu: 'Temu', reverb: 'Reverb',
@@ -215,7 +212,7 @@ document.addEventListener('DOMContentLoaded', () => {
         shopify_main: 'Shopify Main', shopify_pls: 'Shopify PLS',
     };
     const VIEW_SECTIONS = [
-        { banner: '========== Marketplaces (min ' + MIN_BULLET_CHARS + ' chars per bullet) ==========', keys: MARKETPLACES },
+        { banner: '========== Marketplaces ==========', keys: MARKETPLACES },
     ];
     const GROUPS = {
         gChannels: ['ebay', 'ebay2', 'ebay3', 'macy', 'amazon', 'temu', 'reverb'],
@@ -352,19 +349,11 @@ document.addEventListener('DOMContentLoaded', () => {
         }));
     }
 
-    function charCountClassForMin(len, minLen) {
-        if (len === 0) return 'bp-view-char';
-        if (len < minLen) return 'bp-view-char under-min';
-        if (len === minLen) return 'bp-view-char at-min';
-        return 'bp-view-char';
-    }
-
     function renderViewMarketplaceBlock(mpKey, label, text) {
         const raw = text == null ? '' : String(text);
         const trimmed = raw.trim();
         const empty = trimmed === '';
         const len = raw.length;
-        const charCls = charCountClassForMin(len, MIN_BULLET_CHARS);
         const bodyHtml = empty
             ? `<div class="bp-view-body bp-view-empty">No bullet points saved yet</div>`
             : `<div class="bp-view-body">${esc(raw)}</div>`;
@@ -372,7 +361,7 @@ document.addEventListener('DOMContentLoaded', () => {
             <div class="bp-view-mp" data-mp="${esc(mpKey)}">
                 <div class="bp-view-mp-label">
                     <span>${esc(label)}:</span>
-                    <span class="${charCls}">${len} character${len === 1 ? '' : 's'} (min ${MIN_BULLET_CHARS})</span>
+                    <span class="bp-view-char">${len} character${len === 1 ? '' : 's'}</span>
                 </div>
                 ${bodyHtml}
             </div>`;
@@ -484,7 +473,7 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('editModalAiFields').innerHTML = [1,2,3,4,5].map(i => `
             <div class="col-12">
                 <div class="d-flex justify-content-between align-items-center">
-                    <label class="form-label mb-1">Bullet ${i} <span id="editAiCount${i}" class="text-muted">0 chars (min 190)</span></label>
+                    <label class="form-label mb-1">Bullet ${i} <span id="editAiCount${i}" class="text-muted">0 chars</span></label>
                     <div class="btn-group btn-group-sm" role="group" aria-label="Rating">
                         <button type="button" class="btn btn-outline-success edit-ai-rate" data-idx="${i}" data-rating="good"><i class="fas fa-thumbs-up"></i></button>
                         <button type="button" class="btn btn-outline-danger edit-ai-rate" data-idx="${i}" data-rating="bad"><i class="fas fa-thumbs-down"></i></button>
@@ -511,8 +500,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const len = t.value.length;
                 const el = document.getElementById('editAiCount' + idx);
                 if (el) {
-                    el.textContent = `${len} chars (min 190)`;
-                    el.classList.toggle('text-warning', len > 0 && len < 190);
+                    el.textContent = `${len} chars`;
                     el.classList.toggle('text-muted', len === 0);
                 }
             };
@@ -533,11 +521,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    function getFiveBulletsFromModal() {
-        return Array.from(document.querySelectorAll('.edit-ai-bullet')).map(t => t.value.trim()).filter(Boolean);
-    }
-
-    /** Five slots in order (empty strings allowed) — use for per-bullet validation. */
+    /** Five slots in order (empty strings allowed). */
     function getBulletLinesFromModal() {
         return Array.from(document.querySelectorAll('.edit-ai-bullet')).map(t => t.value.trim());
     }
@@ -545,18 +529,6 @@ document.addEventListener('DOMContentLoaded', () => {
     /** Newline-separated payload; preserves empty slots so bullet N in the UI matches line N after split. */
     function bulletLinesToPayload(lines) {
         return lines.join('\n');
-    }
-
-    /** Non-empty bullets must be at least MIN_BULLET_CHARS (empty slots skipped). Server uses the same rule. */
-    function validateBulletMinimumLengths(lines) {
-        const failures = [];
-        lines.forEach((line, i) => {
-            if (!line) return;
-            if (line.length < MIN_BULLET_CHARS) {
-                failures.push(`Bullet ${i + 1} is only ${line.length} characters (minimum ${MIN_BULLET_CHARS} required).`);
-            }
-        });
-        return failures.length ? failures.join(' ') : null;
     }
 
     function getBulletLinesForPush(sku, row) {
@@ -571,15 +543,6 @@ document.addEventListener('DOMContentLoaded', () => {
         const row = bySku.get(String(sku));
         if (!row) return;
         const lines = getBulletLinesForPush(sku, row);
-        const bullets = lines.filter(Boolean);
-        if (!bullets.length) {
-            preselectedMarketplace = mp;
-            openEditModal(sku);
-            toast('Add bullet points in the modal, then click the marketplace again to push.', false);
-            return;
-        }
-        const limitErr = validateBulletMinimumLengths(lines);
-        if (limitErr) { toast(limitErr, false); return; }
         const combined = bulletLinesToPayload(lines);
         const payload = { sku, updates: [{ marketplace: mp, bullet_points: combined }] };
         fetch('/bullet-point-master/update', {
@@ -674,13 +637,8 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('saveModalBtn').addEventListener('click', function() {
         const sku = document.getElementById('modalSku').value;
         const lines = getBulletLinesFromModal();
-        const aiBullets = lines.filter(Boolean);
-        if (!aiBullets.length) { toast('Add at least one bullet point before saving.', false); return; }
-
         const combined = bulletLinesToPayload(lines);
         const selected = Array.from(document.querySelectorAll('.modal-mp-check:checked')).map(chk => chk.dataset.mp);
-        const minErr = validateBulletMinimumLengths(lines);
-        if (minErr) { toast(minErr, false); return; }
         const updates = selected.map(mp => ({ marketplace: mp, bullet_points: combined }));
         if (!updates.length) { toast('Select at least one marketplace.', false); return; }
 
