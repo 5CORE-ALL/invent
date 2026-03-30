@@ -9,6 +9,7 @@ use Illuminate\Console\Command;
 use App\Models\AmazonSpCampaignReport;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
+use App\Services\Amazon\AmazonBidUtilizationService;
 use GuzzleHttp\Client;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -221,6 +222,17 @@ class AutoUpdateAmazonKwBids extends Command
                     }
                     $this->info("Will retry full batch on next attempt.");
                 }
+            }
+
+            if (is_array($result) && empty($result['failed'] ?? [])) {
+                $persistedRows = 0;
+                foreach ($campaignBudgetMapForRetry as $cid => $bid) {
+                    $persistedRows += AmazonBidUtilizationService::persistSpSbidM($cid, (float) $bid);
+                }
+                Log::info('amazon:auto-update-over-kw-bids persisted sbid_m to L30', [
+                    'campaigns' => count($campaignBudgetMapForRetry),
+                    'l30_rows_updated' => $persistedRows,
+                ]);
             }
 
             // Log results
@@ -617,40 +629,35 @@ class AutoUpdateAmazonKwBids extends Command
                 $ub1 = 0;
             }
 
-            // UB2: 2-day utilization (L2 spend / budget) - for SBID condition matching tabulator
-            $l2_spend = floatval($row['l2_spend'] ?? 0);
-            $ub2 = ($budget > 0 && $l2_spend > 0) ? ($l2_spend / $budget) * 100 : 0;
-            $ub2Red = $ub2 < 66;
-            $ub2Pink = $ub2 > 99;
-            $ub1Red = $ub1 < 66;
-            $ub1Pink = $ub1 > 99;
-
-            // Calculate SBID to match tabulator: only 2UB+1UB red or 2UB+1UB pink (otherwise skip)
             $l1_cpc = floatval($row['l1_cpc']);
-            $l2_cpc = floatval($row['l2_cpc'] ?? 0);
             $l7_cpc = floatval($row['l7_cpc']);
-            $row['sbid'] = 0;
 
-            if ($ub2Red && $ub1Red) {
-                // KW 2UB red AND 1UB red:
-                // 1) L1*1.10
-                // 2) if L1 is 0, L2*1.10
-                // 3) if L1 and L2 are 0, L7*1.10
-                // 4) if all CPC are 0, default 0.60
-                if ($l1_cpc > 0) {
-                    $row['sbid'] = floor($l1_cpc * 1.10 * 100) / 100;
-                } elseif ($l1_cpc <= 0 && $l2_cpc > 0) {
-                    $row['sbid'] = floor($l2_cpc * 1.10 * 100) / 100;
-                } elseif ($l1_cpc <= 0 && $l2_cpc <= 0 && $l7_cpc > 0) {
-                    $row['sbid'] = floor($l7_cpc * 1.10 * 100) / 100;
-                } else {
-                    $row['sbid'] = 0.60;
-                }
-            } elseif ($ub2Pink && $ub1Pink) {
-                // KW 2UB pink AND KW 1UB pink: L1*0.90
-                $row['sbid'] = floor($l1_cpc * 0.90 * 100) / 100;
+            $resolved = AmazonBidUtilizationService::resolveUb(
+                (string) $row['campaign_id'],
+                'kw',
+                ['ub7' => $ub7, 'ub1' => $ub1]
+            );
+            $ub7 = $resolved['ub7'];
+            $ub1 = $resolved['ub1'];
+            $ubSource = $resolved['source'];
+
+            // Over-utilized: decrease bid when 1-day utilization > 70% (uses amazon_utilization_counts when present)
+            $baseBid = ($matchedCampaignL30 ? floatval($matchedCampaignL30->last_sbid ?? 0) : 0);
+            if ($baseBid <= 0) {
+                $baseBid = $l1_cpc > 0 ? $l1_cpc : ($l7_cpc > 0 ? $l7_cpc : 0);
             }
-            // Else: conditions do not match → sbid stays 0, row will be skipped
+            $row['sbid'] = 0;
+            if ($baseBid > 0 && $ub1 > 70) {
+                $row['sbid'] = round($baseBid * 0.90, 2);
+                AmazonBidUtilizationService::logBidDecision(
+                    (string) $row['campaign_id'],
+                    'kw_over',
+                    $ub1,
+                    $baseBid,
+                    (float) $row['sbid'],
+                    $ubSource
+                );
+            }
 
             // Validate all required fields before adding
             if (empty($row['campaign_id'])) {

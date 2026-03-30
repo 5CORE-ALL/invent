@@ -10,8 +10,10 @@ use Illuminate\Console\Command;
 use App\Models\AmazonSpCampaignReport;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
+use App\Services\Amazon\AmazonBidUtilizationService;
 use GuzzleHttp\Client;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class AutoUpdateAmazonHlBids extends Command
 {
@@ -212,6 +214,14 @@ class AutoUpdateAmazonHlBids extends Command
             $this->info("Amazon HL Bids Update completed. Total campaigns: " . count($campaignIds));
 
             if ($result && is_array($result) && ($result['status'] ?? 0) == 200) {
+                $persistedRows = 0;
+                foreach ($campaignBudgetMap as $cid => $bid) {
+                    $persistedRows += AmazonBidUtilizationService::persistSbSbidM((string) $cid, (float) $bid);
+                }
+                Log::info('amazon:auto-update-over-hl-bids persisted sbid_m to L30', [
+                    'campaigns' => count($campaignBudgetMap),
+                    'l30_rows_updated' => $persistedRows,
+                ]);
                 $this->info("✓ Command completed successfully");
                 return 0;
             } else {
@@ -335,7 +345,7 @@ class AutoUpdateAmazonHlBids extends Command
             $row['campaignName'] = $matchedCampaignL7->campaignName ?? ($matchedCampaignL1->campaignName ?? '');
             // Align HL budget source with frontend preference (L30 first, then L7/L1 fallback).
             $budgetCandidates = [
-                floatval($matchedCampaignL30->campaignBudgetAmount ?? 0),
+                floatval(($matchedCampaignL30 ? $matchedCampaignL30->campaignBudgetAmount : null) ?? 0),
                 floatval($matchedCampaignL7->campaignBudgetAmount ?? 0),
                 floatval($matchedCampaignL1->campaignBudgetAmount ?? 0),
             ];
@@ -385,18 +395,38 @@ class AutoUpdateAmazonHlBids extends Command
             $ub7 = $budget > 0 ? ($l7_spend / ($budget * 7)) * 100 : 0;
             $ub1 = $budget > 0 ? ($l1_spend / $budget) * 100 : 0;
 
-            // Calculate SBID for HL campaigns - use same logic as HL SBID column (never avg_cpc)
+            $resolved = AmazonBidUtilizationService::resolveUb(
+                (string) $row['campaign_id'],
+                'hl',
+                ['ub7' => $ub7, 'ub1' => $ub1]
+            );
+            $ub7 = $resolved['ub7'];
+            $ub1 = $resolved['ub1'];
+            $ubSource = $resolved['source'];
+
             $l1_cpc = floatval($row['l1_cpc']);
             $l7_cpc = floatval($row['l7_cpc']);
-            
-            // Over-utilized: Priority - L1 CPC → L7 CPC → 0.60 when both zero (HL SBID logic)
-            if ($l1_cpc > 0) {
-                $row['sbid'] = floor($l1_cpc * 0.90 * 100) / 100;
-            } else if ($l7_cpc > 0) {
-                $row['sbid'] = floor($l7_cpc * 0.90 * 100) / 100;
-            } else {
-                // When both L1 and L7 CPC are 0, use 0.60 (HL SBID default, not avg_cpc)
-                $row['sbid'] = 0.60;
+
+            $baseBid = ($matchedCampaignL30 ? floatval($matchedCampaignL30->last_sbid ?? 0) : 0);
+            if ($baseBid <= 0) {
+                $baseBid = $l1_cpc > 0 ? $l1_cpc : ($l7_cpc > 0 ? $l7_cpc : 0);
+            }
+            if ($baseBid <= 0) {
+                $baseBid = 0.60;
+            }
+
+            $row['sbid'] = 0;
+            // Over-utilized HL: decrease when 1-day utilization > 70%
+            if ($ub1 > 70) {
+                $row['sbid'] = round($baseBid * 0.90, 2);
+                AmazonBidUtilizationService::logBidDecision(
+                    (string) $row['campaign_id'],
+                    'hl_over',
+                    $ub1,
+                    $baseBid,
+                    (float) $row['sbid'],
+                    $ubSource
+                );
             }
 
             // Validate all required fields before adding
@@ -408,9 +438,7 @@ class AutoUpdateAmazonHlBids extends Command
                 continue; // Skip if invalid bid
             }
 
-            if ($ub7 > 99 && $ub1 > 99) {
-                $result[] = (object) $row;
-            }
+            $result[] = (object) $row;
 
         }
 

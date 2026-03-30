@@ -6,6 +6,7 @@ use Illuminate\Console\Command;
 use App\Models\AmazonDataView;
 use App\Models\AmazonSpCampaignReport;
 use App\Models\AmazonSbCampaignReport;
+use App\Models\AmazonUtilizationCount;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use Illuminate\Support\Facades\DB;
@@ -24,6 +25,8 @@ class StoreAmazonUtilizationCounts extends Command
         $this->processCampaignType('KW');
         $this->processCampaignType('PT');
         $this->processCampaignType('HL');
+
+        Log::info('amazon:store-utilization-counts finished');
 
         return 0;
     }
@@ -265,6 +268,13 @@ class StoreAmazonUtilizationCounts extends Command
         $underUtilizedCount7ub1ub = 0;
         $correctlyUtilizedCount7ub1ub = 0;
         
+        $typeKey = match ($campaignType) {
+            'KW' => 'kw',
+            'PT' => 'pt',
+            'HL' => 'hl',
+            default => strtolower($campaignType),
+        };
+
         foreach ($campaignMap as $campaignId => $campaignData) {
             // For KW and PT: Skip campaigns with INV = 0
             if (($campaignType === 'KW' || $campaignType === 'PT') && floatval($campaignData['inv']) <= 0) {
@@ -278,6 +288,30 @@ class StoreAmazonUtilizationCounts extends Command
             // Calculate UB7 and UB1
             $ub7 = $budget > 0 ? ($l7_spend / ($budget * 7)) * 100 : 0;
             $ub1 = $budget > 0 ? ($l1_spend / ($budget * 1)) * 100 : 0;
+
+            try {
+                AmazonUtilizationCount::updateOrCreate(
+                    [
+                        'campaign_id' => $campaignId,
+                        'campaign_type' => $typeKey,
+                    ],
+                    [
+                        'campaign_name' => (string) ($campaignData['campaignName'] ?? ''),
+                        'ub7' => round($ub7, 2),
+                        'ub1' => round($ub1, 2),
+                        'inventory' => (int) ($campaignData['inv'] ?? 0),
+                    ]
+                );
+                if ($this->output->isVerbose()) {
+                    $this->line("  utilization upsert: {$campaignId} ({$typeKey}) ub7=".round($ub7, 2).'% ub1='.round($ub1, 2).'%');
+                }
+            } catch (\Throwable $e) {
+                Log::warning('StoreAmazonUtilizationCounts: failed to upsert utilization row', [
+                    'campaign_id' => $campaignId,
+                    'campaign_type' => $typeKey,
+                    'error' => $e->getMessage(),
+                ]);
+            }
             
             // Categorize based on 7UB only condition
             if ($ub7 > 90) {
@@ -367,5 +401,11 @@ class StoreAmazonUtilizationCounts extends Command
         $this->info("  Over-utilized: {$overUtilizedCount7ub1ub}");
         $this->info("  Under-utilized: {$underUtilizedCount7ub1ub}");
         $this->info("  Correctly-utilized: {$correctlyUtilizedCount7ub1ub}");
+
+        Log::info('StoreAmazonUtilizationCounts: amazon_utilization_counts upserts', [
+            'campaign_family' => $campaignType,
+            'campaign_type_key' => $typeKey,
+            'distinct_campaigns' => count($campaignMap),
+        ]);
     }
 }

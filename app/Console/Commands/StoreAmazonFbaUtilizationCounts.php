@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use Illuminate\Console\Command;
 use App\Models\AmazonDataView;
 use App\Models\AmazonSpCampaignReport;
+use App\Models\AmazonUtilizationCount;
 use App\Models\FbaTable;
 use App\Models\FbaManualData;
 use App\Models\ShopifySku;
@@ -216,6 +217,8 @@ class StoreAmazonFbaUtilizationCounts extends Command
         $overUtilizedCount7ub1ub = 0;
         $underUtilizedCount7ub1ub = 0;
         $correctlyUtilizedCount7ub1ub = 0;
+
+        $fbaTypeKey = $campaignType === 'PT' ? 'fba_pt' : 'fba_kw';
         
         foreach ($campaignMap as $campaignId => $campaignData) {
             // Skip campaigns with INV = 0 (same as regular Amazon command for KW and PT)
@@ -230,6 +233,30 @@ class StoreAmazonFbaUtilizationCounts extends Command
             // Calculate UB7 and UB1
             $ub7 = $budget > 0 ? ($l7_spend / ($budget * 7)) * 100 : 0;
             $ub1 = $budget > 0 ? ($l1_spend / ($budget * 1)) * 100 : 0;
+
+            try {
+                AmazonUtilizationCount::updateOrCreate(
+                    [
+                        'campaign_id' => $campaignId,
+                        'campaign_type' => $fbaTypeKey,
+                    ],
+                    [
+                        'campaign_name' => (string) ($campaignData['campaignName'] ?? ''),
+                        'ub7' => round($ub7, 2),
+                        'ub1' => round($ub1, 2),
+                        'inventory' => (int) ($campaignData['inv'] ?? 0),
+                    ]
+                );
+                if ($this->output->isVerbose()) {
+                    $this->line("  FBA utilization upsert: {$campaignId} ({$fbaTypeKey}) ub7=".round($ub7, 2).'% ub1='.round($ub1, 2).'%');
+                }
+            } catch (\Throwable $e) {
+                Log::warning('StoreAmazonFbaUtilizationCounts: failed to upsert utilization row', [
+                    'campaign_id' => $campaignId,
+                    'campaign_type' => $fbaTypeKey,
+                    'error' => $e->getMessage(),
+                ]);
+            }
             
             // Categorize based on 7UB only condition
             if ($ub7 > 90) {
@@ -319,6 +346,12 @@ class StoreAmazonFbaUtilizationCounts extends Command
         $this->info("  Over-utilized: {$overUtilizedCount7ub1ub}");
         $this->info("  Under-utilized: {$underUtilizedCount7ub1ub}");
         $this->info("  Correctly-utilized: {$correctlyUtilizedCount7ub1ub}");
+
+        Log::info('StoreAmazonFbaUtilizationCounts: amazon_utilization_counts upserts', [
+            'campaign_family' => 'FBA_'.$campaignType,
+            'campaign_type_key' => $fbaTypeKey,
+            'distinct_campaigns' => count($campaignMap),
+        ]);
     }
 }
 

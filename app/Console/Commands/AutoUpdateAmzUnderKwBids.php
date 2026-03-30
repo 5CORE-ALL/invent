@@ -10,6 +10,7 @@ use App\Models\AmazonSpCampaignReport;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use GuzzleHttp\Client;
+use App\Services\Amazon\AmazonBidUtilizationService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -119,11 +120,17 @@ class AutoUpdateAmzUnderKwBids extends Command
                         $this->info("✓ Bid update completed successfully!");
                         $this->line("");
                         $this->info("Updated campaigns:");
+                        $persistedRows = 0;
                         foreach ($validCampaigns as $campaign) {
                             $campaignName = $campaign->campaignName ?? 'N/A';
                             $newBid = $campaign->sbid ?? 0;
                             $this->line("  Campaign: {$campaignName} | New Bid: {$newBid}");
+                            $persistedRows += AmazonBidUtilizationService::persistSpSbidM((string) ($campaign->campaign_id ?? ''), (float) $newBid);
                         }
+                        Log::info('amazon:auto-update-under-kw-bids persisted sbid_m to L30', [
+                            'campaigns' => $validCampaigns->count(),
+                            'l30_rows_updated' => $persistedRows,
+                        ]);
                     } else {
                         $this->error("✗ Bid update failed!");
                         $this->error("Status: " . $result['status']);
@@ -491,24 +498,23 @@ class AutoUpdateAmzUnderKwBids extends Command
                 $ub1 = 0;
             }
 
-            $l2_spend = floatval($row['l2_spend'] ?? 0);
-            $ub2 = ($budget > 0 && $l2_spend > 0) ? ($l2_spend / $budget) * 100 : 0;
-            $ub2Red = $ub2 < 66;
-            $ub1Red = $ub1 < 66;
+            $resolved = AmazonBidUtilizationService::resolveUb(
+                (string) $row['campaign_id'],
+                'kw',
+                ['ub7' => $ub7, 'ub1' => $ub1]
+            );
+            $ub7 = $resolved['ub7'];
+            $ub1 = $resolved['ub1'];
+            $ubSource = $resolved['source'];
 
-            // Under-utilized: 2UB red AND 1UB red (same as KW tabulator)
-            if ($row['INV'] > 0 && $row['campaignName'] !== '' && ($ub2Red && $ub1Red)) {
-                $l2_cpc = floatval($row['l2_cpc'] ?? 0);
-                $row['sbid'] = 0;
-                if ($l1_cpc > 0) {
-                    $row['sbid'] = floor($l1_cpc * 1.10 * 100) / 100;
-                } elseif ($l2_cpc > 0) {
-                    $row['sbid'] = floor($l2_cpc * 1.10 * 100) / 100;
-                } elseif ($l7_cpc > 0) {
-                    $row['sbid'] = floor($l7_cpc * 1.10 * 100) / 100;
-                } else {
-                    $row['sbid'] = 0.60;
-                }
+            $baseBid = ($matchedCampaignL30 ? floatval($matchedCampaignL30->last_sbid ?? 0) : 0);
+            if ($baseBid <= 0) {
+                $baseBid = $l1_cpc > 0 ? $l1_cpc : ($l7_cpc > 0 ? $l7_cpc : 0);
+            }
+
+            // Under-utilized: increase bid when 1-day utilization < 50%
+            if ($row['INV'] > 0 && $row['campaignName'] !== '' && $baseBid > 0 && $ub1 < 50) {
+                $row['sbid'] = round($baseBid * 1.10, 2);
                 if ($price < 10 && $row['sbid'] > 0.10) {
                     $row['sbid'] = 0.10;
                 } elseif ($price >= 10 && $price < 20 && $row['sbid'] > 0.20) {
@@ -516,6 +522,14 @@ class AutoUpdateAmzUnderKwBids extends Command
                 }
                 $row['ub7'] = $ub7;
                 $row['ub1'] = $ub1;
+                AmazonBidUtilizationService::logBidDecision(
+                    (string) $row['campaign_id'],
+                    'kw_under',
+                    $ub1,
+                    $baseBid,
+                    (float) $row['sbid'],
+                    $ubSource
+                );
                 $result[] = (object) $row;
             }
             }

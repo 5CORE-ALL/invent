@@ -11,7 +11,9 @@ use App\Models\AmazonSpCampaignReport;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use GuzzleHttp\Client;
+use App\Services\Amazon\AmazonBidUtilizationService;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class AutoUpdateAmzUnderHlBids extends Command
 {
@@ -156,11 +158,17 @@ class AutoUpdateAmzUnderHlBids extends Command
                     $this->info("✓ HL bids updated successfully!");
                     $this->line("");
                     $this->info("Updated campaigns:");
+                    $persistedRows = 0;
                     foreach ($validCampaigns as $campaign) {
                         $campaignName = $campaign->campaignName ?? 'N/A';
                         $newBid = $campaign->sbid ?? 0;
                         $this->line("  Campaign: {$campaignName} | New Bid: {$newBid}");
+                        $persistedRows += AmazonBidUtilizationService::persistSbSbidM((string) ($campaign->campaign_id ?? ''), (float) $newBid);
                     }
+                    Log::info('amazon:auto-update-under-hl-bids persisted sbid_m to L30', [
+                        'campaigns' => $validCampaigns->count(),
+                        'l30_rows_updated' => $persistedRows,
+                    ]);
                     if ($successCount > 0) {
                         $this->info("Keywords updated: {$successCount}");
                     }
@@ -306,7 +314,7 @@ class AutoUpdateAmzUnderHlBids extends Command
             $row['campaignName'] = $matchedCampaignL7->campaignName ?? ($matchedCampaignL1->campaignName ?? '');
             // Align HL budget source with frontend preference (L30 first, then L7/L1 fallback).
             $budgetCandidates = [
-                floatval($matchedCampaignL30->campaignBudgetAmount ?? 0),
+                floatval(($matchedCampaignL30 ? $matchedCampaignL30->campaignBudgetAmount : null) ?? 0),
                 floatval($matchedCampaignL7->campaignBudgetAmount ?? 0),
                 floatval($matchedCampaignL1->campaignBudgetAmount ?? 0),
             ];
@@ -358,24 +366,35 @@ class AutoUpdateAmzUnderHlBids extends Command
             $ub7 = $budget > 0 ? ($l7_spend / ($budget * 7)) * 100 : 0;
             $ub1 = $budget > 0 ? ($l1_spend / $budget) * 100 : 0;
 
-            // Under-utilized rule: INV > 0, campaignName !== '', ub7 < 66 && ub1 < 66
+            $resolved = AmazonBidUtilizationService::resolveUb(
+                (string) $row['campaign_id'],
+                'hl',
+                ['ub7' => $ub7, 'ub1' => $ub1]
+            );
+            $ub7 = $resolved['ub7'];
+            $ub1 = $resolved['ub1'];
+            $ubSource = $resolved['source'];
+
+            $baseBid = ($matchedCampaignL30 ? floatval($matchedCampaignL30->last_sbid ?? 0) : 0);
+            if ($baseBid <= 0) {
+                $baseBid = $l1_cpc > 0 ? $l1_cpc : ($l7_cpc > 0 ? $l7_cpc : 0);
+            }
+            if ($baseBid <= 0) {
+                $baseBid = 0.60;
+            }
+
+            // Under-utilized HL: increase bid when 1-day utilization < 50%
             $row['INV'] = (int) ($row['INV'] ?? 0);
-            if ($row['INV'] > 0 && $row['campaignName'] !== '' && ($ub7 < 66 && $ub1 < 66)) {
-                // Calculate SBID for HL campaigns - use same logic as HL SBID column (never avg_cpc)
-                // Under-utilized: Priority - L1 CPC → L7 CPC → 0.60 when both zero
-                if ($l1_cpc > 0) {
-                    $row['sbid'] = floor($l1_cpc * 1.10 * 100) / 100;
-                } elseif ($l1_cpc <= 0 && $l7_cpc >= 0.20 && $l7_cpc <= 0.30) {
-                    $row['sbid'] = round($l7_cpc + 0.05, 2);
-                } elseif ($l1_cpc <= 0 && $l7_cpc > 0) {
-                    $row['sbid'] = 0.60;
-                } elseif ($l7_cpc > 0) {
-                    $row['sbid'] = floor($l7_cpc * 1.10 * 100) / 100;
-                } else {
-                    // When both L1 and L7 CPC are 0, use 0.60 (HL SBID default, not avg_cpc)
-                    $row['sbid'] = 0.60;
-                }
-                
+            if ($row['INV'] > 0 && $row['campaignName'] !== '' && $ub1 < 50) {
+                $row['sbid'] = round($baseBid * 1.10, 2);
+                AmazonBidUtilizationService::logBidDecision(
+                    (string) $row['campaign_id'],
+                    'hl_under',
+                    $ub1,
+                    $baseBid,
+                    (float) $row['sbid'],
+                    $ubSource
+                );
                 $result[] = (object) $row;
             }
             }
