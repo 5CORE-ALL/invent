@@ -1458,6 +1458,41 @@ public function downloadAndParseEbayReport(string $taskId, string $token): array
     }
 
     /**
+     * @param  list<string>  $imageUrls
+     * @return array{success: bool, message: string}
+     */
+    public function updateListingImages(string $identifier, array $imageUrls): array
+    {
+        if (trim($identifier) === '') {
+            return ['success' => false, 'message' => 'SKU (or item_id) is required.'];
+        }
+
+        $row = $this->findMetricRowBySkuOrAlternateIds('ebay_2_metrics', $identifier, ['item_id']);
+        $itemId = $row->item_id ?? null;
+        if (! $itemId) {
+            return ['success' => false, 'message' => 'Product not found in ebay_2_metrics (try SKU or eBay item_id).'];
+        }
+
+        try {
+            $token = $this->generateBearerToken();
+        } catch (\Throwable $e) {
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+
+        return EbayTradingReviseItem::reviseItemPictureUrls(
+            $this->endpoint,
+            $this->compatLevel,
+            $this->devId,
+            $this->appId,
+            $this->certId,
+            $this->siteId,
+            $token,
+            (string) $itemId,
+            $imageUrls
+        );
+    }
+
+    /**
      * @return array{success: bool, message: string}
      */
     public function updateProductDescription(string $identifier, string $description): array
