@@ -914,38 +914,56 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
 
     public function updateBulletPoints(string $identifier, string $bulletPoints): array
     {
-        $bulletPoints = trim($bulletPoints);
-        if (trim($identifier) === '' || $bulletPoints === '') {
+        if (trim($identifier) === '') {
+            return ['success' => false, 'message' => 'SKU (or goods_id) is required.'];
+        }
+
+        $lines = array_values(array_filter(array_map('trim', preg_split('/\r\n|\r|\n/', (string) $bulletPoints))));
+        if ($lines === []) {
             return ['success' => false, 'message' => 'SKU (or goods_id) and bullet points are required.'];
         }
 
         $field = config('services.temu.goods_summary_field', 'goodsSummary');
+        $format = strtolower((string) config('services.temu.goods_summary_format', 'string'));
+        $value = $format === 'array' ? $lines : implode("\n", $lines);
+
+        $includeSkuList = (bool) config('services.temu.bullet_update_include_sku_list', false);
 
         return $this->pushTemuGoodsBasicField(
             $identifier,
-            $bulletPoints,
+            $value,
             $field,
             'Temu bullet points updated.',
             'SKU (or goods_id) and bullet points are required.',
-            'Temu updateBulletPoints'
+            'Temu updateBulletPoints',
+            $includeSkuList
         );
     }
 
     /**
      * Partial goods update: one field inside `goodsBasic` (e.g. goodsSummary for bullets, goodsDesc for long description).
      *
+     * @param  string|array<int, string>  $text  Scalar string or list of lines (e.g. goodsSummary as array)
      * @return array{success: bool, message: string}
      */
     private function pushTemuGoodsBasicField(
         string $identifier,
-        string $text,
+        string|array $text,
         string $basicFieldKey,
         string $successMessage,
         string $emptyIdentifierMessage,
-        string $logContext
+        string $logContext,
+        bool $includeSkuList = true,
     ): array {
-        $text = trim($text);
-        if (trim($identifier) === '' || $text === '') {
+        if (trim($identifier) === '') {
+            return ['success' => false, 'message' => $emptyIdentifierMessage];
+        }
+        if (is_string($text)) {
+            $text = trim($text);
+        } else {
+            $text = array_values(array_filter(array_map('trim', $text), fn ($s) => $s !== ''));
+        }
+        if ($text === '' || $text === []) {
             return ['success' => false, 'message' => $emptyIdentifierMessage];
         }
 
@@ -974,7 +992,7 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
         $dimensions = $this->getProductDimensions($sku);
         $images = $this->getProductImages($sku);
 
-        if ($skuInfo !== null && isset($skuInfo['skuId'])) {
+        if ($includeSkuList && $skuInfo !== null && isset($skuInfo['skuId'])) {
             $skuIdField = config('services.temu.sku_id_field', 'skuId');
             $skuCodeField = config('services.temu.sku_code_field', 'outSkuSn');
             $requestBody[$skuListField] = [[
@@ -993,6 +1011,16 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
                 'volumeUnit' => $dimensions['volumeUnit'],
                 'images' => $images,
             ]];
+        }
+
+        if ($logContext === 'Temu updateBulletPoints') {
+            Log::info('Temu updateBulletPoints request', [
+                'sku' => $sku,
+                'goodsId' => $goodsId,
+                'goodsBasicKey' => $basicFieldKey,
+                'includeSkuList' => $includeSkuList,
+                'goods_summary_format' => is_array($text) ? 'array' : 'string',
+            ]);
         }
 
         try {

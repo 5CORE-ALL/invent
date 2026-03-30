@@ -209,6 +209,10 @@ return [
             'Bullet Point 4',
             'Bullet Point 5',
         ],
+        /** Item specific names (case-insensitive) that must never be dropped when merging bullet aspects (MPN, etc.). */
+        'preserve_item_specific_names' => [
+            'MPN', 'Manufacturer Part Number', 'UPC', 'EAN', 'ISBN', 'GTIN', 'Brand', 'Part Number',
+        ],
     ],
     'ebay1' => [
         'app_id' => env('EBAY_APP_ID'),
@@ -286,6 +290,10 @@ return [
         'access_token' => env('TEMU_ACCESS_TOKEN'),
         /** goodsBasic key for bullet-style copy (not long goodsDesc). Override via TEMU_GOODS_SUMMARY_FIELD if Temu schema differs. */
         'goods_summary_field' => env('TEMU_GOODS_SUMMARY_FIELD', 'goodsSummary'),
+        /** `string` = newline-separated text; `array` = JSON array of bullet lines (if your Temu app expects list form). */
+        'goods_summary_format' => env('TEMU_GOODS_SUMMARY_FORMAT', 'string'),
+        /** If false, bullet updates send only goodsBasic + goodsId (avoids skuList overwriting other fields). Set true if Temu requires skuList on partial update. */
+        'bullet_update_include_sku_list' => filter_var(env('TEMU_BULLET_INCLUDE_SKU_LIST', false), FILTER_VALIDATE_BOOLEAN),
         // API type for updating goods title (per official docs: use partial update for efficiency)
         'goods_update_type' => env('TEMU_GOODS_UPDATE_TYPE', 'bg.local.goods.partial.update'),
         // SKU list field for title update. Official docs use skuList (https://partner-eu.temu.com/documentation)
