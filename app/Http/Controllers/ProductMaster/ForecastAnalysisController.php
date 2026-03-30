@@ -240,11 +240,25 @@ class ForecastAnalysisController extends Controller
             if ($c !== '' && $readyToShipMapCanonical->has($c)) return $readyToShipMapCanonical->get($c);
             return null;
         };
-        $toOrderApprovedBySku = collect(DB::table('to_order_analysis')
+        $toOrderRows = DB::table('to_order_analysis')
             ->whereNull('deleted_at')
-            ->get(['sku', 'approved_qty']))
+            ->orderByDesc('updated_at')
+            ->orderByDesc('id')
+            ->get(['id', 'sku', 'parent', 'approved_qty', 'updated_at']);
+        $toOrderApprovedBySkuParent = collect($toOrderRows)
+            ->groupBy(function ($r) use ($normalizeSku) {
+                return $normalizeSku($r->sku) . '|' . $normalizeSku($r->parent ?? '');
+            })
+            ->map(function ($rows) {
+                $latest = $rows->first();
+                return (float) ($latest->approved_qty ?? 0);
+            });
+        $toOrderApprovedBySku = collect($toOrderRows)
             ->groupBy(fn ($r) => $normalizeSku($r->sku))
-            ->map(fn ($rows) => (float) $rows->max(fn ($r) => (float) ($r->approved_qty ?? 0)));
+            ->map(function ($rows) {
+                $latest = $rows->first();
+                return (float) ($latest->approved_qty ?? 0);
+            });
         $toOrderMetaBySku = collect(DB::table('to_order_analysis')
             ->whereNull('deleted_at')
             ->get(['sku', 'rfq_form_link', 'rfq_report_link', 'sheet_link']))
@@ -416,6 +430,13 @@ class ForecastAnalysisController extends Controller
             $item = new \stdClass();
             $item->SKU = $sheetSku;
             $item->Parent = $normalizeSku($prodData->parent ?? '');
+            $toOrderKey = $sheetSku . '|' . $item->Parent;
+            $item->two_order_qty = (float) (
+                $toOrderApprovedBySkuParent->get(
+                    $toOrderKey,
+                    (float) $toOrderApprovedBySku->get($sheetSku, 0)
+                )
+            );
             $item->is_parent = stripos($sheetSku, 'PARENT') !== false;
             $item->{'Supplier Tag'} = isset($supplierMapByParent[$item->Parent]) ? implode(', ', array_unique($supplierMapByParent[$item->Parent])) : '';
 
@@ -753,7 +774,7 @@ class ForecastAnalysisController extends Controller
                     $qtyR2s = (float) ($item->readyToShipQty ?? 0);
                     $qtyMip = (float) ($item->order_given ?? 0);
                     // 2 Order column = to_order_analysis approved qty only (not Appr.req MOQ)
-                    $qtyTwoOrder = (float) ($toOrderApprovedBySku->get($sheetSku, 0));
+                    $qtyTwoOrder = (float) ($item->two_order_qty ?? 0);
                     if ($qtyTransit > 0) {
                         $derivedStage = 'transit';
                     } elseif ($qtyR2s > 0) {
@@ -972,6 +993,63 @@ class ForecastAnalysisController extends Controller
                 return response()->json(['success' => true, 'message' => 'CP updated successfully']);
             }
             return response()->json(['success' => false, 'message' => 'Product not found']);
+        }
+
+        // Handle 2-Order updates: persist to to_order_analysis.approved_qty
+        if (strtoupper($column) === 'ORDER') {
+            if (!is_numeric($value)) {
+                return response()->json(['success' => false, 'message' => 'Invalid order value']);
+            }
+
+            $valueNum = (float) $value;
+            if ($valueNum < 0) {
+                return response()->json(['success' => false, 'message' => 'Order cannot be negative']);
+            }
+
+            $skuUpper = strtoupper(trim($sku));
+            $parentNorm = strtoupper(trim($parent));
+
+            $updated = 0;
+            if ($parentNorm !== '') {
+                $updated = (int) DB::table('to_order_analysis')
+                    ->whereRaw('TRIM(UPPER(sku)) = ?', [$skuUpper])
+                    ->whereRaw('TRIM(UPPER(COALESCE(parent, \'\'))) = ?', [$parentNorm])
+                    ->update([
+                        'approved_qty' => $valueNum,
+                        'date_apprvl' => now()->toDateString(),
+                        'auth_user' => optional(Auth::user())->name,
+                        'updated_at' => now(),
+                        'deleted_at' => null,
+                    ]);
+            }
+
+            if ($updated === 0) {
+                $updated = (int) DB::table('to_order_analysis')
+                    ->whereRaw('TRIM(UPPER(sku)) = ?', [$skuUpper])
+                    ->update([
+                        'approved_qty' => $valueNum,
+                        'date_apprvl' => now()->toDateString(),
+                        'auth_user' => optional(Auth::user())->name,
+                        'updated_at' => now(),
+                        'deleted_at' => null,
+                    ]);
+            }
+
+            if ($updated === 0 && $sku !== '') {
+                DB::table('to_order_analysis')->insert([
+                    'sku' => $sku,
+                    'parent' => $parent !== '' ? $parent : null,
+                    'approved_qty' => $valueNum,
+                    'date_apprvl' => now()->toDateString(),
+                    'stage' => '',
+                    'auth_user' => optional(Auth::user())->name,
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                    'deleted_at' => null,
+                ]);
+            }
+
+            return response()->json(['success' => true, 'message' => 'Order updated successfully']);
         }
 
         $columnMap = [

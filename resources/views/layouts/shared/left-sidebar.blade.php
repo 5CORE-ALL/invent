@@ -2396,8 +2396,6 @@
                                         <a href="{{ route('listing.ebayTwo') }}">Listing Ebay 2</a>
                                     </li>
 
-
-
                                     <li>
                                         <a href="{{ route('ebay2.pmt.ads') }}">PMT Ads</a>
                                     </li>
@@ -2431,7 +2429,7 @@
                                         </a>
                                         <div class="collapse" id="ebay3Submenu">
                                             <ul class="side-nav-fourth-level">
-
+ 
 
                                                 <li>
                                                     <a href="{{ route('ebay3.low.visibility.view') }}">Ebay

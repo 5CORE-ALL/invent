@@ -557,6 +557,22 @@
                             </ul>
                         </div>
                         <div class="dropdown">
+                            <button class="btn btn-sm btn-primary dropdown-toggle" type="button" id="bulkEditOrderBtn" data-bs-toggle="dropdown" aria-expanded="false">
+                                Order
+                            </button>
+                            <ul class="dropdown-menu" aria-labelledby="bulkEditOrderBtn">
+                                <li class="px-3 py-2">
+                                    <input type="number" id="bulk-order-input" class="form-control form-control-sm" placeholder="Enter Order" style="min-width: 140px;">
+                                </li>
+                                <li><hr class="dropdown-divider"></li>
+                                <li>
+                                    <button class="dropdown-item" type="button" id="bulk-apply-order">
+                                        <i class="fas fa-check me-1"></i> Apply
+                                    </button>
+                                </li>
+                            </ul>
+                        </div>
+                        <div class="dropdown">
                             <button class="btn btn-sm btn-success dropdown-toggle" type="button" id="bulkEditCpBtn" data-bs-toggle="dropdown" aria-expanded="false">
                                 CP
                             </button>
@@ -1336,12 +1352,65 @@
                     accessor: row => (row ? row.two_order_qty : null),
                     sorter: "number",
                     headerSort: true,
+                    editor: "number",
+                    editorParams: { min: 0, step: 1, verticalNavigation: "editor" },
+                    editable: function(cell) {
+                        const d = cell.getRow().getData();
+                        return !(d.is_parent || d.isParent);
+                    },
+                    cellEditing: function(cell) {
+                        const row = cell.getRow();
+                        row.forecastOrderEditStart = cell.getValue();
+                    },
                     formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
                         const v = parseFloat(cell.getValue());
                         if (!v || isNaN(v)) {
                             return '<div style="text-align:center;" class="text-muted">—</div>';
                         }
-                        return `<div style="text-align:center;font-weight:bold;">${Number.isInteger(v) ? v : v.toFixed(2).replace(/\.?0+$/, '')}</div>`;
+                        const disp = Number.isInteger(v) ? v : v.toFixed(2).replace(/\.?0+$/, '');
+                        if (rowData && (rowData.is_parent || rowData.isParent)) {
+                            return `<div style="text-align:center;font-weight:bold;">${disp}</div>`;
+                        }
+                        return `<span style="display:block;text-align:center;font-weight:bold;cursor:text;" title="Double-click to edit Order">${disp}</span>`;
+                    },
+                    cellEdited: function(cell) {
+                        const row = cell.getRow();
+                        const d = row.getData();
+                        if (d.is_parent || d.isParent) return;
+
+                        const rawNew = cell.getValue();
+                        const oldVal = row.forecastOrderEditStart;
+                        delete row.forecastOrderEditStart;
+
+                        if (rawNew === '' || rawNew === null || rawNew === undefined) {
+                            cell.setValue(oldVal, true);
+                            alert('Please enter a valid Order quantity.');
+                            return;
+                        }
+
+                        const newValue = Number(rawNew);
+                        if (Number.isNaN(newValue) || newValue < 0) {
+                            cell.setValue(oldVal, true);
+                            alert('Please enter a valid Order quantity.');
+                            return;
+                        }
+
+                        const origNum = Number(oldVal);
+                        if (!Number.isNaN(origNum) && origNum === newValue) return;
+
+                        updateForecastField(
+                            { sku: d.SKU, parent: d.Parent || '', column: 'Order', value: newValue },
+                            function() {
+                                row.update({ two_order_qty: newValue }, true);
+                                const stageCell = row.getCells().find(function(c) { return c.getField() === 'stage'; });
+                                if (stageCell) stageCell.reformat();
+                                syncParentStageQtyColumns(d.Parent || d.parentKey);
+                            },
+                            function() {
+                                cell.setValue(oldVal, true);
+                            }
+                        );
                     }
                 },
                 //   {
@@ -2571,7 +2640,7 @@
 
                     const stageNorm = String(itemStage || '').trim().toLowerCase();
                     const twoOrderQty = stageNorm === 'to_order_analysis'
-                        ? (parseFloat(item.MOQ ?? item['Approved QTY']) || 0)
+                        ? (parseFloat(item.two_order_qty ?? item['two_order_qty'] ?? item.MOQ ?? item['Approved QTY']) || 0)
                         : 0;
                     const apprReqQty = stageNorm === 'appr_req'
                         ? (parseFloat(item.MOQ ?? item['Approved QTY']) || 0)
@@ -2959,6 +3028,12 @@
             const v = document.getElementById('bulk-moq-input')?.value?.trim() || '';
             if (!v || isNaN(parseFloat(v))) { alert('Please enter a valid MOQ.'); return; }
             bulkApplyForecastField('MOQ', function() { return v; }, 'bulk-apply-moq', 'bulk-moq-input', 'bulkEditMoqBtn');
+        });
+        document.getElementById('bulk-apply-order')?.addEventListener('click', function(e) {
+            e.preventDefault();
+            const v = document.getElementById('bulk-order-input')?.value?.trim() || '';
+            if (!v || isNaN(parseFloat(v))) { alert('Please enter a valid Order quantity.'); return; }
+            bulkApplyForecastField('Order', function() { return v; }, 'bulk-apply-order', 'bulk-order-input', 'bulkEditOrderBtn');
         });
         document.getElementById('bulk-apply-cp')?.addEventListener('click', function(e) {
             e.preventDefault();
