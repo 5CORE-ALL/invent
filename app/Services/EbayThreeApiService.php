@@ -1181,13 +1181,14 @@ class EbayThreeApiService
     }
 
     /**
+     * Bullet Point 1–5 via Item Specifics (not listing description HTML).
+     *
      * @return array{success: bool, message: string}
      */
     public function updateBulletPoints(string $identifier, string $bulletPoints): array
     {
-        $bulletPoints = trim($bulletPoints);
-        if (trim($identifier) === '' || $bulletPoints === '') {
-            return ['success' => false, 'message' => 'SKU (or item_id) and bullet points are required.'];
+        if (trim($identifier) === '') {
+            return ['success' => false, 'message' => 'SKU (or item_id) is required.'];
         }
 
         $row = $this->findMetricRowBySkuOrAlternateIds('ebay_3_metrics', $identifier, ['item_id']);
@@ -1196,15 +1197,18 @@ class EbayThreeApiService
             return ['success' => false, 'message' => 'Product not found in ebay_3_metrics (try SKU or eBay item_id).'];
         }
 
+        $getItem = $this->getItem((string) $itemId);
+        if (! $getItem) {
+            return ['success' => false, 'message' => 'Could not load eBay listing (GetItem failed).'];
+        }
+
         try {
             $token = $this->generateBearerToken();
         } catch (\Throwable $e) {
             return ['success' => false, 'message' => $e->getMessage()];
         }
 
-        $html = EbayTradingReviseItem::bulletsToDescriptionHtml($bulletPoints);
-
-        return EbayTradingReviseItem::reviseItemDescription(
+        return EbayTradingReviseItem::reviseBulletPointsViaItemSpecifics(
             $this->endpoint,
             $this->compatLevel,
             $this->devId,
@@ -1212,8 +1216,8 @@ class EbayThreeApiService
             $this->certId,
             $this->siteId,
             $token,
-            (string) $itemId,
-            $html
+            $getItem,
+            $bulletPoints,
         );
     }
 
