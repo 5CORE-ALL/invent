@@ -1030,19 +1030,40 @@
                 {
                     title: "SKU",
                     field: "SKU",
-                    width: 198,
-                    minWidth: 88,
-                    maxWidth: 260,
-                    widthGrow: 0,
+                    minWidth: 180,
+                    widthGrow: 1,
                     headerFilter: "input",
                     headerFilterPlaceholder: "Filter",
                     headerFilterFunc: "like",
                     accessor: row => (row ? row["SKU"] : ''),
                     formatter: function(cell) {
+                        const rowData = cell.getRow().getData() || {};
                         const v = cell.getValue() == null ? '' : String(cell.getValue());
                         const esc = v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
                         const title = esc.replace(/"/g, '&quot;');
-                        return '<span title="' + title + '" style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;">' + esc + '</span>';
+                        const safeSku = v.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+
+                        // Copy icon
+                        const copyBtn = `<i class="fa fa-copy forecast-copy-sku" data-sku="${safeSku}" title="Copy SKU" style="cursor:pointer;margin-left:6px;color:#6c757d;font-size:12px;flex-shrink:0;"></i>`;
+
+                        // B / S links
+                        const buyerLink  = String(rowData.Clink || '').trim();
+                        const sellerLink = String(rowData.Olink || '').trim();
+                        const buyerBtn   = buyerLink
+                            ? `<a href="${buyerLink}" target="_blank" class="btn btn-sm btn-outline-primary" title="Buyer Link" style="padding:1px 6px;font-size:11px;line-height:1.4;flex-shrink:0;">B</a>`
+                            : '';
+                        const sellerBtn  = sellerLink
+                            ? `<a href="${sellerLink}" target="_blank" class="btn btn-sm btn-outline-secondary" title="Seller Link" style="padding:1px 6px;font-size:11px;line-height:1.4;flex-shrink:0;">S</a>`
+                            : '';
+                        const linkPart   = (buyerBtn || sellerBtn)
+                            ? `<span style="display:flex;gap:4px;flex-shrink:0;">${buyerBtn}${sellerBtn}</span>`
+                            : '';
+
+                        return `<div style="display:flex;align-items:center;gap:4px;min-width:0;">
+                            <span title="${title}" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;">${esc}</span>
+                            ${copyBtn}
+                            ${linkPart}
+                        </div>`;
                     }
                 },
                 
@@ -2035,8 +2056,8 @@
                 {
                     title: "DOA",
                     field: "date_apprvl",
-                    width: 150,
-                    minWidth: 145,
+                    width: 110,
+                    minWidth: 100,
                     sorter: "date",
                     sorterParams: { format: "YYYY-MM-DD", alignEmptyValues: "bottom" },
                     formatter: function(cell) {
@@ -2048,9 +2069,9 @@
                             const d = new Date(value);
                             if (!isNaN(d.getTime())) {
                                 const day = String(d.getDate()).padStart(2, "0");
-                                const month = String(d.getMonth() + 1).padStart(2, "0");
-                                const year = d.getFullYear();
-                                displayText = `${day}-${month}-${year}`;
+                                const monthNames = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+                                const monthName = monthNames[d.getMonth()];
+                                displayText = `${day} ${monthName}`;
 
                                 const today = new Date();
                                 today.setHours(0, 0, 0, 0);
@@ -2066,27 +2087,7 @@
                             }
                         }
 
-                        return `<span style="min-width:100px; display:inline-block; ${textStyle}">${displayText}</span>`;
-                    }
-                },
-                {
-                    title: "B / S",
-                    field: "Clink",
-                    hozAlign: "center",
-                    formatter: function(cell) {
-                        const rowData = cell.getRow().getData() || {};
-                        const buyerLink = String(rowData.Clink || '').trim();
-                        const sellerLink = String(rowData.Olink || '').trim();
-                        if (!buyerLink && !sellerLink) {
-                            return '<span class="text-muted">-</span>';
-                        }
-                        const buyerBtn = buyerLink
-                            ? `<a href="${buyerLink}" target="_blank" class="btn btn-sm btn-outline-primary" title="Buyer Link" style="min-width:30px;padding:2px 8px;">B</a>`
-                            : '';
-                        const sellerBtn = sellerLink
-                            ? `<a href="${sellerLink}" target="_blank" class="btn btn-sm btn-outline-secondary" title="Seller Link" style="min-width:30px;padding:2px 8px;">S</a>`
-                            : '';
-                        return `<div style="display:flex;justify-content:center;gap:6px;">${buyerBtn}${sellerBtn}</div>`;
+                        return `<span style="min-width:70px; display:inline-block; ${textStyle}">${displayText}</span>`;
                     }
                 },
                 {
@@ -5294,6 +5295,17 @@
             const instance = new bootstrap.Modal(modal);
             instance.show();
         }
+
+        // SKU copy handler
+        $(document).on('click', '.forecast-copy-sku', function(e) {
+            e.stopPropagation();
+            const sku = $(this).data('sku');
+            navigator.clipboard.writeText(sku).then(() => {
+                const icon = $(this);
+                icon.removeClass('fa-copy').addClass('fa-check').css('color', '#28a745');
+                setTimeout(() => icon.removeClass('fa-check').addClass('fa-copy').css('color', '#6c757d'), 1500);
+            });
+        });
 
     </script>
 @endsection
