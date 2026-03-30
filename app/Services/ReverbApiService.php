@@ -477,7 +477,8 @@ class ReverbApiService
     }
 
     /**
-     * Update listing description / marketing copy with bullet text (full body, no truncation).
+     * Reverb listing API exposes a single HTML description; bullets are formatted as a list there.
+     * (There is no separate bullet-point attribute in the public listing PUT schema.)
      *
      * @return array{success: bool, message: string, listing_id?: string}
      */

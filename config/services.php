@@ -201,6 +201,14 @@ return [
         'site_id' => env('EBAY_SITE_ID', 0),
         'compat_level' => env('EBAY_COMPAT_LEVEL', '1189'),
         'base_url' => env('EBAY_BASE_URL', 'https://api.ebay.com/'),
+        /** Item Specific names for Bullet Points Master (Trading API ReviseItem). Override per locale/category if needed. */
+        'bullet_aspect_names' => [
+            'Bullet Point 1',
+            'Bullet Point 2',
+            'Bullet Point 3',
+            'Bullet Point 4',
+            'Bullet Point 5',
+        ],
     ],
     'ebay1' => [
         'app_id' => env('EBAY_APP_ID'),
@@ -276,6 +284,8 @@ return [
         'app_key' => env('TEMU_APP_KEY'),
         'secret_key' => env('TEMU_SECRET_KEY'),
         'access_token' => env('TEMU_ACCESS_TOKEN'),
+        /** goodsBasic key for bullet-style copy (not long goodsDesc). Override via TEMU_GOODS_SUMMARY_FIELD if Temu schema differs. */
+        'goods_summary_field' => env('TEMU_GOODS_SUMMARY_FIELD', 'goodsSummary'),
         // API type for updating goods title (per official docs: use partial update for efficiency)
         'goods_update_type' => env('TEMU_GOODS_UPDATE_TYPE', 'bg.local.goods.partial.update'),
         // SKU list field for title update. Official docs use skuList (https://partner-eu.temu.com/documentation)

@@ -281,8 +281,6 @@ class MacysApiService
             }
 
             $attributes = [
-                'longDescription' => $bulletPoints,
-                'productDescription' => $bulletPoints,
                 'bulletPoints' => $bulletPoints,
             ];
 
