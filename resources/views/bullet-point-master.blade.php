@@ -542,35 +542,54 @@ document.addEventListener('DOMContentLoaded', () => {
         return Array.from(document.querySelectorAll('.edit-ai-bullet')).map(t => t.value.trim()).filter(Boolean);
     }
 
-    function buildCombinedBulletText(bullets) {
-        return bullets.join('\n');
+    /** Five slots in order (empty strings allowed) — use for per-bullet validation. */
+    function getBulletLinesFromModal() {
+        return Array.from(document.querySelectorAll('.edit-ai-bullet')).map(t => t.value.trim());
     }
 
-    /** Client-side check against LIMITS before save/push (server also validates). */
-    function validateCombinedForMarketplace(mp, combined) {
+    /** Newline-separated payload; preserves empty slots so bullet N in the UI matches line N after split. */
+    function bulletLinesToPayload(lines) {
+        return lines.join('\n');
+    }
+
+    /** Client-side: each non-empty bullet must be <= LIMITS[mp] (server validates the same way). */
+    function validateBulletsForMarketplace(mp, lines) {
         const limit = LIMITS[mp];
-        if (limit != null && combined.length > limit) {
-            return `${LABELS[mp] || mp} allows ${limit} characters; combined text is ${combined.length}.`;
+        if (limit == null) return null;
+        const label = LABELS[mp] || mp;
+        const failures = [];
+        lines.forEach((line, i) => {
+            if (!line) return;
+            if (line.length > limit) {
+                failures.push(`Bullet ${i + 1} is ${line.length} characters (max ${limit} per bullet).`);
+            }
+        });
+        if (!failures.length) return null;
+        return `${label}: ${failures.join(' ')}`;
+    }
+
+    function getBulletLinesForPush(sku, row) {
+        const fromModal = getBulletLinesFromModal();
+        if (fromModal.some(l => l.length)) {
+            return fromModal;
         }
-        return null;
+        return splitBulletsForModal((row.default_bullets || '').trim() !== '' ? row.default_bullets : [row.bullet1, row.bullet2, row.bullet3, row.bullet4, row.bullet5].filter(Boolean).join('\n')).map(s => s.trim());
     }
 
     function pushSingleMarketplace(sku, mp) {
         const row = bySku.get(String(sku));
         if (!row) return;
-        let bullets = getFiveBulletsFromModal();
-        if (!bullets.length) {
-            bullets = splitBulletsForModal((row.default_bullets || '').trim() !== '' ? row.default_bullets : [row.bullet1, row.bullet2, row.bullet3, row.bullet4, row.bullet5].filter(Boolean).join('\n')).map(s => s.trim()).filter(Boolean);
-        }
+        const lines = getBulletLinesForPush(sku, row);
+        const bullets = lines.filter(Boolean);
         if (!bullets.length) {
             preselectedMarketplace = mp;
             openEditModal(sku);
             toast('Add bullet points in the modal, then click the marketplace again to push.', false);
             return;
         }
-        const combined = buildCombinedBulletText(bullets);
-        const limitErr = validateCombinedForMarketplace(mp, combined);
+        const limitErr = validateBulletsForMarketplace(mp, lines);
         if (limitErr) { toast(limitErr, false); return; }
+        const combined = bulletLinesToPayload(lines);
         const payload = { sku, updates: [{ marketplace: mp, bullet_points: combined }] };
         fetch('/bullet-point-master/update', {
             method: 'POST',
@@ -663,13 +682,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
     document.getElementById('saveModalBtn').addEventListener('click', function() {
         const sku = document.getElementById('modalSku').value;
-        const aiBullets = getFiveBulletsFromModal();
+        const lines = getBulletLinesFromModal();
+        const aiBullets = lines.filter(Boolean);
         if (!aiBullets.length) { toast('Add at least one bullet point before saving.', false); return; }
 
-        const combined = buildCombinedBulletText(aiBullets);
+        const combined = bulletLinesToPayload(lines);
         const selected = Array.from(document.querySelectorAll('.modal-mp-check:checked')).map(chk => chk.dataset.mp);
         for (const mp of selected) {
-            const limitErr = validateCombinedForMarketplace(mp, combined);
+            const limitErr = validateBulletsForMarketplace(mp, lines);
             if (limitErr) { toast(limitErr, false); return; }
         }
         const updates = selected.map(mp => ({ marketplace: mp, bullet_points: combined }));

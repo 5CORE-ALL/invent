@@ -107,11 +107,11 @@ class BulletPointMasterController extends Controller
                     continue;
                 }
 
-                $limit = $this->getBulletPointLimit($marketplace);
-                if (mb_strlen($text) > $limit) {
+                $validationError = $this->validateBulletLinesPerMarketplace($marketplace, $text);
+                if ($validationError !== null) {
                     $results[$marketplace] = [
                         'success' => false,
-                        'message' => "Bullet points exceed {$limit} character limit for this marketplace",
+                        'message' => $validationError,
                     ];
                     continue;
                 }
@@ -283,6 +283,29 @@ class BulletPointMasterController extends Controller
             'shopify_main', 'shopify_pls' => 100,
             default => 150,
         };
+    }
+
+    /**
+     * Each non-empty line is one marketplace bullet; limits apply per line (not to the whole payload).
+     */
+    private function validateBulletLinesPerMarketplace(string $marketplace, string $text): ?string
+    {
+        $limit = $this->getBulletPointLimit($marketplace);
+        $lines = preg_split('/\r\n|\r|\n/', $text);
+        $failures = [];
+        foreach ($lines as $idx => $line) {
+            $line = trim($line);
+            if ($line === '') {
+                continue;
+            }
+            $slot = $idx + 1;
+            $len = mb_strlen($line);
+            if ($len > $limit) {
+                $failures[] = "Bullet {$slot} is {$len} characters (max {$limit} per bullet).";
+            }
+        }
+
+        return $failures === [] ? null : implode(' ', $failures);
     }
 
     private function marketplaceTableMap(): array
