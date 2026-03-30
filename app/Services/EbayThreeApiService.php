@@ -1181,7 +1181,7 @@ class EbayThreeApiService
     }
 
     /**
-     * Bullet Point 1–5 via Item Specifics (not listing description HTML).
+     * Push bullet points to eBay listing Description as HTML list.
      *
      * @return array{success: bool, message: string}
      */
@@ -1197,18 +1197,15 @@ class EbayThreeApiService
             return ['success' => false, 'message' => 'Product not found in ebay_3_metrics (try SKU or eBay item_id).'];
         }
 
-        $getItem = $this->getItem((string) $itemId);
-        if (! $getItem) {
-            return ['success' => false, 'message' => 'Could not load eBay listing (GetItem failed).'];
-        }
-
         try {
             $token = $this->generateBearerToken();
         } catch (\Throwable $e) {
             return ['success' => false, 'message' => $e->getMessage()];
         }
 
-        return EbayTradingReviseItem::reviseBulletPointsViaItemSpecifics(
+        $html = EbayTradingReviseItem::bulletsToDescriptionHtml($bulletPoints);
+
+        return EbayTradingReviseItem::reviseItemDescription(
             $this->endpoint,
             $this->compatLevel,
             $this->devId,
@@ -1216,8 +1213,8 @@ class EbayThreeApiService
             $this->certId,
             $this->siteId,
             $token,
-            $getItem,
-            $bulletPoints,
+            (string) $itemId,
+            $html
         );
     }
 

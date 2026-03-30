@@ -479,7 +479,7 @@ final class EbayTradingReviseItem
     public static function bulletsToDescriptionHtml(string $bulletPoints): string
     {
         $lines = preg_split('/\r\n|\r|\n/', trim($bulletPoints));
-        $html = '<div class="bp-master-bullets"><ul>';
+        $html = '<ul>';
         foreach ($lines as $line) {
             $line = trim($line);
             if ($line === '') {
@@ -488,7 +488,7 @@ final class EbayTradingReviseItem
             $line = preg_replace('/^[-*•\d.\)\s]+/u', '', $line);
             $html .= '<li>'.htmlspecialchars($line, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8').'</li>';
         }
-        $html .= '</ul></div>';
+        $html .= '</ul>';
 
         return $html;
     }
