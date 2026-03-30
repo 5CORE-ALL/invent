@@ -633,6 +633,11 @@ class CategoryController extends Controller
                 'tt_ship' => 'nullable|numeric',
                 'temu_ship' => 'nullable|numeric',
                 'ebay2_ship' => 'nullable|numeric',
+                'gofo' => 'nullable|numeric',
+                'fedex' => 'nullable|numeric',
+                'ups' => 'nullable|numeric',
+                'usps' => 'nullable|numeric',
+                'uni' => 'nullable|numeric',
                 'fba_ship_calculation' => 'nullable|numeric',
                 'fba_manual_ship' => 'nullable|numeric',
             ]);
@@ -717,7 +722,7 @@ class CategoryController extends Controller
                 $values['ctn_weight_lb'] = $validated['ctn_weight_lb'];
             }
 
-            foreach (['ship', 'tt_ship', 'temu_ship', 'ebay2_ship'] as $shipField) {
+            foreach (['ship', 'tt_ship', 'temu_ship', 'ebay2_ship', 'gofo', 'fedex', 'ups', 'usps', 'uni'] as $shipField) {
                 if (array_key_exists($shipField, $validated)) {
                     $v = $validated[$shipField];
                     $values[$shipField] = ($v !== null && $v !== '') ? (float) $v : null;

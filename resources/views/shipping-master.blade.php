@@ -633,6 +633,51 @@
                                             <option value="zero">0</option>
                                         </select>
                                     </th>
+                                    <th class="th-has-filter shipping-rate-header" data-pm-ship-col="gofo">
+                                        <div class="th-vertical-label">GOFO</div>
+                                        <select id="filterGofoCol" class="form-control form-control-sm mt-1" style="font-size: 9px; padding: 2px 4px; max-width: 100%;" title="Filter GOFO">
+                                            <option value="all">All</option>
+                                            <option value="missing">Missing</option>
+                                            <option value="dash">− / —</option>
+                                            <option value="zero">0</option>
+                                        </select>
+                                    </th>
+                                    <th class="th-has-filter shipping-rate-header" data-pm-ship-col="fedex">
+                                        <div class="th-vertical-label">Fedex</div>
+                                        <select id="filterFedexCol" class="form-control form-control-sm mt-1" style="font-size: 9px; padding: 2px 4px; max-width: 100%;" title="Filter Fedex">
+                                            <option value="all">All</option>
+                                            <option value="missing">Missing</option>
+                                            <option value="dash">− / —</option>
+                                            <option value="zero">0</option>
+                                        </select>
+                                    </th>
+                                    <th class="th-has-filter shipping-rate-header" data-pm-ship-col="ups">
+                                        <div class="th-vertical-label">UPS</div>
+                                        <select id="filterUpsCol" class="form-control form-control-sm mt-1" style="font-size: 9px; padding: 2px 4px; max-width: 100%;" title="Filter UPS">
+                                            <option value="all">All</option>
+                                            <option value="missing">Missing</option>
+                                            <option value="dash">− / —</option>
+                                            <option value="zero">0</option>
+                                        </select>
+                                    </th>
+                                    <th class="th-has-filter shipping-rate-header" data-pm-ship-col="usps">
+                                        <div class="th-vertical-label">USPS</div>
+                                        <select id="filterUspsCol" class="form-control form-control-sm mt-1" style="font-size: 9px; padding: 2px 4px; max-width: 100%;" title="Filter USPS">
+                                            <option value="all">All</option>
+                                            <option value="missing">Missing</option>
+                                            <option value="dash">− / —</option>
+                                            <option value="zero">0</option>
+                                        </select>
+                                    </th>
+                                    <th class="th-has-filter shipping-rate-header" data-pm-ship-col="uni">
+                                        <div class="th-vertical-label">UNI</div>
+                                        <select id="filterUniCol" class="form-control form-control-sm mt-1" style="font-size: 9px; padding: 2px 4px; max-width: 100%;" title="Filter UNI">
+                                            <option value="all">All</option>
+                                            <option value="missing">Missing</option>
+                                            <option value="dash">− / —</option>
+                                            <option value="zero">0</option>
+                                        </select>
+                                    </th>
                                     <th class="th-has-filter th-parent-sku-col shipping-rate-header">
                                         <div class="th-horizontal-label" style="font-size: 9px;">FBA SKU</div>
                                         <input type="text" id="fbaSkuSearch" class="form-control-sm header-search-120"
@@ -853,6 +898,28 @@
                             <div class="col-md-3">
                                 <label for="editEbay2Ship" class="form-label fw-bold">Ebay2 ship</label>
                                 <input type="number" step="0.01" class="form-control fw-bold" id="editEbay2Ship" name="ebay2_ship" placeholder="Ebay2 ship">
+                            </div>
+                        </div>
+                        <div class="row mb-3">
+                            <div class="col-md-3">
+                                <label for="editGofo" class="form-label fw-bold">GOFO</label>
+                                <input type="number" step="0.01" class="form-control fw-bold" id="editGofo" name="gofo" placeholder="GOFO">
+                            </div>
+                            <div class="col-md-3">
+                                <label for="editFedex" class="form-label fw-bold">Fedex</label>
+                                <input type="number" step="0.01" class="form-control fw-bold" id="editFedex" name="fedex" placeholder="Fedex">
+                            </div>
+                            <div class="col-md-3">
+                                <label for="editUps" class="form-label fw-bold">UPS</label>
+                                <input type="number" step="0.01" class="form-control fw-bold" id="editUps" name="ups" placeholder="UPS">
+                            </div>
+                            <div class="col-md-3">
+                                <label for="editUsps" class="form-label fw-bold">USPS</label>
+                                <input type="number" step="0.01" class="form-control fw-bold" id="editUsps" name="usps" placeholder="USPS">
+                            </div>
+                            <div class="col-md-3">
+                                <label for="editUni" class="form-label fw-bold">UNI</label>
+                                <input type="number" step="0.01" class="form-control fw-bold" id="editUni" name="uni" placeholder="UNI">
                             </div>
                         </div>
 
@@ -1205,6 +1272,26 @@
                     const ebay2ShipCell = document.createElement('td');
                     setShippingNumericCell(ebay2ShipCell, item.ebay2_ship, isParentRow);
                     row.appendChild(ebay2ShipCell);
+
+                    const gofoCell = document.createElement('td');
+                    setShippingNumericCell(gofoCell, item.gofo, isParentRow);
+                    row.appendChild(gofoCell);
+
+                    const fedexCell = document.createElement('td');
+                    setShippingNumericCell(fedexCell, item.fedex, isParentRow);
+                    row.appendChild(fedexCell);
+
+                    const upsCell = document.createElement('td');
+                    setShippingNumericCell(upsCell, item.ups, isParentRow);
+                    row.appendChild(upsCell);
+
+                    const uspsCell = document.createElement('td');
+                    setShippingNumericCell(uspsCell, item.usps, isParentRow);
+                    row.appendChild(uspsCell);
+
+                    const uniCell = document.createElement('td');
+                    setShippingNumericCell(uniCell, item.uni, isParentRow);
+                    row.appendChild(uniCell);
 
                     const fbaSkuCell = document.createElement('td');
                     fbaSkuCell.className = 'td-sku-col shipping-rate-cell';
@@ -1701,6 +1788,11 @@
                 const filterTtShipCol = document.getElementById('filterTtShipCol')?.value || 'all';
                 const filterTemuShipCol = document.getElementById('filterTemuShipCol')?.value || 'all';
                 const filterEbay2ShipCol = document.getElementById('filterEbay2ShipCol')?.value || 'all';
+                const filterGofoCol = document.getElementById('filterGofoCol')?.value || 'all';
+                const filterFedexCol = document.getElementById('filterFedexCol')?.value || 'all';
+                const filterUpsCol = document.getElementById('filterUpsCol')?.value || 'all';
+                const filterUspsCol = document.getElementById('filterUspsCol')?.value || 'all';
+                const filterUniCol = document.getElementById('filterUniCol')?.value || 'all';
                 const hasMissingDataFilter = filterStatusValue === 'missing' || filterWtActKg === 'missing' || filterWtAct === 'missing' || filterWtAct === 'lb_0' || filterWtDecl === 'missing' ||
                                             filterL === 'missing' || filterW === 'missing' ||
                                             filterH === 'missing';
@@ -1766,6 +1858,11 @@
                     if (!matchesMarketplaceShipColFilter(item, 'tt_ship', filterTtShipCol)) return false;
                     if (!matchesMarketplaceShipColFilter(item, 'temu_ship', filterTemuShipCol)) return false;
                     if (!matchesMarketplaceShipColFilter(item, 'ebay2_ship', filterEbay2ShipCol)) return false;
+                    if (!matchesMarketplaceShipColFilter(item, 'gofo', filterGofoCol)) return false;
+                    if (!matchesMarketplaceShipColFilter(item, 'fedex', filterFedexCol)) return false;
+                    if (!matchesMarketplaceShipColFilter(item, 'ups', filterUpsCol)) return false;
+                    if (!matchesMarketplaceShipColFilter(item, 'usps', filterUspsCol)) return false;
+                    if (!matchesMarketplaceShipColFilter(item, 'uni', filterUniCol)) return false;
 
                     return true;
                 });
@@ -1798,7 +1895,7 @@
                     const el = document.getElementById(id);
                     if (el) el.addEventListener('change', applyFilters);
                 });
-                ['filterShipCol', 'filterTtShipCol', 'filterTemuShipCol', 'filterEbay2ShipCol'].forEach(id => {
+                ['filterShipCol', 'filterTtShipCol', 'filterTemuShipCol', 'filterEbay2ShipCol', 'filterGofoCol', 'filterFedexCol', 'filterUpsCol', 'filterUspsCol', 'filterUniCol'].forEach(id => {
                     const el = document.getElementById(id);
                     if (el) el.addEventListener('change', applyFilters);
                 });
@@ -1848,7 +1945,7 @@
             function setupExcelExport() {
                 document.getElementById('downloadExcel').addEventListener('click', function() {
                     // Columns to export (excluding Image, Action, and Parent)
-                    const columns = ["SKU", "Status", "INV", "Ship", "TT 1 Ship", "Temu ship", "Ebay2 ship", "FBA SKU", "FBA ship", "FBA manual ship", "Weight ACT (Kg)", "WT ACT (LB)", "WT DECL (LB)", "Length (inch)", "Width (inch)", "Height (Inch)", "Length (CM)", "Width (CM)", "Height (CM)", "CTN L (CM)", "CTN W (CM)", "CTN H (CM)", "CTN (CBM)", "CTN (QTY)", "CTN (CBM/Each)"];
+                    const columns = ["SKU", "Status", "INV", "Ship", "TT 1 Ship", "Temu ship", "Ebay2 ship", "GOFO", "Fedex", "UPS", "USPS", "UNI", "FBA SKU", "FBA ship", "FBA manual ship", "Weight ACT (Kg)", "WT ACT (LB)", "WT DECL (LB)", "Length (inch)", "Width (inch)", "Height (Inch)", "Length (CM)", "Width (CM)", "Height (CM)", "CTN L (CM)", "CTN W (CM)", "CTN H (CM)", "CTN (CBM)", "CTN (QTY)", "CTN (CBM/Each)"];
 
                     // Column definitions with their data keys
                     const columnDefs = {
@@ -1872,6 +1969,21 @@
                         },
                         "Ebay2 ship": {
                             key: "ebay2_ship"
+                        },
+                        "GOFO": {
+                            key: "gofo"
+                        },
+                        "Fedex": {
+                            key: "fedex"
+                        },
+                        "UPS": {
+                            key: "ups"
+                        },
+                        "USPS": {
+                            key: "usps"
+                        },
+                        "UNI": {
+                            key: "uni"
                         },
                         "FBA SKU": {
                             key: "fba_sku"
@@ -1987,7 +2099,7 @@
                                             value = value === '' || value === null || value === undefined ? '' : parseFloat((parseFloat(value) || 0).toFixed(2));
                                         }
                                         // Format numeric columns (WT ACT KG, L, W, H, CBM, CTN fields, etc.)
-                                        else if (["wt_act_kg", "l", "w", "h", "l_cm", "w_cm", "h_cm", "ctn_l", "ctn_w", "ctn_h", "ctn_cbm", "ctn_qty", "ctn_cbm_each", "ship", "tt_ship", "temu_ship", "ebay2_ship", "fba_ship", "fba_manual_ship"].includes(key)) {
+                                        else if (["wt_act_kg", "l", "w", "h", "l_cm", "w_cm", "h_cm", "ctn_l", "ctn_w", "ctn_h", "ctn_cbm", "ctn_qty", "ctn_cbm_each", "ship", "tt_ship", "temu_ship", "ebay2_ship", "gofo", "fedex", "ups", "usps", "uni", "fba_ship", "fba_manual_ship"].includes(key)) {
                                             value = value === '' || value === null || value === undefined ? '' : (parseFloat(value) || 0);
                                         }
 
@@ -2010,7 +2122,7 @@
                                     return { wch: 20 }; // Wider for text columns
                                 } else if (["Status"].includes(col)) {
                                     return { wch: 12 };
-                                } else if (["FBA SKU", "Weight ACT (Kg)", "WT ACT (LB)", "WT DECL (LB)", "Length (inch)", "Width (inch)", "Height (Inch)", "Length (CM)", "Width (CM)", "Height (CM)", "CTN (CBM)", "CTN (CBM/Each)", "Ship", "TT 1 Ship", "Temu ship", "Ebay2 ship", "FBA ship", "FBA manual ship"].includes(col)) {
+                                } else if (["FBA SKU", "Weight ACT (Kg)", "WT ACT (LB)", "WT DECL (LB)", "Length (inch)", "Width (inch)", "Height (Inch)", "Length (CM)", "Width (CM)", "Height (CM)", "CTN (CBM)", "CTN (CBM/Each)", "Ship", "TT 1 Ship", "Temu ship", "Ebay2 ship", "GOFO", "Fedex", "UPS", "USPS", "UNI", "FBA ship", "FBA manual ship"].includes(col)) {
                                     return { wch: 15 }; // Width for weight and CBM columns
                                 } else {
                                     return { wch: 12 }; // Default width for numeric columns
@@ -2102,10 +2214,10 @@
                 downloadSampleBtn.addEventListener('click', function() {
                     // Create sample data with all columns
                     const sampleData = [
-                        ['SKU', 'Ship', 'TT 1 Ship', 'Temu ship', 'Ebay2 ship', 'Weight ACT (Kg)', 'WT ACT (LB)', 'WT DECL (LB)', 'Length (inch)', 'Width (inch)', 'Height (Inch)', 'Length (CM)', 'Width (CM)', 'Height (CM)', 'CTN L (CM)', 'CTN W (CM)', 'CTN H (CM)', 'CTN (CBM)', 'CTN (QTY)', 'CTN (CBM/Each)'],
-                        ['SKU001', '3.25', '2.95', '3.15', '3.45', '6.2', '1.5', '1.2', '10.5', '8.3', '5.2', '26.67', '21.08', '13.21', '30', '25', '20', '0.015', '12', '0.00125'],
-                        ['SKU002', '4.10', '3.80', '4.00', '4.25', '9.1', '2.0', '1.8', '12.0', '9.0', '6.0', '30.48', '22.86', '15.24', '35', '28', '22', '0.0216', '15', '0.00144'],
-                        ['SKU003', '2.80', '2.60', '2.70', '2.95', '5.4', '1.2', '1.0', '9.5', '7.5', '4.5', '24.13', '19.05', '11.43', '28', '24', '18', '0.0121', '10', '0.00121']
+                        ['SKU', 'Ship', 'TT 1 Ship', 'Temu ship', 'Ebay2 ship', 'GOFO', 'Fedex', 'UPS', 'USPS', 'UNI', 'Weight ACT (Kg)', 'WT ACT (LB)', 'WT DECL (LB)', 'Length (inch)', 'Width (inch)', 'Height (Inch)', 'Length (CM)', 'Width (CM)', 'Height (CM)', 'CTN L (CM)', 'CTN W (CM)', 'CTN H (CM)', 'CTN (CBM)', 'CTN (QTY)', 'CTN (CBM/Each)'],
+                        ['SKU001', '3.25', '2.95', '3.15', '3.45', '1.50', '4.20', '3.90', '2.80', '3.10', '6.2', '1.5', '1.2', '10.5', '8.3', '5.2', '26.67', '21.08', '13.21', '30', '25', '20', '0.015', '12', '0.00125'],
+                        ['SKU002', '4.10', '3.80', '4.00', '4.25', '2.00', '5.10', '4.75', '3.50', '4.00', '9.1', '2.0', '1.8', '12.0', '9.0', '6.0', '30.48', '22.86', '15.24', '35', '28', '22', '0.0216', '15', '0.00144'],
+                        ['SKU003', '2.80', '2.60', '2.70', '2.95', '1.20', '3.50', '3.20', '2.40', '2.70', '5.4', '1.2', '1.0', '9.5', '7.5', '4.5', '24.13', '19.05', '11.43', '28', '24', '18', '0.0121', '10', '0.00121']
                     ];
 
                     // Create workbook
@@ -2119,6 +2231,11 @@
                         { wch: 12 }, // TT 1 Ship
                         { wch: 12 }, // Temu ship
                         { wch: 12 }, // Ebay2 ship
+                        { wch: 10 }, // GOFO
+                        { wch: 10 }, // Fedex
+                        { wch: 10 }, // UPS
+                        { wch: 10 }, // USPS
+                        { wch: 10 }, // UNI
                         { wch: 16 }, // Weight ACT (Kg)
                         { wch: 14 }, // WT ACT (LB)
                         { wch: 14 }, // WT DECL (LB)
@@ -2551,6 +2668,11 @@
                 document.getElementById('editTtShip').value = shipNum(product.tt_ship);
                 document.getElementById('editTemuShip').value = shipNum(product.temu_ship);
                 document.getElementById('editEbay2Ship').value = shipNum(product.ebay2_ship);
+                document.getElementById('editGofo').value = shipNum(product.gofo);
+                document.getElementById('editFedex').value = shipNum(product.fedex);
+                document.getElementById('editUps').value = shipNum(product.ups);
+                document.getElementById('editUsps').value = shipNum(product.usps);
+                document.getElementById('editUni').value = shipNum(product.uni);
                 document.getElementById('editFbaShip').value = shipNum(product.fba_ship);
                 document.getElementById('editFbaManualShip').value = shipNum(product.fba_manual_ship);
                 
@@ -2615,6 +2737,11 @@
                     addNumericIfPresent('editTtShip', 'tt_ship');
                     addNumericIfPresent('editTemuShip', 'temu_ship');
                     addNumericIfPresent('editEbay2Ship', 'ebay2_ship');
+                    addNumericIfPresent('editGofo', 'gofo');
+                    addNumericIfPresent('editFedex', 'fedex');
+                    addNumericIfPresent('editUps', 'ups');
+                    addNumericIfPresent('editUsps', 'usps');
+                    addNumericIfPresent('editUni', 'uni');
 
                     const fbaShipStr = document.getElementById('editFbaShip').value.trim();
                     const fbaManualStr = document.getElementById('editFbaManualShip').value.trim();
