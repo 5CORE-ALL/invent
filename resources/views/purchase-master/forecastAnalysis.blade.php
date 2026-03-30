@@ -632,6 +632,27 @@
                                 </li>
                             </ul>
                         </div>
+                        <div class="dropdown">
+                            <button class="btn btn-sm btn-secondary dropdown-toggle" type="button" id="bulkEditPmtTermsBtn" data-bs-toggle="dropdown" aria-expanded="false">
+                                Pmt Terms
+                            </button>
+                            <ul class="dropdown-menu" aria-labelledby="bulkEditPmtTermsBtn">
+                                <li class="px-3 py-2">
+                                    <select id="bulk-pmt-terms-select" class="form-select form-select-sm" style="min-width: 140px;">
+                                        <option value="">Select…</option>
+                                        <option value="BL">🔴 BL</option>
+                                        <option value="AL">🟡 AL</option>
+                                        <option value="BRBL">🟢 BRBL</option>
+                                    </select>
+                                </li>
+                                <li><hr class="dropdown-divider"></li>
+                                <li>
+                                    <button class="dropdown-item" type="button" id="bulk-apply-pmt-terms">
+                                        <i class="fas fa-check me-1"></i> Apply
+                                    </button>
+                                </li>
+                            </ul>
+                        </div>
                     </div>
                     <div id="forecast-table-wrap" class="flex-grow-1" style="min-height: 0;">
                         <div id="forecast-table"></div>
@@ -2383,23 +2404,73 @@
                     }
                 },
                 {
-                    title: "Terms",
+                    title: "Pmt Terms",
                     field: "r2s_pay_term",
                     hozAlign: "center",
+                    headerSort: true,
+                    editor: "list",
+                    editorParams: {
+                        values: ["BL", "AL", "BRBL"],
+                        defaultValue: "BL",
+                        verticalNavigation: "editor",
+                    },
+                    editable: function(cell) {
+                        const d = cell.getRow().getData();
+                        return !(d.is_parent || d.isParent);
+                    },
+                    cellClick: function(e, cell) {
+                        const d = cell.getRow().getData();
+                        if (d.is_parent || d.isParent) return;
+                        cell.edit();
+                    },
+                    cellEditing: function(cell) {
+                        cell._pmtTermsPrev = cell.getValue();
+                    },
+                    cellEdited: function(cell) {
+                        const row = cell.getRow();
+                        const d = row.getData();
+                        if (d.is_parent || d.isParent) return;
+                        const next = String(cell.getValue() || '').trim().toUpperCase();
+                        const prev = cell._pmtTermsPrev || '';
+                        delete cell._pmtTermsPrev;
+                        if (next === prev) return;
+                        const sku = String(d.SKU || '').trim();
+                        if (!sku) return;
+                        const token = document.querySelector('meta[name="csrf-token"]')?.content || '';
+                        fetch('/ready-to-ship/inline-update-by-sku', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-CSRF-TOKEN': token,
+                                'X-Requested-With': 'XMLHttpRequest',
+                                'Accept': 'application/json'
+                            },
+                            body: JSON.stringify({ sku: sku, column: 'pay_term', value: next })
+                        })
+                        .then(r => r.json())
+                        .then(res => {
+                            if (!res || !res.success) {
+                                cell.setValue(prev, true);
+                                alert(res?.message || 'Failed to update Pmt Terms');
+                            } else {
+                                row.update({ r2s_pay_term: next }, true);
+                            }
+                        })
+                        .catch(() => {
+                            cell.setValue(prev, true);
+                            alert('Failed to update Pmt Terms');
+                        });
+                    },
                     formatter: function(cell) {
                         const d = cell.getRow().getData() || {};
                         if (d.is_parent || d.isParent) return '<span style="display:block;text-align:center;color:#6c757d;">-</span>';
-                        if (!d.r2s_has_record) return '<span style="display:block;text-align:center;color:#6c757d;">-</span>';
-                        const value = String(cell.getValue() || '').trim().toUpperCase() || 'EXW';
-                        const sku = String(d.SKU || '').replace(/"/g, '&quot;');
-                        const isExw = value === 'EXW';
-                        const isFob = value === 'FOB';
-                        return `<select class="form-select form-select-sm forecast-r2s-payterm-select"
-                            data-sku="${sku}" data-column="pay_term" data-prev="${value}"
-                            style="min-width:90px; font-size:13px;">
-                            <option value="EXW" ${isExw ? 'selected' : ''}>EXW</option>
-                            <option value="FOB" ${isFob ? 'selected' : ''}>FOB</option>
-                        </select>`;
+                        const value = String(cell.getValue() || 'BL').trim().toUpperCase();
+                        const colorMap = { BRBL: '#28a745', AL: '#ffc107', BL: '#dc3545' };
+                        const color = colorMap[value] || '#6c757d';
+                        return `<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;cursor:pointer;" title="Click to edit">
+                            <span style="display:inline-block;width:10px;height:10px;border-radius:50%;flex-shrink:0;background:${color};"></span>
+                            <span style="font-size:0.75rem;font-weight:700;">${value}</span>
+                        </span>`;
                     }
                 },
                 {
@@ -2926,7 +2997,33 @@
                 badge.classList.remove('d-flex');
             }
         }
-        table.on("rowSelectionChanged", updateBulkEditBadge);
+        table.on("rowSelectionChanged", function() {
+            const scrollEl = table.rowManager?.element;
+            const savedTop  = scrollEl?.scrollTop  || 0;
+            const savedLeft = scrollEl?.scrollLeft || 0;
+            const savedPage = (table.getPage && table.getPage() > 0) ? table.getPage() : null;
+
+            updateBulkEditBadge();
+
+            requestAnimationFrame(function() {
+                const restoreScroll = function() {
+                    if (scrollEl) {
+                        scrollEl.scrollTop  = savedTop;
+                        scrollEl.scrollLeft = savedLeft;
+                    }
+                };
+                if (savedPage && table.getPage && table.getPage() !== savedPage) {
+                    const p = table.setPage(savedPage);
+                    if (p && typeof p.then === 'function') {
+                        p.then(restoreScroll);
+                    } else {
+                        restoreScroll();
+                    }
+                } else {
+                    restoreScroll();
+                }
+            });
+        });
         table.on("dataLoaded", function() { updateTopRowCounter(); });
         table.on("dataFiltered", function() { updateTopRowCounter(); });
         table.on("pageLoaded", function() { updateTopRowCounter(); });
@@ -3057,6 +3154,47 @@
             const v = document.getElementById('bulk-cp-input')?.value?.trim() || '';
             if (!v || isNaN(parseFloat(v))) { alert('Please enter a valid CP.'); return; }
             bulkApplyForecastField('CP', function() { return v; }, 'bulk-apply-cp', 'bulk-cp-input', 'bulkEditCpBtn');
+        });
+
+        document.getElementById('bulk-apply-pmt-terms')?.addEventListener('click', function(e) {
+            e.preventDefault();
+            const val = (document.getElementById('bulk-pmt-terms-select')?.value || '').trim().toUpperCase();
+            if (!val) { alert('Please select a Pmt Terms value.'); return; }
+            const selected = table.getSelectedRows();
+            const validRows = [];
+            selected.forEach(function(row) {
+                const d = row.getData();
+                const sku = (d.SKU || '').trim();
+                if (sku && !sku.toLowerCase().includes('parent')) validRows.push({ row: row, sku: sku });
+            });
+            if (validRows.length === 0) { alert('No valid SKUs in selection.'); return; }
+            const btn = this;
+            btn.disabled = true;
+            const token = document.querySelector('meta[name="csrf-token"]')?.content || '';
+            const promises = validRows.map(function(item) {
+                return fetch('/ready-to-ship/inline-update-by-sku', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': token,
+                        'X-Requested-With': 'XMLHttpRequest',
+                        'Accept': 'application/json'
+                    },
+                    body: JSON.stringify({ sku: item.sku, column: 'pay_term', value: val })
+                }).then(r => r.json());
+            });
+            Promise.all(promises).then(function() {
+                validRows.forEach(function(item) {
+                    item.row.update({ r2s_pay_term: val }, true);
+                });
+                table.deselectRow();
+                updateBulkEditBadge();
+                btn.disabled = false;
+                const sel = document.getElementById('bulk-pmt-terms-select');
+                if (sel) sel.value = '';
+                const dd = bootstrap.Dropdown.getInstance(document.getElementById('bulkEditPmtTermsBtn'));
+                if (dd) dd.hide();
+            }).catch(function() { btn.disabled = false; });
         });
 
         let currentParentFilter = null;
@@ -4743,51 +4881,6 @@
                 .finally(() => {
                     dot.dataset.busy = '0';
                     dot.style.opacity = '1';
-                });
-            });
-
-            $(document).off('change', '.forecast-r2s-payterm-select').on('change', '.forecast-r2s-payterm-select', function(e) {
-                const el = this;
-                const sku = String(el.getAttribute('data-sku') || '').trim();
-                const next = String(el.value || '').trim().toUpperCase();
-                if (!sku || !next) return;
-                const token = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
-                const prev = el.getAttribute('data-prev') || 'EXW';
-                el.disabled = true;
-
-                fetch('/ready-to-ship/inline-update-by-sku', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRF-TOKEN': token,
-                        'X-Requested-With': 'XMLHttpRequest',
-                        'Accept': 'application/json'
-                    },
-                    body: JSON.stringify({ sku: sku, column: 'pay_term', value: next })
-                })
-                .then(async (r) => {
-                    const text = await r.text();
-                    let data = null;
-                    try { data = JSON.parse(text); } catch (err) {
-                        throw new Error('Server returned non-JSON response');
-                    }
-                    if (!r.ok) {
-                        throw new Error(data && data.message ? data.message : `Request failed (${r.status})`);
-                    }
-                    return data;
-                })
-                .then(res => {
-                    if (!res || !res.success) throw new Error(res && res.message ? res.message : 'Failed to update PMT Confirm');
-                    el.setAttribute('data-prev', next);
-                    const row = table.getRows().find(r => String(r.getData()?.SKU || '').trim() === sku);
-                    if (row) row.update({ r2s_pay_term: next }, true);
-                })
-                .catch(err => {
-                    el.value = prev;
-                    alert(err && err.message ? err.message : 'Failed to update PMT Confirm');
-                })
-                .finally(() => {
-                    el.disabled = false;
                 });
             });
 
