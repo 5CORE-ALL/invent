@@ -374,7 +374,7 @@
             <div class="card shadow-sm">
                 <div class="card-body pb-0 d-flex flex-column">
                     <div class="mb-3 d-flex align-items-center gap-3">
-                        <!-- Play/Pause Controls -->
+                        <!-- Play/Pause Controls (Parent) -->
                         <div class="d-flex align-items-center me-3">
                             <div class="btn-group time-navigation-group" role="group" aria-label="Parent navigation">
                                 <button id="play-backward" class="btn btn-light rounded-circle shadow-sm me-1"
@@ -394,6 +394,29 @@
 
                                 <button id="play-forward" class="btn btn-light rounded-circle shadow-sm"
                                     style="width: 36px; height: 36px; padding: 6px;">
+                                    <i class="fas fa-step-forward"></i>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Play/Pause Controls (Supplier) -->
+                        <div class="d-flex align-items-center me-3 gap-1">
+                            <span class="badge bg-secondary" id="supplier-play-label" style="font-size:0.7rem;display:none;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></span>
+                            <div class="btn-group" role="group" aria-label="Supplier navigation">
+                                <button id="supplier-play-backward" class="btn btn-light rounded-circle shadow-sm me-1"
+                                    style="width:36px;height:36px;padding:6px;" title="Prev supplier">
+                                    <i class="fas fa-step-backward"></i>
+                                </button>
+                                <button id="supplier-play-pause" class="btn btn-warning rounded-circle shadow-sm me-1"
+                                    style="width:36px;height:36px;padding:6px;display:none;" title="Stop supplier filter">
+                                    <i class="fas fa-pause"></i>
+                                </button>
+                                <button id="supplier-play-auto" class="btn btn-outline-warning rounded-circle shadow-sm me-1"
+                                    style="width:36px;height:36px;padding:6px;" title="Play by supplier">
+                                    <i class="fas fa-truck"></i>
+                                </button>
+                                <button id="supplier-play-forward" class="btn btn-light rounded-circle shadow-sm"
+                                    style="width:36px;height:36px;padding:6px;" title="Next supplier">
                                     <i class="fas fa-step-forward"></i>
                                 </button>
                             </div>
@@ -963,35 +986,6 @@
             },
             columns: [
                 {
-                    formatter: "rowSelection",
-                    titleFormatter: function(cell) {
-                        const checkbox = document.createElement("input");
-                        checkbox.type = "checkbox";
-                        checkbox.style.margin = "0";
-                        checkbox.style.cursor = "pointer";
-                        checkbox.addEventListener("click", function(e) {
-                            e.stopPropagation();
-                            const activeRows = cell.getTable().getRows("active").filter(isSelectableForecastRow);
-                            if (checkbox.checked) {
-                                activeRows.forEach(function(row) { row.select(); });
-                            } else {
-                                cell.getTable().deselectRow();
-                            }
-                        });
-                        return checkbox;
-                    },
-                    hozAlign: "center",
-                    headerSort: true,
-                    width: 40,
-                    minWidth: 40,
-                    cellClick: function(e, cell) {
-                        e.stopPropagation();
-                        const row = cell.getRow();
-                        if (!isSelectableForecastRow(row)) return;
-                        row.toggleSelect();
-                    }
-                },
-                {
                     title: "#",
                     field: "Image",
                     headerSort: true,
@@ -1097,6 +1091,36 @@
                             ${copyBtn}
                             ${linkPart}
                         </div>`;
+                    }
+                },
+                {
+                    formatter: "rowSelection",
+                    titleFormatter: function(cell) {
+                        const checkbox = document.createElement("input");
+                        checkbox.type = "checkbox";
+                        checkbox.style.margin = "0";
+                        checkbox.style.cursor = "pointer";
+                        checkbox.addEventListener("click", function(e) {
+                            e.stopPropagation();
+                            const activeRows = cell.getTable().getRows("active").filter(isSelectableForecastRow);
+                            if (checkbox.checked) {
+                                activeRows.forEach(function(row) { row.select(); });
+                            } else {
+                                cell.getTable().deselectRow();
+                            }
+                        });
+                        return checkbox;
+                    },
+                    hozAlign: "center",
+                    headerSort: false,
+                    width: 40,
+                    minWidth: 40,
+                    movable: false,
+                    cellClick: function(e, cell) {
+                        e.stopPropagation();
+                        const row = cell.getRow();
+                        if (!isSelectableForecastRow(row)) return;
+                        row.toggleSelect();
                     }
                 },
                 
@@ -1903,7 +1927,7 @@
                 {
                     title: "Supplier",
                     field: "mfrg_supplier",
-                    accessor: row => row["mfrg_supplier"] ?? '',
+                    accessor: function(value) { return value ?? ''; },
                     minWidth: 68,
                     width: 76,
                     maxWidth: 92,
@@ -2098,8 +2122,11 @@
                     field: "date_apprvl",
                     width: 72,
                     minWidth: 68,
-                    sorter: "date",
-                    sorterParams: { format: "YYYY-MM-DD", alignEmptyValues: "bottom" },
+                    headerSort: true,
+                    sorter: function(a, b, aRow, bRow, col, dir) {
+                        const toMs = v => { const d = v ? new Date(v) : null; return d && !isNaN(d) ? d.getTime() : (dir === 'asc' ? Infinity : -Infinity); };
+                        return toMs(a) - toMs(b);
+                    },
                     formatter: function(cell) {
                         const value = cell.getValue() || "";
                         let displayText = "-";
@@ -2361,11 +2388,79 @@
                     }
                 },
                 {
+                    title: "Zone",
+                    field: "r2s_zone",
+                    hozAlign: "center",
+                    headerSort: true,
+                    editor: "input",
+                    editable: function(cell) {
+                        const d = cell.getRow().getData();
+                        return !(d.is_parent || d.isParent);
+                    },
+                    cellClick: function(e, cell) {
+                        const d = cell.getRow().getData();
+                        if (d.is_parent || d.isParent) return;
+                        cell.edit();
+                    },
+                    cellEditing: function(cell) {
+                        cell._zonePrev = cell.getValue();
+                        setTimeout(function() {
+                            const input = cell.getElement().querySelector('input');
+                            if (input) { input.focus(); input.select(); }
+                        }, 0);
+                    },
+                    cellEdited: function(cell) {
+                        const row = cell.getRow();
+                        const d = row.getData();
+                        if (d.is_parent || d.isParent) return;
+                        const next = String(cell.getValue() || '').trim();
+                        const prev = cell._zonePrev || '';
+                        delete cell._zonePrev;
+                        if (next === prev) return;
+                        const sku = String(d.SKU || '').trim();
+                        if (!sku) return;
+                        const token = document.querySelector('meta[name="csrf-token"]')?.content || '';
+                        fetch('/ready-to-ship/inline-update-by-sku', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-CSRF-TOKEN': token,
+                                'X-Requested-With': 'XMLHttpRequest',
+                                'Accept': 'application/json'
+                            },
+                            body: JSON.stringify({ sku: sku, column: 'area', value: next })
+                        })
+                        .then(r => r.json())
+                        .then(res => {
+                            if (!res || !res.success) {
+                                cell.setValue(prev, true);
+                                alert(res?.message || 'Failed to update Zone');
+                            } else {
+                                row.update({ r2s_zone: next }, true);
+                            }
+                        })
+                        .catch(() => {
+                            cell.setValue(prev, true);
+                            alert('Failed to update Zone');
+                        });
+                    },
+                    formatter: function(cell) {
+                        const d = cell.getRow().getData() || {};
+                        if (d.is_parent || d.isParent) return '<span style="display:block;text-align:center;color:#6c757d;">-</span>';
+                        const v = String(cell.getValue() || '').trim();
+                        if (!v) return '<span style="display:block;text-align:center;color:#6c757d;cursor:text;">-</span>';
+                        return `<span style="display:block;text-align:center;font-weight:600;cursor:text;" title="${v}">${v}</span>`;
+                    }
+                },
+                {
                     title: "Order Date",
                     field: "mfrg_order_date",
                     hozAlign: "center",
-                    sorter: "date",
-                    sorterParams: { format: "YYYY-MM-DD HH:mm:ss", alignEmptyValues: "bottom" },
+                    headerSort: true,
+                    sorter: function(a, b, aRow, bRow, col, dir) {
+                        const toMs = v => { const d = v ? new Date(v) : null; return d && !isNaN(d) ? d.getTime() : (dir === 'asc' ? Infinity : -Infinity); };
+                        return toMs(a) - toMs(b);
+                    },
                     formatter: function(cell) {
                         const drow = cell.getRow().getData() || {};
                         if (drow.is_parent || drow.isParent) {
@@ -3203,6 +3298,7 @@
         let currentSearchSku = '';
         let currentSearchParent = '';
         let currentSearchSupplier = '';
+        let currentSupplierFilter = null;
         let currentTwoOrdColorFilter = '';
         let currentTopQtySignFilters = {
             order: '',
@@ -3747,6 +3843,12 @@
                 if (currentSearchSku      && !String(data.SKU            || '').toLowerCase().includes(currentSearchSku))      return false;
                 if (currentSearchParent   && !String(data.Parent         || '').toLowerCase().includes(currentSearchParent))   return false;
                 if (currentSearchSupplier && !String(data.mfrg_supplier  || '').toLowerCase().includes(currentSearchSupplier)) return false;
+
+                // Supplier play filter
+                if (currentSupplierFilter) {
+                    const rowSupplier = String(data.mfrg_supplier || '').trim();
+                    if (rowSupplier !== currentSupplierFilter) return false;
+                }
                 const isChild = !data.is_parent;
                 const isParent = data.is_parent;
                 const twoOrdRaw = data.to_order ?? (data.raw_data ? data.raw_data.to_order : 0);
@@ -5077,11 +5179,81 @@
 
             document.getElementById('play-pause').addEventListener('click', () => {
                 isPlaying = false;
-                currentParentFilter = null; // Show all data
+                currentParentFilter = null;
+                currentSupplierFilter = null;
                 setCombinedFilters();
                 document.getElementById('play-pause').style.display = 'none';
                 document.getElementById('play-auto').style.display = 'inline-block';
             });
+
+            // ── Supplier play/pause ──────────────────────────────────────
+            let isSupplierPlaying = false;
+            let supplierIndex = 0;
+
+            function getSupplierList() {
+                const tbl = Tabulator.findTable("#forecast-table")[0];
+                if (!tbl) return [];
+                const seen = new Set();
+                const list = [];
+                tbl.getRows().forEach(function(row) {
+                    const d = row.getData();
+                    // Try cell value first (bypasses accessor), then raw data fields
+                    const cell = row.getCell("mfrg_supplier");
+                    const s = String(
+                        (cell ? cell.getValue() : null) ||
+                        d.mfrg_supplier || d['mfrg_supplier'] || ''
+                    ).trim();
+                    if (s && s !== '-' && !seen.has(s)) { seen.add(s); list.push(s); }
+                });
+                return list.sort();
+            }
+
+            function renderSupplierGroup(supplier) {
+                currentSupplierFilter = supplier;
+                setCombinedFilters();
+                const lbl = document.getElementById('supplier-play-label');
+                if (lbl) { lbl.textContent = supplier; lbl.style.display = 'inline-block'; }
+                // Scroll to top of table
+                const tbl = Tabulator.findTable("#forecast-table")[0];
+                if (tbl && tbl.rowManager && tbl.rowManager.element) {
+                    tbl.rowManager.element.scrollTop = 0;
+                }
+            }
+
+            document.getElementById('supplier-play-auto').addEventListener('click', function() {
+                const list = getSupplierList();
+                if (!list.length) { alert('No supplier data available.'); return; }
+                isSupplierPlaying = true;
+                supplierIndex = 0;
+                renderSupplierGroup(list[supplierIndex]);
+                document.getElementById('supplier-play-pause').style.display = 'inline-block';
+                document.getElementById('supplier-play-auto').style.display = 'none';
+            });
+
+            document.getElementById('supplier-play-forward').addEventListener('click', function() {
+                if (!isSupplierPlaying) return;
+                const list = getSupplierList();
+                supplierIndex = (supplierIndex + 1) % list.length;
+                renderSupplierGroup(list[supplierIndex]);
+            });
+
+            document.getElementById('supplier-play-backward').addEventListener('click', function() {
+                if (!isSupplierPlaying) return;
+                const list = getSupplierList();
+                supplierIndex = (supplierIndex - 1 + list.length) % list.length;
+                renderSupplierGroup(list[supplierIndex]);
+            });
+
+            document.getElementById('supplier-play-pause').addEventListener('click', function() {
+                isSupplierPlaying = false;
+                currentSupplierFilter = null;
+                setCombinedFilters();
+                document.getElementById('supplier-play-pause').style.display = 'none';
+                document.getElementById('supplier-play-auto').style.display = 'inline-block';
+                const lbl = document.getElementById('supplier-play-label');
+                if (lbl) lbl.style.display = 'none';
+            });
+            // ─────────────────────────────────────────────────────────────
 
             if (currentColorFilter === null || currentColorFilter === undefined) currentColorFilter = '';
             const apprLabelEl = document.getElementById('appr-req-badge-label');
