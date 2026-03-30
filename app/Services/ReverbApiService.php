@@ -477,8 +477,8 @@ class ReverbApiService
     }
 
     /**
-     * Reverb listing API exposes a single HTML description; bullets are formatted as a list there.
-     * (There is no separate bullet-point attribute in the public listing PUT schema.)
+     * Push bullet lines to the listing Features section (PUT listing.features), not the long description.
+     * Long-form copy remains on {@see updateDescription()}.
      *
      * @return array{success: bool, message: string, listing_id?: string}
      */
@@ -489,8 +489,8 @@ class ReverbApiService
             return ['success' => false, 'message' => 'Reverb API token not configured (services.reverb.token).'];
         }
 
-        $bulletPoints = trim($bulletPoints);
-        if ($bulletPoints === '') {
+        $features = self::bulletPointsStringToFeatureList($bulletPoints);
+        if ($features === []) {
             return ['success' => false, 'message' => 'Bullet points cannot be empty.'];
         }
 
@@ -521,19 +521,10 @@ class ReverbApiService
             return ['success' => false, 'message' => 'No Reverb listing found for SKU or reverb_listing_id.'];
         }
 
-        $html = '<ul>';
-        foreach (preg_split('/\r\n|\r|\n/', $bulletPoints) as $line) {
-            $line = trim($line);
-            if ($line === '') {
-                continue;
-            }
-            $html .= '<li>'.htmlspecialchars($line, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8').'</li>';
-        }
-        $html .= '</ul>';
-
         $payload = [
-            'description' => $html,
-            'plain_text_description' => $bulletPoints,
+            'listing' => [
+                'features' => $features,
+            ],
         ];
 
         try {
@@ -542,7 +533,7 @@ class ReverbApiService
             if ($response->successful()) {
                 return [
                     'success' => true,
-                    'message' => 'Reverb listing description updated.',
+                    'message' => 'Reverb listing features updated.',
                     'listing_id' => $listingId,
                 ];
             }
@@ -555,6 +546,33 @@ class ReverbApiService
         } catch (\Throwable $e) {
             return ['success' => false, 'message' => $e->getMessage(), 'listing_id' => $listingId];
         }
+    }
+
+    /**
+     * Newline-separated bullet text → non-empty feature strings (one per line).
+     *
+     * @return list<string>
+     */
+    private static function bulletPointsStringToFeatureList(string $bulletPoints): array
+    {
+        $lines = preg_split('/\r\n|\r|\n/', $bulletPoints);
+        if (! is_array($lines)) {
+            return [];
+        }
+        $features = [];
+        foreach ($lines as $line) {
+            $line = trim((string) $line);
+            if ($line === '') {
+                continue;
+            }
+            $line = preg_replace('/^[-*•\d.\)\s]+/u', '', $line);
+            $line = trim($line);
+            if ($line !== '') {
+                $features[] = $line;
+            }
+        }
+
+        return $features;
     }
 
     /**

@@ -76,8 +76,10 @@ final class EbayTradingReviseItem
         }
 
         $existing = self::normalizeItemSpecificsNameValueLists($item['ItemSpecifics'] ?? null);
+        $existing = self::deduplicateItemSpecificsByName($existing);
         $lines = self::splitBulletLinesFive($bulletPointsPlain);
         $merged = self::mergeBulletAspectsIntoItemSpecifics($existing, $lines, $aspectNames);
+        $merged = self::deduplicateItemSpecificsByName($merged);
 
         $tokenEsc = htmlspecialchars($authToken, ENT_XML1 | ENT_QUOTES, 'UTF-8');
         $idEsc = htmlspecialchars($itemId, ENT_XML1 | ENT_QUOTES, 'UTF-8');
@@ -107,6 +109,8 @@ final class EbayTradingReviseItem
     }
 
     /**
+     * Flatten GetItem ItemSpecifics NameValueList (handles nested Value arrays from XML→JSON).
+     *
      * @return array<int, array{name: string, values: list<string>}>
      */
     public static function normalizeItemSpecificsNameValueLists(mixed $itemSpecifics): array
@@ -133,24 +137,88 @@ final class EbayTradingReviseItem
             if ($name === '') {
                 continue;
             }
-            $values = $row['Value'] ?? [];
-            if (! is_array($values)) {
-                $values = [$values];
-            }
-            $clean = [];
-            foreach ($values as $v) {
-                $t = trim((string) $v);
-                if ($t !== '') {
-                    $clean[] = $t;
-                }
-            }
+            $clean = self::flattenEbayItemSpecificValues($row['Value'] ?? null);
             if ($clean === []) {
+                if (self::isPreservedItemSpecificName($name)) {
+                    Log::warning('eBay ItemSpecific has empty Value for preserved aspect (check GetItem XML)', ['name' => $name]);
+                }
+
                 continue;
             }
             $out[] = ['name' => $name, 'values' => $clean];
         }
 
         return $out;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private static function flattenEbayItemSpecificValues(mixed $values): array
+    {
+        if ($values === null) {
+            return [];
+        }
+        if (! is_array($values)) {
+            $s = trim((string) $values);
+
+            return $s === '' ? [] : [$s];
+        }
+        $flat = [];
+        foreach ($values as $v) {
+            if (is_array($v)) {
+                $flat = array_merge($flat, self::flattenEbayItemSpecificValues($v));
+            } else {
+                $flat[] = (string) $v;
+            }
+        }
+        $clean = [];
+        foreach ($flat as $raw) {
+            $t = trim((string) $raw);
+            if ($t !== '') {
+                $clean[] = $t;
+            } elseif ($raw === '0' || $raw === 0) {
+                $clean[] = '0';
+            }
+        }
+
+        return $clean;
+    }
+
+    private static function isPreservedItemSpecificName(string $name): bool
+    {
+        $n = strtolower(trim($name));
+        $list = config('services.ebay.preserve_item_specific_names');
+        if (is_array($list)) {
+            foreach ($list as $p) {
+                if ($n === strtolower(trim((string) $p))) {
+                    return true;
+                }
+            }
+        }
+
+        return preg_match('/^(mpn|upc|ean|gtin|isbn|brand|part number|manufacturer part number)$/i', $name) === 1;
+    }
+
+    /**
+     * @param  array<int, array{name: string, values: list<string>}>  $rows
+     * @return array<int, array{name: string, values: list<string>}>
+     */
+    private static function deduplicateItemSpecificsByName(array $rows): array
+    {
+        $byKey = [];
+        foreach ($rows as $row) {
+            $key = strtolower(trim($row['name']));
+            if (! isset($byKey[$key])) {
+                $byKey[$key] = $row;
+
+                continue;
+            }
+            $merged = array_merge($byKey[$key]['values'], $row['values']);
+            $byKey[$key]['values'] = array_values(array_unique($merged));
+        }
+
+        return array_values($byKey);
     }
 
     /**
