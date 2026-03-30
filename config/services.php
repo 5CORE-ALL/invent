@@ -213,6 +213,8 @@ return [
         'preserve_item_specific_names' => [
             'MPN', 'Manufacturer Part Number', 'UPC', 'EAN', 'ISBN', 'GTIN', 'Brand', 'Part Number',
         ],
+        /** If GetItem omits MPN in ItemSpecifics, set e.g. "Does not apply" (category-dependent). Leave empty to disable. */
+        'mpn_fallback_value' => env('EBAY_MPN_FALLBACK_VALUE', ''),
     ],
     'ebay1' => [
         'app_id' => env('EBAY_APP_ID'),

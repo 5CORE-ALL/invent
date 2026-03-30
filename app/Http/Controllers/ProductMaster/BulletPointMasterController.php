@@ -303,11 +303,20 @@ class BulletPointMasterController extends Controller
                 return false;
             }
 
+            $update = ['bullet_points' => $text, 'updated_at' => now()];
+            if ($table === 'temu_metrics' && Schema::hasColumn($table, 'goods_summary')) {
+                $update['goods_summary'] = $text;
+            }
+
             $existing = DB::table($table)->where('sku', $sku)->first();
             if ($existing) {
-                DB::table($table)->where('sku', $sku)->update(['bullet_points' => $text, 'updated_at' => now()]);
+                DB::table($table)->where('sku', $sku)->update($update);
             } else {
-                DB::table($table)->insert(['sku' => $sku, 'bullet_points' => $text, 'created_at' => now(), 'updated_at' => now()]);
+                $insert = ['sku' => $sku, 'bullet_points' => $text, 'created_at' => now(), 'updated_at' => now()];
+                if ($table === 'temu_metrics' && Schema::hasColumn($table, 'goods_summary')) {
+                    $insert['goods_summary'] = $text;
+                }
+                DB::table($table)->insert($insert);
             }
             return true;
         } catch (\Throwable $e) {

@@ -75,11 +75,7 @@ final class EbayTradingReviseItem
             $aspectNames = ['Bullet Point 1', 'Bullet Point 2', 'Bullet Point 3', 'Bullet Point 4', 'Bullet Point 5'];
         }
 
-        $existing = self::normalizeItemSpecificsNameValueLists($item['ItemSpecifics'] ?? null);
-        $existing = self::deduplicateItemSpecificsByName($existing);
-        $lines = self::splitBulletLinesFive($bulletPointsPlain);
-        $merged = self::mergeBulletAspectsIntoItemSpecifics($existing, $lines, $aspectNames);
-        $merged = self::deduplicateItemSpecificsByName($merged);
+        $merged = self::buildMergedItemSpecificsForBulletUpdate($item, $bulletPointsPlain, $aspectNames);
 
         $tokenEsc = htmlspecialchars($authToken, ENT_XML1 | ENT_QUOTES, 'UTF-8');
         $idEsc = htmlspecialchars($itemId, ENT_XML1 | ENT_QUOTES, 'UTF-8');
@@ -106,6 +102,189 @@ final class EbayTradingReviseItem
         }
 
         return self::postReviseItemXml($endpoint, $compatLevel, $devId, $appId, $certId, $siteId, $itemId, $xmlBody, 'item specifics (bullet points)');
+    }
+
+    /**
+     * Merge GetItem ItemSpecifics (plus any other NameValueList nodes under Item, excluding Variations),
+     * preserve MPN/UPC/Brand, then apply Bullet Point 1–5.
+     *
+     * @param  array<string, mixed>  $item
+     * @param  list<string>  $aspectNames
+     * @return array<int, array{name: string, values: list<string>}>
+     */
+    private static function buildMergedItemSpecificsForBulletUpdate(array $item, string $bulletPointsPlain, array $aspectNames): array
+    {
+        $fromItemSpecifics = self::normalizeItemSpecificsNameValueLists($item['ItemSpecifics'] ?? null);
+        $itemNoVariations = $item;
+        unset($itemNoVariations['Variations']);
+        $rawCollected = [];
+        self::walkCollectNameValueListRows($itemNoVariations, $rawCollected);
+        $fromRecursive = self::normalizeRawNameValueListRows($rawCollected);
+        $existing = self::mergeItemSpecificRowsPreferFirst($fromItemSpecifics, $fromRecursive);
+        $existing = self::deduplicateItemSpecificsByName($existing);
+        $existing = self::injectMpnFromItemTopLevelFields($item, $existing);
+        $existing = self::injectMpnFallbackIfConfigured($existing);
+        $lines = self::splitBulletLinesFive($bulletPointsPlain);
+
+        $merged = self::mergeBulletAspectsIntoItemSpecifics($existing, $lines, $aspectNames);
+
+        return self::deduplicateItemSpecificsByName($merged);
+    }
+
+    /**
+     * @param  array<int, array{Name?: mixed, Value?: mixed}>  $rawRows
+     * @return array<int, array{name: string, values: list<string>}>
+     */
+    private static function normalizeRawNameValueListRows(array $rawRows): array
+    {
+        $out = [];
+        foreach ($rawRows as $row) {
+            if (! is_array($row) || ! isset($row['Name'])) {
+                continue;
+            }
+            $name = trim((string) $row['Name']);
+            if ($name === '') {
+                continue;
+            }
+            $clean = self::flattenEbayItemSpecificValues($row['Value'] ?? null);
+            if ($clean === []) {
+                continue;
+            }
+            $out[] = ['name' => $name, 'values' => $clean];
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  array<string, mixed>  $node
+     * @param  array<int, array<string, mixed>>  $out
+     */
+    private static function walkCollectNameValueListRows(array $node, array &$out): void
+    {
+        if (isset($node['NameValueList'])) {
+            $nvl = $node['NameValueList'];
+            if (isset($nvl['Name'])) {
+                $nvl = [$nvl];
+            }
+            if (is_array($nvl)) {
+                foreach ($nvl as $row) {
+                    if (is_array($row) && isset($row['Name'])) {
+                        $out[] = $row;
+                    }
+                }
+            }
+        }
+        foreach ($node as $v) {
+            if (is_array($v)) {
+                self::walkCollectNameValueListRows($v, $out);
+            }
+        }
+    }
+
+    /**
+     * @param  array<int, array{name: string, values: list<string>}>  $primary
+     * @param  array<int, array{name: string, values: list<string>}>  $secondary
+     * @return array<int, array{name: string, values: list<string>}>
+     */
+    private static function mergeItemSpecificRowsPreferFirst(array $primary, array $secondary): array
+    {
+        $seen = [];
+        foreach ($primary as $r) {
+            $seen[strtolower(trim($r['name']))] = true;
+        }
+        $out = $primary;
+        foreach ($secondary as $r) {
+            $k = strtolower(trim($r['name']));
+            if (! isset($seen[$k])) {
+                $out[] = $r;
+                $seen[$k] = true;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  array<int, array{name: string, values: list<string>}>  $rows
+     */
+    private static function rowsHaveMpnLike(array $rows): bool
+    {
+        foreach ($rows as $r) {
+            $n = strtolower(trim($r['name']));
+            if ($n === 'mpn' || $n === 'manufacturer part number' || str_contains($n, 'mpn')) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @param  array<int, array{name: string, values: list<string>}>  $rows
+     * @return array<int, array{name: string, values: list<string>}>
+     */
+    private static function injectMpnFromItemTopLevelFields(array $item, array $rows): array
+    {
+        if (self::rowsHaveMpnLike($rows)) {
+            return $rows;
+        }
+        $mpn = self::extractMpnFromItemFields($item);
+        if ($mpn !== null && $mpn !== '') {
+            $rows[] = ['name' => 'MPN', 'values' => [$mpn]];
+        }
+
+        return $rows;
+    }
+
+    private static function extractMpnFromItemFields(array $item): ?string
+    {
+        if (! empty($item['ManufacturerPartNumber'])) {
+            $v = $item['ManufacturerPartNumber'];
+            $s = trim((string) (is_array($v) ? reset($v) : $v));
+            if ($s !== '') {
+                return $s;
+            }
+        }
+        $pld = $item['ProductListingDetails'] ?? null;
+        if (! is_array($pld)) {
+            return null;
+        }
+        foreach (['BrandMPN', 'ManufacturerPartNumber', 'MPN'] as $key) {
+            if (empty($pld[$key])) {
+                continue;
+            }
+            $v = $pld[$key];
+            $s = trim((string) (is_array($v) ? reset($v) : $v));
+            if ($s !== '') {
+                return $s;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  array<int, array{name: string, values: list<string>}>  $rows
+     * @return array<int, array{name: string, values: list<string>}>
+     */
+    private static function injectMpnFallbackIfConfigured(array $rows): array
+    {
+        if (self::rowsHaveMpnLike($rows)) {
+            return $rows;
+        }
+        $fallback = config('services.ebay.mpn_fallback_value');
+        if (! is_string($fallback)) {
+            return $rows;
+        }
+        $fallback = trim($fallback);
+        if ($fallback === '') {
+            return $rows;
+        }
+        $rows[] = ['name' => 'MPN', 'values' => [$fallback]];
+        Log::warning('eBay bullet update: applied services.ebay.mpn_fallback_value (set EBAY_MPN_FALLBACK_VALUE if required by category).');
+
+        return $rows;
     }
 
     /**
