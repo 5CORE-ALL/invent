@@ -222,6 +222,7 @@ use App\Http\Controllers\MarketPlace\ZeroViewMarketPlace\WalmartZeroController;
 use App\Http\Controllers\MarketPlace\ZeroViewMarketPlace\YamibuyZeroController;
 use App\Http\Controllers\MarketPlace\ZeroViewMarketPlace\ZendropZeroController;
 use App\Http\Controllers\ProductMaster\BulletPointMasterController;
+use App\Http\Controllers\ProductMaster\ImageMasterController;
 use App\Http\Controllers\ProductMaster\CostpriceAnalysisController;
 use App\Http\Controllers\ProductMaster\DescriptionMasterController;
 use App\Http\Controllers\ProductMaster\ForecastAnalysisController;
@@ -2335,6 +2336,14 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/product-master', [ProductMasterController::class, 'product_master_index'])
         ->name('product.master');
     Route::get('/title-master', fn () => view('title-master'))->name('title.master');
+    Route::get('/image-master', [ImageMasterController::class, 'index'])->name('image.master');
+    Route::get('/image-master-data', [ImageMasterController::class, 'getData'])->name('image.master.data');
+    Route::post('/image-master/push', [ImageMasterController::class, 'pushToMarketplace'])->name('image.master.push');
+    Route::post('/image-master/save-pm', [ImageMasterController::class, 'saveProductMasterImages'])->name('image.master.save.pm');
+    Route::post('/image-master/upload', [ImageMasterController::class, 'uploadImages'])->name('image.master.upload');
+    Route::get('/image-master/amazon-images', [ImageMasterController::class, 'getAmazonImages'])->name('image.master.amazon.images');
+    Route::get('/image-master/ebay-images', [ImageMasterController::class, 'getEbayImages'])->name('image.master.ebay.images');
+
     Route::get('/bullet-point-master', [BulletPointMasterController::class, 'index'])->name('bullet.point.master');
     Route::get('/bullet-point-master-data', [BulletPointMasterController::class, 'getData'])->name('bullet.point.master.data');
     Route::get('/bullet-point-master-combined-data', [BulletPointMasterController::class, 'getCombinedData'])->name('bullet.point.master.combined.data');

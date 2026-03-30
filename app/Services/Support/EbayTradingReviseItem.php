@@ -40,6 +40,101 @@ final class EbayTradingReviseItem
     }
 
     /**
+     * Replace gallery images via PictureDetails (up to 12 publicly accessible URLs).
+     *
+     * @param  list<string>  $pictureUrls
+     * @return array{success: bool, message: string}
+     */
+    public static function reviseItemPictureUrls(
+        string $endpoint,
+        string $compatLevel,
+        string $devId,
+        string $appId,
+        string $certId,
+        string $siteId,
+        string $authToken,
+        string $itemId,
+        array $pictureUrls,
+    ): array {
+        $urls = [];
+        foreach ($pictureUrls as $u) {
+            $t = trim((string) $u);
+            if ($t !== '') {
+                $urls[] = $t;
+            }
+        }
+        $urls = array_slice(array_values(array_unique($urls)), 0, 12);
+        if ($urls === []) {
+            return ['success' => false, 'message' => 'At least one image URL is required.'];
+        }
+
+        $tokenEsc = htmlspecialchars($authToken, ENT_XML1 | ENT_QUOTES, 'UTF-8');
+        $idEsc = htmlspecialchars($itemId, ENT_XML1 | ENT_QUOTES, 'UTF-8');
+
+        $xml = new \SimpleXMLElement('<?xml version="1.0" encoding="utf-8"?><ReviseItemRequest xmlns="urn:ebay:apis:eBLBaseComponents"/>');
+        $creds = $xml->addChild('RequesterCredentials');
+        $creds->addChild('eBayAuthToken', $tokenEsc);
+        $xml->addChild('ErrorLanguage', 'en_US');
+        $xml->addChild('WarningLevel', 'High');
+        $itemNode = $xml->addChild('Item');
+        $itemNode->addChild('ItemID', $idEsc);
+        $pd = $itemNode->addChild('PictureDetails');
+        foreach ($urls as $u) {
+            $pd->addChild('PictureURL', self::escapeXmlElementText($u));
+        }
+
+        $xmlBody = $xml->asXML();
+        if ($xmlBody === false) {
+            return ['success' => false, 'message' => 'Failed to build ReviseItem XML for pictures.'];
+        }
+
+        return self::postReviseItemXml($endpoint, $compatLevel, $devId, $appId, $certId, $siteId, $itemId, $xmlBody, 'pictures');
+    }
+
+    /**
+     * Extract gallery PictureURL list from GetItem JSON-decoded response.
+     *
+     * @param  array<string, mixed>  $getItemResponse
+     * @return list<string>
+     */
+    public static function extractPictureUrlsFromGetItem(array $getItemResponse): array
+    {
+        $item = $getItemResponse['Item'] ?? null;
+        if (! is_array($item)) {
+            return [];
+        }
+        $pd = $item['PictureDetails'] ?? null;
+        if (! is_array($pd)) {
+            return [];
+        }
+        $raw = $pd['PictureURL'] ?? null;
+        if ($raw === null || $raw === '') {
+            return [];
+        }
+        if (is_string($raw)) {
+            $t = trim($raw);
+
+            return $t === '' ? [] : [$t];
+        }
+        $out = [];
+        foreach ($raw as $u) {
+            if (is_string($u)) {
+                $t = trim($u);
+                if ($t !== '') {
+                    $out[] = $t;
+                }
+            } elseif (is_array($u)) {
+                $s = trim((string) reset($u));
+                if ($s !== '') {
+                    $out[] = $s;
+                }
+            }
+        }
+
+        return array_slice(array_values(array_unique($out)), 0, 12);
+    }
+
+    /**
      * Update Bullet Point 1–5 via Item Specifics (does not change listing Description HTML).
      * Merges with existing ItemSpecifics from GetItem so other aspects are preserved.
      *
