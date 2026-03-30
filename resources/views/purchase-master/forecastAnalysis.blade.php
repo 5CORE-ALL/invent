@@ -14,6 +14,15 @@
             padding: 5px;
             height: 70px;
         }
+        .tabulator .tabulator-footer .tabulator-page-counter {
+            display: none !important;
+        }
+        #top-row-counter {
+            font-size: 18px;
+            font-weight: 700;
+            color: #3a475d;
+            white-space: nowrap;
+        }
 
         /* Pagination styling */
         .tabulator .tabulator-footer .tabulator-paginator .tabulator-page {
@@ -382,6 +391,7 @@
                         </div>
 
                         <div class="d-flex align-items-center flex-wrap gap-2">
+                            <span id="top-row-counter">Showing 0-0 of 0 rows</span>
                             <!-- Stage Filter (before Column) -->
                             <select id="stage-filter" class="form-select-sm border border-primary" style="width: 150px;">
                                 <option value="">All</option>
@@ -2976,6 +2986,10 @@
             }
         }
         table.on("rowSelectionChanged", updateBulkEditBadge);
+        table.on("dataLoaded", function() { updateTopRowCounter(); });
+        table.on("dataFiltered", function() { updateTopRowCounter(); });
+        table.on("pageLoaded", function() { updateTopRowCounter(); });
+        table.on("renderComplete", function() { updateTopRowCounter(); });
 
         // Populate bulk supplier dropdowns when suppliers load
         function refreshBulkSupplierSearchSelect() {
@@ -3115,6 +3129,37 @@
         let afterTatVisibilitySnapshot = null;
         let isApplyingCombinedFilters = false;
         let pendingCombinedFiltersRun = false;
+        function updateTopRowCounter() {
+            const el = document.getElementById('top-row-counter');
+            if (!el || !table) return;
+            let total = 0;
+            try {
+                total = Number(table.getDataCount('active')) || 0;
+            } catch (e) {
+                total = 0;
+            }
+            if (!Number.isFinite(total) || total < 0) {
+                try {
+                    total = (table.getRows('active') || []).length;
+                } catch (e) {
+                    total = 0;
+                }
+            }
+
+            let start = 0;
+            let end = 0;
+            if (total > 0) {
+                let pageSize = 0;
+                let pageNo = 1;
+                try { pageSize = Number(table.getPageSize()); } catch (e) {}
+                try { pageNo = Number(table.getPage()); } catch (e) {}
+                if (!Number.isFinite(pageSize) || pageSize <= 0) pageSize = total;
+                if (!Number.isFinite(pageNo) || pageNo <= 0) pageNo = 1;
+                start = ((pageNo - 1) * pageSize) + 1;
+                end = Math.min(total, pageNo * pageSize);
+            }
+            el.textContent = `Showing ${start}-${end} of ${total} rows`;
+        }
         function normalizeTwoOrdFilterValue(rawValue) {
             const raw = (rawValue || '').trim().toLowerCase();
             if (raw === 'red') return 'neg';
@@ -3207,41 +3252,6 @@
                 return stageValue === 'to_order_analysis' || orderQty > 0;
             }
             return stageValue === stageFilterValue;
-        }
-        function updateStageFilterOptionCounts(allData) {
-            const sel = document.getElementById('stage-filter');
-            if (!sel) return;
-
-            const rows = (allData || []).filter(function(item) {
-                return item && !item.is_parent && !item.isParent;
-            });
-            const counts = {
-                '': rows.length,
-                '__blank__': 0,
-                'two_ord_nonneg': 0,
-                'appr_req': 0,
-                'mip': 0,
-                'r2s': 0,
-                'transit': 0,
-                'to_order_analysis': 0
-            };
-
-            rows.forEach(function(row) {
-                if (matchesStageFilterValue(row, '__blank__')) counts['__blank__']++;
-                if (matchesStageFilterValue(row, 'two_ord_nonneg')) counts['two_ord_nonneg']++;
-                if (matchesStageFilterValue(row, 'appr_req')) counts['appr_req']++;
-                if (matchesStageFilterValue(row, 'mip')) counts['mip']++;
-                if (matchesStageFilterValue(row, 'r2s')) counts['r2s']++;
-                if (matchesStageFilterValue(row, 'transit')) counts['transit']++;
-                if (matchesStageFilterValue(row, 'to_order_analysis')) counts['to_order_analysis']++;
-            });
-
-            Array.from(sel.options).forEach(function(opt) {
-                if (!Object.prototype.hasOwnProperty.call(counts, opt.value)) return;
-                if (!opt.dataset.baseLabel) opt.dataset.baseLabel = opt.textContent.replace(/\s*\(\d+\)\s*$/, '');
-                const base = opt.dataset.baseLabel;
-                opt.textContent = base + ' (' + (counts[opt.value] || 0) + ')';
-            });
         }
         function syncColumnsAfterTatForStageFilter() {
             if (!table || typeof table.getColumns !== 'function') return;
@@ -3511,7 +3521,6 @@
                 return;
             }
             const allData = table && typeof table.getData === 'function' ? table.getData() : [];
-            updateStageFilterOptionCounts(allData);
             // Tabulator may emit early lifecycle events before rowManager element exists.
             // Applying filters in that window can throw inside RowManager.getBoundingClientRect.
             if (!table || !table.rowManager || !table.rowManager.element) {
@@ -3660,6 +3669,7 @@
                 console.warn('[Forecast] skipped filter apply (table not ready):', err);
                 return;
             }
+            updateTopRowCounter();
 
             // update visible count
             setTimeout(() => {
@@ -4948,6 +4958,7 @@
             const apprLabelEl = document.getElementById('appr-req-badge-label');
             if (apprLabelEl) apprLabelEl.textContent = 'All';
             setCombinedFilters();
+            updateTopRowCounter();
 
             document.querySelectorAll('#order-color-filter-dropdown + .dropdown-menu [data-filter]').forEach(
                 btn => {

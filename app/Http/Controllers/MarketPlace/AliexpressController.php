@@ -996,123 +996,129 @@ class AliexpressController extends Controller
 
     /**
      * Get aggregated SKU pricing data for AliExpress pricing page.
+     *
+     * Data sources:
+     *   price, ae_stock        → aliexpress_pricing_prices   (matched by SKU)
+     *   lp, ship               → product_master              (matched by SKU)
+     *   al30, sales            → aliexpress_daily_data       (matched by sku_code)
+     *   inv, ov_l30            → shopify_skus                (matched by SKU)
      */
     public function getPricingData(Request $request)
     {
         try {
-            $excludedStatuses = ['refund', 'return', 'cancel', 'closed'];
+            $normalizeSku = static fn($v) => strtoupper(trim((string) $v));
 
+            // ── 1. BASE: all rows from aliexpress_pricing_prices ─────────
+            $pricingRows  = AliexpressPricingPrice::all();
+            $pricingBySku = $pricingRows->keyBy(fn($r) => $normalizeSku($r->sku));
+
+            // ── 2. Product master → LP / Ship ─────────────────────────────
+            $productMasterBySku = ProductMaster::query()
+                ->whereNotNull('sku')->where('sku', '!=', '')
+                ->get()
+                ->keyBy(fn($r) => $normalizeSku($r->sku));
+
+            // ── 3. AliExpress daily sales → AL30 / Sales ─────────────────
+            $excludedStatuses = ['refund', 'return', 'cancel', 'closed'];
             $salesAgg = AliexpressDailyData::query()
-                ->selectRaw('sku_code, SUM(COALESCE(quantity, 0)) as al30, SUM(COALESCE(order_amount, 0)) as sales, SUM(COALESCE(product_total, 0)) as product_total_sum')
+                ->selectRaw('sku_code,
+                    SUM(COALESCE(quantity, 0))      AS al30,
+                    SUM(COALESCE(order_amount, 0))  AS sales,
+                    SUM(COALESCE(product_total, 0)) AS product_total_sum')
                 ->whereNotNull('sku_code')
                 ->where('sku_code', '!=', '')
-                ->where(function ($query) use ($excludedStatuses) {
-                    foreach ($excludedStatuses as $status) {
-                        $query->whereRaw('LOWER(COALESCE(order_status, "")) NOT LIKE ?', ['%' . $status . '%']);
+                ->where(function ($q) use ($excludedStatuses) {
+                    foreach ($excludedStatuses as $s) {
+                        $q->whereRaw('LOWER(COALESCE(order_status, "")) NOT LIKE ?', ["%{$s}%"]);
                     }
                 })
                 ->groupBy('sku_code')
-                ->get();
-
-            $normalizeSku = static function ($value) {
-                return strtoupper(trim((string) $value));
-            };
-
-            $salesBySku = $salesAgg->keyBy(fn($row) => $normalizeSku($row->sku_code));
-
-            $productMastersBySku = ProductMaster::query()
-                ->whereNotNull('sku')
-                ->where('sku', '!=', '')
                 ->get()
-                ->keyBy(fn($row) => $normalizeSku($row->sku));
+                ->keyBy(fn($r) => $normalizeSku($r->sku_code));
 
-            // Fetch ALL uploaded prices first (no SKU filter yet)
-            // so their SKUs can be included in the master list
-            $uploadedPriceBySku = AliexpressPricingPrice::all()
-                ->keyBy(fn($row) => $normalizeSku($row->sku));
+            // ── 4. Shopify SKUs → INV / OV L30 ───────────────────────────
+            $shopifyBySku = ShopifySku::all()
+                ->keyBy(fn($r) => $normalizeSku($r->sku));
 
-            // Union of: sales SKUs + product master SKUs + uploaded pricing SKUs
-            $allNormalizedSkus = collect(array_merge(
-                $salesBySku->keys()->all(),
-                $productMastersBySku->keys()->all(),
-                $uploadedPriceBySku->keys()->all()
-            ))->unique()->values();
+            // ── 5. SPRICE meta (aliexpress_data_views) ────────────────────
+            $viewMetaBySku = AliexpressDataView::all()
+                ->keyBy(fn($r) => $normalizeSku($r->sku));
 
-            $viewMetaBySku = collect();
-            if ($allNormalizedSkus->isNotEmpty()) {
-                $viewMetaBySku = AliexpressDataView::query()
-                    ->whereIn(DB::raw('UPPER(TRIM(sku))'), $allNormalizedSkus)
-                    ->get()
-                    ->keyBy(fn($row) => $normalizeSku($row->sku));
-            }
-
-            $shopifyInvBySku = collect();
-            if ($allNormalizedSkus->isNotEmpty()) {
-                $shopifyInvBySku = ShopifySku::query()
-                    ->whereIn(DB::raw('UPPER(TRIM(sku))'), $allNormalizedSkus)
-                    ->get()
-                    ->keyBy(fn($row) => $normalizeSku($row->sku));
-            }
-
+            // ── 6. Margin ─────────────────────────────────────────────────
             $marketplaceData = MarketplacePercentage::query()
                 ->where('marketplace', 'Aliexpress')
                 ->orWhere('marketplace', 'AliExpress')
                 ->first();
-            $percentage = $marketplaceData ? ($marketplaceData->percentage ?? 100) : 100;
-            $margin = ((float) $percentage) / 100;
+            $percentage = $marketplaceData ? ((float) ($marketplaceData->percentage ?? 100)) : 100;
+            $margin     = $percentage / 100;
 
+            // ── 7. All SKUs = pricing table ∪ product_master ──────────────
+            // Pricing-table SKUs show with real price; product_master-only SKUs show Missing = M
+            $allNormalizedSkus = collect(array_merge(
+                $pricingBySku->keys()->all(),
+                $productMasterBySku->keys()->all()
+            ))->unique()->values();
+
+            // ── 8. Build rows ─────────────────────────────────────────────
             $rows = [];
             foreach ($allNormalizedSkus as $normalizedSku) {
-                $sale = $salesBySku->get($normalizedSku);
-                $productMaster = $productMastersBySku->get($normalizedSku);
-                $metaRecord = $viewMetaBySku->get($normalizedSku);
-                $meta = $metaRecord ? ($metaRecord->value ?? []) : [];
 
-                $shopifyRow = $shopifyInvBySku->get($normalizedSku);
-                $inv   = $shopifyRow ? (int)   ($shopifyRow->inv      ?? 0) : 0;
-                $ovL30 = $shopifyRow ? (int)   ($shopifyRow->quantity ?? 0) : 0;
+                // ── price / ae_stock from aliexpress_pricing_prices
+                $priceRow    = $pricingBySku->get($normalizedSku);
+                $uploadedPrice = $priceRow ? (float) $priceRow->price    : 0;
+                $aeStock       = $priceRow ? (int)   ($priceRow->ae_stock ?? 0) : 0;
+                $productName   = $priceRow ? ($priceRow->product_name    ?? null) : null;
+                $productId     = $priceRow ? ($priceRow->product_id      ?? null) : null;
 
+                // ── lp / ship from product_master
+                $productMaster = $productMasterBySku->get($normalizedSku);
                 $values = [];
                 if ($productMaster) {
                     $values = is_array($productMaster->Values)
                         ? $productMaster->Values
                         : (is_string($productMaster->Values) ? json_decode($productMaster->Values, true) : []);
                 }
+                $lp   = isset($values['lp'])      ? (float) $values['lp']
+                      : (isset($productMaster->lp) ? (float) $productMaster->lp : 0);
+                $ship = isset($values['ae_ship'])  ? (float) $values['ae_ship']
+                      : (isset($values['ship'])    ? (float) $values['ship']
+                      : (isset($productMaster->ship) ? (float) $productMaster->ship : 0));
 
-                $lp   = isset($values['lp'])   ? (float) $values['lp']   : (isset($productMaster->lp)   ? (float) $productMaster->lp   : 0);
-                // Use ae_ship first, then ship (mirrors TikTok's tt_ship → ship fallback)
-                $ship = isset($values['ae_ship']) ? (float) $values['ae_ship']
-                      : (isset($values['ship'])   ? (float) $values['ship']   : (isset($productMaster->ship) ? (float) $productMaster->ship : 0));
+                // ── al30 / sales from aliexpress_daily_data
+                $sale            = $salesAgg->get($normalizedSku);
+                $al30            = $sale ? (float) $sale->al30            : 0;
+                $sales           = $sale ? (float) $sale->sales           : 0;
+                $productTotalSum = $sale ? (float) $sale->product_total_sum : 0;
+                $derivedPrice    = $al30 > 0 ? ($productTotalSum / $al30) : 0;
 
-                $al30 = (float) ($sale->al30 ?? 0);
-                $sales = (float) ($sale->sales ?? 0);
-                $productTotalSum = (float) ($sale->product_total_sum ?? 0);
-                $derivedUnitPrice = $al30 > 0 ? ($productTotalSum / $al30) : 0;
+                // ── inv / ov_l30 from shopify_skus
+                $shopifyRow = $shopifyBySku->get($normalizedSku);
+                $inv        = $shopifyRow ? (int) ($shopifyRow->inv      ?? 0) : 0;
+                $ovL30      = $shopifyRow ? (int) ($shopifyRow->quantity ?? 0) : 0;
 
-                $sprice = isset($meta['SPRICE']) ? (float) $meta['SPRICE'] : 0;
-                $priceRow      = $uploadedPriceBySku->get($normalizedSku);
-                $uploadedPrice = $priceRow ? (float) $priceRow->price : 0;
-                $aeStock       = $priceRow ? (int)   ($priceRow->ae_stock   ?? 0) : 0;
-                $productName   = $priceRow ? ($priceRow->product_name ?? null) : null;
-                $productId     = $priceRow ? ($priceRow->product_id   ?? null) : null;
+                // ── SPRICE meta
+                $metaRecord = $viewMetaBySku->get($normalizedSku);
+                $meta       = $metaRecord ? ($metaRecord->value ?? []) : [];
+                $sprice     = isset($meta['SPRICE']) ? (float) $meta['SPRICE'] : 0;
 
-                $price  = $uploadedPrice > 0 ? $uploadedPrice : $derivedUnitPrice;
+                // ── Price: prefer uploaded price, fall back to derived
+                $price  = $uploadedPrice > 0 ? $uploadedPrice : $derivedPrice;
+
+                // ── Calculations (same formulas as TikTok)
                 $profit = ($price * $margin) - $lp - $ship;
                 $gpft   = $price > 0 ? ($profit / $price) * 100 : 0;
                 $groi   = $lp    > 0 ? ($profit / $lp)    * 100 : 0;
                 $sgpft  = $gpft;
+                $dilPct = $inv   > 0 ? round(($ovL30 / $inv) * 100, 2) : 0;
 
-                // Prefer original-case SKU: ProductMaster → sale → pricing table → normalized
+                // ── Display SKU (prefer original case)
                 $displaySku = $productMaster->sku
-                    ?? ($sale->sku_code
-                        ?? ($priceRow->sku
-                            ?? $normalizedSku));
+                    ?? ($priceRow->sku ?? $normalizedSku);
 
-                // Missing = not listed on AliExpress (not in pricing table) OR price is 0
-                // Mirrors TikTok: Missing = M when SKU is not in tiktok_products
+                // ── Missing = not in aliexpress_pricing_prices OR price = 0
                 $isMissing = !$priceRow || $price <= 0;
 
-                // MAP logic – mirrors TikTok INV vs TT Stock comparison
+                // ── MAP: INV vs AE Stock (mirrors TikTok INV vs TT Stock)
                 if ($isMissing) {
                     $mapValue = '';
                 } elseif ($inv === $aeStock) {
@@ -1142,31 +1148,28 @@ class AliexpressController extends Controller
                     'inv'          => $inv,
                     'ae_stock'     => $aeStock,
                     'ov_l30'       => $ovL30,
-                    'dil_percent'  => $inv > 0 ? round(($ovL30 / $inv) * 100, 2) : 0,
+                    'dil_percent'  => $dilPct,
                     'product_name' => $productName,
                     'product_id'   => $productId,
                 ];
             }
 
+            // Sort: alphabetic letters first, then numeric, case-insensitive natural sort
             usort($rows, static function ($a, $b) {
                 $av = strtoupper(trim((string) ($a['sku'] ?? '')));
                 $bv = strtoupper(trim((string) ($b['sku'] ?? '')));
-                $aLetter = preg_match('/^[A-Z]/', $av) === 1;
-                $bLetter = preg_match('/^[A-Z]/', $bv) === 1;
-
-                if ($aLetter !== $bLetter) {
-                    return $aLetter ? -1 : 1;
-                }
-
+                $aL = preg_match('/^[A-Z]/', $av) === 1;
+                $bL = preg_match('/^[A-Z]/', $bv) === 1;
+                if ($aL !== $bL) return $aL ? -1 : 1;
                 return strnatcasecmp($av, $bv);
             });
 
             return response()->json($rows);
+
         } catch (\Exception $e) {
             Log::error('Error fetching AliExpress pricing data: ' . $e->getMessage(), [
                 'trace' => $e->getTraceAsString(),
             ]);
-
             return response()->json([
                 'error' => 'Failed to fetch pricing data: ' . $e->getMessage(),
             ], 500);
@@ -1181,18 +1184,10 @@ class AliexpressController extends Controller
         try {
             $userId = auth()->id() ?? 'guest';
             $visibility = $request->input('visibility', []);
-            
             cache()->put("aliexpress_column_visibility_{$userId}", $visibility, now()->addDays(30));
-            
-            return response()->json([
-                'success' => true,
-                'message' => 'Column visibility saved'
-            ]);
+            return response()->json(['success' => true, 'message' => 'Column visibility saved']);
         } catch (\Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Failed to save preferences'
-            ], 500);
+            return response()->json(['success' => false, 'message' => 'Failed to save preferences'], 500);
         }
     }
 
@@ -1203,7 +1198,6 @@ class AliexpressController extends Controller
     {
         $userId = auth()->id() ?? 'guest';
         $visibility = cache()->get("aliexpress_column_visibility_{$userId}", []);
-        
         return response()->json($visibility);
     }
 }
