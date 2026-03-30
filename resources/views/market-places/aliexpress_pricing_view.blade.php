@@ -820,17 +820,17 @@
                             return money(v);
                         }
                     },
-                    {
-                        title: "AL30",
-                        field: "al30",
-                        sorter: "number",
-                        hozAlign: "center",
-                        formatter: function(cell) {
-                            const d = cell.getRow().getData();
-                            const v = parseInt(cell.getValue(), 10) || 0;
-                            return `<span style="font-weight:${d.is_parent?'700':'400'};">${v}</span>`;
-                        }
-                    },
+                    // {
+                    //     title: "AL30",
+                    //     field: "al30",
+                    //     sorter: "number",
+                    //     hozAlign: "center",
+                    //     formatter: function(cell) {
+                    //         const d = cell.getRow().getData();
+                    //         const v = parseInt(cell.getValue(), 10) || 0;
+                    //         return `<span style="font-weight:${d.is_parent?'700':'400'};">${v}</span>`;
+                    //     }
+                    // },
                     {
                         title: "LP",
                         field: "lp",
