@@ -24,5 +24,6 @@ class TemuMetric extends Model
         'ad_sold',
         'organic_views',
         'bullet_points',
+        'goods_summary',
     ];
 }
