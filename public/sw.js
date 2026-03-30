@@ -1,4 +1,4 @@
-const CACHE_NAME = 'invent-v2';
+const CACHE_NAME = 'invent-v3';
 const urlsToCache = [
   '/',
   '/wms',
@@ -37,16 +37,26 @@ self.addEventListener('install', function(event) {
 
 // Cache and return requests
 self.addEventListener('fetch', function(event) {
+  const url = new URL(event.request.url);
+
+  // Never intercept: AJAX/API calls, non-GET requests, or cross-origin requests
+  if (event.request.method !== 'GET') return;
+  if (url.origin !== location.origin) return;
+  // Skip data endpoints and any XHR/fetch calls (identified by header or path patterns)
+  const skipPaths = ['/forecast-analysis-data-view', '/update-forecast-data', '/mfrg-progresses', '/ready-to-ship', '/api/', '/sanctum/'];
+  if (skipPaths.some(p => url.pathname.startsWith(p))) return;
+  // Skip if it's an AJAX request
+  if (event.request.headers.get('X-Requested-With') === 'XMLHttpRequest') return;
+  if (event.request.headers.get('Accept')?.includes('application/json')) return;
+
   event.respondWith(
     caches.match(event.request)
       .then(function(response) {
-        // Cache hit - return response
         if (response) {
           return response;
         }
         return fetch(event.request);
-      }
-    )
+      })
   );
 });
 

@@ -372,184 +372,128 @@
     <div class="row">
         <div class="col-12">
             <div class="card shadow-sm">
-                <div class="card-body pb-0 d-flex flex-column">
-                    <div class="mb-3 d-flex align-items-center gap-3">
-                        <!-- Play/Pause Controls (Parent) -->
-                        <div class="d-flex align-items-center me-3">
-                            <div class="btn-group time-navigation-group" role="group" aria-label="Parent navigation">
-                                <button id="play-backward" class="btn btn-light rounded-circle shadow-sm me-1"
-                                    style="width: 36px; height: 36px; padding: 6px;">
-                                    <i class="fas fa-step-backward"></i>
-                                </button>
+                <div class="card-body pb-0 d-flex flex-column gap-2">
 
-                                <button id="play-pause" class="btn btn-light rounded-circle shadow-sm me-1"
-                                    style="width: 36px; height: 36px; padding: 6px; display: none;">
-                                    <i class="fas fa-pause"></i>
-                                </button>
+                    <!-- ── Row 1: Play controls + row counter ── -->
+                    <div class="d-flex align-items-center flex-wrap gap-2">
 
-                                <button id="play-auto" class="btn btn-primary rounded-circle shadow-sm me-1"
-                                    style="width: 36px; height: 36px; padding: 6px;">
-                                    <i class="fas fa-play"></i>
-                                </button>
-
-                                <button id="play-forward" class="btn btn-light rounded-circle shadow-sm"
-                                    style="width: 36px; height: 36px; padding: 6px;">
-                                    <i class="fas fa-step-forward"></i>
-                                </button>
-                            </div>
+                        <!-- Parent play -->
+                        <div class="d-flex align-items-center gap-1 border rounded px-2 py-1 bg-light" title="Play by Parent">
+                            <small class="text-muted fw-semibold" style="font-size:0.65rem;">P</small>
+                            <button id="play-backward" class="btn btn-light btn-sm rounded-circle p-0" style="width:28px;height:28px;"><i class="fas fa-step-backward" style="font-size:10px;"></i></button>
+                            <button id="play-pause"   class="btn btn-primary btn-sm rounded-circle p-0" style="width:28px;height:28px;display:none;"><i class="fas fa-pause" style="font-size:10px;"></i></button>
+                            <button id="play-auto"    class="btn btn-primary btn-sm rounded-circle p-0" style="width:28px;height:28px;"><i class="fas fa-play" style="font-size:10px;"></i></button>
+                            <button id="play-forward" class="btn btn-light btn-sm rounded-circle p-0" style="width:28px;height:28px;"><i class="fas fa-step-forward" style="font-size:10px;"></i></button>
                         </div>
 
-                        <!-- Play/Pause Controls (Supplier) -->
-                        <div class="d-flex align-items-center me-3 gap-1">
-                            <span class="badge bg-secondary" id="supplier-play-label" style="font-size:0.7rem;display:none;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></span>
-                            <div class="btn-group" role="group" aria-label="Supplier navigation">
-                                <button id="supplier-play-backward" class="btn btn-light rounded-circle shadow-sm me-1"
-                                    style="width:36px;height:36px;padding:6px;" title="Prev supplier">
-                                    <i class="fas fa-step-backward"></i>
-                                </button>
-                                <button id="supplier-play-pause" class="btn btn-warning rounded-circle shadow-sm me-1"
-                                    style="width:36px;height:36px;padding:6px;display:none;" title="Stop supplier filter">
-                                    <i class="fas fa-pause"></i>
-                                </button>
-                                <button id="supplier-play-auto" class="btn btn-outline-warning rounded-circle shadow-sm me-1"
-                                    style="width:36px;height:36px;padding:6px;" title="Play by supplier">
-                                    <i class="fas fa-truck"></i>
-                                </button>
-                                <button id="supplier-play-forward" class="btn btn-light rounded-circle shadow-sm"
-                                    style="width:36px;height:36px;padding:6px;" title="Next supplier">
-                                    <i class="fas fa-step-forward"></i>
-                                </button>
-                            </div>
+                        <!-- Supplier play -->
+                        <div class="d-flex align-items-center gap-1 border rounded px-2 py-1 bg-light" title="Play by Supplier">
+                            <small class="text-muted fw-semibold" style="font-size:0.65rem;">S</small>
+                            <button id="supplier-play-backward" class="btn btn-light btn-sm rounded-circle p-0" style="width:28px;height:28px;" title="Prev supplier"><i class="fas fa-step-backward" style="font-size:10px;"></i></button>
+                            <button id="supplier-play-pause"    class="btn btn-warning btn-sm rounded-circle p-0" style="width:28px;height:28px;display:none;" title="Stop supplier"><i class="fas fa-pause" style="font-size:10px;"></i></button>
+                            <button id="supplier-play-auto"     class="btn btn-outline-warning btn-sm rounded-circle p-0 fw-bold" style="width:28px;height:28px;font-size:11px;" title="Play by supplier">S</button>
+                            <button id="supplier-play-forward"  class="btn btn-light btn-sm rounded-circle p-0" style="width:28px;height:28px;" title="Next supplier"><i class="fas fa-step-forward" style="font-size:10px;"></i></button>
+                            <span class="badge bg-warning text-dark" id="supplier-play-label" style="font-size:0.65rem;display:none;max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></span>
                         </div>
 
-                        <div class="d-flex align-items-center flex-wrap gap-2">
-                            <span id="top-row-counter">Showing 0-0 of 0 rows</span>
+                        <!-- Zone play -->
+                        <div class="d-flex align-items-center gap-1 border rounded px-2 py-1 bg-light" title="Play by Zone">
+                            <small class="text-muted fw-semibold" style="font-size:0.65rem;">Z</small>
+                            <button id="zone-play-backward" class="btn btn-light btn-sm rounded-circle p-0" style="width:28px;height:28px;" title="Prev zone"><i class="fas fa-step-backward" style="font-size:10px;"></i></button>
+                            <button id="zone-play-pause"    class="btn btn-info btn-sm rounded-circle p-0" style="width:28px;height:28px;display:none;" title="Stop zone"><i class="fas fa-pause" style="font-size:10px;"></i></button>
+                            <button id="zone-play-auto"     class="btn btn-outline-info btn-sm rounded-circle p-0 fw-bold" style="width:28px;height:28px;font-size:11px;" title="Play by zone">Z</button>
+                            <button id="zone-play-forward"  class="btn btn-light btn-sm rounded-circle p-0" style="width:28px;height:28px;" title="Next zone"><i class="fas fa-step-forward" style="font-size:10px;"></i></button>
+                            <span class="badge bg-info text-dark" id="zone-play-label" style="font-size:0.65rem;display:none;max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></span>
+                        </div>
 
-                            <!-- Column Searches -->
-                            <input type="text" id="search-sku" class="form-control form-control-sm border-primary" placeholder="SKU…" autocomplete="off" style="width:150px;" title="Filter by SKU">
-                            <input type="text" id="search-parent" class="form-control form-control-sm border-primary" placeholder="Parent…" autocomplete="off" style="width:140px;" title="Filter by Parent">
-                            <input type="text" id="search-supplier" class="form-control form-control-sm border-primary" placeholder="Supplier…" autocomplete="off" style="width:140px;" title="Filter by Supplier">
-                            <select id="stage-filter" class="form-select-sm border border-primary" style="width: 150px;">
-                                <option value="">All</option>
-                                <option value="__blank__">Not Req Now</option>
-                                <option value="two_ord_nonneg">2 Ord</option>
-                                <option value="appr_req">Appr Req</option>
-                                <option value="mip">MIP</option>
-                                <option value="r2s">R2S</option>
-                                <option value="transit">Trn</option>
-                                <option value="to_order_analysis">Order</option>
-                            </select>
+                        <!-- Container play -->
+                        <div class="d-flex align-items-center gap-1 border rounded px-2 py-1 bg-light" title="Play by Container">
+                            <small class="text-muted fw-semibold" style="font-size:0.65rem;">C</small>
+                            <button id="container-play-backward" class="btn btn-light btn-sm rounded-circle p-0" style="width:28px;height:28px;" title="Prev container"><i class="fas fa-step-backward" style="font-size:10px;"></i></button>
+                            <button id="container-play-pause"    class="btn btn-dark btn-sm rounded-circle p-0" style="width:28px;height:28px;display:none;" title="Stop container"><i class="fas fa-pause" style="font-size:10px;"></i></button>
+                            <button id="container-play-auto"     class="btn btn-outline-dark btn-sm rounded-circle p-0 fw-bold" style="width:28px;height:28px;font-size:11px;" title="Play by container">C</button>
+                            <button id="container-play-forward"  class="btn btn-light btn-sm rounded-circle p-0" style="width:28px;height:28px;" title="Next container"><i class="fas fa-step-forward" style="font-size:10px;"></i></button>
+                            <span class="badge bg-dark text-white" id="container-play-label" style="font-size:0.65rem;display:none;max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></span>
+                        </div>
 
-                            <!-- Column Management -->
-                            <div class="dropdown">
-                                <button class="btn btn-sm btn-primary d-flex align-items-center gap-1"
-                                    type="button" id="hide-column-dropdown">
-                                    <i class="bi bi-grid-3x3-gap-fill"></i>
-                                     Column
-                                </button>
-                            </div>
+                        <span class="vr align-self-stretch opacity-25"></span>
+                        <span id="top-row-counter" class="text-muted small">Showing 0-0 of 0 rows</span>
+                    </div>
 
-                            <!-- Appr Req.: filter + count in one badge -->
-                            <div class="dropdown">
-                                <button class="btn btn-sm btn-warning dropdown-toggle d-flex align-items-center flex-wrap gap-2 fw-semibold text-dark px-2"
-                                    type="button" id="order-color-filter-dropdown" data-bs-toggle="dropdown"
-                                    aria-expanded="false"
-                                    title="Appr Req. filter (All / Appr Req.)">
-                                    <span class="d-none" aria-hidden="true">
-                                        <i class="bi bi-funnel-fill"></i>
-                                        <span id="appr-req-badge-label">All</span>
-                                    </span>
-                                    <span class="vr align-self-stretch my-n1 opacity-50 d-none" aria-hidden="true"></span>
-                                    <span class="d-inline-flex align-items-center gap-1 text-nowrap">
-                                        <i class="bi bi-star-fill"></i>
-                                        <span id="yellow-count-box">Appr Req: 0</span>
-                                    </span>
-                                </button>
-                                <ul class="dropdown-menu p-2 shadow-lg border rounded-3">
-                                    <li><button class="dropdown-item" type="button" data-filter="">All</button></li>
-                                    <li><button class="dropdown-item" type="button" data-filter="yellow">Appr Req.</button></li>
-                                </ul>
-                            </div>
+                    <!-- ── Row 2: Searches + Filters ── -->
+                    <div class="d-flex align-items-center flex-wrap gap-2">
+                        <!-- Column Searches -->
+                        <input type="text" id="search-sku"      class="form-control form-control-sm border-primary" placeholder="SKU…"      autocomplete="off" style="width:140px;">
+                        <input type="text" id="search-parent"   class="form-control form-control-sm border-primary" placeholder="Parent…"   autocomplete="off" style="width:130px;">
+                        <input type="text" id="search-supplier" class="form-control form-control-sm border-primary" placeholder="Supplier…" autocomplete="off" style="width:130px;">
 
-                            <!-- Row Type Filter: Show All / SKU (Child) / Parent -->
-                            <select id="row-data-type" class="form-select-sm border border-primary" style="width: 170px;" aria-label="Row type"></select>
+                        <span class="vr align-self-stretch opacity-25"></span>
 
-                            <!-- NRP / All Items multiselect (checked types are shown) -->
-                            <div class="dropdown d-inline-block">
-                                <button class="btn btn-sm btn-light border border-primary dropdown-toggle text-start" type="button" id="nrp-filter-dropdown" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false" style="min-width: 140px;">
-                                    <span id="nrp-filter-label">ALL Items</span>
-                                </button>
-                                <ul class="dropdown-menu shadow-sm p-2" style="min-width: 180px;" aria-labelledby="nrp-filter-dropdown">
-                                    <li class="small text-muted px-2 mb-1">Show item types</li>
-                                    <li>
-                                        <label class="dropdown-item-text mb-0 d-flex align-items-center gap-2 cursor-pointer">
-                                            <input type="checkbox" class="form-check-input nrp-ms-opt flex-shrink-0" value="REQ" checked>
-                                            <span>REQ</span>
-                                        </label>
-                                    </li>
-                                    <li>
-                                        <label class="dropdown-item-text mb-0 d-flex align-items-center gap-2 cursor-pointer">
-                                            <input type="checkbox" class="form-check-input nrp-ms-opt flex-shrink-0" value="NR" checked>
-                                            <span>2BDC</span>
-                                        </label>
-                                    </li>
-                                    <li>
-                                        <label class="dropdown-item-text mb-0 d-flex align-items-center gap-2 cursor-pointer">
-                                            <input type="checkbox" class="form-check-input nrp-ms-opt flex-shrink-0" value="LATER" checked>
-                                            <span>LATER</span>
-                                        </label>
-                                    </li>
-                                </ul>
-                            </div>
+                        <!-- Stage Filter -->
+                        <select id="stage-filter" class="form-select form-select-sm border border-primary" style="width:140px;">
+                            <option value="">All</option>
+                            <option value="__blank__">Not Req Now</option>
+                            <option value="two_ord_nonneg">2 Ord</option>
+                            <option value="appr_req">Appr Req</option>
+                            <option value="mip">MIP</option>
+                            <option value="r2s">R2S</option>
+                            <option value="transit">Trn</option>
+                            <option value="to_order_analysis">Order</option>
+                        </select>
 
-                            <button id="total_msl_c" class="btn btn-sm btn-success fw-semibold text-dark">
-                                 MSL_LP: $<span id="total_msl_c_value" class="fw-semibold text-dark">0.00</span>
+                        <!-- Row Type -->
+                        <select id="row-data-type" class="form-select form-select-sm border border-primary" style="width:150px;" aria-label="Row type"></select>
+
+                        <!-- NRP multiselect -->
+                        <div class="dropdown d-inline-block">
+                            <button class="btn btn-sm btn-light border border-primary dropdown-toggle" type="button" id="nrp-filter-dropdown" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false" style="min-width:120px;">
+                                <span id="nrp-filter-label">ALL Items</span>
                             </button>
+                            <ul class="dropdown-menu shadow-sm p-2" style="min-width:170px;" aria-labelledby="nrp-filter-dropdown">
+                                <li class="small text-muted px-2 mb-1">Show item types</li>
+                                <li><label class="dropdown-item-text mb-0 d-flex align-items-center gap-2 cursor-pointer"><input type="checkbox" class="form-check-input nrp-ms-opt flex-shrink-0" value="REQ" checked><span>REQ</span></label></li>
+                                <li><label class="dropdown-item-text mb-0 d-flex align-items-center gap-2 cursor-pointer"><input type="checkbox" class="form-check-input nrp-ms-opt flex-shrink-0" value="NR" checked><span>2BDC</span></label></li>
+                                <li><label class="dropdown-item-text mb-0 d-flex align-items-center gap-2 cursor-pointer"><input type="checkbox" class="form-check-input nrp-ms-opt flex-shrink-0" value="LATER" checked><span>LATER</span></label></li>
+                            </ul>
+                        </div>
 
-                            <button type="button" class="btn btn-sm btn-info fw-semibold text-dark" title="MSL × AMZ price ÷ 4 (amazon_datsheets.price)">
-                                 MSL_SP: $<span id="total_msl_sp_amz_value" class="fw-semibold text-dark">0</span>
+                        <!-- Appr Req filter -->
+                        <div class="dropdown">
+                            <button class="btn btn-sm btn-warning dropdown-toggle fw-semibold text-dark px-2" type="button" id="order-color-filter-dropdown" data-bs-toggle="dropdown" aria-expanded="false" title="Appr Req. filter">
+                                <span class="d-none" aria-hidden="true"><i class="bi bi-funnel-fill"></i><span id="appr-req-badge-label">All</span></span>
+                                <span class="vr align-self-stretch my-n1 opacity-50 d-none" aria-hidden="true"></span>
+                                <i class="bi bi-star-fill"></i> <span id="yellow-count-box">Appr Req: 0</span>
                             </button>
+                            <ul class="dropdown-menu p-2 shadow-lg border rounded-3">
+                                <li><button class="dropdown-item" type="button" data-filter="">All</button></li>
+                                <li><button class="dropdown-item" type="button" data-filter="yellow">Appr Req.</button></li>
+                            </ul>
+                        </div>
 
-                            <button id="total_inv_value" class="btn btn-sm btn-info fw-semibold text-dark">
-                                 INV Val: $<span id="total_inv_value_display" class="fw-semibold text-dark">0</span>
-                            </button>
-
-                            <button id="total_lp_value" class="btn btn-sm btn-warning fw-semibold text-dark">
-                                 LP Val: $<span id="total_lp_value_display" class="fw-semibold text-dark">0</span>
-                            </button>
-
-                            <button id="total_order_value" class="btn btn-sm btn-warning fw-semibold text-dark" title="2 Ord × CP (visible rows)">
-                                 Ord Val: $<span id="total_order_value_display" class="fw-semibold text-dark">0</span>
-                            </button>
-
-                            {{-- <button id="total_restock_msl" class="btn btn-sm btn-dark fw-semibold text-white">
-                                 Restock MSL: $<span id="total_restock_msl_value" class="fw-semibold text-white">0.00</span>
-                            </button> --}}
-
-                            <button id="total_minimal_msl" class="btn btn-sm btn-secondary fw-semibold text-white">
-                                Missing Sales: $<span id="total_minimal_msl_value" class="fw-semibold text-white">0</span>
-                            </button>
-
-                            {{-- <button id="sum_restock_shopify_price" class="btn btn-sm btn-info fw-semibold text-dark">
-                                Sum Restock Shopify Price: $<span id="sum_restock_shopify_price_value" class="fw-semibold text-dark">0</span>
-                            </button> --}}
-
-                            {{-- <button id="total_restock_msl_lp" class="btn btn-sm btn-warning fw-semibold text-dark">
-                                 Restock MSL LP: $<span id="total_restock_msl_lp_value" class="fw-semibold text-dark">0</span>
-                            </button> --}}
-
-                            <button id="total_mip_value" class="btn btn-sm btn-warning fw-semibold text-dark">
-                                 MIP Val: $<span id="total_mip_value_display" class="fw-semibold text-dark">0</span>
-                            </button>
-
-                            <button id="total_r2s_value" class="btn btn-sm btn-warning fw-semibold text-dark">
-                                 R2S Val: $<span id="total_r2s_value_display" class="fw-semibold text-dark">0</span>
-                            </button>
-
-                            <button id="total_transit_value" class="btn btn-sm btn-secondary fw-semibold text-dark">
-                                 Trn Val: $<span id="total_transit_value_display" class="fw-semibold text-dark">0</span>
+                        <!-- Column Management -->
+                        <div class="dropdown">
+                            <button class="btn btn-sm btn-primary d-flex align-items-center gap-1" type="button" id="hide-column-dropdown" title="Manage Columns">
+                                <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+                                    <rect x="0"  y="0" width="2.5" height="14" rx="1"/>
+                                    <rect x="3.8" y="0" width="2.5" height="14" rx="1"/>
+                                    <rect x="7.6" y="0" width="2.5" height="14" rx="1"/>
+                                    <rect x="11.4" y="0" width="2.5" height="14" rx="1"/>
+                                </svg>
                             </button>
                         </div>
+                    </div>
+
+                    <!-- ── Row 3: Value badges ── -->
+                    <div class="d-flex align-items-center flex-wrap gap-2">
+                        <button id="total_msl_c"       class="btn btn-sm btn-success fw-semibold text-dark"> MSL_LP: $<span id="total_msl_c_value">0.00</span></button>
+                        <button type="button"           class="btn btn-sm btn-info fw-semibold text-dark" title="MSL × AMZ price ÷ 4"> MSL_SP: $<span id="total_msl_sp_amz_value">0</span></button>
+                        <button id="total_inv_value"    class="btn btn-sm btn-info fw-semibold text-dark"> INV Val: $<span id="total_inv_value_display">0</span></button>
+                        <button id="total_lp_value"     class="btn btn-sm btn-warning fw-semibold text-dark"> LP Val: $<span id="total_lp_value_display">0</span></button>
+                        <button id="total_order_value"  class="btn btn-sm btn-warning fw-semibold text-dark" title="2 Ord × CP"> Ord Val: $<span id="total_order_value_display">0</span></button>
+                        <button id="total_minimal_msl"  class="btn btn-sm btn-secondary fw-semibold text-white">Missing Sales: $<span id="total_minimal_msl_value">0</span></button>
+                        <button id="total_mip_value"    class="btn btn-sm btn-warning fw-semibold text-dark"> MIP Val: $<span id="total_mip_value_display">0</span></button>
+                        <button id="total_r2s_value"    class="btn btn-sm btn-warning fw-semibold text-dark"> R2S Val: $<span id="total_r2s_value_display">0</span></button>
+                        <button id="total_transit_value" class="btn btn-sm btn-secondary fw-semibold text-dark"> Trn Val: $<span id="total_transit_value_display">0</span></button>
                     </div>
 
                     <!-- Bulk edit badge (shown when rows selected) -->
@@ -798,40 +742,19 @@
     </div>
 
     <div class="modal fade" id="columnCustomizeModal" tabindex="-1" aria-labelledby="columnCustomizeModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-xl modal-dialog-centered">
-            <div class="modal-content column-customize-modal">
-                <div class="modal-header column-modal-header sticky-top">
-                    <h5 class="modal-title" id="columnCustomizeModalLabel">Customize active view</h5>
+        <div class="modal-dialog modal-dialog-centered" style="max-width:520px;">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h6 class="modal-title fw-semibold" id="columnCustomizeModalLabel"><i class="bi bi-layout-three-columns me-2"></i>Show / Hide Columns</h6>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
-                <div class="modal-body">
-                    <div class="row g-3">
-                        <div class="col-12 col-lg-7">
-                            <div class="column-panel h-100">
-                                <div class="column-panel-title">Available Options</div>
-                                <div class="column-panel-hint">Press space to select a column.</div>
-                                <div id="columnAvailableWrap" class="column-available-wrap"></div>
-                            </div>
-                        </div>
-                        <div class="col-12 col-lg-5">
-                            <div class="column-panel h-100">
-                                <div class="d-flex align-items-center justify-content-between mb-2">
-                                    <div class="column-panel-title mb-0">Arrange</div>
-                                    <div class="d-flex align-items-center gap-1">
-                                        <button type="button" class="btn btn-sm btn-outline-secondary" id="columnMoveUpBtn">Up</button>
-                                        <button type="button" class="btn btn-sm btn-outline-secondary" id="columnMoveDownBtn">Down</button>
-                                    </div>
-                                </div>
-                                <div id="columnArrangeWrap" class="column-arrange-wrap">
-                                    <ul id="columnArrangeList" class="list-unstyled m-0"></ul>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
+                <div class="modal-body" style="max-height:65vh;overflow-y:auto;">
+                    <div id="columnCheckboxList" class="row row-cols-2 row-cols-sm-3 g-2"></div>
                 </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-outline-secondary" id="columnRestoreDefaultsBtn">Restore Defaults</button>
-                    <button type="button" class="btn btn-primary" id="columnSavePrefsBtn">Save</button>
+                <div class="modal-footer py-2">
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="columnShowAllBtn">Show All</button>
+                    <button type="button" class="btn btn-sm btn-outline-danger" id="columnHideAllBtn">Hide All</button>
+                    <button type="button" class="btn btn-sm btn-primary" data-bs-dismiss="modal">Done</button>
                 </div>
             </div>
         </div>
@@ -1060,6 +983,7 @@
                     field: "SKU",
                     frozen: true,
                     movable: false,
+                    resizable: false,
                     minWidth: 180,
                     widthGrow: 1,
                     accessor: row => (row ? row["SKU"] : ''),
@@ -2178,34 +2102,6 @@
                     }
                 },
                 {
-                    title: "GPFT%",
-                    field: "avg_gpft_pct",
-                    minWidth: 58,
-                    width: 62,
-                    headerSort: true,
-                    hozAlign: "center",
-                    sorter: "number",
-                    titleFormatter: function() {
-                        const span = document.createElement("span");
-                        span.textContent = "GPFT%";
-                        span.setAttribute("title", "GPFT% (amazon_data_view)");
-                        return span;
-                    },
-                    accessor: function(row) {
-                        if (!row) return null;
-                        const v = parseFloat(row.avg_gpft_pct);
-                        return Number.isFinite(v) ? v : null;
-                    },
-                    formatter: function(cell) {
-                        const v = cell.getValue();
-                        if (v === null || v === undefined || v === '' || (typeof v === 'number' && isNaN(v))) {
-                            return '<span style="display:block;text-align:center;color:#6c757d">—</span>';
-                        }
-                        const n = Math.round(parseFloat(v));
-                        return `<span style="display:block;text-align:center;font-weight:700;color:#1b5e20;" title="GPFT% from amazon_data_view">${n}%</span>`;
-                    }
-                },
-                {
                     title: "NPFT%",
                     field: "avg_npft_pct",
                     minWidth: 58,
@@ -3299,6 +3195,8 @@
         let currentSearchParent = '';
         let currentSearchSupplier = '';
         let currentSupplierFilter = null;
+        let currentZoneFilter = null;
+        let currentContainerFilter = null;
         let currentTwoOrdColorFilter = '';
         let currentTopQtySignFilters = {
             order: '',
@@ -3849,6 +3747,21 @@
                     const rowSupplier = String(data.mfrg_supplier || '').trim();
                     if (rowSupplier !== currentSupplierFilter) return false;
                 }
+
+                // Zone play filter
+                if (currentZoneFilter) {
+                    const rowZone = String(data.r2s_zone || '').trim();
+                    if (rowZone !== currentZoneFilter) return false;
+                }
+
+                // Container (Trn) play filter
+                if (currentContainerFilter) {
+                    const rawContainer = String(data.containerName || '').trim();
+                    if (!rawContainer) return false;
+                    // containerName may be comma-separated; check if any part matches
+                    const parts = rawContainer.split(',').map(function(p) { return p.trim(); });
+                    if (!parts.includes(currentContainerFilter)) return false;
+                }
                 const isChild = !data.is_parent;
                 const isParent = data.is_parent;
                 const twoOrdRaw = data.to_order ?? (data.raw_data ? data.raw_data.to_order : 0);
@@ -4373,231 +4286,107 @@
         }
 
         const COLUMN_VIS_KEY = "tabulator_column_visibility";
-        const COLUMN_PREF_KEY = "column_preferences";
-        const COLUMN_DEFAULT_ORDER = ["Image", "Parent", "SKU", "INV", "L30", "ov_dil", "msl", "s_msl"];
-        const COLUMN_MODAL_ITEMS = [
-            { field: "Image", label: "#", group: "Item" },
-            { field: "Parent", label: "Parent", group: "Item" },
-            { field: "SKU", label: "SKU", group: "Item" },
-            { field: "INV", label: "INV", group: "Inventory Metrics" },
-            { field: "L30", label: "I30", group: "Inventory Metrics" },
-            { field: "ov_dil", label: "DIL", group: "Inventory Metrics" },
-            { field: "msl", label: "MSL", group: "Stock Levels" },
-            { field: "s_msl", label: "MSL Manual", group: "Stock Levels" },
-        ];
-        const columnModalState = {
-            selectedColumns: [],
-            order: [],
-            activeField: null,
-            sortable: null,
-            initialized: false,
-        };
 
-        function normalizeColumnPrefs(rawPrefs) {
-            const defaults = [...COLUMN_DEFAULT_ORDER];
-            const selectedRaw = Array.isArray(rawPrefs?.selectedColumns) ? rawPrefs.selectedColumns : defaults;
-            const orderRaw = Array.isArray(rawPrefs?.order) ? rawPrefs.order : defaults;
-            const selected = selectedRaw.filter(f => defaults.includes(f));
-            const order = orderRaw.filter(f => defaults.includes(f));
-            defaults.forEach(f => {
-                if (!selected.includes(f)) selected.push(f);
-                if (!order.includes(f)) order.push(f);
+        function saveColumnVisibilityToLocalStorage() {
+            const vis = {};
+            table.getColumns().forEach(function(col) {
+                const f = col.getField();
+                if (f) vis[f] = col.isVisible();
             });
-            return { selectedColumns: selected, order };
-        }
-
-        function getCurrentManagedVisibility() {
-            return COLUMN_DEFAULT_ORDER.filter(function(field) {
-                const col = table.getColumn(field);
-                return col ? col.isVisible() : false;
-            });
-        }
-
-        function renderAvailableColumns() {
-            const wrap = document.getElementById("columnAvailableWrap");
-            if (!wrap) return;
-            const groups = ["Item", "Inventory Metrics", "Stock Levels"];
-            wrap.innerHTML = groups.map(function(groupName) {
-                const rows = COLUMN_MODAL_ITEMS.filter(i => i.group === groupName).map(function(item) {
-                    const checked = columnModalState.selectedColumns.includes(item.field) ? "checked" : "";
-                    return `
-                        <label class="column-checkbox-row">
-                            <input type="checkbox" class="form-check-input column-checkbox" data-field="${item.field}" ${checked}>
-                            <span>${item.label}</span>
-                        </label>
-                    `;
-                }).join("");
-                return `
-                    <div class="mb-3">
-                        <div class="column-group-title">${groupName}</div>
-                        <div class="column-grid">${rows}</div>
-                    </div>
-                `;
-            }).join("");
-        }
-
-        function renderSelectedColumns() {
-            const list = document.getElementById("columnArrangeList");
-            if (!list) return;
-            const labelByField = Object.fromEntries(COLUMN_MODAL_ITEMS.map(i => [i.field, i.label]));
-            const selectedSet = new Set(columnModalState.selectedColumns);
-            const orderedSelected = columnModalState.order.filter(f => selectedSet.has(f));
-            list.innerHTML = orderedSelected.map(function(field) {
-                const activeClass = columnModalState.activeField === field ? "active" : "";
-                return `
-                    <li class="arrange-item ${activeClass}" data-field="${field}">
-                        <span class="arrange-name">${labelByField[field] || field}</span>
-                        <div class="d-flex align-items-center gap-1">
-                            <button type="button" class="btn btn-sm btn-outline-secondary arrange-up" data-field="${field}" title="Move up">↑</button>
-                            <button type="button" class="btn btn-sm btn-outline-secondary arrange-down" data-field="${field}" title="Move down">↓</button>
-                        </div>
-                    </li>
-                `;
-            }).join("");
-            handleDragDrop();
-        }
-
-        function handleCheckboxChange(field, checked) {
-            if (!COLUMN_DEFAULT_ORDER.includes(field)) return;
-            const selected = columnModalState.selectedColumns;
-            const inSelected = selected.includes(field);
-            if (checked && !inSelected) selected.push(field);
-            if (!checked && inSelected) {
-                columnModalState.selectedColumns = selected.filter(f => f !== field);
-                if (columnModalState.activeField === field) columnModalState.activeField = null;
-            }
-            if (!columnModalState.order.includes(field)) {
-                columnModalState.order.push(field);
-            }
-            renderSelectedColumns();
-        }
-
-        function handleDragDrop() {
-            const listEl = document.getElementById("columnArrangeList");
-            if (!listEl || typeof Sortable === "undefined") return;
-            if (columnModalState.sortable) {
-                columnModalState.sortable.destroy();
-                columnModalState.sortable = null;
-            }
-            columnModalState.sortable = Sortable.create(listEl, {
-                animation: 150,
-                ghostClass: "sortable-ghost",
-                onEnd: function() {
-                    const orderedVisible = Array.from(listEl.querySelectorAll(".arrange-item")).map(el => el.dataset.field);
-                    const hiddenTail = columnModalState.order.filter(f => !orderedVisible.includes(f));
-                    columnModalState.order = [...orderedVisible, ...hiddenTail];
-                }
-            });
-        }
-
-        function applyColumnSettings() {
-            const selectedSet = new Set(columnModalState.selectedColumns);
-            COLUMN_DEFAULT_ORDER.forEach(function(field) {
-                const col = table.getColumn(field);
-                if (!col) return;
-                if (selectedSet.has(field)) col.show();
-                else col.hide();
-            });
-
-            const desiredOrder = columnModalState.order.filter(f => COLUMN_DEFAULT_ORDER.includes(f));
-            for (let i = desiredOrder.length - 2; i >= 0; i--) {
-                const fromField = desiredOrder[i];
-                const toField = desiredOrder[i + 1];
-                if (!table.getColumn(fromField) || !table.getColumn(toField)) continue;
-                try {
-                    table.moveColumn(fromField, toField, false);
-                } catch (_) {}
-            }
-            saveColumnVisibilityToLocalStorage();
-        }
-
-        function saveColumnPreferences() {
-            const payload = {
-                selectedColumns: [...columnModalState.selectedColumns],
-                order: [...columnModalState.order],
-            };
-            localStorage.setItem(COLUMN_PREF_KEY, JSON.stringify(payload));
-            applyColumnSettings();
+            localStorage.setItem(COLUMN_VIS_KEY, JSON.stringify(vis));
         }
 
         function initColumnModal() {
-            if (columnModalState.initialized) return;
-            columnModalState.initialized = true;
-
-            const saved = normalizeColumnPrefs(JSON.parse(localStorage.getItem(COLUMN_PREF_KEY) || 'null'));
-            const currentVisible = getCurrentManagedVisibility();
-            columnModalState.selectedColumns = currentVisible.length ? currentVisible : saved.selectedColumns;
-            columnModalState.order = saved.order.length ? saved.order : [...COLUMN_DEFAULT_ORDER];
-
             const trigger = document.getElementById("hide-column-dropdown");
-            if (trigger) {
-                trigger.addEventListener("click", function() {
-                    renderAvailableColumns();
-                    renderSelectedColumns();
-                    bootstrap.Modal.getOrCreateInstance(document.getElementById("columnCustomizeModal")).show();
-                });
+            const modalEl = document.getElementById("columnCustomizeModal");
+            if (!trigger || !modalEl) return;
+
+            // Restore saved visibility only after table is fully built
+            table.on('tableBuilt', function() {
+                const savedVis = JSON.parse(localStorage.getItem(COLUMN_VIS_KEY) || '{}');
+                if (Object.keys(savedVis).length) {
+                    table.getColumns().forEach(function(col) {
+                        const f = col.getField();
+                        if (!f) return;
+                        if (savedVis[f] === false) col.hide();
+                    });
+                }
+            });
+
+            // Map of field → plain text label
+            const FIELD_LABELS = {};
+
+            function getColumnLabel(col) {
+                const f = col.getField();
+                if (FIELD_LABELS[f]) return FIELD_LABELS[f];
+                const def = col.getDefinition();
+                let label = '';
+                if (typeof def.title === 'string' && def.title.trim()) {
+                    label = def.title.trim();
+                }
+                if (!label) {
+                    // Read from rendered header text (safe plain-text only)
+                    try {
+                        const el = col.getElement();
+                        const titleEl = el && el.querySelector('.tabulator-col-title');
+                        label = titleEl ? (titleEl.textContent || '').trim() : '';
+                    } catch (_) {}
+                }
+                if (!label || label === 'undefined') label = f || '—';
+                // Strip any HTML tags just in case
+                label = label.replace(/<[^>]*>/g, '').trim() || f || '—';
+                FIELD_LABELS[f] = label;
+                return label;
             }
 
-            applyColumnSettings();
+            function buildCheckboxList() {
+                const list = document.getElementById("columnCheckboxList");
+                if (!list) return;
+                list.innerHTML = table.getColumns().map(function(col) {
+                    const f = col.getField();
+                    if (!f) return '';
+                    const label = getColumnLabel(col);
+                    const checked = col.isVisible() ? 'checked' : '';
+                    const safeF = String(f).replace(/"/g, '&quot;');
+                    const safeLabel = String(label).replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                    return `<div class="col">
+                        <div class="form-check">
+                            <input class="form-check-input col-vis-checkbox" type="checkbox" id="colvis_${safeF}" data-field="${safeF}" ${checked}>
+                            <label class="form-check-label small" for="colvis_${safeF}" style="cursor:pointer;">${safeLabel}</label>
+                        </div>
+                    </div>`;
+                }).join('');
+            }
 
-            $(document).off('change.columnModal', '.column-checkbox').on('change.columnModal', '.column-checkbox', function() {
-                handleCheckboxChange(String(this.dataset.field || ''), this.checked);
+            trigger.addEventListener("click", function() {
+                buildCheckboxList();
+                bootstrap.Modal.getOrCreateInstance(modalEl).show();
             });
 
-            $(document).off('click.columnModalItem', '#columnArrangeList .arrange-item').on('click.columnModalItem', '#columnArrangeList .arrange-item', function(e) {
-                if (e.target.closest('button')) return;
-                columnModalState.activeField = String(this.dataset.field || '');
-                renderSelectedColumns();
+            // Immediate apply on checkbox toggle
+            $(document).off('change.colvis', '.col-vis-checkbox').on('change.colvis', '.col-vis-checkbox', function() {
+                const col = table.getColumn(this.dataset.field);
+                if (!col) return;
+                if (this.checked) col.show(); else col.hide();
+                saveColumnVisibilityToLocalStorage();
             });
 
-            $(document).off('click.columnModalUp', '.arrange-up').on('click.columnModalUp', '.arrange-up', function() {
-                const field = String(this.dataset.field || '');
-                const visible = columnModalState.order.filter(f => columnModalState.selectedColumns.includes(f));
-                const idx = visible.indexOf(field);
-                if (idx <= 0) return;
-                [visible[idx - 1], visible[idx]] = [visible[idx], visible[idx - 1]];
-                const hidden = columnModalState.order.filter(f => !visible.includes(f));
-                columnModalState.order = [...visible, ...hidden];
-                columnModalState.activeField = field;
-                renderSelectedColumns();
+            // Show All
+            document.getElementById("columnShowAllBtn")?.addEventListener("click", function() {
+                table.getColumns().forEach(function(col) { if (col.getField()) col.show(); });
+                saveColumnVisibilityToLocalStorage();
+                buildCheckboxList();
             });
 
-            $(document).off('click.columnModalDown', '.arrange-down').on('click.columnModalDown', '.arrange-down', function() {
-                const field = String(this.dataset.field || '');
-                const visible = columnModalState.order.filter(f => columnModalState.selectedColumns.includes(f));
-                const idx = visible.indexOf(field);
-                if (idx < 0 || idx >= visible.length - 1) return;
-                [visible[idx], visible[idx + 1]] = [visible[idx + 1], visible[idx]];
-                const hidden = columnModalState.order.filter(f => !visible.includes(f));
-                columnModalState.order = [...visible, ...hidden];
-                columnModalState.activeField = field;
-                renderSelectedColumns();
-            });
-
-            document.getElementById("columnMoveUpBtn")?.addEventListener("click", function() {
-                if (!columnModalState.activeField) return;
-                const btn = document.querySelector(`.arrange-up[data-field="${columnModalState.activeField}"]`);
-                if (btn) btn.click();
-            });
-
-            document.getElementById("columnMoveDownBtn")?.addEventListener("click", function() {
-                if (!columnModalState.activeField) return;
-                const btn = document.querySelector(`.arrange-down[data-field="${columnModalState.activeField}"]`);
-                if (btn) btn.click();
-            });
-
-            document.getElementById("columnRestoreDefaultsBtn")?.addEventListener("click", function() {
-                columnModalState.selectedColumns = [...COLUMN_DEFAULT_ORDER];
-                columnModalState.order = [...COLUMN_DEFAULT_ORDER];
-                columnModalState.activeField = null;
-                renderAvailableColumns();
-                renderSelectedColumns();
-                saveColumnPreferences();
-            });
-
-            document.getElementById("columnSavePrefsBtn")?.addEventListener("click", function() {
-                saveColumnPreferences();
-                bootstrap.Modal.getOrCreateInstance(document.getElementById("columnCustomizeModal")).hide();
+            // Hide All (keep SKU visible so table stays usable)
+            document.getElementById("columnHideAllBtn")?.addEventListener("click", function() {
+                table.getColumns().forEach(function(col) {
+                    const f = col.getField();
+                    if (!f || f === 'SKU') return;
+                    col.hide();
+                });
+                saveColumnVisibilityToLocalStorage();
+                buildCheckboxList();
             });
         }
 
@@ -5251,6 +5040,140 @@
                 document.getElementById('supplier-play-pause').style.display = 'none';
                 document.getElementById('supplier-play-auto').style.display = 'inline-block';
                 const lbl = document.getElementById('supplier-play-label');
+                if (lbl) lbl.style.display = 'none';
+            });
+            // ─────────────────────────────────────────────────────────────
+
+            // ── Zone play/pause ──────────────────────────────────────────
+            let isZonePlaying = false;
+            let zoneIndex = 0;
+
+            function getZoneList() {
+                const tbl = Tabulator.findTable("#forecast-table")[0];
+                if (!tbl) return [];
+                const seen = new Set();
+                const list = [];
+                tbl.getRows().forEach(function(row) {
+                    const d = row.getData();
+                    const cell = row.getCell("r2s_zone");
+                    const s = String(
+                        (cell ? cell.getValue() : null) ||
+                        d.r2s_zone || d['r2s_zone'] || ''
+                    ).trim();
+                    if (s && s !== '-' && !seen.has(s)) { seen.add(s); list.push(s); }
+                });
+                return list.sort();
+            }
+
+            function renderZoneGroup(zone) {
+                currentZoneFilter = zone;
+                setCombinedFilters();
+                const lbl = document.getElementById('zone-play-label');
+                if (lbl) { lbl.textContent = zone; lbl.style.display = 'inline-block'; }
+                const tbl = Tabulator.findTable("#forecast-table")[0];
+                if (tbl && tbl.rowManager && tbl.rowManager.element) {
+                    tbl.rowManager.element.scrollTop = 0;
+                }
+            }
+
+            document.getElementById('zone-play-auto').addEventListener('click', function() {
+                const list = getZoneList();
+                if (!list.length) { alert('No zone data available.'); return; }
+                isZonePlaying = true;
+                zoneIndex = 0;
+                renderZoneGroup(list[zoneIndex]);
+                document.getElementById('zone-play-pause').style.display = 'inline-block';
+                document.getElementById('zone-play-auto').style.display = 'none';
+            });
+
+            document.getElementById('zone-play-forward').addEventListener('click', function() {
+                if (!isZonePlaying) return;
+                const list = getZoneList();
+                zoneIndex = (zoneIndex + 1) % list.length;
+                renderZoneGroup(list[zoneIndex]);
+            });
+
+            document.getElementById('zone-play-backward').addEventListener('click', function() {
+                if (!isZonePlaying) return;
+                const list = getZoneList();
+                zoneIndex = (zoneIndex - 1 + list.length) % list.length;
+                renderZoneGroup(list[zoneIndex]);
+            });
+
+            document.getElementById('zone-play-pause').addEventListener('click', function() {
+                isZonePlaying = false;
+                currentZoneFilter = null;
+                setCombinedFilters();
+                document.getElementById('zone-play-pause').style.display = 'none';
+                document.getElementById('zone-play-auto').style.display = 'inline-block';
+                const lbl = document.getElementById('zone-play-label');
+                if (lbl) lbl.style.display = 'none';
+            });
+            // ─────────────────────────────────────────────────────────────
+
+            // ── Container (Trn) play/pause ───────────────────────────────
+            let isContainerPlaying = false;
+            let containerIndex = 0;
+
+            function getContainerList() {
+                const tbl = Tabulator.findTable("#forecast-table")[0];
+                if (!tbl) return [];
+                const seen = new Set();
+                const list = [];
+                tbl.getRows().forEach(function(row) {
+                    const d = row.getData();
+                    const raw = String(d.containerName || '').trim();
+                    if (!raw) return;
+                    raw.split(',').forEach(function(part) {
+                        const c = part.trim();
+                        if (c && c !== '-' && !seen.has(c)) { seen.add(c); list.push(c); }
+                    });
+                });
+                return list.sort();
+            }
+
+            function renderContainerGroup(container) {
+                currentContainerFilter = container;
+                setCombinedFilters();
+                const lbl = document.getElementById('container-play-label');
+                if (lbl) { lbl.textContent = container; lbl.style.display = 'inline-block'; }
+                const tbl = Tabulator.findTable("#forecast-table")[0];
+                if (tbl && tbl.rowManager && tbl.rowManager.element) {
+                    tbl.rowManager.element.scrollTop = 0;
+                }
+            }
+
+            document.getElementById('container-play-auto').addEventListener('click', function() {
+                const list = getContainerList();
+                if (!list.length) { alert('No container data available.'); return; }
+                isContainerPlaying = true;
+                containerIndex = 0;
+                renderContainerGroup(list[containerIndex]);
+                document.getElementById('container-play-pause').style.display = 'inline-block';
+                document.getElementById('container-play-auto').style.display = 'none';
+            });
+
+            document.getElementById('container-play-forward').addEventListener('click', function() {
+                if (!isContainerPlaying) return;
+                const list = getContainerList();
+                containerIndex = (containerIndex + 1) % list.length;
+                renderContainerGroup(list[containerIndex]);
+            });
+
+            document.getElementById('container-play-backward').addEventListener('click', function() {
+                if (!isContainerPlaying) return;
+                const list = getContainerList();
+                containerIndex = (containerIndex - 1 + list.length) % list.length;
+                renderContainerGroup(list[containerIndex]);
+            });
+
+            document.getElementById('container-play-pause').addEventListener('click', function() {
+                isContainerPlaying = false;
+                currentContainerFilter = null;
+                setCombinedFilters();
+                document.getElementById('container-play-pause').style.display = 'none';
+                document.getElementById('container-play-auto').style.display = 'inline-block';
+                const lbl = document.getElementById('container-play-label');
                 if (lbl) lbl.style.display = 'none';
             });
             // ─────────────────────────────────────────────────────────────
