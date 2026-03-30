@@ -71,8 +71,8 @@
         #viewRowModal .bp-view-mp:last-child { border-bottom:none; padding-bottom:0; margin-bottom:0; }
         #viewRowModal .bp-view-mp-label { font-weight:600; color:#0f172a; font-size:13px; margin-bottom:.35rem; display:flex; align-items:center; justify-content:space-between; gap:.5rem; flex-wrap:wrap; }
         #viewRowModal .bp-view-char { font-size:11px; font-weight:500; color:#64748b; }
-        #viewRowModal .bp-view-char.over-limit { color:#dc2626; font-weight:700; }
-        #viewRowModal .bp-view-char.at-limit { color:#b45309; font-weight:600; }
+        #viewRowModal .bp-view-char.at-min { color:#15803d; font-weight:600; }
+        #viewRowModal .bp-view-char.under-min { color:#b45309; font-weight:600; }
         #viewRowModal .bp-view-body {
             font-size:12px; line-height:1.45; color:#334155; white-space:pre-wrap; word-break:break-word;
             background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:.65rem .75rem; min-height:2.25rem;
@@ -117,14 +117,14 @@
                                         <input type="text" id="previewSearchBp" class="th-sub" placeholder="Search preview">
                                     </th>
                                     <th>Action</th>
-                                    <th title="eBay1–3, Macy's, Amazon, Temu, Reverb (150 characters each)">
-                                        <div class="bp-mp-th-title">MARKET PLACES [150]</div>
+                                    <th title="eBay1–3, Macy's, Amazon, Temu, Reverb — min 190 chars per bullet">
+                                        <div class="bp-mp-th-title">MARKET PLACES</div>
                                         <div class="bp-mp-th-icons">
                                             <span class="bp-mp-th-pill btn-ebay1">E1</span><span class="bp-mp-th-pill btn-ebay2">E2</span><span class="bp-mp-th-pill btn-ebay3">E3</span><span class="bp-mp-th-pill btn-macy">M</span><span class="bp-mp-th-pill btn-amazon">A</span><span class="bp-mp-th-pill btn-temu">T</span><span class="bp-mp-th-pill btn-reverb">R</span>
                                         </div>
                                     </th>
-                                    <th title="Shopify Main, Shopify PLS (100 characters each)">
-                                        <div class="bp-mp-th-title">MARKET PLACES [100]</div>
+                                    <th title="Shopify Main, Shopify PLS — min 190 chars per bullet">
+                                        <div class="bp-mp-th-title">SHOPIFY</div>
                                         <div class="bp-mp-th-icons">
                                             <span class="bp-mp-th-pill btn-shopify">SM</span><span class="bp-mp-th-pill btn-shopify-pls">PLS</span>
                                         </div>
@@ -166,7 +166,7 @@
                         </div>
                         <div id="editModalAiFields" class="row g-2"></div>
                     </div>
-                    <div class="small text-muted">Use AI or edit bullet fields, then push to selected marketplaces.</div>
+                    <div class="small text-muted">Each non-empty bullet: minimum 190 characters; no maximum. Empty slots are ignored.</div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
@@ -203,10 +203,8 @@
 <script>
 document.addEventListener('DOMContentLoaded', () => {
     const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
-    const LIMITS = {
-        ebay: 150, ebay2: 150, ebay3: 150, macy: 150, amazon: 150, temu: 150, reverb: 150,
-        shopify_main: 100, shopify_pls: 100,
-    };
+    const MIN_BULLET_CHARS = 190;
+    const MARKETPLACES = ['ebay', 'ebay2', 'ebay3', 'macy', 'amazon', 'temu', 'reverb', 'shopify_main', 'shopify_pls'];
     const LABELS = {
         ebay: 'eBay 1', ebay2: 'eBay 2', ebay3: 'eBay 3', macy: "Macy's", amazon: 'Amazon', temu: 'Temu', reverb: 'Reverb',
         shopify_main: 'Shopify Main', shopify_pls: 'Shopify PLS',
@@ -217,13 +215,11 @@ document.addEventListener('DOMContentLoaded', () => {
         shopify_main: 'Shopify Main', shopify_pls: 'Shopify PLS',
     };
     const VIEW_SECTIONS = [
-        { limit: 150, banner: '========== 150 Character Marketplaces ==========', keys: ['ebay', 'ebay2', 'ebay3', 'macy', 'amazon', 'temu', 'reverb'] },
-        { limit: 100, banner: '========== 100 Character Marketplaces ==========', keys: ['shopify_main', 'shopify_pls'] },
+        { banner: '========== Marketplaces (min ' + MIN_BULLET_CHARS + ' chars per bullet) ==========', keys: MARKETPLACES },
     ];
-    const MARKETPLACES = Object.keys(LIMITS);
     const GROUPS = {
-        g150: ['ebay', 'ebay2', 'ebay3', 'macy', 'amazon', 'temu', 'reverb'],
-        g100: ['shopify_main', 'shopify_pls'],
+        gChannels: ['ebay', 'ebay2', 'ebay3', 'macy', 'amazon', 'temu', 'reverb'],
+        gShopify: ['shopify_main', 'shopify_pls'],
     };
     /** Short labels on tiles (horizontal row, Title Master style) */
     const MP_TILE = {
@@ -340,8 +336,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         <button type="button" class="action-btn edit-btn" data-edit="${esc(sku)}"><i class="fas fa-edit"></i> Edit</button>
                     </div>
                 </td>
-                <td>${groupCell('g150', sku, bp)}</td>
-                <td>${groupCell('g100', sku, bp)}</td>
+                <td>${groupCell('gChannels', sku, bp)}</td>
+                <td>${groupCell('gShopify', sku, bp)}</td>
             </tr>`;
         }).join('');
 
@@ -356,19 +352,19 @@ document.addEventListener('DOMContentLoaded', () => {
         }));
     }
 
-    function charCountClass(len, limit) {
-        if (limit == null || limit <= 0) return 'bp-view-char';
-        if (len > limit) return 'bp-view-char over-limit';
-        if (len === limit) return 'bp-view-char at-limit';
+    function charCountClassForMin(len, minLen) {
+        if (len === 0) return 'bp-view-char';
+        if (len < minLen) return 'bp-view-char under-min';
+        if (len === minLen) return 'bp-view-char at-min';
         return 'bp-view-char';
     }
 
-    function renderViewMarketplaceBlock(mpKey, label, text, limit) {
+    function renderViewMarketplaceBlock(mpKey, label, text) {
         const raw = text == null ? '' : String(text);
         const trimmed = raw.trim();
         const empty = trimmed === '';
         const len = raw.length;
-        const charCls = charCountClass(len, limit);
+        const charCls = charCountClassForMin(len, MIN_BULLET_CHARS);
         const bodyHtml = empty
             ? `<div class="bp-view-body bp-view-empty">No bullet points saved yet</div>`
             : `<div class="bp-view-body">${esc(raw)}</div>`;
@@ -376,7 +372,7 @@ document.addEventListener('DOMContentLoaded', () => {
             <div class="bp-view-mp" data-mp="${esc(mpKey)}">
                 <div class="bp-view-mp-label">
                     <span>${esc(label)}:</span>
-                    <span class="${charCls}">${len} character${len === 1 ? '' : 's'}${limit ? ` (limit ${limit})` : ''}</span>
+                    <span class="${charCls}">${len} character${len === 1 ? '' : 's'} (min ${MIN_BULLET_CHARS})</span>
                 </div>
                 ${bodyHtml}
             </div>`;
@@ -394,9 +390,8 @@ document.addEventListener('DOMContentLoaded', () => {
             lines.push(sec.banner);
             sec.keys.forEach((mp) => {
                 const label = VIEW_LABELS[mp] || LABELS[mp] || mp;
-                const limit = LIMITS[mp] ?? sec.limit;
                 const text = bp[mp];
-                html += renderViewMarketplaceBlock(mp, label, text, limit);
+                html += renderViewMarketplaceBlock(mp, label, text);
                 lines.push(`${label}: ${(text && String(text).trim()) ? String(text) : 'No bullet points saved yet'}`);
             });
             lines.push('');
@@ -413,7 +408,7 @@ document.addEventListener('DOMContentLoaded', () => {
             lines.push('========== Other (from API) ==========');
             extraKeys.sort().forEach((k) => {
                 const text = bp[k];
-                html += renderViewMarketplaceBlock(k, k, text, null);
+                html += renderViewMarketplaceBlock(k, k, text);
                 lines.push(`${k}: ${(text && String(text).trim()) ? String(text) : 'No bullet points saved yet'}`);
                 lines.push('');
             });
@@ -552,20 +547,16 @@ document.addEventListener('DOMContentLoaded', () => {
         return lines.join('\n');
     }
 
-    /** Client-side: each non-empty bullet must be <= LIMITS[mp] (server validates the same way). */
-    function validateBulletsForMarketplace(mp, lines) {
-        const limit = LIMITS[mp];
-        if (limit == null) return null;
-        const label = LABELS[mp] || mp;
+    /** Non-empty bullets must be at least MIN_BULLET_CHARS (empty slots skipped). Server uses the same rule. */
+    function validateBulletMinimumLengths(lines) {
         const failures = [];
         lines.forEach((line, i) => {
             if (!line) return;
-            if (line.length > limit) {
-                failures.push(`Bullet ${i + 1} is ${line.length} characters (max ${limit} per bullet).`);
+            if (line.length < MIN_BULLET_CHARS) {
+                failures.push(`Bullet ${i + 1} is only ${line.length} characters (minimum ${MIN_BULLET_CHARS} required).`);
             }
         });
-        if (!failures.length) return null;
-        return `${label}: ${failures.join(' ')}`;
+        return failures.length ? failures.join(' ') : null;
     }
 
     function getBulletLinesForPush(sku, row) {
@@ -587,7 +578,7 @@ document.addEventListener('DOMContentLoaded', () => {
             toast('Add bullet points in the modal, then click the marketplace again to push.', false);
             return;
         }
-        const limitErr = validateBulletsForMarketplace(mp, lines);
+        const limitErr = validateBulletMinimumLengths(lines);
         if (limitErr) { toast(limitErr, false); return; }
         const combined = bulletLinesToPayload(lines);
         const payload = { sku, updates: [{ marketplace: mp, bullet_points: combined }] };
@@ -688,10 +679,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const combined = bulletLinesToPayload(lines);
         const selected = Array.from(document.querySelectorAll('.modal-mp-check:checked')).map(chk => chk.dataset.mp);
-        for (const mp of selected) {
-            const limitErr = validateBulletsForMarketplace(mp, lines);
-            if (limitErr) { toast(limitErr, false); return; }
-        }
+        const minErr = validateBulletMinimumLengths(lines);
+        if (minErr) { toast(minErr, false); return; }
         const updates = selected.map(mp => ({ marketplace: mp, bullet_points: combined }));
         if (!updates.length) { toast('Select at least one marketplace.', false); return; }
 

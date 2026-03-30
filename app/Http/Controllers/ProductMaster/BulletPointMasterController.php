@@ -107,7 +107,7 @@ class BulletPointMasterController extends Controller
                     continue;
                 }
 
-                $validationError = $this->validateBulletLinesPerMarketplace($marketplace, $text);
+                $validationError = $this->validateBulletLinesMinimumLength($text);
                 if ($validationError !== null) {
                     $results[$marketplace] = [
                         'success' => false,
@@ -272,25 +272,14 @@ class BulletPointMasterController extends Controller
         return $this->generateBulletPoints($request);
     }
 
-    /**
-     * Character limit per marketplace for bullet point pushes (aligned with Bullet Points Master UI).
-     */
-    public function getBulletPointLimit(string $marketplace): int
-    {
-        $marketplace = strtolower(trim($marketplace));
-
-        return match ($marketplace) {
-            'shopify_main', 'shopify_pls' => 100,
-            default => 150,
-        };
-    }
+    /** Minimum characters per non-empty bullet line (empty slots are not validated). */
+    public const MIN_BULLET_CHARS = 190;
 
     /**
-     * Each non-empty line is one marketplace bullet; limits apply per line (not to the whole payload).
+     * Each non-empty line must be at least MIN_BULLET_CHARS; no maximum length.
      */
-    private function validateBulletLinesPerMarketplace(string $marketplace, string $text): ?string
+    private function validateBulletLinesMinimumLength(string $text): ?string
     {
-        $limit = $this->getBulletPointLimit($marketplace);
         $lines = preg_split('/\r\n|\r|\n/', $text);
         $failures = [];
         foreach ($lines as $idx => $line) {
@@ -300,8 +289,8 @@ class BulletPointMasterController extends Controller
             }
             $slot = $idx + 1;
             $len = mb_strlen($line);
-            if ($len > $limit) {
-                $failures[] = "Bullet {$slot} is {$len} characters (max {$limit} per bullet).";
+            if ($len < self::MIN_BULLET_CHARS) {
+                $failures[] = "Bullet {$slot} is only {$len} characters (minimum ".self::MIN_BULLET_CHARS.' required).';
             }
         }
 
