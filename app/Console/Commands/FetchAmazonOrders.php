@@ -418,7 +418,13 @@ class FetchAmazonOrders extends Command
 
                 // Fetch order items if --with-items flag is set
                 if ($this->option('with-items')) {
-                    $items = $this->fetchOrderItemsWithRetry($accessToken, $orderId);
+                    try {
+                        $items = $this->fetchOrderItemsWithRetry($accessToken, $orderId);
+                    } catch (\Exception $e) {
+                        $this->warn("   ⚠️ Skipping items for order {$orderId}: " . $e->getMessage());
+                        Log::warning("Skipping items for order {$orderId}: " . $e->getMessage());
+                        $items = [];
+                    }
                     
                     foreach ($items as $item) {
                         // Calculate total price including all components (matches Amazon Seller Central "Ordered product sales")
@@ -763,7 +769,15 @@ class FetchAmazonOrders extends Command
         $failed = 0;
 
         foreach ($ordersWithoutItems as $index => $order) {
-            $items = $this->fetchOrderItemsWithRetry($accessToken, $order->amazon_order_id);
+            try {
+                $items = $this->fetchOrderItemsWithRetry($accessToken, $order->amazon_order_id);
+            } catch (\Exception $e) {
+                $this->warn("   ⚠️ Skipping order {$order->amazon_order_id}: " . $e->getMessage());
+                Log::warning("fetchMissingItems: skipping order {$order->amazon_order_id}: " . $e->getMessage());
+                $failed++;
+                usleep(500000);
+                continue;
+            }
             
             if (count($items) > 0) {
                 foreach ($items as $item) {
@@ -988,30 +1002,48 @@ class FetchAmazonOrders extends Command
         $attempt = 0;
         
         while ($attempt < $maxRetries) {
-            $response = Http::timeout(30)->withHeaders([
-                'x-amz-access-token' => $accessToken,
-            ])->get("https://sellingpartnerapi-na.amazon.com/orders/v0/orders/{$orderId}/orderItems");
+            try {
+                $response = Http::timeout(60)->withHeaders([
+                    'x-amz-access-token' => $accessToken,
+                ])->get("https://sellingpartnerapi-na.amazon.com/orders/v0/orders/{$orderId}/orderItems");
 
-            if ($response->successful()) {
-                return $response->json()['payload']['OrderItems'] ?? [];
-            }
+                if ($response->successful()) {
+                    return $response->json()['payload']['OrderItems'] ?? [];
+                }
 
-            $statusCode = $response->status();
-            $body = $response->json();
-            $errorCode = $body['errors'][0]['code'] ?? '';
-            
-            // Rate limited or quota exceeded - wait and retry
-            if ($statusCode === 429 || $errorCode === 'QuotaExceeded') {
+                $statusCode = $response->status();
+                $body = $response->json();
+                $errorCode = $body['errors'][0]['code'] ?? '';
+                
+                // Rate limited or quota exceeded - wait and retry
+                if ($statusCode === 429 || $errorCode === 'QuotaExceeded') {
+                    $attempt++;
+                    $waitTime = pow(2, $attempt) * 15; // 30, 60, 120, 240, 480 seconds
+                    Log::warning("Rate limited/quota exceeded for order {$orderId}, waiting {$waitTime}s (attempt {$attempt}/{$maxRetries})");
+                    $this->warn("   ⏳ Rate limited on order items. Waiting {$waitTime}s before retry (attempt {$attempt}/{$maxRetries})...");
+                    sleep($waitTime);
+                    continue;
+                }
+
+                // Other error - log and return empty
+                Log::warning("Failed to fetch items for order {$orderId}: " . $response->body());
+                break;
+
+            } catch (\Illuminate\Http\Client\ConnectionException $e) {
+                // Connection timeout or network error - retry with backoff
                 $attempt++;
-                $waitTime = pow(2, $attempt) * 15; // Exponential backoff: 30, 60, 120, 240, 480 seconds
-                Log::warning("Rate limited/quota exceeded for order {$orderId}, waiting {$waitTime}s (attempt {$attempt}/{$maxRetries})");
+                $waitTime = min(pow(2, $attempt) * 10, 120); // 20, 40, 80, 120, 120 seconds cap
+                Log::warning("Connection timeout for order items {$orderId}, waiting {$waitTime}s (attempt {$attempt}/{$maxRetries}): " . $e->getMessage());
+                $this->warn("   ⏳ Connection timeout for order {$orderId}. Waiting {$waitTime}s (attempt {$attempt}/{$maxRetries})...");
                 sleep($waitTime);
                 continue;
-            }
 
-            // Other error - log and return empty
-            Log::warning("Failed to fetch items for order {$orderId}: " . $response->body());
-            break;
+            } catch (\Exception $e) {
+                // Unexpected error - log and skip this order
+                Log::error("Unexpected error fetching items for order {$orderId}: " . $e->getMessage());
+                $this->warn("   ⚠️ Unexpected error for order {$orderId}: " . $e->getMessage() . ". Skipping.");
+                break;
+            }
         }
 
         return [];

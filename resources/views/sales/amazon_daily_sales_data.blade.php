@@ -145,6 +145,8 @@
     const KW_SPENT = {{ $kwSpent ?? 0 }};
     const PT_SPENT = {{ $ptSpent ?? 0 }};
     const HL_SPENT = {{ $hlSpent ?? 0 }};
+    // Server-computed 35-day total from amazon_orders (includes orders without items)
+    const SERVER_SALES_35 = {{ $sales35Days ?? 0 }};
     
     // Toast notification function
     function showToast(message, type = 'info') {
@@ -502,6 +504,7 @@
         function updateSummary() {
             const data = table.getData("active");
             let uniqueOrderIds = new Set(); // Track unique order IDs
+            const uniqueOrderTotals = {};   // order_id -> order_total_amount (for accurate sales sum)
             let totalQuantity = 0;
             let totalRevenue = 0;
             let totalPft = 0;
@@ -514,12 +517,22 @@
             const uniqueSkuSpend = {};
 
             data.forEach(row => {
-                // Skip rows with empty SKU or order_id
-                if (!row.sku || row.sku === '' || !row.order_id || row.order_id === '') {
+                // Skip rows without order_id
+                if (!row.order_id || row.order_id === '') {
                     return;
                 }
-                
-                uniqueOrderIds.add(row.order_id); // Track unique order ID
+
+                // Track unique order and its order-level total (only once per order)
+                uniqueOrderIds.add(row.order_id);
+                if (!(row.order_id in uniqueOrderTotals)) {
+                    uniqueOrderTotals[row.order_id] = parseFloat(row.order_total_amount) || 0;
+                }
+
+                // SKU-level calculations — only when SKU present and qty > 0
+                if (!row.sku || row.sku === '') {
+                    return;
+                }
+
                 const quantity = parseInt(row.quantity) || 0;
                 const basePrice = parseFloat(row.price) || 0;
                 const saleAmount = parseFloat(row.sale_amount) || 0; // Use pre-calculated sale_amount
@@ -559,6 +572,8 @@
 
             // Calculate average price (weighted by quantity)
             const avgPrice = totalQuantityForPrice > 0 ? totalWeightedPrice / totalQuantityForPrice : 0;
+            // Sum of unique order-level totals (accurate even for orders without items in table)
+            const totalSalesByOrders = Object.values(uniqueOrderTotals).reduce((sum, v) => sum + v, 0);
 
             // Calculate PFT Percentage: (Sum of T PFT / Sum of Total Sales) * 100
             const pftPercentage = totalL30Sales > 0 ? (totalPft / totalL30Sales) * 100 : 0;
@@ -595,7 +610,10 @@
             const totalOrders = uniqueOrderIds.size; // Count unique orders
             $('#total-orders-badge').text('Total Orders: ' + totalOrders.toLocaleString());
             $('#total-quantity-badge').text('Total Quantity: ' + totalQuantity.toLocaleString());
-            $('#sales-35-days-badge').text('Total Sales: $' + totalRevenue.toFixed(2));
+            // Unfiltered: use server-side total (amazon_orders direct sum, includes orders without items)
+            // Filtered: use JS order-total sum so filtered result is accurate
+            const displaySales = isFiltered ? totalSalesByOrders : SERVER_SALES_35;
+            $('#sales-35-days-badge').text('Total Sales: $' + displaySales.toFixed(2));
             $('#total-revenue-badge').text('Total Revenue: $' + totalRevenue.toFixed(2));
             $('#pft-percentage-badge').text('GPFT %: ' + pftPercentage.toFixed(1) + '%');
             $('#roi-percentage-badge').text('ROI %: ' + roiPercentage.toFixed(1) + '%');

@@ -391,7 +391,7 @@
                                 <option value="mip">MIP</option>
                                 <option value="r2s">R2S</option>
                                 <option value="transit">Trn</option>
-                                <option value="to_order_analysis">Ord</option>
+                                <option value="to_order_analysis">Order</option>
                             </select>
 
                             <!-- Column Management -->
@@ -529,7 +529,7 @@
                                         <option value="mip">MIP</option>
                                         <option value="r2s">R2S</option>
                                         <option value="transit">Trn</option>
-                                        <option value="to_order_analysis">Ord</option>
+                                        <option value="to_order_analysis">Order</option>
                                     </select>
                                 </li>
                                 <li><hr class="dropdown-divider"></li>
@@ -1231,7 +1231,7 @@
                             "mip": "MIP",
                             "r2s": "R2S",
                             "transit": "Trn",
-                            "to_order_analysis": "Ord"
+                            "to_order_analysis": "Order"
                         },
                         clearable: false
                     },
@@ -1303,7 +1303,7 @@
                             '<option value="mip"' + (value === 'mip' ? ' selected' : '') + '>MIP</option>' +
                             '<option value="r2s"' + (value === 'r2s' ? ' selected' : '') + '>R2S</option>' +
                             '<option value="transit"' + (value === 'transit' ? ' selected' : '') + '>Trn</option>' +
-                            '<option value="to_order_analysis"' + (value === 'to_order_analysis' ? ' selected' : '') + '>Ord</option>' +
+                            '<option value="to_order_analysis"' + (value === 'to_order_analysis' ? ' selected' : '') + '>Order</option>' +
                             '</select></div>'
                         );
                     },
@@ -1358,9 +1358,21 @@
                         const d = cell.getRow().getData();
                         return !(d.is_parent || d.isParent);
                     },
+                    cellClick: function(e, cell) {
+                        const d = cell.getRow().getData();
+                        if (d.is_parent || d.isParent) return;
+                        cell.edit();
+                    },
                     cellEditing: function(cell) {
                         const row = cell.getRow();
                         row.forecastOrderEditStart = cell.getValue();
+                        setTimeout(function() {
+                            const input = cell.getElement().querySelector('input, textarea');
+                            if (input) {
+                                input.focus();
+                                input.select();
+                            }
+                        }, 0);
                     },
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
@@ -1456,26 +1468,69 @@
                     accessor: row => (row ? row["order_given"] : null),
                     sorter: "number",
                     headerSort: true,
+                    editor: "number",
+                    editorParams: { min: 0, step: 1, verticalNavigation: "editor" },
+                    editable: function(cell) {
+                        const d = cell.getRow().getData();
+                        return !(d.is_parent || d.isParent);
+                    },
+                    cellClick: function(e, cell) {
+                        const d = cell.getRow().getData();
+                        if (d.is_parent || d.isParent) return;
+                        cell.edit();
+                    },
+                    cellEditing: function(cell) {
+                        const row = cell.getRow();
+                        row.forecastMipEditStart = cell.getValue();
+                        setTimeout(function() {
+                            const input = cell.getElement().querySelector('input, textarea');
+                            if (input) {
+                                input.focus();
+                                input.select();
+                            }
+                        }, 0);
+                    },
                     formatter: function(cell) {
                         const value = cell.getValue();
-                        const rowData = cell.getRow().getData();
                         const n = parseFloat(value);
                         const showDash = value === null || value === undefined || value === '' || isNaN(n) || n === 0;
-                        const display = showDash ? '-' : String(value);
+                        return `<div style="text-align:center;font-weight:bold;cursor:text;">${showDash ? '-' : String(value)}</div>`;
+                    },
+                    cellEdited: function(cell) {
+                        const row = cell.getRow();
+                        const d = row.getData();
+                        if (d.is_parent || d.isParent) return;
 
-                        const sku = rowData.SKU ?? '';
-                        const parent = rowData.Parent ?? '';
+                        const rawNew = cell.getValue();
+                        const oldVal = row.forecastMipEditStart;
+                        delete row.forecastMipEditStart;
 
-                        return `<div 
-                            class="editable-qty" 
-                            contenteditable="false" 
-                            data-field="order_given" 
-                            data-original='${value ?? ''}' 
-                            data-sku='${sku}' 
-                            data-parent='${parent}' 
-                            style="outline:none; min-width:40px; text-align:center; font-weight:bold;" readonly>
-                            ${display}
-                        </div>`;
+                        if (rawNew === '' || rawNew === null || rawNew === undefined) {
+                            cell.setValue(oldVal, true);
+                            alert('Please enter a valid MIP quantity.');
+                            return;
+                        }
+                        const newValue = Number(rawNew);
+                        if (Number.isNaN(newValue) || newValue < 0) {
+                            cell.setValue(oldVal, true);
+                            alert('Please enter a valid MIP quantity.');
+                            return;
+                        }
+                        const origNum = Number(oldVal);
+                        if (!Number.isNaN(origNum) && origNum === newValue) return;
+
+                        updateForecastField(
+                            { sku: d.SKU, parent: d.Parent || '', column: 'order_given', value: newValue },
+                            function() {
+                                row.update({ order_given: newValue }, true);
+                                const stageCell = row.getCells().find(function(c) { return c.getField() === 'stage'; });
+                                if (stageCell) stageCell.reformat();
+                                syncParentStageQtyColumns(d.Parent || d.parentKey);
+                            },
+                            function() {
+                                cell.setValue(oldVal, true);
+                            }
+                        );
                     }
                 },
                 {
@@ -3120,6 +3175,74 @@
             if (value === undefined || value === null) return '';
             return String(value).trim().toLowerCase();
         }
+        function matchesStageFilterValue(rowData, stageFilterValue) {
+            const stageValue = normalizeStageValue(rowData && rowData.stage);
+            const raw = rowData && rowData.raw_data ? rowData.raw_data : {};
+            if (!stageFilterValue) return true;
+            if (stageFilterValue === '__blank__') {
+                const twoOrd = parseFloat(rowData?.to_order ?? raw.to_order ?? 0);
+                return (!stageValue || stageValue === '') || (Number.isFinite(twoOrd) && twoOrd < 0);
+            }
+            if (stageFilterValue === 'two_ord_nonneg') {
+                const twoOrd = parseFloat(rowData?.to_order ?? raw.to_order ?? 0);
+                return Number.isFinite(twoOrd) && twoOrd >= 0;
+            }
+            if (stageFilterValue === 'transit') {
+                const transit = parseFloat(rowData?.transit ?? raw.transit ?? raw["Transit"] ?? 0) || 0;
+                return stageValue === 'transit' || transit > 0;
+            }
+            if (stageFilterValue === 'appr_req') {
+                return getEffectiveApprReqValue(rowData) > 0;
+            }
+            if (stageFilterValue === 'mip') {
+                const mip = parseFloat(rowData?.order_given ?? raw.order_given ?? raw["Order Given"] ?? 0) || 0;
+                return stageValue === 'mip' || mip > 0;
+            }
+            if (stageFilterValue === 'r2s') {
+                const r2s = parseFloat(rowData?.readyToShipQty ?? raw.readyToShipQty ?? raw["readyToShipQty"] ?? 0) || 0;
+                return stageValue === 'r2s' || r2s > 0;
+            }
+            if (stageFilterValue === 'to_order_analysis') {
+                const orderQty = parseFloat(rowData?.two_order_qty ?? raw.two_order_qty ?? raw["two_order_qty"] ?? 0) || 0;
+                return stageValue === 'to_order_analysis' || orderQty > 0;
+            }
+            return stageValue === stageFilterValue;
+        }
+        function updateStageFilterOptionCounts(allData) {
+            const sel = document.getElementById('stage-filter');
+            if (!sel) return;
+
+            const rows = (allData || []).filter(function(item) {
+                return item && !item.is_parent && !item.isParent;
+            });
+            const counts = {
+                '': rows.length,
+                '__blank__': 0,
+                'two_ord_nonneg': 0,
+                'appr_req': 0,
+                'mip': 0,
+                'r2s': 0,
+                'transit': 0,
+                'to_order_analysis': 0
+            };
+
+            rows.forEach(function(row) {
+                if (matchesStageFilterValue(row, '__blank__')) counts['__blank__']++;
+                if (matchesStageFilterValue(row, 'two_ord_nonneg')) counts['two_ord_nonneg']++;
+                if (matchesStageFilterValue(row, 'appr_req')) counts['appr_req']++;
+                if (matchesStageFilterValue(row, 'mip')) counts['mip']++;
+                if (matchesStageFilterValue(row, 'r2s')) counts['r2s']++;
+                if (matchesStageFilterValue(row, 'transit')) counts['transit']++;
+                if (matchesStageFilterValue(row, 'to_order_analysis')) counts['to_order_analysis']++;
+            });
+
+            Array.from(sel.options).forEach(function(opt) {
+                if (!Object.prototype.hasOwnProperty.call(counts, opt.value)) return;
+                if (!opt.dataset.baseLabel) opt.dataset.baseLabel = opt.textContent.replace(/\s*\(\d+\)\s*$/, '');
+                const base = opt.dataset.baseLabel;
+                opt.textContent = base + ' (' + (counts[opt.value] || 0) + ')';
+            });
+        }
         function syncColumnsAfterTatForStageFilter() {
             if (!table || typeof table.getColumns !== 'function') return;
 
@@ -3387,6 +3510,8 @@
                 pendingCombinedFiltersRun = true;
                 return;
             }
+            const allData = table && typeof table.getData === 'function' ? table.getData() : [];
+            updateStageFilterOptionCounts(allData);
             // Tabulator may emit early lifecycle events before rowManager element exists.
             // Applying filters in that window can throw inside RowManager.getBoundingClientRect.
             if (!table || !table.rowManager || !table.rowManager.element) {
@@ -3394,7 +3519,6 @@
             }
             isApplyingCombinedFilters = true;
             try {
-            const allData = table.getData();
             const groupedChildrenMap = {};
             const visibleParentKeys = new Set();
 
@@ -3425,26 +3549,7 @@
                     
                     // Stage filter - check stage field or transit field
                     // If filter is "__blank__", match empty/null/undefined stage
-                    const childStage = normalizeStageValue(child.stage);
-                    let stageMatch = true;
-                    if (currentStageFilter) {
-                        if (currentStageFilter === '__blank__') {
-                            const childTwoOrd = parseFloat(child.to_order ?? (child.raw_data ? child.raw_data.to_order : 0));
-                            stageMatch = (!childStage || childStage === '') || (Number.isFinite(childTwoOrd) && childTwoOrd < 0);
-                        } else if (currentStageFilter === 'two_ord_nonneg') {
-                            const childTwoOrd = parseFloat(child.to_order ?? (child.raw_data ? child.raw_data.to_order : 0));
-                            stageMatch = Number.isFinite(childTwoOrd) && childTwoOrd >= 0;
-                        } else if (currentStageFilter === 'transit') {
-                            // For transit filter, check if transit value exists and > 0
-                            const transitValue = child.raw_data ? child.raw_data["transit"] : child["transit"];
-                            const transit = parseFloat(transitValue) || 0;
-                            stageMatch = transit > 0;
-                        } else if (currentStageFilter === 'appr_req') {
-                            stageMatch = getEffectiveApprReqValue(child) > 0;
-                        } else {
-                            stageMatch = childStage === currentStageFilter;
-                        }
-                    }
+                    const stageMatch = matchesStageFilterValue(child, currentStageFilter);
                     
                     const filterMatch = currentColorFilter === 'red' ?
                         ((parseFloat(child.to_order) || 0) < 0) :
@@ -3493,26 +3598,7 @@
                 
                 // Stage filter - check stage field or transit field
                 // If filter is "__blank__", match empty/null/undefined stage
-                const dataStage = normalizeStageValue(data.stage);
-                let stageMatch = true;
-                if (currentStageFilter) {
-                    if (currentStageFilter === '__blank__') {
-                        const dataTwoOrd = parseFloat(data.to_order ?? (data.raw_data ? data.raw_data.to_order : 0));
-                        stageMatch = (!dataStage || dataStage === '') || (Number.isFinite(dataTwoOrd) && dataTwoOrd < 0);
-                    } else if (currentStageFilter === 'two_ord_nonneg') {
-                        const dataTwoOrd = parseFloat(data.to_order ?? (data.raw_data ? data.raw_data.to_order : 0));
-                        stageMatch = Number.isFinite(dataTwoOrd) && dataTwoOrd >= 0;
-                    } else if (currentStageFilter === 'transit') {
-                        // For transit filter, check if transit value exists and > 0
-                        const transitValue = data.raw_data ? data.raw_data["transit"] : data["transit"];
-                        const transit = parseFloat(transitValue) || 0;
-                        stageMatch = transit > 0;
-                    } else if (currentStageFilter === 'appr_req') {
-                        stageMatch = getEffectiveApprReqValue(data) > 0;
-                    } else {
-                        stageMatch = dataStage === currentStageFilter;
-                    }
-                }
+                const stageMatch = matchesStageFilterValue(data, currentStageFilter);
 
                 // 🎯 Force filter to one parent group if play mode is active
                 if (currentParentFilter) {

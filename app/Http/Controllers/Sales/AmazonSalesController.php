@@ -53,13 +53,12 @@ class AmazonSalesController extends Controller
         
         $hlSpent = $hlSpentData->sum('max_cost') ?? 0;
 
-        // Last 35 days ending yesterday (California Pacific), matching Amazon dashboard behavior
+        // Last 29 days ending yesterday (California Pacific)
         $yesterdayPacific = Carbon::yesterday('America/Los_Angeles');
         $endDate = $yesterdayPacific->copy()->endOfDay();
-        $start35 = $yesterdayPacific->copy()->subDays(34)->startOfDay(); // 35 calendar days
+        $start35 = $yesterdayPacific->copy()->subDays(28)->startOfDay(); // 29 calendar days
         
-        // Use order totals instead of item prices to match Amazon's "Ordered Product Sales" report
-        // This includes shipping and discounts properly
+        // Use order totals to match Amazon's "Ordered Product Sales" report
         $sales35Days = (float) DB::table('amazon_orders as o')
             ->where('o.order_date', '>=', $start35)
             ->where('o.order_date', '<=', $endDate)
@@ -80,12 +79,12 @@ class AmazonSalesController extends Controller
             ->sum('o.total_amount');
 
         return view('sales.amazon_daily_sales_data', [
-            'kwSpent' => (float) $kwSpent,
-            'ptSpent' => (float) $ptSpent,
-            'hlSpent' => (float) $hlSpent,
-            'sales35Days' => $sales35Days,
+            'kwSpent'       => (float) $kwSpent,
+            'ptSpent'       => (float) $ptSpent,
+            'hlSpent'       => (float) $hlSpent,
+            'sales35Days'   => $sales35Days,
             'salesFrom8Feb' => $salesFrom8Feb,
-            'daysFrom8Feb' => $daysFrom8Feb,
+            'daysFrom8Feb'  => $daysFrom8Feb,
         ]);
     }
 
@@ -97,12 +96,12 @@ class AmazonSalesController extends Controller
 
         $yesterdayPacific = Carbon::yesterday('America/Los_Angeles');
         $endDate = $yesterdayPacific->copy()->endOfDay();
-        $start35 = $yesterdayPacific->copy()->subDays(34)->startOfDay();
+        $start35 = $yesterdayPacific->copy()->subDays(28)->startOfDay(); // 29 days
         $startDateStr = $start35->format('Y-m-d');
         $endDateStr = $endDate->format('Y-m-d');
 
         $orderRows = DB::table('amazon_orders as o')
-            ->join('amazon_order_items as i', 'o.id', '=', 'i.amazon_order_id')
+            ->leftJoin('amazon_order_items as i', 'o.id', '=', 'i.amazon_order_id')
             ->where('o.order_date', '>=', $start35)
             ->where('o.order_date', '<=', $endDate)
             ->where(function ($q) {
@@ -112,6 +111,7 @@ class AmazonSalesController extends Controller
                 'o.amazon_order_id as order_id',
                 'o.order_date',
                 'o.status',
+                'o.total_amount as order_total_amount',
                 'o.currency',
                 'i.asin',
                 'i.sku',
@@ -129,21 +129,22 @@ class AmazonSalesController extends Controller
 
         // Build orderItems-like collection: one row per order line (same shape as before)
         $orderItems = $orderRows->map(function ($row) {
-            $qty = (int) $row->quantity;
-            $linePrice = (float) $row->line_price;
+            $qty = (int) ($row->quantity ?? 0);
+            $linePrice = (float) ($row->line_price ?? 0);
             $unitPrice = $qty > 0 ? $linePrice / $qty : 0;
             return (object) [
-                'order_id'    => $row->order_id,
-                'order_date'  => $row->order_date,
-                'status'      => $row->status,
-                'total_amount'=> $linePrice,
-                'currency'    => $row->currency ?? 'USD',
-                'period'      => 'L35',
-                'asin'        => $row->asin,
-                'sku'         => $row->sku,
-                'title'       => $row->title ?? '',
-                'quantity'    => $qty,
-                'price'       => $linePrice, // total line price for compatibility
+                'order_id'           => $row->order_id,
+                'order_date'         => $row->order_date,
+                'status'             => $row->status,
+                'order_total_amount' => (float) ($row->order_total_amount ?? 0),
+                'total_amount'       => $linePrice,
+                'currency'           => $row->currency ?? 'USD',
+                'period'             => 'L35',
+                'asin'               => $row->asin ?? '',
+                'sku'                => $row->sku ?? '',
+                'title'              => $row->title ?? '',
+                'quantity'           => $qty,
+                'price'              => $linePrice,
             ];
         });
 

@@ -13,10 +13,16 @@ class AliexpressPricingPrice extends Model
 
     protected $fillable = [
         'sku',
+        'product_id',
+        'product_name',
+        'sku_id',
         'price',
+        'ae_stock',
+        'sales_attributes',
     ];
 
     protected $casts = [
-        'price' => 'decimal:2',
+        'price'    => 'decimal:2',
+        'ae_stock' => 'integer',
     ];
 }

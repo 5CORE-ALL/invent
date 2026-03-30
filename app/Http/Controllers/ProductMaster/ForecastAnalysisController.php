@@ -1052,6 +1052,56 @@ class ForecastAnalysisController extends Controller
             return response()->json(['success' => true, 'message' => 'Order updated successfully']);
         }
 
+        // Handle MIP updates: persist to mfrg_progress.qty (this is the page source for MIP column)
+        if (strtoupper($column) === 'ORDER_GIVEN' || strtoupper($column) === 'MIP') {
+            if (!is_numeric($value)) {
+                return response()->json(['success' => false, 'message' => 'Invalid MIP value']);
+            }
+
+            $valueNum = (float) $value;
+            if ($valueNum < 0) {
+                return response()->json(['success' => false, 'message' => 'MIP cannot be negative']);
+            }
+
+            $skuUpper = strtoupper(trim($sku));
+            $parentNorm = strtoupper(trim($parent));
+
+            $updated = 0;
+            if ($parentNorm !== '') {
+                $updated = (int) DB::table('mfrg_progress')
+                    ->whereRaw('TRIM(UPPER(sku)) = ?', [$skuUpper])
+                    ->whereRaw('TRIM(UPPER(COALESCE(parent, \'\'))) = ?', [$parentNorm])
+                    ->update([
+                        'qty' => $valueNum,
+                        'ready_to_ship' => 'No',
+                        'updated_at' => now(),
+                    ]);
+            }
+
+            if ($updated === 0) {
+                $updated = (int) DB::table('mfrg_progress')
+                    ->whereRaw('TRIM(UPPER(sku)) = ?', [$skuUpper])
+                    ->update([
+                        'qty' => $valueNum,
+                        'ready_to_ship' => 'No',
+                        'updated_at' => now(),
+                    ]);
+            }
+
+            if ($updated === 0 && $sku !== '') {
+                DB::table('mfrg_progress')->insert([
+                    'sku' => $sku,
+                    'parent' => $parent !== '' ? $parent : null,
+                    'qty' => $valueNum,
+                    'ready_to_ship' => 'No',
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+            }
+
+            return response()->json(['success' => true, 'message' => 'MIP updated successfully']);
+        }
+
         $columnMap = [
             'S-MSL' => 's_msl',
             'Approved QTY' => 'approved_qty',
