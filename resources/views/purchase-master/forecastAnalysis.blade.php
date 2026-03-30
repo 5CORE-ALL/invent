@@ -2056,8 +2056,8 @@
                 {
                     title: "DOA",
                     field: "date_apprvl",
-                    width: 110,
-                    minWidth: 100,
+                    width: 72,
+                    minWidth: 68,
                     sorter: "date",
                     sorterParams: { format: "YYYY-MM-DD", alignEmptyValues: "bottom" },
                     formatter: function(cell) {
@@ -2087,7 +2087,7 @@
                             }
                         }
 
-                        return `<span style="min-width:70px; display:inline-block; ${textStyle}">${displayText}</span>`;
+                        return `<span style="min-width:55px; display:inline-block; ${textStyle}">${displayText}</span>`;
                     }
                 },
                 {
