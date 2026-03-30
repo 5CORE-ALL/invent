@@ -1102,8 +1102,55 @@ class ForecastAnalysisController extends Controller
             return response()->json(['success' => true, 'message' => 'MIP updated successfully']);
         }
 
+        // Handle R2S updates: persist to ready_to_ship.qty
+        if (strtoupper($column) === 'R2S' || strtoupper($column) === 'READYTOSHIPQTY') {
+            if (!is_numeric($value)) {
+                return response()->json(['success' => false, 'message' => 'Invalid R2S value']);
+            }
+
+            $valueNum = (float) $value;
+            if ($valueNum < 0) {
+                return response()->json(['success' => false, 'message' => 'R2S cannot be negative']);
+            }
+
+            $skuUpper = strtoupper(trim($sku));
+            $parentNorm = strtoupper(trim($parent));
+
+            $updated = (int) DB::table('ready_to_ship')
+                ->whereRaw('TRIM(UPPER(sku)) = ?', [$skuUpper])
+                ->whereRaw('TRIM(UPPER(COALESCE(parent, \'\'))) = ?', [$parentNorm])
+                ->whereNull('deleted_at')
+                ->update([
+                    'qty'        => $valueNum,
+                    'updated_at' => now(),
+                ]);
+
+            if ($updated === 0) {
+                $updated = (int) DB::table('ready_to_ship')
+                    ->whereRaw('TRIM(UPPER(sku)) = ?', [$skuUpper])
+                    ->whereNull('deleted_at')
+                    ->update([
+                        'qty'        => $valueNum,
+                        'updated_at' => now(),
+                    ]);
+            }
+
+            if ($updated === 0 && $sku !== '') {
+                DB::table('ready_to_ship')->insert([
+                    'sku'                => $sku,
+                    'parent'             => $parent !== '' ? $parent : null,
+                    'qty'                => $valueNum,
+                    'transit_inv_status' => 0,
+                    'auth_user'          => optional(Auth::user())->name,
+                    'created_at'         => now(),
+                    'updated_at'         => now(),
+                ]);
+            }
+
+            return response()->json(['success' => true, 'message' => 'R2S updated successfully']);
+        }
+
         $columnMap = [
-            'S-MSL' => 's_msl',
             'Approved QTY' => 'approved_qty',
             'NR' => 'nr',
             'REQ' => 'req',

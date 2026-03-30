@@ -1591,11 +1591,69 @@
                     accessor: row => (row ? row["readyToShipQty"] : null),
                     sorter: "number",
                     headerSort: true,
+                    editor: "number",
+                    editorParams: { min: 0, step: 1, verticalNavigation: "editor" },
+                    editable: function(cell) {
+                        const d = cell.getRow().getData();
+                        return !(d.is_parent || d.isParent);
+                    },
+                    cellClick: function(e, cell) {
+                        const d = cell.getRow().getData();
+                        if (d.is_parent || d.isParent) return;
+                        cell.edit();
+                    },
+                    cellEditing: function(cell) {
+                        const row = cell.getRow();
+                        row.forecastR2sEditStart = cell.getValue();
+                        setTimeout(function() {
+                            const input = cell.getElement().querySelector('input, textarea');
+                            if (input) {
+                                input.focus();
+                                input.select();
+                            }
+                        }, 0);
+                    },
                     formatter: function(cell) {
                         const value = cell.getValue();
                         const n = parseFloat(value);
                         const showDash = value === null || value === undefined || value === '' || isNaN(n) || n === 0;
-                        return `<div style="text-align:center;">${showDash ? '-' : String(value)}</div>`;
+                        return `<div style="text-align:center;font-weight:bold;cursor:text;">${showDash ? '-' : String(value)}</div>`;
+                    },
+                    cellEdited: function(cell) {
+                        const row = cell.getRow();
+                        const d = row.getData();
+                        if (d.is_parent || d.isParent) return;
+
+                        const rawNew = cell.getValue();
+                        const oldVal = row.forecastR2sEditStart;
+                        delete row.forecastR2sEditStart;
+
+                        if (rawNew === '' || rawNew === null || rawNew === undefined) {
+                            cell.setValue(oldVal, true);
+                            alert('Please enter a valid R2S quantity.');
+                            return;
+                        }
+                        const newValue = Number(rawNew);
+                        if (Number.isNaN(newValue) || newValue < 0) {
+                            cell.setValue(oldVal, true);
+                            alert('Please enter a valid R2S quantity.');
+                            return;
+                        }
+                        const origNum = Number(oldVal);
+                        if (!Number.isNaN(origNum) && origNum === newValue) return;
+
+                        updateForecastField(
+                            { sku: d.SKU, parent: d.Parent || '', column: 'R2S', value: newValue },
+                            function() {
+                                row.update({ readyToShipQty: newValue }, true);
+                                const stageCell = row.getCells().find(function(c) { return c.getField() === 'stage'; });
+                                if (stageCell) stageCell.reformat();
+                                syncParentStageQtyColumns(d.Parent || d.parentKey);
+                            },
+                            function() {
+                                cell.setValue(oldVal, true);
+                            }
+                        );
                     }
                 },
                 // {
@@ -2396,7 +2454,7 @@
                         let color = '#000';
                         if (daysDiff > 25) color = 'red';
                         else if (daysDiff >= 15) color = '#ffc107';
-                        return `<span style="display:block;text-align:center;font-weight:700;color:${color};">${day} ${month} (${daysDiff} D)</span>`;
+                        return `<span style="display:block;text-align:center;font-weight:700;color:${color};">${day} ${month}</span>`;
                     }
                 },
                 {
