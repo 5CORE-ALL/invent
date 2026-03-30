@@ -1150,7 +1150,7 @@
                     }
                 },
                 {
-                    title: "TT ship",
+                    title: "TT 1 Ship",
                     field: "TT Ship",
                     hozAlign: "center",
                     sorter: "number",

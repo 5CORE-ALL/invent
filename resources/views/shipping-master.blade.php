@@ -607,8 +607,8 @@
                                         </select>
                                     </th>
                                     <th class="th-has-filter shipping-rate-header" data-pm-ship-col="tt">
-                                        <div class="th-vertical-label">TT<br>ship</div>
-                                        <select id="filterTtShipCol" class="form-control form-control-sm mt-1" style="font-size: 9px; padding: 2px 4px; max-width: 100%;" title="Filter TT ship">
+                                        <div class="th-vertical-label">TT 1<br>Ship</div>
+                                        <select id="filterTtShipCol" class="form-control form-control-sm mt-1" style="font-size: 9px; padding: 2px 4px; max-width: 100%;" title="Filter TT 1 Ship">
                                             <option value="all">All</option>
                                             <option value="missing">Missing</option>
                                             <option value="dash">− / —</option>
@@ -657,8 +657,10 @@
                                             <option value="lb_0251_05">0.2501 – 0.5 lb</option>
                                             <option value="lb_0501_075">0.5001 – 0.75 lb</option>
                                             <option value="lb_0751_1">0.7501 – 1 lb</option>
-                                            <option value="lb_101_3">1.01 – 3 lb</option>
-                                            <option value="lb_301_20">3.01 – 20 lb</option>
+                                            <option value="lb_101_2">1.01 – 2 lb</option>
+                                            <option value="lb_201_3">2.01 – 3 lb</option>
+                                            <option value="lb_301_4">3.01 – 4 lb</option>
+                                            <option value="lb_401_20">4.01 – 20 lb</option>
                                             <option value="lb_2001_30">20.01 – 30 lb</option>
                                             <option value="lb_301_40">30.1 – 40 lb</option>
                                             <option value="lb_401_50">40.1 – 50 lb</option>
@@ -841,8 +843,8 @@
                                 <input type="number" step="0.01" class="form-control fw-bold" id="editShip" name="ship" placeholder="Ship">
                             </div>
                             <div class="col-md-3">
-                                <label for="editTtShip" class="form-label fw-bold">TT ship</label>
-                                <input type="number" step="0.01" class="form-control fw-bold" id="editTtShip" name="tt_ship" placeholder="TT ship">
+                                <label for="editTtShip" class="form-label fw-bold">TT 1 Ship</label>
+                                <input type="number" step="0.01" class="form-control fw-bold" id="editTtShip" name="tt_ship" placeholder="TT 1 Ship">
                             </div>
                             <div class="col-md-3">
                                 <label for="editTemuShip" class="form-label fw-bold">Temu ship</label>
@@ -1664,10 +1666,14 @@
                         return w >= 0.5001 && w <= 0.75;
                     case 'lb_0751_1':
                         return w >= 0.7501 && w <= 1;
-                    case 'lb_101_3':
-                        return w >= 1.01 && w <= 3;
-                    case 'lb_301_20':
-                        return w >= 3.01 && w <= 20;
+                    case 'lb_101_2':
+                        return w >= 1.01 && w <= 2;
+                    case 'lb_201_3':
+                        return w >= 2.01 && w <= 3;
+                    case 'lb_301_4':
+                        return w >= 3.01 && w <= 4;
+                    case 'lb_401_20':
+                        return w >= 4.01 && w <= 20;
                     case 'lb_2001_30':
                         return w >= 20.01 && w <= 30;
                     case 'lb_301_40':
@@ -1842,7 +1848,7 @@
             function setupExcelExport() {
                 document.getElementById('downloadExcel').addEventListener('click', function() {
                     // Columns to export (excluding Image, Action, and Parent)
-                    const columns = ["SKU", "Status", "INV", "Ship", "TT ship", "Temu ship", "Ebay2 ship", "FBA SKU", "FBA ship", "FBA manual ship", "Weight ACT (Kg)", "WT ACT (LB)", "WT DECL (LB)", "Length (inch)", "Width (inch)", "Height (Inch)", "Length (CM)", "Width (CM)", "Height (CM)", "CTN L (CM)", "CTN W (CM)", "CTN H (CM)", "CTN (CBM)", "CTN (QTY)", "CTN (CBM/Each)"];
+                    const columns = ["SKU", "Status", "INV", "Ship", "TT 1 Ship", "Temu ship", "Ebay2 ship", "FBA SKU", "FBA ship", "FBA manual ship", "Weight ACT (Kg)", "WT ACT (LB)", "WT DECL (LB)", "Length (inch)", "Width (inch)", "Height (Inch)", "Length (CM)", "Width (CM)", "Height (CM)", "CTN L (CM)", "CTN W (CM)", "CTN H (CM)", "CTN (CBM)", "CTN (QTY)", "CTN (CBM/Each)"];
 
                     // Column definitions with their data keys
                     const columnDefs = {
@@ -1858,8 +1864,8 @@
                         "Ship": {
                             key: "ship"
                         },
-                        "TT ship": {
-                            key: "tt_ship"
+                            "TT 1 Ship": {
+                                key: "tt_ship"
                         },
                         "Temu ship": {
                             key: "temu_ship"
@@ -2004,7 +2010,7 @@
                                     return { wch: 20 }; // Wider for text columns
                                 } else if (["Status"].includes(col)) {
                                     return { wch: 12 };
-                                } else if (["FBA SKU", "Weight ACT (Kg)", "WT ACT (LB)", "WT DECL (LB)", "Length (inch)", "Width (inch)", "Height (Inch)", "Length (CM)", "Width (CM)", "Height (CM)", "CTN (CBM)", "CTN (CBM/Each)", "Ship", "TT ship", "Temu ship", "Ebay2 ship", "FBA ship", "FBA manual ship"].includes(col)) {
+                                } else if (["FBA SKU", "Weight ACT (Kg)", "WT ACT (LB)", "WT DECL (LB)", "Length (inch)", "Width (inch)", "Height (Inch)", "Length (CM)", "Width (CM)", "Height (CM)", "CTN (CBM)", "CTN (CBM/Each)", "Ship", "TT 1 Ship", "Temu ship", "Ebay2 ship", "FBA ship", "FBA manual ship"].includes(col)) {
                                     return { wch: 15 }; // Width for weight and CBM columns
                                 } else {
                                     return { wch: 12 }; // Default width for numeric columns
@@ -2096,7 +2102,7 @@
                 downloadSampleBtn.addEventListener('click', function() {
                     // Create sample data with all columns
                     const sampleData = [
-                        ['SKU', 'Ship', 'TT ship', 'Temu ship', 'Ebay2 ship', 'Weight ACT (Kg)', 'WT ACT (LB)', 'WT DECL (LB)', 'Length (inch)', 'Width (inch)', 'Height (Inch)', 'Length (CM)', 'Width (CM)', 'Height (CM)', 'CTN L (CM)', 'CTN W (CM)', 'CTN H (CM)', 'CTN (CBM)', 'CTN (QTY)', 'CTN (CBM/Each)'],
+                        ['SKU', 'Ship', 'TT 1 Ship', 'Temu ship', 'Ebay2 ship', 'Weight ACT (Kg)', 'WT ACT (LB)', 'WT DECL (LB)', 'Length (inch)', 'Width (inch)', 'Height (Inch)', 'Length (CM)', 'Width (CM)', 'Height (CM)', 'CTN L (CM)', 'CTN W (CM)', 'CTN H (CM)', 'CTN (CBM)', 'CTN (QTY)', 'CTN (CBM/Each)'],
                         ['SKU001', '3.25', '2.95', '3.15', '3.45', '6.2', '1.5', '1.2', '10.5', '8.3', '5.2', '26.67', '21.08', '13.21', '30', '25', '20', '0.015', '12', '0.00125'],
                         ['SKU002', '4.10', '3.80', '4.00', '4.25', '9.1', '2.0', '1.8', '12.0', '9.0', '6.0', '30.48', '22.86', '15.24', '35', '28', '22', '0.0216', '15', '0.00144'],
                         ['SKU003', '2.80', '2.60', '2.70', '2.95', '5.4', '1.2', '1.0', '9.5', '7.5', '4.5', '24.13', '19.05', '11.43', '28', '24', '18', '0.0121', '10', '0.00121']
@@ -2110,7 +2116,7 @@
                     ws['!cols'] = [
                         { wch: 15 }, // SKU
                         { wch: 12 }, // Ship
-                        { wch: 12 }, // TT ship
+                        { wch: 12 }, // TT 1 Ship
                         { wch: 12 }, // Temu ship
                         { wch: 12 }, // Ebay2 ship
                         { wch: 16 }, // Weight ACT (Kg)

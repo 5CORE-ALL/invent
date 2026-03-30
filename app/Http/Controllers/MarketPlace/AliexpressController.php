@@ -497,6 +497,107 @@ class AliexpressController extends Controller
     /**
      * Sanitize price values
      */
+    /**
+     * Insert AliExpress parent summary rows after each group of children — mirrors TikTok insertTikTokParentRows.
+     */
+    private function insertAeParentRows(array $rows): array
+    {
+        $result = [];
+        $group  = [];
+        $currentParent = null;
+
+        foreach ($rows as $row) {
+            $p = $row['parent'] ?? null;
+            $p = ($p !== null && $p !== '') ? (string) $p : null;
+
+            if ($p === null) {
+                if (!empty($group)) {
+                    foreach ($group as $r) $result[] = $r;
+                    $result[] = $this->buildAeParentRow($currentParent, $group);
+                    $group = []; $currentParent = null;
+                }
+                $result[] = $row;
+                continue;
+            }
+
+            if ($p !== $currentParent) {
+                if (!empty($group)) {
+                    foreach ($group as $r) $result[] = $r;
+                    $result[] = $this->buildAeParentRow($currentParent, $group);
+                    $group = [];
+                }
+                $currentParent = $p;
+            }
+            $group[] = $row;
+        }
+
+        if (!empty($group)) {
+            foreach ($group as $r) $result[] = $r;
+            $result[] = $this->buildAeParentRow($currentParent, $group);
+        }
+
+        return $result;
+    }
+
+    private function buildAeParentRow(string $parentName, array $childRows): array
+    {
+        $sumInv = $sumOvL30 = $sumAeStock = $sumAl30 = $sumSales = 0;
+        $sumProfit = $sumLp = 0;
+
+        foreach ($childRows as $r) {
+            $sumInv     += (float) ($r['inv']      ?? 0);
+            $sumOvL30   += (float) ($r['ov_l30']   ?? 0);
+            $sumAeStock += (float) ($r['ae_stock']  ?? 0);
+            $sumAl30    += (float) ($r['al30']      ?? 0);
+            $sumSales   += (float) ($r['sales']     ?? 0);
+            $sumLp      += (float) ($r['lp']        ?? 0);
+            $al30        = (float) ($r['al30']      ?? 0);
+            $profit      = (float) ($r['profit']    ?? 0);
+            $sumProfit  += $al30 * $profit;
+        }
+
+        $dilPct  = $sumInv   > 0 ? round(($sumOvL30 / $sumInv) * 100, 2) : 0;
+        $gpftPct = $sumSales > 0 ? round(($sumProfit  / $sumSales) * 100, 2) : 0;
+
+        $key = 'PARENT ' . $parentName;
+        return [
+            'sku'         => $key,
+            'parent'      => $key,
+            'is_parent'   => true,
+            'image'       => null,
+            'price'       => '-',
+            'missing'     => '-',
+            'map'         => '-',
+            'gpft'        => $gpftPct,
+            'groi'        => '-',
+            'profit'      => round($sumProfit, 2),
+            'sales'       => round($sumSales, 2),
+            'al30'        => (int) round($sumAl30),
+            'lp'          => '-',
+            'ship'        => '-',
+            'sprice'      => '-',
+            'sgpft'       => '-',
+            'inv'         => (int) $sumInv,
+            'ov_l30'      => (int) $sumOvL30,
+            'ae_stock'    => (int) $sumAeStock,
+            'dil_percent' => $dilPct,
+        ];
+    }
+
+    /**
+     * Detect if a file is an Excel binary (xlsx = ZIP magic bytes PK, xls = D0CF magic bytes).
+     */
+    private function isExcelFile(string $path): bool
+    {
+        $handle = fopen($path, 'rb');
+        if (!$handle) return false;
+        $magic = fread($handle, 4);
+        fclose($handle);
+        // xlsx: ZIP (PK\x03\x04)   xls: OLE2 (D0 CF 11 E0)
+        return str_starts_with($magic, "\x50\x4B\x03\x04")
+            || str_starts_with($magic, "\xD0\xCF\x11\xE0");
+    }
+
     private function sanitizePrice($value)
     {
         if (empty($value) || $value === '?') {
@@ -716,52 +817,106 @@ class AliexpressController extends Controller
     public function uploadPricingPriceSheet(Request $request)
     {
         $request->validate([
-            'price_file' => 'required|file|mimes:xlsx,xls,csv',
+            'price_file' => 'required|file',
         ]);
 
         try {
-            $spreadsheet = IOFactory::load($request->file('price_file')->getPathName());
-            $rows = $spreadsheet->getActiveSheet()->toArray();
+            $file      = $request->file('price_file');
+            $path      = $file->getPathName();
+            $extension = strtolower($file->getClientOriginalExtension());
 
-            if (empty($rows) || count($rows) < 2) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Price sheet is empty.',
-                ], 422);
-            }
+            // ── Excel files (xlsx / xls) → PhpSpreadsheet ──────────────
+            if (in_array($extension, ['xlsx', 'xls'], true) || $this->isExcelFile($path)) {
+                $spreadsheet = IOFactory::load($path);
+                $sheetRows   = $spreadsheet->getActiveSheet()->toArray();
 
-            $headers = array_map(static function ($header) {
-                return strtolower(trim((string) $header));
-            }, $rows[0]);
+                // Normalise headers
+                $headerRow = array_shift($sheetRows);
+                $headers   = array_map(static fn($h) =>
+                    strtolower(trim(preg_replace('/[^a-zA-Z0-9_ ]/', '', (string) $h))),
+                    $headerRow
+                );
 
-            $skuIndex   = array_search('sku',   $headers, true);
-            $priceIndex = array_search('price', $headers, true);
-            $stockIndex = array_search('stock', $headers, true);
+                $skuIndex   = array_search('sku',   $headers, true);
+                $priceIndex = array_search('price', $headers, true);
+                $stockIndex = array_search('stock', $headers, true);
 
-            if ($skuIndex === false || $priceIndex === false) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Required columns not found. Please keep headers: sku, price, stock.',
-                ], 422);
-            }
-
-            $updated = 0;
-            foreach (array_slice($rows, 1) as $row) {
-                $sku = isset($row[$skuIndex]) ? trim((string) $row[$skuIndex]) : '';
-                if ($sku === '') {
-                    continue;
+                if ($skuIndex === false || $priceIndex === false) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Columns not found. Found: [' . implode(', ', array_filter($headers)) . ']. Expected: sku, price, stock.',
+                    ], 422);
                 }
 
-                $priceRaw = isset($row[$priceIndex]) ? (string) $row[$priceIndex] : '';
-                $price    = (float) preg_replace('/[^0-9.\-]/', '', $priceRaw);
-                $aeStock  = ($stockIndex !== false && isset($row[$stockIndex]))
-                            ? (int) $row[$stockIndex] : 0;
+                $updated = 0;
+                foreach ($sheetRows as $row) {
+                    $sku = trim((string) ($row[$skuIndex] ?? ''));
+                    if ($sku === '') continue;
+                    $price   = (float) preg_replace('/[^0-9.\-]/', '', trim((string) ($row[$priceIndex] ?? '')));
+                    $aeStock = $stockIndex !== false ? (int) trim((string) ($row[$stockIndex] ?? '0')) : 0;
+                    AliexpressPricingPrice::updateOrCreate(
+                        ['sku'   => $sku],
+                        ['price' => max(0, $price), 'ae_stock' => max(0, $aeStock)]
+                    );
+                    $updated++;
+                }
+            } else {
+                // ── CSV / TSV → fgetcsv ───────────────────────────────
+                $handle = fopen($path, 'r');
+                if (!$handle) {
+                    return response()->json(['success' => false, 'message' => 'Cannot open uploaded file.'], 422);
+                }
 
-                AliexpressPricingPrice::updateOrCreate(
-                    ['sku' => $sku],
-                    ['price' => max(0, $price), 'ae_stock' => max(0, $aeStock)]
+                // Strip UTF-8 BOM
+                $bom = fread($handle, 3);
+                if ($bom !== "\xEF\xBB\xBF") {
+                    rewind($handle);
+                }
+
+                // Detect delimiter from first line
+                $firstLine = fgets($handle);
+                rewind($handle);
+                if ($bom === "\xEF\xBB\xBF") fread($handle, 3);
+
+                $delimiter = (substr_count($firstLine, "\t") > substr_count($firstLine, ",")) ? "\t" : ",";
+
+                // Read header row
+                $headerRow = fgetcsv($handle, 0, $delimiter);
+                if (!$headerRow) {
+                    fclose($handle);
+                    return response()->json(['success' => false, 'message' => 'Price sheet is empty.'], 422);
+                }
+
+                $headers    = array_map(static fn($h) =>
+                    strtolower(trim(preg_replace('/[^a-zA-Z0-9_ ]/', '', (string) $h))),
+                    $headerRow
                 );
-                $updated++;
+                $skuIndex   = array_search('sku',   $headers, true);
+                $priceIndex = array_search('price', $headers, true);
+                $stockIndex = array_search('stock', $headers, true);
+
+                if ($skuIndex === false || $priceIndex === false) {
+                    fclose($handle);
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Columns not found. Found: [' . implode(', ', array_filter($headers)) . ']. Expected: sku, price, stock.',
+                    ], 422);
+                }
+
+                $updated = 0;
+                while (($row = fgetcsv($handle, 0, $delimiter)) !== false) {
+                    if (!$row || count(array_filter($row, fn($v) => $v !== '' && $v !== null)) === 0) continue;
+                    $sku = trim((string) ($row[$skuIndex] ?? ''));
+                    if ($sku === '') continue;
+                    $price   = (float) preg_replace('/[^0-9.\-]/', '', trim((string) ($row[$priceIndex] ?? '')));
+                    $aeStock = $stockIndex !== false ? (int) trim((string) ($row[$stockIndex] ?? '0')) : 0;
+                    AliexpressPricingPrice::updateOrCreate(
+                        ['sku'   => $sku],
+                        ['price' => max(0, $price), 'ae_stock' => max(0, $aeStock)]
+                    );
+                    $updated++;
+                }
+                fclose($handle);
             }
 
             return response()->json([
@@ -808,6 +963,7 @@ class AliexpressController extends Controller
             $productMastersBySku = ProductMaster::query()
                 ->whereNotNull('sku')
                 ->where('sku', '!=', '')
+                ->whereRaw('UPPER(sku) NOT LIKE ?', ['%PARENT%'])
                 ->get()
                 ->keyBy(fn($row) => $normalizeSku($row->sku));
 
@@ -824,13 +980,9 @@ class AliexpressController extends Controller
                     ->keyBy(fn($row) => $normalizeSku($row->sku));
             }
 
-            $uploadedPriceBySku = collect();
-            if ($allNormalizedSkus->isNotEmpty()) {
-                $uploadedPriceBySku = AliexpressPricingPrice::query()
-                    ->whereIn(DB::raw('UPPER(TRIM(sku))'), $allNormalizedSkus)
-                    ->get()
-                    ->keyBy(fn($row) => $normalizeSku($row->sku));
-            }
+            // Fetch ALL uploaded prices (no SKU filter) so ae_stock is always correct
+            $uploadedPriceBySku = AliexpressPricingPrice::all()
+                ->keyBy(fn($row) => $normalizeSku($row->sku));
 
             // INV + OV L30 from shopify_skus
             $shopifyBySku = collect();
@@ -873,10 +1025,11 @@ class AliexpressController extends Controller
                 $uploadedPrice = $priceRow ? (float) $priceRow->price    : 0;
                 $aeStock       = $priceRow ? (int)   ($priceRow->ae_stock ?? 0) : 0;
 
-                // INV + OV L30 from shopify_skus
+                // INV + OV L30 + image from shopify_skus
                 $shopifyRow = $shopifyBySku->get($normalizedSku);
-                $inv   = $shopifyRow ? (int) ($shopifyRow->inv      ?? 0) : 0;
-                $ovL30 = $shopifyRow ? (int) ($shopifyRow->quantity ?? 0) : 0;
+                $inv        = $shopifyRow ? (int) ($shopifyRow->inv       ?? 0) : 0;
+                $ovL30      = $shopifyRow ? (int) ($shopifyRow->quantity  ?? 0) : 0;
+                $imageSrc   = $shopifyRow ? ($shopifyRow->image_src       ?? null) : null;
 
                 // Price ONLY from aliexpress_pricing_prices — no sales fallback
                 $price  = $uploadedPrice;
@@ -886,13 +1039,26 @@ class AliexpressController extends Controller
                 $sgpft = $gpft;
 
                 $displaySku = $productMaster->sku ?? ($sale->sku_code ?? $normalizedSku);
-                $isMissing = !$productMaster || $price <= 0;
+                $isMissing  = !$productMaster || $price <= 0;
+
+                // MAP: INV == AE Stock → "Map" | INV != AE Stock → "N Map|{diff}"
+                if ($isMissing) {
+                    $mapValue = '';
+                } elseif ($inv === $aeStock) {
+                    $mapValue = 'Map';
+                } else {
+                    $diff     = abs($inv - $aeStock);
+                    $mapValue = "N Map|{$diff}";
+                }
 
                 $rows[] = [
                     'sku'         => trim((string) $displaySku),
+                    'parent'      => $productMaster ? (trim((string) ($productMaster->parent ?? '')) ?: null) : null,
+                    'is_parent'   => false,
+                    'image'       => $imageSrc,
                     'price'       => round($price, 2),
                     'missing'     => $isMissing ? 'M' : '',
-                    'map'         => $isMissing ? '' : 'Map',
+                    'map'         => $mapValue,
                     'gpft'        => round($gpft, 2),
                     'groi'        => round($groi, 2),
                     'profit'      => round($profit, 2),
@@ -909,18 +1075,21 @@ class AliexpressController extends Controller
                 ];
             }
 
+            // Sort: group by parent (nulls last), children alphabetically within group
             usort($rows, static function ($a, $b) {
-                $av = strtoupper(trim((string) ($a['sku'] ?? '')));
-                $bv = strtoupper(trim((string) ($b['sku'] ?? '')));
-                $aLetter = preg_match('/^[A-Z]/', $av) === 1;
-                $bLetter = preg_match('/^[A-Z]/', $bv) === 1;
-
-                if ($aLetter !== $bLetter) {
-                    return $aLetter ? -1 : 1;
+                $pa = (string) ($a['parent'] ?? '');
+                $pb = (string) ($b['parent'] ?? '');
+                if ($pa === '' && $pb === '') {
+                    return strnatcasecmp($a['sku'], $b['sku']);
                 }
-
-                return strnatcasecmp($av, $bv);
+                if ($pa === '') return 1;
+                if ($pb === '') return -1;
+                $cmp = strnatcasecmp($pa, $pb);
+                return $cmp !== 0 ? $cmp : strnatcasecmp($a['sku'], $b['sku']);
             });
+
+            // Insert parent summary rows after each group (mirrors TikTok insertTikTokParentRows)
+            $rows = $this->insertAeParentRows($rows);
 
             return response()->json($rows);
         } catch (\Exception $e) {
