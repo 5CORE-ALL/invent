@@ -106,7 +106,8 @@ final class EbayTradingReviseItem
 
     /**
      * Merge GetItem ItemSpecifics (plus any other NameValueList nodes under Item, excluding Variations),
-     * preserve MPN/UPC/Brand, then apply Bullet Point 1–5.
+     * preserve non-bullet specifics, then apply Bullet Point 1–5. Brand is always set to the configured
+     * value (default "5 Core") so ReviseItem sends an explicit custom Brand value.
      *
      * @param  array<string, mixed>  $item
      * @param  list<string>  $aspectNames
@@ -124,13 +125,74 @@ final class EbayTradingReviseItem
         $existing = self::deduplicateItemSpecificsByName($existing);
         $existing = self::injectMpnFromItemTopLevelFields($item, $existing);
         $existing = self::injectMpnFallbackIfConfigured($existing);
-        $existing = self::injectBrandFromItemTopLevelFields($item, $existing);
-        $existing = self::injectBrandFallbackIfConfigured($existing);
         $lines = self::splitBulletLinesFive($bulletPointsPlain);
 
         $merged = self::mergeBulletAspectsIntoItemSpecifics($existing, $lines, $aspectNames);
+        $merged = self::deduplicateItemSpecificsByName($merged);
+        $merged = self::applyForcedBrandForBulletUpdate($merged);
+        $merged = self::applyForcedMpnFromConfigIfNonEmpty($merged);
 
         return self::deduplicateItemSpecificsByName($merged);
+    }
+
+    /**
+     * Remove any Brand row and always send Brand as a single explicit value (custom value for ReviseItem).
+     *
+     * @param  array<int, array{name: string, values: list<string>}>  $rows
+     * @return array<int, array{name: string, values: list<string>}>
+     */
+    private static function applyForcedBrandForBulletUpdate(array $rows): array
+    {
+        $brandValue = config('services.ebay.brand_fallback_value');
+        $brandValue = is_string($brandValue) ? trim($brandValue) : '';
+        if ($brandValue === '') {
+            $brandValue = '5 Core';
+        }
+        $filtered = [];
+        foreach ($rows as $r) {
+            if (strtolower(trim($r['name'])) === 'brand') {
+                continue;
+            }
+            $filtered[] = $r;
+        }
+        $filtered[] = ['name' => 'Brand', 'values' => [$brandValue]];
+
+        return $filtered;
+    }
+
+    /**
+     * When EBAY_MPN_FALLBACK_VALUE is set, replace any MPN-like aspect with a single MPN row.
+     *
+     * @param  array<int, array{name: string, values: list<string>}>  $rows
+     * @return array<int, array{name: string, values: list<string>}>
+     */
+    private static function applyForcedMpnFromConfigIfNonEmpty(array $rows): array
+    {
+        $mpn = config('services.ebay.mpn_fallback_value');
+        if (! is_string($mpn)) {
+            return $rows;
+        }
+        $mpn = trim($mpn);
+        if ($mpn === '') {
+            return $rows;
+        }
+        $filtered = [];
+        foreach ($rows as $r) {
+            if (self::isMpnLikeAspectName($r['name'])) {
+                continue;
+            }
+            $filtered[] = $r;
+        }
+        $filtered[] = ['name' => 'MPN', 'values' => [$mpn]];
+
+        return $filtered;
+    }
+
+    private static function isMpnLikeAspectName(string $name): bool
+    {
+        $n = strtolower(trim($name));
+
+        return $n === 'mpn' || $n === 'manufacturer part number' || str_contains($n, 'mpn');
     }
 
     /**
@@ -213,8 +275,7 @@ final class EbayTradingReviseItem
     private static function rowsHaveMpnLike(array $rows): bool
     {
         foreach ($rows as $r) {
-            $n = strtolower(trim($r['name']));
-            if ($n === 'mpn' || $n === 'manufacturer part number' || str_contains($n, 'mpn')) {
+            if (self::isMpnLikeAspectName($r['name'])) {
                 return true;
             }
         }
@@ -285,81 +346,6 @@ final class EbayTradingReviseItem
         }
         $rows[] = ['name' => 'MPN', 'values' => [$fallback]];
         Log::warning('eBay bullet update: applied services.ebay.mpn_fallback_value (set EBAY_MPN_FALLBACK_VALUE if required by category).');
-
-        return $rows;
-    }
-
-    /**
-     * @param  array<int, array{name: string, values: list<string>}>  $rows
-     */
-    private static function rowsHaveBrandLike(array $rows): bool
-    {
-        foreach ($rows as $r) {
-            if (strtolower(trim($r['name'])) === 'brand') {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    /**
-     * @param  array<int, array{name: string, values: list<string>}>  $rows
-     * @return array<int, array{name: string, values: list<string>}>
-     */
-    private static function injectBrandFromItemTopLevelFields(array $item, array $rows): array
-    {
-        if (self::rowsHaveBrandLike($rows)) {
-            return $rows;
-        }
-        $brand = self::extractBrandFromItemFields($item);
-        if ($brand !== null && $brand !== '') {
-            $rows[] = ['name' => 'Brand', 'values' => [$brand]];
-        }
-
-        return $rows;
-    }
-
-    private static function extractBrandFromItemFields(array $item): ?string
-    {
-        if (! empty($item['Brand'])) {
-            $v = $item['Brand'];
-            $s = trim((string) (is_array($v) ? reset($v) : $v));
-            if ($s !== '') {
-                return $s;
-            }
-        }
-        $pld = $item['ProductListingDetails'] ?? null;
-        if (is_array($pld) && ! empty($pld['Brand'])) {
-            $v = $pld['Brand'];
-            $s = trim((string) (is_array($v) ? reset($v) : $v));
-            if ($s !== '') {
-                return $s;
-            }
-        }
-
-        return null;
-    }
-
-    /**
-     * @param  array<int, array{name: string, values: list<string>}>  $rows
-     * @return array<int, array{name: string, values: list<string>}>
-     */
-    private static function injectBrandFallbackIfConfigured(array $rows): array
-    {
-        if (self::rowsHaveBrandLike($rows)) {
-            return $rows;
-        }
-        $fallback = config('services.ebay.brand_fallback_value');
-        if (! is_string($fallback)) {
-            return $rows;
-        }
-        $fallback = trim($fallback);
-        if ($fallback === '') {
-            return $rows;
-        }
-        $rows[] = ['name' => 'Brand', 'values' => [$fallback]];
-        Log::debug('eBay bullet update: applied services.ebay.brand_fallback_value (Brand was missing from merged specifics).');
 
         return $rows;
     }
