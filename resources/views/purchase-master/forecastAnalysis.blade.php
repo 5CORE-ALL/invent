@@ -914,7 +914,7 @@
             initialSort: [{ column: "Parent", dir: "asc" }],
             initialHeaderFilter: [{ field: "nr", value: "" }, { field: "stage", value: "" }, { field: "INV", value: "" }],
             paginationCounter: "rows",
-            movableColumns: false,
+            movableColumns: true,
             resizableColumns: true,
             height: 600,
             index: "SKU",
@@ -1021,7 +1021,10 @@
                         const v = cell.getValue() == null ? '' : String(cell.getValue());
                         const esc = v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
                         const title = esc.replace(/"/g, '&quot;');
-                        return '<span title="' + title + '" style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;">' + esc + '</span>';
+                        const safeParent = v.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+                        if (!v) return '<span style="display:block;text-align:center;color:#6c757d;">-</span>';
+                        const copyBtn = `<i class="fa fa-copy forecast-copy-parent" data-parent="${safeParent}" title="Copy Parent" style="cursor:pointer;margin-left:5px;color:#6c757d;font-size:11px;flex-shrink:0;"></i>`;
+                        return `<span title="${title}" style="display:flex;align-items:center;overflow:hidden;min-width:0;"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;">${esc}</span>${copyBtn}</span>`;
                     }
                 },
 
@@ -1030,6 +1033,7 @@
                 {
                     title: "SKU",
                     field: "SKU",
+                    frozen: true,
                     minWidth: 180,
                     widthGrow: 1,
                     headerFilter: "input",
@@ -1591,11 +1595,69 @@
                     accessor: row => (row ? row["readyToShipQty"] : null),
                     sorter: "number",
                     headerSort: true,
+                    editor: "number",
+                    editorParams: { min: 0, step: 1, verticalNavigation: "editor" },
+                    editable: function(cell) {
+                        const d = cell.getRow().getData();
+                        return !(d.is_parent || d.isParent);
+                    },
+                    cellClick: function(e, cell) {
+                        const d = cell.getRow().getData();
+                        if (d.is_parent || d.isParent) return;
+                        cell.edit();
+                    },
+                    cellEditing: function(cell) {
+                        const row = cell.getRow();
+                        row.forecastR2sEditStart = cell.getValue();
+                        setTimeout(function() {
+                            const input = cell.getElement().querySelector('input, textarea');
+                            if (input) {
+                                input.focus();
+                                input.select();
+                            }
+                        }, 0);
+                    },
                     formatter: function(cell) {
                         const value = cell.getValue();
                         const n = parseFloat(value);
                         const showDash = value === null || value === undefined || value === '' || isNaN(n) || n === 0;
-                        return `<div style="text-align:center;">${showDash ? '-' : String(value)}</div>`;
+                        return `<div style="text-align:center;font-weight:bold;cursor:text;">${showDash ? '-' : String(value)}</div>`;
+                    },
+                    cellEdited: function(cell) {
+                        const row = cell.getRow();
+                        const d = row.getData();
+                        if (d.is_parent || d.isParent) return;
+
+                        const rawNew = cell.getValue();
+                        const oldVal = row.forecastR2sEditStart;
+                        delete row.forecastR2sEditStart;
+
+                        if (rawNew === '' || rawNew === null || rawNew === undefined) {
+                            cell.setValue(oldVal, true);
+                            alert('Please enter a valid R2S quantity.');
+                            return;
+                        }
+                        const newValue = Number(rawNew);
+                        if (Number.isNaN(newValue) || newValue < 0) {
+                            cell.setValue(oldVal, true);
+                            alert('Please enter a valid R2S quantity.');
+                            return;
+                        }
+                        const origNum = Number(oldVal);
+                        if (!Number.isNaN(origNum) && origNum === newValue) return;
+
+                        updateForecastField(
+                            { sku: d.SKU, parent: d.Parent || '', column: 'R2S', value: newValue },
+                            function() {
+                                row.update({ readyToShipQty: newValue }, true);
+                                const stageCell = row.getCells().find(function(c) { return c.getField() === 'stage'; });
+                                if (stageCell) stageCell.reformat();
+                                syncParentStageQtyColumns(d.Parent || d.parentKey);
+                            },
+                            function() {
+                                cell.setValue(oldVal, true);
+                            }
+                        );
                     }
                 },
                 // {
@@ -1868,7 +1930,7 @@
                     }
                 },
                 {
-                    title: "Current Supplier",
+                    title: "Supplier",
                     field: "mfrg_supplier",
                     accessor: row => row["mfrg_supplier"] ?? '',
                     minWidth: 68,
@@ -1878,11 +1940,21 @@
                     hozAlign: "center",
                     vertAlign: "middle",
                     cssClass: "forecast-current-supplier-cell",
-                    headerSort: false,
+                    headerSort: true,
+                    sorter: function(a, b, aRow, bRow, column, dir) {
+                        const aVal = (a || '').trim();
+                        const bVal = (b || '').trim();
+                        const aEmpty = aVal === '';
+                        const bEmpty = bVal === '';
+                        if (aEmpty && bEmpty) return 0;
+                        if (aEmpty) return 1;
+                        if (bEmpty) return -1;
+                        return aVal.localeCompare(bVal);
+                    },
                     titleFormatter: function() {
                         const span = document.createElement('span');
-                        span.textContent = 'Cur Supp';
-                        span.setAttribute('title', 'Current Supplier');
+                        span.textContent = 'Supplier';
+                        span.setAttribute('title', 'Supplier');
                         span.style.fontWeight = '700';
                         return span;
                     },
@@ -1955,7 +2027,7 @@
                             ? (Number.isInteger(rVal) ? String(rVal) : rVal.toFixed(1))
                             : null;
                         const revLine = hasReviews
-                            ? (revParsed.toLocaleString("en-US") + " Rew")
+                            ? ("(" + revParsed.toLocaleString("en-US") + ")")
                             : null;
 
                         let html = "<div style=\"display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1.1;padding:0 1px;" + ratingWrapStyle + "\">";
@@ -1972,7 +2044,7 @@
                         if (revLine) {
                             html += "<div style=\"font-size:0.62rem;color:" + revMuted + ";margin-top:0;text-align:center;font-weight:500;\">" + revLine + "</div>";
                         } else if (hasRating) {
-                            html += "<div style=\"font-size:0.6rem;color:" + revZero + ";margin-top:0;\">0 Rew</div>";
+                            html += "<div style=\"font-size:0.6rem;color:" + revZero + ";margin-top:0;\">(0)</div>";
                         }
                         html += "</div>";
 
@@ -2396,7 +2468,7 @@
                         let color = '#000';
                         if (daysDiff > 25) color = 'red';
                         else if (daysDiff >= 15) color = '#ffc107';
-                        return `<span style="display:block;text-align:center;font-weight:700;color:${color};">${day} ${month} (${daysDiff} D)</span>`;
+                        return `<span style="display:block;text-align:center;font-weight:700;color:${color};">${day} ${month}</span>`;
                     }
                 },
                 {
@@ -3037,19 +3109,19 @@
             const supplierName = (document.getElementById('bulk-current-supplier-select')?.value || '').trim();
             if (!supplierName) { alert('Please select a supplier.'); return; }
             const selected = table.getSelectedRows();
-            const skus = [];
+            const validRows = [];
             selected.forEach(function(row) {
                 const d = row.getData();
                 const sku = (d.SKU || '').trim();
-                if (sku && !sku.toLowerCase().includes('parent')) skus.push(sku);
+                if (sku && !sku.toLowerCase().includes('parent')) validRows.push({ row: row, sku: sku });
             });
-            if (skus.length === 0) { alert('No valid SKUs in selection.'); return; }
+            if (validRows.length === 0) { alert('No valid SKUs in selection.'); return; }
             const btn = this;
             btn.disabled = true;
             const token = document.querySelector('input[name="_token"]')?.value || document.querySelector('meta[name="csrf-token"]')?.content || '';
-            const promises = skus.map(function(sku) {
+            const promises = validRows.map(function(item) {
                 const fd = new FormData();
-                fd.append('sku', sku);
+                fd.append('sku', item.sku);
                 fd.append('column', 'supplier');
                 fd.append('value', supplierName);
                 fd.append('_token', token);
@@ -3057,7 +3129,9 @@
                     .then(function(r) { return r.json(); });
             });
             Promise.all(promises).then(function() {
-                table.replaceData();
+                validRows.forEach(function(item) {
+                    item.row.update({ mfrg_supplier: supplierName }, true);
+                });
                 table.deselectRow();
                 updateBulkEditBadge();
                 btn.disabled = false;
@@ -5301,6 +5375,16 @@
             e.stopPropagation();
             const sku = $(this).data('sku');
             navigator.clipboard.writeText(sku).then(() => {
+                const icon = $(this);
+                icon.removeClass('fa-copy').addClass('fa-check').css('color', '#28a745');
+                setTimeout(() => icon.removeClass('fa-check').addClass('fa-copy').css('color', '#6c757d'), 1500);
+            });
+        });
+
+        $(document).on('click', '.forecast-copy-parent', function(e) {
+            e.stopPropagation();
+            const parent = $(this).data('parent');
+            navigator.clipboard.writeText(parent).then(() => {
                 const icon = $(this);
                 icon.removeClass('fa-copy').addClass('fa-check').css('color', '#28a745');
                 setTimeout(() => icon.removeClass('fa-check').addClass('fa-copy').css('color', '#6c757d'), 1500);
