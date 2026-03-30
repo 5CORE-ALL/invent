@@ -1,6 +1,7 @@
 @extends('layouts.vertical', ['title' => 'AliExpress Pricing', 'sidenav' => 'condensed'])
 
 @section('css')
+    <meta name="csrf-token" content="{{ csrf_token() }}">
     <link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
     <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -190,6 +191,28 @@
                             data-bs-toggle="modal" data-bs-target="#uploadPriceSheetModal">
                             <i class="fas fa-upload"></i> Upload Price
                         </button>
+
+                        {{-- Price Mode (Increase / Decrease) – identical to TikTok --}}
+                        <button id="ae-price-mode-btn" class="btn btn-sm btn-secondary" title="Cycle: Off → Decrease → Increase">
+                            <i class="fas fa-exchange-alt"></i> Price Mode
+                        </button>
+                    </div>
+
+                    {{-- Discount input (shown when Price Mode is active) – identical to TikTok --}}
+                    <div id="ae-discount-container" class="p-2 bg-light border rounded mb-2" style="display:none;">
+                        <div class="d-flex align-items-center gap-2">
+                            <span id="ae-selected-skus-count" class="fw-bold text-secondary"></span>
+                            <select id="ae-discount-type" class="form-select form-select-sm" style="width:120px;">
+                                <option value="percentage">Percentage</option>
+                                <option value="value">Value ($)</option>
+                            </select>
+                            <input type="number" id="ae-discount-input" class="form-control form-control-sm"
+                                placeholder="Enter %" step="0.01" style="width:110px;">
+                            <button id="ae-apply-discount-btn" class="btn btn-primary btn-sm">Apply</button>
+                            <button id="ae-clear-sprice-btn" class="btn btn-danger btn-sm">
+                                <i class="fas fa-eraser"></i> Clear SPRICE
+                            </button>
+                        </div>
                     </div>
 
                     {{-- ── Summary badges ── --}}
@@ -246,6 +269,116 @@
         let aeMapActive      = false;
         let aeZeroSoldActive = false;
         let aeMoreSoldActive = false;
+
+        // Price Mode (mirrors TikTok exactly)
+        let decreaseModeActive = false;
+        let increaseModeActive = false;
+        let selectedSkus = new Set();
+
+        function roundToRetailPrice(price) {
+            return Math.ceil(price) - 0.01;
+        }
+
+        function syncPriceModeUi() {
+            const $btn = $('#ae-price-mode-btn');
+            const selectCol = table ? table.getColumn('_ae_select') : null;
+            if (decreaseModeActive) {
+                $btn.removeClass('btn-secondary btn-primary').addClass('btn-danger')
+                    .html('<i class="fas fa-arrow-down"></i> Decrease ON');
+                if (selectCol) selectCol.show();
+                return;
+            }
+            if (increaseModeActive) {
+                $btn.removeClass('btn-secondary btn-danger').addClass('btn-primary')
+                    .html('<i class="fas fa-arrow-up"></i> Increase ON');
+                if (selectCol) selectCol.show();
+                return;
+            }
+            $btn.removeClass('btn-danger btn-primary').addClass('btn-secondary')
+                .html('<i class="fas fa-exchange-alt"></i> Price Mode');
+            if (selectCol) selectCol.hide();
+            selectedSkus.clear();
+            updateSelectedCount();
+        }
+
+        function updateSelectedCount() {
+            const cnt = selectedSkus.size;
+            $('#ae-selected-skus-count').text(`${cnt} SKU${cnt !== 1 ? 's' : ''} selected`);
+            $('#ae-discount-container').toggle(cnt > 0 && (decreaseModeActive || increaseModeActive));
+        }
+
+        function saveSpriceUpdates(updates) {
+            $.ajax({
+                url: '{{ route("aliexpress.pricing.save.sprice") }}',
+                method: 'POST',
+                headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+                data: { updates: updates },
+                success: function(res) {
+                    if (res.success) console.log('AE SPRICE saved:', res.updated);
+                },
+                error: function(xhr) {
+                    console.error('AE SPRICE save error:', xhr.responseJSON);
+                }
+            });
+        }
+
+        function applyAeDiscount() {
+            const discountType = $('#ae-discount-type').val();
+            const discountVal  = parseFloat($('#ae-discount-input').val());
+            if (isNaN(discountVal) || discountVal === 0 || selectedSkus.size === 0) return;
+
+            let updatedCount = 0;
+            const updates = [];
+
+            selectedSkus.forEach(sku => {
+                const rows = table.searchRows('sku', '=', sku);
+                if (!rows.length) return;
+                const row     = rows[0];
+                const rowData = row.getData();
+                const currentPrice = parseFloat(rowData.price) || 0;
+                if (currentPrice <= 0) return;
+
+                let newSprice;
+                if (discountType === 'percentage') {
+                    newSprice = increaseModeActive
+                        ? currentPrice * (1 + discountVal / 100)
+                        : currentPrice * (1 - discountVal / 100);
+                } else {
+                    newSprice = increaseModeActive
+                        ? currentPrice + discountVal
+                        : currentPrice - discountVal;
+                }
+                newSprice = roundToRetailPrice(Math.max(0.99, newSprice));
+
+                const margin = parseFloat(rowData._margin) || 1;
+                const lp     = parseFloat(rowData.lp)   || 0;
+                const ship   = parseFloat(rowData.ship)  || 0;
+                // Same formulas as GPFT / GROI
+                const sgpft  = newSprice > 0 ? Math.round(((newSprice * margin - ship - lp) / newSprice) * 100 * 100) / 100 : 0;
+                const sroi   = lp > 0        ? Math.round(((newSprice * margin - lp - ship)  / lp)       * 100 * 100) / 100 : 0;
+
+                row.update({ sprice: newSprice, sgpft: sgpft, sroi: sroi });
+                updates.push({ sku: sku, sprice: newSprice });
+                updatedCount++;
+            });
+
+            if (updates.length) saveSpriceUpdates(updates);
+            $('#ae-discount-input').val('');
+        }
+
+        function clearSpriceForSelected() {
+            if (!selectedSkus.size) return;
+            if (!confirm(`Clear SPRICE for ${selectedSkus.size} SKU(s)?`)) return;
+            const updates = [];
+            table.getRows().forEach(row => {
+                const d = row.getData();
+                if (selectedSkus.has(d.sku) && !d.is_parent) {
+                    row.update({ sprice: 0, sgpft: 0 });
+                    updates.push({ sku: d.sku, sprice: 0 });
+                }
+            });
+            if (updates.length) saveSpriceUpdates(updates);
+        }
 
         function money(value) {
             return `$${(parseFloat(value) || 0).toFixed(2)}`;
@@ -433,6 +566,22 @@
                     }
                 },
                 columns: [
+                    // ── Select checkbox (Price Mode) ──────────────────────
+                    {
+                        title: "<input type='checkbox' id='ae-select-all'>",
+                        field: "_ae_select",
+                        hozAlign: "center",
+                        headerSort: false,
+                        width: 38,
+                        visible: false,
+                        formatter: function(cell) {
+                            const d = cell.getRow().getData();
+                            if (d.is_parent) return '';
+                            const sku = d.sku;
+                            const chk = selectedSkus.has(sku) ? 'checked' : '';
+                            return `<input type='checkbox' class='ae-sku-chk' data-sku='${sku.replace(/'/g,"\\'")}' ${chk}>`;
+                        }
+                    },
                     {
                         title: "Parent",
                         field: "parent",
@@ -666,10 +815,13 @@
                         field: "sprice",
                         sorter: "number",
                         hozAlign: "right",
+                        editor: "number",
+                        editorParams: { min: 0, step: 0.01 },
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
-                            return money(cell.getValue());
+                            const v = parseFloat(cell.getValue()) || 0;
+                            return `<span style="font-weight:600;padding:2px 6px;border-radius:3px;">${money(v)}</span>`;
                         }
                     },
                     {
@@ -680,7 +832,26 @@
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
-                            return `${(parseFloat(cell.getValue()) || 0).toFixed(2)}%`;
+                            const v = parseFloat(cell.getValue());
+                            if (isNaN(v) || v === 0) return '0%';
+                            // Same color coding as GPFT
+                            let color = v < 10 ? '#a00211' : v < 15 ? '#ffc107' : v < 20 ? '#3591dc' : v <= 40 ? '#28a745' : '#e83e8c';
+                            return `<span style="color:${color};font-weight:600;">${v.toFixed(2)}%</span>`;
+                        }
+                    },
+                    {
+                        title: "SROI",
+                        field: "sroi",
+                        sorter: "number",
+                        hozAlign: "right",
+                        formatter: function(cell) {
+                            const d = cell.getRow().getData();
+                            if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
+                            const v = parseFloat(cell.getValue());
+                            if (isNaN(v) || v === 0) return '0%';
+                            // Same color coding as GROI (ROI%)
+                            let color = v < 50 ? '#a00211' : v < 100 ? '#ffc107' : v < 150 ? '#28a745' : '#e83e8c';
+                            return `<span style="color:${color};font-weight:600;">${v.toFixed(2)}%</span>`;
                         }
                     },
                 ],
@@ -722,6 +893,58 @@
             });
             $(document).on('click', function() {
                 $('.ae-manual-dropdown').removeClass('show');
+            });
+
+            // ── Price Mode (Increase / Decrease) ─────────────────────
+            $('#ae-price-mode-btn').on('click', function() {
+                if (!decreaseModeActive && !increaseModeActive) {
+                    decreaseModeActive = true; increaseModeActive = false;
+                } else if (decreaseModeActive) {
+                    decreaseModeActive = false; increaseModeActive = true;
+                } else {
+                    decreaseModeActive = false; increaseModeActive = false;
+                }
+                syncPriceModeUi();
+            });
+
+            $('#ae-discount-type').on('change', function() {
+                $('#ae-discount-input').attr('placeholder', $(this).val() === 'percentage' ? 'Enter %' : 'Enter $');
+            });
+            $('#ae-apply-discount-btn').on('click', function() { applyAeDiscount(); });
+            $('#ae-discount-input').on('keypress', function(e) { if (e.which === 13) applyAeDiscount(); });
+            $('#ae-clear-sprice-btn').on('click', function() { clearSpriceForSelected(); });
+
+            // Select all checkbox
+            $(document).on('change', '#ae-select-all', function() {
+                const checked = $(this).prop('checked');
+                const rows = table.getData('active').filter(d => !d.is_parent);
+                rows.forEach(d => { if (checked) selectedSkus.add(d.sku); else selectedSkus.delete(d.sku); });
+                $('.ae-sku-chk').prop('checked', checked);
+                updateSelectedCount();
+            });
+
+            // Individual checkbox
+            $(document).on('change', '.ae-sku-chk', function() {
+                const sku = $(this).data('sku');
+                if ($(this).prop('checked')) selectedSkus.add(sku); else selectedSkus.delete(sku);
+                updateSelectedCount();
+            });
+
+            // SPRICE cell edited – save immediately, recalculate SGPFT + SROI with proper margin
+            table.on('cellEdited', function(cell) {
+                if (cell.getField() !== 'sprice') return;
+                const d = cell.getRow().getData();
+                if (d.is_parent) return;
+                const sku    = d.sku;
+                const sprice = parseFloat(cell.getValue()) || 0;
+                const margin = parseFloat(d._margin) || 1;
+                const lp     = parseFloat(d.lp)   || 0;
+                const ship   = parseFloat(d.ship)  || 0;
+                // Same formulas as GPFT / GROI
+                const sgpft = sprice > 0 ? Math.round(((sprice * margin - ship - lp) / sprice) * 100 * 100) / 100 : 0;
+                const sroi  = lp     > 0 ? Math.round(((sprice * margin - lp - ship)  / lp)    * 100 * 100) / 100 : 0;
+                cell.getRow().update({ sgpft: sgpft, sroi: sroi });
+                saveSpriceUpdates([{ sku: sku, sprice: sprice }]);
             });
 
             // Badge click filters (identical to TikTok)

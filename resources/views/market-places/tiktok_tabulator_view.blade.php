@@ -199,6 +199,16 @@
                         <option value="60plus">60%+</option>
                     </select>
 
+                    <select id="roi-filter" class="form-select form-select-sm"
+                        style="width: 130px;">
+                        <option value="all">ROI %</option>
+                        <option value="lt40">&lt;40%</option>
+                        <option value="40-75">40 to 75%</option>
+                        <option value="75-125">75 to 125%</option>
+                        <option value="125-250">125 to 250%</option>
+                        <option value="gt250">&gt;250%</option>
+                    </select>
+
                     <select id="ad-click-filter" class="form-select form-select-sm" style="width: 130px;">
                         <option value="all">Ad Click</option>
                         <option value="zero">0 Clicks</option>
@@ -2039,6 +2049,7 @@
             const rowTypeFilter = $('#row-type-filter').val();
             const inventoryFilter = $('#inventory-filter').val();
             const gpftFilter = $('#gpft-filter').val();
+            const roiFilter = $('#roi-filter').val();
             const adClickFilter = $('#ad-click-filter').val();
             const dilFilter = $('.column-filter[data-column="dil_percent"].active')?.data('color') || 'all';
 
@@ -2091,6 +2102,21 @@
                     if (gpftFilter === '60plus') return gpft >= 60;
                     const [min, max] = gpftFilter.split('-').map(Number);
                     return gpft >= min && gpft < max;
+                });
+            }
+
+            // ROI % filter (parent rows always visible)
+            if (roiFilter !== 'all') {
+                table.addFilter(function(data) {
+                    if (isParentRow(data)) return true;
+                    const roi = parseFloat(data['ROI%']);
+                    if (isNaN(roi)) return false;
+                    if (roiFilter === 'lt40') return roi < 40;
+                    if (roiFilter === '40-75') return roi >= 40 && roi < 75;
+                    if (roiFilter === '75-125') return roi >= 75 && roi < 125;
+                    if (roiFilter === '125-250') return roi >= 125 && roi < 250;
+                    if (roiFilter === 'gt250') return roi >= 250;
+                    return true;
                 });
             }
 

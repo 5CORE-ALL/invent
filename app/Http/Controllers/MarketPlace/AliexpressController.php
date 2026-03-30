@@ -577,6 +577,7 @@ class AliexpressController extends Controller
             'ship'        => '-',
             'sprice'      => '-',
             'sgpft'       => '-',
+            'sroi'        => '-',
             'inv'         => (int) $sumInv,
             'ov_l30'      => (int) $sumOvL30,
             'ae_stock'    => (int) $sumAeStock,
@@ -1051,6 +1052,10 @@ class AliexpressController extends Controller
                     $mapValue = "N Map|{$diff}";
                 }
 
+                // Calculate SPRICE derived values (same formulas as GPFT/GROI)
+                $sgpft = $sprice > 0 ? round((($sprice * $margin - $lp - $ship) / $sprice) * 100, 2) : 0;
+                $sroi  = $lp    > 0 ? round((($sprice * $margin - $lp - $ship) / $lp)     * 100, 2) : 0;
+
                 $rows[] = [
                     'sku'         => trim((string) $displaySku),
                     'parent'      => $productMaster ? (trim((string) ($productMaster->parent ?? '')) ?: null) : null,
@@ -1068,6 +1073,8 @@ class AliexpressController extends Controller
                     'ship'        => round($ship, 2),
                     'sprice'      => round($sprice, 2),
                     'sgpft'       => round($sgpft, 2),
+                    'sroi'        => round($sroi, 2),
+                    '_margin'     => round($margin, 4),
                     'inv'         => $inv,
                     'ov_l30'      => $ovL30,
                     'ae_stock'    => $aeStock,
@@ -1100,6 +1107,70 @@ class AliexpressController extends Controller
             return response()->json([
                 'error' => 'Failed to fetch pricing data: ' . $e->getMessage(),
             ], 500);
+        }
+    }
+
+    /**
+     * Save SPRICE (and calculated SGPFT / SROI) to aliexpress_data_views.value JSON.
+     * Mirrors TikTok's saveSpriceUpdates — preserves existing JSON keys.
+     */
+    public function saveSpriceUpdates(Request $request)
+    {
+        try {
+            $updates = $request->input('updates', []);
+            if (empty($updates) && $request->has('sku')) {
+                $updates = [['sku' => $request->input('sku'), 'sprice' => $request->input('sprice')]];
+            }
+
+            $marketplaceData = MarketplacePercentage::query()
+                ->where('marketplace', 'Aliexpress')
+                ->orWhere('marketplace', 'AliExpress')
+                ->first();
+            $percentage = $marketplaceData ? ((float) ($marketplaceData->percentage ?? 100)) : 100;
+            $margin     = $percentage / 100;
+
+            $updatedCount = 0;
+            foreach ($updates as $update) {
+                $sku    = $update['sku']    ?? null;
+                $sprice = $update['sprice'] ?? null;
+                if (!$sku || $sprice === null) continue;
+
+                $sprice = (float) $sprice;
+
+                // Get LP / Ship from ProductMaster
+                $productMaster = ProductMaster::where('sku', $sku)->first();
+                $lp = $ship = 0;
+                if ($productMaster) {
+                    $values = is_array($productMaster->Values)
+                        ? $productMaster->Values
+                        : (is_string($productMaster->Values) ? json_decode($productMaster->Values, true) : []);
+                    $lp   = isset($values['lp'])   ? (float) $values['lp']   : 0;
+                    $ship = isset($values['ae_ship']) ? (float) $values['ae_ship']
+                          : (isset($values['ship']) ? (float) $values['ship'] : 0);
+                }
+
+                // Calculate derived values (same formulas as TikTok)
+                $sgpft = $sprice > 0 ? round((($sprice * $margin - $lp - $ship) / $sprice) * 100, 2) : 0;
+                $sroi  = $lp     > 0 ? round((($sprice * $margin - $lp - $ship) / $lp)     * 100, 2) : 0;
+
+                // Merge into existing JSON (preserve Listed, Live, etc.)
+                $view   = AliexpressDataView::firstOrNew(['sku' => $sku]);
+                $stored = is_array($view->value) ? $view->value
+                        : (json_decode($view->value, true) ?: []);
+
+                $stored['SPRICE'] = $sprice;
+                $stored['SGPFT']  = $sgpft;
+                $stored['SROI']   = $sroi;
+
+                $view->value = $stored;
+                $view->save();
+                $updatedCount++;
+            }
+
+            return response()->json(['success' => true, 'updated' => $updatedCount]);
+        } catch (\Exception $e) {
+            Log::error('AliExpress SPRICE save failed: ' . $e->getMessage());
+            return response()->json(['success' => false, 'error' => $e->getMessage()], 500);
         }
     }
 
