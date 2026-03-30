@@ -402,12 +402,10 @@
                         <div class="d-flex align-items-center flex-wrap gap-2">
                             <span id="top-row-counter">Showing 0-0 of 0 rows</span>
 
-                            <!-- Global Search -->
-                            <div class="input-group input-group-sm" style="width:220px;">
-                                <span class="input-group-text bg-white border-primary"><i class="bi bi-search text-primary"></i></span>
-                                <input type="text" id="forecast-global-search" class="form-control border-primary" placeholder="Search SKU / Parent / Supplier…" autocomplete="off">
-                                <button type="button" id="forecast-global-search-clear" class="btn btn-outline-secondary d-none" title="Clear search"><i class="bi bi-x-lg"></i></button>
-                            </div>
+                            <!-- Column Searches -->
+                            <input type="text" id="search-sku" class="form-control form-control-sm border-primary" placeholder="SKU…" autocomplete="off" style="width:150px;" title="Filter by SKU">
+                            <input type="text" id="search-parent" class="form-control form-control-sm border-primary" placeholder="Parent…" autocomplete="off" style="width:140px;" title="Filter by Parent">
+                            <input type="text" id="search-supplier" class="form-control form-control-sm border-primary" placeholder="Supplier…" autocomplete="off" style="width:140px;" title="Filter by Supplier">
                             <select id="stage-filter" class="form-select-sm border border-primary" style="width: 150px;">
                                 <option value="">All</option>
                                 <option value="__blank__">Not Req Now</option>
@@ -962,7 +960,7 @@
                         return checkbox;
                     },
                     hozAlign: "center",
-                    headerSort: false,
+                    headerSort: true,
                     width: 40,
                     minWidth: 40,
                     cellClick: function(e, cell) {
@@ -975,7 +973,7 @@
                 {
                     title: "#",
                     field: "Image",
-                    headerSort: false,
+                    headerSort: true,
                     formatter: function(cell) {
                         const url = cell.getValue();
                         if (!url) return `<span class="text-muted">N/A</span>`;
@@ -1085,7 +1083,7 @@
                     title: "INV",
                     field: "INV",
                     accessor: row => (row ? row["INV"] : 0),
-                    headerSort: false,
+                    headerSort: true,
                     formatter: function(cell) {
                         const value = cell.getValue();
                         return `<span style="display:block; text-align:center;">${value}</span>`;
@@ -1283,7 +1281,7 @@
                         const stageValue = row?.["stage"] ?? '';
                         return stageValue ? String(stageValue).trim().toLowerCase() : '';
                     },
-                    headerSort: false,
+                    headerSort: true,
                     formatter: function(cell) {
                         let value = cell.getValue() ?? '';
                         value = String(value).trim().toLowerCase();
@@ -1452,7 +1450,7 @@
                 //   {
                 //     title: "S-MSL",
                 //     field: "s_msl",
-                //     headerSort: false,
+                //     headerSort: true,
                 //     formatter: function(cell) {
                 //         const value = cell.getValue();
                 //         const rowData = cell.getRow().getData();
@@ -1728,7 +1726,7 @@
                     title: "MOQ",
                     field: "MOQ",
                     accessor: row => (row ? row["MOQ"] : ''),
-                    headerSort: false,
+                    headerSort: true,
                     hozAlign: "center",
                     editable: function(cell) {
                         const d = cell.getRow().getData();
@@ -1836,7 +1834,7 @@
                         const normalized = strVal.trim().toUpperCase();
                         return normalized;
                     },
-                    headerSort: false,
+                    headerSort: true,
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         let value = cell.getValue();
@@ -2345,7 +2343,7 @@
                     title: "Pkg Inst",
                     field: "pkg_inst",
                     hozAlign: "center",
-                    headerSort: false,
+                    headerSort: true,
                     formatter: function(cell) {
                         const d = cell.getRow().getData() || {};
                         if (d.is_parent || d.isParent) return '<span style="display:block;text-align:center;color:#6c757d;">-</span>';
@@ -2361,7 +2359,7 @@
                     title: "U-Manual",
                     field: "u_manual",
                     hozAlign: "center",
-                    headerSort: false,
+                    headerSort: true,
                     formatter: function(cell) {
                         const d = cell.getRow().getData() || {};
                         if (d.is_parent || d.isParent) return '<span style="display:block;text-align:center;color:#6c757d;">-</span>';
@@ -2377,7 +2375,7 @@
                     title: "Compliance",
                     field: "compliance",
                     hozAlign: "center",
-                    headerSort: false,
+                    headerSort: true,
                     formatter: function(cell) {
                         const d = cell.getRow().getData() || {};
                         if (d.is_parent || d.isParent) return '<span style="display:block;text-align:center;color:#6c757d;">-</span>';
@@ -2460,7 +2458,7 @@
                     title: "Packing List",
                     field: "r2s_packing_list",
                     hozAlign: "center",
-                    headerSort: false,
+                    headerSort: true,
                     formatter: function(cell) {
                         const d = cell.getRow().getData() || {};
                         if (d.is_parent || d.isParent) return '<span style="display:block;text-align:center;color:#6c757d;">-</span>';
@@ -2508,7 +2506,7 @@
                     title: "New Photo",
                     field: "r2s_new_photo",
                     hozAlign: "center",
-                    headerSort: false,
+                    headerSort: true,
                     formatter: function(cell) {
                         const d = cell.getRow().getData() || {};
                         if (d.is_parent || d.isParent) return '<span style="display:block;text-align:center;color:#6c757d;">-</span>';
@@ -3164,6 +3162,9 @@
         let currentParentFilter = null;
         let currentColorFilter = null;
         let currentSearchQuery = '';
+        let currentSearchSku = '';
+        let currentSearchParent = '';
+        let currentSearchSupplier = '';
         let currentTwoOrdColorFilter = '';
         let currentTopQtySignFilters = {
             order: '',
@@ -3703,6 +3704,11 @@
                         return false;
                     }
                 }
+
+                // Per-column searches
+                if (currentSearchSku      && !String(data.SKU            || '').toLowerCase().includes(currentSearchSku))      return false;
+                if (currentSearchParent   && !String(data.Parent         || '').toLowerCase().includes(currentSearchParent))   return false;
+                if (currentSearchSupplier && !String(data.mfrg_supplier  || '').toLowerCase().includes(currentSearchSupplier)) return false;
                 const isChild = !data.is_parent;
                 const isParent = data.is_parent;
                 const twoOrdRaw = data.to_order ?? (data.raw_data ? data.raw_data.to_order : 0);
@@ -5141,28 +5147,30 @@
             });
 
             // Stage filter (toolbar) — keep in sync with Stage column header filter
-            // Global search input
+            // Per-column search inputs
             (function() {
-                const searchInput = document.getElementById('forecast-global-search');
-                const clearBtn    = document.getElementById('forecast-global-search-clear');
-                if (!searchInput) return;
-                let debounceTimer;
-                searchInput.addEventListener('input', function() {
-                    clearTimeout(debounceTimer);
-                    debounceTimer = setTimeout(function() {
-                        currentSearchQuery = searchInput.value.trim().toLowerCase();
-                        if (clearBtn) clearBtn.classList.toggle('d-none', !currentSearchQuery);
-                        setCombinedFilters();
-                    }, 200);
-                });
-                if (clearBtn) {
-                    clearBtn.addEventListener('click', function() {
-                        searchInput.value = '';
-                        currentSearchQuery = '';
-                        clearBtn.classList.add('d-none');
-                        setCombinedFilters();
+                function makeSearchHandler(inputId, setter) {
+                    const el = document.getElementById(inputId);
+                    if (!el) return;
+                    let timer;
+                    el.addEventListener('input', function() {
+                        clearTimeout(timer);
+                        timer = setTimeout(function() {
+                            setter(el.value.trim().toLowerCase());
+                            setCombinedFilters();
+                        }, 200);
+                    });
+                    el.addEventListener('keydown', function(e) {
+                        if (e.key === 'Escape') {
+                            el.value = '';
+                            setter('');
+                            setCombinedFilters();
+                        }
                     });
                 }
+                makeSearchHandler('search-sku',      function(v) { currentSearchSku      = v; });
+                makeSearchHandler('search-parent',   function(v) { currentSearchParent   = v; });
+                makeSearchHandler('search-supplier', function(v) { currentSearchSupplier = v; });
             })();
 
             document.getElementById('stage-filter').addEventListener('change', function(e) {
