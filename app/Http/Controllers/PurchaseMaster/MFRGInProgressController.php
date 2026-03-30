@@ -435,9 +435,15 @@ class MFRGInProgressController extends Controller
             return response()->json(['success' => false, 'message' => 'Invalid column.']);
         }
 
+        $columnsAllowCreate = ['supplier', 'supplier_sku'];
         $progress = MfrgProgress::where('sku', $sku)->first();
         if (!$progress) {
-            return response()->json(['success' => false, 'message' => 'SKU not found.']);
+            if (in_array($column, $columnsAllowCreate)) {
+                $progress = new MfrgProgress();
+                $progress->sku = $sku;
+            } else {
+                return response()->json(['success' => false, 'message' => 'SKU not found.']);
+            }
         }
 
         if ($request->hasFile('value') && in_array($column, ['photo_packing', 'photo_int_sale', 'barcode_sku'])) {

@@ -1955,7 +1955,7 @@
                             ? (Number.isInteger(rVal) ? String(rVal) : rVal.toFixed(1))
                             : null;
                         const revLine = hasReviews
-                            ? (revParsed.toLocaleString("en-US") + " Rew")
+                            ? ("(" + revParsed.toLocaleString("en-US") + ")")
                             : null;
 
                         let html = "<div style=\"display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1.1;padding:0 1px;" + ratingWrapStyle + "\">";
@@ -1972,7 +1972,7 @@
                         if (revLine) {
                             html += "<div style=\"font-size:0.62rem;color:" + revMuted + ";margin-top:0;text-align:center;font-weight:500;\">" + revLine + "</div>";
                         } else if (hasRating) {
-                            html += "<div style=\"font-size:0.6rem;color:" + revZero + ";margin-top:0;\">0 Rew</div>";
+                            html += "<div style=\"font-size:0.6rem;color:" + revZero + ";margin-top:0;\">(0)</div>";
                         }
                         html += "</div>";
 
@@ -3037,19 +3037,19 @@
             const supplierName = (document.getElementById('bulk-current-supplier-select')?.value || '').trim();
             if (!supplierName) { alert('Please select a supplier.'); return; }
             const selected = table.getSelectedRows();
-            const skus = [];
+            const validRows = [];
             selected.forEach(function(row) {
                 const d = row.getData();
                 const sku = (d.SKU || '').trim();
-                if (sku && !sku.toLowerCase().includes('parent')) skus.push(sku);
+                if (sku && !sku.toLowerCase().includes('parent')) validRows.push({ row: row, sku: sku });
             });
-            if (skus.length === 0) { alert('No valid SKUs in selection.'); return; }
+            if (validRows.length === 0) { alert('No valid SKUs in selection.'); return; }
             const btn = this;
             btn.disabled = true;
             const token = document.querySelector('input[name="_token"]')?.value || document.querySelector('meta[name="csrf-token"]')?.content || '';
-            const promises = skus.map(function(sku) {
+            const promises = validRows.map(function(item) {
                 const fd = new FormData();
-                fd.append('sku', sku);
+                fd.append('sku', item.sku);
                 fd.append('column', 'supplier');
                 fd.append('value', supplierName);
                 fd.append('_token', token);
@@ -3057,7 +3057,9 @@
                     .then(function(r) { return r.json(); });
             });
             Promise.all(promises).then(function() {
-                table.replaceData();
+                validRows.forEach(function(item) {
+                    item.row.update({ mfrg_supplier: supplierName }, true);
+                });
                 table.deselectRow();
                 updateBulkEditBadge();
                 btn.disabled = false;
