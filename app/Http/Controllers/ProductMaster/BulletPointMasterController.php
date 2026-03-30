@@ -97,22 +97,9 @@ class BulletPointMasterController extends Controller
             foreach ($validated['updates'] as $u) {
                 $marketplace = strtolower(trim($u['marketplace']));
                 $text = trim((string) ($u['bullet_points'] ?? ''));
-                if ($text === '') {
-                    $results[$marketplace] = ['success' => false, 'message' => 'Bullet points cannot be empty'];
-                    continue;
-                }
 
                 if (! in_array($marketplace, $allowedMarketplaces, true)) {
                     $results[$marketplace] = ['success' => false, 'message' => 'Unknown or unsupported marketplace'];
-                    continue;
-                }
-
-                $limit = $this->getBulletPointLimit($marketplace);
-                if (mb_strlen($text) > $limit) {
-                    $results[$marketplace] = [
-                        'success' => false,
-                        'message' => "Bullet points exceed {$limit} character limit for this marketplace",
-                    ];
                     continue;
                 }
 
@@ -197,7 +184,6 @@ class BulletPointMasterController extends Controller
             Log::info('AI Generation Started', ['product_name' => $productName, 'product_id' => $productId]);
 
             $prompt = "Generate exactly 5 detailed, benefit-focused bullet points for this product: {$productName}.\n" .
-                "Each bullet point MUST be at least 190 characters. There is no maximum length.\n" .
                 "Include specific features, benefits, use cases, and quality highlights. Be persuasive and comprehensive.\n" .
                 "Output format: exactly 5 lines, one bullet per line, plain text only (no numbering, no markdown).";
             Log::info('AI Prompt:', ['prompt' => $prompt]);
@@ -244,15 +230,7 @@ class BulletPointMasterController extends Controller
                 $bullets = array_pad($bullets, 5, '');
             }
 
-            $bullets = array_map(function ($b) {
-                $b = trim((string) $b);
-                $suffix = ' Includes durable construction, reliable performance, and thoughtful design details for everyday use.';
-                while (mb_strlen($b) < 190) {
-                    $b = trim($b . $suffix);
-                }
-
-                return $b;
-            }, array_slice($bullets, 0, 5));
+            $bullets = array_map(fn ($b) => trim((string) $b), array_slice($bullets, 0, 5));
 
             Log::info('AI Response Lengths', ['bullets' => array_map(fn ($b) => mb_strlen((string) $b), $bullets)]);
             Log::info('AI Generation Success', ['bullet_points' => $bullets]);
@@ -270,19 +248,6 @@ class BulletPointMasterController extends Controller
     public function generate(Request $request)
     {
         return $this->generateBulletPoints($request);
-    }
-
-    /**
-     * Character limit per marketplace for bullet point pushes (aligned with Bullet Points Master UI).
-     */
-    public function getBulletPointLimit(string $marketplace): int
-    {
-        $marketplace = strtolower(trim($marketplace));
-
-        return match ($marketplace) {
-            'shopify_main', 'shopify_pls' => 100,
-            default => 150,
-        };
     }
 
     private function marketplaceTableMap(): array
