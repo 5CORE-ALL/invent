@@ -914,7 +914,7 @@
             initialSort: [{ column: "Parent", dir: "asc" }],
             initialHeaderFilter: [{ field: "nr", value: "" }, { field: "stage", value: "" }, { field: "INV", value: "" }],
             paginationCounter: "rows",
-            movableColumns: false,
+            movableColumns: true,
             resizableColumns: true,
             height: 600,
             index: "SKU",
@@ -1021,7 +1021,10 @@
                         const v = cell.getValue() == null ? '' : String(cell.getValue());
                         const esc = v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
                         const title = esc.replace(/"/g, '&quot;');
-                        return '<span title="' + title + '" style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;">' + esc + '</span>';
+                        const safeParent = v.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+                        if (!v) return '<span style="display:block;text-align:center;color:#6c757d;">-</span>';
+                        const copyBtn = `<i class="fa fa-copy forecast-copy-parent" data-parent="${safeParent}" title="Copy Parent" style="cursor:pointer;margin-left:5px;color:#6c757d;font-size:11px;flex-shrink:0;"></i>`;
+                        return `<span title="${title}" style="display:flex;align-items:center;overflow:hidden;min-width:0;"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;">${esc}</span>${copyBtn}</span>`;
                     }
                 },
 
@@ -1030,6 +1033,7 @@
                 {
                     title: "SKU",
                     field: "SKU",
+                    frozen: true,
                     minWidth: 180,
                     widthGrow: 1,
                     headerFilter: "input",
@@ -1926,7 +1930,7 @@
                     }
                 },
                 {
-                    title: "Current Supplier",
+                    title: "Supplier",
                     field: "mfrg_supplier",
                     accessor: row => row["mfrg_supplier"] ?? '',
                     minWidth: 68,
@@ -1936,11 +1940,21 @@
                     hozAlign: "center",
                     vertAlign: "middle",
                     cssClass: "forecast-current-supplier-cell",
-                    headerSort: false,
+                    headerSort: true,
+                    sorter: function(a, b, aRow, bRow, column, dir) {
+                        const aVal = (a || '').trim();
+                        const bVal = (b || '').trim();
+                        const aEmpty = aVal === '';
+                        const bEmpty = bVal === '';
+                        if (aEmpty && bEmpty) return 0;
+                        if (aEmpty) return 1;
+                        if (bEmpty) return -1;
+                        return aVal.localeCompare(bVal);
+                    },
                     titleFormatter: function() {
                         const span = document.createElement('span');
-                        span.textContent = 'Cur Supp';
-                        span.setAttribute('title', 'Current Supplier');
+                        span.textContent = 'Supplier';
+                        span.setAttribute('title', 'Supplier');
                         span.style.fontWeight = '700';
                         return span;
                     },
@@ -5361,6 +5375,16 @@
             e.stopPropagation();
             const sku = $(this).data('sku');
             navigator.clipboard.writeText(sku).then(() => {
+                const icon = $(this);
+                icon.removeClass('fa-copy').addClass('fa-check').css('color', '#28a745');
+                setTimeout(() => icon.removeClass('fa-check').addClass('fa-copy').css('color', '#6c757d'), 1500);
+            });
+        });
+
+        $(document).on('click', '.forecast-copy-parent', function(e) {
+            e.stopPropagation();
+            const parent = $(this).data('parent');
+            navigator.clipboard.writeText(parent).then(() => {
                 const icon = $(this);
                 icon.removeClass('fa-copy').addClass('fa-check').css('color', '#28a745');
                 setTimeout(() => icon.removeClass('fa-check').addClass('fa-copy').css('color', '#6c757d'), 1500);
