@@ -140,6 +140,16 @@
                             <option value="60plus">60%+</option>
                         </select>
 
+                        {{-- ROI% filter --}}
+                        <select id="ae-roi-filter" class="form-select form-select-sm" style="width:130px;">
+                            <option value="all">ROI%</option>
+                            <option value="lt40">&lt; 40%</option>
+                            <option value="40-75">40–75%</option>
+                            <option value="75-125">75–125%</option>
+                            <option value="125-250">125–250%</option>
+                            <option value="gt250">&gt; 250%</option>
+                        </select>
+
                         {{-- AL30 filter --}}
                         <select id="ae-al30-filter" class="form-select form-select-sm" style="width:130px;" title="Excludes 0 inventory items">
                             <option value="all">AL30</option>
@@ -394,6 +404,7 @@
             const invFilter  = $('#ae-inv-filter').val();
             const stockFilter= $('#ae-stock-filter').val();
             const gpftFilter = $('#ae-gpft-filter').val();
+            const roiFilter  = $('#ae-roi-filter').val();
             const al30Filter = $('#ae-al30-filter').val();
             const mapFilter  = $('#ae-map-filter').val();
             const dilColor   = $('.ae-dil-item.active').data('color') || 'all';
@@ -431,6 +442,18 @@
                     if (gpftFilter === '60plus')   return gpft >= 60;
                     const [min, max] = gpftFilter.split('-').map(Number);
                     return gpft >= min && gpft < max;
+                });
+            }
+
+            // ROI% filter
+            if (roiFilter !== 'all') {
+                table.addFilter(function(d) {
+                    if (d.is_parent) return true;
+                    const roi = parseFloat(d.groi) || 0;
+                    if (roiFilter === 'lt40')    return roi < 40;
+                    if (roiFilter === 'gt250')   return roi > 250;
+                    const [min, max] = roiFilter.split('-').map(Number);
+                    return roi >= min && roi <= max;
                 });
             }
 
@@ -681,6 +704,18 @@
                         }
                     },
                     {
+                        title: "AL30",
+                        field: "al30",
+                        sorter: "number",
+                        hozAlign: "center",
+                        width: 55,
+                        formatter: function(cell) {
+                            const d = cell.getRow().getData();
+                            const v = parseInt(cell.getValue(), 10) || 0;
+                            return `<span style="font-weight:700;">${v}</span>`;
+                        }
+                    },
+                    {
                         title: "Price",
                         field: "price",
                         sorter: "number",
@@ -743,7 +778,15 @@
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
-                            return `${(parseFloat(cell.getValue()) || 0).toFixed(2)}%`;
+                            const v = parseFloat(cell.getValue()) || 0;
+                            // Color ranges matching the ROI% filter dropdown
+                            let color;
+                            if      (v < 40)  color = '#a00211';  // red    – < 40%
+                            else if (v < 75)  color = '#ffc107';  // yellow – 40–75%
+                            else if (v < 125) color = '#3591dc';  // blue   – 75–125%
+                            else if (v < 250) color = '#28a745';  // green  – 125–250%
+                            else              color = '#e83e8c';  // pink   – > 250%
+                            return `<span style="color:${color};font-weight:600;">${v.toFixed(2)}%</span>`;
                         }
                     },
                     {
@@ -849,8 +892,13 @@
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
                             const v = parseFloat(cell.getValue());
                             if (isNaN(v) || v === 0) return '0%';
-                            // Same color coding as GROI (ROI%)
-                            let color = v < 50 ? '#a00211' : v < 100 ? '#ffc107' : v < 150 ? '#28a745' : '#e83e8c';
+                            // Same color ranges as GROI
+                            let color;
+                            if      (v < 40)  color = '#a00211';
+                            else if (v < 75)  color = '#ffc107';
+                            else if (v < 125) color = '#3591dc';
+                            else if (v < 250) color = '#28a745';
+                            else              color = '#e83e8c';
                             return `<span style="color:${color};font-weight:600;">${v.toFixed(2)}%</span>`;
                         }
                     },
@@ -874,6 +922,7 @@
             $('#ae-inv-filter').on('change',    function() { applyFilters(); });
             $('#ae-stock-filter').on('change',  function() { applyFilters(); });
             $('#ae-gpft-filter').on('change',   function() { applyFilters(); });
+            $('#ae-roi-filter').on('change',    function() { applyFilters(); });
             $('#ae-al30-filter').on('change',   function() { applyFilters(); });
             $('#ae-map-filter').on('change',    function() { applyFilters(); });
 
@@ -1005,7 +1054,7 @@
                         table.setData('/aliexpress/pricing-data');
                     },
                     error: function(xhr) {
-                        const message = xhr.responseJSON?.message || 'Price upload failed.';
+                        const message = (xhr.responseJSON && xhr.responseJSON.message) ? xhr.responseJSON.message : 'Price upload failed.';
                         if (window.toastr) {
                             toastr.error(message);
                         } else {

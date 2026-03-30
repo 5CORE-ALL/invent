@@ -386,7 +386,8 @@
                 const pusherCluster = (widget && widget.getAttribute('data-pusher-cluster')) || 'ap2';
                 const STORAGE_KEY = '5core_chat_' + userEmail.replace(/[^a-zA-Z0-9@._-]/g, '_');
                 let chatMessages = [];
-                const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+                const csrfMeta = document.querySelector('meta[name="csrf-token"]');
+                const csrfToken = csrfMeta ? csrfMeta.getAttribute('content') : '';
                 const routes = {
                     chat: '{{ route('ai.chat') }}',
                     feedback: '{{ route('ai.feedback') }}',
