@@ -202,6 +202,7 @@
 document.addEventListener('DOMContentLoaded', () => {
     const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
     const MARKETPLACES = ['ebay', 'ebay2', 'ebay3', 'macy', 'amazon', 'temu', 'reverb', 'shopify_main', 'shopify_pls'];
+    const EBAY3_WARNING = 'eBay3 has different listing structure. Please verify bullet points format before pushing.';
     const LABELS = {
         ebay: 'eBay 1', ebay2: 'eBay 2', ebay3: 'eBay 3', macy: "Macy's", amazon: 'Amazon', temu: 'Temu', reverb: 'Reverb',
         shopify_main: 'Shopify Main', shopify_pls: 'Shopify PLS',
@@ -260,6 +261,12 @@ document.addEventListener('DOMContentLoaded', () => {
         const t = new bootstrap.Toast(el, { delay: 2400 });
         t.show();
         el.addEventListener('hidden.bs.toast', () => el.remove());
+    }
+
+    function confirmEbay3Push(marketplaces) {
+        const mps = Array.isArray(marketplaces) ? marketplaces : [];
+        if (!mps.includes('ebay3')) return true;
+        return window.confirm(EBAY3_WARNING);
     }
 
     function loadData() {
@@ -542,6 +549,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function pushSingleMarketplace(sku, mp) {
         const row = bySku.get(String(sku));
         if (!row) return;
+        if (!confirmEbay3Push([mp])) return;
         const lines = getBulletLinesForPush(sku, row);
         const combined = bulletLinesToPayload(lines);
         const payload = { sku, updates: [{ marketplace: mp, bullet_points: combined }] };
@@ -641,6 +649,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const selected = Array.from(document.querySelectorAll('.modal-mp-check:checked')).map(chk => chk.dataset.mp);
         const updates = selected.map(mp => ({ marketplace: mp, bullet_points: combined }));
         if (!updates.length) { toast('Select at least one marketplace.', false); return; }
+        if (!confirmEbay3Push(selected)) return;
 
         const btn = this; const old = btn.innerHTML; btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
         fetch('/bullet-point-master/update', {

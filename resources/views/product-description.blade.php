@@ -280,6 +280,7 @@ document.addEventListener('DOMContentLoaded', () => {
     };
     const ALL_MP = Object.keys(LIMITS);
     const TIER_MIN_AI = { 1500: 1400, 1000: 900, 800: 700, 600: 500 };
+    const EBAY3_WARNING = 'eBay3 has different listing structure. Please verify bullet points format before pushing.';
 
         let tableData = [];
     const bySku = new Map();
@@ -312,6 +313,12 @@ document.addEventListener('DOMContentLoaded', () => {
         } else {
             alert(msg);
         }
+    }
+
+    function confirmEbay3Push(marketplaces) {
+        const mps = Array.isArray(marketplaces) ? marketplaces : [];
+        if (!mps.includes('ebay3')) return true;
+        return window.confirm(EBAY3_WARNING);
     }
 
     function hideLoadError() {
@@ -867,6 +874,11 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     function pushPayload(sku, updates, done, doneOnlyOnSuccess) {
+        const updateMps = Array.isArray(updates) ? updates.map((u) => u.marketplace) : [];
+        if (!confirmEbay3Push(updateMps)) {
+            if (typeof done === 'function' && !doneOnlyOnSuccess) done();
+            return;
+        }
         fetch('/product-description/update', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json' },
