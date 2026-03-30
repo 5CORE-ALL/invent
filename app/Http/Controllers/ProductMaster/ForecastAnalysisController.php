@@ -225,6 +225,7 @@ class ForecastAnalysisController extends Controller
                 'pay_term' => $pick('pay_term') ?? '',
                 'packing_list' => $pick('packing_list') ?? 'No',
                 'photo_mail_send' => $pick('photo_mail_send') ?? 'No',
+                'area' => $pick('area') ?? '',
             ];
         };
         $readyToShipMap = $readyToShipRows
@@ -605,6 +606,7 @@ class ForecastAnalysisController extends Controller
             $r2sPayTerm = '';
             $r2sPackingList = 'No';
             $r2sNewPhoto = 'No';
+            $r2sZone = '';
             $readyToShipData = $getReadyToShipForSku($sheetSku);
             if($readyToShipData){
                 $r2sHasRecord = true;
@@ -619,8 +621,9 @@ class ForecastAnalysisController extends Controller
                 $r2sPackingList = $readyToShipData->packing_list ?? 'No';
                 $r2sNewPhoto = $readyToShipData->photo_mail_send ?? 'No';
                 $item->readyToShipQty = $readyToShipQty;
+                $r2sZone = trim((string) ($readyToShipData->area ?? ''));
             }
-            $item->r2s_rate = $r2sRate; // Store rate for R2S Value calculation
+            $item->r2s_rate = $r2sRate;
             $item->r2s_has_record = $r2sHasRecord;
             $item->r2s_order_qty = $r2sOrderQty;
             $item->r2s_rec_qty = $r2sRecQty;
@@ -628,6 +631,7 @@ class ForecastAnalysisController extends Controller
             $item->r2s_pay_term = $r2sPayTerm;
             $item->r2s_packing_list = $r2sPackingList;
             $item->r2s_new_photo = $r2sNewPhoto;
+            $item->r2s_zone = $r2sZone;
 
             // MIP column should ONLY come from mfrg_progress table, no fallback to purchases
             $order_given = 0;

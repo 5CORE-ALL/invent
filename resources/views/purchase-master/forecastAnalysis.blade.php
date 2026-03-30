@@ -374,7 +374,7 @@
             <div class="card shadow-sm">
                 <div class="card-body pb-0 d-flex flex-column">
                     <div class="mb-3 d-flex align-items-center gap-3">
-                        <!-- Play/Pause Controls -->
+                        <!-- Play/Pause Controls (Parent) -->
                         <div class="d-flex align-items-center me-3">
                             <div class="btn-group time-navigation-group" role="group" aria-label="Parent navigation">
                                 <button id="play-backward" class="btn btn-light rounded-circle shadow-sm me-1"
@@ -394,6 +394,29 @@
 
                                 <button id="play-forward" class="btn btn-light rounded-circle shadow-sm"
                                     style="width: 36px; height: 36px; padding: 6px;">
+                                    <i class="fas fa-step-forward"></i>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Play/Pause Controls (Supplier) -->
+                        <div class="d-flex align-items-center me-3 gap-1">
+                            <span class="badge bg-secondary" id="supplier-play-label" style="font-size:0.7rem;display:none;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></span>
+                            <div class="btn-group" role="group" aria-label="Supplier navigation">
+                                <button id="supplier-play-backward" class="btn btn-light rounded-circle shadow-sm me-1"
+                                    style="width:36px;height:36px;padding:6px;" title="Prev supplier">
+                                    <i class="fas fa-step-backward"></i>
+                                </button>
+                                <button id="supplier-play-pause" class="btn btn-warning rounded-circle shadow-sm me-1"
+                                    style="width:36px;height:36px;padding:6px;display:none;" title="Stop supplier filter">
+                                    <i class="fas fa-pause"></i>
+                                </button>
+                                <button id="supplier-play-auto" class="btn btn-outline-warning rounded-circle shadow-sm me-1"
+                                    style="width:36px;height:36px;padding:6px;" title="Play by supplier">
+                                    <i class="fas fa-truck"></i>
+                                </button>
+                                <button id="supplier-play-forward" class="btn btn-light rounded-circle shadow-sm"
+                                    style="width:36px;height:36px;padding:6px;" title="Next supplier">
                                     <i class="fas fa-step-forward"></i>
                                 </button>
                             </div>
@@ -627,6 +650,27 @@
                                 <li><hr class="dropdown-divider"></li>
                                 <li>
                                     <button class="dropdown-item" type="button" id="bulk-apply-cp">
+                                        <i class="fas fa-check me-1"></i> Apply
+                                    </button>
+                                </li>
+                            </ul>
+                        </div>
+                        <div class="dropdown">
+                            <button class="btn btn-sm btn-secondary dropdown-toggle" type="button" id="bulkEditPmtTermsBtn" data-bs-toggle="dropdown" aria-expanded="false">
+                                Pmt Terms
+                            </button>
+                            <ul class="dropdown-menu" aria-labelledby="bulkEditPmtTermsBtn">
+                                <li class="px-3 py-2">
+                                    <select id="bulk-pmt-terms-select" class="form-select form-select-sm" style="min-width: 140px;">
+                                        <option value="">Select…</option>
+                                        <option value="BL">🔴 BL</option>
+                                        <option value="AL">🟡 AL</option>
+                                        <option value="BRBL">🟢 BRBL</option>
+                                    </select>
+                                </li>
+                                <li><hr class="dropdown-divider"></li>
+                                <li>
+                                    <button class="dropdown-item" type="button" id="bulk-apply-pmt-terms">
                                         <i class="fas fa-check me-1"></i> Apply
                                     </button>
                                 </li>
@@ -942,35 +986,6 @@
             },
             columns: [
                 {
-                    formatter: "rowSelection",
-                    titleFormatter: function(cell) {
-                        const checkbox = document.createElement("input");
-                        checkbox.type = "checkbox";
-                        checkbox.style.margin = "0";
-                        checkbox.style.cursor = "pointer";
-                        checkbox.addEventListener("click", function(e) {
-                            e.stopPropagation();
-                            const activeRows = cell.getTable().getRows("active").filter(isSelectableForecastRow);
-                            if (checkbox.checked) {
-                                activeRows.forEach(function(row) { row.select(); });
-                            } else {
-                                cell.getTable().deselectRow();
-                            }
-                        });
-                        return checkbox;
-                    },
-                    hozAlign: "center",
-                    headerSort: true,
-                    width: 40,
-                    minWidth: 40,
-                    cellClick: function(e, cell) {
-                        e.stopPropagation();
-                        const row = cell.getRow();
-                        if (!isSelectableForecastRow(row)) return;
-                        row.toggleSelect();
-                    }
-                },
-                {
                     title: "#",
                     field: "Image",
                     headerSort: true,
@@ -1076,6 +1091,36 @@
                             ${copyBtn}
                             ${linkPart}
                         </div>`;
+                    }
+                },
+                {
+                    formatter: "rowSelection",
+                    titleFormatter: function(cell) {
+                        const checkbox = document.createElement("input");
+                        checkbox.type = "checkbox";
+                        checkbox.style.margin = "0";
+                        checkbox.style.cursor = "pointer";
+                        checkbox.addEventListener("click", function(e) {
+                            e.stopPropagation();
+                            const activeRows = cell.getTable().getRows("active").filter(isSelectableForecastRow);
+                            if (checkbox.checked) {
+                                activeRows.forEach(function(row) { row.select(); });
+                            } else {
+                                cell.getTable().deselectRow();
+                            }
+                        });
+                        return checkbox;
+                    },
+                    hozAlign: "center",
+                    headerSort: false,
+                    width: 40,
+                    minWidth: 40,
+                    movable: false,
+                    cellClick: function(e, cell) {
+                        e.stopPropagation();
+                        const row = cell.getRow();
+                        if (!isSelectableForecastRow(row)) return;
+                        row.toggleSelect();
                     }
                 },
                 
@@ -1882,7 +1927,7 @@
                 {
                     title: "Supplier",
                     field: "mfrg_supplier",
-                    accessor: row => row["mfrg_supplier"] ?? '',
+                    accessor: function(value) { return value ?? ''; },
                     minWidth: 68,
                     width: 76,
                     maxWidth: 92,
@@ -2077,8 +2122,11 @@
                     field: "date_apprvl",
                     width: 72,
                     minWidth: 68,
-                    sorter: "date",
-                    sorterParams: { format: "YYYY-MM-DD", alignEmptyValues: "bottom" },
+                    headerSort: true,
+                    sorter: function(a, b, aRow, bRow, col, dir) {
+                        const toMs = v => { const d = v ? new Date(v) : null; return d && !isNaN(d) ? d.getTime() : (dir === 'asc' ? Infinity : -Infinity); };
+                        return toMs(a) - toMs(b);
+                    },
                     formatter: function(cell) {
                         const value = cell.getValue() || "";
                         let displayText = "-";
@@ -2340,11 +2388,79 @@
                     }
                 },
                 {
+                    title: "Zone",
+                    field: "r2s_zone",
+                    hozAlign: "center",
+                    headerSort: true,
+                    editor: "input",
+                    editable: function(cell) {
+                        const d = cell.getRow().getData();
+                        return !(d.is_parent || d.isParent);
+                    },
+                    cellClick: function(e, cell) {
+                        const d = cell.getRow().getData();
+                        if (d.is_parent || d.isParent) return;
+                        cell.edit();
+                    },
+                    cellEditing: function(cell) {
+                        cell._zonePrev = cell.getValue();
+                        setTimeout(function() {
+                            const input = cell.getElement().querySelector('input');
+                            if (input) { input.focus(); input.select(); }
+                        }, 0);
+                    },
+                    cellEdited: function(cell) {
+                        const row = cell.getRow();
+                        const d = row.getData();
+                        if (d.is_parent || d.isParent) return;
+                        const next = String(cell.getValue() || '').trim();
+                        const prev = cell._zonePrev || '';
+                        delete cell._zonePrev;
+                        if (next === prev) return;
+                        const sku = String(d.SKU || '').trim();
+                        if (!sku) return;
+                        const token = document.querySelector('meta[name="csrf-token"]')?.content || '';
+                        fetch('/ready-to-ship/inline-update-by-sku', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-CSRF-TOKEN': token,
+                                'X-Requested-With': 'XMLHttpRequest',
+                                'Accept': 'application/json'
+                            },
+                            body: JSON.stringify({ sku: sku, column: 'area', value: next })
+                        })
+                        .then(r => r.json())
+                        .then(res => {
+                            if (!res || !res.success) {
+                                cell.setValue(prev, true);
+                                alert(res?.message || 'Failed to update Zone');
+                            } else {
+                                row.update({ r2s_zone: next }, true);
+                            }
+                        })
+                        .catch(() => {
+                            cell.setValue(prev, true);
+                            alert('Failed to update Zone');
+                        });
+                    },
+                    formatter: function(cell) {
+                        const d = cell.getRow().getData() || {};
+                        if (d.is_parent || d.isParent) return '<span style="display:block;text-align:center;color:#6c757d;">-</span>';
+                        const v = String(cell.getValue() || '').trim();
+                        if (!v) return '<span style="display:block;text-align:center;color:#6c757d;cursor:text;">-</span>';
+                        return `<span style="display:block;text-align:center;font-weight:600;cursor:text;" title="${v}">${v}</span>`;
+                    }
+                },
+                {
                     title: "Order Date",
                     field: "mfrg_order_date",
                     hozAlign: "center",
-                    sorter: "date",
-                    sorterParams: { format: "YYYY-MM-DD HH:mm:ss", alignEmptyValues: "bottom" },
+                    headerSort: true,
+                    sorter: function(a, b, aRow, bRow, col, dir) {
+                        const toMs = v => { const d = v ? new Date(v) : null; return d && !isNaN(d) ? d.getTime() : (dir === 'asc' ? Infinity : -Infinity); };
+                        return toMs(a) - toMs(b);
+                    },
                     formatter: function(cell) {
                         const drow = cell.getRow().getData() || {};
                         if (drow.is_parent || drow.isParent) {
@@ -2383,23 +2499,73 @@
                     }
                 },
                 {
-                    title: "Terms",
+                    title: "Pmt Terms",
                     field: "r2s_pay_term",
                     hozAlign: "center",
+                    headerSort: true,
+                    editor: "list",
+                    editorParams: {
+                        values: ["BL", "AL", "BRBL"],
+                        defaultValue: "BL",
+                        verticalNavigation: "editor",
+                    },
+                    editable: function(cell) {
+                        const d = cell.getRow().getData();
+                        return !(d.is_parent || d.isParent);
+                    },
+                    cellClick: function(e, cell) {
+                        const d = cell.getRow().getData();
+                        if (d.is_parent || d.isParent) return;
+                        cell.edit();
+                    },
+                    cellEditing: function(cell) {
+                        cell._pmtTermsPrev = cell.getValue();
+                    },
+                    cellEdited: function(cell) {
+                        const row = cell.getRow();
+                        const d = row.getData();
+                        if (d.is_parent || d.isParent) return;
+                        const next = String(cell.getValue() || '').trim().toUpperCase();
+                        const prev = cell._pmtTermsPrev || '';
+                        delete cell._pmtTermsPrev;
+                        if (next === prev) return;
+                        const sku = String(d.SKU || '').trim();
+                        if (!sku) return;
+                        const token = document.querySelector('meta[name="csrf-token"]')?.content || '';
+                        fetch('/ready-to-ship/inline-update-by-sku', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-CSRF-TOKEN': token,
+                                'X-Requested-With': 'XMLHttpRequest',
+                                'Accept': 'application/json'
+                            },
+                            body: JSON.stringify({ sku: sku, column: 'pay_term', value: next })
+                        })
+                        .then(r => r.json())
+                        .then(res => {
+                            if (!res || !res.success) {
+                                cell.setValue(prev, true);
+                                alert(res?.message || 'Failed to update Pmt Terms');
+                            } else {
+                                row.update({ r2s_pay_term: next }, true);
+                            }
+                        })
+                        .catch(() => {
+                            cell.setValue(prev, true);
+                            alert('Failed to update Pmt Terms');
+                        });
+                    },
                     formatter: function(cell) {
                         const d = cell.getRow().getData() || {};
                         if (d.is_parent || d.isParent) return '<span style="display:block;text-align:center;color:#6c757d;">-</span>';
-                        if (!d.r2s_has_record) return '<span style="display:block;text-align:center;color:#6c757d;">-</span>';
-                        const value = String(cell.getValue() || '').trim().toUpperCase() || 'EXW';
-                        const sku = String(d.SKU || '').replace(/"/g, '&quot;');
-                        const isExw = value === 'EXW';
-                        const isFob = value === 'FOB';
-                        return `<select class="form-select form-select-sm forecast-r2s-payterm-select"
-                            data-sku="${sku}" data-column="pay_term" data-prev="${value}"
-                            style="min-width:90px; font-size:13px;">
-                            <option value="EXW" ${isExw ? 'selected' : ''}>EXW</option>
-                            <option value="FOB" ${isFob ? 'selected' : ''}>FOB</option>
-                        </select>`;
+                        const value = String(cell.getValue() || 'BL').trim().toUpperCase();
+                        const colorMap = { BRBL: '#28a745', AL: '#ffc107', BL: '#dc3545' };
+                        const color = colorMap[value] || '#6c757d';
+                        return `<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;cursor:pointer;" title="Click to edit">
+                            <span style="display:inline-block;width:10px;height:10px;border-radius:50%;flex-shrink:0;background:${color};"></span>
+                            <span style="font-size:0.75rem;font-weight:700;">${value}</span>
+                        </span>`;
                     }
                 },
                 {
@@ -2926,7 +3092,33 @@
                 badge.classList.remove('d-flex');
             }
         }
-        table.on("rowSelectionChanged", updateBulkEditBadge);
+        table.on("rowSelectionChanged", function() {
+            const scrollEl = table.rowManager?.element;
+            const savedTop  = scrollEl?.scrollTop  || 0;
+            const savedLeft = scrollEl?.scrollLeft || 0;
+            const savedPage = (table.getPage && table.getPage() > 0) ? table.getPage() : null;
+
+            updateBulkEditBadge();
+
+            requestAnimationFrame(function() {
+                const restoreScroll = function() {
+                    if (scrollEl) {
+                        scrollEl.scrollTop  = savedTop;
+                        scrollEl.scrollLeft = savedLeft;
+                    }
+                };
+                if (savedPage && table.getPage && table.getPage() !== savedPage) {
+                    const p = table.setPage(savedPage);
+                    if (p && typeof p.then === 'function') {
+                        p.then(restoreScroll);
+                    } else {
+                        restoreScroll();
+                    }
+                } else {
+                    restoreScroll();
+                }
+            });
+        });
         table.on("dataLoaded", function() { updateTopRowCounter(); });
         table.on("dataFiltered", function() { updateTopRowCounter(); });
         table.on("pageLoaded", function() { updateTopRowCounter(); });
@@ -3059,12 +3251,54 @@
             bulkApplyForecastField('CP', function() { return v; }, 'bulk-apply-cp', 'bulk-cp-input', 'bulkEditCpBtn');
         });
 
+        document.getElementById('bulk-apply-pmt-terms')?.addEventListener('click', function(e) {
+            e.preventDefault();
+            const val = (document.getElementById('bulk-pmt-terms-select')?.value || '').trim().toUpperCase();
+            if (!val) { alert('Please select a Pmt Terms value.'); return; }
+            const selected = table.getSelectedRows();
+            const validRows = [];
+            selected.forEach(function(row) {
+                const d = row.getData();
+                const sku = (d.SKU || '').trim();
+                if (sku && !sku.toLowerCase().includes('parent')) validRows.push({ row: row, sku: sku });
+            });
+            if (validRows.length === 0) { alert('No valid SKUs in selection.'); return; }
+            const btn = this;
+            btn.disabled = true;
+            const token = document.querySelector('meta[name="csrf-token"]')?.content || '';
+            const promises = validRows.map(function(item) {
+                return fetch('/ready-to-ship/inline-update-by-sku', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': token,
+                        'X-Requested-With': 'XMLHttpRequest',
+                        'Accept': 'application/json'
+                    },
+                    body: JSON.stringify({ sku: item.sku, column: 'pay_term', value: val })
+                }).then(r => r.json());
+            });
+            Promise.all(promises).then(function() {
+                validRows.forEach(function(item) {
+                    item.row.update({ r2s_pay_term: val }, true);
+                });
+                table.deselectRow();
+                updateBulkEditBadge();
+                btn.disabled = false;
+                const sel = document.getElementById('bulk-pmt-terms-select');
+                if (sel) sel.value = '';
+                const dd = bootstrap.Dropdown.getInstance(document.getElementById('bulkEditPmtTermsBtn'));
+                if (dd) dd.hide();
+            }).catch(function() { btn.disabled = false; });
+        });
+
         let currentParentFilter = null;
         let currentColorFilter = null;
         let currentSearchQuery = '';
         let currentSearchSku = '';
         let currentSearchParent = '';
         let currentSearchSupplier = '';
+        let currentSupplierFilter = null;
         let currentTwoOrdColorFilter = '';
         let currentTopQtySignFilters = {
             order: '',
@@ -3609,6 +3843,12 @@
                 if (currentSearchSku      && !String(data.SKU            || '').toLowerCase().includes(currentSearchSku))      return false;
                 if (currentSearchParent   && !String(data.Parent         || '').toLowerCase().includes(currentSearchParent))   return false;
                 if (currentSearchSupplier && !String(data.mfrg_supplier  || '').toLowerCase().includes(currentSearchSupplier)) return false;
+
+                // Supplier play filter
+                if (currentSupplierFilter) {
+                    const rowSupplier = String(data.mfrg_supplier || '').trim();
+                    if (rowSupplier !== currentSupplierFilter) return false;
+                }
                 const isChild = !data.is_parent;
                 const isParent = data.is_parent;
                 const twoOrdRaw = data.to_order ?? (data.raw_data ? data.raw_data.to_order : 0);
@@ -4746,51 +4986,6 @@
                 });
             });
 
-            $(document).off('change', '.forecast-r2s-payterm-select').on('change', '.forecast-r2s-payterm-select', function(e) {
-                const el = this;
-                const sku = String(el.getAttribute('data-sku') || '').trim();
-                const next = String(el.value || '').trim().toUpperCase();
-                if (!sku || !next) return;
-                const token = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
-                const prev = el.getAttribute('data-prev') || 'EXW';
-                el.disabled = true;
-
-                fetch('/ready-to-ship/inline-update-by-sku', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRF-TOKEN': token,
-                        'X-Requested-With': 'XMLHttpRequest',
-                        'Accept': 'application/json'
-                    },
-                    body: JSON.stringify({ sku: sku, column: 'pay_term', value: next })
-                })
-                .then(async (r) => {
-                    const text = await r.text();
-                    let data = null;
-                    try { data = JSON.parse(text); } catch (err) {
-                        throw new Error('Server returned non-JSON response');
-                    }
-                    if (!r.ok) {
-                        throw new Error(data && data.message ? data.message : `Request failed (${r.status})`);
-                    }
-                    return data;
-                })
-                .then(res => {
-                    if (!res || !res.success) throw new Error(res && res.message ? res.message : 'Failed to update PMT Confirm');
-                    el.setAttribute('data-prev', next);
-                    const row = table.getRows().find(r => String(r.getData()?.SKU || '').trim() === sku);
-                    if (row) row.update({ r2s_pay_term: next }, true);
-                })
-                .catch(err => {
-                    el.value = prev;
-                    alert(err && err.message ? err.message : 'Failed to update PMT Confirm');
-                })
-                .finally(() => {
-                    el.disabled = false;
-                });
-            });
-
             $(document).off('click', '.forecast-r2s-payment-toggle').on('click', '.forecast-r2s-payment-toggle', function(e) {
                 const dot = this;
                 if (dot.dataset.busy === '1') return;
@@ -4984,11 +5179,81 @@
 
             document.getElementById('play-pause').addEventListener('click', () => {
                 isPlaying = false;
-                currentParentFilter = null; // Show all data
+                currentParentFilter = null;
+                currentSupplierFilter = null;
                 setCombinedFilters();
                 document.getElementById('play-pause').style.display = 'none';
                 document.getElementById('play-auto').style.display = 'inline-block';
             });
+
+            // ── Supplier play/pause ──────────────────────────────────────
+            let isSupplierPlaying = false;
+            let supplierIndex = 0;
+
+            function getSupplierList() {
+                const tbl = Tabulator.findTable("#forecast-table")[0];
+                if (!tbl) return [];
+                const seen = new Set();
+                const list = [];
+                tbl.getRows().forEach(function(row) {
+                    const d = row.getData();
+                    // Try cell value first (bypasses accessor), then raw data fields
+                    const cell = row.getCell("mfrg_supplier");
+                    const s = String(
+                        (cell ? cell.getValue() : null) ||
+                        d.mfrg_supplier || d['mfrg_supplier'] || ''
+                    ).trim();
+                    if (s && s !== '-' && !seen.has(s)) { seen.add(s); list.push(s); }
+                });
+                return list.sort();
+            }
+
+            function renderSupplierGroup(supplier) {
+                currentSupplierFilter = supplier;
+                setCombinedFilters();
+                const lbl = document.getElementById('supplier-play-label');
+                if (lbl) { lbl.textContent = supplier; lbl.style.display = 'inline-block'; }
+                // Scroll to top of table
+                const tbl = Tabulator.findTable("#forecast-table")[0];
+                if (tbl && tbl.rowManager && tbl.rowManager.element) {
+                    tbl.rowManager.element.scrollTop = 0;
+                }
+            }
+
+            document.getElementById('supplier-play-auto').addEventListener('click', function() {
+                const list = getSupplierList();
+                if (!list.length) { alert('No supplier data available.'); return; }
+                isSupplierPlaying = true;
+                supplierIndex = 0;
+                renderSupplierGroup(list[supplierIndex]);
+                document.getElementById('supplier-play-pause').style.display = 'inline-block';
+                document.getElementById('supplier-play-auto').style.display = 'none';
+            });
+
+            document.getElementById('supplier-play-forward').addEventListener('click', function() {
+                if (!isSupplierPlaying) return;
+                const list = getSupplierList();
+                supplierIndex = (supplierIndex + 1) % list.length;
+                renderSupplierGroup(list[supplierIndex]);
+            });
+
+            document.getElementById('supplier-play-backward').addEventListener('click', function() {
+                if (!isSupplierPlaying) return;
+                const list = getSupplierList();
+                supplierIndex = (supplierIndex - 1 + list.length) % list.length;
+                renderSupplierGroup(list[supplierIndex]);
+            });
+
+            document.getElementById('supplier-play-pause').addEventListener('click', function() {
+                isSupplierPlaying = false;
+                currentSupplierFilter = null;
+                setCombinedFilters();
+                document.getElementById('supplier-play-pause').style.display = 'none';
+                document.getElementById('supplier-play-auto').style.display = 'inline-block';
+                const lbl = document.getElementById('supplier-play-label');
+                if (lbl) lbl.style.display = 'none';
+            });
+            // ─────────────────────────────────────────────────────────────
 
             if (currentColorFilter === null || currentColorFilter === undefined) currentColorFilter = '';
             const apprLabelEl = document.getElementById('appr-req-badge-label');
