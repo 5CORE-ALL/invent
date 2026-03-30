@@ -1918,8 +1918,8 @@
                 {
                     title: "Rating",
                     field: "rating",
-                    minWidth: 72,
-                    width: 76,
+                    minWidth: 80,
+                    width: 90,
                     headerSort: true,
                     hozAlign: "center",
                     vertAlign: "middle",
@@ -1977,21 +1977,21 @@
                             ? ("(" + revParsed.toLocaleString("en-US") + ")")
                             : null;
 
-                        let html = "<div style=\"display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1.1;padding:0 1px;" + ratingWrapStyle + "\">";
+                        let html = "<div style=\"display:inline-flex;align-items:center;justify-content:center;gap:3px;flex-wrap:nowrap;padding:0 2px;" + ratingWrapStyle + "\">";
                         if (hasRating) {
-                            html += "<div style=\"font-weight:700;color:" + starColor + ";display:inline-flex;align-items:center;gap:1px;font-size:0.72rem;\">";
+                            html += "<span style=\"font-weight:700;color:" + starColor + ";display:inline-flex;align-items:center;gap:1px;font-size:0.72rem;\">";
                             html += "<i class=\"bi bi-star-fill\" style=\"font-size:0.68rem;line-height:1;\"></i>";
-                            html += "<span>" + ratingLine + "</span></div>";
+                            html += "<span>" + ratingLine + "</span></span>";
                         } else {
-                            html += "<div style=\"font-weight:700;color:#9e9e9e;display:inline-flex;align-items:center;gap:1px;font-size:0.68rem;\">";
-                            html += "<i class=\"bi bi-star\" style=\"font-size:0.65rem;\"></i><span>—</span></div>";
+                            html += "<span style=\"font-weight:700;color:#9e9e9e;display:inline-flex;align-items:center;gap:1px;font-size:0.68rem;\">";
+                            html += "<i class=\"bi bi-star\" style=\"font-size:0.65rem;\"></i><span>—</span></span>";
                         }
                         const revMuted = hasRating && rVal >= 4.5 ? '#861657' : '#5c5c5c';
                         const revZero = hasRating && rVal >= 4.5 ? '#9d174d' : '#9e9e9e';
                         if (revLine) {
-                            html += "<div style=\"font-size:0.62rem;color:" + revMuted + ";margin-top:0;text-align:center;font-weight:500;\">" + revLine + "</div>";
+                            html += "<span style=\"font-size:0.62rem;color:" + revMuted + ";font-weight:500;white-space:nowrap;\">" + revLine + "</span>";
                         } else if (hasRating) {
-                            html += "<div style=\"font-size:0.6rem;color:" + revZero + ";margin-top:0;\">(0)</div>";
+                            html += "<span style=\"font-size:0.6rem;color:" + revZero + ";\">(0)</span>";
                         }
                         html += "</div>";
 
@@ -2340,54 +2340,6 @@
                     }
                 },
                 {
-                    title: "Pkg Inst",
-                    field: "pkg_inst",
-                    hozAlign: "center",
-                    headerSort: true,
-                    formatter: function(cell) {
-                        const d = cell.getRow().getData() || {};
-                        if (d.is_parent || d.isParent) return '<span style="display:block;text-align:center;color:#6c757d;">-</span>';
-                        const yes = String(cell.getValue() || 'No').trim().toUpperCase() === 'YES';
-                        const sku = String(d.SKU || '').replace(/"/g, '&quot;');
-                        return `<span class="forecast-mfrg-toggle-dot pkg-inst-toggle-dot"
-                            data-sku="${sku}" data-column="pkg_inst" data-value="${yes ? 'Yes' : 'No'}"
-                            title="Pkg Inst: ${yes ? 'Yes' : 'No'}"
-                            style="display:inline-block;width:14px;height:14px;border-radius:50%;cursor:pointer;background-color:${yes ? '#28a745' : '#dc3545'};"></span>`;
-                    }
-                },
-                {
-                    title: "U-Manual",
-                    field: "u_manual",
-                    hozAlign: "center",
-                    headerSort: true,
-                    formatter: function(cell) {
-                        const d = cell.getRow().getData() || {};
-                        if (d.is_parent || d.isParent) return '<span style="display:block;text-align:center;color:#6c757d;">-</span>';
-                        const yes = String(cell.getValue() || 'No').trim().toUpperCase() === 'YES';
-                        const sku = String(d.SKU || '').replace(/"/g, '&quot;');
-                        return `<span class="forecast-mfrg-toggle-dot u-manual-toggle-dot"
-                            data-sku="${sku}" data-column="u_manual" data-value="${yes ? 'Yes' : 'No'}"
-                            title="U-Manual: ${yes ? 'Yes' : 'No'}"
-                            style="display:inline-block;width:14px;height:14px;border-radius:50%;cursor:pointer;background-color:${yes ? '#28a745' : '#dc3545'};"></span>`;
-                    }
-                },
-                {
-                    title: "Compliance",
-                    field: "compliance",
-                    hozAlign: "center",
-                    headerSort: true,
-                    formatter: function(cell) {
-                        const d = cell.getRow().getData() || {};
-                        if (d.is_parent || d.isParent) return '<span style="display:block;text-align:center;color:#6c757d;">-</span>';
-                        const yes = String(cell.getValue() || 'No').trim().toUpperCase() === 'YES';
-                        const sku = String(d.SKU || '').replace(/"/g, '&quot;');
-                        return `<span class="forecast-mfrg-toggle-dot compliance-toggle-dot"
-                            data-sku="${sku}" data-column="compliance" data-value="${yes ? 'Yes' : 'No'}"
-                            title="Compliance: ${yes ? 'Yes' : 'No'}"
-                            style="display:inline-block;width:14px;height:14px;border-radius:50%;cursor:pointer;background-color:${yes ? '#28a745' : '#dc3545'};"></span>`;
-                    }
-                },
-                {
                     title: "Order Date",
                     field: "mfrg_order_date",
                     hozAlign: "center",
@@ -2419,30 +2371,6 @@
                     }
                 },
                 {
-                    title: "Or. QTY",
-                    field: "r2s_order_qty",
-                    hozAlign: "center",
-                    formatter: function(cell) {
-                        const d = cell.getRow().getData() || {};
-                        if (d.is_parent || d.isParent) return '<span style="display:block;text-align:center;color:#6c757d;">-</span>';
-                        const v = parseFloat(cell.getValue());
-                        const disp = Number.isFinite(v) ? (Number.isInteger(v) ? String(v) : String(v)) : '';
-                        return `<input type="number" readonly value="${disp}" style="width:90px;text-align:center;background:#e9ecef;cursor:not-allowed;border:none;" class="form-control form-control-sm">`;
-                    }
-                },
-                {
-                    title: "Rec. QTY",
-                    field: "r2s_rec_qty",
-                    hozAlign: "center",
-                    formatter: function(cell) {
-                        const d = cell.getRow().getData() || {};
-                        if (d.is_parent || d.isParent) return '<span style="display:block;text-align:center;color:#6c757d;">-</span>';
-                        const v = parseFloat(cell.getValue());
-                        const disp = Number.isFinite(v) ? (Number.isInteger(v) ? String(v) : String(v)) : '';
-                        return `<input type="number" readonly value="${disp}" style="font-size:0.95rem;height:36px;width:90px;text-align:center;" class="form-control form-control-sm">`;
-                    }
-                },
-                {
                     title: "Amount",
                     field: "r2s_amount",
                     hozAlign: "center",
@@ -2452,34 +2380,6 @@
                         const v = parseFloat(cell.getValue());
                         if (!Number.isFinite(v)) return '<span style="display:block;text-align:center;color:#6c757d;">-</span>';
                         return `<span style="display:block;text-align:center;font-weight:700;">${Math.round(v)}</span>`;
-                    }
-                },
-                {
-                    title: "Packing List",
-                    field: "r2s_packing_list",
-                    hozAlign: "center",
-                    headerSort: true,
-                    formatter: function(cell) {
-                        const d = cell.getRow().getData() || {};
-                        if (d.is_parent || d.isParent) return '<span style="display:block;text-align:center;color:#6c757d;">-</span>';
-                        const yes = String(cell.getValue() || 'No').trim().toUpperCase() === 'YES';
-                        return `<span style="display:inline-block;width:14px;height:14px;border-radius:50%;background-color:${yes ? '#28a745' : '#dc3545'};"></span>`;
-                    }
-                },
-                {
-                    title: "PMT Confirm",
-                    field: "r2s_payment",
-                    hozAlign: "center",
-                    formatter: function(cell) {
-                        const d = cell.getRow().getData() || {};
-                        if (d.is_parent || d.isParent) return '<span style="display:block;text-align:center;color:#6c757d;">-</span>';
-                        if (!d.r2s_has_record) return '<span style="display:block;text-align:center;color:#6c757d;">-</span>';
-                        const value = String(cell.getValue() || 'No').trim().toUpperCase() === 'YES' ? 'Yes' : 'No';
-                        const sku = String(d.SKU || '').replace(/"/g, '&quot;');
-                        const isYes = value === 'Yes';
-                        return `<span class="forecast-r2s-payment-toggle"
-                            data-sku="${sku}" data-column="payment" data-value="${value}"
-                            style="display:inline-block;width:14px;height:14px;border-radius:50%;cursor:pointer;background-color:${isYes ? '#28a745' : '#dc3545'};"></span>`;
                     }
                 },
                 {
