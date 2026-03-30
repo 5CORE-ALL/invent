@@ -690,173 +690,83 @@ class AliexpressController extends Controller
      */
     public function downloadPricingPriceSample()
     {
-        $spreadsheet = new Spreadsheet();
-        $sheet = $spreadsheet->getActiveSheet();
+        $fileName = 'aliexpress_pricing_sample.csv';
+        $rows = [
+            ['sku', 'price', 'stock'],
+            ['SKU-001', '19.99', '10'],
+            ['SKU-002', '24.50', '25'],
+            ['SKU-003', '13.25', '0'],
+        ];
 
-        $headers = ['sku', 'price'];
-        $sheet->fromArray($headers, null, 'A1');
-        $sheet->fromArray([
-            ['SKU-001', '19.99'],
-            ['SKU-002', '24.50'],
-            ['SKU-003', '13.25'],
-        ], null, 'A2');
-
-        $sheet->getColumnDimension('A')->setWidth(28);
-        $sheet->getColumnDimension('B')->setWidth(14);
-
-        $fileName = 'aliexpress_pricing_sample.xlsx';
-        header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        header('Content-Type: text/csv');
         header('Content-Disposition: attachment;filename="' . $fileName . '"');
         header('Cache-Control: max-age=0');
 
-        $writer = new Xlsx($spreadsheet);
-        $writer->save('php://output');
+        $handle = fopen('php://output', 'w');
+        foreach ($rows as $row) {
+            fputcsv($handle, $row);
+        }
+        fclose($handle);
         exit;
     }
 
     /**
-     * Upload AliExpress price sheet.
-     * Accepts the native AliExpress seller-export TSV/TXT format
-     * (tab-separated, multiple instruction rows at the top) as well as
-     * plain CSV / Excel files with headers "sku" and "price".
-     *
-     * AliExpress TSV column mapping (0-indexed):
-     *   col 3 → *Retail price (USD)
-     *   col 5 → SKU code
+     * Upload price sheet and store values in aliexpress_data_views.value.
      */
     public function uploadPricingPriceSheet(Request $request)
     {
         $request->validate([
-            'price_file' => 'required|file',
+            'price_file' => 'required|file|mimes:xlsx,xls,csv',
         ]);
 
         try {
-            $file = $request->file('price_file');
-            $path = $file->getPathName();
+            $spreadsheet = IOFactory::load($request->file('price_file')->getPathName());
+            $rows = $spreadsheet->getActiveSheet()->toArray();
 
-            // ── Always try AliExpress TSV detection first ──────────────
-            if ($this->isAliexpressTsv($path)) {
-                $rows = $this->parseAliexpressTsv($path);
-            } else {
-                // Load as spreadsheet (xlsx / xls / csv)
-                $spreadsheet = IOFactory::load($path);
-                $raw         = $spreadsheet->getActiveSheet()->toArray();
-
-                // ── Try AliExpress xlsx format first ───────────────────
-                // Look for the header row containing "SKU code" and "Retail price"
-                $aeHeaderIdx     = null;
-                $aeIdIdx         = null;
-                $aeNameIdx       = null;
-                $aeSkuIdIdx      = null;
-                $aePriceIdx      = null;
-                $aeStockIdx      = null;
-                $aeSkuIdx        = null;
-                $aeSalesAttrIdx  = null;
-
-                foreach ($raw as $i => $row) {
-                    $hasSkuCode = false;
-                    $hasRetail  = false;
-                    foreach ($row as $j => $cell) {
-                        $lower = strtolower(trim((string) $cell));
-                        if ($lower === 'sku code')                           { $aeSkuIdx      = $j; $hasSkuCode = true; }
-                        if ($lower === 'id' && $aeIdIdx === null)            { $aeIdIdx       = $j; }
-                        if (str_contains($lower, 'product name'))           { $aeNameIdx     = $j; }
-                        if ($lower === 'skuid' || $lower === 'sku id')      { $aeSkuIdIdx    = $j; }
-                        if (str_contains($lower, 'retail price'))           { $aePriceIdx    = $j; $hasRetail  = true; }
-                        if (str_contains($lower, 'seller warehouse stock')) { $aeStockIdx    = $j; }
-                        if (str_contains($lower, 'sales attributes'))       { $aeSalesAttrIdx= $j; }
-                    }
-                    if ($hasSkuCode && $hasRetail) {
-                        $aeHeaderIdx = $i;
-                        break;
-                    }
-                    // Reset partial matches for next row
-                    $aeIdIdx = $aeNameIdx = $aeSkuIdIdx = $aePriceIdx = $aeStockIdx = $aeSkuIdx = $aeSalesAttrIdx = null;
-                }
-
-                if ($aeHeaderIdx !== null) {
-                    // Parse as AliExpress xlsx – skip non-data rows (col 0 must be numeric)
-                    $rows = [];
-                    foreach (array_slice($raw, $aeHeaderIdx + 1) as $row) {
-                        $firstCol = trim((string) ($row[0] ?? ''));
-                        if (!is_numeric($firstCol) || $firstCol === '') continue;
-
-                        $c   = static fn(int $i) => trim((string) ($row[$i] ?? ''));
-                        $sku = $aeSkuIdx !== null ? $c($aeSkuIdx) : '';
-                        if ($sku === '') continue;
-
-                        $rows[] = [
-                            'sku'              => $sku,
-                            'product_id'       => $aeIdIdx        !== null ? $c($aeIdIdx)        : null,
-                            'product_name'     => $aeNameIdx      !== null ? $c($aeNameIdx)      : null,
-                            'sku_id'           => $aeSkuIdIdx     !== null ? $c($aeSkuIdIdx)     : null,
-                            'price'            => $aePriceIdx     !== null
-                                                    ? (float) preg_replace('/[^0-9.\-]/', '', $c($aePriceIdx))
-                                                    : 0,
-                            'ae_stock'         => $aeStockIdx     !== null ? (int) $c($aeStockIdx)     : 0,
-                            'sales_attributes' => $aeSalesAttrIdx !== null ? $c($aeSalesAttrIdx) : null,
-                        ];
-                    }
-                } else {
-                    // ── Plain sku/price spreadsheet ───────────────────────
-                    $headerIdx  = null;
-                    $skuIndex   = null;
-                    $priceIndex = null;
-                    foreach ($raw as $i => $row) {
-                        $normalised = array_map(static fn($v) => strtolower(trim((string) $v)), $row);
-                        $si = array_search('sku', $normalised, true);
-                        $pi = array_search('price', $normalised, true);
-                        if ($si !== false && $pi !== false) {
-                            $headerIdx  = $i;
-                            $skuIndex   = $si;
-                            $priceIndex = $pi;
-                            break;
-                        }
-                    }
-                    if ($headerIdx === null) {
-                        return response()->json([
-                            'success' => false,
-                            'message' => 'Column headers not recognised. Upload the AliExpress seller-export file (any format) or a spreadsheet with "sku" and "price" columns.',
-                        ], 422);
-                    }
-                    $rows = [];
-                    foreach (array_slice($raw, $headerIdx + 1) as $row) {
-                        $sku   = trim((string) ($row[$skuIndex]   ?? ''));
-                        $price = (float) preg_replace('/[^0-9.\-]/', '', (string) ($row[$priceIndex] ?? ''));
-                        if ($sku !== '') {
-                            $rows[] = ['sku' => $sku, 'price' => $price];
-                        }
-                    }
-                }
+            if (empty($rows) || count($rows) < 2) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Price sheet is empty.',
+                ], 422);
             }
 
-            if (empty($rows)) {
-                return response()->json(['success' => false, 'message' => 'No data rows found in the file.'], 422);
+            $headers = array_map(static function ($header) {
+                return strtolower(trim((string) $header));
+            }, $rows[0]);
+
+            $skuIndex   = array_search('sku',   $headers, true);
+            $priceIndex = array_search('price', $headers, true);
+            $stockIndex = array_search('stock', $headers, true);
+
+            if ($skuIndex === false || $priceIndex === false) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Required columns not found. Please keep headers: sku, price, stock.',
+                ], 422);
             }
 
             $updated = 0;
-            foreach ($rows as $row) {
-                $sku   = trim((string) ($row['sku']   ?? ''));
-                $price = max(0, (float) ($row['price'] ?? 0));
-                if ($sku === '') continue;
+            foreach (array_slice($rows, 1) as $row) {
+                $sku = isset($row[$skuIndex]) ? trim((string) $row[$skuIndex]) : '';
+                if ($sku === '') {
+                    continue;
+                }
+
+                $priceRaw = isset($row[$priceIndex]) ? (string) $row[$priceIndex] : '';
+                $price    = (float) preg_replace('/[^0-9.\-]/', '', $priceRaw);
+                $aeStock  = ($stockIndex !== false && isset($row[$stockIndex]))
+                            ? (int) $row[$stockIndex] : 0;
 
                 AliexpressPricingPrice::updateOrCreate(
                     ['sku' => $sku],
-                    [
-                        'price'            => $price,
-                        'product_id'       => $row['product_id']       ?? null,
-                        'product_name'     => $row['product_name']     ?? null,
-                        'sku_id'           => $row['sku_id']           ?? null,
-                        'ae_stock'         => (int) ($row['ae_stock']  ?? 0),
-                        'sales_attributes' => $row['sales_attributes'] ?? null,
-                    ]
+                    ['price' => max(0, $price), 'ae_stock' => max(0, $aeStock)]
                 );
                 $updated++;
             }
 
             return response()->json([
                 'success' => true,
-                'message' => "Price sheet uploaded successfully. {$updated} SKU(s) updated.",
+                'message' => "Price sheet uploaded successfully. {$updated} SKU rows updated.",
                 'updated' => $updated,
             ]);
         } catch (\Throwable $e) {
@@ -870,306 +780,154 @@ class AliexpressController extends Controller
     }
 
     /**
-     * Normalise raw file bytes to UTF-8, stripping any BOM.
-     * AliExpress exports are sometimes UTF-16 LE/BE or UTF-8 with BOM.
-     */
-    private function toUtf8(string $path): string
-    {
-        $raw = file_get_contents($path);
-        if ($raw === false) return '';
-
-        // UTF-16 LE  (FF FE)
-        if (str_starts_with($raw, "\xFF\xFE")) {
-            $raw = mb_convert_encoding(substr($raw, 2), 'UTF-8', 'UTF-16LE');
-        }
-        // UTF-16 BE  (FE FF)
-        elseif (str_starts_with($raw, "\xFE\xFF")) {
-            $raw = mb_convert_encoding(substr($raw, 2), 'UTF-8', 'UTF-16BE');
-        }
-        // UTF-8 BOM  (EF BB BF)
-        elseif (str_starts_with($raw, "\xEF\xBB\xBF")) {
-            $raw = substr($raw, 3);
-        }
-
-        return $raw;
-    }
-
-    /**
-     * Detect whether a file is in the native AliExpress seller-export TSV format.
-     * Looks for a row that has BOTH "sku code" and "retail price" as cell values
-     * within the first 30 lines (handles embedded-newline description rows).
-     */
-    private function isAliexpressTsv(string $path): bool
-    {
-        $content = $this->toUtf8($path);
-        $lines   = preg_split('/\r\n|\r|\n/', $content);
-
-        foreach (array_slice($lines, 0, 30) as $line) {
-            $lower = strtolower($line);
-            if (str_contains($lower, 'sku code') && str_contains($lower, 'retail price')) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    /**
-     * Parse the native AliExpress seller-export TSV file.
-     *
-     * Sheet columns (0-indexed):
-     *   0 → id              (Product ID)
-     *   1 → *Product name
-     *   2 → skuId
-     *   3 → *Retail price (USD)
-     *   4 → *Seller Warehouse Stock
-     *   5 → SKU code
-     *   6 → Sales attributes
-     *
-     * Returns array of full row maps keyed by field name.
-     */
-    private function parseAliexpressTsv(string $path): array
-    {
-        $content = $this->toUtf8($path);
-        $lines   = preg_split('/\r\n|\r|\n/', $content);
-
-        $idIndex        = null;
-        $nameIndex      = null;
-        $skuIdIndex     = null;
-        $priceIndex     = null;
-        $stockIndex     = null;
-        $skuIndex       = null;
-        $salesAttrIndex = null;
-        $rows           = [];
-
-        foreach ($lines as $line) {
-            $cols = explode("\t", $line);
-
-            // ── Locate the actual header row ──────────────────────────────
-            if ($skuIndex === null) {
-                $hasSkuCode   = false;
-                $hasRetailPrc = false;
-                foreach ($cols as $idx => $cell) {
-                    // Strip BOM remnants, quotes, non-breaking spaces
-                    $clean = trim($cell, " \t\r\n\"\xc2\xa0\xef\xbb\xbf");
-                    $lower = strtolower($clean);
-
-                    if ($lower === 'sku code')                           { $skuIndex      = $idx; $hasSkuCode   = true; }
-                    if ($lower === 'id' && $idIndex === null)            { $idIndex       = $idx; }
-                    if (str_contains($lower, 'product name'))           { $nameIndex     = $idx; }
-                    if ($lower === 'skuid' || $lower === 'sku id')      { $skuIdIndex    = $idx; }
-                    if (str_contains($lower, 'retail price'))           { $priceIndex    = $idx; $hasRetailPrc = true; }
-                    if (str_contains($lower, 'seller warehouse stock')) { $stockIndex    = $idx; }
-                    if (str_contains($lower, 'sales attributes'))       { $salesAttrIndex= $idx; }
-                }
-                // Only mark as "header found" when BOTH key columns are on this row
-                if (!$hasSkuCode || !$hasRetailPrc) {
-                    $skuIndex = null; // reset – this was not the header row
-                }
-                continue;
-            }
-
-            // ── Skip instruction / description rows ───────────────────────
-            // Real data rows always have a numeric product ID in column 0
-            $firstCol = trim($cols[0] ?? '', " \t\r\n\"\xc2\xa0");
-            if (!is_numeric($firstCol) || $firstCol === '') continue;
-
-            $clean = static fn(int $i) => trim((string) ($cols[$i] ?? ''), " \t\r\n\"\xc2\xa0");
-
-            $sku = $skuIndex !== null ? $clean($skuIndex) : '';
-            if ($sku === '') continue;
-
-            $rows[] = [
-                'sku'              => $sku,
-                'product_id'       => $idIndex        !== null ? $clean($idIndex)        : null,
-                'product_name'     => $nameIndex      !== null ? $clean($nameIndex)      : null,
-                'sku_id'           => $skuIdIndex     !== null ? $clean($skuIdIndex)     : null,
-                'price'            => $priceIndex     !== null
-                                        ? (float) preg_replace('/[^0-9.\-]/', '', $clean($priceIndex))
-                                        : 0,
-                'ae_stock'         => $stockIndex     !== null ? (int) $clean($stockIndex)    : 0,
-                'sales_attributes' => $salesAttrIndex !== null ? $clean($salesAttrIndex) : null,
-            ];
-        }
-
-        return $rows;
-    }
-
-    /**
      * Get aggregated SKU pricing data for AliExpress pricing page.
-     *
-     * Data sources:
-     *   price, ae_stock        → aliexpress_pricing_prices   (matched by SKU)
-     *   lp, ship               → product_master              (matched by SKU)
-     *   al30, sales            → aliexpress_daily_data       (matched by sku_code)
-     *   inv, ov_l30            → shopify_skus                (matched by SKU)
      */
     public function getPricingData(Request $request)
     {
         try {
-            $normalizeSku = static fn($v) => strtoupper(trim((string) $v));
-
-            // ── 1. BASE: all rows from aliexpress_pricing_prices ─────────
-            $pricingRows  = AliexpressPricingPrice::all();
-            $pricingBySku = $pricingRows->keyBy(fn($r) => $normalizeSku($r->sku));
-
-            // ── 2. Product master → LP / Ship ─────────────────────────────
-            $productMasterBySku = ProductMaster::query()
-                ->whereNotNull('sku')->where('sku', '!=', '')
-                ->get()
-                ->keyBy(fn($r) => $normalizeSku($r->sku));
-
-            // ── 3. AliExpress daily sales → AL30 / Sales ─────────────────
             $excludedStatuses = ['refund', 'return', 'cancel', 'closed'];
+
             $salesAgg = AliexpressDailyData::query()
-                ->selectRaw('sku_code,
-                    SUM(COALESCE(quantity, 0))      AS al30,
-                    SUM(COALESCE(order_amount, 0))  AS sales,
-                    SUM(COALESCE(product_total, 0)) AS product_total_sum')
+                ->selectRaw('sku_code, SUM(COALESCE(quantity, 0)) as al30, SUM(COALESCE(order_amount, 0)) as sales')
                 ->whereNotNull('sku_code')
                 ->where('sku_code', '!=', '')
-                ->where(function ($q) use ($excludedStatuses) {
-                    foreach ($excludedStatuses as $s) {
-                        $q->whereRaw('LOWER(COALESCE(order_status, "")) NOT LIKE ?', ["%{$s}%"]);
+                ->where(function ($query) use ($excludedStatuses) {
+                    foreach ($excludedStatuses as $status) {
+                        $query->whereRaw('LOWER(COALESCE(order_status, "")) NOT LIKE ?', ['%' . $status . '%']);
                     }
                 })
                 ->groupBy('sku_code')
+                ->get();
+
+            $normalizeSku = static function ($value) {
+                return strtoupper(trim((string) $value));
+            };
+
+            $salesBySku = $salesAgg->keyBy(fn($row) => $normalizeSku($row->sku_code));
+
+            $productMastersBySku = ProductMaster::query()
+                ->whereNotNull('sku')
+                ->where('sku', '!=', '')
                 ->get()
-                ->keyBy(fn($r) => $normalizeSku($r->sku_code));
+                ->keyBy(fn($row) => $normalizeSku($row->sku));
 
-            // ── 4. Shopify SKUs → INV / OV L30 ───────────────────────────
-            $shopifyBySku = ShopifySku::all()
-                ->keyBy(fn($r) => $normalizeSku($r->sku));
+            $allNormalizedSkus = collect(array_merge(
+                $salesBySku->keys()->all(),
+                $productMastersBySku->keys()->all()
+            ))->unique()->values();
 
-            // ── 5. SPRICE meta (aliexpress_data_views) ────────────────────
-            $viewMetaBySku = AliexpressDataView::all()
-                ->keyBy(fn($r) => $normalizeSku($r->sku));
+            $viewMetaBySku = collect();
+            if ($allNormalizedSkus->isNotEmpty()) {
+                $viewMetaBySku = AliexpressDataView::query()
+                    ->whereIn(DB::raw('UPPER(TRIM(sku))'), $allNormalizedSkus)
+                    ->get()
+                    ->keyBy(fn($row) => $normalizeSku($row->sku));
+            }
 
-            // ── 6. Margin ─────────────────────────────────────────────────
+            $uploadedPriceBySku = collect();
+            if ($allNormalizedSkus->isNotEmpty()) {
+                $uploadedPriceBySku = AliexpressPricingPrice::query()
+                    ->whereIn(DB::raw('UPPER(TRIM(sku))'), $allNormalizedSkus)
+                    ->get()
+                    ->keyBy(fn($row) => $normalizeSku($row->sku));
+            }
+
+            // INV + OV L30 from shopify_skus
+            $shopifyBySku = collect();
+            if ($allNormalizedSkus->isNotEmpty()) {
+                $shopifyBySku = ShopifySku::query()
+                    ->whereIn(DB::raw('UPPER(TRIM(sku))'), $allNormalizedSkus)
+                    ->get()
+                    ->keyBy(fn($row) => $normalizeSku($row->sku));
+            }
+
             $marketplaceData = MarketplacePercentage::query()
                 ->where('marketplace', 'Aliexpress')
                 ->orWhere('marketplace', 'AliExpress')
                 ->first();
-            $percentage = $marketplaceData ? ((float) ($marketplaceData->percentage ?? 100)) : 100;
-            $margin     = $percentage / 100;
+            $percentage = $marketplaceData ? ($marketplaceData->percentage ?? 100) : 100;
+            $margin = ((float) $percentage) / 100;
 
-            // ── 7. All SKUs = pricing table ∪ product_master ──────────────
-            // Pricing-table SKUs show with real price; product_master-only SKUs show Missing = M
-            $allNormalizedSkus = collect(array_merge(
-                $pricingBySku->keys()->all(),
-                $productMasterBySku->keys()->all()
-            ))->unique()->values();
-
-            // ── 8. Build rows ─────────────────────────────────────────────
             $rows = [];
             foreach ($allNormalizedSkus as $normalizedSku) {
+                $sale = $salesBySku->get($normalizedSku);
+                $productMaster = $productMastersBySku->get($normalizedSku);
+                $metaRecord = $viewMetaBySku->get($normalizedSku);
+                $meta = $metaRecord ? ($metaRecord->value ?? []) : [];
 
-                // ── price / ae_stock from aliexpress_pricing_prices
-                $priceRow    = $pricingBySku->get($normalizedSku);
-                $uploadedPrice = $priceRow ? (float) $priceRow->price    : 0;
-                $aeStock       = $priceRow ? (int)   ($priceRow->ae_stock ?? 0) : 0;
-                $productName   = $priceRow ? ($priceRow->product_name    ?? null) : null;
-                $productId     = $priceRow ? ($priceRow->product_id      ?? null) : null;
-
-                // ── lp / ship from product_master
-                $productMaster = $productMasterBySku->get($normalizedSku);
                 $values = [];
                 if ($productMaster) {
                     $values = is_array($productMaster->Values)
                         ? $productMaster->Values
                         : (is_string($productMaster->Values) ? json_decode($productMaster->Values, true) : []);
                 }
-                $lp   = isset($values['lp'])      ? (float) $values['lp']
-                      : (isset($productMaster->lp) ? (float) $productMaster->lp : 0);
-                $ship = isset($values['ae_ship'])  ? (float) $values['ae_ship']
-                      : (isset($values['ship'])    ? (float) $values['ship']
-                      : (isset($productMaster->ship) ? (float) $productMaster->ship : 0));
 
-                // ── al30 / sales from aliexpress_daily_data
-                $sale            = $salesAgg->get($normalizedSku);
-                $al30            = $sale ? (float) $sale->al30            : 0;
-                $sales           = $sale ? (float) $sale->sales           : 0;
-                $productTotalSum = $sale ? (float) $sale->product_total_sum : 0;
-                $derivedPrice    = $al30 > 0 ? ($productTotalSum / $al30) : 0;
+                $lp = isset($values['lp']) ? (float) $values['lp'] : (isset($productMaster->lp) ? (float) $productMaster->lp : 0);
+                $ship = isset($values['ship']) ? (float) $values['ship'] : (isset($productMaster->ship) ? (float) $productMaster->ship : 0);
 
-                // ── inv / ov_l30 from shopify_skus
+                $al30  = (float) ($sale->al30  ?? 0);
+                $sales = (float) ($sale->sales ?? 0);
+
+                $sprice = isset($meta['SPRICE']) ? (float) $meta['SPRICE'] : 0;
+                $priceRow      = $uploadedPriceBySku->get($normalizedSku);
+                $uploadedPrice = $priceRow ? (float) $priceRow->price    : 0;
+                $aeStock       = $priceRow ? (int)   ($priceRow->ae_stock ?? 0) : 0;
+
+                // INV + OV L30 from shopify_skus
                 $shopifyRow = $shopifyBySku->get($normalizedSku);
-                $inv        = $shopifyRow ? (int) ($shopifyRow->inv      ?? 0) : 0;
-                $ovL30      = $shopifyRow ? (int) ($shopifyRow->quantity ?? 0) : 0;
+                $inv   = $shopifyRow ? (int) ($shopifyRow->inv      ?? 0) : 0;
+                $ovL30 = $shopifyRow ? (int) ($shopifyRow->quantity ?? 0) : 0;
 
-                // ── SPRICE meta
-                $metaRecord = $viewMetaBySku->get($normalizedSku);
-                $meta       = $metaRecord ? ($metaRecord->value ?? []) : [];
-                $sprice     = isset($meta['SPRICE']) ? (float) $meta['SPRICE'] : 0;
-
-                // ── Price: prefer uploaded price, fall back to derived
-                $price  = $uploadedPrice > 0 ? $uploadedPrice : $derivedPrice;
-
-                // ── Calculations (same formulas as TikTok)
+                // Price ONLY from aliexpress_pricing_prices — no sales fallback
+                $price  = $uploadedPrice;
                 $profit = ($price * $margin) - $lp - $ship;
-                $gpft   = $price > 0 ? ($profit / $price) * 100 : 0;
-                $groi   = $lp    > 0 ? ($profit / $lp)    * 100 : 0;
-                $sgpft  = $gpft;
-                $dilPct = $inv   > 0 ? round(($ovL30 / $inv) * 100, 2) : 0;
+                $gpft = $price > 0 ? ($profit / $price) * 100 : 0;
+                $groi = $lp > 0 ? ($profit / $lp) * 100 : 0;
+                $sgpft = $gpft;
 
-                // ── Display SKU (prefer original case)
-                $displaySku = $productMaster->sku
-                    ?? ($priceRow->sku ?? $normalizedSku);
-
-                // ── Missing = not in aliexpress_pricing_prices OR price = 0
-                $isMissing = !$priceRow || $price <= 0;
-
-                // ── MAP: INV vs AE Stock (mirrors TikTok INV vs TT Stock)
-                if ($isMissing) {
-                    $mapValue = '';
-                } elseif ($inv === $aeStock) {
-                    $mapValue = 'Map';
-                } elseif ($aeStock > $inv) {
-                    $diff     = $aeStock - $inv;
-                    $mapValue = "N Map|{$diff}";
-                } else {
-                    $diff     = $inv - $aeStock;
-                    $mapValue = "Diff|{$diff}";
-                }
+                $displaySku = $productMaster->sku ?? ($sale->sku_code ?? $normalizedSku);
+                $isMissing = !$productMaster || $price <= 0;
 
                 $rows[] = [
-                    'sku'          => trim((string) $displaySku),
-                    'price'        => round($price, 2),
-                    'missing'      => $isMissing ? 'M' : '',
-                    'map'          => $mapValue,
-                    'gpft'         => round($gpft, 2),
-                    'groi'         => round($groi, 2),
-                    'profit'       => round($profit, 2),
-                    'sales'        => round($sales, 2),
-                    'al30'         => (int) round($al30),
-                    'lp'           => round($lp, 2),
-                    'ship'         => round($ship, 2),
-                    'sprice'       => round($sprice, 2),
-                    'sgpft'        => round($sgpft, 2),
-                    'inv'          => $inv,
-                    'ae_stock'     => $aeStock,
-                    'ov_l30'       => $ovL30,
-                    'dil_percent'  => $dilPct,
-                    'product_name' => $productName,
-                    'product_id'   => $productId,
+                    'sku'         => trim((string) $displaySku),
+                    'price'       => round($price, 2),
+                    'missing'     => $isMissing ? 'M' : '',
+                    'map'         => $isMissing ? '' : 'Map',
+                    'gpft'        => round($gpft, 2),
+                    'groi'        => round($groi, 2),
+                    'profit'      => round($profit, 2),
+                    'sales'       => round($sales, 2),
+                    'al30'        => (int) round($al30),
+                    'lp'          => round($lp, 2),
+                    'ship'        => round($ship, 2),
+                    'sprice'      => round($sprice, 2),
+                    'sgpft'       => round($sgpft, 2),
+                    'inv'         => $inv,
+                    'ov_l30'      => $ovL30,
+                    'ae_stock'    => $aeStock,
+                    'dil_percent' => $inv > 0 ? round(($ovL30 / $inv) * 100, 2) : 0,
                 ];
             }
 
-            // Sort: alphabetic letters first, then numeric, case-insensitive natural sort
             usort($rows, static function ($a, $b) {
                 $av = strtoupper(trim((string) ($a['sku'] ?? '')));
                 $bv = strtoupper(trim((string) ($b['sku'] ?? '')));
-                $aL = preg_match('/^[A-Z]/', $av) === 1;
-                $bL = preg_match('/^[A-Z]/', $bv) === 1;
-                if ($aL !== $bL) return $aL ? -1 : 1;
+                $aLetter = preg_match('/^[A-Z]/', $av) === 1;
+                $bLetter = preg_match('/^[A-Z]/', $bv) === 1;
+
+                if ($aLetter !== $bLetter) {
+                    return $aLetter ? -1 : 1;
+                }
+
                 return strnatcasecmp($av, $bv);
             });
 
             return response()->json($rows);
-
         } catch (\Exception $e) {
             Log::error('Error fetching AliExpress pricing data: ' . $e->getMessage(), [
                 'trace' => $e->getTraceAsString(),
             ]);
+
             return response()->json([
                 'error' => 'Failed to fetch pricing data: ' . $e->getMessage(),
             ], 500);
@@ -1184,10 +942,18 @@ class AliexpressController extends Controller
         try {
             $userId = auth()->id() ?? 'guest';
             $visibility = $request->input('visibility', []);
+            
             cache()->put("aliexpress_column_visibility_{$userId}", $visibility, now()->addDays(30));
-            return response()->json(['success' => true, 'message' => 'Column visibility saved']);
+            
+            return response()->json([
+                'success' => true,
+                'message' => 'Column visibility saved'
+            ]);
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => 'Failed to save preferences'], 500);
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to save preferences'
+            ], 500);
         }
     }
 
@@ -1198,6 +964,7 @@ class AliexpressController extends Controller
     {
         $userId = auth()->id() ?? 'guest';
         $visibility = cache()->get("aliexpress_column_visibility_{$userId}", []);
+        
         return response()->json($visibility);
     }
 }

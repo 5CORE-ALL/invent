@@ -551,6 +551,27 @@
                             </ul>
                         </div>
                         <div class="dropdown">
+                            <button class="btn btn-sm btn-dark dropdown-toggle" type="button" id="bulkEditNrpBtn" data-bs-toggle="dropdown" aria-expanded="false">
+                                NRP
+                            </button>
+                            <ul class="dropdown-menu" aria-labelledby="bulkEditNrpBtn">
+                                <li class="px-3 py-2">
+                                    <select id="bulk-nrp-select" class="form-select form-select-sm" style="min-width: 150px;">
+                                        <option value="">Select NRP...</option>
+                                        <option value="REQ">REQ</option>
+                                        <option value="NR">2BDC</option>
+                                        <option value="LATER">LATER</option>
+                                    </select>
+                                </li>
+                                <li><hr class="dropdown-divider"></li>
+                                <li>
+                                    <button class="dropdown-item" type="button" id="bulk-apply-nrp">
+                                        <i class="fas fa-check me-1"></i> Apply
+                                    </button>
+                                </li>
+                            </ul>
+                        </div>
+                        <div class="dropdown">
                             <button class="btn btn-sm btn-warning dropdown-toggle" type="button" id="bulkEditMoqBtn" data-bs-toggle="dropdown" aria-expanded="false">
                                 MOQ
                             </button>
@@ -2989,7 +3010,6 @@
         table.on("dataLoaded", function() { updateTopRowCounter(); });
         table.on("dataFiltered", function() { updateTopRowCounter(); });
         table.on("pageLoaded", function() { updateTopRowCounter(); });
-        table.on("renderComplete", function() { updateTopRowCounter(); });
 
         // Populate bulk supplier dropdowns when suppliers load
         function refreshBulkSupplierSearchSelect() {
@@ -3092,6 +3112,12 @@
             bulkApplyForecastField('Stage', function() { return document.getElementById('bulk-stage-select')?.value?.trim() || ''; },
                 'bulk-apply-stage', 'bulk-stage-select', 'bulkEditStageBtn');
         });
+        document.getElementById('bulk-apply-nrp')?.addEventListener('click', function(e) {
+            e.preventDefault();
+            const v = document.getElementById('bulk-nrp-select')?.value?.trim() || '';
+            if (!v) { alert('Please select an NRP value.'); return; }
+            bulkApplyForecastField('NR', function() { return v; }, 'bulk-apply-nrp', 'bulk-nrp-select', 'bulkEditNrpBtn');
+        });
         document.getElementById('bulk-apply-moq')?.addEventListener('click', function(e) {
             e.preventDefault();
             const v = document.getElementById('bulk-moq-input')?.value?.trim() || '';
@@ -3129,6 +3155,70 @@
         let afterTatVisibilitySnapshot = null;
         let isApplyingCombinedFilters = false;
         let pendingCombinedFiltersRun = false;
+        let filterPostCalcTimer = null;
+        const FORECAST_FILTER_PREF_KEY = 'forecast_analysis_filter_prefs_v1';
+        function readForecastFilterPrefs() {
+            try {
+                const raw = localStorage.getItem(FORECAST_FILTER_PREF_KEY);
+                if (!raw) return {};
+                const parsed = JSON.parse(raw);
+                return parsed && typeof parsed === 'object' ? parsed : {};
+            } catch (e) {
+                return {};
+            }
+        }
+        function saveForecastFilterPrefs() {
+            try {
+                const nrpChecked = Array.from(document.querySelectorAll('.nrp-ms-opt:checked')).map(function(cb) { return cb.value; });
+                const payload = {
+                    stageFilter: currentStageFilter || '',
+                    rowTypeFilter: currentRowTypeFilter || 'sku',
+                    apprReqFilter: currentColorFilter || '',
+                    twoOrdFilter: currentTwoOrdColorFilter || '',
+                    topQtyFilters: Object.assign({}, currentTopQtySignFilters || {}),
+                    nrpChecked: nrpChecked.length ? nrpChecked : ['REQ', 'NR', 'LATER']
+                };
+                localStorage.setItem(FORECAST_FILTER_PREF_KEY, JSON.stringify(payload));
+            } catch (e) {}
+        }
+        function restoreForecastFilterPrefs() {
+            const prefs = readForecastFilterPrefs();
+
+            const stageVal = normalizeStageValue(prefs.stageFilter || '');
+            currentStageFilter = stageVal;
+            const sf = document.getElementById('stage-filter');
+            if (sf) sf.value = stageVal;
+
+            const rowTypeVal = ['all', 'sku', 'parent'].includes(prefs.rowTypeFilter) ? prefs.rowTypeFilter : 'sku';
+            currentRowTypeFilter = rowTypeVal;
+            const rt = document.getElementById('row-data-type');
+            if (rt) rt.value = rowTypeVal;
+
+            currentColorFilter = prefs.apprReqFilter || '';
+            const apprLabelEl = document.getElementById('appr-req-badge-label');
+            if (apprLabelEl) {
+                apprLabelEl.textContent = currentColorFilter === 'yellow' ? 'Appr Req.' : (currentColorFilter === 'red' ? 'Filter' : 'All');
+            }
+
+            const twoOrdVal = normalizeTwoOrdFilterValue(prefs.twoOrdFilter || '');
+            currentTwoOrdColorFilter = twoOrdVal;
+            const twoOrdSel = document.getElementById('two-ord-color-filter');
+            if (twoOrdSel) twoOrdSel.value = twoOrdVal;
+
+            const tq = prefs.topQtyFilters && typeof prefs.topQtyFilters === 'object' ? prefs.topQtyFilters : {};
+            ['order', 'mip', 'r2s', 'trn', 'moq'].forEach(function(k) {
+                const val = normalizeQtySignFilterValue(tq[k] || '');
+                currentTopQtySignFilters[k] = val;
+                const el = document.getElementById(k + '-color-filter-top');
+                if (el) el.value = val;
+            });
+
+            const wantedNrp = Array.isArray(prefs.nrpChecked) && prefs.nrpChecked.length ? new Set(prefs.nrpChecked) : new Set(['REQ', 'NR', 'LATER']);
+            document.querySelectorAll('.nrp-ms-opt').forEach(function(cb) {
+                cb.checked = wantedNrp.has(cb.value);
+            });
+            updateNRPMultiselectLabel();
+        }
         function updateTopRowCounter() {
             const el = document.getElementById('top-row-counter');
             if (!el || !table) return;
@@ -3177,6 +3267,7 @@
             if (typeof setCombinedFilters === 'function' && table && table.rowManager && table.rowManager.element) {
                 setCombinedFilters();
             }
+            saveForecastFilterPrefs();
         }
         window.__fa_applyTwoOrdColorFilter = applyTwoOrdColorFilter;
         if (!window.__fa_twoOrdChangeBound) {
@@ -3671,8 +3762,12 @@
             }
             updateTopRowCounter();
 
-            // update visible count
-            setTimeout(() => {
+            // update visible count (debounced to avoid heavy repeated background recalculations)
+            if (filterPostCalcTimer) {
+                clearTimeout(filterPostCalcTimer);
+            }
+            filterPostCalcTimer = setTimeout(() => {
+                filterPostCalcTimer = null;
                 updateParentTotalsBasedOnVisibleRows();
                 
                 // Calculate total MSL_C for visible rows
@@ -4900,6 +4995,7 @@
                 currentRowTypeFilter = sel.value;
                 if (typeof setCombinedFilters === 'function') setCombinedFilters();
             })();
+            restoreForecastFilterPrefs();
 
             const parentKeys = () => Object.keys(groupedSkuData);
             let currentIndex = 0;
@@ -4954,9 +5050,11 @@
                 document.getElementById('play-auto').style.display = 'inline-block';
             });
 
-            currentColorFilter = '';
+            if (currentColorFilter === null || currentColorFilter === undefined) currentColorFilter = '';
             const apprLabelEl = document.getElementById('appr-req-badge-label');
-            if (apprLabelEl) apprLabelEl.textContent = 'All';
+            if (apprLabelEl) {
+                apprLabelEl.textContent = currentColorFilter === 'yellow' ? 'Appr Req.' : (currentColorFilter === 'red' ? 'Filter' : 'All');
+            }
             setCombinedFilters();
             updateTopRowCounter();
 
@@ -4966,6 +5064,7 @@
                         const filter = this.getAttribute('data-filter');
                         currentColorFilter = filter || null;
                         setCombinedFilters();
+                        saveForecastFilterPrefs();
 
                         const lbl = document.getElementById('appr-req-badge-label');
                         if (lbl) {
@@ -4983,6 +5082,7 @@
             document.getElementById('row-data-type').addEventListener('change', function(e) {
                 currentRowTypeFilter = e.target.value;
                 setCombinedFilters();
+                saveForecastFilterPrefs();
             });
 
             const twoOrdFilterEl = document.getElementById('two-ord-color-filter');
@@ -5002,6 +5102,7 @@
                 if (el.value) applyTopQtySignFilter(cfg.key, el.value);
                 el.addEventListener('change', function(e) {
                     applyTopQtySignFilter(cfg.key, e && e.target ? e.target.value : '');
+                    saveForecastFilterPrefs();
                 });
             });
 
@@ -5018,6 +5119,7 @@
                     }, 0);
                 }
                 setCombinedFilters();
+                saveForecastFilterPrefs();
             });
 
             document.querySelectorAll('.nrp-ms-opt').forEach(function(cb) {
@@ -5033,6 +5135,7 @@
                         tbl.setHeaderFilterValue("nr", vals.length === 1 ? vals[0] : '');
                     }
                     setCombinedFilters();
+                    saveForecastFilterPrefs();
                 });
             });
 
@@ -5045,6 +5148,7 @@
                             syncNRPMultiselectFromHeader(tbl.getHeaderFilterValue("nr"));
                         }
                         setCombinedFilters();
+                        saveForecastFilterPrefs();
                     }
                     if (e.target.closest && e.target.closest('.tabulator-col[tabulator-field="stage"]')) {
                         if (isProgrammaticStageHeaderSync) {
@@ -5058,6 +5162,7 @@
                             const sf = document.getElementById("stage-filter");
                             if (sf) sf.value = currentStageFilter;
                             setCombinedFilters();
+                            saveForecastFilterPrefs();
                         }
                     }
                     if (e.target.closest && e.target.closest('.tabulator-col[tabulator-field="INV"]')) {
