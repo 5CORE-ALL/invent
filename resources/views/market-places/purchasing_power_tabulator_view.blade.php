@@ -65,6 +65,15 @@
                         <option value="60plus">60%+</option>
                     </select>
 
+                    <select id="roi-filter" class="form-select form-select-sm" style="width: auto;">
+                        <option value="all">ROI%</option>
+                        <option value="lt40">&lt; 40%</option>
+                        <option value="40-75">40–75%</option>
+                        <option value="75-125">75–125%</option>
+                        <option value="125-250">125–250%</option>
+                        <option value="gt250">&gt; 250%</option>
+                    </select>
+
                     <select id="dil-filter" class="form-select form-select-sm" style="width: auto;">
                         <option value="all">All DIL%</option>
                         <option value="red">Red (&lt;16.7%)</option>
@@ -602,6 +611,7 @@
             const nrl   = $('#nrl-filter').val();
             const gpft  = $('#gpft-filter').val();
             const dil   = $('#dil-filter').val();
+            const roi   = $('#roi-filter').val();
             table.clearFilter();
 
             if (inv === 'zero') table.addFilter('INV', '=', 0);
@@ -614,6 +624,17 @@
                 if (gpft === 'negative') table.addFilter('GPFT%', '<', 0);
                 else if (gpft === '60plus') table.addFilter('GPFT%', '>=', 60);
                 else { const [min, max] = gpft.split('-').map(Number); table.addFilter('GPFT%', '>=', min); table.addFilter('GPFT%', '<', max); }
+            }
+
+            // ROI% filter (same as AliExpress)
+            if (roi !== 'all') {
+                table.addFilter(function(d) {
+                    const roiVal = parseFloat(d['ROI%']) || 0;
+                    if (roi === 'lt40')  return roiVal < 40;
+                    if (roi === 'gt250') return roiVal > 250;
+                    const [min, max] = roi.split('-').map(Number);
+                    return roiVal >= min && roiVal <= max;
+                });
             }
 
             if (dil !== 'all') {
@@ -641,7 +662,7 @@
             updateSummary();
         }
 
-        $('#inventory-filter, #nrl-filter, #gpft-filter, #dil-filter').on('change', function() { applyFilters(); });
+        $('#inventory-filter, #nrl-filter, #gpft-filter, #dil-filter, #roi-filter').on('change', function() { applyFilters(); });
 
         function updateSummary() {
             const data = table.getData('active').filter(r => !(r.Parent && r.Parent.startsWith('PARENT')));
