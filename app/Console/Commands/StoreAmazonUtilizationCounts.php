@@ -7,9 +7,6 @@ use App\Models\AmazonDataView;
 use App\Models\AmazonSpCampaignReport;
 use App\Models\AmazonSbCampaignReport;
 use App\Models\AmazonUtilizationCount;
-use App\Models\ProductMaster;
-use App\Models\ShopifySku;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 class StoreAmazonUtilizationCounts extends Command
@@ -34,228 +31,97 @@ class StoreAmazonUtilizationCounts extends Command
     private function processCampaignType($campaignType)
     {
         $this->info("Processing {$campaignType} campaigns...");
-
-        $productMasters = ProductMaster::orderBy('parent', 'asc')
-            ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
-            ->orderBy('sku', 'asc')
-            ->get();
-
-        $skus = $productMasters->pluck('sku')->filter()->unique()->values()->all();
-
-        // Get NRA values to filter out NRA campaigns (same as in getAmzUnderUtilizedBgtKw)
-        $nrValues = AmazonDataView::whereIn('sku', $skus)->pluck('value', 'sku');
-        
-        // Get INV values from ShopifySku for KW and PT campaigns
-        $shopifyData = [];
-        if ($campaignType === 'KW' || $campaignType === 'PT') {
-            $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
-        }
-
-        // Handle HL campaigns differently (use AmazonSbCampaignReport)
-        if ($campaignType === 'HL') {
-            $amazonSbCampaignReportsL7 = AmazonSbCampaignReport::where('ad_type', 'SPONSORED_BRANDS')
-                ->where('report_date_range', 'L7')
-                ->where(function ($q) use ($skus) {
-                    foreach ($skus as $sku) {
-                        $q->orWhere('campaignName', 'LIKE', '%' . strtoupper($sku) . '%');
-                    }
-                })
-                ->where('campaignStatus', '!=', 'ARCHIVED')
-                ->get();
-
-            $amazonSbCampaignReportsL1 = AmazonSbCampaignReport::where('ad_type', 'SPONSORED_BRANDS')
-                ->where('report_date_range', 'L1')
-                ->where(function ($q) use ($skus) {
-                    foreach ($skus as $sku) {
-                        $q->orWhere('campaignName', 'LIKE', '%' . strtoupper($sku) . '%');
-                    }
-                })
-                ->where('campaignStatus', '!=', 'ARCHIVED')
-                ->get();
-        } else {
-            // For KW and PT, use AmazonSpCampaignReport
-            $amazonSpCampaignReportsL7 = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
-                ->where('report_date_range', 'L7')
-                ->where(function ($q) use ($skus) {
-                    foreach ($skus as $sku) $q->orWhere('campaignName', 'LIKE', '%' . $sku . '%');
-                })
-                ->where('campaignStatus', '!=', 'ARCHIVED');
-
-            $amazonSpCampaignReportsL1 = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
-                ->where('report_date_range', 'L1')
-                ->where(function ($q) use ($skus) {
-                    foreach ($skus as $sku) $q->orWhere('campaignName', 'LIKE', '%' . $sku . '%');
-                })
-                ->where('campaignStatus', '!=', 'ARCHIVED');
-
-            // Filter by campaign type
-            if ($campaignType === 'PT') {
-                $amazonSpCampaignReportsL7->where(function($q) {
-                    $q->where('campaignName', 'LIKE', '% PT')
-                      ->orWhere('campaignName', 'LIKE', '% PT.');
-                });
-                $amazonSpCampaignReportsL1->where(function($q) {
-                    $q->where('campaignName', 'LIKE', '% PT')
-                      ->orWhere('campaignName', 'LIKE', '% PT.');
-                });
-            } else {
-                $amazonSpCampaignReportsL7->where('campaignName', 'NOT LIKE', '%PT')
-                                          ->where('campaignName', 'NOT LIKE', '%PT.');
-                $amazonSpCampaignReportsL1->where('campaignName', 'NOT LIKE', '%PT')
-                                          ->where('campaignName', 'NOT LIKE', '%PT.');
-            }
-
-            $amazonSpCampaignReportsL7 = $amazonSpCampaignReportsL7->get();
-            $amazonSpCampaignReportsL1 = $amazonSpCampaignReportsL1->get();
-        }
-
-        // Store all processed campaigns with their data (similar to controller's campaignMap)
         $campaignMap = [];
-        
-        // For PT campaigns, we need to track unique SKUs (same as getAmzUnderUtilizedBgtPt)
-        $processedSkus = [];
+        $campaignTypeUpper = strtoupper((string) $campaignType);
 
-        foreach ($productMasters as $pm) {
-            $sku = strtoupper(trim($pm->sku));
-            
-            // For PT campaigns, apply unique SKU filter (same as getAmzUnderUtilizedBgtPt line 637)
-            if ($campaignType === 'PT' && in_array($sku, $processedSkus)) {
-                continue;
-            }
+        if ($campaignTypeUpper === 'HL') {
+            $baseCampaigns = AmazonSbCampaignReport::query()
+                ->where('ad_type', 'SPONSORED_BRANDS')
+                ->where('report_date_range', 'L30')
+                ->whereNotNull('campaign_id')
+                ->where('campaignStatus', '!=', 'ARCHIVED')
+                ->orderBy('campaignName')
+                ->get()
+                ->unique('campaign_id');
 
-            // Check NRA filter (same as in getAmzUnderUtilizedBgtKw/getAmzUnderUtilizedBgtPt)
-            $nra = '';
-            if (isset($nrValues[$pm->sku])) {
-                $raw = $nrValues[$pm->sku];
-                if (!is_array($raw)) {
-                    $raw = json_decode($raw, true);
-                }
-                if (is_array($raw)) {
-                    $nra = $raw['NRA'] ?? '';
-                }
-            }
-            
-            // Filter by NRA for all campaign types (KW, PT, HL)
-            if ($nra === 'NRA') {
-                continue;
-            }
-
-            if ($campaignType === 'HL') {
-                // HL campaigns matching logic (SKU or SKU + ' HEAD')
-                $matchedCampaignL7 = $amazonSbCampaignReportsL7->first(function ($item) use ($sku) {
-                    $cleanName = strtoupper(trim($item->campaignName));
-                    $expected1 = $sku;
-                    $expected2 = $sku . ' HEAD';
-                    return ($cleanName === $expected1 || $cleanName === $expected2);
-                });
-
-                $matchedCampaignL1 = $amazonSbCampaignReportsL1->first(function ($item) use ($sku) {
-                    $cleanName = strtoupper(trim($item->campaignName));
-                    $expected1 = $sku;
-                    $expected2 = $sku . ' HEAD';
-                    return ($cleanName === $expected1 || $cleanName === $expected2);
-                });
-
-                if (!$matchedCampaignL7 && !$matchedCampaignL1) {
+            foreach ($baseCampaigns as $baseCampaign) {
+                $campaignId = trim((string) ($baseCampaign->campaign_id ?? ''));
+                $campaignName = trim((string) ($baseCampaign->campaignName ?? ''));
+                if ($campaignId === '' || $campaignName === '') {
                     continue;
                 }
 
-                $campaignId = $matchedCampaignL7->campaign_id ?? ($matchedCampaignL1->campaign_id ?? '');
-                $campaignName = $matchedCampaignL7->campaignName ?? ($matchedCampaignL1->campaignName ?? '');
-                if (empty($campaignId) || empty($campaignName)) {
+                $detectedType = $this->detectCampaignType($campaignName, 'hl');
+                if ($detectedType !== 'hl') {
                     continue;
                 }
 
-                $budget = $matchedCampaignL7->campaignBudgetAmount ?? ($matchedCampaignL1->campaignBudgetAmount ?? 0);
-                $l7_spend = $matchedCampaignL7->cost ?? 0; // HL uses 'cost' field
-                $l1_spend = $matchedCampaignL1->cost ?? 0; // HL uses 'cost' field
-            } else {
-                // KW and PT campaigns matching logic
-                $matchedCampaignL7 = $amazonSpCampaignReportsL7->first(function ($item) use ($sku, $campaignType) {
-                    $campaignName = strtoupper(trim($item->campaignName));
-                    $cleanSku = strtoupper(trim($sku));
-                    
-                    if ($campaignType === 'PT') {
-                        // Exact match like getAmzUnderUtilizedBgtPt (line 545-549)
-                        return ($campaignName === $cleanSku . ' PT' || $campaignName === $cleanSku . ' PT.');
-                    } else {
-                        // KW: Exact match like getAmzUtilizedBgtKw (line 1151-1154)
-                        $cleanName = strtoupper(trim(rtrim($campaignName, '.')));
-                        $cleanSkuTrimmed = strtoupper(trim(rtrim($cleanSku, '.')));
-                        return $cleanName === $cleanSkuTrimmed;
-                    }
-                });
+                $matchedCampaignL7 = AmazonSbCampaignReport::query()
+                    ->where('campaign_id', $campaignId)
+                    ->where('report_date_range', 'L7')
+                    ->latest('id')
+                    ->first();
+                $matchedCampaignL1 = AmazonSbCampaignReport::query()
+                    ->where('campaign_id', $campaignId)
+                    ->where('report_date_range', 'L1')
+                    ->latest('id')
+                    ->first();
 
-                $matchedCampaignL1 = $amazonSpCampaignReportsL1->first(function ($item) use ($sku, $campaignType) {
-                    $campaignName = strtoupper(trim($item->campaignName));
-                    $cleanSku = strtoupper(trim($sku));
-                    
-                    if ($campaignType === 'PT') {
-                        // Exact match like getAmzUnderUtilizedBgtPt (line 545-549)
-                        return ($campaignName === $cleanSku . ' PT' || $campaignName === $cleanSku . ' PT.');
-                    } else {
-                        // KW: Exact match like getAmzUtilizedBgtKw (line 1157-1160)
-                        $cleanName = strtoupper(trim(rtrim($campaignName, '.')));
-                        $cleanSkuTrimmed = strtoupper(trim(rtrim($cleanSku, '.')));
-                        return $cleanName === $cleanSkuTrimmed;
-                    }
-                });
+                $this->info("Processing campaign: {$campaignName} (Type: HL)");
 
-                if (!$matchedCampaignL7 && !$matchedCampaignL1) {
-                    continue;
-                }
-
-                // Get campaignId and campaignName for later use
-                $campaignId = $matchedCampaignL7->campaign_id ?? ($matchedCampaignL1->campaign_id ?? '');
-                $campaignName = $matchedCampaignL7->campaignName ?? ($matchedCampaignL1->campaignName ?? '');
-                
-                // Skip if no campaign ID or name
-                if (empty($campaignId) || empty($campaignName)) {
-                    continue;
-                }
-                
-                // For KW: Don't filter by campaignName (getAmzUtilizedBgtKw doesn't filter by campaignName)
-                // For PT: Filter by campaignName !== '' (getAmzUnderUtilizedBgtPt filters by campaignName !== '')
-                if ($campaignType === 'PT' && $campaignName === '') {
-                    continue;
-                }
-
-                $budget = $matchedCampaignL7->campaignBudgetAmount ?? ($matchedCampaignL1->campaignBudgetAmount ?? 0);
-                $l7_spend = $matchedCampaignL7->spend ?? 0;
-                $l1_spend = $matchedCampaignL1->spend ?? 0;
-            }
-
-            // Get INV for this SKU (for KW and PT)
-            $shopify = ($campaignType === 'KW' || $campaignType === 'PT') ? ($shopifyData[$pm->sku] ?? null) : null;
-            $inv = ($campaignType === 'KW' || $campaignType === 'PT') ? ($shopify ? ($shopify->inv ?? 0) : 0) : 0;
-            
-            // Store campaign data in map (similar to controller) - only once per campaign_id
-            if (!isset($campaignMap[$campaignId])) {
                 $campaignMap[$campaignId] = [
                     'campaign_id' => $campaignId,
                     'campaignName' => $campaignName,
-                    'budget' => $budget,
-                    'l7_spend' => $l7_spend,
-                    'l1_spend' => $l1_spend,
-                    'inv' => $inv
+                    'budget' => $matchedCampaignL7->campaignBudgetAmount ?? ($matchedCampaignL1->campaignBudgetAmount ?? ($baseCampaign->campaignBudgetAmount ?? 0)),
+                    'l7_spend' => $matchedCampaignL7->cost ?? 0,
+                    'l1_spend' => $matchedCampaignL1->cost ?? 0,
+                    'inv' => 1, // Keep campaign eligible even when SKU mapping is unavailable.
                 ];
-            } else {
-                // Update spend values if we have better data
-                if ($l7_spend > 0) {
-                    $campaignMap[$campaignId]['l7_spend'] = $l7_spend;
-                }
-                if ($l1_spend > 0) {
-                    $campaignMap[$campaignId]['l1_spend'] = $l1_spend;
-                }
-                // Update INV if current SKU has INV > 0 (prefer INV > 0 over INV = 0)
-                if (($campaignType === 'KW' || $campaignType === 'PT') && floatval($inv) > 0) {
-                    $campaignMap[$campaignId]['inv'] = $inv;
-                }
             }
-            
-            // For PT campaigns, mark SKU as processed (unique filter)
-            if ($campaignType === 'PT') {
-                $processedSkus[] = $sku;
+        } else {
+            $baseCampaigns = AmazonSpCampaignReport::query()
+                ->where('ad_type', 'SPONSORED_PRODUCTS')
+                ->where('report_date_range', 'L30')
+                ->whereNotNull('campaign_id')
+                ->where('campaignStatus', '!=', 'ARCHIVED')
+                ->orderBy('campaignName')
+                ->get()
+                ->unique('campaign_id');
+
+            foreach ($baseCampaigns as $baseCampaign) {
+                $campaignId = trim((string) ($baseCampaign->campaign_id ?? ''));
+                $campaignName = trim((string) ($baseCampaign->campaignName ?? ''));
+                if ($campaignId === '' || $campaignName === '') {
+                    continue;
+                }
+
+                $detectedType = $this->detectCampaignType($campaignName, 'kw');
+                if (($campaignTypeUpper === 'PT' && $detectedType !== 'pt')
+                    || ($campaignTypeUpper === 'KW' && $detectedType !== 'kw')) {
+                    continue;
+                }
+
+                $matchedCampaignL7 = AmazonSpCampaignReport::query()
+                    ->where('campaign_id', $campaignId)
+                    ->where('report_date_range', 'L7')
+                    ->latest('id')
+                    ->first();
+                $matchedCampaignL1 = AmazonSpCampaignReport::query()
+                    ->where('campaign_id', $campaignId)
+                    ->where('report_date_range', 'L1')
+                    ->latest('id')
+                    ->first();
+
+                $this->info("Processing campaign: {$campaignName} (Type: ".strtoupper($detectedType).')');
+
+                $campaignMap[$campaignId] = [
+                    'campaign_id' => $campaignId,
+                    'campaignName' => $campaignName,
+                    'budget' => $matchedCampaignL7->campaignBudgetAmount ?? ($matchedCampaignL1->campaignBudgetAmount ?? ($baseCampaign->campaignBudgetAmount ?? 0)),
+                    'l7_spend' => $matchedCampaignL7->spend ?? 0,
+                    'l1_spend' => $matchedCampaignL1->spend ?? 0,
+                    'inv' => 1, // Keep campaign eligible even when SKU mapping is unavailable.
+                ];
             }
         }
 
@@ -276,11 +142,6 @@ class StoreAmazonUtilizationCounts extends Command
         };
 
         foreach ($campaignMap as $campaignId => $campaignData) {
-            // For KW and PT: Skip campaigns with INV = 0
-            if (($campaignType === 'KW' || $campaignType === 'PT') && floatval($campaignData['inv']) <= 0) {
-                continue;
-            }
-            
             $budget = $campaignData['budget'] ?? 0;
             $l7_spend = $campaignData['l7_spend'] ?? 0;
             $l1_spend = $campaignData['l1_spend'] ?? 0;
@@ -407,5 +268,25 @@ class StoreAmazonUtilizationCounts extends Command
             'campaign_type_key' => $typeKey,
             'distinct_campaigns' => count($campaignMap),
         ]);
+    }
+
+    private function detectCampaignType(string $campaignName, string $default = 'kw'): string
+    {
+        $name = strtoupper(trim(preg_replace('/\s+/', ' ', rtrim($campaignName, '.'))));
+        if ($name === '') {
+            return $default;
+        }
+
+        if (preg_match('/\bPT\b/', $name)) {
+            return 'pt';
+        }
+        if (preg_match('/\bKW\b/', $name)) {
+            return 'kw';
+        }
+        if (preg_match('/\b(HL|HEAD)\b/', $name)) {
+            return 'hl';
+        }
+
+        return $default;
     }
 }

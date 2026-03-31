@@ -8,8 +8,10 @@ use App\Models\ShopifySku;
 use App\Services\Support\Concerns\ShopifyAdminRateLimitRetry;
 use App\Services\Support\ShopifyBulletPointsFormatter;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 
 class ShopifyApiService
 {
@@ -512,6 +514,91 @@ class ShopifyApiService
             return ['success' => false, 'message' => 'Shopify image update failed: '.$updateRes->body()];
         } catch (\Throwable $e) {
             return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    /**
+     * Image Master compatibility method: push images then persist in shopify_catalog_products.
+     *
+     * @param  list<string>  $images
+     * @return array{success: bool, message: string}
+     */
+    public function updateImages(string $identifier, array $images): array
+    {
+        $images = array_slice(array_values(array_unique(array_filter(array_map('trim', $images), fn ($v) => $v !== ''))), 0, 20);
+        if ($images === []) {
+            return ['success' => false, 'message' => 'At least one image URL is required.'];
+        }
+
+        $res = $this->updateListingImages($identifier, $images);
+        if (! ($res['success'] ?? false)) {
+            return $res;
+        }
+
+        $saved = $this->saveImageUrlsToShopifyCatalog('main', $identifier, $images);
+        if (! $saved) {
+            $res['message'] = ($res['message'] ?? 'Shopify product images updated.').' Metrics save failed.';
+        }
+
+        return $res;
+    }
+
+    /**
+     * @param  list<string>  $images
+     */
+    private function saveImageUrlsToShopifyCatalog(string $store, string $identifier, array $images): bool
+    {
+        try {
+            if (! Schema::hasTable('shopify_catalog_products') || ! Schema::hasTable('shopify_catalog_variants')) {
+                return false;
+            }
+            if (! Schema::hasColumn('shopify_catalog_products', 'id')) {
+                return false;
+            }
+            $payload = json_encode(array_values($images), JSON_UNESCAPED_SLASHES);
+            if ($payload === false) {
+                return false;
+            }
+
+            $variant = DB::table('shopify_catalog_variants')
+                ->where('store', $store)
+                ->where(function ($q) use ($identifier) {
+                    $q->where('sku', $identifier)
+                        ->orWhere('sku', strtoupper($identifier))
+                        ->orWhere('sku', strtolower($identifier));
+                })
+                ->first();
+            if (! $variant) {
+                return false;
+            }
+
+            $update = [];
+            if (Schema::hasColumn('shopify_catalog_products', 'image_urls')) {
+                $update['image_urls'] = $payload;
+            }
+            if (Schema::hasColumn('shopify_catalog_products', 'image_master_json')) {
+                $update['image_master_json'] = $payload;
+            }
+            if (Schema::hasColumn('shopify_catalog_products', 'images')) {
+                $update['images'] = $payload;
+            }
+            if (Schema::hasColumn('shopify_catalog_products', 'image_src')) {
+                $update['image_src'] = (string) ($images[0] ?? '');
+            }
+            if ($update === []) {
+                return false;
+            }
+            if (Schema::hasColumn('shopify_catalog_products', 'updated_at')) {
+                $update['updated_at'] = now();
+            }
+
+            return DB::table('shopify_catalog_products')
+                ->where('id', $variant->shopify_catalog_product_id)
+                ->update($update) > 0;
+        } catch (\Throwable $e) {
+            Log::warning('Shopify saveImageUrlsToShopifyCatalog failed', ['identifier' => $identifier, 'error' => $e->getMessage()]);
+
+            return false;
         }
     }
 
