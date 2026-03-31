@@ -430,6 +430,94 @@ class ShopifyApiService
     }
 
     /**
+     * Replace product images (Admin REST) using public image URLs.
+     *
+     * @param  list<string>  $imageUrls
+     * @return array{success: bool, message: string}
+     */
+    public function updateListingImages(string $identifier, array $imageUrls): array
+    {
+        $urls = array_values(array_filter(array_map('trim', $imageUrls), fn ($s) => $s !== ''));
+        $urls = array_slice($urls, 0, 20);
+        if (trim($identifier) === '' || $urls === []) {
+            return ['success' => false, 'message' => 'SKU (or variant_id) and image URLs are required.'];
+        }
+
+        try {
+            $domain = config('services.shopify.store_url') ?: config('services.shopify.domain');
+            $token = config('services.shopify.access_token') ?: config('services.shopify.password');
+            if (! $domain || ! $token) {
+                return ['success' => false, 'message' => 'Shopify credentials not configured.'];
+            }
+
+            $domain = preg_replace('#^https?://#', '', $domain);
+            $domain = rtrim($domain, '/');
+
+            $trim = trim($identifier);
+            $shopifySku = ShopifySku::where('sku', $trim)
+                ->orWhere('sku', strtoupper($trim))
+                ->orWhere('sku', strtolower($trim))
+                ->first();
+            if (! $shopifySku) {
+                $shopifySku = ShopifySku::where('variant_id', $trim)->first();
+            }
+
+            if (! $shopifySku || ! $shopifySku->variant_id) {
+                return ['success' => false, 'message' => 'Shopify variant mapping not found for SKU or variant_id.'];
+            }
+
+            $variantUrl = "https://{$domain}/admin/api/2024-01/variants/{$shopifySku->variant_id}.json";
+            $variantRes = $this->retryOnRateLimit(function () use ($token, $variantUrl) {
+                return Http::withHeaders([
+                    'X-Shopify-Access-Token' => $token,
+                    'Content-Type' => 'application/json',
+                ])->timeout(30)->get($variantUrl);
+            });
+
+            if (! $variantRes->successful()) {
+                return ['success' => false, 'message' => 'Variant lookup failed: '.$variantRes->body()];
+            }
+
+            $productId = $variantRes->json('variant.product_id');
+            if (! $productId) {
+                return ['success' => false, 'message' => 'Product ID missing.'];
+            }
+
+            $title = $this->getProductTitle($domain, $token, $productId);
+            if ($title === '') {
+                return ['success' => false, 'message' => 'Could not load product title.'];
+            }
+
+            $images = [];
+            foreach ($urls as $i => $src) {
+                $images[] = ['src' => $src, 'position' => $i + 1];
+            }
+
+            $productUrl = "https://{$domain}/admin/api/2024-01/products/{$productId}.json";
+            $updateRes = $this->retryOnRateLimit(function () use ($token, $productUrl, $productId, $title, $images) {
+                return Http::withHeaders([
+                    'X-Shopify-Access-Token' => $token,
+                    'Content-Type' => 'application/json',
+                ])->timeout(90)->put($productUrl, [
+                    'product' => [
+                        'id' => $productId,
+                        'title' => $title,
+                        'images' => $images,
+                    ],
+                ]);
+            });
+
+            if ($updateRes->successful()) {
+                return ['success' => true, 'message' => 'Shopify product images updated.'];
+            }
+
+            return ['success' => false, 'message' => 'Shopify image update failed: '.$updateRes->body()];
+        } catch (\Throwable $e) {
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    /**
      * Cached product title to reduce sequential API calls per store.
      */
     private function getProductTitle(string $domain, string $token, int|string $productId): string

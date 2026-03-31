@@ -692,4 +692,76 @@ class ReverbApiService
     {
         return $this->updateDescription($identifier, $description);
     }
+
+    /**
+     * Replace listing photos (public HTTPS URLs). Reverb may require URLs it can fetch.
+     *
+     * @param  list<string>  $imageUrls
+     * @return array{success: bool, message: string, listing_id?: string}
+     */
+    public function updateListingImages(string $identifier, array $imageUrls): array
+    {
+        $token = config('services.reverb.token');
+        if (! $token) {
+            return ['success' => false, 'message' => 'Reverb API token not configured (services.reverb.token).'];
+        }
+
+        $urls = array_values(array_filter(array_map('trim', $imageUrls), fn ($s) => $s !== ''));
+        $urls = array_slice($urls, 0, 25);
+        if ($urls === []) {
+            return ['success' => false, 'message' => 'At least one image URL is required.'];
+        }
+
+        $trim = trim($identifier);
+        if ($trim === '') {
+            return ['success' => false, 'message' => 'SKU or listing_id is required.'];
+        }
+
+        $listingId = null;
+        $product = ReverbProduct::query()
+            ->where('sku', $trim)
+            ->orWhere('sku', strtoupper($trim))
+            ->orWhere('sku', strtolower($trim))
+            ->first();
+        if ($product && $product->reverb_listing_id) {
+            $listingId = trim((string) $product->reverb_listing_id);
+        }
+        if (! $listingId) {
+            $product = ReverbProduct::query()->where('reverb_listing_id', $trim)->first();
+            if ($product && $product->reverb_listing_id) {
+                $listingId = trim((string) $product->reverb_listing_id);
+            }
+        }
+        if (! $listingId) {
+            $listingId = $this->getListingIdBySku($trim);
+        }
+        if ($listingId === null) {
+            return ['success' => false, 'message' => 'No Reverb listing found for SKU or reverb_listing_id.'];
+        }
+
+        $payload = [
+            'photos' => $urls,
+            'photo_upload_method' => 'override_position',
+        ];
+
+        try {
+            $response = $this->reverbPutListingWithRetry($token, $listingId, $payload);
+
+            if ($response->successful()) {
+                return [
+                    'success' => true,
+                    'message' => 'Reverb listing images updated.',
+                    'listing_id' => $listingId,
+                ];
+            }
+
+            return [
+                'success' => false,
+                'message' => 'Reverb API error (HTTP '.$response->status().'): '.$response->body(),
+                'listing_id' => $listingId,
+            ];
+        } catch (\Throwable $e) {
+            return ['success' => false, 'message' => $e->getMessage(), 'listing_id' => $listingId];
+        }
+    }
 }

@@ -379,4 +379,38 @@ class MacysApiService
     {
         return $this->updateDescription($identifier, $description);
     }
+
+    /**
+     * Mirakl Connect product images (attribute names vary by channel; we send common keys).
+     *
+     * @param  list<string>  $imageUrls
+     * @return array{success: bool, message: string}
+     */
+    public function updateListingImages(string $identifier, array $imageUrls): array
+    {
+        $urls = array_values(array_filter(array_map('trim', $imageUrls), fn ($s) => $s !== ''));
+        $urls = array_slice($urls, 0, 12);
+        if (trim($identifier) === '' || $urls === []) {
+            return ['success' => false, 'message' => 'SKU (or marketplace product id) and image URLs are required.'];
+        }
+
+        try {
+            $sku = $this->resolveMacyMiraklSku($identifier);
+            if ($sku === '') {
+                return ['success' => false, 'message' => 'SKU (or marketplace product id) not found in macy_metrics.'];
+            }
+
+            $attributes = [
+                'imageUrls' => $urls,
+                'productImageUrls' => $urls,
+                'mainImageUrl' => $urls[0],
+            ];
+
+            return $this->pushMacyMiraklProductAttributes($sku, $attributes, 'Macy product images updated.', 'Macy image update failed');
+        } catch (\Throwable $e) {
+            Log::error('Macy image update failed', ['identifier' => $identifier, 'error' => $e->getMessage()]);
+
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
 }

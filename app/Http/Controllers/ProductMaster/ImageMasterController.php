@@ -9,12 +9,17 @@ use App\Services\AmazonSpApiService;
 use App\Services\Ebay2ApiService;
 use App\Services\EbayApiService;
 use App\Services\EbayThreeApiService;
+use App\Services\MacysApiService;
+use App\Services\ReverbApiService;
+use App\Services\ShopifyApiService;
+use App\Services\ShopifyPLSApiService;
+use App\Services\Support\EbaySellInventoryListingResolver;
 use App\Services\Support\EbayTradingReviseItem;
+use App\Services\TemuApiService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
-use Illuminate\Support\Facades\Storage;
 
 class ImageMasterController extends Controller
 {
@@ -125,18 +130,36 @@ class ImageMasterController extends Controller
             return response()->json(['success' => false, 'images' => [], 'message' => 'Metrics table missing.'], 422);
         }
 
-        $row = DB::table($table)->where('sku', $sku)->first();
-        if (! $row || empty($row->item_id)) {
-            return response()->json([
-                'success' => false,
-                'images' => [],
-                'message' => 'No eBay listing (item_id) for this SKU in metrics.',
-            ], 422);
+        $row = DB::table($table)->where(function ($q) use ($sku) {
+            $q->where('sku', $sku)
+                ->orWhere('sku', strtoupper($sku))
+                ->orWhere('sku', strtolower($sku));
+        })->first();
+        if (! $row && Schema::hasColumn($table, 'item_id')) {
+            $row = DB::table($table)->where('item_id', $sku)->first();
         }
+        $itemId = ($row && ! empty($row->item_id)) ? trim((string) $row->item_id) : null;
 
         try {
             $svc = app($serviceMap[$account]);
-            $getItem = $svc->getItem((string) $row->item_id);
+            if (! $itemId) {
+                $token = $svc->generateBearerToken();
+                $itemId = EbaySellInventoryListingResolver::resolveWithTradingFallback(
+                    $token,
+                    $svc->getTradingEndpoint(),
+                    $svc->getTradingHeadersForResolver(),
+                    $sku
+                );
+            }
+            if (! $itemId) {
+                return response()->json([
+                    'success' => false,
+                    'images' => [],
+                    'message' => 'No eBay listing found for this SKU (metrics item_id empty and Inventory/GetSellerList lookup failed).',
+                ], 422);
+            }
+
+            $getItem = $svc->getItem((string) $itemId);
             if (! $getItem) {
                 return response()->json(['success' => false, 'images' => [], 'message' => 'GetItem failed.'], 502);
             }
@@ -145,7 +168,7 @@ class ImageMasterController extends Controller
             return response()->json([
                 'success' => true,
                 'images' => $urls,
-                'item_id' => (string) $row->item_id,
+                'item_id' => (string) $itemId,
             ]);
         } catch (\Throwable $e) {
             return response()->json(['success' => false, 'images' => [], 'message' => $e->getMessage()], 500);
@@ -187,28 +210,29 @@ class ImageMasterController extends Controller
 
             $remote = $this->pushImagesToRemote($mp, $sku, $images);
             $remoteOk = (bool) ($remote['success'] ?? false);
-            $isEbay = in_array($mp, ['ebay', 'ebay2', 'ebay3'], true);
-            if ($isEbay) {
-                $saved = $remoteOk && $this->saveImageMetricsToTable($mp, $sku, $images);
-            } else {
-                $saved = $this->saveImageMetricsToTable($mp, $sku, $images);
+            $saved = $remoteOk && $this->saveImageMetricsToTable($mp, $sku, $images);
+            if ($remoteOk && in_array($mp, ['shopify_main', 'shopify_pls'], true)) {
+                $saved = $this->saveShopifyCatalogImages($sku, $mp, $images) || $saved;
             }
-            $ok = $remoteOk && $saved;
             $results[$mp] = [
-                'success' => $ok,
+                // API success should not flip to false only because local metrics persistence failed.
+                'success' => $remoteOk,
+                'metrics_saved' => $saved,
                 'message' => ($remote['message'] ?? '').($saved ? '' : ' Metrics not saved.'),
             ];
         }
 
         $totalSuccess = collect($results)->where('success', true)->count();
         $totalFailed = collect($results)->where('success', false)->count();
+        $totalMetricsFailed = collect($results)->where('metrics_saved', false)->count();
 
         return response()->json([
             'success' => $totalFailed === 0,
             'results' => $results,
             'total_success' => $totalSuccess,
             'total_failed' => $totalFailed,
-            'message' => "Updated {$totalSuccess} marketplace(s).".($totalFailed > 0 ? " {$totalFailed} failed." : ''),
+            'total_metrics_failed' => $totalMetricsFailed,
+            'message' => "Updated {$totalSuccess} marketplace(s).".($totalFailed > 0 ? " {$totalFailed} failed." : '').($totalMetricsFailed > 0 ? " {$totalMetricsFailed} metrics save failed." : ''),
         ]);
     }
 
@@ -282,10 +306,22 @@ class ImageMasterController extends Controller
                     return app(Ebay2ApiService::class)->updateListingImages($sku, $imageUrls);
                 case 'ebay3':
                     return app(EbayThreeApiService::class)->updateListingImages($sku, $imageUrls);
+                case 'amazon':
+                    return app(AmazonSpApiService::class)->updateListingImages($sku, $imageUrls);
+                case 'temu':
+                    return app(TemuApiService::class)->updateListingImages($sku, $imageUrls);
+                case 'shopify_main':
+                    return app(ShopifyApiService::class)->updateListingImages($sku, $imageUrls);
+                case 'shopify_pls':
+                    return app(ShopifyPLSApiService::class)->updateListingImages($sku, $imageUrls);
+                case 'macy':
+                    return app(MacysApiService::class)->updateListingImages($sku, $imageUrls);
+                case 'reverb':
+                    return app(ReverbApiService::class)->updateListingImages($sku, $imageUrls);
                 default:
                     return [
-                        'success' => true,
-                        'message' => 'Stored for '.$marketplace.'; live image API push not implemented yet — URLs saved in metrics.',
+                        'success' => false,
+                        'message' => 'Image push is not implemented for '.$marketplace.' yet.',
                     ];
             }
         } catch (\Throwable $e) {
@@ -298,7 +334,7 @@ class ImageMasterController extends Controller
     private function saveImageMetricsToTable(string $marketplace, string $sku, array $imageUrls): bool
     {
         $table = $this->marketplaceTableMap()[$marketplace] ?? null;
-        if (! $table || ! Schema::hasTable($table) || ! Schema::hasColumn($table, 'image_master_json')) {
+        if (! $table || ! Schema::hasTable($table)) {
             return false;
         }
         if (! Schema::hasColumn($table, 'sku')) {
@@ -311,15 +347,29 @@ class ImageMasterController extends Controller
         }
 
         try {
-            $update = ['image_master_json' => $payload, 'updated_at' => now()];
-            $exists = DB::table($table)->where('sku', $sku)->exists();
-            if ($exists) {
-                DB::table($table)->where('sku', $sku)->update($update);
-            } else {
-                DB::table($table)->insert(array_merge([
-                    'sku' => $sku,
-                    'created_at' => now(),
-                ], $update));
+            $now = now();
+            $updatable = [];
+            if (Schema::hasColumn($table, 'image_master_json')) {
+                $updatable['image_master_json'] = $payload;
+            }
+            if (Schema::hasColumn($table, 'image_urls')) {
+                $updatable['image_urls'] = $payload;
+            }
+            if ($updatable === []) {
+                return false;
+            }
+            if (Schema::hasColumn($table, 'updated_at')) {
+                $updatable['updated_at'] = $now;
+            }
+
+            DB::table($table)->updateOrInsert(
+                ['sku' => $sku],
+                $updatable
+            );
+
+            // Ensure created_at on first insert when column exists and was null
+            if (Schema::hasColumn($table, 'created_at')) {
+                DB::table($table)->where('sku', $sku)->whereNull('created_at')->update(['created_at' => $now]);
             }
 
             return true;
@@ -345,12 +395,6 @@ class ImageMasterController extends Controller
             'reverb' => 'reverb_metrics',
             'shopify_main' => 'shopify_metrics',
             'shopify_pls' => 'shopify_pls_metrics',
-            'walmart' => 'walmart_metrics',
-            'wayfair' => 'wayfair_metrics',
-            'shein' => 'shein_metrics',
-            'doba' => 'doba_metrics',
-            'aliexpress' => 'aliexpress_metrics',
-            'bestbuy' => 'bestbuy_metrics',
         ];
     }
 
@@ -363,16 +407,19 @@ class ImageMasterController extends Controller
             if (! Schema::hasTable($table) || ! Schema::hasColumn($table, 'sku')) {
                 return [];
             }
-            if (! Schema::hasColumn($table, 'image_master_json')) {
+            $hasMasterJson = Schema::hasColumn($table, 'image_master_json');
+            $hasImageUrls = Schema::hasColumn($table, 'image_urls');
+            if (! $hasMasterJson && ! $hasImageUrls) {
                 return [];
             }
+            $valueColumn = $hasMasterJson ? 'image_master_json' : 'image_urls';
 
             return DB::table($table)
-                ->select('sku', 'image_master_json')
+                ->select('sku', $valueColumn)
                 ->whereNotNull('sku')
                 ->get()
-                ->mapWithKeys(function ($row) {
-                    $raw = (string) ($row->image_master_json ?? '');
+                ->mapWithKeys(function ($row) use ($valueColumn) {
+                    $raw = (string) ($row->{$valueColumn} ?? '');
                     $trim = trim($raw);
 
                     return [$this->normalizeSku($row->sku) => $trim];
@@ -414,5 +461,58 @@ class ImageMasterController extends Controller
         }
 
         return null;
+    }
+
+    /**
+     * Save image URLs to shopify_catalog_products when available.
+     */
+    private function saveShopifyCatalogImages(string $sku, string $marketplace, array $imageUrls): bool
+    {
+        try {
+            if (! Schema::hasTable('shopify_catalog_products') || ! Schema::hasTable('shopify_catalog_variants')) {
+                return false;
+            }
+            if (! Schema::hasColumn('shopify_catalog_products', 'images') || ! Schema::hasColumn('shopify_catalog_products', 'image_src')) {
+                return false;
+            }
+
+            $store = $marketplace === 'shopify_pls' ? 'pls' : 'main';
+            $payload = json_encode(array_values($imageUrls), JSON_UNESCAPED_SLASHES);
+            if ($payload === false) {
+                return false;
+            }
+            $first = (string) ($imageUrls[0] ?? '');
+            if ($first === '') {
+                return false;
+            }
+
+            $productId = DB::table('shopify_catalog_variants')
+                ->where('store', $store)
+                ->where(function ($q) use ($sku) {
+                    $q->where('sku', $sku)
+                        ->orWhere('sku', strtoupper($sku))
+                        ->orWhere('sku', strtolower($sku));
+                })
+                ->value('shopify_catalog_product_id');
+            if (! $productId) {
+                return false;
+            }
+
+            $update = [
+                'image_src' => $first,
+                'images' => $payload,
+            ];
+            if (Schema::hasColumn('shopify_catalog_products', 'updated_at')) {
+                $update['updated_at'] = now();
+            }
+
+            return DB::table('shopify_catalog_products')
+                ->where('id', $productId)
+                ->update($update) > 0;
+        } catch (\Throwable $e) {
+            Log::warning('ImageMaster: failed saving shopify_catalog_products images', ['sku' => $sku, 'marketplace' => $marketplace, 'error' => $e->getMessage()]);
+
+            return false;
+        }
     }
 }

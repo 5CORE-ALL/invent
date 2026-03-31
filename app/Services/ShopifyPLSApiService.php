@@ -587,6 +587,122 @@ class ShopifyPLSApiService
     }
 
     /**
+     * @param  list<string>  $imageUrls
+     * @return array{success: bool, message: string}
+     */
+    public function updateListingImages(string $identifier, array $imageUrls): array
+    {
+        $urls = array_values(array_filter(array_map('trim', $imageUrls), fn ($s) => $s !== ''));
+        $urls = array_slice($urls, 0, 20);
+        if (trim($identifier) === '' || $urls === []) {
+            return ['success' => false, 'message' => 'SKU (or variant_id) and image URLs are required.'];
+        }
+
+        try {
+            $domain = config('services.prolightsounds.domain') ?? config('services.prolightsounds.store_url');
+            $token = config('services.prolightsounds.password');
+            if (! $domain || ! $token) {
+                return ['success' => false, 'message' => 'Shopify PLS credentials not configured.'];
+            }
+
+            $domain = preg_replace('#^https?://#', '', $domain);
+            $domain = rtrim($domain, '/');
+
+            $trim = trim($identifier);
+            $productId = null;
+            $hadHttp = false;
+            $shopifySku = ShopifySku::where('sku', $trim)
+                ->orWhere('sku', strtoupper($trim))
+                ->orWhere('sku', strtolower($trim))
+                ->first();
+
+            if (! $shopifySku) {
+                $shopifySku = ShopifySku::where('variant_id', $trim)->first();
+            }
+
+            if ($shopifySku && $shopifySku->variant_id) {
+                $variantUrl = "https://{$domain}/admin/api/2024-01/variants/{$shopifySku->variant_id}.json";
+                $variantResponse = $this->retryOnRateLimit(function () use ($token, $variantUrl) {
+                    return Http::withHeaders([
+                        'X-Shopify-Access-Token' => $token,
+                        'Content-Type' => 'application/json',
+                    ])->timeout(30)->get($variantUrl);
+                });
+                $hadHttp = true;
+
+                if ($variantResponse->successful()) {
+                    $productId = $variantResponse->json('variant.product_id');
+                }
+            }
+
+            if (! $productId && ctype_digit($trim)) {
+                if ($hadHttp) {
+                    usleep(500000);
+                }
+                $probeUrl = "https://{$domain}/admin/api/2024-01/products/{$trim}.json";
+                $productProbe = $this->retryOnRateLimit(function () use ($token, $probeUrl) {
+                    return Http::withHeaders([
+                        'X-Shopify-Access-Token' => $token,
+                        'Content-Type' => 'application/json',
+                    ])->timeout(30)->get($probeUrl);
+                });
+                $hadHttp = true;
+                if ($productProbe->successful() && $productProbe->json('product.id')) {
+                    $productId = (int) $productProbe->json('product.id');
+                }
+            }
+
+            if (! $productId) {
+                if ($hadHttp) {
+                    usleep(500000);
+                }
+                $found = $this->findProductBySkuViaGraphQL($domain, $token, $trim);
+                if ($found) {
+                    $productId = $found['product_id'];
+                }
+            }
+
+            if (! $productId) {
+                return ['success' => false, 'message' => 'PLS product not found for SKU, variant_id, or product_id.'];
+            }
+
+            usleep(500000);
+
+            $title = $this->getProductTitle($domain, $token, $productId);
+            if ($title === '') {
+                return ['success' => false, 'message' => 'Could not load product title (Shopify PLS).'];
+            }
+
+            $images = [];
+            foreach ($urls as $i => $src) {
+                $images[] = ['src' => $src, 'position' => $i + 1];
+            }
+
+            $productUrl = "https://{$domain}/admin/api/2024-01/products/{$productId}.json";
+            $response = $this->retryOnRateLimit(function () use ($token, $productUrl, $productId, $title, $images) {
+                return Http::withHeaders([
+                    'X-Shopify-Access-Token' => $token,
+                    'Content-Type' => 'application/json',
+                ])->timeout(90)->put($productUrl, [
+                    'product' => [
+                        'id' => $productId,
+                        'title' => $title,
+                        'images' => $images,
+                    ],
+                ]);
+            });
+
+            if ($response->successful()) {
+                return ['success' => true, 'message' => 'Shopify PLS product images updated.'];
+            }
+
+            return ['success' => false, 'message' => 'PLS image update failed: '.$response->body()];
+        } catch (\Throwable $e) {
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    /**
      * Cached product title for PLS store to reduce sequential API calls.
      */
     private function getProductTitle(string $domain, string $token, int|string $productId): string

@@ -2285,6 +2285,15 @@ class AmazonSpApiService
         }
 
         $imageAttrKeys = [
+            'main_product_image_locator',
+            'other_product_image_locator_1',
+            'other_product_image_locator_2',
+            'other_product_image_locator_3',
+            'other_product_image_locator_4',
+            'other_product_image_locator_5',
+            'other_product_image_locator_6',
+            'other_product_image_locator_7',
+            'other_product_image_locator_8',
             'main_product_image',
             'other_product_image',
             'product_image',
@@ -2293,6 +2302,7 @@ class AmazonSpApiService
             'other_product_images',
             'main_image',
             'variant_images',
+            'fulfillment_images',
         ];
 
         $urls = [];
@@ -3000,6 +3010,335 @@ class AmazonSpApiService
         }
 
         return $id;
+    }
+
+    /**
+     * GET current listing attributes (for image patch path discovery).
+     *
+     * @return array<string, mixed>
+     */
+    private function getListingItemAttributes(string $sellerSku, string $accessToken): array
+    {
+        $sellerId = config('services.amazon_sp.seller_id');
+        $marketplaceId = (string) config('services.amazon_sp.marketplace_id', 'ATVPDKIKX0DER');
+        if (empty($sellerId)) {
+            return [];
+        }
+
+        $encoded = rawurlencode($sellerSku);
+        $url = $this->endpoint.'/listings/2021-08-01/items/'.$sellerId.'/'.$encoded
+            .'?marketplaceIds='.$marketplaceId.'&includedData=attributes';
+
+        try {
+            $response = Http::withoutVerifying()->withHeaders([
+                'x-amz-access-token' => $accessToken,
+                'Content-Type' => 'application/json',
+                'Accept' => 'application/json',
+            ])->timeout(45)->get($url);
+
+            if (! $response->successful()) {
+                return [];
+            }
+
+            $body = $response->json();
+
+            return isset($body['attributes']) && is_array($body['attributes']) ? $body['attributes'] : [];
+        } catch (\Throwable $e) {
+            Log::warning('Amazon getListingItemAttributes failed', ['sku' => $sellerSku, 'error' => $e->getMessage()]);
+
+            return [];
+        }
+    }
+
+    /**
+     * Case-insensitive check for an attribute key on the listing.
+     */
+    private function listingHasAttributeKey(array $attributes, string $key): bool
+    {
+        $k = strtolower($key);
+        foreach (array_keys($attributes) as $name) {
+            if (strtolower((string) $name) === $k) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Build ordered patch strategies for image updates. Paths must match Product Type Definitions
+     * (see Listings Items API + Product Type Definitions API). Common US: main_product_image_locator + other_product_image_locator_1..8.
+     *
+     * @param  list<string>  $urls
+     * @return list<array{label: string, patches: list<array<string, mixed>>}>
+     */
+    private function buildAmazonListingImagePatchStrategies(array $urls, string $marketplaceId, array $attributes): array
+    {
+        $urls = array_values(array_slice($urls, 0, 9));
+        $strategies = [];
+
+        $locatorValueSnake = function (string $url) use ($marketplaceId): array {
+            return [
+                [
+                    'marketplace_id' => $marketplaceId,
+                    'media_location' => $url,
+                ],
+            ];
+        };
+
+        $locatorValueCamel = function (string $url) use ($marketplaceId): array {
+            return [
+                [
+                    'marketplaceId' => $marketplaceId,
+                    'mediaLocation' => $url,
+                ],
+            ];
+        };
+
+        // 1) Standard locator model (fixes "invalid path" when main_product_image is not in schema)
+        $patchesLocatorSnake = [
+            [
+                'op' => 'replace',
+                'path' => '/attributes/main_product_image_locator',
+                'value' => $locatorValueSnake($urls[0]),
+            ],
+        ];
+        foreach (array_slice($urls, 1) as $i => $url) {
+            $n = $i + 1;
+            if ($n > 8) {
+                break;
+            }
+            $patchesLocatorSnake[] = [
+                'op' => 'replace',
+                'path' => '/attributes/other_product_image_locator_'.$n,
+                'value' => $locatorValueSnake($url),
+            ];
+        }
+        $strategies[] = ['label' => 'main_product_image_locator + other_product_image_locator_1..N (marketplace_id + media_location)', 'patches' => $patchesLocatorSnake];
+
+        // 2) Same paths, camelCase keys (some schemas / SDK examples)
+        $patchesLocatorCamel = [
+            [
+                'op' => 'replace',
+                'path' => '/attributes/main_product_image_locator',
+                'value' => $locatorValueCamel($urls[0]),
+            ],
+        ];
+        foreach (array_slice($urls, 1) as $i => $url) {
+            $n = $i + 1;
+            if ($n > 8) {
+                break;
+            }
+            $patchesLocatorCamel[] = [
+                'op' => 'replace',
+                'path' => '/attributes/other_product_image_locator_'.$n,
+                'value' => $locatorValueCamel($url),
+            ];
+        }
+        $strategies[] = ['label' => 'main_product_image_locator + other_product_image_locator_1..N (marketplaceId + mediaLocation)', 'patches' => $patchesLocatorCamel];
+
+        // 3) Legacy / alternate: main_product_image + other_product_image (array of locator rows)
+        $rowSnake = function (string $url) use ($marketplaceId): array {
+            return [
+                'marketplace_id' => $marketplaceId,
+                'media_location' => $url,
+            ];
+        };
+        $mainOther = [
+            [
+                'op' => 'replace',
+                'path' => '/attributes/main_product_image',
+                'value' => [$rowSnake($urls[0])],
+            ],
+        ];
+        $rest = array_slice($urls, 1);
+        if ($rest !== []) {
+            $mainOther[] = [
+                'op' => 'replace',
+                'path' => '/attributes/other_product_image',
+                'value' => array_map($rowSnake, $rest),
+            ];
+        }
+        $strategies[] = ['label' => 'main_product_image + other_product_image', 'patches' => $mainOther];
+
+        // 4) Some product types expose /attributes/images (nested main.link + order)
+        $imagesNested = [];
+        foreach ($urls as $i => $url) {
+            $imagesNested[] = [
+                'main' => [
+                    'link' => $url,
+                    'order' => $i + 1,
+                ],
+            ];
+        }
+        $strategies[] = ['label' => '/attributes/images (main.link + order)', 'patches' => [
+            [
+                'op' => 'replace',
+                'path' => '/attributes/images',
+                'value' => $imagesNested,
+            ],
+        ]];
+
+        // 5) fulfillment_images (reported in some seller docs)
+        $strategies[] = ['label' => '/attributes/fulfillment_images (marketplace_id + media_location)', 'patches' => [
+            [
+                'op' => 'replace',
+                'path' => '/attributes/fulfillment_images',
+                'value' => array_map($rowSnake, $urls),
+            ],
+        ]];
+
+        // If we know which keys exist on the listing, try those first
+        $preferred = [];
+        $restStrategies = [];
+        if ($this->listingHasAttributeKey($attributes, 'main_product_image_locator')) {
+            $preferred[] = $strategies[0];
+            $preferred[] = $strategies[1];
+        }
+        if ($this->listingHasAttributeKey($attributes, 'main_product_image') && ! $this->listingHasAttributeKey($attributes, 'main_product_image_locator')) {
+            $preferred[] = $strategies[2];
+        }
+        if ($this->listingHasAttributeKey($attributes, 'images')) {
+            $preferred[] = $strategies[3];
+        }
+        if ($this->listingHasAttributeKey($attributes, 'fulfillment_images')) {
+            $preferred[] = $strategies[4];
+        }
+
+        $seen = [];
+        $ordered = [];
+        foreach (array_merge($preferred, $strategies) as $s) {
+            $h = md5(json_encode($s['patches']));
+            if (isset($seen[$h])) {
+                continue;
+            }
+            $seen[$h] = true;
+            $ordered[] = $s;
+        }
+
+        return $ordered;
+    }
+
+    /**
+     * PATCH listing image attributes (main + other product images) via Listings Items API.
+     *
+     * @param  list<string>  $imageUrls  Public HTTPS URLs (JPEG/PNG per Amazon rules).
+     * @return array{success: bool, message: string}
+     */
+    public function updateListingImages(string $identifier, array $imageUrls): array
+    {
+        $sku = $this->resolveAmazonSellerSkuForBullets($identifier);
+        $urls = array_values(array_filter(array_map('trim', $imageUrls), fn ($s) => $s !== ''));
+        $urls = array_slice($urls, 0, 9);
+        if ($sku === '' || $urls === []) {
+            return ['success' => false, 'message' => 'SKU (or ASIN from amazon_metrics) and at least one image URL are required.'];
+        }
+
+        foreach ($urls as $u) {
+            if (! preg_match('#^https://#i', $u)) {
+                return ['success' => false, 'message' => 'Amazon requires publicly reachable HTTPS image URLs.'];
+            }
+        }
+
+        $sellerId = config('services.amazon_sp.seller_id');
+        $marketplaceId = (string) config('services.amazon_sp.marketplace_id', 'ATVPDKIKX0DER');
+        if (empty($sellerId)) {
+            return ['success' => false, 'message' => 'Amazon Seller ID is not configured.'];
+        }
+
+        $amazonSku = null;
+        $productType = null;
+        $lastError = null;
+        $triedLabels = [];
+
+        for ($attempt = 1; $attempt <= 2; $attempt++) {
+            try {
+                $accessToken = $this->getAccessToken($attempt > 1);
+                if (empty($accessToken)) {
+                    return ['success' => false, 'message' => 'Failed to get Amazon access token.'];
+                }
+
+                if ($amazonSku === null) {
+                    $amazonSku = $this->findAmazonSkuFormat($sku, $accessToken);
+                    if (empty($amazonSku)) {
+                        return ['success' => false, 'message' => 'SKU not found in Amazon.'];
+                    }
+                }
+
+                if ($productType === null) {
+                    $productType = $this->getAmazonProductType($sku, $amazonSku, $accessToken);
+                    if (empty($productType)) {
+                        return ['success' => false, 'message' => 'Product type not found for SKU.'];
+                    }
+                }
+
+                $attributes = $this->getListingItemAttributes($amazonSku, $accessToken);
+                $strategies = $this->buildAmazonListingImagePatchStrategies($urls, $marketplaceId, $attributes);
+
+                $encodedSku = rawurlencode($amazonSku);
+                $endpoint = $this->endpoint.'/listings/2021-08-01/items/'.$sellerId.'/'.$encodedSku.'?marketplaceIds='.$marketplaceId;
+
+                $response = null;
+                foreach ($strategies as $strategy) {
+                    $triedLabels[] = $strategy['label'];
+                    $body = [
+                        'productType' => $productType,
+                        'patches' => $strategy['patches'],
+                    ];
+
+                    $response = Http::withHeaders([
+                        'x-amz-access-token' => $accessToken,
+                        'Content-Type' => 'application/json',
+                        'Accept' => 'application/json',
+                    ])->timeout(60)->patch($endpoint, $body);
+
+                    $responseData = $response->json() ?? [];
+
+                    if ($response->successful() && empty($responseData['errors'])) {
+                        Log::info('Amazon listing images updated', [
+                            'sku' => $sku,
+                            'amazon_sku' => $amazonSku,
+                            'count' => count($urls),
+                            'strategy' => $strategy['label'],
+                            'attribute_keys_sample' => array_slice(array_keys($attributes), 0, 25),
+                        ]);
+
+                        return ['success' => true, 'message' => 'Amazon listing images updated ('.$strategy['label'].').'];
+                    }
+
+                    $lastError = $responseData['errors'][0]['message'] ?? $response->body();
+                    if (is_array($lastError)) {
+                        $lastError = json_encode($lastError);
+                    }
+                    $lastError = (string) $lastError;
+
+                    Log::warning('Amazon image patch strategy failed', [
+                        'sku' => $sku,
+                        'strategy' => $strategy['label'],
+                        'status' => $response->status(),
+                        'message' => substr($lastError, 0, 500),
+                    ]);
+                }
+
+                if (isset($response) && in_array($response->status(), [401, 403, 500, 502, 503], true) && $attempt < 2) {
+                    sleep(1);
+                    continue;
+                }
+
+                $summary = 'None of the image patch strategies succeeded. Tried: '.implode('; ', array_unique($triedLabels)).'. ';
+                $summary .= 'Last error: '.$lastError.'. ';
+                $summary .= 'Use Product Type Definitions API for product type "'.$productType.'" to confirm image attribute names for your marketplace.';
+
+                return ['success' => false, 'message' => $summary];
+            } catch (\Throwable $e) {
+                $lastError = $e->getMessage();
+                if ($attempt >= 2) {
+                    return ['success' => false, 'message' => $lastError];
+                }
+            }
+        }
+
+        return ['success' => false, 'message' => (string) $lastError];
     }
 
     /**
