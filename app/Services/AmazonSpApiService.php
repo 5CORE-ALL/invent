@@ -3003,6 +3003,132 @@ class AmazonSpApiService
     }
 
     /**
+     * PATCH listing image attributes (main + other product images) via Listings Items API.
+     *
+     * @param  list<string>  $imageUrls  Public HTTPS URLs (JPEG/PNG per Amazon rules).
+     * @return array{success: bool, message: string}
+     */
+    public function updateListingImages(string $identifier, array $imageUrls): array
+    {
+        $sku = $this->resolveAmazonSellerSkuForBullets($identifier);
+        $urls = array_values(array_filter(array_map('trim', $imageUrls), fn ($s) => $s !== ''));
+        $urls = array_slice($urls, 0, 9);
+        if ($sku === '' || $urls === []) {
+            return ['success' => false, 'message' => 'SKU (or ASIN from amazon_metrics) and at least one image URL are required.'];
+        }
+
+        foreach ($urls as $u) {
+            if (! preg_match('#^https://#i', $u)) {
+                return ['success' => false, 'message' => 'Amazon requires publicly reachable HTTPS image URLs.'];
+            }
+        }
+
+        $sellerId = config('services.amazon_sp.seller_id');
+        $marketplaceId = (string) config('services.amazon_sp.marketplace_id', 'ATVPDKIKX0DER');
+        if (empty($sellerId)) {
+            return ['success' => false, 'message' => 'Amazon Seller ID is not configured.'];
+        }
+
+        $imgValue = function (string $url) use ($marketplaceId): array {
+            return [
+                'marketplace_id' => $marketplaceId,
+                'media_location' => $url,
+            ];
+        };
+
+        $amazonSku = null;
+        $productType = null;
+        $lastError = null;
+
+        for ($attempt = 1; $attempt <= 2; $attempt++) {
+            try {
+                $accessToken = $this->getAccessToken($attempt > 1);
+                if (empty($accessToken)) {
+                    return ['success' => false, 'message' => 'Failed to get Amazon access token.'];
+                }
+
+                if ($amazonSku === null) {
+                    $amazonSku = $this->findAmazonSkuFormat($sku, $accessToken);
+                    if (empty($amazonSku)) {
+                        return ['success' => false, 'message' => 'SKU not found in Amazon.'];
+                    }
+                }
+
+                if ($productType === null) {
+                    $productType = $this->getAmazonProductType($sku, $amazonSku, $accessToken);
+                    if (empty($productType)) {
+                        return ['success' => false, 'message' => 'Product type not found for SKU.'];
+                    }
+                }
+
+                $encodedSku = rawurlencode($amazonSku);
+                $endpoint = "https://sellingpartnerapi-na.amazon.com/listings/2021-08-01/items/{$sellerId}/{$encodedSku}?marketplaceIds={$marketplaceId}";
+
+                $patches = [
+                    [
+                        'op' => 'replace',
+                        'path' => '/attributes/main_product_image',
+                        'value' => [$imgValue($urls[0])],
+                    ],
+                ];
+                $rest = array_slice($urls, 1);
+                if ($rest !== []) {
+                    $others = [];
+                    foreach ($rest as $u) {
+                        $others[] = $imgValue($u);
+                    }
+                    $patches[] = [
+                        'op' => 'replace',
+                        'path' => '/attributes/other_product_image',
+                        'value' => $others,
+                    ];
+                }
+
+                $body = [
+                    'productType' => $productType,
+                    'patches' => $patches,
+                ];
+
+                $response = Http::withHeaders([
+                    'x-amz-access-token' => $accessToken,
+                    'Content-Type' => 'application/json',
+                    'Accept' => 'application/json',
+                ])->timeout(60)->patch($endpoint, $body);
+
+                $responseData = $response->json();
+
+                if ($response->failed()) {
+                    $lastError = $responseData['errors'][0]['message'] ?? $response->body();
+                    if (is_array($lastError)) {
+                        $lastError = json_encode($lastError);
+                    }
+                    if (in_array($response->status(), [401, 403, 500, 502, 503], true) && $attempt < 2) {
+                        sleep(1);
+                        continue;
+                    }
+
+                    return ['success' => false, 'message' => is_string($lastError) ? $lastError : json_encode($responseData)];
+                }
+
+                if (isset($responseData['errors']) && ! empty($responseData['errors'])) {
+                    return ['success' => false, 'message' => json_encode($responseData['errors'])];
+                }
+
+                Log::info('Amazon listing images updated', ['sku' => $sku, 'amazon_sku' => $amazonSku, 'count' => count($urls)]);
+
+                return ['success' => true, 'message' => 'Amazon listing images updated.'];
+            } catch (\Throwable $e) {
+                $lastError = $e->getMessage();
+                if ($attempt >= 2) {
+                    return ['success' => false, 'message' => $lastError];
+                }
+            }
+        }
+
+        return ['success' => false, 'message' => (string) $lastError];
+    }
+
+    /**
      * PATCH listing bullet_point attributes (SP-API Listings Items). Full text per line; no truncation.
      *
      * @return array{success: bool, message: string}

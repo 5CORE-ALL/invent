@@ -9,12 +9,17 @@ use App\Services\AmazonSpApiService;
 use App\Services\Ebay2ApiService;
 use App\Services\EbayApiService;
 use App\Services\EbayThreeApiService;
+use App\Services\MacysApiService;
+use App\Services\ReverbApiService;
+use App\Services\ShopifyApiService;
+use App\Services\ShopifyPLSApiService;
+use App\Services\Support\EbaySellInventoryListingResolver;
 use App\Services\Support\EbayTradingReviseItem;
+use App\Services\TemuApiService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
-use Illuminate\Support\Facades\Storage;
 
 class ImageMasterController extends Controller
 {
@@ -125,18 +130,36 @@ class ImageMasterController extends Controller
             return response()->json(['success' => false, 'images' => [], 'message' => 'Metrics table missing.'], 422);
         }
 
-        $row = DB::table($table)->where('sku', $sku)->first();
-        if (! $row || empty($row->item_id)) {
-            return response()->json([
-                'success' => false,
-                'images' => [],
-                'message' => 'No eBay listing (item_id) for this SKU in metrics.',
-            ], 422);
+        $row = DB::table($table)->where(function ($q) use ($sku) {
+            $q->where('sku', $sku)
+                ->orWhere('sku', strtoupper($sku))
+                ->orWhere('sku', strtolower($sku));
+        })->first();
+        if (! $row && Schema::hasColumn($table, 'item_id')) {
+            $row = DB::table($table)->where('item_id', $sku)->first();
         }
+        $itemId = ($row && ! empty($row->item_id)) ? trim((string) $row->item_id) : null;
 
         try {
             $svc = app($serviceMap[$account]);
-            $getItem = $svc->getItem((string) $row->item_id);
+            if (! $itemId) {
+                $token = $svc->generateBearerToken();
+                $itemId = EbaySellInventoryListingResolver::resolveWithTradingFallback(
+                    $token,
+                    $svc->getTradingEndpoint(),
+                    $svc->getTradingHeadersForResolver(),
+                    $sku
+                );
+            }
+            if (! $itemId) {
+                return response()->json([
+                    'success' => false,
+                    'images' => [],
+                    'message' => 'No eBay listing found for this SKU (metrics item_id empty and Inventory/GetSellerList lookup failed).',
+                ], 422);
+            }
+
+            $getItem = $svc->getItem((string) $itemId);
             if (! $getItem) {
                 return response()->json(['success' => false, 'images' => [], 'message' => 'GetItem failed.'], 502);
             }
@@ -145,7 +168,7 @@ class ImageMasterController extends Controller
             return response()->json([
                 'success' => true,
                 'images' => $urls,
-                'item_id' => (string) $row->item_id,
+                'item_id' => (string) $itemId,
             ]);
         } catch (\Throwable $e) {
             return response()->json(['success' => false, 'images' => [], 'message' => $e->getMessage()], 500);
@@ -187,12 +210,7 @@ class ImageMasterController extends Controller
 
             $remote = $this->pushImagesToRemote($mp, $sku, $images);
             $remoteOk = (bool) ($remote['success'] ?? false);
-            $isEbay = in_array($mp, ['ebay', 'ebay2', 'ebay3'], true);
-            if ($isEbay) {
-                $saved = $remoteOk && $this->saveImageMetricsToTable($mp, $sku, $images);
-            } else {
-                $saved = $this->saveImageMetricsToTable($mp, $sku, $images);
-            }
+            $saved = $remoteOk && $this->saveImageMetricsToTable($mp, $sku, $images);
             $ok = $remoteOk && $saved;
             $results[$mp] = [
                 'success' => $ok,
@@ -282,10 +300,22 @@ class ImageMasterController extends Controller
                     return app(Ebay2ApiService::class)->updateListingImages($sku, $imageUrls);
                 case 'ebay3':
                     return app(EbayThreeApiService::class)->updateListingImages($sku, $imageUrls);
+                case 'amazon':
+                    return app(AmazonSpApiService::class)->updateListingImages($sku, $imageUrls);
+                case 'temu':
+                    return app(TemuApiService::class)->updateListingImages($sku, $imageUrls);
+                case 'shopify_main':
+                    return app(ShopifyApiService::class)->updateListingImages($sku, $imageUrls);
+                case 'shopify_pls':
+                    return app(ShopifyPLSApiService::class)->updateListingImages($sku, $imageUrls);
+                case 'macy':
+                    return app(MacysApiService::class)->updateListingImages($sku, $imageUrls);
+                case 'reverb':
+                    return app(ReverbApiService::class)->updateListingImages($sku, $imageUrls);
                 default:
                     return [
-                        'success' => true,
-                        'message' => 'Stored for '.$marketplace.'; live image API push not implemented yet — URLs saved in metrics.',
+                        'success' => false,
+                        'message' => 'Image push is not implemented for '.$marketplace.' yet.',
                     ];
             }
         } catch (\Throwable $e) {
@@ -311,15 +341,18 @@ class ImageMasterController extends Controller
         }
 
         try {
-            $update = ['image_master_json' => $payload, 'updated_at' => now()];
-            $exists = DB::table($table)->where('sku', $sku)->exists();
-            if ($exists) {
-                DB::table($table)->where('sku', $sku)->update($update);
-            } else {
-                DB::table($table)->insert(array_merge([
-                    'sku' => $sku,
-                    'created_at' => now(),
-                ], $update));
+            $now = now();
+            DB::table($table)->updateOrInsert(
+                ['sku' => $sku],
+                [
+                    'image_master_json' => $payload,
+                    'updated_at' => $now,
+                ]
+            );
+
+            // Ensure created_at on first insert when column exists and was null
+            if (Schema::hasColumn($table, 'created_at')) {
+                DB::table($table)->where('sku', $sku)->whereNull('created_at')->update(['created_at' => $now]);
             }
 
             return true;

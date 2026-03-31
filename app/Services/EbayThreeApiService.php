@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Ebay3Metric;
 use App\Services\Concerns\ResolvesBulletPointIdentifier;
+use App\Services\Support\EbaySellInventoryListingResolver;
 use App\Services\Support\EbayTradingReviseItem;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -1229,15 +1230,25 @@ class EbayThreeApiService
         }
 
         $row = $this->findMetricRowBySkuOrAlternateIds('ebay_3_metrics', $identifier, ['item_id']);
-        $itemId = $row->item_id ?? null;
-        if (! $itemId) {
-            return ['success' => false, 'message' => 'Product not found in ebay_3_metrics (try SKU or eBay item_id).'];
-        }
+        $itemId = isset($row->item_id) && $row->item_id !== '' ? trim((string) $row->item_id) : null;
 
         try {
             $token = $this->generateBearerToken();
         } catch (\Throwable $e) {
             return ['success' => false, 'message' => $e->getMessage()];
+        }
+
+        if (! $itemId) {
+            $itemId = EbaySellInventoryListingResolver::resolveWithTradingFallback(
+                $token,
+                $this->endpoint,
+                $this->tradingApiHeadersBase(),
+                trim($identifier)
+            );
+        }
+
+        if (! $itemId) {
+            return ['success' => false, 'message' => 'No eBay3 listing found for this SKU or item_id (check ebay_3_metrics or Inventory / GetSellerList).'];
         }
 
         return EbayTradingReviseItem::reviseItemPictureUrls(
@@ -1251,6 +1262,33 @@ class EbayThreeApiService
             (string) $itemId,
             $imageUrls
         );
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function tradingApiHeadersBase(): array
+    {
+        return [
+            'X-EBAY-API-COMPATIBILITY-LEVEL' => $this->compatLevel,
+            'X-EBAY-API-DEV-NAME' => $this->devId,
+            'X-EBAY-API-APP-NAME' => $this->appId,
+            'X-EBAY-API-CERT-NAME' => $this->certId,
+            'X-EBAY-API-SITEID' => (string) $this->siteId,
+        ];
+    }
+
+    public function getTradingEndpoint(): string
+    {
+        return (string) $this->endpoint;
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public function getTradingHeadersForResolver(): array
+    {
+        return $this->tradingApiHeadersBase();
     }
 
     /**

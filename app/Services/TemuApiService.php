@@ -1086,4 +1086,84 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
     {
         return $this->updateDescription($identifier, $description);
     }
+
+    /**
+     * Partial goods update: carousel / gallery image URLs (goodsBasic + sku images when skuList is used).
+     *
+     * @param  list<string>  $imageUrls
+     * @return array{success: bool, message: string}
+     */
+    public function updateListingImages(string $identifier, array $imageUrls): array
+    {
+        $urls = array_values(array_filter(array_map('trim', $imageUrls), fn ($s) => $s !== ''));
+        $urls = array_slice($urls, 0, 12);
+        if (trim($identifier) === '' || $urls === []) {
+            return ['success' => false, 'message' => 'SKU (or goods_id) and image URLs are required.'];
+        }
+
+        $resolved = $this->resolveTemuGoodsAndSku($identifier);
+        $sku = $resolved['sku'];
+        $goodsId = $resolved['goods_id'] ?? $this->getGoodsIdBySku($sku);
+        if (! $goodsId) {
+            return ['success' => false, 'message' => 'goodsId not found for SKU. Sync Temu metrics or TemuPricing.'];
+        }
+
+        $skuInfo = $this->getSkuInfoForGoodsAndSku($goodsId, $sku);
+        $apiType = config('services.temu.goods_update_type', 'bg.local.goods.partial.update');
+        $url = 'https://openapi-b-us.temu.com/openapi/router';
+        $skuListField = config('services.temu.update_sku_list_field', 'skuList');
+        $goodsBasicField = config('services.temu.goods_basic_field', 'goodsBasic');
+        $imageField = config('services.temu.goods_image_urls_field', 'carouselImageUrlList');
+        $skuIdField = config('services.temu.sku_id_field', 'skuId');
+        $skuCodeField = config('services.temu.sku_code_field', 'outSkuSn');
+
+        $requestBody = [
+            'type' => $apiType,
+            'goodsId' => (int) $goodsId,
+            $goodsBasicField => [
+                $imageField => $urls,
+            ],
+        ];
+
+        $price = $this->getProductPrice($sku);
+        $dimensions = $this->getProductDimensions($sku);
+
+        if ($skuInfo !== null && isset($skuInfo['skuId'])) {
+            $requestBody[$skuListField] = [[
+                $skuIdField => (int) $skuInfo['skuId'],
+                $skuCodeField => $sku,
+                'listPrice' => [
+                    'amount' => (string) ($price ?? 1.00),
+                    'currency' => 'USD',
+                ],
+                'listPriceType' => 0,
+                'weight' => $dimensions['weight'],
+                'length' => $dimensions['length'],
+                'width' => $dimensions['width'],
+                'height' => $dimensions['height'],
+                'weightUnit' => $dimensions['weightUnit'],
+                'volumeUnit' => $dimensions['volumeUnit'],
+                'images' => $urls,
+            ]];
+        }
+
+        try {
+            $signedRequest = $this->generateSignValue($requestBody);
+            $request = Http::withHeaders(['Content-Type' => 'application/json']);
+            if (config('filesystems.default') === 'local') {
+                $request = $request->withoutVerifying();
+            }
+            $response = $request->post($url, $signedRequest);
+            $data = $response->json();
+            if ($response->successful() && ($data['success'] ?? false)) {
+                return ['success' => true, 'message' => 'Temu listing images updated.'];
+            }
+
+            return ['success' => false, 'message' => (string) ($data['errorMsg'] ?? $data['message'] ?? $response->body())];
+        } catch (\Throwable $e) {
+            Log::error('Temu updateListingImages', ['sku' => $sku, 'error' => $e->getMessage()]);
+
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
 }
