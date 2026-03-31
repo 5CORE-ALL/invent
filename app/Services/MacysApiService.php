@@ -8,6 +8,7 @@ use Aws\Signature\SignatureV4;
 use Aws\Credentials\Credentials;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use App\Models\ProductStockMapping;
 use App\Services\Concerns\ResolvesBulletPointIdentifier;
@@ -359,9 +360,11 @@ class MacysApiService
                 return ['success' => false, 'message' => 'SKU (or marketplace product id) and description are required.'];
             }
 
+            $current = $this->fetchCurrentMacyDescription($sku);
+            $merged = $this->appendUniqueText($current, $description);
             $attributes = [
-                'longDescription' => $description,
-                'productDescription' => $description,
+                'longDescription' => $merged,
+                'productDescription' => $merged,
             ];
 
             return $this->pushMacyMiraklProductAttributes($sku, $attributes, 'Macy product description updated.', 'Macy description update failed');
@@ -412,5 +415,129 @@ class MacysApiService
 
             return ['success' => false, 'message' => $e->getMessage()];
         }
+    }
+
+    /**
+     * Image Master compatibility method: push images then persist image_urls in macy_metrics.
+     *
+     * @param  list<string>  $images
+     * @return array{success: bool, message: string}
+     */
+    public function updateImages(string $identifier, array $images): array
+    {
+        $images = array_slice(array_values(array_unique(array_filter(array_map('trim', $images), fn ($v) => $v !== ''))), 0, 12);
+        if ($images === []) {
+            return ['success' => false, 'message' => 'At least one image URL is required.'];
+        }
+
+        $res = $this->updateListingImages($identifier, $images);
+        if (! ($res['success'] ?? false)) {
+            return $res;
+        }
+
+        $sku = $this->resolveMacyMiraklSku($identifier);
+        $saved = $this->saveImageUrlsToMacyMetrics($sku, $images);
+        if (! $saved) {
+            $res['message'] = ($res['message'] ?? 'Macy product images updated.').' Metrics save failed.';
+        }
+
+        return $res;
+    }
+
+    /**
+     * @param  list<string>  $images
+     */
+    private function saveImageUrlsToMacyMetrics(string $sku, array $images): bool
+    {
+        try {
+            if ($sku === '' || ! Schema::hasTable('macy_metrics') || ! Schema::hasColumn('macy_metrics', 'sku')) {
+                return false;
+            }
+            $payload = json_encode(array_values($images), JSON_UNESCAPED_SLASHES);
+            if ($payload === false) {
+                return false;
+            }
+
+            $update = [];
+            if (Schema::hasColumn('macy_metrics', 'image_urls')) {
+                $update['image_urls'] = $payload;
+            }
+            if (Schema::hasColumn('macy_metrics', 'image_master_json')) {
+                $update['image_master_json'] = $payload;
+            }
+            if ($update === []) {
+                return false;
+            }
+            if (Schema::hasColumn('macy_metrics', 'updated_at')) {
+                $update['updated_at'] = now();
+            }
+
+            DB::table('macy_metrics')->updateOrInsert(['sku' => $sku], $update);
+            if (Schema::hasColumn('macy_metrics', 'created_at')) {
+                DB::table('macy_metrics')->where('sku', $sku)->whereNull('created_at')->update(['created_at' => now()]);
+            }
+
+            return true;
+        } catch (\Throwable $e) {
+            Log::warning('Macy image_urls save failed', ['sku' => $sku, 'error' => $e->getMessage()]);
+
+            return false;
+        }
+    }
+
+    private function fetchCurrentMacyDescription(string $sku): string
+    {
+        $token = $this->getAccessToken();
+        if (! $token) {
+            return '';
+        }
+
+        $headers = [
+            'Accept' => 'application/json',
+            'Content-Type' => 'application/json',
+        ];
+        $channelId = config('services.macy.company_id');
+        if (! empty($channelId)) {
+            $headers['channel_id'] = $channelId;
+        }
+
+        try {
+            $request = Http::withoutVerifying()->withToken($token)->withHeaders($headers)->timeout(45);
+            $response = $request->get('https://miraklconnect.com/api/products/'.$sku);
+            if (! $response->successful()) {
+                return '';
+            }
+
+            $json = $response->json();
+            $attrs = $json['attributes'] ?? $json['data']['attributes'] ?? [];
+            if (! is_array($attrs)) {
+                return '';
+            }
+
+            $candidate = trim((string) ($attrs['longDescription'] ?? $attrs['productDescription'] ?? $attrs['description'] ?? ''));
+
+            return $candidate;
+        } catch (\Throwable $e) {
+            Log::warning('Macy fetch current description failed', ['sku' => $sku, 'error' => $e->getMessage()]);
+
+            return '';
+        }
+    }
+
+    private function appendUniqueText(string $current, string $incoming): string
+    {
+        $current = trim($current);
+        $incoming = trim($incoming);
+        if ($incoming === '') {
+            return $current;
+        }
+        if ($current === '') {
+            return $incoming;
+        }
+        if (str_contains(mb_strtolower($current), mb_strtolower($incoming))) {
+            return $current;
+        }
+
+        return $current."\n\n".$incoming;
     }
 }
