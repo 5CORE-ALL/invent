@@ -92,6 +92,36 @@ final class EbayTradingReviseItem
     }
 
     /**
+     * Alias for image updates used by Image Master services.
+     *
+     * @param  list<string>  $images
+     * @return array{success: bool, message: string}
+     */
+    public static function reviseItemImages(
+        string $endpoint,
+        string $compatLevel,
+        string $devId,
+        string $appId,
+        string $certId,
+        string $siteId,
+        string $authToken,
+        string $itemId,
+        array $images,
+    ): array {
+        return self::reviseItemPictureUrls(
+            $endpoint,
+            $compatLevel,
+            $devId,
+            $appId,
+            $certId,
+            $siteId,
+            $authToken,
+            $itemId,
+            $images
+        );
+    }
+
+    /**
      * Extract gallery PictureURL list from GetItem JSON-decoded response.
      *
      * @param  array<string, mixed>  $getItemResponse

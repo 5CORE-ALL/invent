@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use SimpleXMLElement;
 
 class EbayThreeApiService
@@ -1225,8 +1226,24 @@ class EbayThreeApiService
      */
     public function updateListingImages(string $identifier, array $imageUrls): array
     {
+        return $this->updateImages($identifier, $imageUrls);
+    }
+
+    /**
+     * Image Master: push up to 12 image URLs and persist image_urls in ebay_3_metrics on success.
+     *
+     * @param  list<string>  $images
+     * @return array{success: bool, message: string}
+     */
+    public function updateImages(string $identifier, array $images): array
+    {
         if (trim($identifier) === '') {
             return ['success' => false, 'message' => 'SKU (or item_id) is required.'];
+        }
+
+        $images = array_slice(array_values(array_unique(array_filter(array_map('trim', $images), fn ($v) => $v !== ''))), 0, 12);
+        if ($images === []) {
+            return ['success' => false, 'message' => 'At least one image URL is required.'];
         }
 
         $row = $this->findMetricRowBySkuOrAlternateIds('ebay_3_metrics', $identifier, ['item_id']);
@@ -1251,7 +1268,7 @@ class EbayThreeApiService
             return ['success' => false, 'message' => 'No eBay3 listing found for this SKU or item_id (check ebay_3_metrics or Inventory / GetSellerList).'];
         }
 
-        return EbayTradingReviseItem::reviseItemPictureUrls(
+        $res = EbayTradingReviseItem::reviseItemImages(
             $this->endpoint,
             $this->compatLevel,
             $this->devId,
@@ -1260,8 +1277,65 @@ class EbayThreeApiService
             $this->siteId,
             $token,
             (string) $itemId,
-            $imageUrls
+            $images
         );
+
+        if (! ($res['success'] ?? false)) {
+            return $res;
+        }
+
+        $saved = $this->saveImageUrlsToMetrics('ebay_3_metrics', $identifier, $row, $images);
+        if (! $saved) {
+            $res['message'] = ($res['message'] ?? 'eBay3 images updated.').' Metrics save failed.';
+        }
+
+        return $res;
+    }
+
+    /**
+     * @param  list<string>  $images
+     */
+    private function saveImageUrlsToMetrics(string $table, string $identifier, ?object $row, array $images): bool
+    {
+        try {
+            if (! Schema::hasTable($table) || ! Schema::hasColumn($table, 'sku')) {
+                return false;
+            }
+            $payload = json_encode(array_values($images), JSON_UNESCAPED_SLASHES);
+            if ($payload === false) {
+                return false;
+            }
+
+            $sku = trim((string) ($row->sku ?? $identifier));
+            if ($sku === '') {
+                return false;
+            }
+
+            $update = [];
+            if (Schema::hasColumn($table, 'image_urls')) {
+                $update['image_urls'] = $payload;
+            }
+            if (Schema::hasColumn($table, 'image_master_json')) {
+                $update['image_master_json'] = $payload;
+            }
+            if ($update === []) {
+                return false;
+            }
+            if (Schema::hasColumn($table, 'updated_at')) {
+                $update['updated_at'] = now();
+            }
+
+            DB::table($table)->updateOrInsert(['sku' => $sku], $update);
+            if (Schema::hasColumn($table, 'created_at')) {
+                DB::table($table)->where('sku', $sku)->whereNull('created_at')->update(['created_at' => now()]);
+            }
+
+            return true;
+        } catch (\Throwable $e) {
+            Log::warning('eBay3 metrics image_urls save failed', ['table' => $table, 'identifier' => $identifier, 'error' => $e->getMessage()]);
+
+            return false;
+        }
     }
 
     /**
