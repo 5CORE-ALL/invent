@@ -4922,10 +4922,26 @@ class CategoryController extends Controller
 
         try {
             $file = $request->file('excel_file');
-            
-            // Load spreadsheet - PhpSpreadsheet handles both Excel and CSV
-            $spreadsheet = IOFactory::load($file->getPathName());
-            
+
+            // For CSV files, auto-detect delimiter (tab vs comma vs semicolon)
+            $ext = strtolower($file->getClientOriginalExtension());
+            if ($ext === 'csv') {
+                $fp = fopen($file->getPathName(), 'r');
+                $firstLine = fgets($fp);
+                fclose($fp);
+                $delimiter = ',';
+                if (substr_count($firstLine, "\t") > substr_count($firstLine, ',')) {
+                    $delimiter = "\t";
+                } elseif (substr_count($firstLine, ';') > substr_count($firstLine, ',')) {
+                    $delimiter = ';';
+                }
+                $reader = IOFactory::createReader('Csv');
+                $reader->setDelimiter($delimiter);
+                $spreadsheet = $reader->load($file->getPathName());
+            } else {
+                $spreadsheet = IOFactory::load($file->getPathName());
+            }
+
             $sheet = $spreadsheet->getActiveSheet();
             $rows = $sheet->toArray();
 
@@ -4936,41 +4952,63 @@ class CategoryController extends Controller
                 ], 422);
             }
 
-            // Clean headers - normalize to lowercase and replace spaces/special chars
-            $headers = array_map(function ($header) {
+            // Normalize a header string to lowercase with special chars replaced by underscores
+            $normalizeHeader = function ($header) {
                 return strtolower(trim(preg_replace('/[^a-zA-Z0-9_]/', '_', $header)));
-            }, $rows[0]);
+            };
+
+            $headers = array_map($normalizeHeader, $rows[0]);
 
             // Remove header row
             unset($rows[0]);
 
-            // Expected column mappings
+            // Map from normalized header name -> internal field name.
+            // Covers the sample file headers ("Weight ACT (Kg)" etc.) after normalization
+            // as well as plain short-form names for flexibility.
             $columnMap = [
-                'sku' => 'sku',
-                'wt_act' => 'wt_act',
-                'wt_act_kg' => 'wt_act_kg',
-                'Weight ACT (Kg)' => 'wt_act_kg',
-                'wt_decl' => 'wt_decl',
-                'l' => 'l',
-                'w' => 'w',
-                'h' => 'h',
-                'l_cm' => 'l_cm',
-                'w_cm' => 'w_cm',
-                'h_cm' => 'h_cm',
-                'cbm' => 'cbm',
-                'ctn_l' => 'ctn_l',
-                'ctn_w' => 'ctn_w',
-                'ctn_h' => 'ctn_h',
-                'ctn_cbm' => 'ctn_cbm',
-                'ctn_qty' => 'ctn_qty',
-                'ctn_cbm_each' => 'ctn_cbm_each',
-                'cbm_e' => 'cbm_e',
-                'ctn_gwt' => 'ctn_gwt',
-                'ctn_weight_kg' => 'ctn_weight_kg',
-                'ship' => 'ship',
-                'tt_ship' => 'tt_ship',
-                'temu_ship' => 'temu_ship',
-                'ebay2_ship' => 'ebay2_ship'
+                'sku'                 => 'sku',
+                // Sample-file normalized headers (parentheses/spaces → underscores)
+                'weight_act__kg_'     => 'wt_act_kg',   // Weight ACT (Kg)
+                'wt_act__lb_'         => 'wt_act',      // WT ACT (LB)
+                'wt_decl__lb_'        => 'wt_decl',     // WT DECL (LB)
+                'length__inch_'       => 'l',            // Length (inch)
+                'width__inch_'        => 'w',            // Width (inch)
+                'height__inch_'       => 'h',            // Height (Inch)
+                'length__cm_'         => 'l_cm',         // Length (CM)
+                'width__cm_'          => 'w_cm',         // Width (CM)
+                'height__cm_'         => 'h_cm',         // Height (CM)
+                'cbm'                 => 'cbm',
+                'ctn_l__cm_'          => 'ctn_l',        // CTN L (CM)
+                'ctn_w__cm_'          => 'ctn_w',        // CTN W (CM)
+                'ctn_h__cm_'          => 'ctn_h',        // CTN H (CM)
+                'ctn__cbm_'           => 'ctn_cbm',      // CTN (CBM)
+                'ctn__qty_'           => 'ctn_qty',      // CTN (QTY)
+                'ctn__cbm_each_'      => 'ctn_cbm_each', // CTN (CBM/Each)
+                'cbm__e_'             => 'cbm_e',        // CBM (E)
+                'ctn_weight__kg_'     => 'ctn_weight_kg',// CTN Weight (KG)
+                // Short-form / plain names for custom files
+                'wt_act'              => 'wt_act',
+                'wt_act_kg'           => 'wt_act_kg',
+                'wt_decl'             => 'wt_decl',
+                'l'                   => 'l',
+                'w'                   => 'w',
+                'h'                   => 'h',
+                'l_cm'                => 'l_cm',
+                'w_cm'                => 'w_cm',
+                'h_cm'                => 'h_cm',
+                'ctn_l'               => 'ctn_l',
+                'ctn_w'               => 'ctn_w',
+                'ctn_h'               => 'ctn_h',
+                'ctn_cbm'             => 'ctn_cbm',
+                'ctn_qty'             => 'ctn_qty',
+                'ctn_cbm_each'        => 'ctn_cbm_each',
+                'cbm_e'               => 'cbm_e',
+                'ctn_gwt'             => 'ctn_gwt',
+                'ctn_weight_kg'       => 'ctn_weight_kg',
+                'ship'                => 'ship',
+                'tt_ship'             => 'tt_ship',
+                'temu_ship'           => 'temu_ship',
+                'ebay2_ship'          => 'ebay2_ship',
             ];
 
             // Find column indices

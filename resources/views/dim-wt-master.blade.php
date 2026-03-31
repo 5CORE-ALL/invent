@@ -480,6 +480,9 @@
                                 <button type="button" class="btn btn-info" data-bs-toggle="modal" data-bs-target="#importExcelModal">
                                     <i class="fas fa-file-upload me-1"></i> Import
                                 </button>
+                                <button type="button" class="btn btn-secondary" id="exportSkusBtn" data-bs-toggle="modal" data-bs-target="#skuExportModal" title="Export SKU list only">
+                                    <i class="fas fa-list me-1"></i> SKU Export
+                                </button>
                                 <button type="button" class="btn btn-success" id="downloadExcel">
                                     <i class="fas fa-file-excel me-1"></i> Download
                                 </button>
@@ -769,6 +772,99 @@
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
                     <button type="button" class="btn btn-primary" id="importBtn" disabled>
                         <i class="fas fa-upload me-2"></i>Import
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- SKU Export Modal -->
+    <div class="modal fade" id="skuExportModal" tabindex="-1" aria-labelledby="skuExportModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header" style="background: linear-gradient(135deg, #495057 0%, #343a40 100%); color: white;">
+                    <h5 class="modal-title" id="skuExportModalLabel">
+                        <i class="fas fa-list me-2"></i>SKU Export
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+
+                    <!-- Scope -->
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Scope</label>
+                        <div class="d-flex flex-column gap-1">
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="skuExportScope" id="skuScopeAll" value="all" checked>
+                                <label class="form-check-label" for="skuScopeAll">All SKUs</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="skuExportScope" id="skuScopeFiltered" value="filtered">
+                                <label class="form-check-label" for="skuScopeFiltered">Filtered SKUs <span id="skuScopeFilteredCount" class="badge bg-secondary ms-1"></span></label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="skuExportScope" id="skuScopeSelected" value="selected">
+                                <label class="form-check-label" for="skuScopeSelected">Selected SKUs <span id="skuScopeSelectedCount" class="badge bg-secondary ms-1"></span></label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <hr class="my-2">
+
+                    <!-- Columns -->
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Columns to include</label>
+                        <div class="d-flex flex-column gap-1">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="skuColSku" value="sku" checked disabled>
+                                <label class="form-check-label" for="skuColSku">SKU <small class="text-muted">(always included)</small></label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="skuColParent" value="parent">
+                                <label class="form-check-label" for="skuColParent">Parent</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="skuColStatus" value="status">
+                                <label class="form-check-label" for="skuColStatus">Status</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="skuColInv" value="inv">
+                                <label class="form-check-label" for="skuColInv">INV (Shopify)</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="skuColBlankDim" value="blank_dim">
+                                <label class="form-check-label" for="skuColBlankDim">Add blank dim/weight columns <small class="text-muted">(ready-to-fill import template)</small></label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <hr class="my-2">
+
+                    <!-- Format -->
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Format</label>
+                        <div class="d-flex gap-3">
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="skuExportFormat" id="skuFmtXlsx" value="xlsx" checked>
+                                <label class="form-check-label" for="skuFmtXlsx"><i class="fas fa-file-excel text-success me-1"></i>Excel (.xlsx)</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="skuExportFormat" id="skuFmtTsv" value="tsv">
+                                <label class="form-check-label" for="skuFmtTsv"><i class="fas fa-file-alt text-secondary me-1"></i>Tab-separated (.tsv)</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="skuExportFormat" id="skuFmtCsv" value="csv">
+                                <label class="form-check-label" for="skuFmtCsv"><i class="fas fa-file-csv text-primary me-1"></i>CSV (.csv)</label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="skuExportSummary" class="alert alert-light border py-2" style="font-size: 13px;"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-dark" id="doSkuExportBtn">
+                        <i class="fas fa-download me-1"></i>Export SKUs
                     </button>
                 </div>
             </div>
@@ -1726,6 +1822,167 @@
                 });
             }
 
+            // ── SKU Export ──────────────────────────────────────────────────────────
+            function setupSkuExport() {
+                const modal        = document.getElementById('skuExportModal');
+                const doBtn        = document.getElementById('doSkuExportBtn');
+                const summary      = document.getElementById('skuExportSummary');
+                const selCountEl   = document.getElementById('skuScopeSelectedCount');
+                const filtCountEl  = document.getElementById('skuScopeFilteredCount');
+
+                const DIM_HEADERS = [
+                    'Weight ACT (Kg)', 'WT ACT (LB)', 'WT DECL (LB)',
+                    'Length (inch)', 'Width (inch)', 'Height (Inch)',
+                    'Length (CM)', 'Width (CM)', 'Height (CM)', 'CBM',
+                    'CTN L (CM)', 'CTN W (CM)', 'CTN H (CM)',
+                    'CTN (CBM)', 'CTN (QTY)', 'CTN (CBM/Each)', 'CBM (E)', 'CTN Weight (KG)'
+                ];
+
+                /** Recalculate the summary line shown inside the modal */
+                function refreshSummary() {
+                    const scope  = document.querySelector('input[name="skuExportScope"]:checked')?.value || 'all';
+                    const format = document.querySelector('input[name="skuExportFormat"]:checked')?.value || 'xlsx';
+                    const addDim = document.getElementById('skuColBlankDim').checked;
+
+                    const selectedSkus = getSelectedSkus();
+                    const filteredNonParent = (filteredData.length > 0 ? filteredData : tableData)
+                        .filter(d => d.SKU && !String(d.SKU).toUpperCase().includes('PARENT'));
+                    const allNonParent = tableData
+                        .filter(d => d.SKU && !String(d.SKU).toUpperCase().includes('PARENT'));
+
+                    selCountEl.textContent  = selectedSkus.length;
+                    filtCountEl.textContent = filteredNonParent.length;
+
+                    let count = 0;
+                    if (scope === 'all')      count = allNonParent.length;
+                    else if (scope === 'filtered') count = filteredNonParent.length;
+                    else                      count = selectedSkus.length;
+
+                    const cols  = buildColumns();
+                    const fmtLabel = { xlsx: 'Excel (.xlsx)', tsv: 'Tab-separated (.tsv)', csv: 'CSV (.csv)' }[format];
+                    summary.innerHTML =
+                        `<strong>${count}</strong> SKU(s) &nbsp;·&nbsp; ` +
+                        `<strong>${cols.length}</strong> column(s) &nbsp;·&nbsp; ` +
+                        `<strong>${fmtLabel}</strong>` +
+                        (addDim ? ' &nbsp;·&nbsp; <em>includes blank dim/weight columns</em>' : '');
+                }
+
+                /** Return list of { header, getValue(item) } based on checked checkboxes */
+                function buildColumns() {
+                    const cols = [{ header: 'SKU', get: d => d.SKU || '' }];
+                    if (document.getElementById('skuColParent').checked)
+                        cols.push({ header: 'Parent', get: d => d.Parent || '' });
+                    if (document.getElementById('skuColStatus').checked)
+                        cols.push({ header: 'Status', get: d => d.status || '' });
+                    if (document.getElementById('skuColInv').checked)
+                        cols.push({ header: 'INV', get: d => d.shopify_inv !== undefined && d.shopify_inv !== null ? d.shopify_inv : '' });
+                    if (document.getElementById('skuColBlankDim').checked)
+                        DIM_HEADERS.forEach(h => cols.push({ header: h, get: () => '' }));
+                    return cols;
+                }
+
+                /** Return selected (checked) non-parent items from the table */
+                function getSelectedSkus() {
+                    const selected = [];
+                    document.querySelectorAll('.row-checkbox:checked').forEach(cb => {
+                        const sku = cb.getAttribute('data-sku');
+                        if (!sku || String(sku).toUpperCase().includes('PARENT')) return;
+                        const item = tableData.find(d => d.SKU === sku);
+                        if (item) selected.push(item);
+                    });
+                    return selected;
+                }
+
+                /** Build the rows array [[header...], [val...], ...] */
+                function buildRows(items, cols) {
+                    const rows = [cols.map(c => c.header)];
+                    items.forEach(item => rows.push(cols.map(c => c.get(item))));
+                    return rows;
+                }
+
+                /** Download as .xlsx */
+                function downloadXlsx(rows, filename) {
+                    const wb = XLSX.utils.book_new();
+                    const ws = XLSX.utils.aoa_to_sheet(rows);
+                    // Column widths
+                    ws['!cols'] = rows[0].map(h => ({ wch: h === 'SKU' ? 22 : h === 'Parent' ? 22 : 14 }));
+                    // Header row style
+                    const range = XLSX.utils.decode_range(ws['!ref']);
+                    for (let C = range.s.c; C <= range.e.c; C++) {
+                        const cell = XLSX.utils.encode_cell({ r: 0, c: C });
+                        if (!ws[cell]) continue;
+                        ws[cell].s = {
+                            fill: { fgColor: { rgb: '343A40' } },
+                            font: { bold: true, color: { rgb: 'FFFFFF' } },
+                            alignment: { horizontal: 'center' }
+                        };
+                    }
+                    XLSX.utils.book_append_sheet(wb, ws, 'SKUs');
+                    XLSX.writeFile(wb, filename + '.xlsx');
+                }
+
+                /** Download as plain-text (TSV or CSV) */
+                function downloadText(rows, filename, sep, ext) {
+                    const content = rows.map(r =>
+                        r.map(v => {
+                            const s = String(v ?? '');
+                            // Wrap in quotes if value contains the separator or a newline
+                            return (s.includes(sep) || s.includes('\n') || s.includes('"'))
+                                ? '"' + s.replace(/"/g, '""') + '"' : s;
+                        }).join(sep)
+                    ).join('\n');
+                    const blob = new Blob([content], { type: 'text/plain;charset=utf-8;' });
+                    const url  = URL.createObjectURL(blob);
+                    const a    = document.createElement('a');
+                    a.href     = url;
+                    a.download = filename + '.' + ext;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                }
+
+                // Refresh summary whenever modal is shown or options change
+                modal.addEventListener('show.bs.modal', refreshSummary);
+                modal.querySelectorAll('input').forEach(el => el.addEventListener('change', refreshSummary));
+
+                // Export button
+                doBtn.addEventListener('click', function () {
+                    const scope  = document.querySelector('input[name="skuExportScope"]:checked')?.value || 'all';
+                    const format = document.querySelector('input[name="skuExportFormat"]:checked')?.value || 'xlsx';
+                    const cols   = buildColumns();
+
+                    const allNonParent      = tableData.filter(d => d.SKU && !String(d.SKU).toUpperCase().includes('PARENT'));
+                    const filteredNonParent = (filteredData.length > 0 ? filteredData : tableData)
+                        .filter(d => d.SKU && !String(d.SKU).toUpperCase().includes('PARENT'));
+
+                    let items;
+                    if (scope === 'all')           items = allNonParent;
+                    else if (scope === 'filtered') items = filteredNonParent;
+                    else                           items = getSelectedSkus();
+
+                    if (items.length === 0) {
+                        showToast('warning', 'No SKUs to export for the selected scope.');
+                        return;
+                    }
+
+                    const rows     = buildRows(items, cols);
+                    const filename = 'sku_export_' + new Date().toISOString().slice(0, 10);
+
+                    try {
+                        if (format === 'xlsx')      downloadXlsx(rows, filename);
+                        else if (format === 'tsv')  downloadText(rows, filename, '\t', 'tsv');
+                        else                         downloadText(rows, filename, ',', 'csv');
+
+                        showToast('success', `Exported ${items.length} SKU(s) successfully!`);
+                        bootstrap.Modal.getInstance(modal)?.hide();
+                    } catch (e) {
+                        console.error('SKU export error:', e);
+                        showToast('danger', 'Export failed: ' + e.message);
+                    }
+                });
+            }
+
             // Setup import functionality
             function setupImport() {
                 const importFile = document.getElementById('importFile');
@@ -2377,6 +2634,7 @@
             loadData();
             setupExcelExport();
             setupImport();
+            setupSkuExport();
             setupSelectAll();
             setupBulkEdit();
             setupPushData();
