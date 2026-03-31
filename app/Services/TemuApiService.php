@@ -931,7 +931,7 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
 
         $includeSkuList = (bool) config('services.temu.bullet_update_include_sku_list', false);
 
-        return $this->pushTemuGoodsBasicField(
+        $res = $this->pushTemuGoodsBasicField(
             $identifier,
             $value,
             $field,
@@ -940,6 +940,18 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
             'Temu updateBulletPoints',
             $includeSkuList
         );
+        if (! ($res['success'] ?? false)) {
+            return $res;
+        }
+
+        $resolved = $this->resolveTemuGoodsAndSku($identifier);
+        $sku = trim((string) ($resolved['sku'] ?? $identifier));
+        $saved = $this->saveGoodsSummaryToTemuMetrics($sku, is_array($value) ? implode("\n", $value) : (string) $value);
+        if (! $saved) {
+            $res['message'] = ($res['message'] ?? 'Temu bullet points updated.').' Metrics save failed.';
+        }
+
+        return $res;
     }
 
     /**
@@ -989,6 +1001,15 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
                 $basicFieldKey => $text,
             ],
         ];
+
+        // Preserve current goodsDesc when updating goodsSummary to avoid accidental description loss.
+        $goodsDescField = (string) config('services.temu.goods_desc_field', 'goodsDesc');
+        if ($basicFieldKey !== $goodsDescField) {
+            $currentDesc = $this->fetchCurrentTemuGoodsDesc((string) $goodsId);
+            if ($currentDesc !== '') {
+                $requestBody[$goodsBasicField][$goodsDescField] = $currentDesc;
+            }
+        }
 
         $price = $this->getProductPrice($sku);
         $dimensions = $this->getProductDimensions($sku);
@@ -1050,6 +1071,77 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
             Log::error($logContext, ['sku' => $sku, 'error' => $e->getMessage()]);
 
             return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    private function fetchCurrentTemuGoodsDesc(string $goodsId): string
+    {
+        try {
+            $pageToken = null;
+            do {
+                $body = [
+                    'type' => 'temu.local.goods.list.retrieve',
+                    'goodsSearchType' => 'ALL',
+                    'pageSize' => 100,
+                ];
+                if ($pageToken) {
+                    $body['pageToken'] = $pageToken;
+                }
+                $signed = $this->generateSignValue($body);
+                $request = Http::withHeaders(['Content-Type' => 'application/json']);
+                if (config('filesystems.default') === 'local') {
+                    $request = $request->withoutVerifying();
+                }
+                $response = $request->post('https://openapi-b-us.temu.com/openapi/router', $signed);
+                $data = $response->json();
+                if (! $response->successful() || ! ($data['success'] ?? false)) {
+                    break;
+                }
+                $list = $data['result']['goodsList'] ?? [];
+                foreach ($list as $good) {
+                    $gid = (string) ($good['goodsId'] ?? '');
+                    if ($gid !== $goodsId) {
+                        continue;
+                    }
+                    $goodsBasic = is_array($good['goodsBasic'] ?? null) ? $good['goodsBasic'] : [];
+                    $desc = (string) ($goodsBasic['goodsDesc'] ?? $good['goodsDesc'] ?? '');
+
+                    return trim($desc);
+                }
+                $pageToken = $data['result']['pagination']['nextToken'] ?? null;
+            } while ($pageToken);
+        } catch (\Throwable $e) {
+            Log::warning('Temu fetchCurrentTemuGoodsDesc failed', ['goods_id' => $goodsId, 'error' => $e->getMessage()]);
+        }
+
+        return '';
+    }
+
+    private function saveGoodsSummaryToTemuMetrics(string $sku, string $goodsSummary): bool
+    {
+        try {
+            if ($sku === '' || ! Schema::hasTable('temu_metrics') || ! Schema::hasColumn('temu_metrics', 'sku')) {
+                return false;
+            }
+            if (! Schema::hasColumn('temu_metrics', 'goods_summary')) {
+                return false;
+            }
+
+            $update = ['goods_summary' => $goodsSummary];
+            if (Schema::hasColumn('temu_metrics', 'updated_at')) {
+                $update['updated_at'] = now();
+            }
+
+            DB::table('temu_metrics')->updateOrInsert(['sku' => $sku], $update);
+            if (Schema::hasColumn('temu_metrics', 'created_at')) {
+                DB::table('temu_metrics')->where('sku', $sku)->whereNull('created_at')->update(['created_at' => now()]);
+            }
+
+            return true;
+        } catch (\Throwable $e) {
+            Log::warning('Temu saveGoodsSummaryToTemuMetrics failed', ['sku' => $sku, 'error' => $e->getMessage()]);
+
+            return false;
         }
     }
 

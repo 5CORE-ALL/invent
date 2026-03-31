@@ -522,9 +522,13 @@ class ReverbApiService
             return ['success' => false, 'message' => 'No Reverb listing found for SKU or reverb_listing_id.'];
         }
 
+        $current = $this->fetchCurrentReverbDescription($token, $listingId);
         $payload = [
             'listing' => [
                 'features' => $features,
+                // Preserve existing long description fields while updating features.
+                'description' => $current['html'],
+                'plain_text_description' => $current['plain'],
             ],
         ];
 
@@ -532,6 +536,7 @@ class ReverbApiService
             $response = $this->reverbPutListingWithRetry($token, $listingId, $payload);
 
             if ($response->successful()) {
+                $this->saveFeaturesToReverbProducts($trim, $listingId, $features);
                 return [
                     'success' => true,
                     'message' => 'Reverb listing features updated.',
@@ -903,5 +908,43 @@ class ReverbApiService
         }
 
         return $currentHtml.'<br><br>'.$incomingHtml;
+    }
+
+    /**
+     * @param  list<string>  $features
+     */
+    private function saveFeaturesToReverbProducts(string $identifier, string $listingId, array $features): bool
+    {
+        try {
+            if (! Schema::hasTable('reverb_products') || ! Schema::hasColumn('reverb_products', 'features')) {
+                return false;
+            }
+            $payload = json_encode(array_values($features), JSON_UNESCAPED_UNICODE);
+            if ($payload === false) {
+                return false;
+            }
+
+            $matched = false;
+            if ($identifier !== '') {
+                $count = ReverbProduct::query()
+                    ->where(function ($q) use ($identifier) {
+                        $q->where('sku', $identifier)
+                            ->orWhere('sku', strtoupper($identifier))
+                            ->orWhere('sku', strtolower($identifier));
+                    })
+                    ->update(['features' => $payload]);
+                $matched = $count > 0;
+            }
+            if (! $matched && $listingId !== '') {
+                $count = ReverbProduct::query()->where('reverb_listing_id', $listingId)->update(['features' => $payload]);
+                $matched = $count > 0;
+            }
+
+            return $matched;
+        } catch (\Throwable $e) {
+            Log::warning('Reverb saveFeaturesToReverbProducts failed', ['identifier' => $identifier, 'listing_id' => $listingId, 'error' => $e->getMessage()]);
+
+            return false;
+        }
     }
 }
