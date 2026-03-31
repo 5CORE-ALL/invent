@@ -618,10 +618,42 @@ final class EbayTradingReviseItem
         ];
 
         try {
-            $response = Http::withoutVerifying()
-                ->withHeaders($headers)
-                ->withBody($xmlBody, 'text/xml')
-                ->post($endpoint);
+            $response = null;
+            $lastThrowable = null;
+            $attempts = 3;
+            for ($attempt = 1; $attempt <= $attempts; $attempt++) {
+                try {
+                    $response = Http::withoutVerifying()
+                        ->connectTimeout(15)
+                        ->timeout(60)
+                        ->withHeaders($headers)
+                        ->withBody($xmlBody, 'text/xml')
+                        ->post($endpoint);
+
+                    if ($response->successful() || ! in_array($response->status(), [408, 429, 500, 502, 503, 504], true) || $attempt === $attempts) {
+                        break;
+                    }
+                } catch (\Throwable $e) {
+                    $lastThrowable = $e;
+                    $msg = $e->getMessage();
+                    $isTimeout = str_contains(strtolower($msg), 'timed out')
+                        || str_contains(strtolower($msg), 'curl error 28')
+                        || str_contains(strtolower($msg), 'operation timed out')
+                        || str_contains(strtolower($msg), 'ssl connection timeout');
+                    if (! $isTimeout || $attempt === $attempts) {
+                        throw $e;
+                    }
+                }
+
+                usleep(300000 * $attempt);
+            }
+
+            if (! $response && $lastThrowable) {
+                throw $lastThrowable;
+            }
+            if (! $response) {
+                return ['success' => false, 'message' => 'No response from eBay API.'];
+            }
 
             $body = $response->body();
             libxml_use_internal_errors(true);

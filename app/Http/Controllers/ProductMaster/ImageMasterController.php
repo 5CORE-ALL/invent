@@ -211,22 +211,28 @@ class ImageMasterController extends Controller
             $remote = $this->pushImagesToRemote($mp, $sku, $images);
             $remoteOk = (bool) ($remote['success'] ?? false);
             $saved = $remoteOk && $this->saveImageMetricsToTable($mp, $sku, $images);
-            $ok = $remoteOk && $saved;
+            if ($remoteOk && in_array($mp, ['shopify_main', 'shopify_pls'], true)) {
+                $saved = $this->saveShopifyCatalogImages($sku, $mp, $images) || $saved;
+            }
             $results[$mp] = [
-                'success' => $ok,
+                // API success should not flip to false only because local metrics persistence failed.
+                'success' => $remoteOk,
+                'metrics_saved' => $saved,
                 'message' => ($remote['message'] ?? '').($saved ? '' : ' Metrics not saved.'),
             ];
         }
 
         $totalSuccess = collect($results)->where('success', true)->count();
         $totalFailed = collect($results)->where('success', false)->count();
+        $totalMetricsFailed = collect($results)->where('metrics_saved', false)->count();
 
         return response()->json([
             'success' => $totalFailed === 0,
             'results' => $results,
             'total_success' => $totalSuccess,
             'total_failed' => $totalFailed,
-            'message' => "Updated {$totalSuccess} marketplace(s).".($totalFailed > 0 ? " {$totalFailed} failed." : ''),
+            'total_metrics_failed' => $totalMetricsFailed,
+            'message' => "Updated {$totalSuccess} marketplace(s).".($totalFailed > 0 ? " {$totalFailed} failed." : '').($totalMetricsFailed > 0 ? " {$totalMetricsFailed} metrics save failed." : ''),
         ]);
     }
 
@@ -328,7 +334,7 @@ class ImageMasterController extends Controller
     private function saveImageMetricsToTable(string $marketplace, string $sku, array $imageUrls): bool
     {
         $table = $this->marketplaceTableMap()[$marketplace] ?? null;
-        if (! $table || ! Schema::hasTable($table) || ! Schema::hasColumn($table, 'image_master_json')) {
+        if (! $table || ! Schema::hasTable($table)) {
             return false;
         }
         if (! Schema::hasColumn($table, 'sku')) {
@@ -342,12 +348,23 @@ class ImageMasterController extends Controller
 
         try {
             $now = now();
+            $updatable = [];
+            if (Schema::hasColumn($table, 'image_master_json')) {
+                $updatable['image_master_json'] = $payload;
+            }
+            if (Schema::hasColumn($table, 'image_urls')) {
+                $updatable['image_urls'] = $payload;
+            }
+            if ($updatable === []) {
+                return false;
+            }
+            if (Schema::hasColumn($table, 'updated_at')) {
+                $updatable['updated_at'] = $now;
+            }
+
             DB::table($table)->updateOrInsert(
                 ['sku' => $sku],
-                [
-                    'image_master_json' => $payload,
-                    'updated_at' => $now,
-                ]
+                $updatable
             );
 
             // Ensure created_at on first insert when column exists and was null
@@ -378,12 +395,6 @@ class ImageMasterController extends Controller
             'reverb' => 'reverb_metrics',
             'shopify_main' => 'shopify_metrics',
             'shopify_pls' => 'shopify_pls_metrics',
-            'walmart' => 'walmart_metrics',
-            'wayfair' => 'wayfair_metrics',
-            'shein' => 'shein_metrics',
-            'doba' => 'doba_metrics',
-            'aliexpress' => 'aliexpress_metrics',
-            'bestbuy' => 'bestbuy_metrics',
         ];
     }
 
@@ -396,16 +407,19 @@ class ImageMasterController extends Controller
             if (! Schema::hasTable($table) || ! Schema::hasColumn($table, 'sku')) {
                 return [];
             }
-            if (! Schema::hasColumn($table, 'image_master_json')) {
+            $hasMasterJson = Schema::hasColumn($table, 'image_master_json');
+            $hasImageUrls = Schema::hasColumn($table, 'image_urls');
+            if (! $hasMasterJson && ! $hasImageUrls) {
                 return [];
             }
+            $valueColumn = $hasMasterJson ? 'image_master_json' : 'image_urls';
 
             return DB::table($table)
-                ->select('sku', 'image_master_json')
+                ->select('sku', $valueColumn)
                 ->whereNotNull('sku')
                 ->get()
-                ->mapWithKeys(function ($row) {
-                    $raw = (string) ($row->image_master_json ?? '');
+                ->mapWithKeys(function ($row) use ($valueColumn) {
+                    $raw = (string) ($row->{$valueColumn} ?? '');
                     $trim = trim($raw);
 
                     return [$this->normalizeSku($row->sku) => $trim];
@@ -447,5 +461,58 @@ class ImageMasterController extends Controller
         }
 
         return null;
+    }
+
+    /**
+     * Save image URLs to shopify_catalog_products when available.
+     */
+    private function saveShopifyCatalogImages(string $sku, string $marketplace, array $imageUrls): bool
+    {
+        try {
+            if (! Schema::hasTable('shopify_catalog_products') || ! Schema::hasTable('shopify_catalog_variants')) {
+                return false;
+            }
+            if (! Schema::hasColumn('shopify_catalog_products', 'images') || ! Schema::hasColumn('shopify_catalog_products', 'image_src')) {
+                return false;
+            }
+
+            $store = $marketplace === 'shopify_pls' ? 'pls' : 'main';
+            $payload = json_encode(array_values($imageUrls), JSON_UNESCAPED_SLASHES);
+            if ($payload === false) {
+                return false;
+            }
+            $first = (string) ($imageUrls[0] ?? '');
+            if ($first === '') {
+                return false;
+            }
+
+            $productId = DB::table('shopify_catalog_variants')
+                ->where('store', $store)
+                ->where(function ($q) use ($sku) {
+                    $q->where('sku', $sku)
+                        ->orWhere('sku', strtoupper($sku))
+                        ->orWhere('sku', strtolower($sku));
+                })
+                ->value('shopify_catalog_product_id');
+            if (! $productId) {
+                return false;
+            }
+
+            $update = [
+                'image_src' => $first,
+                'images' => $payload,
+            ];
+            if (Schema::hasColumn('shopify_catalog_products', 'updated_at')) {
+                $update['updated_at'] = now();
+            }
+
+            return DB::table('shopify_catalog_products')
+                ->where('id', $productId)
+                ->update($update) > 0;
+        } catch (\Throwable $e) {
+            Log::warning('ImageMaster: failed saving shopify_catalog_products images', ['sku' => $sku, 'marketplace' => $marketplace, 'error' => $e->getMessage()]);
+
+            return false;
+        }
     }
 }
