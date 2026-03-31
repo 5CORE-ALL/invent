@@ -8,6 +8,8 @@ use Aws\Signature\SignatureV4;
 use Aws\Credentials\Credentials;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use App\Models\ProductMaster;
 use App\Models\ProductStockMapping;
 use App\Models\TemuPricing;
@@ -1164,6 +1166,75 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
             Log::error('Temu updateListingImages', ['sku' => $sku, 'error' => $e->getMessage()]);
 
             return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    /**
+     * Image Master compatibility method: push images then persist image_urls in temu_metrics.
+     *
+     * @param  list<string>  $images
+     * @return array{success: bool, message: string}
+     */
+    public function updateImages(string $identifier, array $images): array
+    {
+        $images = array_slice(array_values(array_unique(array_filter(array_map('trim', $images), fn ($v) => $v !== ''))), 0, 12);
+        if ($images === []) {
+            return ['success' => false, 'message' => 'At least one image URL is required.'];
+        }
+
+        $res = $this->updateListingImages($identifier, $images);
+        if (! ($res['success'] ?? false)) {
+            return $res;
+        }
+
+        $resolved = $this->resolveTemuGoodsAndSku($identifier);
+        $sku = trim((string) ($resolved['sku'] ?? $identifier));
+        $saved = $this->saveImageUrlsToTemuMetrics($sku, $images);
+        if (! $saved) {
+            $res['message'] = ($res['message'] ?? 'Temu listing images updated.').' Metrics save failed.';
+        }
+
+        return $res;
+    }
+
+    /**
+     * @param  list<string>  $images
+     */
+    private function saveImageUrlsToTemuMetrics(string $sku, array $images): bool
+    {
+        try {
+            if (! Schema::hasTable('temu_metrics') || ! Schema::hasColumn('temu_metrics', 'sku')) {
+                return false;
+            }
+            $payload = json_encode(array_values($images), JSON_UNESCAPED_SLASHES);
+            if ($payload === false) {
+                return false;
+            }
+
+            $update = [];
+            if (Schema::hasColumn('temu_metrics', 'image_urls')) {
+                $update['image_urls'] = $payload;
+            }
+            if (Schema::hasColumn('temu_metrics', 'image_master_json')) {
+                $update['image_master_json'] = $payload;
+            }
+            if ($update === []) {
+                return false;
+            }
+            if (Schema::hasColumn('temu_metrics', 'updated_at')) {
+                $update['updated_at'] = now();
+            }
+
+            DB::table('temu_metrics')->updateOrInsert(['sku' => $sku], $update);
+            if (Schema::hasColumn('temu_metrics', 'created_at')) {
+                DB::table('temu_metrics')->where('sku', $sku)->whereNull('created_at')->update(['created_at' => now()]);
+            }
+
+            return true;
+        } catch (\Throwable $e) {
+            Log::warning('Temu image_urls save failed', ['sku' => $sku, 'error' => $e->getMessage()]);
+
+            return false;
         }
     }
 }
