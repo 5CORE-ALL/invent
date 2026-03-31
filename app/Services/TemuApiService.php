@@ -1005,7 +1005,7 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
         // Preserve current goodsDesc when updating goodsSummary to avoid accidental description loss.
         $goodsDescField = (string) config('services.temu.goods_desc_field', 'goodsDesc');
         if ($basicFieldKey !== $goodsDescField) {
-            $currentDesc = $this->fetchCurrentTemuGoodsDesc((string) $goodsId);
+            $currentDesc = $this->fetchCurrentTemuGoodsDesc((string) $goodsId, $sku);
             if ($currentDesc !== '') {
                 $requestBody[$goodsBasicField][$goodsDescField] = $currentDesc;
             }
@@ -1074,9 +1074,42 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
         }
     }
 
-    private function fetchCurrentTemuGoodsDesc(string $goodsId): string
+    private function fetchCurrentTemuGoodsDesc(string $goodsId, string $sku = ''): string
     {
         try {
+            // 1) Try direct detail APIs first (best chance to include goodsDesc).
+            $detailTypes = array_filter([
+                (string) config('services.temu.goods_detail_type', 'temu.local.goods.detail.retrieve'),
+                'bg.local.goods.detail.query',
+                'temu.local.goods.retrieve',
+            ]);
+            foreach ($detailTypes as $type) {
+                if ($type === '') {
+                    continue;
+                }
+                $detailReq = [
+                    'type' => $type,
+                    'goodsId' => (int) $goodsId,
+                ];
+                $signed = $this->generateSignValue($detailReq);
+                $request = Http::withHeaders(['Content-Type' => 'application/json']);
+                if (config('filesystems.default') === 'local') {
+                    $request = $request->withoutVerifying();
+                }
+                $response = $request->post('https://openapi-b-us.temu.com/openapi/router', $signed);
+                $data = $response->json();
+                if (! $response->successful() || ! ($data['success'] ?? false)) {
+                    continue;
+                }
+                $result = $data['result'] ?? [];
+                $goodsBasic = is_array($result['goodsBasic'] ?? null) ? $result['goodsBasic'] : [];
+                $desc = trim((string) ($goodsBasic['goodsDesc'] ?? $result['goodsDesc'] ?? ''));
+                if ($desc !== '') {
+                    return $desc;
+                }
+            }
+
+            // 2) Fallback to list API and scan goodsBasic.goodsDesc.
             $pageToken = null;
             do {
                 $body = [
@@ -1112,6 +1145,25 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
             } while ($pageToken);
         } catch (\Throwable $e) {
             Log::warning('Temu fetchCurrentTemuGoodsDesc failed', ['goods_id' => $goodsId, 'error' => $e->getMessage()]);
+        }
+
+        // 3) Last fallback: metrics description_master (if previously synced).
+        try {
+            if ($sku !== '' && Schema::hasTable('temu_metrics') && Schema::hasColumn('temu_metrics', 'description_master')) {
+                $desc = DB::table('temu_metrics')
+                    ->where(function ($q) use ($sku) {
+                        $q->where('sku', $sku)
+                            ->orWhere('sku', strtoupper($sku))
+                            ->orWhere('sku', strtolower($sku));
+                    })
+                    ->value('description_master');
+                $desc = trim((string) $desc);
+                if ($desc !== '') {
+                    return $desc;
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Temu description fallback from metrics failed', ['sku' => $sku, 'error' => $e->getMessage()]);
         }
 
         return '';

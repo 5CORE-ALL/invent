@@ -523,14 +523,32 @@ class ReverbApiService
         }
 
         $current = $this->fetchCurrentReverbDescription($token, $listingId);
+        if (($current['html'] ?? '') === '' && ($current['plain'] ?? '') === '') {
+            $dbDesc = trim((string) (ReverbProduct::query()
+                ->where(function ($q) use ($trim, $listingId) {
+                    $q->where('sku', $trim)
+                        ->orWhere('sku', strtoupper($trim))
+                        ->orWhere('sku', strtolower($trim))
+                        ->orWhere('reverb_listing_id', $listingId);
+                })
+                ->value('description') ?? ''));
+            if ($dbDesc !== '') {
+                $current['plain'] = $dbDesc;
+                $current['html'] = '<div class="product-description">'.nl2br(htmlspecialchars($dbDesc, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'), false).'</div>';
+            }
+        }
+
+        // Use top-level fields (same shape as other Reverb updates), and only include description
+        // keys when we have non-empty values to avoid accidental clearing.
         $payload = [
-            'listing' => [
-                'features' => $features,
-                // Preserve existing long description fields while updating features.
-                'description' => $current['html'],
-                'plain_text_description' => $current['plain'],
-            ],
+            'features' => $features,
         ];
+        if (($current['html'] ?? '') !== '') {
+            $payload['description'] = $current['html'];
+        }
+        if (($current['plain'] ?? '') !== '') {
+            $payload['plain_text_description'] = $current['plain'];
+        }
 
         try {
             $response = $this->reverbPutListingWithRetry($token, $listingId, $payload);
@@ -865,8 +883,16 @@ class ReverbApiService
             }
 
             $json = $response->json();
-            $plain = trim((string) ($json['listing']['plain_text_description'] ?? $json['plain_text_description'] ?? ''));
-            $html = trim((string) ($json['listing']['description'] ?? $json['description'] ?? ''));
+            $plain = trim((string) ($json['listing']['plain_text_description']
+                ?? $json['plain_text_description']
+                ?? $json['listing']['plain_text']
+                ?? $json['plain_text']
+                ?? ''));
+            $html = trim((string) ($json['listing']['description']
+                ?? $json['description']
+                ?? $json['listing']['body']
+                ?? $json['body']
+                ?? ''));
             if ($plain === '' && $html !== '') {
                 $plain = trim(strip_tags($html));
             }
