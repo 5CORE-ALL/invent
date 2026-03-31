@@ -390,6 +390,129 @@ abstract class IssueBoardControllerBase extends Controller
         return response()->json(['message' => 'Hold issue updated successfully.']);
     }
 
+    public function importCsv(Request $request): JsonResponse
+    {
+        $request->validate(['file' => 'required|file|mimes:csv,txt|max:2048']);
+
+        $file    = $request->file('file');
+        $handle  = fopen($file->getRealPath(), 'r');
+        $headers = null;
+        $inserted = 0;
+        $skipped  = 0;
+        $errors   = [];
+
+        $user      = auth()->user();
+        $createdBy = trim((string) ($user?->name ?? 'System')) ?: 'System';
+
+        $map = [
+            'sku'                  => ['sku'],
+            'qty'                  => ['qty', 'quantity'],
+            'order_qty'            => ['order_qty', 'order qty', 'order_quantity'],
+            'parent'               => ['parent'],
+            'marketplace_1'        => ['marketplace_1', 'mkt1', 'marketplace1'],
+            'marketplace_2'        => ['marketplace_2', 'mkt2', 'marketplace2'],
+            'what_happened'        => ['what_happened', 'what?', 'what happened'],
+            'action_1'             => ['action_1', 'action', 'action 1'],
+            'action_1_remark'      => ['action_1_remark', 'action remark', 'action remark'],
+            'replacement_tracking' => ['replacement_tracking', 'replacement tracking'],
+            'issue'                => ['issue', 'root_cause_found', 'root cause found'],
+            'issue_remark'         => ['issue_remark', 'root cause remark', 'root_cause_remark'],
+            'c_action_1'           => ['c_action_1', 'root_cause_fixed', 'root cause fixed'],
+            'c_action_1_remark'    => ['c_action_1_remark', 'root cause fixed remark', 'root_cause_fixed_remark'],
+        ];
+
+        while (($row = fgetcsv($handle)) !== false) {
+            if ($headers === null) {
+                $headers = array_map(fn($h) => strtolower(trim((string) $h)), $row);
+                continue;
+            }
+
+            if (count(array_filter($row, fn($v) => trim((string)$v) !== '')) === 0) {
+                continue;
+            }
+
+            $data = array_combine($headers, array_pad($row, count($headers), ''));
+
+            $get = function (string $field) use ($data, $map): ?string {
+                foreach ($map[$field] ?? [$field] as $alias) {
+                    if (array_key_exists($alias, $data) && trim((string) $data[$alias]) !== '') {
+                        return trim((string) $data[$alias]);
+                    }
+                }
+                return null;
+            };
+
+            $sku = $get('sku');
+            if (!$sku) {
+                $skipped++;
+                $errors[] = 'Row skipped: SKU is empty.';
+                continue;
+            }
+
+            $qty = $get('qty');
+            if ($qty === null || !is_numeric($qty)) {
+                $skipped++;
+                $errors[] = "Row skipped (SKU={$sku}): QTY is missing or not numeric.";
+                continue;
+            }
+
+            $issue = $get('issue');
+            if (!$issue) {
+                $skipped++;
+                $errors[] = "Row skipped (SKU={$sku}): Root Cause Found / Issue is required.";
+                continue;
+            }
+
+            try {
+                $now     = now();
+                $payload = [
+                    'sku'                  => $sku,
+                    'qty'                  => (float) $qty,
+                    'order_qty'            => $get('order_qty') !== null ? (float) $get('order_qty') : null,
+                    'parent'               => $get('parent'),
+                    'marketplace_1'        => $get('marketplace_1'),
+                    'marketplace_2'        => $get('marketplace_2'),
+                    'what_happened'        => $get('what_happened'),
+                    'issue'                => $issue,
+                    'issue_remark'         => $get('issue_remark'),
+                    'action_1'             => $get('action_1'),
+                    'action_1_remark'      => $get('action_1_remark'),
+                    'replacement_tracking' => $get('replacement_tracking'),
+                    'c_action_1'           => $get('c_action_1'),
+                    'c_action_1_remark'    => $get('c_action_1_remark'),
+                    'created_by'           => $createdBy,
+                    'created_by_user_id'   => $user?->id,
+                    'created_at'           => $now,
+                    'updated_at'           => $now,
+                ];
+
+                \Illuminate\Support\Facades\DB::transaction(function () use ($payload, $now) {
+                    $id = \Illuminate\Support\Facades\DB::table($this->issuesTable())->insertGetId($payload);
+                    \Illuminate\Support\Facades\DB::table($this->historyTable())->insert(array_merge($payload, [
+                        'orders_on_hold_issue_id' => $id,
+                        'event_type'              => 'created',
+                        'revision_no'             => 0,
+                        'logged_at'               => $now,
+                    ]));
+                });
+
+                $inserted++;
+            } catch (\Throwable $e) {
+                $skipped++;
+                $errors[] = "Row failed (SKU={$sku}): " . $e->getMessage();
+            }
+        }
+
+        fclose($handle);
+
+        return response()->json([
+            'message'  => "{$inserted} record(s) imported, {$skipped} skipped.",
+            'inserted' => $inserted,
+            'skipped'  => $skipped,
+            'errors'   => array_slice($errors, 0, 20),
+        ]);
+    }
+
     public function archive(int $id): JsonResponse
     {
         $row = DB::table($this->issuesTable())->where('id', $id)->first();

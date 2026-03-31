@@ -174,6 +174,9 @@
                 <button type="button" class="btn btn-success" id="btnExportCsv">
                     <i class="bi bi-file-earmark-spreadsheet me-1"></i> Export CSV
                 </button>
+                <button type="button" class="btn btn-outline-info" id="btnImportCsv">
+                    <i class="bi bi-upload me-1"></i> Import CSV
+                </button>
             </div>
             <div class="card">
                 <div class="card-body">
@@ -253,6 +256,51 @@
                             </tbody>
                         </table>
                     </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {{-- ── Import CSV Modal ── --}}
+    <div class="modal fade" id="importCsvModal" tabindex="-1" aria-labelledby="importCsvModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="importCsvModalLabel"><i class="bi bi-upload me-2"></i>Import CSV</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="importCsvAlert" class="d-none mb-3"></div>
+                    <p class="text-muted small mb-2">
+                        Upload a CSV file with the following columns (header row required):<br>
+                        <code>sku, qty, order_qty, parent, marketplace_1, marketplace_2, what_happened, action_1, action_1_remark, replacement_tracking, issue, issue_remark, c_action_1, c_action_1_remark</code>
+                    </p>
+                    <p class="text-muted small mb-3">
+                        Required: <strong>sku</strong>, <strong>qty</strong>, <strong>issue</strong> (Root Cause Found). All other columns are optional.
+                    </p>
+                    <div class="mb-3">
+                        <label for="importCsvFile" class="form-label">CSV File</label>
+                        <input type="file" class="form-control" id="importCsvFile" accept=".csv,.txt">
+                    </div>
+                    <div id="importCsvProgress" class="d-none">
+                        <div class="progress mb-2">
+                            <div class="progress-bar progress-bar-striped progress-bar-animated bg-info" style="width:100%"></div>
+                        </div>
+                        <p class="text-muted small text-center">Uploading…</p>
+                    </div>
+                    <div id="importCsvErrors" class="d-none">
+                        <p class="fw-semibold small mb-1 text-warning">Skipped rows:</p>
+                        <ul id="importCsvErrorList" class="small text-warning mb-0" style="max-height:160px;overflow-y:auto;"></ul>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <a href="#" id="importCsvSampleLink" class="btn btn-sm btn-outline-secondary me-auto">
+                        <i class="bi bi-download me-1"></i> Download Sample
+                    </a>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-info" id="importCsvSubmitBtn">
+                        <i class="bi bi-upload me-1"></i> Import
+                    </button>
                 </div>
             </div>
         </div>
@@ -1224,6 +1272,84 @@
                 const dateStr = new Date().toISOString().slice(0, 10);
 
                 downloadCsv(buildCsv(activeHeaders, activeData), `${safeTitle}_active_${dateStr}.csv`);
+            });
+
+            document.getElementById('btnImportCsv').addEventListener('click', () => {
+                document.getElementById('importCsvFile').value = '';
+                document.getElementById('importCsvAlert').className = 'd-none mb-3';
+                document.getElementById('importCsvAlert').innerHTML = '';
+                document.getElementById('importCsvProgress').classList.add('d-none');
+                document.getElementById('importCsvErrors').classList.add('d-none');
+                document.getElementById('importCsvErrorList').innerHTML = '';
+                new bootstrap.Modal(document.getElementById('importCsvModal')).show();
+            });
+
+            document.getElementById('importCsvSampleLink').addEventListener('click', (e) => {
+                e.preventDefault();
+                const headers = ['sku','qty','order_qty','parent','marketplace_1','marketplace_2','what_happened','action_1','action_1_remark','replacement_tracking','issue','issue_remark','c_action_1','c_action_1_remark'];
+                const sample  = ['SAMPLE-SKU-001','5','2','PARENT-001','Amazon','eBay','Damaged','Cancelled','','TRK123','Quality Issue','','Fixed',''];
+                const csv = [headers.join(','), sample.join(',')].join('\r\n');
+                const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a'); a.href = url;
+                a.download = 'import_sample.csv';
+                document.body.appendChild(a); a.click();
+                document.body.removeChild(a); URL.revokeObjectURL(url);
+            });
+
+            document.getElementById('importCsvSubmitBtn').addEventListener('click', async () => {
+                const fileInput = document.getElementById('importCsvFile');
+                const alertEl  = document.getElementById('importCsvAlert');
+                const progressEl = document.getElementById('importCsvProgress');
+                const errorsEl = document.getElementById('importCsvErrors');
+                const errList  = document.getElementById('importCsvErrorList');
+
+                if (!fileInput.files.length) {
+                    alertEl.className = 'alert alert-warning mb-3';
+                    alertEl.textContent = 'Please select a CSV file.';
+                    return;
+                }
+
+                const importUrl = '{{ $importUrl ?? "" }}';
+                if (!importUrl) {
+                    alertEl.className = 'alert alert-danger mb-3';
+                    alertEl.textContent = 'Import URL is not configured for this page.';
+                    return;
+                }
+
+                const formData = new FormData();
+                formData.append('file', fileInput.files[0]);
+                formData.append('_token', document.querySelector('meta[name="csrf-token"]').content);
+
+                alertEl.className = 'd-none mb-3';
+                progressEl.classList.remove('d-none');
+                errorsEl.classList.add('d-none');
+                document.getElementById('importCsvSubmitBtn').disabled = true;
+
+                try {
+                    const res = await fetch(importUrl, { method: 'POST', body: formData });
+                    const data = await res.json();
+                    progressEl.classList.add('d-none');
+
+                    if (res.ok) {
+                        alertEl.className = 'alert alert-success mb-3';
+                        alertEl.textContent = data.message || 'Import complete.';
+                        if (data.errors && data.errors.length) {
+                            errList.innerHTML = data.errors.map(e => `<li>${e}</li>`).join('');
+                            errorsEl.classList.remove('d-none');
+                        }
+                        await loadHoldIssueRows();
+                    } else {
+                        alertEl.className = 'alert alert-danger mb-3';
+                        alertEl.textContent = data.message || 'Import failed.';
+                    }
+                } catch (err) {
+                    progressEl.classList.add('d-none');
+                    alertEl.className = 'alert alert-danger mb-3';
+                    alertEl.textContent = 'Network error. Please try again.';
+                } finally {
+                    document.getElementById('importCsvSubmitBtn').disabled = false;
+                }
             });
 
             modalEl.addEventListener('hidden.bs.modal', resetForm);

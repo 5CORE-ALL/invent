@@ -46,6 +46,133 @@ class RefundController extends Controller
         ));
     }
 
+    public function importCsv(Request $request)
+    {
+        $request->validate(['file' => 'required|file|mimes:csv,txt|max:2048']);
+
+        $file     = $request->file('file');
+        $handle   = fopen($file->getRealPath(), 'r');
+        $headers  = null;
+        $inserted = 0;
+        $skipped  = 0;
+        $errors   = [];
+
+        $user      = Auth::user();
+        $createdBy = trim((string) ($user?->name ?? 'N/A')) ?: 'N/A';
+
+        $map = [
+            'sku'                => ['sku'],
+            'qty'                => ['qty', 'quantity'],
+            'refund_amt'         => ['refund_amt', 'refund amt', 'refund amount', 'amount'],
+            'reason'             => ['reason'],
+            'comment'            => ['comment', 'corrective action required', 'corrective_action'],
+            'person_responsible' => ['person_responsible', 'person responsible'],
+            'order_id'           => ['order_id', 'order id'],
+            'channel_name'       => ['channel_name', 'channel name', 'channel'],
+            'supplier_name'      => ['supplier_name', 'supplier name', 'supplier'],
+        ];
+
+        while (($row = fgetcsv($handle)) !== false) {
+            if ($headers === null) {
+                $headers = array_map(fn($h) => strtolower(trim((string) $h)), $row);
+                continue;
+            }
+            if (count(array_filter($row, fn($v) => trim((string)$v) !== '')) === 0) {
+                continue;
+            }
+
+            $data = array_combine($headers, array_pad($row, count($headers), ''));
+
+            $get = function (string $field) use ($data, $map): ?string {
+                foreach ($map[$field] ?? [$field] as $alias) {
+                    if (array_key_exists($alias, $data) && trim((string) $data[$alias]) !== '') {
+                        return trim((string) $data[$alias]);
+                    }
+                }
+                return null;
+            };
+
+            $sku = $get('sku');
+            if (!$sku) { $skipped++; $errors[] = 'Row skipped: SKU empty.'; continue; }
+
+            $qty = $get('qty');
+            if ($qty === null || !is_numeric($qty) || (int)$qty < 1) {
+                $skipped++;
+                $errors[] = "Row skipped (SKU={$sku}): QTY must be >= 1.";
+                continue;
+            }
+
+            $refundAmt = $get('refund_amt');
+            if ($refundAmt === null || !is_numeric($refundAmt) || (float)$refundAmt < 0) {
+                $skipped++;
+                $errors[] = "Row skipped (SKU={$sku}): Refund Amt must be >= 0.";
+                continue;
+            }
+
+            $reason = $get('reason');
+            if (!$reason) { $skipped++; $errors[] = "Row skipped (SKU={$sku}): Reason is required."; continue; }
+
+            $personResponsible = $get('person_responsible');
+            if (!$personResponsible) { $skipped++; $errors[] = "Row skipped (SKU={$sku}): Person Responsible is required."; continue; }
+
+            // Resolve supplier by name
+            $supplierId = null;
+            if ($supplierName = $get('supplier_name')) {
+                $sup = Supplier::where('type', 'Supplier')
+                    ->whereRaw('LOWER(TRIM(name)) = ?', [strtolower($supplierName)])
+                    ->first();
+                if ($sup) {
+                    $supplierId = $sup->id;
+                }
+            }
+
+            // Resolve channel by name
+            $channelMasterId = null;
+            if ($channelName = $get('channel_name')) {
+                $ch = ChannelMaster::whereRaw('LOWER(TRIM(COALESCE(status,""))) = ?', ['active'])
+                    ->whereRaw('LOWER(TRIM(channel)) = ?', [strtolower($channelName)])
+                    ->first();
+                if ($ch) {
+                    $channelMasterId = $ch->id;
+                }
+            }
+
+            $orderId = $get('order_id');
+            if ($orderId !== null) {
+                $orderId = substr($orderId, 0, 30);
+            }
+
+            try {
+                RefundRecord::create([
+                    'sku'                => $sku,
+                    'qty'                => (int) $qty,
+                    'refund_amt'         => round((float) $refundAmt, 2),
+                    'reason'             => $reason,
+                    'comment'            => $get('comment'),
+                    'person_responsible' => $personResponsible,
+                    'supplier_id'        => $supplierId,
+                    'order_id'           => $orderId ?: null,
+                    'channel_master_id'  => $channelMasterId,
+                    'created_by'         => $createdBy,
+                    'is_archived'        => false,
+                ]);
+                $inserted++;
+            } catch (\Throwable $e) {
+                $skipped++;
+                $errors[] = "Row failed (SKU={$sku}): " . $e->getMessage();
+            }
+        }
+
+        fclose($handle);
+
+        return response()->json([
+            'message'  => "{$inserted} record(s) imported, {$skipped} skipped.",
+            'inserted' => $inserted,
+            'skipped'  => $skipped,
+            'errors'   => array_slice($errors, 0, 20),
+        ]);
+    }
+
     public function getReasons()
     {
         $reasons = RefundReason::orderBy('sort_order')->orderBy('name')->pluck('name')->toArray();

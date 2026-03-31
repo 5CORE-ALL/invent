@@ -507,8 +507,8 @@ class FetchMacyProducts extends Command
     
     private function refreshTokenIfNeeded($response)
     {
-        // If we get unauthorized, clear cache and retry
-        if (!$response->successful() && str_contains($response->body(), 'Unauthorized')) {
+        // Handle both "Unauthorized" (capital) and "unauthorized" (lowercase) from Mirakl
+        if (!$response->successful() && stripos($response->body(), 'unauthorized') !== false) {
             Log::warning("Macy token unauthorized, clearing cache and getting new token");
             Cache::forget('macy_access_token');
             return $this->getAccessToken();
@@ -522,12 +522,15 @@ class FetchMacyProducts extends Command
 
         $pageToken = null;
         $sales = [];
+        $page = 1;
 
         $now = now('America/Los_Angeles');
         $startDate = $now->copy()->subDays(29)->startOfDay()->toIso8601String();
 
         $startL30 = $now->copy()->subDays(29)->startOfDay();
         $endL30   = $now->copy()->endOfDay();
+
+        $companyId = config('services.macy.company_id');
 
         do {
             $url = 'https://miraklconnect.com/api/v2/orders'
@@ -538,7 +541,6 @@ class FetchMacyProducts extends Command
             if ($pageToken) {
                 $url .= '&page_token=' . urlencode($pageToken);
             }
-
             $response = Http::withoutVerifying()->withToken($token)->get($url);
             
             // Check if token expired and refresh if needed
@@ -559,6 +561,13 @@ class FetchMacyProducts extends Command
             $json = $response->json();
             $orders = $json['data'] ?? [];
             $pageToken = $json['next_page_token'] ?? null;
+
+            // Log all unique channel names on the first page so we can verify exact strings
+            if ($page === 1) {
+                $channelNames = array_unique(array_map(fn($o) => $o['origin']['channel_name'] ?? 'UNKNOWN', $orders));
+                Log::info("Mirakl order channel names found on page 1: " . implode(' | ', $channelNames));
+                $this->info("Channels in orders: " . implode(' | ', $channelNames));
+            }
 
             foreach ($orders as $order) {
                 $channel = $order['origin']['channel_name'] ?? 'UNKNOWN';
@@ -589,15 +598,15 @@ class FetchMacyProducts extends Command
                     }
                 }
             }
+            $page++;
         } while ($pageToken);
 
 
-        $this->info("Total Macy's SKUs: " . count($sales));
-        // foreach ($sales as $channel => $skuMap) {
-        //     $this->info("Channel {$channel} has " . count($skuMap) . " SKUs with orders.");
-        // }
-
-        // Debug logging removed to save memory
+        // Log all channel names found so we can verify exact strings from Mirakl
+        foreach ($sales as $channel => $skuMap) {
+            $this->info("Channel [{$channel}] has " . count($skuMap) . " SKUs with orders.");
+            Log::info("Mirakl channel order count: [{$channel}] = " . count($skuMap) . " SKUs");
+        }
 
         return $sales;
     }

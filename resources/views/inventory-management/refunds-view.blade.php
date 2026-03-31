@@ -215,6 +215,9 @@
                             <button type="button" class="btn btn-success" id="exportRefundsCsvBtn" title="Export visible rows to CSV">
                                 <i class="fas fa-file-csv me-1"></i> Export CSV
                             </button>
+                            <button type="button" class="btn btn-outline-info" id="importRefundsCsvBtn" title="Import records from CSV">
+                                <i class="fas fa-file-upload me-1"></i> Import CSV
+                            </button>
                             <div class="dataTables_length"></div>
                         </div>
 
@@ -237,6 +240,51 @@
                             <i class="fas fa-file-excel me-1"></i> Download Excel
                         </button>
                     </div> -->
+
+                    <!-- Import CSV Modal -->
+                    <div class="modal fade" id="importRefundsModal" tabindex="-1" aria-labelledby="importRefundsModalLabel" aria-hidden="true">
+                        <div class="modal-dialog">
+                            <div class="modal-content">
+                                <div class="modal-header">
+                                    <h5 class="modal-title" id="importRefundsModalLabel"><i class="fas fa-file-upload me-2"></i>Import Refunds CSV</h5>
+                                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                </div>
+                                <div class="modal-body">
+                                    <div id="importRefundsAlert" class="d-none mb-3"></div>
+                                    <p class="text-muted small mb-2">
+                                        Upload a CSV file with the following columns (header row required):<br>
+                                        <code>sku, qty, refund_amt, reason, comment, person_responsible, order_id, channel_name, supplier_name</code>
+                                    </p>
+                                    <p class="text-muted small mb-3">
+                                        Required: <strong>sku</strong>, <strong>qty</strong>, <strong>refund_amt</strong>, <strong>reason</strong>, <strong>person_responsible</strong>.
+                                    </p>
+                                    <div class="mb-3">
+                                        <label for="importRefundsFile" class="form-label">CSV File</label>
+                                        <input type="file" class="form-control" id="importRefundsFile" accept=".csv,.txt">
+                                    </div>
+                                    <div id="importRefundsProgress" class="d-none">
+                                        <div class="progress mb-2">
+                                            <div class="progress-bar progress-bar-striped progress-bar-animated bg-info" style="width:100%"></div>
+                                        </div>
+                                        <p class="text-muted small text-center">Uploading…</p>
+                                    </div>
+                                    <div id="importRefundsErrors" class="d-none">
+                                        <p class="fw-semibold small mb-1 text-warning">Skipped rows:</p>
+                                        <ul id="importRefundsErrorList" class="small text-warning mb-0" style="max-height:160px;overflow-y:auto;"></ul>
+                                    </div>
+                                </div>
+                                <div class="modal-footer">
+                                    <a href="#" id="importRefundsSampleLink" class="btn btn-sm btn-outline-secondary me-auto">
+                                        <i class="fas fa-download me-1"></i> Download Sample
+                                    </a>
+                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                                    <button type="button" class="btn btn-info" id="importRefundsSubmitBtn">
+                                        <i class="fas fa-file-upload me-1"></i> Import
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
 
                     <!-- Refund Modal -->
                     <div class="modal fade" id="refundsModal" tabindex="-1" aria-labelledby="refundModalLabel" aria-hidden="true">
@@ -1749,6 +1797,73 @@
                     errorElement.textContent = '';
                 }
             }
+
+            $(document).on('click', '#importRefundsCsvBtn', function () {
+                $('#importRefundsFile').val('');
+                $('#importRefundsAlert').removeClass().addClass('d-none mb-3').text('');
+                $('#importRefundsProgress').addClass('d-none');
+                $('#importRefundsErrors').addClass('d-none');
+                $('#importRefundsErrorList').empty();
+                new bootstrap.Modal(document.getElementById('importRefundsModal')).show();
+            });
+
+            $(document).on('click', '#importRefundsSampleLink', function (e) {
+                e.preventDefault();
+                var headers = ['sku','qty','refund_amt','reason','comment','person_responsible','order_id','channel_name','supplier_name'];
+                var sample  = ['SAMPLE-SKU-001','1','15.99','Damaged','Replace packaging','Shivaji','ORD-12345','Amazon B2C','Supplier A'];
+                var csv = [headers.join(','), sample.join(',')].join('\r\n');
+                var blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+                var url = URL.createObjectURL(blob);
+                var a = document.createElement('a'); a.href = url; a.download = 'refunds_import_sample.csv';
+                document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+            });
+
+            $(document).on('click', '#importRefundsSubmitBtn', function () {
+                var file = $('#importRefundsFile')[0].files[0];
+                var $alert = $('#importRefundsAlert');
+                var $progress = $('#importRefundsProgress');
+                var $errors = $('#importRefundsErrors');
+                var $errList = $('#importRefundsErrorList');
+
+                if (!file) {
+                    $alert.removeClass().addClass('alert alert-warning mb-3').text('Please select a CSV file.');
+                    return;
+                }
+
+                var fd = new FormData();
+                fd.append('file', file);
+                fd.append('_token', $('meta[name="csrf-token"]').attr('content'));
+
+                $alert.removeClass().addClass('d-none mb-3').text('');
+                $progress.removeClass('d-none');
+                $errors.addClass('d-none');
+                $('#importRefundsSubmitBtn').prop('disabled', true);
+
+                $.ajax({
+                    url: '{{ route("refunds.import.csv") }}',
+                    method: 'POST',
+                    data: fd,
+                    processData: false,
+                    contentType: false,
+                    success: function (res) {
+                        $progress.addClass('d-none');
+                        $alert.removeClass().addClass('alert alert-success mb-3').text(res.message || 'Import complete.');
+                        if (res.errors && res.errors.length) {
+                            $errList.html(res.errors.map(function(e){ return '<li>' + e + '</li>'; }).join(''));
+                            $errors.removeClass('d-none');
+                        }
+                        loadData();
+                    },
+                    error: function (xhr) {
+                        $progress.addClass('d-none');
+                        var msg = (xhr.responseJSON && xhr.responseJSON.message) ? xhr.responseJSON.message : 'Import failed.';
+                        $alert.removeClass().addClass('alert alert-danger mb-3').text(msg);
+                    },
+                    complete: function () {
+                        $('#importRefundsSubmitBtn').prop('disabled', false);
+                    }
+                });
+            });
 
             $(document).on('click', '#exportRefundsCsvBtn', function () {
                 var data = currentDisplayData && currentDisplayData.length ? currentDisplayData : tableData;

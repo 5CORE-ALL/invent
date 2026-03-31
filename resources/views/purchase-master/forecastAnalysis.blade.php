@@ -395,7 +395,7 @@
                             <button id="supplier-play-auto"     class="btn btn-outline-warning btn-sm rounded-circle p-0 fw-bold" style="width:28px;height:28px;font-size:11px;" title="Play by supplier">S</button>
                             <button id="supplier-play-forward"  class="btn btn-light btn-sm rounded-circle p-0" style="width:28px;height:28px;" title="Next supplier"><i class="fas fa-step-forward" style="font-size:10px;"></i></button>
                             <span class="badge bg-warning text-dark" id="supplier-play-label" style="font-size:0.65rem;display:none;max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></span>
-                        </div>
+                            </div>
 
                         <!-- Zone play -->
                         <div class="d-flex align-items-center gap-1 border rounded px-2 py-1 bg-light" title="Play by Zone">
@@ -428,7 +428,7 @@
                     </div>
 
                     <!-- ── Row 2: Searches + Filters ── -->
-                    <div class="d-flex align-items-center flex-wrap gap-2">
+                        <div class="d-flex align-items-center flex-wrap gap-2">
                         <!-- Column Searches -->
                         <input type="text" id="search-sku"      class="form-control form-control-sm border-primary" placeholder="SKU…"      autocomplete="off" style="width:140px;">
                         <input type="text" id="search-parent"   class="form-control form-control-sm border-primary" placeholder="Parent…"   autocomplete="off" style="width:130px;">
@@ -438,15 +438,15 @@
 
                         <!-- Stage Filter -->
                         <select id="stage-filter" class="form-select form-select-sm border border-primary" style="width:140px;">
-                            <option value="">All</option>
-                            <option value="__blank__">Not Req Now</option>
-                            <option value="two_ord_nonneg">2 Ord</option>
-                            <option value="appr_req">Appr Req</option>
-                            <option value="mip">MIP</option>
-                            <option value="r2s">R2S</option>
-                            <option value="transit">Trn</option>
-                            <option value="to_order_analysis">Order</option>
-                        </select>
+                                <option value="">All</option>
+                                <option value="__blank__">Not Req Now</option>
+                                <option value="two_ord_nonneg">2 Ord</option>
+                                <option value="appr_req">Appr Req</option>
+                                <option value="mip">MIP</option>
+                                <option value="r2s">R2S</option>
+                                <option value="transit">Trn</option>
+                                <option value="to_order_analysis">Order</option>
+                            </select>
                         <span id="stage-filter-badge" style="display:none;background:#0d6efd;color:#fff;font-size:0.78rem;font-weight:700;border-radius:20px;padding:3px 10px;white-space:nowrap;box-shadow:0 1px 4px rgba(13,110,253,.35);"></span>
 
                         <!-- Row Type -->
@@ -456,27 +456,27 @@
                         <div class="dropdown d-inline-block">
                             <button class="btn btn-sm btn-light border border-primary dropdown-toggle" type="button" id="nrp-filter-dropdown" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false" style="min-width:120px;">
                                 <span id="nrp-filter-label">ALL Items</span>
-                            </button>
+                                </button>
                             <ul class="dropdown-menu shadow-sm p-2" style="min-width:170px;" aria-labelledby="nrp-filter-dropdown">
                                 <li class="small text-muted px-2 mb-1">Show item types</li>
                                 <li><label class="dropdown-item-text mb-0 d-flex align-items-center gap-2 cursor-pointer"><input type="checkbox" class="form-check-input nrp-ms-opt flex-shrink-0" value="REQ" checked><span>REQ</span></label></li>
                                 <li><label class="dropdown-item-text mb-0 d-flex align-items-center gap-2 cursor-pointer"><input type="checkbox" class="form-check-input nrp-ms-opt flex-shrink-0" value="NR" checked><span>2BDC</span></label></li>
                                 <li><label class="dropdown-item-text mb-0 d-flex align-items-center gap-2 cursor-pointer"><input type="checkbox" class="form-check-input nrp-ms-opt flex-shrink-0" value="LATER" checked><span>LATER</span></label></li>
                             </ul>
-                        </div>
+                            </div>
 
                         <!-- Appr Req filter -->
-                        <div class="dropdown">
+                            <div class="dropdown">
                             <button class="btn btn-sm btn-warning dropdown-toggle fw-semibold text-dark px-2" type="button" id="order-color-filter-dropdown" data-bs-toggle="dropdown" aria-expanded="false" title="Appr Req. filter">
                                 <span class="d-none" aria-hidden="true"><i class="bi bi-funnel-fill"></i><span id="appr-req-badge-label">All</span></span>
-                                <span class="vr align-self-stretch my-n1 opacity-50 d-none" aria-hidden="true"></span>
+                                    <span class="vr align-self-stretch my-n1 opacity-50 d-none" aria-hidden="true"></span>
                                 <i class="bi bi-star-fill"></i> <span id="yellow-count-box">Appr Req: 0</span>
-                            </button>
-                            <ul class="dropdown-menu p-2 shadow-lg border rounded-3">
-                                <li><button class="dropdown-item" type="button" data-filter="">All</button></li>
-                                <li><button class="dropdown-item" type="button" data-filter="yellow">Appr Req.</button></li>
-                            </ul>
-                        </div>
+                                </button>
+                                <ul class="dropdown-menu p-2 shadow-lg border rounded-3">
+                                    <li><button class="dropdown-item" type="button" data-filter="">All</button></li>
+                                    <li><button class="dropdown-item" type="button" data-filter="yellow">Appr Req.</button></li>
+                                </ul>
+                            </div>
 
                         <!-- Column Management -->
                         <div class="dropdown">
@@ -487,14 +487,14 @@
                                     <rect x="7.6" y="0" width="2.5" height="14" rx="1"/>
                                     <rect x="11.4" y="0" width="2.5" height="14" rx="1"/>
                                 </svg>
-                            </button>
-                        </div>
+                                </button>
+                            </div>
 
                         <!-- Export Button -->
                         <button id="export-forecast-btn" class="btn btn-sm btn-success fw-semibold d-flex align-items-center gap-1" title="Export filtered rows: Supplier, SKU, Image, QTY, Order Date">
                             <i class="fas fa-file-csv"></i>
                             <span>Export</span>
-                        </button>
+                            </button>
                     </div>
 
                     <!-- ── Row 3: Value badges ── -->
@@ -778,12 +778,12 @@
                 </div>
                 <div class="modal-body" style="max-height:65vh;overflow-y:auto;">
                     <div id="columnCheckboxList" class="row row-cols-2 row-cols-sm-3 g-2"></div>
-                </div>
+                            </div>
                 <div class="modal-footer py-2">
                     <button type="button" class="btn btn-sm btn-outline-secondary" id="columnShowAllBtn">Show All</button>
                     <button type="button" class="btn btn-sm btn-outline-danger" id="columnHideAllBtn">Hide All</button>
                     <button type="button" class="btn btn-sm btn-primary" data-bs-dismiss="modal">Done</button>
-                </div>
+                        </div>
             </div>
         </div>
     </div>
@@ -4434,8 +4434,8 @@
                         const el = col.getElement();
                         const titleEl = el && el.querySelector('.tabulator-col-title');
                         label = titleEl ? (titleEl.textContent || '').trim() : '';
-                    } catch (_) {}
-                }
+                } catch (_) {}
+            }
                 if (!label || label === 'undefined') label = f || '—';
                 // Strip any HTML tags just in case
                 label = label.replace(/<[^>]*>/g, '').trim() || f || '—';
@@ -4462,7 +4462,7 @@
                 }).join('');
             }
 
-            trigger.addEventListener("click", function() {
+                trigger.addEventListener("click", function() {
                 buildCheckboxList();
                 bootstrap.Modal.getOrCreateInstance(modalEl).show();
             });

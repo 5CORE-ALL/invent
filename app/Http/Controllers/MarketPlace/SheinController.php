@@ -852,6 +852,7 @@ class SheinController extends Controller
                     ['sku' => $row['sku']],
                     [
                         'price'               => max(0, $row['price']),
+                        'original_price'      => max(0, $row['original_price'] ?? 0),
                         'special_offer_price' => max(0, $row['special_offer_price']),
                         'shein_stock'         => max(0, $row['stock']),
                     ]
@@ -890,47 +891,70 @@ class SheinController extends Controller
                       || in_array('seller sku', $headers, true);
 
         if ($isNativeShein) {
-            // Find column indices by partial match (column names can have slight variations)
-            $skuIdx      = null;
-            $priceIdx    = null;
-            $spOfferIdx  = null;
-            $stockIdx    = null;
+            // CSV columns (Shein native export):
+            //   sellerSKU                         → sku
+            //   price                             → price        (the plain "price" column)
+            //   Original Price(shein-us_USD)      → original_price
+            //   Special Offer Price(shein-us_USD) → special_offer_price
+            //   Current inventory                 → shein_stock
+            $skuIdx          = null;
+            $priceIdx        = null;   // exact "price" column
+            $origPriceIdx    = null;   // Original Price(shein-us_USD)
+            $spOfferIdx      = null;   // Special Offer Price(shein-us_USD)
+            $stockIdx        = null;
 
             foreach ($headers as $i => $h) {
-                if ($skuIdx   === null && (str_contains($h, 'sellersku') || $h === 'seller sku'))       $skuIdx     = $i;
-                if ($stockIdx === null && str_contains($h, 'current inventory'))                         $stockIdx   = $i;
-                if ($priceIdx === null && str_contains($h, 'original price'))                            $priceIdx   = $i;
-                if ($spOfferIdx === null && str_contains($h, 'special offer price'))                     $spOfferIdx = $i;
+                if ($skuIdx       === null && (str_contains($h, 'sellersku') || $h === 'seller sku'))  $skuIdx       = $i;
+                if ($stockIdx     === null && str_contains($h, 'current inventory'))                    $stockIdx     = $i;
+                if ($spOfferIdx   === null && str_contains($h, 'special offer price'))                  $spOfferIdx   = $i;
+                if ($origPriceIdx === null && str_contains($h, 'original price'))                       $origPriceIdx = $i;
+                // Match plain "price" exactly — must come after the above so it doesn't grab "original price"
+                if ($priceIdx     === null && trim($h) === 'price')                                     $priceIdx     = $i;
             }
 
             if ($skuIdx === null) {
                 throw new \RuntimeException('sellerSKU column not found in Shein sheet.');
             }
         } else {
-            // Simple sheet: sku, price, stock, optional special_offer_price
-            $skuIdx     = array_search('sku',                 $headers, true);
-            $priceIdx   = array_search('price',               $headers, true);
-            $stockIdx   = array_search('stock',               $headers, true);
-            $spOfferIdx = array_search('special offer price', $headers, true)
-                       ?: array_search('special_offer_price', $headers, true);
+            // Generic sheet: supports standard (sku/price/stock) and marketplace exports (Offer SKU/Price/Quantity)
+            $skuIdx          = null;
+            $priceIdx        = null;
+            $origPriceIdx    = null;
+            $spOfferIdx      = null;
+            $stockIdx        = null;
 
-            if ($skuIdx === false || $priceIdx === false) {
-                throw new \RuntimeException('Columns not found. Expected: sku, price. Got: [' . implode(', ', array_slice($headers, 0, 10)) . ']');
+            foreach ($headers as $i => $h) {
+                $h = trim($h);
+                if ($skuIdx       === null && in_array($h, ['sku', 'offer sku', 'offer_sku', 'offersku'], true)) $skuIdx       = $i;
+                if ($priceIdx     === null && $h === 'price')                                                     $priceIdx     = $i;
+                if ($stockIdx     === null && in_array($h, ['stock', 'quantity'], true))                          $stockIdx     = $i;
+                if ($origPriceIdx === null && in_array($h, ['original price', 'original_price'], true))           $origPriceIdx = $i;
+                if ($spOfferIdx   === null && in_array($h, ['special offer price', 'special_offer_price', 'discount price'], true)) $spOfferIdx = $i;
+            }
+
+            if ($skuIdx === null || $priceIdx === null) {
+                throw new \RuntimeException(
+                    'Columns not found. Detected: [' . implode(', ', array_slice($headers, 0, 12)) . ']. ' .
+                    'Expected "sku" and "price" columns.'
+                );
             }
         }
 
         $rows = [];
         foreach ($dataRows as $row) {
             $sku = trim((string) ($row[$skuIdx] ?? ''));
-            if ($sku === '' || strtolower($sku) === 'sellersku') continue;
+            // Skip blank rows and repeated header rows
+            if ($sku === '' || in_array(strtolower($sku), ['sellersku', 'seller sku', 'offer sku', 'sku'], true)) continue;
 
-            $price       = (float) preg_replace('/[^0-9.\-]/', '', trim((string) ($row[$priceIdx]   ?? '')));
-            $spOffer     = $spOfferIdx !== null ? (float) preg_replace('/[^0-9.\-]/', '', trim((string) ($row[$spOfferIdx] ?? ''))) : 0;
-            $stock       = $stockIdx   !== null ? (int) trim((string) ($row[$stockIdx] ?? '0')) : 0;
+            $price      = $priceIdx     !== null ? (float) preg_replace('/[^0-9.\-]/', '', trim((string) ($row[$priceIdx]     ?? ''))) : 0;
+            $origPrice  = $origPriceIdx !== null ? (float) preg_replace('/[^0-9.\-]/', '', trim((string) ($row[$origPriceIdx] ?? ''))) : 0;
+            $spOffer    = $spOfferIdx   !== null ? (float) preg_replace('/[^0-9.\-]/', '', trim((string) ($row[$spOfferIdx]   ?? ''))) : 0;
+            $stock      = $stockIdx     !== null ? (int) trim((string) ($row[$stockIdx] ?? '0')) : 0;
 
             $rows[] = [
                 'sku'                 => $sku,
                 'price'               => $price,
+                'original_price'      => $origPrice,
                 'special_offer_price' => $spOffer,
                 'stock'               => $stock,
             ];
@@ -967,9 +991,7 @@ class SheinController extends Controller
             // ── 3. Shein sales → al30 / sales  (from shein_daily_data.seller_sku)
             $excludedStatuses = ['refund', 'return', 'cancel', 'closed', 'exchange'];
             $salesAgg = SheinDailyData::query()
-                ->selectRaw('seller_sku,
-                    SUM(COALESCE(quantity, 0)) AS al30,
-                    SUM(COALESCE(estimated_merchandise_revenue, 0)) AS sales')
+                ->selectRaw('seller_sku, SUM(COALESCE(quantity, 0)) AS al30')
                 ->whereNotNull('seller_sku')->where('seller_sku', '!=', '')
                 ->where(function ($q) use ($excludedStatuses) {
                     foreach ($excludedStatuses as $s) {
@@ -1015,8 +1037,10 @@ class SheinController extends Controller
             $rows = [];
             foreach ($allNormalizedSkus as $normalizedSku) {
                 $priceRow   = $pricingBySku->get($normalizedSku);
-                $price      = $priceRow ? (float) $priceRow->price       : 0;
-                $sheinStock = $priceRow ? (int)   ($priceRow->shein_stock ?? 0) : 0;
+                $price      = $priceRow ? (float) $priceRow->price              : 0;
+                $origPrice  = $priceRow ? (float) ($priceRow->original_price      ?? 0) : 0;
+                $spOffer    = $priceRow ? (float) ($priceRow->special_offer_price  ?? 0) : 0;
+                $sheinStock = $priceRow ? (int)   ($priceRow->shein_stock          ?? 0) : 0;
 
                 $productMaster = $productMasterBySku->get($normalizedSku);
                 $values = [];
@@ -1030,8 +1054,10 @@ class SheinController extends Controller
                       : (isset($values['ship']) ? (float) $values['ship'] : 0);
 
                 $sale  = $salesAgg->get($normalizedSku);
-                $al30  = $sale ? (float) $sale->al30  : 0;
-                $sales = $sale ? (float) $sale->sales : 0;
+                $al30  = $sale ? (float) $sale->al30 : 0;
+                // Use theoretical sales (al30 × special_offer_price) — consistent with profit calc
+                // Same pattern as TikTok: TT L30 × TT Price
+                $sales = $al30 * $spOffer;
 
                 $shopifyRow = $shopifyBySku->get($normalizedSku);
                 $inv        = $shopifyRow ? (int) ($shopifyRow->inv      ?? 0) : 0;
@@ -1042,15 +1068,17 @@ class SheinController extends Controller
                 $meta       = $metaRecord ? ($metaRecord->value ?? []) : [];
                 $sprice     = isset($meta['SPRICE']) ? (float) $meta['SPRICE'] : 0;
 
-                // Calculations
-                $profit = ($price * $margin) - $lp - $ship;
-                $gpft   = $price > 0 ? ($profit / $price) * 100 : 0;
-                $groi   = $lp    > 0 ? ($profit / $lp)    * 100 : 0;
+                // Use special_offer_price only for all calculations
+                $calcPrice  = $spOffer;
+                $profit = ($calcPrice * $margin) - $lp - $ship;
+                $gpft   = $calcPrice > 0 ? ($profit / $calcPrice) * 100 : 0;
+                $groi   = $lp        > 0 ? ($profit / $lp)         * 100 : 0;
                 $sgpft  = $sprice > 0 ? round((($sprice * $margin - $lp - $ship) / $sprice) * 100, 2) : 0;
                 $sroi   = ($sprice > 0 && $lp > 0) ? round((($sprice * $margin - $lp - $ship) / $lp) * 100, 2) : 0;
 
                 $displaySku = $productMaster->sku ?? ($priceRow->sku ?? $normalizedSku);
-                $isMissing  = !$priceRow || $price <= 0;
+                // Missing only when special_offer_price is 0 or no row exists
+                $isMissing  = !$priceRow || $spOffer <= 0;
 
                 // MAP: INV vs Shein Stock
                 if ($isMissing) { $mapValue = ''; }
@@ -1062,7 +1090,6 @@ class SheinController extends Controller
                     'parent'       => $productMaster ? (trim((string) ($productMaster->parent ?? '')) ?: null) : null,
                     'is_parent'    => false,
                     'image'        => $imageSrc,
-                    'price'        => round($price, 2),
                     'missing'      => $isMissing ? 'M' : '',
                     'map'          => $mapValue,
                     'gpft'         => round($gpft,  2),
@@ -1077,7 +1104,10 @@ class SheinController extends Controller
                     'sroi'         => round($sroi,  2),
                     '_margin'      => round($margin, 4),
                     'inv'          => $inv,
-                    'shein_stock'  => $sheinStock,
+                    'shein_stock'      => $sheinStock,
+                    'original_price'   => round($origPrice, 2),
+                    'special_offer'    => round($spOffer,   2),
+                    'calc_price'       => round($calcPrice, 2),
                     'ov_l30'       => $ovL30,
                     'dil_percent'  => $inv > 0 ? round(($ovL30 / $inv) * 100, 2) : 0,
                 ];

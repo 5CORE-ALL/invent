@@ -12,5 +12,6 @@
     'dropdownOptionsListUrl' => route('customer.care.carrier.issue.dropdown.options.index'),
     'dropdownOptionsStoreUrl' => route('customer.care.carrier.issue.dropdown.options.store'),
     'dropdownOptionsDeleteUrl' => route('customer.care.carrier.issue.dropdown.options.delete'),
+    'importUrl' => route('customer.care.carrier.issue.issues.import'),
     'marketplaces' => $marketplaces ?? collect(),
 ])->render() !!}

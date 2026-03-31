@@ -1149,6 +1149,36 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
         return response()->json(['message' => 'Hold issue archived successfully.']);
     })->name('customer.care.orders.on.hold.issues.archive');
+
+    Route::post('/customer-care/orders-on-hold/import-csv', function (\Illuminate\Http\Request $request) {
+        $request->validate(['file' => 'required|file|mimes:csv,txt|max:2048']);
+        $file = $request->file('file');
+        $handle = fopen($file->getRealPath(), 'r');
+        $headers = null; $inserted = 0; $skipped = 0; $errors = [];
+        $user = auth()->user();
+        $createdBy = trim((string)($user?->name ?? 'System')) ?: 'System';
+        $map = ['sku'=>['sku'],'qty'=>['qty','quantity'],'order_qty'=>['order_qty','order qty'],'parent'=>['parent'],'marketplace_1'=>['marketplace_1','mkt1'],'marketplace_2'=>['marketplace_2','mkt2'],'what_happened'=>['what_happened','what?','what happened'],'action_1'=>['action_1','action','action 1'],'action_1_remark'=>['action_1_remark','action remark'],'replacement_tracking'=>['replacement_tracking','replacement tracking'],'issue'=>['issue','root_cause_found','root cause found'],'issue_remark'=>['issue_remark','root cause remark'],'c_action_1'=>['c_action_1','root_cause_fixed','root cause fixed'],'c_action_1_remark'=>['c_action_1_remark','root cause fixed remark']];
+        while (($row = fgetcsv($handle)) !== false) {
+            if ($headers === null) { $headers = array_map(fn($h)=>strtolower(trim((string)$h)),$row); continue; }
+            if (!array_filter($row,fn($v)=>trim((string)$v)!=='')) continue;
+            $data = array_combine($headers, array_pad($row, count($headers), ''));
+            $get = function($f) use($data,$map){ foreach($map[$f]??[$f] as $a){ if(array_key_exists($a,$data)&&trim((string)$data[$a])!=='') return trim((string)$data[$a]); } return null; };
+            $sku=$get('sku'); if(!$sku){$skipped++;$errors[]='Row skipped: SKU empty.';continue;}
+            $qty=$get('qty'); if($qty===null||!is_numeric($qty)){$skipped++;$errors[]="Row skipped (SKU=$sku): invalid QTY.";continue;}
+            $issue=$get('issue'); if(!$issue){$skipped++;$errors[]="Row skipped (SKU=$sku): Root Cause Found required.";continue;}
+            try {
+                $now=now();
+                $payload=['sku'=>$sku,'qty'=>(float)$qty,'order_qty'=>$get('order_qty')!==null?(float)$get('order_qty'):null,'parent'=>$get('parent'),'marketplace_1'=>$get('marketplace_1'),'marketplace_2'=>$get('marketplace_2'),'what_happened'=>$get('what_happened'),'issue'=>$issue,'issue_remark'=>$get('issue_remark'),'action_1'=>$get('action_1'),'action_1_remark'=>$get('action_1_remark'),'replacement_tracking'=>$get('replacement_tracking'),'c_action_1'=>$get('c_action_1'),'c_action_1_remark'=>$get('c_action_1_remark'),'created_by'=>$createdBy,'created_by_user_id'=>$user?->id,'created_at'=>$now,'updated_at'=>$now];
+                \Illuminate\Support\Facades\DB::transaction(function() use($payload,$now){
+                    $id=\Illuminate\Support\Facades\DB::table('orders_on_hold_issues')->insertGetId($payload);
+                    \Illuminate\Support\Facades\DB::table('orders_on_hold_issue_histories')->insert(array_merge($payload,['orders_on_hold_issue_id'=>$id,'event_type'=>'created','revision_no'=>0,'logged_at'=>$now]));
+                });
+                $inserted++;
+            } catch(\Throwable $e){ $skipped++; $errors[]="Row failed (SKU=$sku): ".$e->getMessage(); }
+        }
+        fclose($handle);
+        return response()->json(['message'=>"{$inserted} record(s) imported, {$skipped} skipped.",'inserted'=>$inserted,'skipped'=>$skipped,'errors'=>array_slice($errors,0,20)]);
+    })->name('customer.care.orders.on.hold.issues.import');
     Route::get('/customer-care/carrier-issue', [\App\Http\Controllers\CustomerCare\CarrierIssueController::class, 'index'])
         ->name('customer.care.carrier.issue');
     Route::get('/customer-care/carrier-issue/sku-details', [\App\Http\Controllers\CustomerCare\CarrierIssueController::class, 'skuDetails'])
@@ -1285,7 +1315,9 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
             ->unique()
             ->values();
 
-        return view('customer-care.qc_and_packing', compact('marketplaces'));
+        return view('customer-care.qc_and_packing', array_merge(compact('marketplaces'), [
+            'importUrl' => route('customer.care.qc.and.packing.issues.import'),
+        ]));
     })->name('customer.care.qc.and.packing');
     Route::get('/customer-care/qc-and-packing/sku-details', function (\Illuminate\Http\Request $request) {
         $sku = trim((string) $request->query('sku', ''));
@@ -1831,6 +1863,50 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
         return response()->json(['message' => 'Option deleted successfully.']);
     })->name('customer.care.qc.and.packing.dropdown.options.delete');
+
+    Route::post('/customer-care/qc-and-packing/import-csv', function (\Illuminate\Http\Request $request) {
+        $request->validate(['file' => 'required|file|mimes:csv,txt|max:2048']);
+        $file = $request->file('file');
+        $handle = fopen($file->getRealPath(), 'r');
+        $headers = null; $inserted = 0; $skipped = 0; $errors = [];
+        $user = auth()->user();
+        $createdBy = trim((string)($user?->name ?? 'System')) ?: 'System';
+        $map = ['sku'=>['sku'],'qty'=>['qty','quantity'],'order_qty'=>['order_qty','order qty'],'parent'=>['parent'],'marketplace_1'=>['marketplace_1','mkt1'],'marketplace_2'=>['marketplace_2','mkt2'],'what_happened'=>['what_happened','what?','what happened'],'action_1'=>['action_1','action','action 1'],'action_1_remark'=>['action_1_remark','action remark'],'replacement_tracking'=>['replacement_tracking','replacement tracking'],'issue'=>['issue','root_cause_found','root cause found'],'issue_remark'=>['issue_remark','root cause remark'],'c_action_1'=>['c_action_1','root_cause_fixed','root cause fixed'],'c_action_1_remark'=>['c_action_1_remark','root cause fixed remark']];
+        while (($row = fgetcsv($handle)) !== false) {
+            if ($headers === null) { $headers = array_map(fn($h)=>strtolower(trim((string)$h)),$row); continue; }
+            if (!array_filter($row,fn($v)=>trim((string)$v)!=='')) continue;
+            $data = array_combine($headers, array_pad($row, count($headers), ''));
+            $get = function($f) use($data,$map){ foreach($map[$f]??[$f] as $a){ if(array_key_exists($a,$data)&&trim((string)$data[$a])!=='') return trim((string)$data[$a]); } return null; };
+            $sku=$get('sku'); if(!$sku){$skipped++;$errors[]='Row skipped: SKU empty.';continue;}
+            $qty=$get('qty'); if($qty===null||!is_numeric($qty)){$skipped++;$errors[]="Row skipped (SKU=$sku): invalid QTY.";continue;}
+            $issue=$get('issue'); if(!$issue){$skipped++;$errors[]="Row skipped (SKU=$sku): Root Cause Found required.";continue;}
+            try {
+                $now=now();
+                $payload=['sku'=>$sku,'qty'=>(float)$qty,'order_qty'=>$get('order_qty')!==null?(float)$get('order_qty'):null,'parent'=>$get('parent'),'marketplace_1'=>$get('marketplace_1'),'marketplace_2'=>$get('marketplace_2'),'what_happened'=>$get('what_happened'),'issue'=>$issue,'issue_remark'=>$get('issue_remark'),'action_1'=>$get('action_1'),'action_1_remark'=>$get('action_1_remark'),'replacement_tracking'=>$get('replacement_tracking'),'c_action_1'=>$get('c_action_1'),'c_action_1_remark'=>$get('c_action_1_remark'),'created_by'=>$createdBy,'created_by_user_id'=>$user?->id,'created_at'=>$now,'updated_at'=>$now];
+                \Illuminate\Support\Facades\DB::transaction(function() use($payload,$now){
+                    $id=\Illuminate\Support\Facades\DB::table('qc_and_packing_issues')->insertGetId($payload);
+                    \Illuminate\Support\Facades\DB::table('qc_and_packing_issue_histories')->insert(array_merge($payload,['orders_on_hold_issue_id'=>$id,'event_type'=>'created','revision_no'=>0,'logged_at'=>$now]));
+                });
+                $inserted++;
+            } catch(\Throwable $e){ $skipped++; $errors[]="Row failed (SKU=$sku): ".$e->getMessage(); }
+        }
+        fclose($handle);
+        return response()->json(['message'=>"{$inserted} record(s) imported, {$skipped} skipped.",'inserted'=>$inserted,'skipped'=>$skipped,'errors'=>array_slice($errors,0,20)]);
+    })->name('customer.care.qc.and.packing.issues.import');
+
+    Route::post('/customer-care/carrier-issue/import-csv', [\App\Http\Controllers\CustomerCare\CarrierIssueController::class, 'importCsv'])
+        ->name('customer.care.carrier.issue.issues.import');
+    Route::post('/customer-care/label-issues/import-csv', [\App\Http\Controllers\CustomerCare\LabelIssuesController::class, 'importCsv'])
+        ->name('customer.care.label.issues.import');
+    Route::post('/customer-care/dispatch-issues/import-csv', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'importCsv'])
+        ->name('customer.care.dispatch.issues.import');
+    Route::post('/customer-care/listing-issue/import-csv', [\App\Http\Controllers\CustomerCare\ListingIssueController::class, 'importCsv'])
+        ->name('customer.care.listing.issue.import');
+    Route::post('/customer-care/c-care-issues/import-csv', [\App\Http\Controllers\CustomerCare\CCareIssuesController::class, 'importCsv'])
+        ->name('customer.care.c.care.issues.import');
+    Route::post('/customer-care/other-issues/import-csv', [\App\Http\Controllers\CustomerCare\OtherIssuesController::class, 'importCsv'])
+        ->name('customer.care.other.issues.import');
+
     Route::get('/customer-care/followups', [CustomerFollowupController::class, 'index'])->name('customer.care.followups');
     Route::get('/customer-care/followups/data', [CustomerFollowupController::class, 'data'])->name('customer.care.followups.data');
     Route::get('/customer-care/followups/skus', [CustomerFollowupController::class, 'searchProductSkus'])->name('customer.care.followups.skus');
@@ -1898,6 +1974,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::put('/refunds-update-reason-comment', [RefundController::class, 'updateReasonAndComment']);
     Route::get('/refunds-history/{id}', [RefundController::class, 'getHistory']);
     Route::post('/refunds-archive', [RefundController::class, 'archive']);
+    Route::post('/refunds-import-csv', [RefundController::class, 'importCsv'])->name('refunds.import.csv');
 
     // show updated qty
 

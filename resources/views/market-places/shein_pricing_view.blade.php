@@ -408,7 +408,7 @@
                 if (!rows.length) return;
                 const row     = rows[0];
                 const rowData = row.getData();
-                const currentPrice = parseFloat(rowData.price) || 0;
+                const currentPrice = parseFloat(rowData.original_price) || parseFloat(rowData.special_offer) || 0;
                 if (currentPrice <= 0) return;
 
                 let newSprice;
@@ -629,17 +629,17 @@
             const avgRoi  = roiCount  > 0 ? roiSum  / roiCount  : 0;
 
             $('#ae-total-sku-badge').text(`Total SKU: ${childCount.toLocaleString()}`);
-            $('#ae-total-sales-badge').text(`Total Sales: $${Math.round(totalSales).toLocaleString()}`);
+            $('#ae-total-sales-badge').text(totalSales   > 0 ? `Total Sales: $${Math.round(totalSales).toLocaleString()}`       : 'Total Sales: –');
             $('#ae-total-al30-badge').text(`Total Sh L30: ${totalAl30.toLocaleString()}`);
-            $('#ae-total-profit-badge').text(`Total Profit: $${Math.round(totalProfit).toLocaleString()}`);
-            $('#ae-avg-gpft-badge').text(`AVG GPFT: ${avgGpft.toFixed(1)}%`);
+            $('#ae-total-profit-badge').text(totalProfit !== 0 ? `Total Profit: $${Math.round(totalProfit).toLocaleString()}`    : 'Total Profit: –');
+            $('#ae-avg-gpft-badge').text(gpftCount  > 0 ? `AVG GPFT: ${avgGpft.toFixed(1)}%`  : 'AVG GPFT: –');
             $('#ae-missing-badge').text(`Missing: ${missingCount.toLocaleString()}`);
             $('#ae-map-badge').text(`Map: ${mapCount.toLocaleString()}`);
             $('#ae-zero-sold-badge').text(`0 Sold: ${zeroSold.toLocaleString()}`);
             $('#ae-more-sold-badge').text(`>0 Sold: ${moreSold.toLocaleString()}`);
-            $('#ae-avg-dil-badge').text(`DIL%: ${avgDil.toFixed(1)}%`);
+            $('#ae-avg-dil-badge').text(dilCount > 0 ? `DIL%: ${avgDil.toFixed(1)}%` : 'DIL%: –');
             if ($('#ae-avg-roi-badge').length) {
-                $('#ae-avg-roi-badge').text(`AVG ROI: ${avgRoi.toFixed(1)}%`);
+                $('#ae-avg-roi-badge').text(roiCount > 0 ? `AVG ROI: ${avgRoi.toFixed(1)}%` : 'AVG ROI: –');
             }
         }
 
@@ -788,14 +788,16 @@
                         }
                     },
                     {
-                        title: "Price",
-                        field: "price",
+                        title: "Sp. Price",
+                        field: "special_offer",
                         sorter: "number",
                         hozAlign: "right",
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
-                            return money(cell.getValue());
+                            const v = parseFloat(cell.getValue()) || 0;
+                            if (v === 0) return '<span style="color:#adb5bd;">–</span>';
+                            return `<span style="color:#e83e8c;font-weight:600;">${money(v)}</span>`;
                         }
                     },
                     {

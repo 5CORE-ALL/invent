@@ -14,12 +14,14 @@ class SheinPricingPrice extends Model
     protected $fillable = [
         'sku',
         'price',
+        'original_price',
         'special_offer_price',
         'shein_stock',
     ];
 
     protected $casts = [
         'price'               => 'decimal:2',
+        'original_price'      => 'decimal:2',
         'special_offer_price' => 'decimal:2',
         'shein_stock'         => 'integer',
     ];
