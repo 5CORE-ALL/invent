@@ -931,6 +931,11 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
 
         $includeSkuList = (bool) config('services.temu.bullet_update_include_sku_list', false);
 
+        $resolved = $this->resolveTemuGoodsAndSku($identifier);
+        $sku = trim((string) ($resolved['sku'] ?? $identifier));
+        $goodsId = (string) (($resolved['goods_id'] ?? '') ?: ($sku !== '' ? (string) ($this->getGoodsIdBySku($sku) ?? '') : ''));
+        $preservedGoodsDesc = $goodsId !== '' ? $this->fetchCurrentTemuGoodsDesc($goodsId, $sku) : '';
+
         $res = $this->pushTemuGoodsBasicField(
             $identifier,
             $value,
@@ -938,15 +943,18 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
             'Temu bullet points updated.',
             'SKU (or goods_id) and bullet points are required.',
             'Temu updateBulletPoints',
-            $includeSkuList
+            $includeSkuList,
+            $preservedGoodsDesc
         );
         if (! ($res['success'] ?? false)) {
             return $res;
         }
 
-        $resolved = $this->resolveTemuGoodsAndSku($identifier);
-        $sku = trim((string) ($resolved['sku'] ?? $identifier));
-        $saved = $this->saveGoodsSummaryToTemuMetrics($sku, is_array($value) ? implode("\n", $value) : (string) $value);
+        $saved = $this->saveTemuBulletAndDescToMetrics(
+            $sku,
+            is_array($value) ? implode("\n", $value) : (string) $value,
+            $preservedGoodsDesc
+        );
         if (! $saved) {
             $res['message'] = ($res['message'] ?? 'Temu bullet points updated.').' Metrics save failed.';
         }
@@ -968,6 +976,7 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
         string $emptyIdentifierMessage,
         string $logContext,
         bool $includeSkuList = true,
+        ?string $preservedGoodsDesc = null,
     ): array {
         if (trim($identifier) === '') {
             return ['success' => false, 'message' => $emptyIdentifierMessage];
@@ -1005,7 +1014,9 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
         // Preserve current goodsDesc when updating goodsSummary to avoid accidental description loss.
         $goodsDescField = (string) config('services.temu.goods_desc_field', 'goodsDesc');
         if ($basicFieldKey !== $goodsDescField) {
-            $currentDesc = $this->fetchCurrentTemuGoodsDesc((string) $goodsId, $sku);
+            $currentDesc = $preservedGoodsDesc !== null
+                ? trim($preservedGoodsDesc)
+                : $this->fetchCurrentTemuGoodsDesc((string) $goodsId, $sku);
             if ($currentDesc !== '') {
                 $requestBody[$goodsBasicField][$goodsDescField] = $currentDesc;
             }
@@ -1076,6 +1087,41 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
 
     private function fetchCurrentTemuGoodsDesc(string $goodsId, string $sku = ''): string
     {
+        // 1) Database first (requested): prefer persisted copy to avoid API gaps.
+        try {
+            if ($sku !== '' && Schema::hasTable('temu_metrics') && Schema::hasColumn('temu_metrics', 'sku')) {
+                if (Schema::hasColumn('temu_metrics', 'goods_desc')) {
+                    $desc = DB::table('temu_metrics')
+                        ->where(function ($q) use ($sku) {
+                            $q->where('sku', $sku)
+                                ->orWhere('sku', strtoupper($sku))
+                                ->orWhere('sku', strtolower($sku));
+                        })
+                        ->value('goods_desc');
+                    $desc = trim((string) $desc);
+                    if ($desc !== '') {
+                        return $desc;
+                    }
+                }
+                if (Schema::hasColumn('temu_metrics', 'description_master')) {
+                    $desc = DB::table('temu_metrics')
+                        ->where(function ($q) use ($sku) {
+                            $q->where('sku', $sku)
+                                ->orWhere('sku', strtoupper($sku))
+                                ->orWhere('sku', strtolower($sku));
+                        })
+                        ->value('description_master');
+                    $desc = trim((string) $desc);
+                    if ($desc !== '') {
+                        return $desc;
+                    }
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Temu DB-first goods_desc fetch failed', ['sku' => $sku, 'goods_id' => $goodsId, 'error' => $e->getMessage()]);
+        }
+
+        // 2) API fallback
         try {
             // 1) Try direct detail APIs first (best chance to include goodsDesc).
             $detailTypes = array_filter([
@@ -1147,25 +1193,6 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
             Log::warning('Temu fetchCurrentTemuGoodsDesc failed', ['goods_id' => $goodsId, 'error' => $e->getMessage()]);
         }
 
-        // 3) Last fallback: metrics description_master (if previously synced).
-        try {
-            if ($sku !== '' && Schema::hasTable('temu_metrics') && Schema::hasColumn('temu_metrics', 'description_master')) {
-                $desc = DB::table('temu_metrics')
-                    ->where(function ($q) use ($sku) {
-                        $q->where('sku', $sku)
-                            ->orWhere('sku', strtoupper($sku))
-                            ->orWhere('sku', strtolower($sku));
-                    })
-                    ->value('description_master');
-                $desc = trim((string) $desc);
-                if ($desc !== '') {
-                    return $desc;
-                }
-            }
-        } catch (\Throwable $e) {
-            Log::warning('Temu description fallback from metrics failed', ['sku' => $sku, 'error' => $e->getMessage()]);
-        }
-
         return '';
     }
 
@@ -1192,6 +1219,40 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
             return true;
         } catch (\Throwable $e) {
             Log::warning('Temu saveGoodsSummaryToTemuMetrics failed', ['sku' => $sku, 'error' => $e->getMessage()]);
+
+            return false;
+        }
+    }
+
+    private function saveTemuBulletAndDescToMetrics(string $sku, string $goodsSummary, string $goodsDesc): bool
+    {
+        try {
+            if ($sku === '' || ! Schema::hasTable('temu_metrics') || ! Schema::hasColumn('temu_metrics', 'sku')) {
+                return false;
+            }
+
+            $update = [];
+            if (Schema::hasColumn('temu_metrics', 'goods_summary')) {
+                $update['goods_summary'] = $goodsSummary;
+            }
+            if (Schema::hasColumn('temu_metrics', 'goods_desc')) {
+                $update['goods_desc'] = trim($goodsDesc) !== '' ? $goodsDesc : null;
+            }
+            if ($update === []) {
+                return false;
+            }
+            if (Schema::hasColumn('temu_metrics', 'updated_at')) {
+                $update['updated_at'] = now();
+            }
+
+            DB::table('temu_metrics')->updateOrInsert(['sku' => $sku], $update);
+            if (Schema::hasColumn('temu_metrics', 'created_at')) {
+                DB::table('temu_metrics')->where('sku', $sku)->whereNull('created_at')->update(['created_at' => now()]);
+            }
+
+            return true;
+        } catch (\Throwable $e) {
+            Log::warning('Temu saveTemuBulletAndDescToMetrics failed', ['sku' => $sku, 'error' => $e->getMessage()]);
 
             return false;
         }

@@ -13,7 +13,7 @@ return new class extends Migration
         }
 
         Schema::table('reverb_products', function (Blueprint $table) {
-            $table->longText('features')->nullable()->after('description');
+            $table->longText('features')->nullable();
         });
     }
 

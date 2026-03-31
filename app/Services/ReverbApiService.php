@@ -522,7 +522,7 @@ class ReverbApiService
             return ['success' => false, 'message' => 'No Reverb listing found for SKU or reverb_listing_id.'];
         }
 
-        $current = $this->fetchCurrentReverbDescription($token, $listingId);
+        $current = $this->fetchCurrentReverbDescription($token, $listingId, $trim);
         if (($current['html'] ?? '') === '' && ($current['plain'] ?? '') === '') {
             $dbDesc = trim((string) (ReverbProduct::query()
                 ->where(function ($q) use ($trim, $listingId) {
@@ -681,7 +681,7 @@ class ReverbApiService
             return ['success' => false, 'message' => 'No Reverb listing found for SKU or reverb_listing_id.'];
         }
 
-        $current = $this->fetchCurrentReverbDescription($token, $listingId);
+        $current = $this->fetchCurrentReverbDescription($token, $listingId, $trim);
         $incomingPlain = trim($description);
         $incomingHtml = '<div class="product-description">'.nl2br(htmlspecialchars($incomingPlain, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'), false).'</div>';
         $mergedPlain = $this->appendUniqueText($current['plain'], $incomingPlain);
@@ -865,8 +865,39 @@ class ReverbApiService
     /**
      * @return array{plain: string, html: string}
      */
-    private function fetchCurrentReverbDescription(string $token, string $listingId): array
+    private function fetchCurrentReverbDescription(string $token, string $listingId, ?string $identifier = null): array
     {
+        // 1) Database first (requested) from reverb_products.
+        try {
+            if (Schema::hasTable('reverb_products')) {
+                $row = ReverbProduct::query()
+                    ->when($identifier !== null && trim($identifier) !== '', function ($q) use ($identifier, $listingId) {
+                        $id = trim((string) $identifier);
+                        $q->where(function ($qq) use ($id, $listingId) {
+                            $qq->where('sku', $id)
+                                ->orWhere('sku', strtoupper($id))
+                                ->orWhere('sku', strtolower($id))
+                                ->orWhere('reverb_listing_id', $listingId);
+                        });
+                    }, function ($q) use ($listingId) {
+                        $q->where('reverb_listing_id', $listingId);
+                    })
+                    ->first();
+                if ($row) {
+                    $plainDb = trim((string) ($row->description ?? ''));
+                    if ($plainDb !== '') {
+                        return [
+                            'plain' => $plainDb,
+                            'html' => '<div class="product-description">'.nl2br(htmlspecialchars($plainDb, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'), false).'</div>',
+                        ];
+                    }
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Reverb DB-first description fetch failed', ['identifier' => $identifier, 'listing_id' => $listingId, 'error' => $e->getMessage()]);
+        }
+
+        // 2) API fallback
         try {
             $url = 'https://api.reverb.com/api/listings/'.$listingId;
             $response = Http::withoutVerifying()
