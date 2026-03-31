@@ -522,16 +522,39 @@ class ReverbApiService
             return ['success' => false, 'message' => 'No Reverb listing found for SKU or reverb_listing_id.'];
         }
 
+        $current = $this->fetchCurrentReverbDescription($token, $listingId, $trim);
+        if (($current['html'] ?? '') === '' && ($current['plain'] ?? '') === '') {
+            $dbDesc = trim((string) (ReverbProduct::query()
+                ->where(function ($q) use ($trim, $listingId) {
+                    $q->where('sku', $trim)
+                        ->orWhere('sku', strtoupper($trim))
+                        ->orWhere('sku', strtolower($trim))
+                        ->orWhere('reverb_listing_id', $listingId);
+                })
+                ->value('description') ?? ''));
+            if ($dbDesc !== '') {
+                $current['plain'] = $dbDesc;
+                $current['html'] = '<div class="product-description">'.nl2br(htmlspecialchars($dbDesc, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'), false).'</div>';
+            }
+        }
+
+        // Use top-level fields (same shape as other Reverb updates), and only include description
+        // keys when we have non-empty values to avoid accidental clearing.
         $payload = [
-            'listing' => [
-                'features' => $features,
-            ],
+            'features' => $features,
         ];
+        if (($current['html'] ?? '') !== '') {
+            $payload['description'] = $current['html'];
+        }
+        if (($current['plain'] ?? '') !== '') {
+            $payload['plain_text_description'] = $current['plain'];
+        }
 
         try {
             $response = $this->reverbPutListingWithRetry($token, $listingId, $payload);
 
             if ($response->successful()) {
+                $this->saveFeaturesToReverbProducts($trim, $listingId, $features);
                 return [
                     'success' => true,
                     'message' => 'Reverb listing features updated.',
@@ -658,7 +681,7 @@ class ReverbApiService
             return ['success' => false, 'message' => 'No Reverb listing found for SKU or reverb_listing_id.'];
         }
 
-        $current = $this->fetchCurrentReverbDescription($token, $listingId);
+        $current = $this->fetchCurrentReverbDescription($token, $listingId, $trim);
         $incomingPlain = trim($description);
         $incomingHtml = '<div class="product-description">'.nl2br(htmlspecialchars($incomingPlain, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'), false).'</div>';
         $mergedPlain = $this->appendUniqueText($current['plain'], $incomingPlain);
@@ -842,8 +865,39 @@ class ReverbApiService
     /**
      * @return array{plain: string, html: string}
      */
-    private function fetchCurrentReverbDescription(string $token, string $listingId): array
+    private function fetchCurrentReverbDescription(string $token, string $listingId, ?string $identifier = null): array
     {
+        // 1) Database first (requested) from reverb_products.
+        try {
+            if (Schema::hasTable('reverb_products')) {
+                $row = ReverbProduct::query()
+                    ->when($identifier !== null && trim($identifier) !== '', function ($q) use ($identifier, $listingId) {
+                        $id = trim((string) $identifier);
+                        $q->where(function ($qq) use ($id, $listingId) {
+                            $qq->where('sku', $id)
+                                ->orWhere('sku', strtoupper($id))
+                                ->orWhere('sku', strtolower($id))
+                                ->orWhere('reverb_listing_id', $listingId);
+                        });
+                    }, function ($q) use ($listingId) {
+                        $q->where('reverb_listing_id', $listingId);
+                    })
+                    ->first();
+                if ($row) {
+                    $plainDb = trim((string) ($row->description ?? ''));
+                    if ($plainDb !== '') {
+                        return [
+                            'plain' => $plainDb,
+                            'html' => '<div class="product-description">'.nl2br(htmlspecialchars($plainDb, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'), false).'</div>',
+                        ];
+                    }
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Reverb DB-first description fetch failed', ['identifier' => $identifier, 'listing_id' => $listingId, 'error' => $e->getMessage()]);
+        }
+
+        // 2) API fallback
         try {
             $url = 'https://api.reverb.com/api/listings/'.$listingId;
             $response = Http::withoutVerifying()
@@ -860,8 +914,16 @@ class ReverbApiService
             }
 
             $json = $response->json();
-            $plain = trim((string) ($json['listing']['plain_text_description'] ?? $json['plain_text_description'] ?? ''));
-            $html = trim((string) ($json['listing']['description'] ?? $json['description'] ?? ''));
+            $plain = trim((string) ($json['listing']['plain_text_description']
+                ?? $json['plain_text_description']
+                ?? $json['listing']['plain_text']
+                ?? $json['plain_text']
+                ?? ''));
+            $html = trim((string) ($json['listing']['description']
+                ?? $json['description']
+                ?? $json['listing']['body']
+                ?? $json['body']
+                ?? ''));
             if ($plain === '' && $html !== '') {
                 $plain = trim(strip_tags($html));
             }
@@ -903,5 +965,43 @@ class ReverbApiService
         }
 
         return $currentHtml.'<br><br>'.$incomingHtml;
+    }
+
+    /**
+     * @param  list<string>  $features
+     */
+    private function saveFeaturesToReverbProducts(string $identifier, string $listingId, array $features): bool
+    {
+        try {
+            if (! Schema::hasTable('reverb_products') || ! Schema::hasColumn('reverb_products', 'features')) {
+                return false;
+            }
+            $payload = json_encode(array_values($features), JSON_UNESCAPED_UNICODE);
+            if ($payload === false) {
+                return false;
+            }
+
+            $matched = false;
+            if ($identifier !== '') {
+                $count = ReverbProduct::query()
+                    ->where(function ($q) use ($identifier) {
+                        $q->where('sku', $identifier)
+                            ->orWhere('sku', strtoupper($identifier))
+                            ->orWhere('sku', strtolower($identifier));
+                    })
+                    ->update(['features' => $payload]);
+                $matched = $count > 0;
+            }
+            if (! $matched && $listingId !== '') {
+                $count = ReverbProduct::query()->where('reverb_listing_id', $listingId)->update(['features' => $payload]);
+                $matched = $count > 0;
+            }
+
+            return $matched;
+        } catch (\Throwable $e) {
+            Log::warning('Reverb saveFeaturesToReverbProducts failed', ['identifier' => $identifier, 'listing_id' => $listingId, 'error' => $e->getMessage()]);
+
+            return false;
+        }
     }
 }

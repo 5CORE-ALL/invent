@@ -931,15 +931,35 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
 
         $includeSkuList = (bool) config('services.temu.bullet_update_include_sku_list', false);
 
-        return $this->pushTemuGoodsBasicField(
+        $resolved = $this->resolveTemuGoodsAndSku($identifier);
+        $sku = trim((string) ($resolved['sku'] ?? $identifier));
+        $goodsId = (string) (($resolved['goods_id'] ?? '') ?: ($sku !== '' ? (string) ($this->getGoodsIdBySku($sku) ?? '') : ''));
+        $preservedGoodsDesc = $goodsId !== '' ? $this->fetchCurrentTemuGoodsDesc($goodsId, $sku) : '';
+
+        $res = $this->pushTemuGoodsBasicField(
             $identifier,
             $value,
             $field,
             'Temu bullet points updated.',
             'SKU (or goods_id) and bullet points are required.',
             'Temu updateBulletPoints',
-            $includeSkuList
+            $includeSkuList,
+            $preservedGoodsDesc
         );
+        if (! ($res['success'] ?? false)) {
+            return $res;
+        }
+
+        $saved = $this->saveTemuBulletAndDescToMetrics(
+            $sku,
+            is_array($value) ? implode("\n", $value) : (string) $value,
+            $preservedGoodsDesc
+        );
+        if (! $saved) {
+            $res['message'] = ($res['message'] ?? 'Temu bullet points updated.').' Metrics save failed.';
+        }
+
+        return $res;
     }
 
     /**
@@ -956,6 +976,7 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
         string $emptyIdentifierMessage,
         string $logContext,
         bool $includeSkuList = true,
+        ?string $preservedGoodsDesc = null,
     ): array {
         if (trim($identifier) === '') {
             return ['success' => false, 'message' => $emptyIdentifierMessage];
@@ -989,6 +1010,17 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
                 $basicFieldKey => $text,
             ],
         ];
+
+        // Preserve current goodsDesc when updating goodsSummary to avoid accidental description loss.
+        $goodsDescField = (string) config('services.temu.goods_desc_field', 'goodsDesc');
+        if ($basicFieldKey !== $goodsDescField) {
+            $currentDesc = $preservedGoodsDesc !== null
+                ? trim($preservedGoodsDesc)
+                : $this->fetchCurrentTemuGoodsDesc((string) $goodsId, $sku);
+            if ($currentDesc !== '') {
+                $requestBody[$goodsBasicField][$goodsDescField] = $currentDesc;
+            }
+        }
 
         $price = $this->getProductPrice($sku);
         $dimensions = $this->getProductDimensions($sku);
@@ -1050,6 +1082,179 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
             Log::error($logContext, ['sku' => $sku, 'error' => $e->getMessage()]);
 
             return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    private function fetchCurrentTemuGoodsDesc(string $goodsId, string $sku = ''): string
+    {
+        // 1) Database first (requested): prefer persisted copy to avoid API gaps.
+        try {
+            if ($sku !== '' && Schema::hasTable('temu_metrics') && Schema::hasColumn('temu_metrics', 'sku')) {
+                if (Schema::hasColumn('temu_metrics', 'goods_desc')) {
+                    $desc = DB::table('temu_metrics')
+                        ->where(function ($q) use ($sku) {
+                            $q->where('sku', $sku)
+                                ->orWhere('sku', strtoupper($sku))
+                                ->orWhere('sku', strtolower($sku));
+                        })
+                        ->value('goods_desc');
+                    $desc = trim((string) $desc);
+                    if ($desc !== '') {
+                        return $desc;
+                    }
+                }
+                if (Schema::hasColumn('temu_metrics', 'description_master')) {
+                    $desc = DB::table('temu_metrics')
+                        ->where(function ($q) use ($sku) {
+                            $q->where('sku', $sku)
+                                ->orWhere('sku', strtoupper($sku))
+                                ->orWhere('sku', strtolower($sku));
+                        })
+                        ->value('description_master');
+                    $desc = trim((string) $desc);
+                    if ($desc !== '') {
+                        return $desc;
+                    }
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Temu DB-first goods_desc fetch failed', ['sku' => $sku, 'goods_id' => $goodsId, 'error' => $e->getMessage()]);
+        }
+
+        // 2) API fallback
+        try {
+            // 1) Try direct detail APIs first (best chance to include goodsDesc).
+            $detailTypes = array_filter([
+                (string) config('services.temu.goods_detail_type', 'temu.local.goods.detail.retrieve'),
+                'bg.local.goods.detail.query',
+                'temu.local.goods.retrieve',
+            ]);
+            foreach ($detailTypes as $type) {
+                if ($type === '') {
+                    continue;
+                }
+                $detailReq = [
+                    'type' => $type,
+                    'goodsId' => (int) $goodsId,
+                ];
+                $signed = $this->generateSignValue($detailReq);
+                $request = Http::withHeaders(['Content-Type' => 'application/json']);
+                if (config('filesystems.default') === 'local') {
+                    $request = $request->withoutVerifying();
+                }
+                $response = $request->post('https://openapi-b-us.temu.com/openapi/router', $signed);
+                $data = $response->json();
+                if (! $response->successful() || ! ($data['success'] ?? false)) {
+                    continue;
+                }
+                $result = $data['result'] ?? [];
+                $goodsBasic = is_array($result['goodsBasic'] ?? null) ? $result['goodsBasic'] : [];
+                $desc = trim((string) ($goodsBasic['goodsDesc'] ?? $result['goodsDesc'] ?? ''));
+                if ($desc !== '') {
+                    return $desc;
+                }
+            }
+
+            // 2) Fallback to list API and scan goodsBasic.goodsDesc.
+            $pageToken = null;
+            do {
+                $body = [
+                    'type' => 'temu.local.goods.list.retrieve',
+                    'goodsSearchType' => 'ALL',
+                    'pageSize' => 100,
+                ];
+                if ($pageToken) {
+                    $body['pageToken'] = $pageToken;
+                }
+                $signed = $this->generateSignValue($body);
+                $request = Http::withHeaders(['Content-Type' => 'application/json']);
+                if (config('filesystems.default') === 'local') {
+                    $request = $request->withoutVerifying();
+                }
+                $response = $request->post('https://openapi-b-us.temu.com/openapi/router', $signed);
+                $data = $response->json();
+                if (! $response->successful() || ! ($data['success'] ?? false)) {
+                    break;
+                }
+                $list = $data['result']['goodsList'] ?? [];
+                foreach ($list as $good) {
+                    $gid = (string) ($good['goodsId'] ?? '');
+                    if ($gid !== $goodsId) {
+                        continue;
+                    }
+                    $goodsBasic = is_array($good['goodsBasic'] ?? null) ? $good['goodsBasic'] : [];
+                    $desc = (string) ($goodsBasic['goodsDesc'] ?? $good['goodsDesc'] ?? '');
+
+                    return trim($desc);
+                }
+                $pageToken = $data['result']['pagination']['nextToken'] ?? null;
+            } while ($pageToken);
+        } catch (\Throwable $e) {
+            Log::warning('Temu fetchCurrentTemuGoodsDesc failed', ['goods_id' => $goodsId, 'error' => $e->getMessage()]);
+        }
+
+        return '';
+    }
+
+    private function saveGoodsSummaryToTemuMetrics(string $sku, string $goodsSummary): bool
+    {
+        try {
+            if ($sku === '' || ! Schema::hasTable('temu_metrics') || ! Schema::hasColumn('temu_metrics', 'sku')) {
+                return false;
+            }
+            if (! Schema::hasColumn('temu_metrics', 'goods_summary')) {
+                return false;
+            }
+
+            $update = ['goods_summary' => $goodsSummary];
+            if (Schema::hasColumn('temu_metrics', 'updated_at')) {
+                $update['updated_at'] = now();
+            }
+
+            DB::table('temu_metrics')->updateOrInsert(['sku' => $sku], $update);
+            if (Schema::hasColumn('temu_metrics', 'created_at')) {
+                DB::table('temu_metrics')->where('sku', $sku)->whereNull('created_at')->update(['created_at' => now()]);
+            }
+
+            return true;
+        } catch (\Throwable $e) {
+            Log::warning('Temu saveGoodsSummaryToTemuMetrics failed', ['sku' => $sku, 'error' => $e->getMessage()]);
+
+            return false;
+        }
+    }
+
+    private function saveTemuBulletAndDescToMetrics(string $sku, string $goodsSummary, string $goodsDesc): bool
+    {
+        try {
+            if ($sku === '' || ! Schema::hasTable('temu_metrics') || ! Schema::hasColumn('temu_metrics', 'sku')) {
+                return false;
+            }
+
+            $update = [];
+            if (Schema::hasColumn('temu_metrics', 'goods_summary')) {
+                $update['goods_summary'] = $goodsSummary;
+            }
+            if (Schema::hasColumn('temu_metrics', 'goods_desc')) {
+                $update['goods_desc'] = trim($goodsDesc) !== '' ? $goodsDesc : null;
+            }
+            if ($update === []) {
+                return false;
+            }
+            if (Schema::hasColumn('temu_metrics', 'updated_at')) {
+                $update['updated_at'] = now();
+            }
+
+            DB::table('temu_metrics')->updateOrInsert(['sku' => $sku], $update);
+            if (Schema::hasColumn('temu_metrics', 'created_at')) {
+                DB::table('temu_metrics')->where('sku', $sku)->whereNull('created_at')->update(['created_at' => now()]);
+            }
+
+            return true;
+        } catch (\Throwable $e) {
+            Log::warning('Temu saveTemuBulletAndDescToMetrics failed', ['sku' => $sku, 'error' => $e->getMessage()]);
+
+            return false;
         }
     }
 
