@@ -307,17 +307,17 @@ class ImageMasterController extends Controller
                 case 'ebay3':
                     return app(EbayThreeApiService::class)->updateListingImages($sku, $imageUrls);
                 case 'amazon':
-                    return app(AmazonSpApiService::class)->updateListingImages($sku, $imageUrls);
+                    return app(AmazonSpApiService::class)->updateImages($sku, $imageUrls);
                 case 'temu':
-                    return app(TemuApiService::class)->updateListingImages($sku, $imageUrls);
+                    return app(TemuApiService::class)->updateImages($sku, $imageUrls);
                 case 'shopify_main':
-                    return app(ShopifyApiService::class)->updateListingImages($sku, $imageUrls);
+                    return app(ShopifyApiService::class)->updateImages($sku, $imageUrls);
                 case 'shopify_pls':
-                    return app(ShopifyPLSApiService::class)->updateListingImages($sku, $imageUrls);
+                    return app(ShopifyPLSApiService::class)->updateImages($sku, $imageUrls);
                 case 'macy':
-                    return app(MacysApiService::class)->updateListingImages($sku, $imageUrls);
+                    return app(MacysApiService::class)->updateImages($sku, $imageUrls);
                 case 'reverb':
-                    return app(ReverbApiService::class)->updateListingImages($sku, $imageUrls);
+                    return app(ReverbApiService::class)->updateImages($sku, $imageUrls);
                 default:
                     return [
                         'success' => false,
