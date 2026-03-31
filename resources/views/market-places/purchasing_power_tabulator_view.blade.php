@@ -356,7 +356,7 @@
                 method: 'POST',
                 data: { sku, sprice, _token: '{{ csrf_token() }}' },
                 success: function(response) {
-                    showToast(`SPRICE saved for ${sku}`, 'success');
+                    showToast(`✓ SPRICE saved: ${sku} = $${parseFloat(sprice).toFixed(2)}`, 'success');
                     if (response.spft_percent  !== undefined) row.update({ SPFT:  response.spft_percent });
                     if (response.sroi_percent  !== undefined) row.update({ SROI:  response.sroi_percent });
                     if (response.sgpft_percent !== undefined) row.update({ SGPFT: response.sgpft_percent });
@@ -536,17 +536,6 @@
                     }
                 },
                 {
-                    title: 'Send', field: '_send_price', hozAlign: 'center', headerSort: false, width: 75,
-                    formatter: function() { return '<button type="button" class="btn btn-sm btn-primary" style="padding:2px 8px;">Send</button>'; },
-                    cellClick: function(e, cell) {
-                        e.stopPropagation();
-                        const d = cell.getRow().getData();
-                        const sprice = parseFloat(d.SPRICE) || 0;
-                        if (sprice <= 0) { showToast(`Enter valid SPRICE for ${d['(Child) sku']} before push`, 'warning'); return; }
-                        saveSpriceWithRetry(d['(Child) sku'], sprice, cell.getRow());
-                    }
-                },
-                {
                     title: 'SGPFT', field: 'SGPFT', hozAlign: 'center', sorter: 'number', width: 50,
                     formatter: function(cell) {
                         const p = parseFloat(cell.getValue());
@@ -598,7 +587,9 @@
             const sgpft = newSprice > 0 ? Math.round(((newSprice * percentage - lp) / newSprice) * 10000) / 100 : 0;
             const sroi  = lp > 0 ? Math.round(((newSprice * percentage - lp) / lp) * 10000) / 100 : 0;
             row.update({ SGPFT: sgpft, SPFT: sgpft, SROI: sroi, has_custom_sprice: true });
-            showToast(`SPRICE updated for ${d['(Child) sku']}. Click Send to push.`, 'info');
+
+            // Auto-save immediately — no Send button needed
+            saveSpriceWithRetry(d['(Child) sku'], newSprice, row);
         });
 
         $(document).on('click', '.copy-sku-btn', function(e) {

@@ -186,118 +186,124 @@ class PurchasingPowerController extends Controller
 
     public function saveSpriceTabulator(Request $request)
     {
-        $sku    = strtoupper($request->input('sku'));
-        $sprice = floatval($request->input('sprice'));
+        try {
+            $sku    = trim($request->input('sku'));
+            $sprice = (float) $request->input('sprice');
 
-        if (!$sku || !$sprice) {
-            return response()->json(['error' => 'SKU and SPRICE are required'], 400);
+            if (!$sku || $sprice === null) {
+                return response()->json(['error' => 'SKU and SPRICE are required'], 400);
+            }
+
+            $marketplaceData = MarketplacePercentage::where('marketplace', 'Purchase')->first();
+            $percentage = $marketplaceData ? ((float) ($marketplaceData->percentage ?? 70)) : 70;
+            $margin     = $percentage / 100;
+
+            $pm = ProductMaster::where('sku', $sku)->first();
+            $lp = 0;
+            if ($pm) {
+                $values = is_array($pm->Values) ? $pm->Values : (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
+                foreach ($values as $k => $v) {
+                    if (strtolower($k) === 'lp') { $lp = (float) $v; break; }
+                }
+                if ($lp === 0 && isset($pm->lp)) $lp = (float) $pm->lp;
+            }
+
+            $sgpft = $sprice > 0 ? round((($sprice * $margin - $lp) / $sprice) * 100, 2) : 0;
+            $sroi  = $lp     > 0 ? round((($sprice * $margin - $lp) / $lp)     * 100, 2) : 0;
+
+            // Same pattern as AliExpress
+            $view   = PurchasingPowerDataView::firstOrNew(['sku' => $sku]);
+            $stored = is_array($view->value) ? $view->value
+                    : (json_decode($view->value, true) ?: []);
+
+            $stored['SPRICE'] = $sprice;
+            $stored['SGPFT']  = $sgpft;
+            $stored['SPFT']   = $sgpft;
+            $stored['SROI']   = $sroi;
+
+            $view->value = $stored;
+            $view->save();
+
+            Log::info('PP SPRICE saved', ['sku' => $sku, 'sprice' => $sprice]);
+
+            return response()->json([
+                'success'            => true,
+                'spft_percent'       => $sgpft,
+                'sroi_percent'       => $sroi,
+                'sgpft_percent'      => $sgpft,
+                'price_push_success' => false,
+                'price_push_message' => 'No API push configured for Purchasing Power',
+            ]);
+        } catch (\Exception $e) {
+            Log::error('PP SPRICE tabulator save failed: ' . $e->getMessage());
+            return response()->json(['success' => false, 'error' => $e->getMessage()], 500);
         }
-
-        $marketplaceData = MarketplacePercentage::where('marketplace', 'Purchase')->first();
-        $percentage = $marketplaceData ? ($marketplaceData->percentage / 100) : 0.70;
-
-        $pm = ProductMaster::where('sku', $sku)->first();
-        if (!$pm) return response()->json(['error' => 'SKU not found'], 404);
-
-        $values = is_array($pm->Values) ? $pm->Values : (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
-        $lp = 0;
-        foreach ($values as $k => $v) {
-            if (strtolower($k) === 'lp') { $lp = floatval($v); break; }
-        }
-        if ($lp === 0 && isset($pm->lp)) $lp = floatval($pm->lp);
-        $ship = isset($values['ship']) ? floatval($values['ship']) : (isset($pm->ship) ? floatval($pm->ship) : 0);
-
-        $sgpft = $sprice > 0 ? round((($sprice * $percentage - $lp) / $sprice) * 100, 2) : 0;
-        $sroi  = round($lp > 0 ? (($sprice * $percentage - $lp) / $lp) * 100 : 0, 2);
-
-        $dv       = PurchasingPowerDataView::firstOrNew(['sku' => $sku]);
-        $existing = is_array($dv->value) ? $dv->value : (json_decode($dv->value, true) ?? []);
-        $dv->value = array_merge($existing, [
-            'SPRICE' => $sprice,
-            'SPFT'   => $sgpft,
-            'SROI'   => $sroi,
-            'SGPFT'  => $sgpft,
-        ]);
-        $dv->save();
-
-        return response()->json([
-            'success'         => true,
-            'spft_percent'    => $sgpft,
-            'sroi_percent'    => $sroi,
-            'sgpft_percent'   => $sgpft,
-            'price_push_success' => false,
-            'price_push_message' => 'No API push configured for Purchasing Power',
-        ]);
     }
 
     public function saveSpriceUpdates(Request $request)
     {
         try {
-            if ($request->has('sku') && $request->has('sprice')) {
+            $updates = $request->input('updates', []);
+            if (empty($updates) && $request->has('sku')) {
                 $updates = [['sku' => $request->input('sku'), 'sprice' => $request->input('sprice')]];
-            } else {
-                $updates = $request->input('updates', []);
             }
 
             if (empty($updates)) return response()->json(['error' => 'No updates provided'], 400);
 
             $marketplaceData = MarketplacePercentage::where('marketplace', 'Purchase')->first();
-            $percentage = $marketplaceData ? ($marketplaceData->percentage / 100) : 0.70;
+            $percentage = $marketplaceData ? ((float) ($marketplaceData->percentage ?? 70)) : 70;
+            $margin     = $percentage / 100;
 
-            $updated = 0;
-            DB::beginTransaction();
-
+            $updatedCount = 0;
             foreach ($updates as $update) {
-                $sku    = strtoupper(trim($update['sku'] ?? ''));
-                $sprice = floatval($update['sprice'] ?? 0);
-                if (empty($sku)) continue;
+                $sku    = $update['sku']    ?? null;
+                $sprice = $update['sprice'] ?? null;
+                if (!$sku || $sprice === null) continue;
 
-                $dv       = PurchasingPowerDataView::firstOrNew(['sku' => $sku]);
-                $existing = is_array($dv->value) ? $dv->value : (json_decode($dv->value, true) ?? []);
-
-                if ($sprice == 0) {
-                    unset($existing['SPRICE'], $existing['SPFT'], $existing['SROI'], $existing['SGPFT']);
-                    $dv->value = $existing;
-                    $dv->save();
-                    $updated++;
-                    continue;
-                }
+                $sprice = (float) $sprice;
 
                 $pm = ProductMaster::where('sku', $sku)->first();
-                if (!$pm) continue;
-
-                $values = is_array($pm->Values) ? $pm->Values : (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
                 $lp = 0;
-                foreach ($values as $k => $v) {
-                    if (strtolower($k) === 'lp') { $lp = floatval($v); break; }
+                if ($pm) {
+                    $values = is_array($pm->Values) ? $pm->Values : (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
+                    foreach ($values as $k => $v) {
+                        if (strtolower($k) === 'lp') { $lp = (float) $v; break; }
+                    }
+                    if ($lp === 0 && isset($pm->lp)) $lp = (float) $pm->lp;
                 }
-                if ($lp === 0 && isset($pm->lp)) $lp = floatval($pm->lp);
-                $ship = isset($values['ship']) ? floatval($values['ship']) : (isset($pm->ship) ? floatval($pm->ship) : 0);
 
-                $sgpft = $sprice > 0 ? round((($sprice * $percentage - $lp) / $sprice) * 100, 2) : 0;
-                $sroi  = round($lp > 0 ? (($sprice * $percentage - $lp) / $lp) * 100 : 0, 2);
+                // Same pattern as AliExpress
+                $view   = PurchasingPowerDataView::firstOrNew(['sku' => $sku]);
+                $stored = is_array($view->value) ? $view->value
+                        : (json_decode($view->value, true) ?: []);
 
-                $dv->value = array_merge($existing, [
-                    'SPRICE' => $sprice, 'SPFT' => $sgpft,
-                    'SROI'   => $sroi,   'SGPFT' => $sgpft,
-                    'sprice_updated_at' => now()->toDateTimeString(),
-                ]);
-                $dv->save();
-                $updated++;
+                if ($sprice == 0) {
+                    unset($stored['SPRICE'], $stored['SPFT'], $stored['SROI'], $stored['SGPFT']);
+                } else {
+                    $sgpft = $sprice > 0 ? round((($sprice * $margin - $lp) / $sprice) * 100, 2) : 0;
+                    $sroi  = $lp     > 0 ? round((($sprice * $margin - $lp) / $lp)     * 100, 2) : 0;
+
+                    $stored['SPRICE'] = $sprice;
+                    $stored['SGPFT']  = $sgpft;
+                    $stored['SPFT']   = $sgpft;
+                    $stored['SROI']   = $sroi;
+                }
+
+                $view->value = $stored;
+                $view->save();
+                $updatedCount++;
             }
 
-            DB::commit();
-
             return response()->json([
-                'success' => true,
-                'updated' => $updated,
-                'message' => "Successfully saved {$updated} SPRICE update(s)",
+                'success'                  => true,
+                'updated'                  => $updatedCount,
+                'message'                  => "Successfully saved {$updatedCount} SPRICE update(s)",
                 'price_push_success_count' => 0,
                 'price_push_failed_count'  => 0,
             ]);
         } catch (\Exception $e) {
-            DB::rollBack();
-            return response()->json(['error' => $e->getMessage()], 500);
+            Log::error('PP SPRICE batch save failed: ' . $e->getMessage());
+            return response()->json(['success' => false, 'error' => $e->getMessage()], 500);
         }
     }
 
