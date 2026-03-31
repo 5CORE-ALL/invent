@@ -344,7 +344,7 @@ class FetchMacyProducts extends Command
         // Final cleanup
         DB::connection()->disconnect();
         
-        $this->info("All Macy, Tiendamia, BestbuyUSA products stored successfully.");
+        $this->info("All Macy, Tiendamia, BestbuyUSA, Purchasing Power products stored successfully.");
     }
 
     private function fetchChannelProducts($token, $channelCode, $channelName, $skuSales)
