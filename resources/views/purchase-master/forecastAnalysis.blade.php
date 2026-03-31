@@ -5,6 +5,7 @@
     <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
     <link href="{{ asset('css/select-searchable.css') }}" rel="stylesheet">
     <link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
     <style>
         .tabulator .tabulator-footer {
             background: #f4f7fa;
@@ -416,6 +417,12 @@
                             <span class="badge bg-dark text-white" id="container-play-label" style="font-size:0.65rem;display:none;max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></span>
                         </div>
 
+                        <!-- Chart Toggle Button -->
+                        <button id="toggle-pmt-chart-btn" class="btn btn-sm btn-outline-primary fw-semibold d-flex align-items-center gap-1" title="Toggle Payment Terms Chart">
+                            <i class="fas fa-chart-pie"></i>
+                            <span>Chart</span>
+                        </button>
+
                         <span class="vr align-self-stretch opacity-25"></span>
                         <span id="top-row-counter" class="text-muted small">Showing 0-0 of 0 rows</span>
                     </div>
@@ -440,6 +447,7 @@
                             <option value="transit">Trn</option>
                             <option value="to_order_analysis">Order</option>
                         </select>
+                        <span id="stage-filter-badge" style="display:none;background:#0d6efd;color:#fff;font-size:0.78rem;font-weight:700;border-radius:20px;padding:3px 10px;white-space:nowrap;box-shadow:0 1px 4px rgba(13,110,253,.35);"></span>
 
                         <!-- Row Type -->
                         <select id="row-data-type" class="form-select form-select-sm border border-primary" style="width:150px;" aria-label="Row type"></select>
@@ -628,6 +636,20 @@
                         </div>
                     </div>
                     <div id="forecast-table-wrap" class="flex-grow-1" style="min-height: 0;">
+                        <!-- Payment Terms Pie Chart (hidden until Chart button clicked) -->
+                        <div id="pmt-chart-row" class="align-items-center gap-3 px-1 py-2 mb-1 rounded border bg-white" style="display:none;">
+                            <div style="position:relative;width:140px;height:140px;flex-shrink:0;">
+                                <canvas id="pmt-terms-chart"></canvas>
+                            </div>
+                            <div class="d-flex flex-column gap-1">
+                                <div class="d-flex align-items-center gap-2 mb-1">
+                                    <span class="fw-bold text-dark" style="font-size:0.8rem;">Payment Terms</span>
+                                    <span id="pmt-chart-scope" class="badge bg-secondary" style="font-size:0.68rem;"></span>
+                                </div>
+                                <div id="pmt-chart-legend" class="d-flex flex-wrap gap-2" style="font-size:0.75rem;max-width:340px;"></div>
+                                <div id="pmt-chart-nodata" class="text-muted small" style="display:none;">No payment term data available.</div>
+                            </div>
+                        </div>
                         <div id="forecast-table"></div>
                     </div>
                 </div>
@@ -2501,6 +2523,7 @@
                 {
                     title: "New Photo",
                     field: "r2s_new_photo",
+                    visible: false,
                     hozAlign: "center",
                     headerSort: true,
                     formatter: function(cell) {
@@ -3328,6 +3351,52 @@
                 }
             }
 
+            // Stage filter badge — only visible when a filter is active
+            const badge = document.getElementById('stage-filter-badge');
+            if (badge) {
+                if (currentStageFilter) {
+                    const activeRows = table.getRows('active') || [];
+                    const childCount = activeRows.filter(function(row) {
+                        const d = row.getData();
+                        return !d.is_parent && !d.isParent;
+                    }).length;
+                    const labelMap = {
+                        '__blank__':         'Not Req Now',
+                        'two_ord_nonneg':    '2 Ord',
+                        'appr_req':          'Appr Req',
+                        'mip':               'MIP',
+                        'r2s':               'R2S',
+                        'transit':           'Trn',
+                        'to_order_analysis': 'Order'
+                    };
+                    const qtyFieldMap = {
+                        '__blank__':         null,
+                        'two_ord_nonneg':    'to_order',
+                        'appr_req':          'appr_req_qty',
+                        'mip':               'order_given',
+                        'r2s':               'readyToShipQty',
+                        'transit':           'transit',
+                        'to_order_analysis': 'two_order_qty'
+                    };
+                    const label    = labelMap[currentStageFilter] || currentStageFilter;
+                    const qtyField = qtyFieldMap[currentStageFilter] || null;
+                    let totalQty   = 0;
+                    if (qtyField) {
+                        activeRows.forEach(function(row) {
+                            const d = row.getData();
+                            if (!d.is_parent && !d.isParent) {
+                                totalQty += parseFloat(d[qtyField]) || 0;
+                            }
+                        });
+                    }
+                    const qtyPart = qtyField ? ' &nbsp;|&nbsp; QTY: <strong>' + Math.round(totalQty).toLocaleString() + '</strong>' : '';
+                    badge.innerHTML = label + ': <strong>' + childCount + '</strong> SKU' + (childCount !== 1 ? 's' : '') + qtyPart;
+                    badge.style.display = 'inline-block';
+                } else {
+                    badge.style.display = 'none';
+                }
+            }
+
             let start = 0;
             let end = 0;
             if (total > 0) {
@@ -3896,6 +3965,7 @@
             filterPostCalcTimer = setTimeout(() => {
                 filterPostCalcTimer = null;
                 updateParentTotalsBasedOnVisibleRows();
+                if (typeof window.updatePmtChart === 'function') window.updatePmtChart();
                 
                 // Calculate total MSL_C for visible rows
                 const visibleRows = table.getRows(true);
@@ -5675,6 +5745,141 @@
         });
 
         // ── Export button: Supplier Name, SKU, Image, QTY, Order Date ──────────────
+        // ── Payment Terms Pie Chart ─────────────────────────────────────────────
+        (function() {
+            const PIE_COLORS = [
+                '#2563eb','#16a34a','#ea580c','#9333ea','#0891b2',
+                '#d97706','#db2777','#65a30d','#dc2626','#475569'
+            ];
+            let pmtChart = null;
+
+            function buildPmtChart() {
+                const ctx = document.getElementById('pmt-terms-chart');
+                if (!ctx) return;
+                if (pmtChart) { pmtChart.destroy(); pmtChart = null; }
+                pmtChart = new Chart(ctx, {
+                    type: 'pie',
+                    data: { labels: [], datasets: [{ data: [], backgroundColor: [] }] },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: true,
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: {
+                                callbacks: {
+                                    label: function(ctx) {
+                                        const total = ctx.dataset.data.reduce((a, b) => a + b, 0);
+                                        const pct = total > 0 ? Math.round(ctx.parsed / total * 100) : 0;
+                                        return ctx.label + ': ' + ctx.parsed + ' (' + pct + '%)';
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+
+            window.updatePmtChart = function() {
+                if (!table) return;
+                const chartRow = document.getElementById('pmt-chart-row');
+                // Only update if chart panel is currently visible
+                if (!chartRow || chartRow.style.display === 'none' || chartRow.style.display === '') return;
+
+                // Use selected rows if any, otherwise filtered rows
+                const selected = table.getSelectedRows ? table.getSelectedRows() : [];
+                const useSelected = selected.length > 0;
+                const rows = useSelected ? selected : (table.getRows('active') || []);
+
+                const counts = {};
+                let total = 0;
+                rows.forEach(function(row) {
+                    const d = row.getData();
+                    if (d.is_parent || d.isParent) return;
+                    const term = String(d.r2s_pay_term || '').trim() || 'Not Set';
+                    counts[term] = (counts[term] || 0) + 1;
+                    total++;
+                });
+
+                const noDataEl  = document.getElementById('pmt-chart-nodata');
+                const legendEl  = document.getElementById('pmt-chart-legend');
+                const canvasWrap = document.querySelector('#pmt-chart-row > div:first-child');
+                const scopeEl   = document.getElementById('pmt-chart-scope');
+
+                if (total === 0) {
+                    if (noDataEl)  noDataEl.style.display  = 'block';
+                    if (legendEl)  legendEl.style.display  = 'none';
+                    if (canvasWrap) canvasWrap.style.display = 'none';
+                    if (scopeEl)   scopeEl.textContent      = '0 rows';
+                    return;
+                }
+
+                if (noDataEl)   noDataEl.style.display   = 'none';
+                if (legendEl)   legendEl.style.display   = '';
+                if (canvasWrap) canvasWrap.style.display = '';
+
+                // Sort by count desc
+                const entries = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+                const labels = entries.map(e => e[0]);
+                const data   = entries.map(e => e[1]);
+                const colors = labels.map((_, i) => PIE_COLORS[i % PIE_COLORS.length]);
+
+                if (!pmtChart) buildPmtChart();
+                pmtChart.data.labels                       = labels;
+                pmtChart.data.datasets[0].data             = data;
+                pmtChart.data.datasets[0].backgroundColor  = colors;
+                pmtChart.update();
+
+                // Legend
+                if (legendEl) {
+                    legendEl.innerHTML = entries.map(function(e, i) {
+                        const pct = Math.round(e[1] / total * 100);
+                        return '<span style="display:inline-flex;align-items:center;gap:4px;white-space:nowrap;">' +
+                            '<span style="width:10px;height:10px;border-radius:50%;background:' + colors[i] + ';flex-shrink:0;display:inline-block;"></span>' +
+                            '<span><strong>' + e[0] + '</strong>: ' + e[1] + ' (' + pct + '%)</span>' +
+                            '</span>';
+                    }).join('');
+                }
+
+                // Scope badge
+                if (scopeEl) {
+                    const childSelected = selected.filter(r => { const d = r.getData(); return !d.is_parent && !d.isParent; }).length;
+                    scopeEl.textContent = useSelected
+                        ? childSelected + ' selected'
+                        : total + ' filtered';
+                    scopeEl.className = 'badge ' + (useSelected ? 'bg-primary' : 'bg-secondary');
+                }
+            };
+
+            // Chart toggle button
+            document.getElementById('toggle-pmt-chart-btn').addEventListener('click', function() {
+                const chartRow = document.getElementById('pmt-chart-row');
+                if (!chartRow) return;
+                const isHidden = chartRow.style.display === 'none' || chartRow.style.display === '';
+                if (isHidden) {
+                    chartRow.style.display = 'flex';
+                    this.classList.remove('btn-outline-primary');
+                    this.classList.add('btn-primary');
+                    window.updatePmtChart();
+                } else {
+                    chartRow.style.display = 'none';
+                    this.classList.remove('btn-primary');
+                    this.classList.add('btn-outline-primary');
+                }
+            });
+
+            // Build chart on load
+            buildPmtChart();
+
+            // Hook into table events after table is ready
+            setTimeout(function() {
+                if (!table) return;
+                table.on('dataLoaded',   function() { window.updatePmtChart(); });
+                table.on('dataFiltered', function() { window.updatePmtChart(); });
+                table.on('rowSelected',  function() { window.updatePmtChart(); });
+                table.on('rowDeselected',function() { window.updatePmtChart(); });
+            }, 500);
+        })();
+
         document.getElementById('export-forecast-btn').addEventListener('click', function() {
             const btn = this;
             btn.disabled = true;
