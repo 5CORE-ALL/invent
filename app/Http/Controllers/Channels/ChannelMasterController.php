@@ -1182,10 +1182,10 @@ class ChannelMasterController extends Controller
     {
         $result = [];
 
-        // 29 days ending yesterday (Pacific) — matches AmazonSalesController / Daily Sales page
+        // 28 days ending yesterday (Pacific) — matches AmazonSalesController / Daily Sales page
         $yesterdayPacific = Carbon::yesterday('America/Los_Angeles');
         $endToday = $yesterdayPacific->copy()->endOfDay();
-        $start35 = $yesterdayPacific->copy()->subDays(28)->startOfDay(); // 29 calendar days
+        $start35 = $yesterdayPacific->copy()->subDays(27)->startOfDay(); // 28 calendar days
 
         $activeAmazonOrders = function ($q) {
             $q->where(function ($w) {

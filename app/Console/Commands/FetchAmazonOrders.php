@@ -30,6 +30,9 @@ class FetchAmazonOrders extends Command
         {--to= : Fetch orders to this date (Y-m-d format)}
         {--with-items : Also fetch order items (line items) for each order}
         {--auto-sync : Automatically sync pending/failed days}
+        {--retry-failed : Retry all failed days automatically with backoff between attempts}
+        {--retry-wait=60 : Seconds to wait between retries when quota exceeded (default: 60)}
+        {--retry-attempts=5 : Max retry rounds for failed days (default: 5)}
         {--resync-date= : Re-sync a specific date (Y-m-d format)}
         {--resync-last-days= : Re-sync last N days}
         {--initialize-days= : Initialize sync tracking for last N days (default: 90)}
@@ -64,6 +67,12 @@ class FetchAmazonOrders extends Command
         // Show sync status
         if ($this->option('status')) {
             $this->showSyncStatus();
+            return;
+        }
+
+        // Retry all failed days with automatic backoff
+        if ($this->option('retry-failed')) {
+            $this->retryFailedDays();
             return;
         }
 
@@ -518,6 +527,72 @@ class FetchAmazonOrders extends Command
         if ($sync->status === AmazonDailySync::STATUS_IN_PROGRESS) {
             $sync->update(['status' => AmazonDailySync::STATUS_FAILED]);
         }
+    }
+
+    /**
+     * Retry all failed days automatically with backoff on quota exceeded.
+     * Keeps retrying until all days succeed or max attempts reached.
+     */
+    private function retryFailedDays()
+    {
+        $maxAttempts = (int) ($this->option('retry-attempts') ?: 5);
+        $retryWait   = (int) ($this->option('retry-wait') ?: 60);
+
+        $this->info("🔄 Retry-Failed mode: up to {$maxAttempts} rounds, {$retryWait}s wait between rounds.\n");
+
+        $accessToken = $this->getAccessToken();
+        if (!$accessToken) {
+            $this->error('Failed to get access token');
+            return;
+        }
+        $this->info('✅ Access Token obtained successfully');
+
+        for ($round = 1; $round <= $maxAttempts; $round++) {
+            $failedSyncs = AmazonDailySync::where('status', AmazonDailySync::STATUS_FAILED)
+                ->orderBy('sync_date', 'asc')
+                ->get();
+
+            if ($failedSyncs->isEmpty()) {
+                $this->info("\n✅ No more failed days — all done after {$round} round(s)!");
+                break;
+            }
+
+            $this->info("\n🔁 Round {$round}/{$maxAttempts}: {$failedSyncs->count()} failed day(s) to retry...");
+
+            foreach ($failedSyncs as $sync) {
+                // Reset to pending so syncSingleDay will process it
+                $sync->update([
+                    'status'       => AmazonDailySync::STATUS_PENDING,
+                    'error_message'=> null,
+                    'next_token'   => null,
+                ]);
+
+                $date = Carbon::parse($sync->sync_date, 'America/Los_Angeles');
+                $this->syncSingleDay($accessToken, $date);
+
+                $sync->refresh();
+
+                if ($sync->status === AmazonDailySync::STATUS_FAILED) {
+                    $this->warn("   ⚠️ {$sync->sync_date} still failed (quota?). Waiting {$retryWait}s before next...");
+                    sleep($retryWait);
+                } else {
+                    $this->info("   ✅ {$sync->sync_date} completed.");
+                    sleep(2);
+                }
+            }
+
+            // Check remaining failures
+            $remaining = AmazonDailySync::where('status', AmazonDailySync::STATUS_FAILED)->count();
+            $this->info("   → After round {$round}: {$remaining} day(s) still failed.");
+
+            if ($remaining > 0 && $round < $maxAttempts) {
+                $this->info("   ⏳ Waiting {$retryWait}s before round " . ($round + 1) . "...");
+                sleep($retryWait);
+            }
+        }
+
+        $this->info("\n🎉 Retry-Failed complete!");
+        $this->showSyncStatus();
     }
 
     /**

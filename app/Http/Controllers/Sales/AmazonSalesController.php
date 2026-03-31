@@ -53,10 +53,10 @@ class AmazonSalesController extends Controller
         
         $hlSpent = $hlSpentData->sum('max_cost') ?? 0;
 
-        // Last 29 days ending yesterday (California Pacific)
+        // Last 28 days ending yesterday (California Pacific)
         $yesterdayPacific = Carbon::yesterday('America/Los_Angeles');
         $endDate = $yesterdayPacific->copy()->endOfDay();
-        $start35 = $yesterdayPacific->copy()->subDays(28)->startOfDay(); // 29 calendar days
+        $start35 = $yesterdayPacific->copy()->subDays(27)->startOfDay(); // 28 calendar days
         
         // Use order totals to match Amazon's "Ordered Product Sales" report
         $sales35Days = (float) DB::table('amazon_orders as o')
@@ -96,7 +96,7 @@ class AmazonSalesController extends Controller
 
         $yesterdayPacific = Carbon::yesterday('America/Los_Angeles');
         $endDate = $yesterdayPacific->copy()->endOfDay();
-        $start35 = $yesterdayPacific->copy()->subDays(28)->startOfDay(); // 29 days
+        $start35 = $yesterdayPacific->copy()->subDays(27)->startOfDay(); // 28 days
         $startDateStr = $start35->format('Y-m-d');
         $endDateStr = $endDate->format('Y-m-d');
 
