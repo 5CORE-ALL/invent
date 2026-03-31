@@ -1154,6 +1154,75 @@ class ForecastAnalysisController extends Controller
             return response()->json(['success' => true, 'message' => 'R2S updated successfully']);
         }
 
+        // Handle TRANSIT_MOVE: write qty to transit_container_details, clear ready_to_ship, update stage
+        if (strtoupper($column) === 'TRANSIT_MOVE') {
+            $valueNum = is_numeric($value) ? (float) $value : 0;
+            if ($valueNum <= 0) {
+                return response()->json(['success' => false, 'message' => 'Invalid transit quantity']);
+            }
+
+            $skuUpper = strtoupper(trim($sku));
+
+            // 1. Upsert transit_container_details (tab_name='Forecast' as the key for forecast-driven moves)
+            $existingTransit = DB::table('transit_container_details')
+                ->where('our_sku', $sku)
+                ->where('tab_name', 'Forecast')
+                ->whereNull('deleted_at')
+                ->first();
+
+            if ($existingTransit) {
+                DB::table('transit_container_details')
+                    ->where('id', $existingTransit->id)
+                    ->update([
+                        'no_of_units' => $valueNum,
+                        'total_ctn'   => 1,
+                        'parent'      => $parent !== '' ? $parent : null,
+                        'status'      => '',
+                        'updated_at'  => now(),
+                    ]);
+            } else {
+                DB::table('transit_container_details')->insert([
+                    'our_sku'     => $sku,
+                    'tab_name'    => 'Forecast',
+                    'parent'      => $parent !== '' ? $parent : null,
+                    'no_of_units' => $valueNum,
+                    'total_ctn'   => 1,
+                    'status'      => '',
+                    'auth_user'   => optional(Auth::user())->name,
+                    'created_at'  => now(),
+                    'updated_at'  => now(),
+                ]);
+            }
+
+            // 2. Clear ready_to_ship qty so auto-detection does not revert stage to 'r2s'
+            DB::table('ready_to_ship')
+                ->whereRaw('UPPER(TRIM(sku)) = ?', [$skuUpper])
+                ->whereNull('deleted_at')
+                ->update(['qty' => 0, 'updated_at' => now()]);
+
+            // 3. Update forecast_analysis.stage = 'transit'
+            $existingFa = DB::table('forecast_analysis')
+                ->whereRaw('TRIM(LOWER(sku)) = ?', [strtolower($sku)])
+                ->orderByRaw("CASE WHEN stage IS NOT NULL AND stage != '' THEN 0 ELSE 1 END")
+                ->first();
+
+            if ($existingFa) {
+                DB::table('forecast_analysis')
+                    ->where('id', $existingFa->id)
+                    ->update(['stage' => 'transit', 'updated_at' => now()]);
+            } else {
+                DB::table('forecast_analysis')->insert([
+                    'sku'        => $sku,
+                    'parent'     => $parent !== '' ? $parent : null,
+                    'stage'      => 'transit',
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+            }
+
+            return response()->json(['success' => true, 'message' => 'Moved to Transit successfully']);
+        }
+
         $columnMap = [
             'Approved QTY' => 'approved_qty',
             'NR' => 'nr',

@@ -481,6 +481,12 @@
                                 </svg>
                             </button>
                         </div>
+
+                        <!-- Export Button -->
+                        <button id="export-forecast-btn" class="btn btn-sm btn-success fw-semibold d-flex align-items-center gap-1" title="Export filtered rows: Supplier, SKU, Image, QTY, Order Date">
+                            <i class="fas fa-file-csv"></i>
+                            <span>Export</span>
+                        </button>
                     </div>
 
                     <!-- ── Row 3: Value badges ── -->
@@ -891,7 +897,7 @@
             layout: "fitDataFill",
             pagination: true,
             paginationSize: 100,
-            initialSort: [{ column: "Parent", dir: "asc" }],
+            initialSort: [{ column: "mfrg_order_date", dir: "asc" }],
             initialHeaderFilter: [{ field: "nr", value: "" }, { field: "stage", value: "" }, { field: "INV", value: "" }],
             paginationCounter: "rows",
             movableColumns: true,
@@ -1352,6 +1358,7 @@
                     cellClick: function(e, cell) {
                         const d = cell.getRow().getData();
                         if (d.is_parent || d.isParent) return;
+                        if (e.target && e.target.classList.contains('order-to-mip-move-dot')) return;
                         cell.edit();
                     },
                     cellEditing: function(cell) {
@@ -1367,6 +1374,8 @@
                     },
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
+                        const skuAttr = String(rowData.SKU || '').replace(/'/g, "\\'");
+                        const parentAttr = String(rowData.Parent || '').replace(/'/g, "\\'");
                         const v = parseFloat(cell.getValue());
                         if (!v || isNaN(v)) {
                             return '<div style="text-align:center;" class="text-muted">—</div>';
@@ -1375,7 +1384,11 @@
                         if (rowData && (rowData.is_parent || rowData.isParent)) {
                             return `<div style="text-align:center;font-weight:bold;">${disp}</div>`;
                         }
-                        return `<span style="display:block;text-align:center;font-weight:bold;cursor:text;" title="Double-click to edit Order">${disp}</span>`;
+                        return `<div style="text-align:center;font-weight:bold;display:flex;align-items:center;justify-content:center;gap:6px;">
+                            <span style="cursor:text;" title="Click to edit Order">${disp}</span>
+                            <button type="button" class="order-to-mip-move-dot" data-sku='${skuAttr}' data-parent='${parentAttr}' title="Move Order to MIP" aria-label="Move Order to MIP"
+                                style="width:10px;height:10px;border-radius:9999px;border:1px solid #1e40af;background:#2563eb;padding:0;cursor:pointer;display:inline-block;line-height:1;flex-shrink:0;"></button>
+                        </div>`;
                     },
                     cellEdited: function(cell) {
                         const row = cell.getRow();
@@ -1468,6 +1481,7 @@
                     cellClick: function(e, cell) {
                         const d = cell.getRow().getData();
                         if (d.is_parent || d.isParent) return;
+                        if (e.target && e.target.classList.contains('mip-to-r2s-move-dot')) return;
                         cell.edit();
                     },
                     cellEditing: function(cell) {
@@ -1482,10 +1496,19 @@
                         }, 0);
                     },
                     formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        const skuAttr = String(rowData.SKU || '').replace(/'/g, "\\'");
+                        const parentAttr = String(rowData.Parent || '').replace(/'/g, "\\'");
                         const value = cell.getValue();
                         const n = parseFloat(value);
                         const showDash = value === null || value === undefined || value === '' || isNaN(n) || n === 0;
-                        return `<div style="text-align:center;font-weight:bold;cursor:text;">${showDash ? '-' : String(value)}</div>`;
+                        if (showDash) return `<div style="text-align:center;font-weight:bold;cursor:text;">-</div>`;
+                        if (rowData.is_parent || rowData.isParent) return `<div style="text-align:center;font-weight:bold;">${String(value)}</div>`;
+                        return `<div style="text-align:center;font-weight:bold;display:flex;align-items:center;justify-content:center;gap:6px;">
+                            <span style="cursor:text;" title="Click to edit MIP">${String(value)}</span>
+                            <button type="button" class="mip-to-r2s-move-dot" data-sku='${skuAttr}' data-parent='${parentAttr}' title="Move MIP to R2S" aria-label="Move MIP to R2S"
+                                style="width:10px;height:10px;border-radius:9999px;border:1px solid #15803d;background:#16a34a;padding:0;cursor:pointer;display:inline-block;line-height:1;flex-shrink:0;"></button>
+                        </div>`;
                     },
                     cellEdited: function(cell) {
                         const row = cell.getRow();
@@ -1539,6 +1562,7 @@
                     cellClick: function(e, cell) {
                         const d = cell.getRow().getData();
                         if (d.is_parent || d.isParent) return;
+                        if (e.target && e.target.classList.contains('r2s-to-trn-move-dot')) return;
                         cell.edit();
                     },
                     cellEditing: function(cell) {
@@ -1553,10 +1577,19 @@
                         }, 0);
                     },
                     formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        const skuAttr = String(rowData.SKU || '').replace(/'/g, "\\'");
+                        const parentAttr = String(rowData.Parent || '').replace(/'/g, "\\'");
                         const value = cell.getValue();
                         const n = parseFloat(value);
                         const showDash = value === null || value === undefined || value === '' || isNaN(n) || n === 0;
-                        return `<div style="text-align:center;font-weight:bold;cursor:text;">${showDash ? '-' : String(value)}</div>`;
+                        if (showDash) return `<div style="text-align:center;font-weight:bold;cursor:text;">-</div>`;
+                        if (rowData.is_parent || rowData.isParent) return `<div style="text-align:center;font-weight:bold;">${String(value)}</div>`;
+                        return `<div style="text-align:center;font-weight:bold;display:flex;align-items:center;justify-content:center;gap:6px;">
+                            <span style="cursor:text;" title="Click to edit R2S">${String(value)}</span>
+                            <button type="button" class="r2s-to-trn-move-dot" data-sku='${skuAttr}' data-parent='${parentAttr}' title="Move R2S to TRN" aria-label="Move R2S to TRN"
+                                style="width:10px;height:10px;border-radius:9999px;border:1px solid #9a3412;background:#ea580c;padding:0;cursor:pointer;display:inline-block;line-height:1;flex-shrink:0;"></button>
+                        </div>`;
                     },
                     cellEdited: function(cell) {
                         const row = cell.getRow();
@@ -2376,10 +2409,11 @@
                         const daysDiff = Math.floor((today - dateObj) / (1000 * 60 * 60 * 24));
                         const day = String(dateObj.getDate()).padStart(2, '0');
                         const month = dateObj.toLocaleString('en-US', { month: 'short' }).toUpperCase();
+                        const year = dateObj.getFullYear();
                         let color = '#000';
                         if (daysDiff > 25) color = 'red';
                         else if (daysDiff >= 15) color = '#ffc107';
-                        return `<span style="display:block;text-align:center;font-weight:700;color:${color};">${day} ${month}</span>`;
+                        return `<span style="display:block;text-align:center;font-weight:700;color:${color};">${day} ${month} ${year}</span>`;
                     }
                 },
                 {
@@ -2895,8 +2929,8 @@
 
                 setTimeout(() => {
                     setCombinedFilters();
-                    // Default sort by Parent so rows are grouped; all rows visible via filter defaults
-                    table.setSort([{ column: "Parent", dir: "asc" }]);
+                    // Default sort by Order Date oldest first (ascending)
+                    table.setSort([{ column: "mfrg_order_date", dir: "asc" }]);
                     // Update SKU column header with count (excluding rows with "parent" in SKU)
                     table.updateColumnDefinition("SKU", { title: "SKU (" + skuCount + ")" });
                     // Update column headers with count of rows (excluding parent) where value > 0
@@ -4730,6 +4764,189 @@
                 );
             });
 
+            $(document).off('click', '.order-to-mip-move-dot').on('click', '.order-to-mip-move-dot', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+
+                const $btn = $(this);
+                if ($btn.data('busy')) return;
+
+                const sku = String($btn.data('sku') || '').trim();
+                const parent = String($btn.data('parent') || '').trim();
+                if (!sku) return;
+
+                const row = table.getRows().find(r => {
+                    const d = r.getData();
+                    return String(d.SKU || '').trim() === sku && String(d.Parent || '').trim() === parent;
+                });
+
+                if (!row) { alert('Row not found.'); return; }
+
+                const rowData = row.getData() || {};
+                const orderQty = parseFloat(rowData.two_order_qty ?? 0);
+                if (!Number.isFinite(orderQty) || orderQty <= 0) {
+                    alert('Order quantity is empty or zero.');
+                    return;
+                }
+
+                $btn.data('busy', true).css('opacity', '0.5').css('cursor', 'wait');
+
+                updateForecastField(
+                    { sku: sku, parent: parent, column: 'Stage', value: 'mip' },
+                    function() {
+                        updateForecastField(
+                            { sku: sku, parent: parent, column: 'order_given', value: orderQty },
+                            function() {
+                                row.update({
+                                    stage: 'mip',
+                                    order_given: orderQty,
+                                    two_order_qty: 0,
+                                    appr_req_qty: 0,
+                                    readyToShipQty: 0,
+                                    transit: 0
+                                }, true);
+                                syncParentStageQtyColumns(rowData.Parent || rowData.parentKey);
+                                row.getCells().forEach(function(cell) {
+                                    const f = cell.getField();
+                                    if (['stage', 'order_given', 'readyToShipQty', 'transit', 'to_order', 'two_order_qty', 'appr_req_qty'].includes(f)) {
+                                        cell.reformat();
+                                    }
+                                });
+                                setCombinedFilters();
+                                $btn.data('busy', false).css('opacity', '1').css('cursor', 'pointer');
+                            },
+                            function() {
+                                $btn.data('busy', false).css('opacity', '1').css('cursor', 'pointer');
+                                alert('Failed to move Order to MIP.');
+                            }
+                        );
+                    },
+                    function() {
+                        $btn.data('busy', false).css('opacity', '1').css('cursor', 'pointer');
+                        alert('Failed to move Order to MIP.');
+                    }
+                );
+            });
+
+            $(document).off('click', '.mip-to-r2s-move-dot').on('click', '.mip-to-r2s-move-dot', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+
+                const $btn = $(this);
+                if ($btn.data('busy')) return;
+
+                const sku = String($btn.data('sku') || '').trim();
+                const parent = String($btn.data('parent') || '').trim();
+                if (!sku) return;
+
+                const row = table.getRows().find(r => {
+                    const d = r.getData();
+                    return String(d.SKU || '').trim() === sku && String(d.Parent || '').trim() === parent;
+                });
+
+                if (!row) { alert('Row not found.'); return; }
+
+                const rowData = row.getData() || {};
+                const mipQty = parseFloat(rowData.order_given ?? 0);
+                if (!Number.isFinite(mipQty) || mipQty <= 0) {
+                    alert('MIP quantity is empty or zero.');
+                    return;
+                }
+
+                $btn.data('busy', true).css('opacity', '0.5').css('cursor', 'wait');
+
+                updateForecastField(
+                    { sku: sku, parent: parent, column: 'Stage', value: 'r2s' },
+                    function() {
+                        updateForecastField(
+                            { sku: sku, parent: parent, column: 'R2S', value: mipQty },
+                            function() {
+                                row.update({
+                                    stage: 'r2s',
+                                    readyToShipQty: mipQty,
+                                    order_given: 0,
+                                    two_order_qty: 0,
+                                    appr_req_qty: 0,
+                                    transit: 0
+                                }, true);
+                                syncParentStageQtyColumns(rowData.Parent || rowData.parentKey);
+                                row.getCells().forEach(function(cell) {
+                                    const f = cell.getField();
+                                    if (['stage', 'order_given', 'readyToShipQty', 'transit', 'to_order', 'two_order_qty', 'appr_req_qty'].includes(f)) {
+                                        cell.reformat();
+                                    }
+                                });
+                                setCombinedFilters();
+                                $btn.data('busy', false).css('opacity', '1').css('cursor', 'pointer');
+                            },
+                            function() {
+                                $btn.data('busy', false).css('opacity', '1').css('cursor', 'pointer');
+                                alert('Failed to move MIP to R2S.');
+                            }
+                        );
+                    },
+                    function() {
+                        $btn.data('busy', false).css('opacity', '1').css('cursor', 'pointer');
+                        alert('Failed to move MIP to R2S.');
+                    }
+                );
+            });
+
+            $(document).off('click', '.r2s-to-trn-move-dot').on('click', '.r2s-to-trn-move-dot', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+
+                const $btn = $(this);
+                if ($btn.data('busy')) return;
+
+                const sku = String($btn.data('sku') || '').trim();
+                const parent = String($btn.data('parent') || '').trim();
+                if (!sku) return;
+
+                const row = table.getRows().find(r => {
+                    const d = r.getData();
+                    return String(d.SKU || '').trim() === sku && String(d.Parent || '').trim() === parent;
+                });
+
+                if (!row) { alert('Row not found.'); return; }
+
+                const rowData = row.getData() || {};
+                const r2sQty = parseFloat(rowData.readyToShipQty ?? 0);
+                if (!Number.isFinite(r2sQty) || r2sQty <= 0) {
+                    alert('R2S quantity is empty or zero.');
+                    return;
+                }
+
+                $btn.data('busy', true).css('opacity', '0.5').css('cursor', 'wait');
+
+                updateForecastField(
+                    { sku: sku, parent: parent, column: 'TRANSIT_MOVE', value: r2sQty },
+                    function() {
+                        row.update({
+                            stage: 'transit',
+                            transit: r2sQty,
+                            readyToShipQty: 0,
+                            order_given: 0,
+                            two_order_qty: 0,
+                            appr_req_qty: 0
+                        }, true);
+                        syncParentStageQtyColumns(rowData.Parent || rowData.parentKey);
+                        row.getCells().forEach(function(cell) {
+                            const f = cell.getField();
+                            if (['stage', 'order_given', 'readyToShipQty', 'transit', 'to_order', 'two_order_qty', 'appr_req_qty'].includes(f)) {
+                                cell.reformat();
+                            }
+                        });
+                        setCombinedFilters();
+                        $btn.data('busy', false).css('opacity', '1').css('cursor', 'pointer');
+                    },
+                    function() {
+                        $btn.data('busy', false).css('opacity', '1').css('cursor', 'pointer');
+                        alert('Failed to move R2S to TRN.');
+                    }
+                );
+            });
+
             $(document).off('click', '.forecast-mfrg-toggle-dot').on('click', '.forecast-mfrg-toggle-dot', function(e) {
                 e.preventDefault();
                 e.stopPropagation();
@@ -5455,6 +5672,79 @@
                 icon.removeClass('fa-copy').addClass('fa-check').css('color', '#28a745');
                 setTimeout(() => icon.removeClass('fa-check').addClass('fa-copy').css('color', '#6c757d'), 1500);
             });
+        });
+
+        // ── Export button: Supplier Name, SKU, Image, QTY, Order Date ──────────────
+        document.getElementById('export-forecast-btn').addEventListener('click', function() {
+            const btn = this;
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Exporting…';
+
+            try {
+                // Get all active (filtered) rows across all pages
+                const rows = table.getRows('active');
+
+                const stageQty = function(d) {
+                    const stage = String(d.stage || '').trim().toLowerCase();
+                    if (stage === 'to_order_analysis') return parseFloat(d.two_order_qty) || '';
+                    if (stage === 'appr_req')           return parseFloat(d.appr_req_qty) || parseFloat(d.MOQ) || '';
+                    if (stage === 'mip')                return parseFloat(d.order_given)  || '';
+                    if (stage === 'r2s')                return parseFloat(d.readyToShipQty) || '';
+                    if (stage === 'transit')            return parseFloat(d.transit)      || '';
+                    return parseFloat(d.MOQ) || '';
+                };
+
+                const formatDate = function(raw) {
+                    if (!raw) return '';
+                    const d = new Date(raw);
+                    if (isNaN(d.getTime())) return String(raw).split(' ')[0] || '';
+                    const months = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+                    const dd   = String(d.getDate()).padStart(2, '0');
+                    const mon  = months[d.getMonth()];
+                    const yyyy = d.getFullYear();
+                    return dd + ' ' + mon + ' ' + yyyy; // e.g. 03 MAR 2024
+                };
+
+                const headers = ['Supplier Name', 'SKU', 'Image', 'QTY', 'Order Date'];
+                const csvData = [headers];
+
+                rows.forEach(function(row) {
+                    const d = row.getData();
+                    if (d.is_parent || d.isParent) return; // skip parent rows
+                    csvData.push([
+                        d.mfrg_supplier   || '',
+                        d.SKU             || '',
+                        d.Image           || '',
+                        stageQty(d),
+                        formatDate(d.mfrg_order_date),
+                    ]);
+                });
+
+                // Build CSV string (UTF-8 BOM for Excel compatibility)
+                const escape = function(v) {
+                    return '"' + String(v ?? '').replace(/"/g, '""') + '"';
+                };
+                const csv = csvData.map(function(row) {
+                    return row.map(escape).join(',');
+                }).join('\r\n');
+
+                const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+                const url  = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                const date = new Date().toISOString().slice(0, 10);
+                link.href     = url;
+                link.download = 'forecast_export_' + date + '.csv';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                URL.revokeObjectURL(url);
+            } catch (err) {
+                console.error('Export error:', err);
+                alert('Export failed. Please try again.');
+            }
+
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-file-csv"></i> <span>Export</span>';
         });
 
     </script>
