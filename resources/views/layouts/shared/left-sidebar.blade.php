@@ -2246,6 +2246,24 @@
                         </li>
 
                         <li class="side-nav-item">
+                            <a data-bs-toggle="collapse" href="#sidebarPurchasingPower" aria-expanded="false"
+                                aria-controls="sidebarPurchasingPower">
+                                <span> Purchasing Power </span>
+                                <span class="menu-arrow"></span>
+                            </a>
+                            <div class="collapse" id="sidebarPurchasingPower">
+                                <ul class="side-nav-third-level">
+                                    <li>
+                                        <a href="{{ url('/purchasing-power-pricing') }}">Purchasing Power Pricing</a>
+                                    </li>
+                                    <li>
+                                        <a href="{{ url('/purchasing-power-sales') }}">Purchasing Power Sales</a>
+                                    </li>
+                                </ul>
+                            </div>
+                        </li>
+
+                        <li class="side-nav-item">
                             <a data-bs-toggle="collapse" href="#sidebarwayfair" aria-expanded="false"
                                 aria-controls="sidebarwayfair">
                                 <span> Wayfair </span>

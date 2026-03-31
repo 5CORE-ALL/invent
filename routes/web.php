@@ -2259,6 +2259,20 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/macys-pricing-column-visibility', [\App\Http\Controllers\MarketPlace\MacyController::class, 'getTabulatorColumnVisibility'])->name('macys.pricing.column.get');
     Route::post('/macys-pricing-column-visibility', [\App\Http\Controllers\MarketPlace\MacyController::class, 'setTabulatorColumnVisibility'])->name('macys.pricing.column.set');
 
+    // Purchasing Power Pricing Routes (Tabulator)
+    Route::get('/purchasing-power-pricing', [\App\Http\Controllers\MarketPlace\PurchasingPowerController::class, 'pricingView'])->name('purchasing.power.pricing');
+    Route::get('/pp-data-json', [\App\Http\Controllers\MarketPlace\PurchasingPowerController::class, 'dataJson'])->name('pp.data.json');
+    Route::post('/pp-update-nr-req', [\App\Http\Controllers\MarketPlace\PurchasingPowerController::class, 'updateNrReq'])->name('pp.update.nr.req');
+    Route::post('/pp-save-sprice-tabulator', [\App\Http\Controllers\MarketPlace\PurchasingPowerController::class, 'saveSpriceTabulator'])->name('pp.save.sprice.tabulator');
+    Route::post('/pp-save-sprice-batch', [\App\Http\Controllers\MarketPlace\PurchasingPowerController::class, 'saveSpriceUpdates'])->name('pp.save.sprice.batch');
+    Route::get('/pp-pricing-column-visibility', [\App\Http\Controllers\MarketPlace\PurchasingPowerController::class, 'getColumnVisibility'])->name('pp.pricing.column.get');
+    Route::post('/pp-pricing-column-visibility', [\App\Http\Controllers\MarketPlace\PurchasingPowerController::class, 'setColumnVisibility'])->name('pp.pricing.column.set');
+
+    // Purchasing Power Sales Routes
+    Route::get('/purchasing-power-sales', [\App\Http\Controllers\MarketPlace\PurchasingPowerController::class, 'salesView'])->name('purchasing.power.sales');
+    Route::get('/pp-sales-data-json', [\App\Http\Controllers\MarketPlace\PurchasingPowerController::class, 'salesDataJson'])->name('pp.sales.data.json');
+    Route::post('/pp-sales-upload', [\App\Http\Controllers\MarketPlace\PurchasingPowerController::class, 'uploadSales'])->name('pp.sales.upload');
+
     // Reverb Pricing Routes (Tabulator)
     Route::get('/reverb-pricing', [\App\Http\Controllers\MarketPlace\ReverbController::class, 'reverbTabulatorView'])->name('reverb.pricing');
     Route::get('/reverb-data-json', [\App\Http\Controllers\MarketPlace\ReverbController::class, 'reverbDataJson'])->name('reverb.data.json');
