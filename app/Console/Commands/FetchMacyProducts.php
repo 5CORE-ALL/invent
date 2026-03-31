@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use App\Models\MacyProduct;
 use App\Models\TiendamiaProduct;
+use App\Models\PurchasingPowerProduct;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Log;
 
@@ -333,6 +334,13 @@ class FetchMacyProducts extends Command
         // Fetch and store BestBuy products with channel-specific pricing
         $this->fetchChannelProducts($token, 'bestbuyusa', "Best Buy USA", $skuSales);
 
+        // Close DB connection between channels
+        DB::connection()->disconnect();
+        sleep(1);
+
+        // Fetch and store Purchasing Power products with channel-specific pricing
+        $this->fetchChannelProducts($token, 'purchasingpower', "Purchasing Power", $skuSales);
+
         // Final cleanup
         DB::connection()->disconnect();
         
@@ -378,6 +386,7 @@ class FetchMacyProducts extends Command
                 "Macy's, Inc." => 'macy_products',
                 "Tiendamia" => 'tiendamia_products',
                 "Best Buy USA" => 'bestbuy_usa_products',
+                "Purchasing Power" => 'purchasing_power_products',
                 default => null,
             };
 

@@ -32,6 +32,7 @@ use App\Console\Commands\FetchReverbDailyData;
 use App\Console\Commands\FetchWayfairDailyData;
 use App\Console\Commands\FetchShopifyB2BMetrics;
 use App\Console\Commands\FetchShopifyB2CMetrics;
+use App\Console\Commands\SyncShopifyLiveInventory;
 
 class Kernel extends ConsoleKernel
 {
@@ -43,6 +44,7 @@ class Kernel extends ConsoleKernel
         SyncReverbCommand::class,
         SyncShopifyCatalogCommand::class,
         SyncShopifyPlsCatalogCommand::class,
+        SyncShopifyLiveInventory::class,
         DebugEbaySkuMetricsCommand::class,
         FetchTopDawgData::class,
         SyncTopDawgAll::class,
@@ -850,6 +852,15 @@ class Kernel extends ConsoleKernel
             ->everyFiveMinutes()
             ->timezone('UTC')
             ->name('shopify-save-daily-inventory')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        // Sync Ohio-location-specific on_hand / available_to_sell / committed
+        $schedule->command('shopify:sync-live-inventory')
+            ->everyThirtyMinutes()
+            ->timezone('UTC')
+            ->name('shopify-sync-live-inventory')
             ->withoutOverlapping()
             ->runInBackground()
             ->appendOutputTo($log);

@@ -150,54 +150,11 @@ class ShopifyApiInventoryController extends Controller
             
             $this->saveSkus($simplifiedData);
 
-            // Update on_hand directly from products API data (inventoryData)
-            if (!empty($inventoryData)) {
-                $updateCount = 0;
-                DB::transaction(function () use ($inventoryData, &$updateCount) {
-                    foreach ($inventoryData as $rawSku => $data) {
-                            // Store SKU exactly as it comes from Shopify
-                            $sku = $rawSku;
-                            
-                            if (empty($sku)) {
-                                continue;
-                            }
-
-                            // Debug specific SKU
-                            if (stripos($sku, 'SS HD 2PK ORG WOB') !== false || stripos($sku, 'SS ECO 2PK BLK') !== false) {
-                                Log::info('=== saveDailyInventory: Updating SKU from products API ===', [
-                                    'sku' => $sku,
-                                    'on_hand_from_products' => $data['on_hand'] ?? 0,
-                                    'available_to_sell' => $data['available_to_sell'] ?? 0,
-                                    'image_src' => $data['image_src'] ?? null,
-                                ]);
-                            }
-
-                            $affected = ShopifySku::where('sku', $sku)->update([
-                                'on_hand'          => $data['on_hand'] ?? 0,
-                                'available_to_sell' => $data['available_to_sell'] ?? 0,
-                                'image_src'        => $data['image_src'] ?? null,
-                                'updated_at'       => now(),
-                            ]);
-                            
-                            if ($affected > 0) {
-                                $updateCount++;
-                            }
-
-                            if (stripos($sku, 'SS HD 2PK ORG WOB') !== false || stripos($sku, 'SS ECO 2PK BLK') !== false) {
-                                Log::info('=== saveDailyInventory: DB rows updated ===', ['affected_rows' => $affected]);
-                            }
-                        }
-                });
-                
-                Log::info('saveDailyInventory: on_hand updates completed', [
-                    'total_skus_from_api' => count($inventoryData),
-                    'db_rows_updated' => $updateCount
-                ]);
-                
-                Cache::forget('shopify_skus_list');
-            } else {
-                Log::warning('No inventory data from products API to update.');
-            }
+            // NOTE: on_hand, available_to_sell, and committed are intentionally NOT updated here.
+            // The products API returns inventory_quantity as a total across ALL Shopify locations,
+            // which does not match the Ohio-warehouse-specific values the business tracks.
+            // These fields are exclusively managed by syncLiveInventoryToDb() via fetchInventoryWithCommitment(),
+            // which correctly filters inventory to the Ohio location only.
 
             $duration = round(microtime(true) - $startTime, 2);
             return true;
@@ -370,7 +327,7 @@ class ShopifyApiInventoryController extends Controller
 
     public function fetchInventoryWithCommitment(): array
     {
-        set_time_limit(500);
+        set_time_limit(0); // Allow unlimited time — this sync paginates all SKUs with rate-limit delays
         $shopUrl = 'https://' . config('services.shopify.store_url');
         $token = config('services.shopify.password'); 
 
