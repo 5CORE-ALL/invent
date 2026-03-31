@@ -2865,7 +2865,7 @@
                         <li><a href="{{ url('shein-tabulator') }}">Shein Daily Data</a></li>
                         <li><a href="{{ route('zero.shein') }}">Shein 0 view</a></li>
                         <li><a href="{{ route('listing.shein') }}">Listing Shein</a></li>
-                    </ul>
+                        <li><a href="{{ route('shein.pricing.view') }}">Shein Pricing</a></li>                    </ul>
                 </div>
             </li>
 
