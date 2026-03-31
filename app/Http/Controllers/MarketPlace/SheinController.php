@@ -13,6 +13,7 @@ use App\Models\ProductMaster;
 use App\Models\SheinDataView;
 use App\Models\SheinDailyData;
 use App\Models\ShopifySku;
+use App\Models\AmazonChannelSummary;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
@@ -725,5 +726,484 @@ class SheinController extends Controller
         $visibility = cache()->get("shein_column_visibility_{$userId}", []);
         
         return response()->json($visibility);
+    }
+
+    // =========================================================================
+    // SHEIN PRICING PAGE  (mirrors AliExpress pricing page exactly)
+    // =========================================================================
+
+    public function sheinBadgeChartData(\Illuminate\Http\Request $request)
+    {
+        try {
+            $metric = (string) $request->input('metric', 'avg_gpft');
+            $days   = max(1, (int) $request->input('days', 30));
+
+            $validMetrics = [
+                'total_pft', 'total_sales', 'avg_gpft', 'avg_roi',
+                'total_al30', 'avg_dil', 'total_cogs', 'missing_count', 'map_count',
+                'total_sku', 'zero_sold', 'more_sold',
+            ];
+            if (!in_array($metric, $validMetrics, true)) {
+                return response()->json(['success' => false, 'message' => 'Invalid metric'], 400);
+            }
+
+            $startDate = now('America/Los_Angeles')->subDays($days)->toDateString();
+            $rows = \App\Models\AmazonChannelSummary::where('channel', 'shein')
+                ->where('snapshot_date', '>=', $startDate)
+                ->orderBy('snapshot_date', 'asc')
+                ->get(['snapshot_date', 'summary_data']);
+
+            $data = [];
+            foreach ($rows as $row) {
+                $sd    = is_array($row->summary_data)
+                       ? $row->summary_data
+                       : (json_decode($row->summary_data ?? '{}', true) ?: []);
+                $value = (float) ($sd[$metric] ?? 0);
+                $data[] = [
+                    'date'  => optional($row->snapshot_date)->format('M d'),
+                    'value' => $value,
+                ];
+            }
+
+            return response()->json(['success' => true, 'data' => $data]);
+        } catch (\Exception $e) {
+            Log::error('Shein badge chart data error: ' . $e->getMessage());
+            return response()->json(['success' => false, 'data' => []], 500);
+        }
+    }
+
+    public function sheinPricingView()
+    {
+        return view('market-places.shein_pricing_view');
+    }
+
+    public function downloadSheinPricingSample()
+    {
+        $fileName = 'shein_pricing_sample.csv';
+        $rows = [
+            ['sku', 'price', 'stock'],
+            ['SKU-001', '19.99', '10'],
+            ['SKU-002', '24.50', '25'],
+            ['SKU-003', '13.25', '0'],
+        ];
+
+        header('Content-Type: text/csv');
+        header('Content-Disposition: attachment;filename="' . $fileName . '"');
+        header('Cache-Control: max-age=0');
+
+        $handle = fopen('php://output', 'w');
+        foreach ($rows as $row) {
+            fputcsv($handle, $row);
+        }
+        fclose($handle);
+        exit;
+    }
+
+    public function uploadSheinPriceSheet(Request $request)
+    {
+        $request->validate(['price_file' => 'required|file']);
+
+        try {
+            $file = $request->file('price_file');
+            $path = $file->getPathName();
+
+            $rows = [];
+
+            // ── Detect file type ─────────────────────────────────────────
+            if ($this->sheinIsExcelFile($path)) {
+                // Excel (xlsx / xls)
+                $spreadsheet = IOFactory::load($path);
+                $raw         = $spreadsheet->getActiveSheet()->toArray();
+                $headerRow   = array_shift($raw);
+                $rows        = $this->parseSheinRows($headerRow, $raw, false);
+            } else {
+                // TSV / CSV – handle BOM, auto-detect delimiter
+                $handle = fopen($path, 'r');
+                $bom    = fread($handle, 3);
+                if ($bom !== "\xEF\xBB\xBF") rewind($handle);
+                $firstLine = fgets($handle);
+                rewind($handle);
+                if ($bom === "\xEF\xBB\xBF") fread($handle, 3);
+
+                $delimiter = (substr_count($firstLine, "\t") > substr_count($firstLine, ",")) ? "\t" : ",";
+                $headerRow = fgetcsv($handle, 0, $delimiter);
+                if (!$headerRow) {
+                    fclose($handle);
+                    return response()->json(['success' => false, 'message' => 'Empty file.'], 422);
+                }
+
+                $rawData = [];
+                while (($row = fgetcsv($handle, 0, $delimiter)) !== false) {
+                    if ($row && count(array_filter($row, fn($v) => $v !== '' && $v !== null)) > 0) {
+                        $rawData[] = $row;
+                    }
+                }
+                fclose($handle);
+                $rows = $this->parseSheinRows($headerRow, $rawData, true);
+            }
+
+            if (empty($rows)) {
+                return response()->json(['success' => false, 'message' => 'No data rows found.'], 422);
+            }
+
+            $updated = 0;
+            foreach ($rows as $row) {
+                \App\Models\SheinPricingPrice::updateOrCreate(
+                    ['sku' => $row['sku']],
+                    [
+                        'price'               => max(0, $row['price']),
+                        'special_offer_price' => max(0, $row['special_offer_price']),
+                        'shein_stock'         => max(0, $row['stock']),
+                    ]
+                );
+                $updated++;
+            }
+
+            return response()->json(['success' => true, 'message' => "{$updated} SKU(s) updated.", 'updated' => $updated]);
+        } catch (\Throwable $e) {
+            Log::error('Shein pricing upload failed: ' . $e->getMessage());
+            return response()->json(['success' => false, 'message' => 'Upload failed: ' . $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * Parse header + data rows from Shein native sheet OR simple sku/price/stock sheet.
+     *
+     * Shein native sheet columns (normalised lowercase, non-alnum stripped):
+     *   sellersku                        → sku
+     *   current inventory                → stock
+     *   original price shein us usd      → price
+     *   special offer price shein us usd → special_offer_price
+     *
+     * Simple sheet columns: sku, price, stock (+ optional special_offer_price)
+     */
+    private function parseSheinRows(array $headerRow, array $dataRows, bool $isCsv): array
+    {
+        // Normalise headers – keep letters/numbers/spaces only, then trim
+        $headers = array_map(
+            fn($h) => strtolower(trim(preg_replace('/[^a-z0-9 ]/i', ' ', (string) $h))),
+            $headerRow
+        );
+
+        // ── Detect Shein native format (has "sellersku" column) ──────────
+        $isNativeShein = in_array('sellersku', $headers, true)
+                      || in_array('seller sku', $headers, true);
+
+        if ($isNativeShein) {
+            // Find column indices by partial match (column names can have slight variations)
+            $skuIdx      = null;
+            $priceIdx    = null;
+            $spOfferIdx  = null;
+            $stockIdx    = null;
+
+            foreach ($headers as $i => $h) {
+                if ($skuIdx   === null && (str_contains($h, 'sellersku') || $h === 'seller sku'))       $skuIdx     = $i;
+                if ($stockIdx === null && str_contains($h, 'current inventory'))                         $stockIdx   = $i;
+                if ($priceIdx === null && str_contains($h, 'original price'))                            $priceIdx   = $i;
+                if ($spOfferIdx === null && str_contains($h, 'special offer price'))                     $spOfferIdx = $i;
+            }
+
+            if ($skuIdx === null) {
+                throw new \RuntimeException('sellerSKU column not found in Shein sheet.');
+            }
+        } else {
+            // Simple sheet: sku, price, stock, optional special_offer_price
+            $skuIdx     = array_search('sku',                 $headers, true);
+            $priceIdx   = array_search('price',               $headers, true);
+            $stockIdx   = array_search('stock',               $headers, true);
+            $spOfferIdx = array_search('special offer price', $headers, true)
+                       ?: array_search('special_offer_price', $headers, true);
+
+            if ($skuIdx === false || $priceIdx === false) {
+                throw new \RuntimeException('Columns not found. Expected: sku, price. Got: [' . implode(', ', array_slice($headers, 0, 10)) . ']');
+            }
+        }
+
+        $rows = [];
+        foreach ($dataRows as $row) {
+            $sku = trim((string) ($row[$skuIdx] ?? ''));
+            if ($sku === '' || strtolower($sku) === 'sellersku') continue;
+
+            $price       = (float) preg_replace('/[^0-9.\-]/', '', trim((string) ($row[$priceIdx]   ?? '')));
+            $spOffer     = $spOfferIdx !== null ? (float) preg_replace('/[^0-9.\-]/', '', trim((string) ($row[$spOfferIdx] ?? ''))) : 0;
+            $stock       = $stockIdx   !== null ? (int) trim((string) ($row[$stockIdx] ?? '0')) : 0;
+
+            $rows[] = [
+                'sku'                 => $sku,
+                'price'               => $price,
+                'special_offer_price' => $spOffer,
+                'stock'               => $stock,
+            ];
+        }
+
+        return $rows;
+    }
+
+    private function sheinIsExcelFile(string $path): bool
+    {
+        $handle = fopen($path, 'rb');
+        if (!$handle) return false;
+        $magic  = fread($handle, 4);
+        fclose($handle);
+        return str_starts_with($magic, "\x50\x4B\x03\x04") || str_starts_with($magic, "\xD0\xCF\x11\xE0");
+    }
+
+    public function getSheinPricingData(Request $request)
+    {
+        try {
+            $normalizeSku = static fn($v) => strtoupper(trim((string) $v));
+
+            // ── 1. All uploaded prices (base SKU list)
+            $pricingRows  = \App\Models\SheinPricingPrice::all();
+            $pricingBySku = $pricingRows->keyBy(fn($r) => $normalizeSku($r->sku));
+
+            // ── 2. Product master → LP / Ship
+            $productMasterBySku = ProductMaster::query()
+                ->whereNotNull('sku')->where('sku', '!=', '')
+                ->whereRaw('UPPER(sku) NOT LIKE ?', ['%PARENT%'])
+                ->get()
+                ->keyBy(fn($r) => $normalizeSku($r->sku));
+
+            // ── 3. Shein sales → al30 / sales  (from shein_daily_data.seller_sku)
+            $excludedStatuses = ['refund', 'return', 'cancel', 'closed', 'exchange'];
+            $salesAgg = SheinDailyData::query()
+                ->selectRaw('seller_sku,
+                    SUM(COALESCE(quantity, 0)) AS al30,
+                    SUM(COALESCE(estimated_merchandise_revenue, 0)) AS sales')
+                ->whereNotNull('seller_sku')->where('seller_sku', '!=', '')
+                ->where(function ($q) use ($excludedStatuses) {
+                    foreach ($excludedStatuses as $s) {
+                        $q->whereRaw('LOWER(COALESCE(order_status, "")) NOT LIKE ?', ["%{$s}%"]);
+                    }
+                })
+                ->groupBy('seller_sku')
+                ->get()
+                ->keyBy(fn($r) => $normalizeSku($r->seller_sku));
+
+            // ── 4. Shopify → INV / OV L30
+            $allNormalizedSkus = collect(array_merge(
+                $pricingBySku->keys()->all(),
+                $productMasterBySku->keys()->all()
+            ))->unique()->values();
+
+            $shopifyBySku = collect();
+            if ($allNormalizedSkus->isNotEmpty()) {
+                $shopifyBySku = ShopifySku::query()
+                    ->whereIn(DB::raw('UPPER(TRIM(sku))'), $allNormalizedSkus)
+                    ->get()
+                    ->keyBy(fn($r) => $normalizeSku($r->sku));
+            }
+
+            // ── 5. SPRICE from shein_data_views
+            $viewMetaBySku = collect();
+            if ($allNormalizedSkus->isNotEmpty()) {
+                $viewMetaBySku = SheinDataView::query()
+                    ->whereIn(DB::raw('UPPER(TRIM(sku))'), $allNormalizedSkus)
+                    ->get()
+                    ->keyBy(fn($r) => $normalizeSku($r->sku));
+            }
+
+            // ── 6. Margin from marketplace_percentages
+            $marketplaceData = MarketplacePercentage::query()
+                ->where('marketplace', 'Shein')
+                ->orWhere('marketplace', 'shein')
+                ->first();
+            $percentage = $marketplaceData ? ((float) ($marketplaceData->percentage ?? 100)) : 100;
+            $margin     = $percentage / 100;
+
+            // ── 7. Build rows
+            $rows = [];
+            foreach ($allNormalizedSkus as $normalizedSku) {
+                $priceRow   = $pricingBySku->get($normalizedSku);
+                $price      = $priceRow ? (float) $priceRow->price       : 0;
+                $sheinStock = $priceRow ? (int)   ($priceRow->shein_stock ?? 0) : 0;
+
+                $productMaster = $productMasterBySku->get($normalizedSku);
+                $values = [];
+                if ($productMaster) {
+                    $values = is_array($productMaster->Values)
+                        ? $productMaster->Values
+                        : (is_string($productMaster->Values) ? json_decode($productMaster->Values, true) : []);
+                }
+                $lp   = isset($values['lp'])   ? (float) $values['lp']   : 0;
+                $ship = isset($values['shein_ship']) ? (float) $values['shein_ship']
+                      : (isset($values['ship']) ? (float) $values['ship'] : 0);
+
+                $sale  = $salesAgg->get($normalizedSku);
+                $al30  = $sale ? (float) $sale->al30  : 0;
+                $sales = $sale ? (float) $sale->sales : 0;
+
+                $shopifyRow = $shopifyBySku->get($normalizedSku);
+                $inv        = $shopifyRow ? (int) ($shopifyRow->inv      ?? 0) : 0;
+                $ovL30      = $shopifyRow ? (int) ($shopifyRow->quantity ?? 0) : 0;
+                $imageSrc   = $shopifyRow ? ($shopifyRow->image_src      ?? null) : null;
+
+                $metaRecord = $viewMetaBySku->get($normalizedSku);
+                $meta       = $metaRecord ? ($metaRecord->value ?? []) : [];
+                $sprice     = isset($meta['SPRICE']) ? (float) $meta['SPRICE'] : 0;
+
+                // Calculations
+                $profit = ($price * $margin) - $lp - $ship;
+                $gpft   = $price > 0 ? ($profit / $price) * 100 : 0;
+                $groi   = $lp    > 0 ? ($profit / $lp)    * 100 : 0;
+                $sgpft  = $sprice > 0 ? round((($sprice * $margin - $lp - $ship) / $sprice) * 100, 2) : 0;
+                $sroi   = ($sprice > 0 && $lp > 0) ? round((($sprice * $margin - $lp - $ship) / $lp) * 100, 2) : 0;
+
+                $displaySku = $productMaster->sku ?? ($priceRow->sku ?? $normalizedSku);
+                $isMissing  = !$priceRow || $price <= 0;
+
+                // MAP: INV vs Shein Stock
+                if ($isMissing) { $mapValue = ''; }
+                elseif ($inv === $sheinStock) { $mapValue = 'Map'; }
+                else { $mapValue = "N Map|" . abs($inv - $sheinStock); }
+
+                $rows[] = [
+                    'sku'          => trim((string) $displaySku),
+                    'parent'       => $productMaster ? (trim((string) ($productMaster->parent ?? '')) ?: null) : null,
+                    'is_parent'    => false,
+                    'image'        => $imageSrc,
+                    'price'        => round($price, 2),
+                    'missing'      => $isMissing ? 'M' : '',
+                    'map'          => $mapValue,
+                    'gpft'         => round($gpft,  2),
+                    'groi'         => round($groi,  2),
+                    'profit'       => round($profit, 2),
+                    'sales'        => round($sales,  2),
+                    'al30'         => (int) round($al30),
+                    'lp'           => round($lp,   2),
+                    'ship'         => round($ship,  2),
+                    'sprice'       => round($sprice, 2),
+                    'sgpft'        => round($sgpft, 2),
+                    'sroi'         => round($sroi,  2),
+                    '_margin'      => round($margin, 4),
+                    'inv'          => $inv,
+                    'shein_stock'  => $sheinStock,
+                    'ov_l30'       => $ovL30,
+                    'dil_percent'  => $inv > 0 ? round(($ovL30 / $inv) * 100, 2) : 0,
+                ];
+            }
+
+            // Sort by parent groups then by SKU
+            usort($rows, static function ($a, $b) {
+                $pa = (string) ($a['parent'] ?? '');
+                $pb = (string) ($b['parent'] ?? '');
+                if ($pa === '' && $pb === '') return strnatcasecmp($a['sku'], $b['sku']);
+                if ($pa === '') return 1;
+                if ($pb === '') return -1;
+                $cmp = strnatcasecmp($pa, $pb);
+                return $cmp !== 0 ? $cmp : strnatcasecmp($a['sku'], $b['sku']);
+            });
+
+            $rows = $this->insertSheinParentRows($rows);
+
+            return response()->json($rows);
+        } catch (\Exception $e) {
+            Log::error('Shein pricing data error: ' . $e->getMessage());
+            return response()->json(['error' => $e->getMessage()], 500);
+        }
+    }
+
+    private function insertSheinParentRows(array $rows): array
+    {
+        $result = []; $group = []; $currentParent = null;
+        foreach ($rows as $row) {
+            $p = $row['parent'] ?? null;
+            $p = ($p !== null && $p !== '') ? (string) $p : null;
+            if ($p === null) {
+                if (!empty($group)) {
+                    foreach ($group as $r) $result[] = $r;
+                    $result[] = $this->buildSheinParentRow($currentParent, $group);
+                    $group = []; $currentParent = null;
+                }
+                $result[] = $row;
+                continue;
+            }
+            if ($p !== $currentParent) {
+                if (!empty($group)) {
+                    foreach ($group as $r) $result[] = $r;
+                    $result[] = $this->buildSheinParentRow($currentParent, $group);
+                    $group = [];
+                }
+                $currentParent = $p;
+            }
+            $group[] = $row;
+        }
+        if (!empty($group)) {
+            foreach ($group as $r) $result[] = $r;
+            $result[] = $this->buildSheinParentRow($currentParent, $group);
+        }
+        return $result;
+    }
+
+    private function buildSheinParentRow(string $parentName, array $childRows): array
+    {
+        $sumInv = $sumOvL30 = $sumSheinStock = $sumAl30 = $sumSales = $sumProfit = 0;
+        foreach ($childRows as $r) {
+            $sumInv        += (float) ($r['inv']         ?? 0);
+            $sumOvL30      += (float) ($r['ov_l30']       ?? 0);
+            $sumSheinStock += (float) ($r['shein_stock']  ?? 0);
+            $sumAl30       += (float) ($r['al30']         ?? 0);
+            $sumSales      += (float) ($r['sales']        ?? 0);
+            $sumProfit     += (float) ($r['al30'] ?? 0) * (float) ($r['profit'] ?? 0);
+        }
+        $key = 'PARENT ' . $parentName;
+        return [
+            'sku'         => $key,  'parent' => $key,  'is_parent' => true,
+            'image'       => null,  'price'  => '-',   'missing'   => '-',
+            'map'         => '-',   'gpft'   => $sumSales > 0 ? round(($sumProfit / $sumSales) * 100, 2) : 0,
+            'groi'        => '-',   'profit' => round($sumProfit, 2),
+            'sales'       => round($sumSales, 2),       'al30'      => (int) round($sumAl30),
+            'lp'          => '-',   'ship'   => '-',   'sprice'    => '-',
+            'sgpft'       => '-',   'sroi'   => '-',   '_margin'   => '-',
+            'inv'         => (int) $sumInv,  'shein_stock' => (int) $sumSheinStock,
+            'ov_l30'      => (int) $sumOvL30,
+            'dil_percent' => $sumInv > 0 ? round(($sumOvL30 / $sumInv) * 100, 2) : 0,
+        ];
+    }
+
+    public function saveSheinSpriceUpdates(Request $request)
+    {
+        try {
+            $updates = $request->input('updates', []);
+            if (empty($updates) && $request->has('sku')) {
+                $updates = [['sku' => $request->input('sku'), 'sprice' => $request->input('sprice')]];
+            }
+            $marketplaceData = MarketplacePercentage::query()
+                ->where('marketplace', 'Shein')->orWhere('marketplace', 'shein')->first();
+            $margin = $marketplaceData ? ((float) ($marketplaceData->percentage ?? 100)) / 100 : 1;
+
+            $updatedCount = 0;
+            foreach ($updates as $update) {
+                $sku    = $update['sku']    ?? null;
+                $sprice = $update['sprice'] ?? null;
+                if (!$sku || $sprice === null) continue;
+                $sprice = (float) $sprice;
+
+                $pm     = ProductMaster::where('sku', $sku)->first();
+                $lp = $ship = 0;
+                if ($pm) {
+                    $v    = is_array($pm->Values) ? $pm->Values : (json_decode($pm->Values, true) ?: []);
+                    $lp   = isset($v['lp'])         ? (float) $v['lp']         : 0;
+                    $ship = isset($v['shein_ship'])  ? (float) $v['shein_ship']
+                          : (isset($v['ship'])       ? (float) $v['ship']       : 0);
+                }
+
+                $sgpft = $sprice > 0 ? round((($sprice * $margin - $lp - $ship) / $sprice) * 100, 2) : 0;
+                $sroi  = $lp     > 0 ? round((($sprice * $margin - $lp - $ship) / $lp)     * 100, 2) : 0;
+
+                $view   = SheinDataView::firstOrNew(['sku' => $sku]);
+                $stored = is_array($view->value) ? $view->value : (json_decode($view->value, true) ?: []);
+                $stored['SPRICE'] = $sprice;
+                $stored['SGPFT']  = $sgpft;
+                $stored['SROI']   = $sroi;
+                $view->value = $stored;
+                $view->save();
+                $updatedCount++;
+            }
+            return response()->json(['success' => true, 'updated' => $updatedCount]);
+        } catch (\Exception $e) {
+            Log::error('Shein SPRICE save failed: ' . $e->getMessage());
+            return response()->json(['success' => false, 'error' => $e->getMessage()], 500);
+        }
     }
 }

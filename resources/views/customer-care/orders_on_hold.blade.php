@@ -171,6 +171,9 @@
                 <button type="button" class="btn btn-outline-secondary" id="btnShowHistory">
                     <i class="bi bi-clock-history me-1"></i> History
                 </button>
+                <button type="button" class="btn btn-success" id="btnExportCsv">
+                    <i class="bi bi-file-earmark-spreadsheet me-1"></i> Export CSV
+                </button>
             </div>
             <div class="card">
                 <div class="card-body">
@@ -1027,6 +1030,46 @@
                     behavior: 'smooth',
                     block: 'start'
                 });
+            });
+
+            document.getElementById('btnExportCsv').addEventListener('click', () => {
+                function csvEscape(val) {
+                    const str = String(val ?? '').replace(/"/g, '""');
+                    return /[",\n\r]/.test(str) ? `"${str}"` : str;
+                }
+
+                function buildCsv(headers, rows) {
+                    const lines = [headers.map(csvEscape).join(',')];
+                    rows.forEach(r => lines.push(r.map(csvEscape).join(',')));
+                    return lines.join('\r\n');
+                }
+
+                function downloadCsv(content, filename) {
+                    const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = filename;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                }
+
+                const activeHeaders = ['#', 'SKU', 'QTY', 'Order QTY', 'Parent', 'MKT1', 'MKT2',
+                    'What?', 'Action', 'Action Remark', 'Replacement Tracking',
+                    'Root Cause Found', 'Root Cause Remark', 'Root Cause Fixed',
+                    'Root Cause Fixed Remark', 'Created By', 'Created At'];
+                const activeData = holdIssueRows.map(r => [
+                    r.id, r.sku, r.qty, r.order_qty, r.parent,
+                    r.marketplace_1, r.marketplace_2, r.what_happened,
+                    r.action_1, r.action_1_remark, r.replacement_tracking,
+                    r.issue, r.issue_remark, r.c_action_1, r.c_action_1_remark,
+                    r.created_by, r.created_at
+                ]);
+
+                const dateStr = new Date().toISOString().slice(0, 10);
+                downloadCsv(buildCsv(activeHeaders, activeData), `orders_on_hold_active_${dateStr}.csv`);
             });
 
             modalEl.addEventListener('hidden.bs.modal', resetForm);

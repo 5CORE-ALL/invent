@@ -304,7 +304,7 @@ class ShopifyApiInventoryController extends Controller
                             'variant_title'     => $variant['title'] ?? '',
                             'product_link'      => $productLink,
                             'inventory_item_id' => $variant['inventory_item_id'],
-                            'on_hand'           => $variant['old_inventory_quantity'] ?? 0,   // OnHand
+                            'on_hand'           => $variant['inventory_quantity'] ?? 0,       // OnHand (current quantity)
                             'available_to_sell' => $variant['inventory_quantity'] ?? 0,       // AvailableToSell
                             'price'             => $variant['price'],
                             'b2b_price'         => $b2bPrice,

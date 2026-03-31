@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'AliExpress Pricing', 'sidenav' => 'condensed'])
+@extends('layouts.vertical', ['title' => 'Shein Pricing', 'sidenav' => 'condensed'])
 
 @section('css')
     <meta name="csrf-token" content="{{ csrf_token() }}">
@@ -94,8 +94,8 @@
 
 @section('content')
     @include('layouts.shared.page-title', [
-        'page_title' => 'AliExpress Pricing',
-        'sub_title'  => 'Separate pricing page (sales page unchanged)',
+        'page_title' => 'Shein Pricing',
+        'sub_title'  => 'Separate pricing page (sales page unchanged — Shein)',
     ])
 
     <div class="row">
@@ -120,10 +120,10 @@
                             <option value="more" selected>More than 0</option>
                         </select>
 
-                        {{-- AE Stock filter --}}
+                        {{-- Shein Stock filter --}}
                         <select id="ae-stock-filter" class="form-select form-select-sm" style="width:140px;">
-                            <option value="all">AE Stock</option>
-                            <option value="zero">0 AE Stock</option>
+                            <option value="all">Shein Stock</option>
+                            <option value="zero">0 Shein Stock</option>
                             <option value="more">More than 0</option>
                         </select>
 
@@ -152,7 +152,7 @@
 
                         {{-- AL30 filter --}}
                         <select id="ae-al30-filter" class="form-select form-select-sm" style="width:130px;" title="Excludes 0 inventory items">
-                            <option value="all">AL30</option>
+                            <option value="all">Sh L30</option>
                             <option value="0">0</option>
                             <option value="0-10">1–10</option>
                             <option value="10plus">10+</option>
@@ -194,7 +194,7 @@
                         <button type="button" id="export-pricing-btn" class="btn btn-sm btn-success">
                             <i class="fas fa-file-csv"></i> Export CSV
                         </button>
-                        <a href="{{ route('aliexpress.pricing.price.sample') }}" class="btn btn-sm btn-outline-secondary">
+                        <a href="{{ route('shein.pricing.sample') }}" class="btn btn-sm btn-outline-secondary">
                             <i class="fas fa-download"></i> Sample
                         </a>
                         <button type="button" class="btn btn-sm btn-warning"
@@ -230,7 +230,7 @@
                         <div class="d-flex flex-wrap gap-2">
                             <span class="badge bg-secondary fs-6 p-2 ae-badge-chart" id="ae-total-sku-badge"    data-metric="total_sku"   style="font-weight:700;cursor:pointer;">Total SKU: 0</span>
                             <span class="badge bg-primary  fs-6 p-2 ae-badge-chart" id="ae-total-sales-badge" data-metric="total_sales" style="font-weight:700;cursor:pointer;">Total Sales: $0</span>
-                            <span class="badge bg-warning  fs-6 p-2 ae-badge-chart" id="ae-total-al30-badge"  data-metric="total_al30"  style="font-weight:700;color:#111;cursor:pointer;">Total AL30: 0</span>
+                            <span class="badge bg-warning  fs-6 p-2 ae-badge-chart" id="ae-total-al30-badge"  data-metric="total_al30"  style="font-weight:700;color:#111;cursor:pointer;">Total Sh L30: 0</span>
                             <span class="badge bg-success  fs-6 p-2 ae-badge-chart" id="ae-total-profit-badge" data-metric="total_pft"  style="font-weight:700;cursor:pointer;">Total Profit: $0</span>
                             <span class="badge bg-info     fs-6 p-2 ae-badge-chart" id="ae-avg-gpft-badge"    data-metric="avg_gpft"    style="font-weight:700;color:#111;cursor:pointer;">AVG GPFT: 0%</span>
                             <span class="badge bg-danger   fs-6 p-2 ae-badge-chart" id="ae-missing-badge"     data-metric="missing_count" style="font-weight:700;cursor:pointer;" title="Click for trend / filter">Missing: 0</span>
@@ -242,7 +242,7 @@
                         </div>
                     </div>
 
-                    <div id="aliexpress-pricing-table"></div>
+                    <div id="shein-pricing-table"></div>
                 </div>
             </div>
         </div>
@@ -255,7 +255,7 @@
                 <div class="modal-header bg-info text-white py-1 px-3">
                     <h6 class="modal-title mb-0" style="font-size:13px;">
                         <i class="fas fa-chart-area me-1"></i>
-                        <span id="aeBadgeChartTitle">AliExpress – Badge Trend</span>
+                        <span id="aeBadgeChartTitle">Shein – Badge Trend</span>
                     </h6>
                     <div class="d-flex align-items-center gap-2">
                         <select id="aeBadgeChartRange" class="form-select form-select-sm bg-white"
@@ -382,7 +382,7 @@
 
         function saveSpriceUpdates(updates) {
             $.ajax({
-                url: '{{ route("aliexpress.pricing.save.sprice") }}',
+                url: '{{ route("shein.pricing.save.sprice") }}',
                 method: 'POST',
                 headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
                 data: { updates: updates },
@@ -490,11 +490,11 @@
                 table.addFilter(d => (parseInt(d.inv, 10) || 0) > 0);
             }
 
-            // AE Stock filter
+            // Shein Stock filter
             if (stockFilter === 'zero') {
-                table.addFilter(d => (parseInt(d.ae_stock, 10) || 0) === 0);
+                table.addFilter(d => (parseInt(d.shein_stock, 10) || 0) === 0);
             } else if (stockFilter === 'more') {
-                table.addFilter(d => (parseInt(d.ae_stock, 10) || 0) > 0);
+                table.addFilter(d => (parseInt(d.shein_stock, 10) || 0) > 0);
             }
 
             // GPFT filter
@@ -630,7 +630,7 @@
 
             $('#ae-total-sku-badge').text(`Total SKU: ${childCount.toLocaleString()}`);
             $('#ae-total-sales-badge').text(`Total Sales: $${Math.round(totalSales).toLocaleString()}`);
-            $('#ae-total-al30-badge').text(`Total AL30: ${totalAl30.toLocaleString()}`);
+            $('#ae-total-al30-badge').text(`Total Sh L30: ${totalAl30.toLocaleString()}`);
             $('#ae-total-profit-badge').text(`Total Profit: $${Math.round(totalProfit).toLocaleString()}`);
             $('#ae-avg-gpft-badge').text(`AVG GPFT: ${avgGpft.toFixed(1)}%`);
             $('#ae-missing-badge').text(`Missing: ${missingCount.toLocaleString()}`);
@@ -644,8 +644,8 @@
         }
 
         $(document).ready(function() {
-            table = new Tabulator("#aliexpress-pricing-table", {
-                ajaxURL: "/aliexpress/pricing-data",
+            table = new Tabulator("#shein-pricing-table", {
+                ajaxURL: "/shein/pricing-data",
                 ajaxResponse: function(url, params, response) {
                     summaryDataCache = normalizeRows(response);
                     updateSummary(summaryDataCache);
@@ -736,8 +736,8 @@
                         }
                     },
                     {
-                        title: "AE Stock",
-                        field: "ae_stock",
+                        title: "Shein Stock",
+                        field: "shein_stock",
                         sorter: "number",
                         hozAlign: "center",
                         width: 65,
@@ -776,7 +776,7 @@
                         }
                     },
                     {
-                        title: "AL30",
+                        title: "Sh L30",
                         field: "al30",
                         sorter: "number",
                         hozAlign: "center",
@@ -893,7 +893,7 @@
                         }
                     },
                     // {
-                    //     title: "AL30",
+                    //     title: "Sh L30",
                     //     field: "al30",
                     //     sorter: "number",
                     //     hozAlign: "center",
@@ -1091,7 +1091,7 @@
             });
 
             $('#refresh-pricing-table').on('click', function() {
-                table.setData("/aliexpress/pricing-data");
+                table.setData("/shein/pricing-data");
             });
 
             $('#export-pricing-btn').on('click', function() {
@@ -1110,7 +1110,7 @@
                 formData.append('_token', '{{ csrf_token() }}');
 
                 $.ajax({
-                    url: '/aliexpress/pricing-upload-price',
+                    url: '/shein/pricing-upload-price',
                     type: 'POST',
                     data: formData,
                     processData: false,
@@ -1123,7 +1123,7 @@
                         }
                         $('#uploadPriceSheetModal').modal('hide');
                         $('#priceSheetFile').val('');
-                        table.setData('/aliexpress/pricing-data');
+                        table.setData('/shein/pricing-data');
                     },
                     error: function(xhr) {
                         const message = (xhr.responseJSON && xhr.responseJSON.message) ? xhr.responseJSON.message : 'Price upload failed.';
@@ -1148,7 +1148,7 @@
             const aePercentMetrics = ['avg_gpft','avg_roi','avg_dil'];
 
             const aeBadgeLabels = {
-                total_pft: 'Total Profit',   total_sales: 'Total Sales',   total_al30: 'Total AL30',
+                total_pft: 'Total Profit',   total_sales: 'Total Sales',   total_al30: 'Total Sh L30',
                 avg_gpft: 'AVG GPFT%',        avg_roi: 'AVG ROI%',          avg_dil: 'DIL%',
                 total_cogs: 'COGS',           missing_count: 'Missing',     map_count: 'Map',
                 total_sku: 'Total SKU',       zero_sold: '0 Sold',          more_sold: '>0 Sold',
@@ -1271,7 +1271,7 @@
                 $('#aeBadgeLoading').show();
 
                 aeBadgeAjax = $.ajax({
-                    url: '{{ route("aliexpress.badge.chart") }}',
+                    url: '{{ route("shein.badge.chart") }}',
                     method: 'GET',
                     data: { metric: aeBadgeMetric, days: aeBadgeDays },
                     success: function(res) {
@@ -1297,7 +1297,7 @@
                 aeBadgeMetric = $(this).data('metric');
                 aeBadgeDays   = 30;
                 $('#aeBadgeChartRange').val('30');
-                $('#aeBadgeChartTitle').text('AliExpress – ' + (aeBadgeLabels[aeBadgeMetric] || aeBadgeMetric) + ' Trend');
+                $('#aeBadgeChartTitle').text('Shein – ' + (aeBadgeLabels[aeBadgeMetric] || aeBadgeMetric) + ' Trend');
                 bootstrap.Modal.getOrCreateInstance(document.getElementById('aeBadgeChartModal')).show();
                 aeLoadChart();
             });

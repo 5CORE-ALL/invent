@@ -3373,6 +3373,14 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/shein-column-visibility', [SheinController::class, 'saveSheinColumnVisibility'])->name('shein.save.column.visibility');
     Route::get('/shein-column-visibility', [SheinController::class, 'getSheinColumnVisibility'])->name('shein.get.column.visibility');
 
+    // Shein Pricing Page
+    Route::get('/shein-pricing', [SheinController::class, 'sheinPricingView'])->name('shein.pricing.view');
+    Route::get('/shein/pricing-data', [SheinController::class, 'getSheinPricingData'])->name('shein.pricing.data');
+    Route::get('/shein/pricing-sample', [SheinController::class, 'downloadSheinPricingSample'])->name('shein.pricing.sample');
+    Route::post('/shein/pricing-upload-price', [SheinController::class, 'uploadSheinPriceSheet'])->name('shein.pricing.upload.price');
+    Route::post('/shein/save-sprice', [SheinController::class, 'saveSheinSpriceUpdates'])->name('shein.pricing.save.sprice');
+    Route::get('/shein/badge-chart-data', [SheinController::class, 'sheinBadgeChartData'])->name('shein.badge.chart');
+
     // faire
     Route::get('faireAnalysis', action: [FaireController::class, 'overallFaire']);
     Route::get('/faire/view-data', [FaireController::class, 'getViewFaireData']);

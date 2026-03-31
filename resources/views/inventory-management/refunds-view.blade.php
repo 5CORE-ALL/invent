@@ -205,14 +205,17 @@
 
                     <!-- Search Box and Add Button-->
                     <div class="row mb-3">
-                        <div class="col-md-6 d-flex align-items-center">
+                        <div class="col-md-6 d-flex align-items-center flex-wrap gap-2">
                             <button type="button" class="btn btn-primary" id="openRefundModal" data-bs-toggle="modal" data-bs-target="#refundsModal">
                                 <i class="fas fa-plus me-1"></i> Create Outgoing Refunds Records
                             </button>
-                            <button type="button" class="btn btn-outline-secondary ms-2" id="archiveSelectedBtn" title="Archive selected rows">
+                            <button type="button" class="btn btn-outline-secondary" id="archiveSelectedBtn" title="Archive selected rows">
                                 <i class="fas fa-archive me-1"></i> Archive selected
                             </button>
-                            <div class="dataTables_length ms-3"></div>
+                            <button type="button" class="btn btn-success" id="exportRefundsCsvBtn" title="Export visible rows to CSV">
+                                <i class="fas fa-file-csv me-1"></i> Export CSV
+                            </button>
+                            <div class="dataTables_length"></div>
                         </div>
 
                         <div class="col-md-3 offset-md-3">
@@ -1746,6 +1749,43 @@
                     errorElement.textContent = '';
                 }
             }
+
+            $(document).on('click', '#exportRefundsCsvBtn', function () {
+                var data = currentDisplayData && currentDisplayData.length ? currentDisplayData : tableData;
+                if (!data || !data.length) {
+                    alert('No data to export.');
+                    return;
+                }
+
+                function csvEsc(val) {
+                    var s = String(val == null ? '' : val).replace(/"/g, '""');
+                    return /[",\n\r]/.test(s) ? '"' + s + '"' : s;
+                }
+
+                var headers = ['SKU', 'QTY', 'REASON', 'CORRECTIVE ACTION REQUIRED',
+                    'PERSON RESPONSIBLE', 'SUPPLIER', 'ORDER ID', 'CHANNEL',
+                    'CREATED BY', 'DATE', 'REFUND AMT', 'ARCHIVED'];
+
+                var lines = [headers.map(csvEsc).join(',')];
+                data.forEach(function (r) {
+                    lines.push([
+                        r.sku, r.verified_stock, r.reason, r.remarks,
+                        r.person_responsible, r.supplier_name, r.order_id || '',
+                        r.channel_name || '', r.approved_by, r.approved_at,
+                        r.refund_amt, r.is_archived ? 'Yes' : 'No'
+                    ].map(csvEsc).join(','));
+                });
+
+                var blob = new Blob([lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
+                var url = URL.createObjectURL(blob);
+                var a = document.createElement('a');
+                a.href = url;
+                a.download = 'refunds_' + new Date().toISOString().slice(0, 10) + '.csv';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            });
 
             initializeTable();
         });

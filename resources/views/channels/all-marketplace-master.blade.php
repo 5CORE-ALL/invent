@@ -243,12 +243,11 @@
                 <!-- Summary Stats -->
                 <div id="summary-stats" class="mt-2 p-3 bg-light rounded">
                     <h6 class="mb-1">Summary Statistics</h6>
-                    <p class="text-muted small mb-3">Totals sum all channels. Amazon row: 35 calendar days, America/Los_Angeles, non-canceled, order totals — matches <a href="{{ url('amazon/daily-sales') }}">Amazon Daily Sales</a>. Other channels may use different windows; data fields are still named L30 Sales / L30 Orders for compatibility.</p>
                     <div class="d-flex flex-wrap gap-2">
                         <span class="badge bg-primary fs-6 p-2" style="color: white; font-weight: bold;">
                             Channels: <span id="total-channels">0</span>
                         </span>
-                        <span class="badge bg-success fs-6 p-2 badge-chart-link" data-metric="l30_sales" style="color: black; font-weight: bold; cursor:pointer;" title="Sum of Sales column (L30 Sales). Amazon uses 35-day Pacific order totals; other channels vary.">
+                        <span class="badge bg-success fs-6 p-2 badge-chart-link" data-metric="l30_sales" style="color: black; font-weight: bold; cursor:pointer;" title="Sum of Sales column. Amazon = last 29 days Pacific order totals, non-canceled. Other channels vary.">
                             Sales: <span id="total-l30-sales">$0</span>
                         </span>
                         <span class="badge bg-info fs-6 p-2 badge-chart-link" data-metric="l30_orders" style="color: black; font-weight: bold; cursor:pointer;" title="Sum of Orders column (L30 Orders). Amazon uses 35-day Pacific; other channels vary.">
@@ -1090,7 +1089,7 @@
                     {
                         title: "Sales",
                         field: "L30 Sales",
-                        headerTooltip: "Rolling sales per channel. Amazon = 35 days Pacific, SUM(order total), non-canceled — same as Amazon Daily Sales.",
+                        headerTooltip: "Rolling sales per channel. Amazon = last 29 days Pacific, SUM(order total), non-canceled — same as Amazon Daily Sales.",
                         hozAlign: "center",
                         sorter: "number",
                         width: 100,
