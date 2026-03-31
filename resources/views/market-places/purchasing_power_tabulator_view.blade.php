@@ -286,8 +286,8 @@
                 const percentage = {{ $ppPercentage }} / 100;
                 const lp   = parseFloat(rowData['LP_productmaster']) || 0;
                 const ship = parseFloat(rowData['Ship_productmaster']) || 0;
-                const sgpft = newSprice > 0 ? Math.round(((newSprice * percentage - lp) / newSprice) * 10000) / 100 : 0;
-                const sroi  = lp > 0    ? Math.round(((newSprice * percentage - lp) / lp) * 10000) / 100 : 0;
+                const sgpft = newSprice > 0 ? Math.round(((newSprice * percentage - lp - ship) / newSprice) * 10000) / 100 : 0;
+                const sroi  = lp > 0    ? Math.round(((newSprice * percentage - lp - ship) / lp) * 10000) / 100 : 0;
 
                 row.update({ SPRICE: newSprice, SGPFT: sgpft, SPFT: sgpft, SROI: sroi });
                 updates.push({ sku, sprice: newSprice });
@@ -314,8 +314,8 @@
 
                 const lp   = parseFloat(rowData['LP_productmaster']) || 0;
                 const ship = parseFloat(rowData['Ship_productmaster']) || 0;
-                const sgpft = Math.round(((amazonPrice * percentage - lp) / amazonPrice) * 10000) / 100;
-                const sroi  = lp > 0 ? Math.round(((amazonPrice * percentage - lp) / lp) * 10000) / 100 : 0;
+                const sgpft = Math.round(((amazonPrice * percentage - lp - ship) / amazonPrice) * 10000) / 100;
+                const sroi  = lp > 0 ? Math.round(((amazonPrice * percentage - lp - ship) / lp) * 10000) / 100 : 0;
                 row.update({ SPRICE: amazonPrice, SGPFT: sgpft, SPFT: sgpft, SROI: sroi });
                 updates.push({ sku, sprice: amazonPrice });
                 updatedCount++;
@@ -593,8 +593,9 @@
             const newSprice = parseFloat(cell.getValue()) || 0;
             const percentage = {{ $ppPercentage }} / 100;
             const lp   = d.LP_productmaster || 0;
-            const sgpft = newSprice > 0 ? Math.round(((newSprice * percentage - lp) / newSprice) * 10000) / 100 : 0;
-            const sroi  = lp > 0 ? Math.round(((newSprice * percentage - lp) / lp) * 10000) / 100 : 0;
+            const ship = d.Ship_productmaster || 0;
+            const sgpft = newSprice > 0 ? Math.round(((newSprice * percentage - lp - ship) / newSprice) * 10000) / 100 : 0;
+            const sroi  = lp > 0 ? Math.round(((newSprice * percentage - lp - ship) / lp) * 10000) / 100 : 0;
             row.update({ SGPFT: sgpft, SPFT: sgpft, SROI: sroi, has_custom_sprice: true });
 
             // Auto-save immediately — no Send button needed
