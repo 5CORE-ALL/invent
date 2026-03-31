@@ -436,9 +436,7 @@ class ShopifyPLSApiService
                 return ['success' => false, 'message' => 'Product title missing from Shopify PLS.'];
             }
 
-            $combined = $currentBody === ''
-                ? $descriptionHtml
-                : $currentBody."\n\n".$descriptionHtml;
+            $combined = $this->appendUniqueHtmlByPlainText($currentBody, $descriptionHtml, $descriptionPlain);
 
             $response = $this->retryOnRateLimit(function () use ($token, $productUrl, $productId, $title, $combined) {
                 return Http::withHeaders([
@@ -737,5 +735,22 @@ class ShopifyPLSApiService
         }
 
         return $title;
+    }
+
+    private function appendUniqueHtmlByPlainText(string $currentHtml, string $incomingHtml, string $incomingPlain): string
+    {
+        $currentHtml = trim($currentHtml);
+        $incomingPlain = trim($incomingPlain);
+        if ($currentHtml === '') {
+            return $incomingHtml;
+        }
+        if ($incomingPlain !== '') {
+            $currentPlain = trim(strip_tags($currentHtml));
+            if (str_contains(mb_strtolower($currentPlain), mb_strtolower($incomingPlain))) {
+                return $currentHtml;
+            }
+        }
+
+        return $currentHtml."\n\n".$incomingHtml;
     }
 }

@@ -9,6 +9,7 @@ use Aws\Credentials\Credentials;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use App\Models\ProductStockMapping;
 use App\Models\ReverbProduct;
 use App\Models\ReverbListingStatus;
@@ -657,11 +658,17 @@ class ReverbApiService
             return ['success' => false, 'message' => 'No Reverb listing found for SKU or reverb_listing_id.'];
         }
 
-        $html = '<div class="product-description">'.nl2br(htmlspecialchars($description, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'), false).'</div>';
+        $current = $this->fetchCurrentReverbDescription($token, $listingId);
+        $incomingPlain = trim($description);
+        $incomingHtml = '<div class="product-description">'.nl2br(htmlspecialchars($incomingPlain, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'), false).'</div>';
+        $mergedPlain = $this->appendUniqueText($current['plain'], $incomingPlain);
+        $mergedHtml = $current['html'] !== ''
+            ? $this->appendUniqueHtml($current['html'], $incomingHtml, $incomingPlain)
+            : $incomingHtml;
 
         $payload = [
-            'description' => $html,
-            'plain_text_description' => $description,
+            'description' => $mergedHtml,
+            'plain_text_description' => $mergedPlain,
         ];
 
         try {
@@ -763,5 +770,138 @@ class ReverbApiService
         } catch (\Throwable $e) {
             return ['success' => false, 'message' => $e->getMessage(), 'listing_id' => $listingId];
         }
+    }
+
+    /**
+     * Image Master compatibility method: push images then persist image_urls in reverb_products.
+     *
+     * @param  list<string>  $images
+     * @return array{success: bool, message: string, listing_id?: string}
+     */
+    public function updateImages(string $identifier, array $images): array
+    {
+        $images = array_slice(array_values(array_unique(array_filter(array_map('trim', $images), fn ($v) => $v !== ''))), 0, 12);
+        if ($images === []) {
+            return ['success' => false, 'message' => 'At least one image URL is required.'];
+        }
+
+        $res = $this->updateListingImages($identifier, $images);
+        if (! ($res['success'] ?? false)) {
+            return $res;
+        }
+
+        $trim = trim($identifier);
+        $listingId = (string) ($res['listing_id'] ?? '');
+        $saved = $this->saveImageUrlsToReverbProducts($trim, $listingId, $images);
+        if (! $saved) {
+            $res['message'] = ($res['message'] ?? 'Reverb listing images updated.').' Metrics save failed.';
+        }
+
+        return $res;
+    }
+
+    /**
+     * @param  list<string>  $images
+     */
+    private function saveImageUrlsToReverbProducts(string $identifier, string $listingId, array $images): bool
+    {
+        try {
+            if (! Schema::hasTable('reverb_products') || ! Schema::hasColumn('reverb_products', 'image_urls')) {
+                return false;
+            }
+            $payload = json_encode(array_values($images), JSON_UNESCAPED_SLASHES);
+            if ($payload === false) {
+                return false;
+            }
+
+            $query = ReverbProduct::query();
+            $matched = false;
+            if ($identifier !== '') {
+                $count = (clone $query)
+                    ->where(function ($q) use ($identifier) {
+                        $q->where('sku', $identifier)
+                            ->orWhere('sku', strtoupper($identifier))
+                            ->orWhere('sku', strtolower($identifier));
+                    })
+                    ->update(['image_urls' => $payload]);
+                $matched = $count > 0;
+            }
+            if (! $matched && $listingId !== '') {
+                $count = ReverbProduct::query()->where('reverb_listing_id', $listingId)->update(['image_urls' => $payload]);
+                $matched = $count > 0;
+            }
+
+            return $matched;
+        } catch (\Throwable $e) {
+            Log::warning('Reverb image_urls save failed', ['identifier' => $identifier, 'listing_id' => $listingId, 'error' => $e->getMessage()]);
+
+            return false;
+        }
+    }
+
+    /**
+     * @return array{plain: string, html: string}
+     */
+    private function fetchCurrentReverbDescription(string $token, string $listingId): array
+    {
+        try {
+            $url = 'https://api.reverb.com/api/listings/'.$listingId;
+            $response = Http::withoutVerifying()
+                ->timeout(30)
+                ->withHeaders([
+                    'Authorization' => 'Bearer '.$token,
+                    'Accept' => 'application/hal+json',
+                    'Accept-Version' => '3.0',
+                    'Content-Type' => 'application/hal+json',
+                ])->get($url);
+
+            if (! $response->successful()) {
+                return ['plain' => '', 'html' => ''];
+            }
+
+            $json = $response->json();
+            $plain = trim((string) ($json['listing']['plain_text_description'] ?? $json['plain_text_description'] ?? ''));
+            $html = trim((string) ($json['listing']['description'] ?? $json['description'] ?? ''));
+            if ($plain === '' && $html !== '') {
+                $plain = trim(strip_tags($html));
+            }
+
+            return ['plain' => $plain, 'html' => $html];
+        } catch (\Throwable $e) {
+            Log::warning('Reverb fetch current description failed', ['listing_id' => $listingId, 'error' => $e->getMessage()]);
+
+            return ['plain' => '', 'html' => ''];
+        }
+    }
+
+    private function appendUniqueText(string $current, string $incoming): string
+    {
+        $current = trim($current);
+        $incoming = trim($incoming);
+        if ($incoming === '') {
+            return $current;
+        }
+        if ($current === '') {
+            return $incoming;
+        }
+        if (str_contains(mb_strtolower($current), mb_strtolower($incoming))) {
+            return $current;
+        }
+
+        return $current."\n\n".$incoming;
+    }
+
+    private function appendUniqueHtml(string $currentHtml, string $incomingHtml, string $incomingPlain): string
+    {
+        $currentHtml = trim($currentHtml);
+        if ($currentHtml === '') {
+            return $incomingHtml;
+        }
+        $currentPlain = trim(strip_tags($currentHtml));
+        if ($incomingPlain !== '' && str_contains(mb_strtolower($currentPlain), mb_strtolower($incomingPlain))) {
+            return $currentHtml;
+        }
+
+        return $currentHtml.'<br><br>'.$incomingHtml;
     }
 }

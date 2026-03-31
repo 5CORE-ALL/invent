@@ -3342,6 +3342,74 @@ class AmazonSpApiService
     }
 
     /**
+     * Image Master compatibility method: push images then persist image_urls in amazon_metrics.
+     *
+     * @param  list<string>  $images
+     * @return array{success: bool, message: string}
+     */
+    public function updateImages(string $identifier, array $images): array
+    {
+        $images = array_slice(array_values(array_unique(array_filter(array_map('trim', $images), fn ($v) => $v !== ''))), 0, 9);
+        if ($images === []) {
+            return ['success' => false, 'message' => 'At least one image URL is required.'];
+        }
+
+        $res = $this->updateListingImages($identifier, $images);
+        if (! ($res['success'] ?? false)) {
+            return $res;
+        }
+
+        $sku = $this->resolveAmazonSellerSkuForBullets($identifier);
+        $saved = $this->saveImageUrlsToAmazonMetrics($sku, $images);
+        if (! $saved) {
+            $res['message'] = ($res['message'] ?? 'Amazon listing images updated.').' Metrics save failed.';
+        }
+
+        return $res;
+    }
+
+    /**
+     * @param  list<string>  $images
+     */
+    private function saveImageUrlsToAmazonMetrics(string $sku, array $images): bool
+    {
+        try {
+            if (! Schema::hasTable('amazon_metrics') || ! Schema::hasColumn('amazon_metrics', 'sku')) {
+                return false;
+            }
+            $payload = json_encode(array_values($images), JSON_UNESCAPED_SLASHES);
+            if ($payload === false) {
+                return false;
+            }
+
+            $update = [];
+            if (Schema::hasColumn('amazon_metrics', 'image_urls')) {
+                $update['image_urls'] = $payload;
+            }
+            if (Schema::hasColumn('amazon_metrics', 'image_master_json')) {
+                $update['image_master_json'] = $payload;
+            }
+            if ($update === []) {
+                return false;
+            }
+            if (Schema::hasColumn('amazon_metrics', 'updated_at')) {
+                $update['updated_at'] = now();
+            }
+
+            DB::table('amazon_metrics')->updateOrInsert(['sku' => $sku], $update);
+            if (Schema::hasColumn('amazon_metrics', 'created_at')) {
+                DB::table('amazon_metrics')->where('sku', $sku)->whereNull('created_at')->update(['created_at' => now()]);
+            }
+
+            return true;
+        } catch (\Throwable $e) {
+            Log::warning('Amazon image_urls save failed', ['sku' => $sku, 'error' => $e->getMessage()]);
+
+            return false;
+        }
+    }
+
+    /**
      * PATCH listing bullet_point attributes (SP-API Listings Items). Full text per line; no truncation.
      *
      * @return array{success: bool, message: string}
