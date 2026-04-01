@@ -100,6 +100,11 @@
             width: 10%;
         }
 
+        .orders-hold-col-dept {
+            width: 7%;
+            min-width: 70px;
+        }
+
         .orders-hold-col-mp {
             width: 8%;
         }
@@ -405,6 +410,7 @@
                                     <th class="orders-hold-col-action">Track</th>
                                     <th class="orders-hold-col-issue">Root Cause<br>Found</th>
                                     <th class="orders-hold-col-action">Root Cause Fixed</th>
+                                    <th class="orders-hold-col-dept">Dept</th>
                                     <th class="orders-hold-col-close">Close</th>
                                     <th class="orders-hold-col-created-by">Created By</th>
                                     <th class="orders-hold-col-created-at">Created At</th>
@@ -440,6 +446,7 @@
                                     <th class="orders-hold-col-action">Track</th>
                                     <th class="orders-hold-col-issue">Root Cause<br>Found</th>
                                     <th class="orders-hold-col-action">Root Cause Fixed</th>
+                                    <th class="orders-hold-col-dept">Dept</th>
                                     <th class="orders-hold-col-action">Close</th>
                                     <th class="orders-hold-col-action">Event</th>
                                     <th class="orders-hold-col-created-by">Created By</th>
@@ -631,7 +638,7 @@
                                     placeholder="Write remark for Other">
                             </div>
 
-                            <div class="col-md-4">
+                            <div class="col-md-6">
                                 <label for="hold_issue_c_action_1" class="form-label">Root Cause Fixed</label>
                                 <input type="text" class="form-control" id="hold_issue_c_action_1" name="c_action_1"
                                     list="hold_issue_root_cause_fixed_datalist"
@@ -643,6 +650,21 @@
                                 <label for="hold_issue_c_action_1_remark" class="form-label">Root Cause Fixed Remark</label>
                                 <input type="text" class="form-control" id="hold_issue_c_action_1_remark"
                                     name="c_action_1_remark" placeholder="Write remark for Other">
+                            </div>
+
+                            <div class="col-md-6">
+                                <label for="hold_issue_department" class="form-label">Department</label>
+                                <select class="form-select" id="hold_issue_department" name="department">
+                                    <option value="">— Select —</option>
+                                    <option value="Dispatch">Dispatch</option>
+                                    <option value="Shipping">Shipping</option>
+                                    <option value="Listing">Listing</option>
+                                    <option value="Carrier">Carrier</option>
+                                    <option value="Customer Care">Customer Care</option>
+                                    <option value="Pricing">Pricing</option>
+                                    <option value="QC">QC</option>
+                                    <option value="Packaging">Packaging</option>
+                                </select>
                             </div>
 
                         </div>
@@ -776,6 +798,7 @@
             const replacementTrackingInput = document.getElementById('hold_issue_replacement_tracking');
             const cAction1Input = document.getElementById('hold_issue_c_action_1');
             const cAction1RemarkInput = document.getElementById('hold_issue_c_action_1_remark');
+            const departmentInput = document.getElementById('hold_issue_department');
             const cAction1RemarkWrap = document.getElementById('cAction1RemarkWrap');
             const addRootCauseFixedOptionBtn = document.getElementById('add-root-cause-fixed-option');
             const deleteRootCauseFixedOptionBtn = document.getElementById('delete-root-cause-fixed-option');
@@ -1107,6 +1130,7 @@
                         '<td>' + trackingCellHtml(row.replacement_tracking) + '</td>' +
                         '<td>' + rootCauseDisplayHtml(row.issue, row.issue_remark) + '</td>' +
                         '<td>' + rootCauseFixedDisplayHtml(row.c_action_1, row.c_action_1_remark) + '</td>' +
+                        '<td>' + escapeHtml(row.department || '—') + '</td>' +
                         '<td class="orders-hold-close-cell">' + buttonsHtml + '</td>' +
                         '<td>' + escapeHtml(row.created_by) + '</td>' +
                         '<td>' + escapeHtml(row.created_at) + '</td>' +
@@ -1148,6 +1172,7 @@
                         '<td>' + trackingCellHtml(row.replacement_tracking) + '</td>' +
                         '<td>' + rootCauseDisplayHtml(row.issue, row.issue_remark) + '</td>' +
                         '<td>' + rootCauseFixedDisplayHtml(row.c_action_1, row.c_action_1_remark) + '</td>' +
+                        '<td>' + escapeHtml(row.department || '—') + '</td>' +
                         '<td>' + escapeHtml(row.close_note) + '</td>' +
                         '<td>' + escapeHtml(row.event_type) + '</td>' +
                         '<td>' + escapeHtml(row.created_by) + '</td>' +
@@ -1180,6 +1205,7 @@
                     c_action_1: row?.c_action_1 ?? '',
                     c_action_1_remark: row?.c_action_1_remark ?? '',
                     close_note: row?.close_note ?? '',
+                    department: row?.department ?? '',
                     created_by: row?.created_by ?? 'System',
                     created_at: row?.created_at_display ?? row?.created_at ?? '',
                     order_number: row?.order_number ?? '',
@@ -1209,6 +1235,7 @@
                     c_action_1: row?.c_action_1 ?? '',
                     c_action_1_remark: row?.c_action_1_remark ?? '',
                     close_note: row?.close_note ?? '',
+                    department: row?.department ?? '',
                     created_by: row?.created_by ?? 'System',
                     logged_at: row?.logged_at_display ?? row?.logged_at ?? '',
                 };
@@ -1273,6 +1300,7 @@
                 replacementTrackingInput.value = '';
                 cAction1Input.value = '';
                 cAction1RemarkInput.value = '';
+                departmentInput.value = '';
                 toggleCAction1RemarkField();
                 hideAlert();
             }
@@ -1305,6 +1333,7 @@
                 replacementTrackingInput.value = record.replacement_tracking || '';
                 cAction1Input.value = record.c_action_1 || '';
                 cAction1RemarkInput.value = record.c_action_1_remark || '';
+                departmentInput.value = record.department || '';
                 toggleCAction1RemarkField();
                 hideAlert();
 
@@ -1477,6 +1506,7 @@
                         replacement_tracking: replacementTrackingInput.value.trim(),
                         c_action_1: cAction1Input.value.trim(),
                         c_action_1_remark: cAction1RemarkInput.value.trim(),
+                        department: departmentInput.value.trim(),
                     };
 
                     let payload;
@@ -1657,12 +1687,13 @@
                 const activeHeaders = ['#', 'SKU', 'Order QTY', 'MKT',
                     'What?', 'Action', 'Action Remark', 'Track',
                     'Root Cause Found', 'Root Cause Remark', 'Root Cause Fixed',
-                    'Root Cause Fixed Remark', 'Created By', 'Created At'];
+                    'Root Cause Fixed Remark', 'Dept', 'Created By', 'Created At'];
                 const activeData = holdIssueRows.map(r => [
                     r.id, r.sku, r.order_qty,
                     r.marketplace_1, r.what_happened,
                     r.action_1, r.action_1_remark, r.replacement_tracking,
                     r.issue, r.issue_remark, r.c_action_1, r.c_action_1_remark,
+                    r.department || '',
                     r.created_by, r.created_at
                 ]);
 

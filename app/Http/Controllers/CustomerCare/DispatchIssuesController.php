@@ -35,6 +35,7 @@ class DispatchIssuesController extends IssueBoardControllerBase
             'order_number'  => 'nullable|string|max:255',
             'refund_amount' => 'nullable|numeric|min:0',
             'total_loss'    => 'nullable|numeric',
+            'department'    => 'nullable|string|max:100',
         ];
     }
 
@@ -44,6 +45,7 @@ class DispatchIssuesController extends IssueBoardControllerBase
             'order_number'  => isset($validated['order_number'])  ? trim((string) $validated['order_number'])  : null,
             'refund_amount' => isset($validated['refund_amount'])  ? (float) $validated['refund_amount']         : null,
             'total_loss'    => isset($validated['total_loss'])     ? (float) $validated['total_loss']            : null,
+            'department'    => isset($validated['department'])     ? trim((string) $validated['department'])     : null,
         ];
     }
 
@@ -54,6 +56,7 @@ class DispatchIssuesController extends IssueBoardControllerBase
             'refund_amount' => $row->refund_amount  !== null ? (float) $row->refund_amount : null,
             'total_loss'    => $row->total_loss     !== null ? (float) $row->total_loss    : null,
             'group_id'      => $row->group_id       ?? null,
+            'department'    => $row->department     ?? null,
         ];
     }
 
@@ -121,8 +124,7 @@ class DispatchIssuesController extends IssueBoardControllerBase
                 'created_at_display'   => $row->created_at
                     ? \Carbon\Carbon::parse($row->created_at)->timezone($tz)->format('d-m-Y H:i')
                     : '',
-            ] + $this->extraRowFields($row);
-        })->values();
+            ] + $this->extraRowFields($row);        })->values();
 
         return response()->json(['data' => $data]);
     }
@@ -219,6 +221,7 @@ class DispatchIssuesController extends IssueBoardControllerBase
             'c_action_1'         => 'nullable|string|max:255',
             'c_action_1_remark'  => 'nullable|string|max:255',
             'issue_date'         => 'nullable|string|max:100',
+            'department'         => 'nullable|string|max:100',
         ]);
 
         $user      = auth()->user();
@@ -244,6 +247,7 @@ class DispatchIssuesController extends IssueBoardControllerBase
             'c_action_1_remark'    => $request->input('c_action_1_remark') ? trim($request->input('c_action_1_remark')) : null,
             'close_note'           => null,
             'issue_date'           => $request->input('issue_date') ? trim($request->input('issue_date')) : null,
+            'department'           => $request->input('department') ? trim($request->input('department')) : null,
             'created_by'           => $createdBy,
             'created_by_user_id'   => $user?->id,
             'created_at'           => $now,
