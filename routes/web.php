@@ -2474,6 +2474,9 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/product-description/update', [DescriptionMasterController::class, 'pushDescriptionToMarketplaces'])->name('product.description.update');
     Route::post('/product-description/reset-marketplace', [DescriptionMasterController::class, 'resetMarketplaceDescription'])->name('product.description.reset');
     Route::post('/product-description/generate', [DescriptionMasterController::class, 'generateDescriptionWithAI'])->name('product.description.generate');
+    Route::post('/product-description/fetch-amazon-aplus', [DescriptionMasterController::class, 'fetchAmazonAplusContent'])->name('product.description.fetch.amazon.aplus');
+    Route::post('/product-description/regenerate-marketplace', [DescriptionMasterController::class, 'regenerateDescriptionForMarketplace'])->name('product.description.regenerate.marketplace');
+    Route::post('/product-description/with-images', [DescriptionMasterController::class, 'getDescriptionWithImages'])->name('product.description.with.images');
     Route::get('/features', fn () => view('features'))->name('features');
     Route::post('/features/save', [ProductMasterController::class, 'saveFeaturesData'])->name('features.save');
     Route::get('/product-images', fn () => view('images'))->name('images');

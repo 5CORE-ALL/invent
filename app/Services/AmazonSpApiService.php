@@ -3370,6 +3370,239 @@ class AmazonSpApiService
     }
 
     /**
+     * Fetch A+ style description/images from Amazon listing attributes.
+     *
+     * @return array{
+     *   success: bool,
+     *   message?: string,
+     *   description?: string,
+     *   images?: array<int, string>,
+     *   aplus_content?: string,
+     *   data?: array<string, mixed>
+     * }
+     */
+    public function fetchAplusContent(string $identifier): array
+    {
+        $identifier = trim($identifier);
+        if ($identifier === '') {
+            return ['success' => false, 'message' => 'SKU is required.'];
+        }
+
+        $sku = $this->resolveAmazonSellerSkuForBullets($identifier);
+        if ($sku === '') {
+            return ['success' => false, 'message' => 'Could not resolve SKU.'];
+        }
+
+        Log::info('Amazon fetchAplusContent start', ['identifier' => $identifier, 'sku' => $sku]);
+
+        $amazonSku = null;
+        $lastError = null;
+        for ($attempt = 1; $attempt <= 2; $attempt++) {
+            try {
+                $accessToken = $this->getAccessToken($attempt > 1);
+                if (empty($accessToken)) {
+                    return ['success' => false, 'message' => 'Failed to get Amazon access token.'];
+                }
+
+                if ($amazonSku === null) {
+                    $amazonSku = $this->findAmazonSkuFormat($sku, $accessToken);
+                    if (empty($amazonSku)) {
+                        return $this->fetchAplusFallbackFromDb($sku, 'SKU not found in Amazon.');
+                    }
+                }
+
+                $attributes = $this->getListingItemAttributes($amazonSku, $accessToken);
+                $aplusHtml = $this->extractDescriptionHtmlFromAttributes($attributes);
+                $images = array_slice($this->extractImagesFromAttributes($attributes), 0, 12);
+                $description = trim(strip_tags($aplusHtml));
+
+                if ($aplusHtml === '' && $images === []) {
+                    Log::warning('Amazon fetchAplusContent empty listing attributes', [
+                        'sku' => $sku,
+                        'amazon_sku' => $amazonSku,
+                    ]);
+
+                    return $this->fetchAplusFallbackFromDb($sku, 'No A+ content found for this SKU');
+                }
+
+                $this->saveAplusToProductMaster($sku, $aplusHtml, $images);
+
+                Log::info('Amazon fetchAplusContent success', [
+                    'sku' => $sku,
+                    'amazon_sku' => $amazonSku,
+                    'images_count' => count($images),
+                    'html_len' => mb_strlen($aplusHtml),
+                ]);
+
+                return [
+                    'success' => true,
+                    'description' => $description,
+                    'images' => $images,
+                    'aplus_content' => $aplusHtml,
+                    'data' => [
+                        'sku' => $sku,
+                        'amazon_sku' => $amazonSku,
+                        'description_plain' => $description,
+                        'description_html' => $aplusHtml,
+                        'images' => $images,
+                    ],
+                ];
+            } catch (\Throwable $e) {
+                $lastError = $e->getMessage();
+                Log::warning('Amazon fetchAplusContent attempt failed', [
+                    'sku' => $sku,
+                    'attempt' => $attempt,
+                    'error' => $lastError,
+                ]);
+                if ($attempt < 2) {
+                    sleep(1);
+                }
+            }
+        }
+
+        Log::error('Amazon fetchAplusContent failed', ['sku' => $sku, 'error' => $lastError]);
+
+        return $this->fetchAplusFallbackFromDb($sku, (string) ($lastError ?: 'No A+ content found for this SKU'));
+    }
+
+    /**
+     * @return array{success: bool, message: string, description: string, images: array<int, string>, aplus_content: string, data: array<string, mixed>}
+     */
+    private function fetchAplusFallbackFromDb(string $sku, string $message): array
+    {
+        $pm = null;
+        if (Schema::hasTable('product_master') && Schema::hasColumn('product_master', 'sku')) {
+            $pm = DB::table('product_master')
+                ->where('sku', $sku)
+                ->orWhere('sku', strtoupper($sku))
+                ->orWhere('sku', strtolower($sku))
+                ->first();
+        }
+
+        $fallbackDescription = trim((string) ($pm->description_1500 ?? $pm->product_description ?? ''));
+        $fallbackHtml = trim((string) ($pm->amazon_aplus_content ?? ''));
+        $fallbackImages = [];
+
+        if (isset($pm->amazon_aplus_images) && is_string($pm->amazon_aplus_images) && trim($pm->amazon_aplus_images) !== '') {
+            $decoded = json_decode($pm->amazon_aplus_images, true);
+            if (is_array($decoded)) {
+                $fallbackImages = array_values(array_filter($decoded, fn ($v) => is_string($v) && trim($v) !== ''));
+            }
+        }
+        if ($fallbackImages === []) {
+            $fallbackImages = array_slice($this->extractProductMasterImageUrls($pm), 0, 12);
+        }
+
+        return [
+            'success' => false,
+            'message' => $message,
+            'description' => $fallbackDescription,
+            'images' => $fallbackImages,
+            'aplus_content' => $fallbackHtml,
+            'data' => [
+                'sku' => $sku,
+                'description_plain' => $fallbackDescription,
+                'description_html' => $fallbackHtml,
+                'images' => $fallbackImages,
+            ],
+        ];
+    }
+
+    private function saveAplusToProductMaster(string $sku, string $html, array $images): void
+    {
+        if (! Schema::hasTable('product_master') || ! Schema::hasColumn('product_master', 'sku')) {
+            return;
+        }
+
+        $update = [];
+        if (Schema::hasColumn('product_master', 'amazon_aplus_content')) {
+            $update['amazon_aplus_content'] = $html;
+        }
+        if (Schema::hasColumn('product_master', 'amazon_aplus_images')) {
+            $encoded = json_encode(array_values($images), JSON_UNESCAPED_SLASHES);
+            if ($encoded !== false) {
+                $update['amazon_aplus_images'] = $encoded;
+            }
+        }
+        if ($update === []) {
+            return;
+        }
+
+        DB::table('product_master')
+            ->where('sku', $sku)
+            ->orWhere('sku', strtoupper($sku))
+            ->orWhere('sku', strtolower($sku))
+            ->update($update);
+    }
+
+    /**
+     * @param  object|null  $pm
+     * @return array<int, string>
+     */
+    private function extractProductMasterImageUrls(?object $pm): array
+    {
+        if (! $pm) {
+            return [];
+        }
+        $fields = ['image_path', 'main_image', 'image1', 'image2', 'image3', 'image4', 'image5', 'image6', 'image7', 'image8', 'image9', 'image10', 'image11', 'image12'];
+        $urls = [];
+        $seen = [];
+        foreach ($fields as $f) {
+            $raw = trim((string) ($pm->{$f} ?? ''));
+            if ($raw === '') {
+                continue;
+            }
+            if (str_starts_with($raw, '//')) {
+                $raw = 'https:'.$raw;
+            } elseif (! preg_match('#^https?://#i', $raw)) {
+                $base = rtrim((string) config('app.url', ''), '/');
+                if ($base !== '') {
+                    $raw = $base.'/'.ltrim($raw, '/');
+                }
+            }
+            if ($raw !== '' && ! isset($seen[$raw])) {
+                $seen[$raw] = true;
+                $urls[] = $raw;
+            }
+        }
+
+        return $urls;
+    }
+
+    private function extractDescriptionHtmlFromAttributes(array $attributes): string
+    {
+        if ($attributes === []) {
+            return '';
+        }
+
+        $normalized = [];
+        foreach ($attributes as $k => $v) {
+            $normalized[strtolower((string) $k)] = $v;
+        }
+
+        $keys = ['product_description', 'description', 'long_description', 'item_description'];
+        foreach ($keys as $key) {
+            $val = $normalized[$key] ?? null;
+            if ($val === null) {
+                continue;
+            }
+            if (is_string($val) && trim($val) !== '') {
+                return trim($val);
+            }
+            if (is_array($val)) {
+                foreach ($val as $entry) {
+                    $candidate = is_array($entry) ? ($entry['value'] ?? '') : $entry;
+                    if (is_string($candidate) && trim($candidate) !== '') {
+                        return trim($candidate);
+                    }
+                }
+            }
+        }
+
+        return '';
+    }
+
+    /**
      * @param  list<string>  $images
      */
     private function saveImageUrlsToAmazonMetrics(string $sku, array $images): bool
