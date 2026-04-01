@@ -607,7 +607,7 @@
                                 </datalist>
                             </div>
 
-                            <div class="col-md-8 d-none" id="action1RemarkWrap">
+                            <div class="col-md-8" id="action1RemarkWrap">
                                 <label for="hold_issue_action_1_remark" class="form-label">Action Remark</label>
                                 @if($showDispatchExtras ?? false)
                                 <textarea class="form-control" id="hold_issue_action_1_remark" name="action_1_remark"
@@ -980,17 +980,7 @@
                 }
             }
 
-            function toggleAction1RemarkField() {
-                const selected = String(action1Input?.value || '').trim();
-                const isOther = selected === 'Other';
-                if (action1RemarkWrap) {
-                    action1RemarkWrap.classList.toggle('d-none', !isOther);
-                }
-                if (action1RemarkInput) {
-                    action1RemarkInput.required = isOther;
-                    if (!isOther) action1RemarkInput.value = '';
-                }
-            }
+            function toggleAction1RemarkField() { /* always visible */ }
 
             function toggleCAction1RemarkField() {
                 const selected = String(cAction1Input?.value || '').trim();
@@ -1474,11 +1464,6 @@
                 if (issueInput.value.trim() === 'Other' && issueRemarkInput.value.trim() === '') {
                     showAlert('Please enter Root Cause remark for Other.');
                     issueRemarkInput.focus();
-                    return;
-                }
-                if (action1Input.value.trim() === 'Other' && action1RemarkInput.value.trim() === '') {
-                    showAlert('Please enter Action remark for Other.');
-                    action1RemarkInput.focus();
                     return;
                 }
                 if (cAction1Input.value.trim() === 'Other' && cAction1RemarkInput.value.trim() === '') {

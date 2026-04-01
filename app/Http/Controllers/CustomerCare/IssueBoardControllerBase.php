@@ -42,7 +42,7 @@ abstract class IssueBoardControllerBase extends Controller
             'what_happened' => 'nullable|string|max:50',
             'issue' => 'nullable|string|max:255',
             'issue_remark' => 'nullable|string|max:255',
-            'action_1' => 'nullable|string|in:Offer Customer Alterntive / Updgrade,Upgraded + Stock Alternate,Alternate Sent + Stock Alternate,Sent Wrong Item + Stock Outgoing,Cancelled,Other|max:255',
+            'action_1' => 'nullable|string|max:255',
             'action_1_remark' => 'nullable|string|max:255',
             'replacement_tracking' => 'nullable|string|max:50',
             'c_action_1' => 'nullable|string|max:255',
@@ -55,13 +55,6 @@ abstract class IssueBoardControllerBase extends Controller
         $extra = $this->extraValidationRules();
         if (!empty($extra)) {
             $validated = array_merge($validated, $request->validate($extra));
-        }
-
-        if (($validated['action_1'] ?? null) === 'Other' && trim((string) ($validated['action_1_remark'] ?? '')) === '') {
-            abort(response()->json([
-                'message' => 'Action remark is required when Action is Other.',
-                'errors' => ['action_1_remark' => ['Action remark is required when Action is Other.']],
-            ], 422));
         }
 
         if (($validated['c_action_1'] ?? null) === 'Other' && trim((string) ($validated['c_action_1_remark'] ?? '')) === '') {
