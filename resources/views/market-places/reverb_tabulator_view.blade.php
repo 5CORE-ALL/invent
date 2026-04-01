@@ -168,6 +168,15 @@
                         <option value="60plus">60%+</option>
                     </select>
 
+                    <select id="roi-filter" class="form-select form-select-sm" style="width: 130px;">
+                        <option value="all">ROI%</option>
+                        <option value="lt40">&lt; 40%</option>
+                        <option value="40-75">40–75%</option>
+                        <option value="75-125">75–125%</option>
+                        <option value="125-250">125–250%</option>
+                        <option value="gt250">&gt; 250%</option>
+                    </select>
+
                     <select id="cvr-filter" class="form-select form-select-sm" style="width: 120px;">
                         <option value="all">All CVR%</option>
                         <option value="0-0">0%</option>
@@ -1528,6 +1537,7 @@
             const inventoryFilter = $('#inventory-filter').val();
             const nrlFilter = $('#nrl-filter').val();
             const gpftFilter = $('#gpft-filter').val();
+            const roiFilter = $('#roi-filter').val();
             const dilFilter = $('.column-filter[data-column="dil_percent"].active')?.data('color') || 'all';
 
             // Clear all filters first
@@ -1566,6 +1576,17 @@
                     table.addFilter("GPFT%", ">=", min);
                     table.addFilter("GPFT%", "<", max);
                 }
+            }
+
+            // ROI filter
+            if (roiFilter !== 'all') {
+                table.addFilter(function(data) {
+                    const roiVal = parseFloat(data['ROI%']) || 0;
+                    if (roiFilter === 'lt40') return roiVal < 40;
+                    if (roiFilter === 'gt250') return roiVal > 250;
+                    const [min, max] = roiFilter.split('-').map(Number);
+                    return roiVal >= min && roiVal <= max;
+                });
             }
 
             // CVR filter (Walmart slab ranges)
@@ -1668,7 +1689,7 @@
             updateSummary();
         }
 
-        $('#inventory-filter, #nrl-filter, #gpft-filter, #cvr-filter, #reverb-stock-filter').on('change', function() {
+        $('#inventory-filter, #nrl-filter, #gpft-filter, #roi-filter, #cvr-filter, #reverb-stock-filter').on('change', function() {
             applyFilters();
         });
 

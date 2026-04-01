@@ -290,29 +290,15 @@
                     </div>
 
                     <!-- ROI Filter -->
-                    <div class="d-flex align-items-center gap-1">
-                        <label class="mb-0 fw-bold" style="font-size: 12px;">ROI %:</label>
-                        <input type="number" id="roi-min-filter" class="form-control form-control-sm" 
-                               placeholder="Min" style="width: 70px;" step="1">
-                        <span>-</span>
-                        <input type="number" id="roi-max-filter" class="form-control form-control-sm" 
-                               placeholder="Max" style="width: 70px;" step="1">
-                        <button id="clear-roi-filter" class="btn btn-sm btn-outline-secondary" style="padding: 2px 8px;">
-                            <i class="fas fa-times"></i>
-                        </button>
-                    </div>
-
-                    <!-- ROI Filter -->
-                    <div class="d-flex align-items-center gap-1">
-                        <label class="mb-0 fw-bold" style="font-size: 12px;">ROI %:</label>
-                        <input type="number" id="roi-min-filter" class="form-control form-control-sm" 
-                               placeholder="Min" style="width: 70px;" step="1">
-                        <span>-</span>
-                        <input type="number" id="roi-max-filter" class="form-control form-control-sm" 
-                               placeholder="Max" style="width: 70px;" step="1">
-                        <button id="clear-roi-filter" class="btn btn-sm btn-outline-secondary" style="padding: 2px 8px;">
-                            <i class="fas fa-times"></i>
-                        </button>
+                    <div>
+                        <select id="roi-filter" class="form-select form-select-sm" style="width: 130px;">
+                            <option value="all">ROI%</option>
+                            <option value="lt40">&lt; 40%</option>
+                            <option value="40-75">40–75%</option>
+                            <option value="75-125">75–125%</option>
+                            <option value="125-250">125–250%</option>
+                            <option value="gt250">&gt; 250%</option>
+                        </select>
                     </div>
 
                     <!-- DISC VS AMZ Filter -->
@@ -2022,17 +2008,15 @@
                     });
                 }
 
-                // ROI Filter  
-                const roiMin = parseFloat($('#roi-min-filter').val());
-                const roiMax = parseFloat($('#roi-max-filter').val());
-                
-                if (!isNaN(roiMin) || !isNaN(roiMax)) {
+                // ROI Filter
+                const roiFilter = $('#roi-filter').val();
+                if (roiFilter !== 'all') {
                     table.addFilter(function(data) {
-                        const roi = parseFloat(data.Roi) || 0;
-                        
-                        if (!isNaN(roiMin) && roi < roiMin) return false;
-                        if (!isNaN(roiMax) && roi > roiMax) return false;
-                        return true;
+                        const roiVal = parseFloat(data.Roi) || 0;
+                        if (roiFilter === 'lt40') return roiVal < 40;
+                        if (roiFilter === 'gt250') return roiVal > 250;
+                        const [min, max] = roiFilter.split('-').map(Number);
+                        return roiVal >= min && roiVal <= max;
                     });
                 }
 
@@ -2142,14 +2126,8 @@
                 applyFilters();
             });
 
-            // ROI filter handlers
-            $('#roi-min-filter, #roi-max-filter').on('keyup change', function() {
-                applyFilters();
-            });
-
-            $('#clear-roi-filter').on('click', function() {
-                $('#roi-min-filter').val('');
-                $('#roi-max-filter').val('');
+            // ROI filter handler
+            $('#roi-filter').on('change', function() {
                 applyFilters();
             });
 

@@ -158,15 +158,15 @@
                         </select>
                     </div>
 
-                    <!-- GROI Filter -->
+                    <!-- ROI Filter -->
                     <div>
-                        <select id="groi-filter" class="form-select form-select-sm" style="width: 130px;">
-                            <option value="all">All GROI%</option>
-                            <option value="negative">Negative</option>
-                            <option value="0-50">0-50%</option>
-                            <option value="50-75">50-75%</option>
-                            <option value="75-125">75-125%</option>
-                            <option value="125plus">125%+</option>
+                        <select id="roi-filter" class="form-select form-select-sm" style="width: 130px;">
+                            <option value="all">GROI%</option>
+                            <option value="lt40">&lt; 40%</option>
+                            <option value="40-75">40–75%</option>
+                            <option value="75-125">75–125%</option>
+                            <option value="125-250">125–250%</option>
+                            <option value="gt250">&gt; 250%</option>
                         </select>
                     </div>
 
@@ -4018,7 +4018,7 @@
 
             const inventoryFilter = $('#inventory-filter').val();
             const gpftFilter = $('#gpft-filter').val();
-            const groiFilter = $('#groi-filter').val();
+            const groiFilter = $('#roi-filter').val();
             const cvrFilter = $('#cvr-filter').val();
             const cvrTrendFilter = $('#cvr-trend-filter').val();
             const arrowFilter = $('#arrow-filter').val();
@@ -4066,16 +4066,14 @@
                 });
             }
 
-            // GROI filter
+            // ROI filter (GROI%)
             if (groiFilter !== 'all') {
                 table.addFilter(function(data) {
                     const groi = parseFloat(data.roi_percent) || 0;
-                    if (groiFilter === 'negative') return groi < 0;
-                    if (groiFilter === '0-50') return groi >= 0 && groi < 50;
-                    if (groiFilter === '50-75') return groi >= 50 && groi < 75;
-                    if (groiFilter === '75-125') return groi >= 75 && groi <= 125;
-                    if (groiFilter === '125plus') return groi > 125;
-                    return true;
+                    if (groiFilter === 'lt40') return groi < 40;
+                    if (groiFilter === 'gt250') return groi > 250;
+                    const [min, max] = groiFilter.split('-').map(Number);
+                    return groi >= min && groi <= max;
                 });
             }
 
@@ -4584,7 +4582,7 @@
             });
         });
 
-        $('#inventory-filter, #gpft-filter, #groi-filter, #cvr-filter, #cvr-trend-filter, #arrow-filter, #ads-filter, #sprice-filter, #ads-req-filter, #ads-running-filter, #nr-req-filter').on('change', function() {
+        $('#inventory-filter, #gpft-filter, #roi-filter, #cvr-filter, #cvr-trend-filter, #arrow-filter, #ads-filter, #sprice-filter, #ads-req-filter, #ads-running-filter, #nr-req-filter').on('change', function() {
             applyFilters();
         });
 

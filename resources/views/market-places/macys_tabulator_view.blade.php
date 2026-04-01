@@ -81,6 +81,16 @@
                         <option value="60plus">60%+</option>
                     </select>
 
+                    <select id="roi-filter" class="form-select form-select-sm"
+                        style="width: auto; display: inline-block;">
+                        <option value="all">ROI%</option>
+                        <option value="lt40">&lt; 40%</option>
+                        <option value="40-75">40–75%</option>
+                        <option value="75-125">75–125%</option>
+                        <option value="125-250">125–250%</option>
+                        <option value="gt250">&gt; 250%</option>
+                    </select>
+
                     <select id="dil-filter" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;">
                         <option value="all">All DIL%</option>
@@ -1320,6 +1330,7 @@
             const inventoryFilter = $('#inventory-filter').val();
             const nrlFilter = $('#nrl-filter').val();
             const gpftFilter = $('#gpft-filter').val();
+            const roiFilter = $('#roi-filter').val();
             const dilFilter = $('#dil-filter').val();
 
             // Clear all filters first
@@ -1350,6 +1361,17 @@
                     table.addFilter("GPFT%", ">=", min);
                     table.addFilter("GPFT%", "<", max);
                 }
+            }
+
+            // ROI filter
+            if (roiFilter !== 'all') {
+                table.addFilter(function(data) {
+                    const roiVal = parseFloat(data['ROI%']) || 0;
+                    if (roiFilter === 'lt40') return roiVal < 40;
+                    if (roiFilter === 'gt250') return roiVal > 250;
+                    const [min, max] = roiFilter.split('-').map(Number);
+                    return roiVal >= min && roiVal <= max;
+                });
             }
 
             // DIL filter (calculated as L30 / INV * 100)
@@ -1422,7 +1444,7 @@
             updateSummary();
         }
 
-        $('#inventory-filter, #nrl-filter, #gpft-filter, #dil-filter').on('change', function() {
+        $('#inventory-filter, #nrl-filter, #gpft-filter, #roi-filter, #dil-filter').on('change', function() {
             applyFilters();
         });
 

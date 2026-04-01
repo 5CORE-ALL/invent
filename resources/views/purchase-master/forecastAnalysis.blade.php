@@ -666,8 +666,7 @@
                         aria-label="Close"></button>
                 </div>
                 <div class="modal-body" id="monthModalBody">
-                    <div class="d-flex justify-content-between gap-2 flex-nowrap w-100 px-3" id="monthCardWrapper"
-                        style="overflow-x: auto;">
+                    <div id="monthCardWrapper" class="px-3">
                         <!-- Month cards inserted here -->
                     </div>
                 </div>
@@ -1188,7 +1187,16 @@
                                 "NOV": row["Nov"] ?? 0,
                                 "DEC": row["Dec"] ?? 0
                             };
-                            openMonthModal(monthData, sku);
+                            const fbaMonths = row["fba_months"] || null;
+                            const mslInfo = {
+                                total:       row["Total"]        ?? 0,
+                                activeMonths: row["Total month"] ?? 0,
+                                msl:         row["msl"]          ?? 0,
+                                mslShopify:  row["msl_shopify"]  ?? 0,
+                                mslManual:   row["s_msl"]        ?? null,
+                                mAvg:        row["m_avg"]        ?? 0,
+                            };
+                            openMonthModal(monthData, sku, fbaMonths, mslInfo);
                         }
                     }
                 },
@@ -2819,10 +2827,12 @@
                     const transit = parseFloat(item["Transit"] ?? item["transit"]) || 0;
                     const orderGiven = parseFloat(item["order_given"] ?? item["Order Given"]) || 0;
                     const r2s = parseFloat(item["readyToShipQty"] ?? item["readyToShipQty"]) || 0;
-                    const msl = totalMonth > 0 ? (total / totalMonth) * 4 : 0;
+
+                    // Use PHP-computed combined MSL (Shopify + FBA) directly — no need to recalculate
+                    const msl = parseFloat(item.msl) || (totalMonth > 0 ? (total / totalMonth) * 4 : 0);
                     const s_msl_val = parseFloat(item["s_msl"] ?? item["s-msl"]) || 0;
                     const effectiveMslForToOrder = Math.max(msl, s_msl_val);
-                    const m_avg = totalMonth > 0 ? total / totalMonth : 0;
+                    const m_avg = parseFloat(item.m_avg) || (totalMonth > 0 ? total / totalMonth : 0);
 
                     // Get stage from item to determine which fields to use for to_order calculation
                     const itemStage = item.stage || '';
@@ -4368,11 +4378,13 @@
         }
 
         //modals
-        function openMonthModal(monthData, sku) {
+        function openMonthModal(monthData, sku, fbaMonths, mslInfo) {
             const wrapper = document.getElementById("monthCardWrapper");
             if (!wrapper) return;
 
-            wrapper.innerHTML = ""; // Clear previous content
+            wrapper.innerHTML = "";
+            // Keep 12-col grid (from #monthCardWrapper CSS), reset any leftover inline styles
+            wrapper.style.cssText = "";
 
             const monthOrder = [
                 "JAN", "FEB", "MAR", "APR", "MAY", "JUN",
@@ -4413,7 +4425,7 @@
                 return currentYear;
             };
 
-            // Sort and display in month order
+            // Add 12 main month cards directly as grid children (each = 1 of 12 columns)
             monthOrder.forEach(month => {
                 const value = monthData[month] ?? 0;
                 const monthIndex = monthIndexMap[month];
@@ -4434,6 +4446,152 @@
                 card.appendChild(count);
                 wrapper.appendChild(card);
             });
+
+            // MSL formula bar — spans all 12 columns, includes FBA if available
+            if (mslInfo) {
+                const monthOrder12 = ["JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC"];
+
+                // Shopify numbers (from server)
+                const shopifyTotal        = parseFloat(mslInfo.total)        || 0;
+                const shopifyActiveMonths = parseFloat(mslInfo.activeMonths) || 0;
+                const shopifyMsl          = parseFloat(mslInfo.mslShopify || mslInfo.msl) || 0;
+                const mAvg                = parseFloat(mslInfo.mAvg)         || 0;
+                const mslManual           = mslInfo.mslManual;
+                const hasMslManual        = mslManual !== null && mslManual !== '' && parseFloat(mslManual) > 0;
+
+                // FBA totals — recalculated from fbaMonths data
+                let fbaTotal        = 0;
+                let fbaActiveMonths = 0;
+                const hasFba = fbaMonths && typeof fbaMonths === 'object';
+                if (hasFba) {
+                    monthOrder12.forEach(m => {
+                        const v = parseFloat(fbaMonths[m] ?? 0) || 0;
+                        fbaTotal += v;
+                        if (v > 0) fbaActiveMonths++;
+                    });
+                }
+
+                // Combined per-month sum → combined total and active months
+                let combinedTotal        = 0;
+                let combinedActiveMonths = 0;
+                monthOrder12.forEach(m => {
+                    const shopV = parseFloat(monthData[m] ?? 0) || 0;
+                    const fbaV  = hasFba ? (parseFloat(fbaMonths[m] ?? 0) || 0) : 0;
+                    const combined = shopV + fbaV;
+                    combinedTotal += combined;
+                    if (combined > 0) combinedActiveMonths++;
+                });
+
+                const combinedMsl    = combinedActiveMonths > 0 ? (combinedTotal / combinedActiveMonths) * 4 : 0;
+                const combinedMslStr = combinedActiveMonths > 0 ? combinedMsl.toFixed(2) : '0';
+                const shopifyMslStr  = shopifyActiveMonths  > 0 ? shopifyMsl.toFixed(2)  : '0';
+
+                const formulaEl = document.createElement("div");
+                formulaEl.style.cssText = `
+                    grid-column: 1 / -1;
+                    background: #f0fdf9;
+                    border: 1px solid #a7f3d0;
+                    border-radius: 8px;
+                    padding: 10px 16px;
+                    margin-top: 4px;
+                    display: flex;
+                    align-items: center;
+                    flex-wrap: wrap;
+                    gap: 6px 18px;
+                    font-size: 0.82rem;
+                    color: #065f46;
+                `;
+
+                formulaEl.innerHTML = `
+                    <span style="font-weight:700; color:#047857; font-size:0.88rem; margin-right:4px;">MSL Formula</span>
+
+                    <span style="display:inline-flex; align-items:center; gap:6px;">
+                        <span style="background:#dbeafe; color:#1d4ed8; font-size:0.7rem; font-weight:600; padding:1px 7px; border-radius:20px;">Shopify</span>
+                        <span style="color:#374151;"><strong>${shopifyTotal}</strong> ÷ <strong>${shopifyActiveMonths}</strong> mo × 4</span>
+                        <span style="color:#6b7280;">=</span>
+                        <span style="background:#eff6ff; color:#1d4ed8; font-weight:700; padding:2px 10px; border-radius:20px;">${shopifyMslStr}</span>
+                    </span>
+
+                    ${hasFba ? `
+                    <span style="color:#d1d5db; font-size:1rem;">+</span>
+                    <span style="display:inline-flex; align-items:center; gap:6px;">
+                        <span style="background:#d1fae5; color:#065f46; font-size:0.7rem; font-weight:600; padding:1px 7px; border-radius:20px;">FBA</span>
+                        <span style="color:#374151;"><strong>${fbaTotal}</strong> ÷ <strong>${fbaActiveMonths}</strong> mo × 4</span>
+                    </span>
+                    <span style="color:#6b7280; font-weight:500; font-size:1rem; margin:0 2px;">→</span>
+                    <span style="display:inline-flex; align-items:center; gap:6px;">
+                        <span style="background:#d1fae5; color:#065f46; font-size:0.7rem; font-weight:600; padding:1px 7px; border-radius:20px;">Combined</span>
+                        <span style="color:#374151;"><strong>${combinedTotal}</strong> ÷ <strong>${combinedActiveMonths}</strong> mo × 4</span>
+                        <span style="color:#6b7280;">=</span>
+                        <span style="background:#065f46; color:#fff; font-weight:700; padding:3px 12px; border-radius:20px; font-size:0.9rem;">MSL: ${combinedMslStr}</span>
+                    </span>
+                    ` : `
+                    <span style="color:#6b7280; font-size:0.75rem; font-style:italic;">(no FBA data)</span>
+                    <span style="color:#6b7280; font-size:1rem; margin:0 2px;">→</span>
+                    <span style="background:#d1fae5; color:#065f46; font-weight:700; padding:2px 10px; border-radius:20px; font-size:0.9rem;">MSL: ${shopifyMslStr}</span>
+                    `}
+
+                    <span style="color:#9ca3af; font-size:0.73rem;">(M.Avg: ${mAvg > 0 ? mAvg.toFixed(2) : '0'})</span>
+                    ${hasMslManual ? `<span style="background:#fef9c3; color:#92400e; font-weight:600; padding:2px 10px; border-radius:20px; font-size:0.8rem;">Manual Override: ${parseFloat(mslManual)}</span>` : ''}
+                `;
+                wrapper.appendChild(formulaEl);
+            }
+
+            // FBA section: spans all 12 columns below the main row
+            if (fbaMonths && typeof fbaMonths === 'object') {
+                const fbaSku = fbaMonths.seller_sku || '';
+
+                // Full-width container spanning all 12 grid columns
+                const fbaContainer = document.createElement("div");
+                fbaContainer.style.gridColumn = "1 / -1";
+
+                // Divider with FBA label
+                const dividerRow = document.createElement("div");
+                dividerRow.style.cssText = "display:flex; align-items:center; gap:10px; margin:10px 0 6px;";
+                dividerRow.innerHTML = `
+                    <hr style="flex:1; border:none; border-top:2px dashed #20c997; margin:0;">
+                    <span style="font-size:0.75rem; font-weight:700; color:#20c997; letter-spacing:2px; white-space:nowrap;">FBA</span>
+                    <hr style="flex:1; border:none; border-top:2px dashed #20c997; margin:0;">
+                `;
+                fbaContainer.appendChild(dividerRow);
+
+                if (fbaSku) {
+                    const skuLabel = document.createElement("div");
+                    skuLabel.style.cssText = "font-size:0.71rem; color:#6c757d; margin-bottom:6px; font-style:italic;";
+                    skuLabel.innerText = `SKU: ${fbaSku}`;
+                    fbaContainer.appendChild(skuLabel);
+                }
+
+                // FBA cards in their own 12-column grid
+                const fbaGrid = document.createElement("div");
+                fbaGrid.style.cssText = "display:grid; grid-template-columns:repeat(12,1fr); gap:12px;";
+
+                monthOrder.forEach(month => {
+                    const value = fbaMonths[month] ?? 0;
+                    const monthIndex = monthIndexMap[month];
+                    const year = getYearForMonth(monthIndex);
+
+                    const card = document.createElement("div");
+                    card.className = "month-card";
+                    card.style.borderTop = "2px solid #20c997";
+
+                    const title = document.createElement("div");
+                    title.className = "month-title";
+                    title.innerText = `${month} ${year}`;
+
+                    const count = document.createElement("div");
+                    count.className = "month-value";
+                    count.style.color = "#20c997";
+                    count.innerText = value;
+
+                    card.appendChild(title);
+                    card.appendChild(count);
+                    fbaGrid.appendChild(card);
+                });
+
+                fbaContainer.appendChild(fbaGrid);
+                wrapper.appendChild(fbaContainer);
+            }
 
             document.getElementById("month-view-sku").innerText = `( ${sku} )`;
 
