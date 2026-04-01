@@ -12,6 +12,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use App\Models\ProductStockMapping;
 use App\Services\Concerns\ResolvesBulletPointIdentifier;
+use App\Services\Support\DescriptionWithImagesFormatter;
 
 class MacysApiService
 {
@@ -361,7 +362,14 @@ class MacysApiService
             }
 
             $current = $this->fetchCurrentMacyDescription($sku);
-            $merged = $this->appendUniqueText($current, $description);
+            $descriptionWithImages = DescriptionWithImagesFormatter::buildHtmlWithImages(
+                $description,
+                $identifier,
+                $sku,
+                'Product Image',
+                12
+            )['html'];
+            $merged = $this->appendUniqueText($current, $descriptionWithImages);
             $attributes = [
                 'longDescription' => $merged,
                 'productDescription' => $merged,

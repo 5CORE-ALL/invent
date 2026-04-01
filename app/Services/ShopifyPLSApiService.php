@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\ShopifySku;
 use App\Services\Support\Concerns\ShopifyAdminRateLimitRetry;
+use App\Services\Support\DescriptionWithImagesFormatter;
 use App\Services\Support\ShopifyBulletPointsFormatter;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -340,8 +341,6 @@ class ShopifyPLSApiService
         if ($descriptionPlain === '') {
             return ['success' => false, 'message' => 'Description is empty.'];
         }
-        $descriptionHtml = '<p>'.nl2br(htmlspecialchars($descriptionPlain, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'), false).'</p>';
-
         try {
             $domain = config('services.prolightsounds.domain') ?? config('services.prolightsounds.store_url');
             $token = config('services.prolightsounds.password');
@@ -437,6 +436,14 @@ class ShopifyPLSApiService
             if ($title === '') {
                 return ['success' => false, 'message' => 'Product title missing from Shopify PLS.'];
             }
+
+            $descriptionHtml = DescriptionWithImagesFormatter::buildHtmlWithImages(
+                $descriptionPlain,
+                $trim,
+                $trim,
+                $title,
+                12
+            )['html'];
 
             $combined = $this->appendUniqueHtmlByPlainText($currentBody, $descriptionHtml, $descriptionPlain);
 

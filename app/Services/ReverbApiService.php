@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\Schema;
 use App\Models\ProductStockMapping;
 use App\Models\ReverbProduct;
 use App\Models\ReverbListingStatus;
+use App\Services\Support\DescriptionWithImagesFormatter;
 use Illuminate\Http\Client\Response;
 
 class ReverbApiService
@@ -683,7 +684,16 @@ class ReverbApiService
 
         $current = $this->fetchCurrentReverbDescription($token, $listingId, $trim);
         $incomingPlain = trim($description);
-        $incomingHtml = '<div class="product-description">'.nl2br(htmlspecialchars($incomingPlain, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'), false).'</div>';
+        $skuForImages = $product && $product->sku ? (string) $product->sku : $trim;
+        $incomingHtml = '<div class="product-description">'.
+            DescriptionWithImagesFormatter::buildHtmlWithImages(
+                $incomingPlain,
+                $trim,
+                $skuForImages,
+                'Product Image',
+                12
+            )['html'].
+            '</div>';
         $mergedPlain = $this->appendUniqueText($current['plain'], $incomingPlain);
         $mergedHtml = $current['html'] !== ''
             ? $this->appendUniqueHtml($current['html'], $incomingHtml, $incomingPlain)

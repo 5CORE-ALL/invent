@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Ebay2Metric;
 use App\Models\ProductStockMapping;
 use App\Services\Concerns\ResolvesBulletPointIdentifier;
+use App\Services\Support\DescriptionWithImagesFormatter;
 use App\Services\Support\EbaySellInventoryListingResolver;
 use App\Services\Support\EbayTradingReviseItem;
 use Illuminate\Support\Facades\Cache;
@@ -1607,6 +1608,14 @@ public function downloadAndParseEbayReport(string $taskId, string $token): array
     /**
      * @return array{success: bool, message: string}
      */
+    public function updateDescription(string $identifier, string $description): array
+    {
+        return $this->updateProductDescription($identifier, $description);
+    }
+
+    /**
+     * @return array{success: bool, message: string}
+     */
     public function updateProductDescription(string $identifier, string $description): array
     {
         $description = trim($description);
@@ -1626,7 +1635,15 @@ public function downloadAndParseEbayReport(string $taskId, string $token): array
             return ['success' => false, 'message' => $e->getMessage()];
         }
 
-        $html = '<div class="product-description">'.nl2br(htmlspecialchars($description, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'), false).'</div>';
+        $html = '<div class="product-description">'.
+            DescriptionWithImagesFormatter::buildHtmlWithImages(
+                $description,
+                (string) $identifier,
+                isset($row->sku) ? (string) $row->sku : (string) $identifier,
+                'Product Image',
+                12
+            )['html'].
+            '</div>';
 
         return EbayTradingReviseItem::reviseItemDescription(
             $this->endpoint,

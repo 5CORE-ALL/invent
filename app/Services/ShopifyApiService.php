@@ -6,6 +6,7 @@ use App\Models\ProductMaster;
 use App\Models\ProductStockMapping;
 use App\Models\ShopifySku;
 use App\Services\Support\Concerns\ShopifyAdminRateLimitRetry;
+use App\Services\Support\DescriptionWithImagesFormatter;
 use App\Services\Support\ShopifyBulletPointsFormatter;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -239,8 +240,6 @@ class ShopifyApiService
         if ($descriptionPlain === '') {
             return ['success' => false, 'message' => 'Description is empty.'];
         }
-        $descriptionHtml = '<p>'.nl2br(htmlspecialchars($descriptionPlain, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'), false).'</p>';
-
         try {
             $domain = config('services.shopify.store_url') ?: config('services.shopify.domain');
             $token = config('services.shopify.access_token') ?: config('services.shopify.password');
@@ -308,6 +307,14 @@ class ShopifyApiService
             if ($title === '') {
                 return ['success' => false, 'message' => 'Product title missing from Shopify.'];
             }
+
+            $descriptionHtml = DescriptionWithImagesFormatter::buildHtmlWithImages(
+                $descriptionPlain,
+                $trim,
+                $trim,
+                $title,
+                12
+            )['html'];
 
             $combined = $this->appendUniqueHtmlByPlainText($currentBody, $descriptionHtml, $descriptionPlain);
 
