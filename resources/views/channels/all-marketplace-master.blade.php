@@ -1113,6 +1113,27 @@
                         }
                     },
                     {
+                        title: "Y Sales",
+                        field: "Y Sales",
+                        headerTooltip: "Yesterday's sales (Pacific time). Amazon = amazon_orders; others = marketplace_daily_metrics.",
+                        hozAlign: "center",
+                        sorter: "number",
+                        width: 90,
+                        formatter: function(cell) {
+                            const value = parseNumber(cell.getValue() || 0);
+                            if (!value || value === 0) {
+                                return '<span style="color:#adb5bd;">—</span>';
+                            }
+                            return `<span style="font-weight:600;color:#0d6efd;">$${Math.round(value).toLocaleString('en-US')}</span>`;
+                        },
+                        bottomCalc: "sum",
+                        bottomCalcFormatter: function(cell) {
+                            const value = cell.getValue();
+                            if (!value || value === 0) return '<strong>—</strong>';
+                            return `<strong style="color:#0d6efd;">$${Math.round(parseNumber(value)).toLocaleString('en-US')}</strong>`;
+                        }
+                    },
+                    {
                         title: "Ads Spend",
                         field: "Total Ad Spend",
                         hozAlign: "center",

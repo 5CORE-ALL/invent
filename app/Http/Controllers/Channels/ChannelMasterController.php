@@ -871,6 +871,32 @@ class ChannelMasterController extends Controller
 
         $finalData = [];
 
+        // ── Yesterday Sales — same source as the dot chart ────────────────────
+        // The dot chart reads from channel_master_summaries (snapshot_date per channel).
+        // Each daily snapshot stores l30_sales. We fetch yesterday's snapshot per channel.
+        $yesterday = \Carbon\Carbon::yesterday('America/Los_Angeles')->toDateString();
+
+        $yesterdaySummaries = \App\Models\ChannelMasterSummary::whereDate('snapshot_date', $yesterday)
+            ->get(['channel', 'summary_data'])
+            ->mapWithKeys(function ($row) {
+                $sd = is_array($row->summary_data) ? $row->summary_data : [];
+                return [strtolower(str_replace([' ', '-', '&', '/'], '', trim($row->channel))) => (float) ($sd['l30_sales'] ?? 0)];
+            })
+            ->toArray();
+
+        // Fallback: if no yesterday snapshot exists, use the most-recent available snapshot
+        if (empty($yesterdaySummaries)) {
+            $yesterdaySummaries = \App\Models\ChannelMasterSummary::orderByDesc('snapshot_date')
+                ->get(['channel', 'summary_data'])
+                ->unique('channel')
+                ->mapWithKeys(function ($row) {
+                    $sd = is_array($row->summary_data) ? $row->summary_data : [];
+                    return [strtolower(str_replace([' ', '-', '&', '/'], '', trim($row->channel))) => (float) ($sd['l30_sales'] ?? 0)];
+                })
+                ->toArray();
+        }
+        // ─────────────────────────────────────────────────────────────────────
+
         // Map lowercase channel key => controller method
         $controllerMap = [
             'amazon'    => 'getAmazonChannelData',
@@ -1052,6 +1078,11 @@ class ChannelMasterController extends Controller
                 }
                 $row['Ads%'] = $row['Ads%'] ?? '0%';
             }
+
+            // Attach Yesterday Sales (same source as dot chart — channel_master_daily_data)
+            // Key must match saveChannelDailySummaries: lowercase, no spaces/dashes/&/slashes
+            $channelLookup = strtolower(str_replace([' ', '-', '&', '/'], '', trim((string) ($row['Channel '] ?? $channel))));
+            $row['Y Sales'] = round($yesterdaySummaries[$channelLookup] ?? 0, 2);
 
             $finalData[] = $row;
         }
