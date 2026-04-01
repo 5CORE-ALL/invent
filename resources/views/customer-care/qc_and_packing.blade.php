@@ -527,7 +527,7 @@
                             <div class="col-12" id="sku-rows-wrapper">
                                 <div class="sku-entry-row" data-row-index="0">
                                     <div class="row g-2 align-items-end">
-                                        <div class="col-md-5">
+                                        <div class="col-md-8">
                                             <label class="form-label">SKU <span class="text-danger">*</span></label>
                                             <input type="text" class="form-control sku-entry-input" id="hold_issue_sku" name="sku"
                                                 list="hold_issue_sku_datalist" placeholder="Search SKU" required autocomplete="off">
@@ -536,15 +536,15 @@
                                                 <img src="" alt="SKU Image" id="hold_issue_sku_image" class="sku-image-preview">
                                             </div>
                                         </div>
-                                        <div class="col-md-2" style="display:none;">
+                                        <div style="display:none;">
                                             <input type="number" class="form-control sku-entry-qty" id="hold_issue_qty" name="qty" value="0" readonly>
                                         </div>
-                                        <div class="col-md-2">
+                                        <div class="col-md-4">
                                             <label class="form-label">Order Qty</label>
                                             <input type="number" class="form-control sku-entry-order-qty" id="hold_issue_order_qty" name="order_qty"
                                                 min="0" step="1" placeholder="Qty">
                                         </div>
-                                        <div class="col-md-3" style="display:none;">
+                                        <div style="display:none;">
                                             <input type="text" class="form-control sku-entry-parent" id="hold_issue_parent" name="parent" readonly>
                                         </div>
                                     </div>
@@ -563,12 +563,13 @@
                             </div>
 
                             @if($showDispatchExtras ?? false)
-                            <div class="col-md-4">
+                            <div class="col-md-6">
                                 <label for="hold_issue_order_number" class="form-label">Order Number</label>
                                 <input type="text" class="form-control" id="hold_issue_order_number" name="order_number"
                                     placeholder="Enter order number">
                             </div>
-                            <div class="col-md-4">                                <label for="hold_issue_total_loss" class="form-label">Loss $</label>
+                            <div class="col-md-6">
+                                <label for="hold_issue_total_loss" class="form-label">Loss $</label>
                                 <input type="number" class="form-control" id="hold_issue_total_loss" name="total_loss"
                                     step="0.01" placeholder="0.00">
                             </div>
@@ -607,15 +608,10 @@
                                 </datalist>
                             </div>
 
-                            <div class="col-md-8" id="action1RemarkWrap">
+                            <div class="col-md-6" id="action1RemarkWrap">
                                 <label for="hold_issue_action_1_remark" class="form-label">Action Remark</label>
-                                @if($showDispatchExtras ?? false)
-                                <textarea class="form-control" id="hold_issue_action_1_remark" name="action_1_remark"
-                                    rows="3" placeholder="Write action remark..."></textarea>
-                                @else
                                 <input type="text" class="form-control" id="hold_issue_action_1_remark" name="action_1_remark"
-                                    placeholder="Write remark for Other">
-                                @endif
+                                    placeholder="Write action remark...">
                             </div>
 
                             <div class="col-md-6">
@@ -624,7 +620,7 @@
                                     name="replacement_tracking" maxlength="50" placeholder="Optional tracking number">
                             </div>
 
-                            <div class="col-12">
+                            <div class="col-md-6">
                                 <label for="hold_issue_text" class="form-label">Root Cause Found</label>
                                 <input type="text" class="form-control" id="hold_issue_text" name="issue"
                                     list="hold_issue_root_cause_found_datalist"
@@ -646,12 +642,6 @@
                                 <datalist id="hold_issue_root_cause_fixed_datalist"></datalist>
                             </div>
 
-                            <div class="col-md-8 d-none" id="cAction1RemarkWrap">
-                                <label for="hold_issue_c_action_1_remark" class="form-label">Root Cause Fixed Remark</label>
-                                <input type="text" class="form-control" id="hold_issue_c_action_1_remark"
-                                    name="c_action_1_remark" placeholder="Write remark for Other">
-                            </div>
-
                             <div class="col-md-6">
                                 <label for="hold_issue_department" class="form-label">Department</label>
                                 <select class="form-select" id="hold_issue_department" name="department">
@@ -665,6 +655,12 @@
                                     <option value="QC">QC</option>
                                     <option value="Packaging">Packaging</option>
                                 </select>
+                            </div>
+
+                            <div class="col-12 d-none" id="cAction1RemarkWrap">
+                                <label for="hold_issue_c_action_1_remark" class="form-label">Root Cause Fixed Remark</label>
+                                <input type="text" class="form-control" id="hold_issue_c_action_1_remark"
+                                    name="c_action_1_remark" placeholder="Write remark for Other">
                             </div>
 
                         </div>
@@ -1773,7 +1769,7 @@
                         <button type="button" class="btn-close position-absolute top-0 end-0 m-1 remove-extra-sku-row"
                             style="font-size:0.65rem;" title="Remove this SKU"></button>
                         <div class="row g-2 align-items-end">
-                            <div class="col-md-5">
+                            <div class="col-md-8">
                                 <label class="form-label small mb-1">SKU <span class="text-danger">*</span></label>
                                 <input type="text" class="form-control form-control-sm extra-sku-input"
                                     list="hold_issue_sku_datalist" placeholder="Search SKU" autocomplete="off">
@@ -1781,15 +1777,14 @@
                                     <img src="" class="sku-image-preview" style="width:52px;height:52px;">
                                 </div>
                             </div>
-                            <div class="col-md-2" style="display:none;">
-                                <label class="form-label small mb-1">Qty in Stock</label>
+                            <div style="display:none;">
                                 <input type="number" class="form-control form-control-sm extra-sku-qty" readonly>
                             </div>
-                            <div class="col-md-2">
+                            <div class="col-md-4">
                                 <label class="form-label small mb-1">Order Qty</label>
                                 <input type="number" class="form-control form-control-sm extra-sku-order-qty" min="0" step="1" placeholder="Qty">
                             </div>
-                            <div class="col-md-3" style="display:none;">
+                            <div style="display:none;">
                                 <input type="text" class="form-control form-control-sm extra-sku-parent" readonly>
                             </div>
                         </div>`;
