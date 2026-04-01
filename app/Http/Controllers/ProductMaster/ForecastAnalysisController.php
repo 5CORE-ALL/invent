@@ -9,6 +9,7 @@ use App\Models\ShopifySku;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Cache;
 use App\Models\AmazonDataView;
 use App\Models\JungleScoutProductData;
 use App\Models\Supplier;
@@ -74,8 +75,12 @@ class ForecastAnalysisController extends Controller
             return preg_replace('/[^A-Z0-9]/', '', $n);
         };
 
-        $jungleScoutData = JungleScoutProductData::query()
-            ->get()
+        // Load JungleScout once — build parent-grouped data AND sku-level reviews/ratings together
+        $jungleScoutRaw = Cache::remember('fa_jungle_scout', 3600, function () {
+            return JungleScoutProductData::query()->get(['parent', 'sku', 'data']);
+        });
+
+        $jungleScoutData = $jungleScoutRaw
             ->groupBy(fn($item) => $normalizeSku($item->parent))
             ->map(function ($group) {
                 $validPrices = $group->filter(function ($item) {
@@ -98,15 +103,38 @@ class ForecastAnalysisController extends Controller
                 ];
             });
 
-        $productListData = DB::table('product_master')->whereNull('deleted_at')->get();
+        $jungleReviewsBySku = [];
+        $jungleRatingBySku  = [];
+        foreach ($jungleScoutRaw as $jsRow) {
+            $k = $normalizeSku($jsRow->sku ?? '');
+            if ($k === '') continue;
+            $d   = is_array($jsRow->data) ? $jsRow->data : [];
+            $rv  = $d['reviews'] ?? null;
+            if ($rv !== null && $rv !== '') {
+                $jungleReviewsBySku[$k] = is_numeric($rv) ? (int) $rv : (string) $rv;
+            }
+            $rat = $d['rating'] ?? null;
+            if ($rat !== null && $rat !== '') {
+                $jungleRatingBySku[$k] = is_numeric($rat) ? round((float) $rat, 2) : (string) $rat;
+            }
+        }
+        unset($jungleScoutRaw); // free memory
+
+        $productListData = DB::table('product_master')
+            ->whereNull('deleted_at')
+            ->get(['sku', 'parent', 'Values']);
 
         // Load all shopify data and normalize SKUs for matching
-        $shopifyData = ShopifySku::all()->keyBy(function($item) use ($normalizeSku) {
+        $shopifyData = Cache::remember('fa_shopify_skus', 1800, function () {
+            return ShopifySku::all();
+        })->keyBy(function($item) use ($normalizeSku) {
             return $normalizeSku($item->sku);
         });
 
         $amazonPriceBySku = [];
-        foreach (DB::table('amazon_datsheets')->whereNotNull('sku')->get(['sku', 'price']) as $ar) {
+        foreach (Cache::remember('fa_amazon_prices', 1800, function () {
+            return DB::table('amazon_datsheets')->whereNotNull('sku')->get(['sku', 'price']);
+        }) as $ar) {
             $k = $normalizeSku($ar->sku ?? '');
             if ($k === '') {
                 continue;
@@ -132,7 +160,9 @@ class ForecastAnalysisController extends Controller
         };
 
         $amazonAdvBySku = [];
-        foreach (AmazonDataView::query()->get(['sku', 'value']) as $advRow) {
+        foreach (Cache::remember('fa_amazon_adv', 1800, function () {
+            return AmazonDataView::query()->get(['sku', 'value']);
+        }) as $advRow) {
             $k = $normalizeSku($advRow->sku ?? '');
             if ($k === '') {
                 continue;
@@ -158,23 +188,6 @@ class ForecastAnalysisController extends Controller
             return null;
         };
 
-        $jungleReviewsBySku = [];
-        $jungleRatingBySku = [];
-        foreach (JungleScoutProductData::query()->get(['sku', 'data']) as $jsRow) {
-            $k = $normalizeSku($jsRow->sku ?? '');
-            if ($k === '') {
-                continue;
-            }
-            $d = is_array($jsRow->data) ? $jsRow->data : [];
-            $rv = $d['reviews'] ?? null;
-            if ($rv !== null && $rv !== '') {
-                $jungleReviewsBySku[$k] = is_numeric($rv) ? (int) $rv : (string) $rv;
-            }
-            $rat = $d['rating'] ?? null;
-            if ($rat !== null && $rat !== '') {
-                $jungleRatingBySku[$k] = is_numeric($rat) ? round((float) $rat, 2) : (string) $rat;
-            }
-        }
         $getJungleReviews = function ($sheetSku) use ($jungleReviewsBySku, $normalizeSku) {
             $k = $normalizeSku($sheetSku);
             if (isset($jungleReviewsBySku[$k])) {
@@ -232,7 +245,10 @@ class ForecastAnalysisController extends Controller
             }
             return $group->first();
         });
-        $movementMap = DB::table('movement_analysis')->get()->keyBy(fn($item) => $normalizeSku($item->sku));
+        // Load movement_analysis with only needed columns
+        $movementMap = Cache::remember('fa_movement_analysis', 1800, function () {
+            return DB::table('movement_analysis')->get(['sku', 'months']);
+        })->keyBy(fn($item) => $normalizeSku($item->sku));
         $readyToShipRows = DB::table('ready_to_ship')
             ->where('transit_inv_status', 0)
             ->whereNull('deleted_at')
@@ -273,11 +289,13 @@ class ForecastAnalysisController extends Controller
             if ($c !== '' && $readyToShipMapCanonical->has($c)) return $readyToShipMapCanonical->get($c);
             return null;
         };
+        // Single query for to_order_analysis covering all needed columns
         $toOrderRows = DB::table('to_order_analysis')
             ->whereNull('deleted_at')
             ->orderByDesc('updated_at')
             ->orderByDesc('id')
-            ->get(['id', 'sku', 'parent', 'approved_qty', 'updated_at']);
+            ->get(['id', 'sku', 'parent', 'approved_qty', 'updated_at',
+                   'rfq_form_link', 'rfq_report_link', 'sheet_link']);
         $toOrderApprovedBySkuParent = collect($toOrderRows)
             ->groupBy(function ($r) use ($normalizeSku) {
                 return $normalizeSku($r->sku) . '|' . $normalizeSku($r->parent ?? '');
@@ -292,23 +310,20 @@ class ForecastAnalysisController extends Controller
                 $latest = $rows->first();
                 return (float) ($latest->approved_qty ?? 0);
             });
-        $toOrderMetaBySku = collect(DB::table('to_order_analysis')
-            ->whereNull('deleted_at')
-            ->get(['sku', 'rfq_form_link', 'rfq_report_link', 'sheet_link']))
+        $toOrderMetaBySku = collect($toOrderRows)
             ->groupBy(fn($r) => $normalizeSku($r->sku))
             ->map(function($rows) {
-                $latest = $rows->sortByDesc('id')->first();
-                $pick = function($field) use ($rows, $latest) {
+                $pick = function($field) use ($rows) {
                     foreach ($rows as $r) {
                         $v = trim((string)($r->{$field} ?? ''));
                         if ($v !== '') return $v;
                     }
-                    return trim((string)($latest->{$field} ?? ''));
+                    return '';
                 };
                 return (object)[
-                    'rfq_form_link' => $pick('rfq_form_link'),
-                    'rfq_report_link' => $pick('rfq_report_link'),
-                    'sheet_link' => $pick('sheet_link'),
+                    'rfq_form_link'  => $pick('rfq_form_link'),
+                    'rfq_report_link'=> $pick('rfq_report_link'),
+                    'sheet_link'     => $pick('sheet_link'),
                 ];
             });
         $mfrg = DB::table('mfrg_progress')->get()->keyBy(fn($item) => $normalizeSku($item->sku));
@@ -453,7 +468,78 @@ class ForecastAnalysisController extends Controller
 
 
 
+        // Load FBA monthly sales and build a map keyed by normalized base SKU
+        // FBA seller_sku has suffix like " fba", " FBA", " Fba" appended to the base SKU
+        $currentYear = (int) date('Y');
+        $fbaRows = Cache::remember('fa_fba_monthly', 1800, function () use ($currentYear) {
+            return DB::table('fba_monthly_sales')
+                ->whereIn('year', [$currentYear, $currentYear - 1])
+                ->orderByDesc('year')
+                ->get(['seller_sku', 'year', 'jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec']);
+        });
+
+        // Group rows by normalized base SKU, keyed by year
+        // For each month: prefer current year value if non-zero, otherwise fall back to previous year value
+        $fbaBySkuYear = []; // [normalizedBase][year] => monthly array
+        $fbaSkuRaw    = []; // [normalizedBase] => raw seller_sku string
+        foreach ($fbaRows as $fbaRow) {
+            $rawSku = trim($fbaRow->seller_sku ?? '');
+            $baseSku = preg_replace('/[\s\-_]+(?:fba)$/i', '', $rawSku);
+            $normalizedBase = $normalizeSku($baseSku);
+            if ($normalizedBase === '') continue;
+
+            $year = (int) $fbaRow->year;
+            $fbaBySkuYear[$normalizedBase][$year] = [
+                'JAN' => (int) ($fbaRow->jan ?? 0),
+                'FEB' => (int) ($fbaRow->feb ?? 0),
+                'MAR' => (int) ($fbaRow->mar ?? 0),
+                'APR' => (int) ($fbaRow->apr ?? 0),
+                'MAY' => (int) ($fbaRow->may ?? 0),
+                'JUN' => (int) ($fbaRow->jun ?? 0),
+                'JUL' => (int) ($fbaRow->jul ?? 0),
+                'AUG' => (int) ($fbaRow->aug ?? 0),
+                'SEP' => (int) ($fbaRow->sep ?? 0),
+                'OCT' => (int) ($fbaRow->oct ?? 0),
+                'NOV' => (int) ($fbaRow->nov ?? 0),
+                'DEC' => (int) ($fbaRow->dec ?? 0),
+            ];
+            if (!isset($fbaSkuRaw[$normalizedBase])) {
+                $fbaSkuRaw[$normalizedBase] = $rawSku; // store raw FBA SKU for display
+            }
+        }
+
+        // Build final map: month-aware merge matching the main row's rolling logic
+        // Months up to current month → always use current year (even if 0, those months have passed)
+        // Months after current month → use previous year data (those months haven't happened yet in current year)
+        $currentMonth = (int) date('n'); // 1=Jan ... 12=Dec
+        $monthKeyIndex = ['JAN'=>1,'FEB'=>2,'MAR'=>3,'APR'=>4,'MAY'=>5,'JUN'=>6,
+                          'JUL'=>7,'AUG'=>8,'SEP'=>9,'OCT'=>10,'NOV'=>11,'DEC'=>12];
+        $fbaMonthlyMap = [];
+        foreach ($fbaBySkuYear as $normalizedBase => $yearData) {
+            $curData  = $yearData[$currentYear]     ?? null;
+            $prevData = $yearData[$currentYear - 1] ?? null;
+            if (!$curData && !$prevData) continue;
+
+            $merged = ['seller_sku' => $fbaSkuRaw[$normalizedBase] ?? ''];
+            foreach ($monthKeyIndex as $m => $mNum) {
+                $curVal  = $curData  ? ($curData[$m]  ?? 0) : 0;
+                $prevVal = $prevData ? ($prevData[$m] ?? 0) : 0;
+                // Months already passed in current year → use current year value (0 is valid)
+                // Future months in current year → fall back to previous year
+                $merged[$m] = ($mNum <= $currentMonth) ? $curVal : $prevVal;
+            }
+            $fbaMonthlyMap[$normalizedBase] = $merged;
+        }
+
         $processedData = [];
+        $stagePendingUpdates = []; // [normalizedSku => derivedStage] — flushed after loop
+
+        // Month name map used in the combined MSL calculation (defined once, reused per SKU)
+        $fbaMonthKeyMap = [
+            'Jan' => 'JAN', 'Feb' => 'FEB', 'Mar' => 'MAR', 'Apr' => 'APR',
+            'May' => 'MAY', 'Jun' => 'JUN', 'Jul' => 'JUL', 'Aug' => 'AUG',
+            'Sep' => 'SEP', 'Oct' => 'OCT', 'Nov' => 'NOV', 'Dec' => 'DEC',
+        ];
 
         foreach ($productListData as $prodData) {
             $sheetSku = $normalizeSku($prodData->sku);
@@ -706,6 +792,9 @@ class ForecastAnalysisController extends Controller
             $item->cbm = $cbmNum;
             $item->total_cbm = round($mfrgQtyRaw * $cbmNum, 4);
 
+            // Resolve FBA data for this SKU upfront (used in MSL calculation below)
+            $fbaData = $fbaMonthlyMap[$sheetSku] ?? null;
+
             if ($movementMap->has($sheetSku)) {
                 $months = json_decode($movementMap->get($sheetSku)->months ?? '{}', true);
                 $months = is_array($months) ? $months : [];
@@ -723,27 +812,45 @@ class ForecastAnalysisController extends Controller
 
                 $item->{'Total'} = $totalSum;
                 $item->{'Total month'} = $totalMonthCount;
-                
-                $msl = $item->{'Total month'} > 0 ? ($item->{'Total'} / $item->{'Total month'}) * 4 : 0;
 
-                $effectiveMsl = (isset($item->{'s-msl'}) && $item->{'s-msl'} > 0) ? $item->{'s-msl'} : $msl;
-                
+                // Shopify-only MSL (kept for reference / MSL_C / MSL_SP calculations)
+                $msl = $totalMonthCount > 0 ? ($totalSum / $totalMonthCount) * 4 : 0;
+                $item->msl_shopify = (int) round($msl);
+
+                // Combined MSL: merge Shopify monthly values with FBA monthly values
+                // For each of the 12 months, add FBA sales on top of Shopify sales
+                $monthKeyMap = [
+                    'Jan' => 'JAN', 'Feb' => 'FEB', 'Mar' => 'MAR', 'Apr' => 'APR',
+                    'May' => 'MAY', 'Jun' => 'JUN', 'Jul' => 'JUL', 'Aug' => 'AUG',
+                    'Sep' => 'SEP', 'Oct' => 'OCT', 'Nov' => 'NOV', 'Dec' => 'DEC',
+                ];                $combinedTotal        = 0;
+                $combinedActiveMonths = 0;
+                foreach ($monthNames as $month) {
+                    $shopifyVal = isset($months[$month]) && is_numeric($months[$month]) ? (int)$months[$month] : 0;
+                    $fbaKey     = $fbaMonthKeyMap[$month] ?? strtoupper($month);
+                    $fbaVal     = $fbaData ? (int)($fbaData[$fbaKey] ?? 0) : 0;
+                    $combined   = $shopifyVal + $fbaVal;
+                    $combinedTotal += $combined;
+                    if ($combined > 0) $combinedActiveMonths++;
+                }
+                $combinedMsl = $combinedActiveMonths > 0 ? ($combinedTotal / $combinedActiveMonths) * 4 : $msl;
+
+                // Use combined MSL as the primary MSL shown in the table
+                $effectiveMsl = (isset($item->{'s-msl'}) && $item->{'s-msl'} > 0) ? $item->{'s-msl'} : $combinedMsl;
+
                 $lp = is_numeric($item->{'LP'}) ? (float)$item->{'LP'} : 0;
-                $item->{'MSL_C'} = round($msl * $lp / 4, 2);
-
-                $mslfour = $msl/4;
-
-                $item->{'MSL_Four'} = round($msl / 4, 2);
-
+                $item->{'MSL_C'} = round($combinedMsl * $lp / 4, 2);
+                $item->{'MSL_Four'} = round($combinedMsl / 4, 2);
                 $item->{'MSL_SP'} = floor($shopifyb2c_price * $effectiveMsl / 4);
 
                 $amzPrc = $resolveAmazonPrice($sheetSku);
                 $item->amz_prc = $amzPrc;
-                $item->{'MSL_SP_AMZ'} = round($msl * $amzPrc / 4, 2);
+                $item->{'MSL_SP_AMZ'} = round($combinedMsl * $amzPrc / 4, 2);
 
-                $item->msl = (int) round($msl);
-                // M AVG = average monthly movement (same months as MSL: sum of movement / count of non-zero months)
-                $mAvg = $totalMonthCount > 0 ? ($totalSum / $totalMonthCount) : 0.0;
+                $item->msl = (int) round($combinedMsl);
+
+                // M AVG based on combined data
+                $mAvg = $combinedActiveMonths > 0 ? ($combinedTotal / $combinedActiveMonths) : 0.0;
                 $item->m_avg = round($mAvg, 6);
                 $moqVal = is_numeric($item->{'MOQ'} ?? null) ? (float) $item->{'MOQ'} : (float) preg_replace('/[^0-9.\-]/', '', (string) ($item->{'MOQ'} ?? ''));
                 $item->TAT = $mAvg > 0 ? (int) round($moqVal / $mAvg) : null;
@@ -826,9 +933,7 @@ class ForecastAnalysisController extends Controller
                         $derivedStage = '';
                     }
                     if ($currentStage !== $derivedStage) {
-                        DB::table('forecast_analysis')
-                            ->whereRaw('TRIM(LOWER(sku)) = ?', [strtolower($sheetSku)])
-                            ->update(['stage' => $derivedStage, 'updated_at' => now()]);
+                        $stagePendingUpdates[$sheetSku] = $derivedStage;
                     }
                     $item->stage = $derivedStage;
                 }
@@ -836,7 +941,22 @@ class ForecastAnalysisController extends Controller
 
             $item->product_master_moq = $productMasterMoq;
 
+            // Attach FBA monthly sales data for this SKU (must come before MSL calc)
+            $item->fba_months = $fbaData;
+
             $processedData[] = $item;
+        }
+
+        // Flush stage updates in one batch instead of per-row writes
+        if (!empty($stagePendingUpdates)) {
+            $now = now();
+            DB::transaction(function () use ($stagePendingUpdates, $now) {
+                foreach ($stagePendingUpdates as $sku => $stage) {
+                    DB::table('forecast_analysis')
+                        ->whereRaw('TRIM(LOWER(sku)) = ?', [strtolower($sku)])
+                        ->update(['stage' => $stage, 'updated_at' => $now]);
+                }
+            });
         }
 
         return $processedData;
@@ -845,55 +965,29 @@ class ForecastAnalysisController extends Controller
     public function getViewForecastAnalysisData()
     {
         try {
+
             $processedData = $this->buildForecastAnalysisData();
 
-            $totalMslC = collect($processedData)
-                ->filter(function ($item) {
-                    return !$item->is_parent;
-                })
-                ->sum(function ($item) {
-                    return floatval($item->{'MSL_C'} ?? 0);
-                });
+            $children = collect($processedData)->filter(fn($item) => !$item->is_parent);
 
-            $totalMslSp = collect($processedData)
-                ->filter(function ($item) {
-                    return !$item->is_parent;
-                })
-                ->sum(function ($item) {
-                    return floatval($item->{'MSL_SP'} ?? 0);
-                });
+            $totalMslC = $children->sum(fn($item) => floatval($item->{'MSL_C'} ?? 0));
+            $totalMslSp = $children->sum(fn($item) => floatval($item->{'MSL_SP'} ?? 0));
+            $totalMslSpAmz = $children->sum(fn($item) => floatval($item->{'MSL_SP_AMZ'} ?? 0));
+            $totalTransitValue = $children->sum(function ($item) {
+                return (float) ($item->transit ?? 0) * (float) ($item->{'CP'} ?? 0);
+            });
 
-            $totalMslSpAmz = collect($processedData)
-                ->filter(function ($item) {
-                    return ! $item->is_parent;
-                })
-                ->sum(function ($item) {
-                    return floatval($item->{'MSL_SP_AMZ'} ?? 0);
-                });
+            $payload = [
+                'message'             => 'Data fetched successfully',
+                'data'                => $processedData,
+                'total_msl_c'         => round($totalMslC, 2),
+                'total_msl_sp'        => round($totalMslSp, 0),
+                'total_msl_sp_amz'    => round($totalMslSpAmz, 2),
+                'total_transit_value' => round($totalTransitValue, 2),
+                'status'              => 200,
+            ];
 
-            // Trn Val: sum of (transit QTY × CP) per SKU (child rows only).
-            // Transit qty matches the grid (aggregated units×ctn per SKU, warehouse-pushed lines excluded).
-            $totalTransitValue = collect($processedData)
-                ->filter(function ($item) {
-                    return ! $item->is_parent;
-                })
-                ->sum(function ($item) {
-                    $transitQty = (float) ($item->transit ?? 0);
-                    $cp = (float) ($item->{'CP'} ?? 0);
-
-                    return $transitQty * $cp;
-                });
-
-            return response()->json([
-                'message' => 'Data fetched successfully',
-                'data' => $processedData,
-                'total_msl_c' => round($totalMslC, 2),
-                'total_msl_sp' => round($totalMslSp, 0),
-                'total_msl_sp_amz' => round($totalMslSpAmz, 2),
-                'total_transit_value' => round($totalTransitValue, 2), // Sum(transit QTY × CP) for forecast child SKUs
-                'status' => 200,
-            ]);
-
+            return response()->json($payload);
         } catch (\Throwable $e) {
             return response()->json([
                 'message' => 'Something went wrong!',
@@ -961,7 +1055,7 @@ class ForecastAnalysisController extends Controller
     }
 
     public function updateForcastSheet(Request $request)
-    {        
+    {
         $sku = trim((string) $request->input('sku'));
         $parent = trim((string) $request->input('parent'));
         $column = trim((string) $request->input('column'));

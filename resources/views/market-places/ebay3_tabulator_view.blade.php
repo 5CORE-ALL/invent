@@ -397,6 +397,16 @@
                         <option value="60plus">60%+</option>
                     </select>
 
+                    <select id="roi-filter" class="form-select form-select-sm pricing-filter-item"
+                        style="width: auto; display: inline-block;">
+                        <option value="all">ROI%</option>
+                        <option value="lt40">&lt; 40%</option>
+                        <option value="40-75">40–75%</option>
+                        <option value="75-125">75–125%</option>
+                        <option value="125-250">125–250%</option>
+                        <option value="gt250">&gt; 250%</option>
+                    </select>
+
                     <select id="cvr-filter" class="form-select form-select-sm pricing-filter-item"
                         style="width: auto; display: inline-block;">
                         <option value="all">CVR</option>
@@ -3554,6 +3564,7 @@
             const inventoryFilter = $('#inventory-filter').val();
             const nrlFilter = $('#nrl-filter').val();
             const gpftFilter = $('#gpft-filter').val();
+            const roiFilter = $('#roi-filter').val();
             const cvrFilter = $('#cvr-filter').val();
             const cvrTrendFilter = $('#cvr-trend-filter').val();
             const spriceFilter = $('#sprice-filter').val();
@@ -3644,6 +3655,18 @@
                     if (gpftFilter === '50-60') return gpft >= 50 && gpft < 60;
                     if (gpftFilter === '60plus') return gpft >= 60;
                     return true;
+                });
+            }
+
+            if (roiFilter !== 'all') {
+                table.addFilter(function(data) {
+                    const sku = data['(Child) sku'] || '';
+                    if (sku.toUpperCase().includes('PARENT')) return true;
+                    const roiVal = parseFloat(data['ROI%']) || 0;
+                    if (roiFilter === 'lt40') return roiVal < 40;
+                    if (roiFilter === 'gt250') return roiVal > 250;
+                    const [min, max] = roiFilter.split('-').map(Number);
+                    return roiVal >= min && roiVal <= max;
                 });
             }
 
@@ -4091,7 +4114,7 @@
             }, 100);
         }
 
-        $('#view-mode-filter, #inventory-filter, #nrl-filter, #gpft-filter, #cvr-filter, #cvr-trend-filter, #sprice-filter, #status-filter, #dilution-filter, #ads-filter').on('change', function() {
+        $('#view-mode-filter, #inventory-filter, #nrl-filter, #gpft-filter, #roi-filter, #cvr-filter, #cvr-trend-filter, #sprice-filter, #status-filter, #dilution-filter, #ads-filter').on('change', function() {
             applyFilters();
         });
 
