@@ -912,43 +912,35 @@
 
             function whatHappenedDotHtml(value) {
                 const text = String(value || '').trim();
+                if (!text) return '—';
                 if (text.toLowerCase() === '0 stock') {
                     return '<span class="what-happened-dot" title="0 Stock"></span>';
                 }
                 if (text.toLowerCase() === 'damaged') {
                     return '<span class="what-happened-dot what-happened-dot-damaged" title="Damaged"></span>';
                 }
-                return '—';
+                return escapeHtml(text);
             }
 
             function action1DisplayHtml(value, remark) {
                 const action = String(value || '').trim();
                 const rmk = String(remark || '').trim();
-                if (!action) return '—';
-                if (action === 'Other' && rmk) {
-                    return escapeHtml(action + ': ' + rmk);
-                }
-                return escapeHtml(action);
+                if (!action) return rmk ? escapeHtml(rmk) : '—';
+                return rmk ? escapeHtml(action + ': ' + rmk) : escapeHtml(action);
             }
 
             function rootCauseDisplayHtml(value, remark) {
                 const root = String(value || '').trim();
                 const rmk = String(remark || '').trim();
-                if (!root) return '—';
-                if (root === 'Other' && rmk) {
-                    return escapeHtml(root + ': ' + rmk);
-                }
-                return escapeHtml(root);
+                if (!root) return rmk ? escapeHtml(rmk) : '—';
+                return rmk ? escapeHtml(root + ': ' + rmk) : escapeHtml(root);
             }
 
             function rootCauseFixedDisplayHtml(value, remark) {
                 const fixed = String(value || '').trim();
                 const rmk = String(remark || '').trim();
-                if (!fixed) return '—';
-                if (fixed === 'Other' && rmk) {
-                    return escapeHtml(fixed + ': ' + rmk);
-                }
-                return escapeHtml(fixed);
+                if (!fixed) return rmk ? escapeHtml(rmk) : '—';
+                return rmk ? escapeHtml(fixed + ': ' + rmk) : escapeHtml(fixed);
             }
 
             function resetSkuImage() {
@@ -1113,8 +1105,8 @@
                         '<td class="order-num-cell">' + (row.order_number ? '<button class="copy-order-btn" data-copy="' + escAttr(row.order_number) + '" title="' + escAttr(row.order_number) + '"><i class="bi bi-clipboard"></i></button><span class="order-num-short">' + escapeHtml(row.order_number) + '</span>' : '—') + '</td>' +
                         '<td>' + (row.total_loss != null ? '$' + parseFloat(row.total_loss).toFixed(2) : '—') + '</td>' +
                         @endif
-                        '<td>' + escapeHtml(row.order_qty) + '</td>' +
-                        '<td>' + escapeHtml(row.marketplace_1) + '</td>' +
+                        '<td>' + (row.order_qty != null && row.order_qty !== '' ? escapeHtml(row.order_qty) : '—') + '</td>' +
+                        '<td>' + escapeHtml(row.marketplace_1 || '—') + '</td>' +
                         '<td>' + whatHappenedDotHtml(row.what_happened) + '</td>' +
                         '<td>' + action1DisplayHtml(row.action_1, row.action_1_remark) + '</td>' +
                         '<td>' + trackingCellHtml(row.replacement_tracking) + '</td>' +
@@ -1155,8 +1147,8 @@
                         '<td>' + escapeHtml(row.issue_ref || row.orders_on_hold_issue_id || row.id) + '</td>' +
                         '<td class="orders-hold-col-img">' + (row.image_url ? '<img src="' + escAttr(row.image_url) + '" class="sku-thumb" alt="">' : '<span class="sku-thumb-placeholder"><i class="bi bi-image"></i></span>') + '</td>' +
                         '<td title="' + escAttr(row.sku) + '"><span class="sku-cell">' + escapeHtml(row.sku) + '</span></td>' +
-                        '<td>' + escapeHtml(row.order_qty) + '</td>' +
-                        '<td>' + escapeHtml(row.marketplace_1) + '</td>' +
+                        '<td>' + (row.order_qty != null && row.order_qty !== '' ? escapeHtml(row.order_qty) : '—') + '</td>' +
+                        '<td>' + escapeHtml(row.marketplace_1 || '—') + '</td>' +
                         '<td>' + whatHappenedDotHtml(row.what_happened) + '</td>' +
                         '<td>' + action1DisplayHtml(row.action_1, row.action_1_remark) + '</td>' +
                         '<td>' + trackingCellHtml(row.replacement_tracking) + '</td>' +

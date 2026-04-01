@@ -76,7 +76,7 @@ abstract class IssueBoardControllerBase extends Controller
             ->pluck('marketplace')
             ->map(fn ($m) => trim((string) $m))
             ->filter()
-            ->unique()
+            ->unique(fn ($m) => strtolower(preg_replace('/\s+/', '', $m)))
             ->values();
 
         return view($this->viewName(), compact('marketplaces'));
