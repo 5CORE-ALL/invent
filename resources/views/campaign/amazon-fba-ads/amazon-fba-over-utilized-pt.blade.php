@@ -607,47 +607,19 @@
                     },
                     {
                         title: "SBID",
-                        field: "sbid",
+                        field: "sbid_m",
                         hozAlign: "center",
                         visible: function() {
                             return currentUtilizationType !== 'correctly';
                         },
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
-                            var l1_cpc = parseFloat(row.l1_cpc) || 0;
-                            var l7_cpc = parseFloat(row.l7_cpc) || 0;
-                            var ub7 = 0;
-                            var budget = parseFloat(row.campaignBudgetAmount) || 0;
-                            if (budget > 0) {
-                                ub7 = (parseFloat(row.l7_spend) || 0) / (budget * 7) * 100;
+                            var sbid = row.sbid_m;
+                            if (sbid !== null && sbid !== undefined && sbid !== '') {
+                                var num = parseFloat(sbid);
+                                if (!isNaN(num)) return num.toFixed(2);
                             }
-                            
-                            var sbid = '';
-                            if (currentUtilizationType === 'over') {
-                                // Over-utilized: l7_cpc * 0.90 (if l7_cpc === 0, then 0.75)
-                                if (l7_cpc === 0) {
-                                    sbid = 0.75;
-                                } else {
-                                    sbid = Math.floor(l7_cpc * 0.90 * 100) / 100;
-                                }
-                            } else if (currentUtilizationType === 'under') {
-                                // Under-utilized: Complex logic based on ub7 and l7_cpc
-                                if (ub7 < 70) {
-                                    if (ub7 < 10 || l7_cpc === 0) {
-                                        sbid = 0.75;
-                                    } else if (l7_cpc > 0 && l7_cpc < 0.30) {
-                                        sbid = (l7_cpc + 0.20).toFixed(2);
-                                    } else {
-                                        sbid = (Math.floor((l7_cpc * 1.10) * 100) / 100).toFixed(2);
-                                    }
-                                } else {
-                                    sbid = '';
-                                }
-                            } else {
-                                // Correctly-utilized: Usually no SBID (empty)
-                                sbid = '';
-                            }
-                            return sbid === '' ? '' : (typeof sbid === 'string' ? sbid : sbid.toFixed(2));
+                            return '';
                         }
                     },
                     {
@@ -667,38 +639,10 @@
                         cellClick: function(e, cell) {
                             if (e.target.classList.contains("update-row-btn")) {
                                 var rowData = cell.getRow().getData();
-                                var l1_cpc = parseFloat(rowData.l1_cpc) || 0;
-                                var l7_cpc = parseFloat(rowData.l7_cpc) || 0;
-                                var budget = parseFloat(rowData.campaignBudgetAmount) || 0;
-                                var ub7 = 0;
-                                if (budget > 0) {
-                                    ub7 = (parseFloat(rowData.l7_spend) || 0) / (budget * 7) * 100;
-                                }
-                                
-                                var sbid = '';
-                                if (currentUtilizationType === 'over') {
-                                    if (l7_cpc === 0) {
-                                        sbid = 0.75;
-                                    } else {
-                                        sbid = Math.floor(l7_cpc * 0.90 * 100) / 100;
-                                    }
-                                } else if (currentUtilizationType === 'under') {
-                                    if (ub7 < 70) {
-                                        if (ub7 < 10 || l7_cpc === 0) {
-                                            sbid = 0.75;
-                                        } else if (l7_cpc > 0 && l7_cpc < 0.30) {
-                                            sbid = parseFloat((l7_cpc + 0.20).toFixed(2));
-                                        } else {
-                                            sbid = Math.floor((l7_cpc * 1.10) * 100) / 100;
-                                        }
-                                    } else {
-                                        sbid = '';
-                                    }
-                                } else {
-                                    sbid = '';
-                                }
+                                var sbid = rowData.sbid_m;
                                 if (sbid !== '') {
-                                    updateBid(sbid, rowData.campaign_id);
+                                    var num = parseFloat(sbid);
+                                    if (!isNaN(num)) updateBid(num, rowData.campaign_id);
                                 }
                             }
                         }
@@ -919,40 +863,14 @@
                     var rowEl = row.getElement();
                     if (rowEl && rowEl.offsetParent !== null) {
                         var rowData = row.getData();
-                        var l1_cpc = parseFloat(rowData.l1_cpc) || 0;
-                        var l7_cpc = parseFloat(rowData.l7_cpc) || 0;
-                        var budget = parseFloat(rowData.campaignBudgetAmount) || 0;
-                        var ub7 = 0;
-                        if (budget > 0) {
-                            ub7 = (parseFloat(rowData.l7_spend) || 0) / (budget * 7) * 100;
-                        }
-                        
-                        var sbid = '';
-                        if (currentUtilizationType === 'over') {
-                            if (l7_cpc === 0) {
-                                sbid = 0.75;
-                            } else {
-                                sbid = Math.floor(l7_cpc * 0.90 * 100) / 100;
-                            }
-                        } else if (currentUtilizationType === 'under') {
-                            if (ub7 < 70) {
-                                if (ub7 < 10 || l7_cpc === 0) {
-                                    sbid = 0.75;
-                                } else if (l7_cpc > 0 && l7_cpc < 0.30) {
-                                    sbid = parseFloat((l7_cpc + 0.20).toFixed(2));
-                                } else {
-                                    sbid = Math.floor((l7_cpc * 1.10) * 100) / 100;
-                                }
-                            } else {
-                                sbid = '';
-                            }
-                        } else {
-                            sbid = '';
-                        }
+                        var sbid = rowData.sbid_m;
 
                         if (sbid !== '') {
-                            campaignIds.push(rowData.campaign_id);
-                            bids.push(sbid);
+                            var num = parseFloat(sbid);
+                            if (!isNaN(num)) {
+                                campaignIds.push(rowData.campaign_id);
+                                bids.push(num);
+                            }
                         }
                     }
                 });
