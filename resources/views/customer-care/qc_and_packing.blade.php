@@ -527,7 +527,7 @@
                             <div class="col-12" id="sku-rows-wrapper">
                                 <div class="sku-entry-row" data-row-index="0">
                                     <div class="row g-2 align-items-end">
-                                        <div class="col-md-5">
+                                        <div class="col-md-8">
                                             <label class="form-label">SKU <span class="text-danger">*</span></label>
                                             <input type="text" class="form-control sku-entry-input" id="hold_issue_sku" name="sku"
                                                 list="hold_issue_sku_datalist" placeholder="Search SKU" required autocomplete="off">
@@ -536,15 +536,15 @@
                                                 <img src="" alt="SKU Image" id="hold_issue_sku_image" class="sku-image-preview">
                                             </div>
                                         </div>
-                                        <div class="col-md-2" style="display:none;">
+                                        <div style="display:none;">
                                             <input type="number" class="form-control sku-entry-qty" id="hold_issue_qty" name="qty" value="0" readonly>
                                         </div>
-                                        <div class="col-md-2">
+                                        <div class="col-md-4">
                                             <label class="form-label">Order Qty</label>
                                             <input type="number" class="form-control sku-entry-order-qty" id="hold_issue_order_qty" name="order_qty"
                                                 min="0" step="1" placeholder="Qty">
                                         </div>
-                                        <div class="col-md-3" style="display:none;">
+                                        <div style="display:none;">
                                             <input type="text" class="form-control sku-entry-parent" id="hold_issue_parent" name="parent" readonly>
                                         </div>
                                     </div>
@@ -563,12 +563,13 @@
                             </div>
 
                             @if($showDispatchExtras ?? false)
-                            <div class="col-md-4">
+                            <div class="col-md-6">
                                 <label for="hold_issue_order_number" class="form-label">Order Number</label>
                                 <input type="text" class="form-control" id="hold_issue_order_number" name="order_number"
                                     placeholder="Enter order number">
                             </div>
-                            <div class="col-md-4">                                <label for="hold_issue_total_loss" class="form-label">Loss $</label>
+                            <div class="col-md-6">
+                                <label for="hold_issue_total_loss" class="form-label">Loss $</label>
                                 <input type="number" class="form-control" id="hold_issue_total_loss" name="total_loss"
                                     step="0.01" placeholder="0.00">
                             </div>
@@ -607,15 +608,10 @@
                                 </datalist>
                             </div>
 
-                            <div class="col-md-8 d-none" id="action1RemarkWrap">
+                            <div class="col-md-6" id="action1RemarkWrap">
                                 <label for="hold_issue_action_1_remark" class="form-label">Action Remark</label>
-                                @if($showDispatchExtras ?? false)
-                                <textarea class="form-control" id="hold_issue_action_1_remark" name="action_1_remark"
-                                    rows="3" placeholder="Write action remark..."></textarea>
-                                @else
                                 <input type="text" class="form-control" id="hold_issue_action_1_remark" name="action_1_remark"
-                                    placeholder="Write remark for Other">
-                                @endif
+                                    placeholder="Write action remark...">
                             </div>
 
                             <div class="col-md-6">
@@ -624,7 +620,7 @@
                                     name="replacement_tracking" maxlength="50" placeholder="Optional tracking number">
                             </div>
 
-                            <div class="col-12">
+                            <div class="col-md-6">
                                 <label for="hold_issue_text" class="form-label">Root Cause Found</label>
                                 <input type="text" class="form-control" id="hold_issue_text" name="issue"
                                     list="hold_issue_root_cause_found_datalist"
@@ -646,12 +642,6 @@
                                 <datalist id="hold_issue_root_cause_fixed_datalist"></datalist>
                             </div>
 
-                            <div class="col-md-8 d-none" id="cAction1RemarkWrap">
-                                <label for="hold_issue_c_action_1_remark" class="form-label">Root Cause Fixed Remark</label>
-                                <input type="text" class="form-control" id="hold_issue_c_action_1_remark"
-                                    name="c_action_1_remark" placeholder="Write remark for Other">
-                            </div>
-
                             <div class="col-md-6">
                                 <label for="hold_issue_department" class="form-label">Department</label>
                                 <select class="form-select" id="hold_issue_department" name="department">
@@ -665,6 +655,12 @@
                                     <option value="QC">QC</option>
                                     <option value="Packaging">Packaging</option>
                                 </select>
+                            </div>
+
+                            <div class="col-12 d-none" id="cAction1RemarkWrap">
+                                <label for="hold_issue_c_action_1_remark" class="form-label">Root Cause Fixed Remark</label>
+                                <input type="text" class="form-control" id="hold_issue_c_action_1_remark"
+                                    name="c_action_1_remark" placeholder="Write remark for Other">
                             </div>
 
                         </div>
@@ -912,43 +908,35 @@
 
             function whatHappenedDotHtml(value) {
                 const text = String(value || '').trim();
+                if (!text) return '—';
                 if (text.toLowerCase() === '0 stock') {
                     return '<span class="what-happened-dot" title="0 Stock"></span>';
                 }
                 if (text.toLowerCase() === 'damaged') {
                     return '<span class="what-happened-dot what-happened-dot-damaged" title="Damaged"></span>';
                 }
-                return '—';
+                return escapeHtml(text);
             }
 
             function action1DisplayHtml(value, remark) {
                 const action = String(value || '').trim();
                 const rmk = String(remark || '').trim();
-                if (!action) return '—';
-                if (action === 'Other' && rmk) {
-                    return escapeHtml(action + ': ' + rmk);
-                }
-                return escapeHtml(action);
+                if (!action) return rmk ? escapeHtml(rmk) : '—';
+                return rmk ? escapeHtml(action + ': ' + rmk) : escapeHtml(action);
             }
 
             function rootCauseDisplayHtml(value, remark) {
                 const root = String(value || '').trim();
                 const rmk = String(remark || '').trim();
-                if (!root) return '—';
-                if (root === 'Other' && rmk) {
-                    return escapeHtml(root + ': ' + rmk);
-                }
-                return escapeHtml(root);
+                if (!root) return rmk ? escapeHtml(rmk) : '—';
+                return rmk ? escapeHtml(root + ': ' + rmk) : escapeHtml(root);
             }
 
             function rootCauseFixedDisplayHtml(value, remark) {
                 const fixed = String(value || '').trim();
                 const rmk = String(remark || '').trim();
-                if (!fixed) return '—';
-                if (fixed === 'Other' && rmk) {
-                    return escapeHtml(fixed + ': ' + rmk);
-                }
-                return escapeHtml(fixed);
+                if (!fixed) return rmk ? escapeHtml(rmk) : '—';
+                return rmk ? escapeHtml(fixed + ': ' + rmk) : escapeHtml(fixed);
             }
 
             function resetSkuImage() {
@@ -980,17 +968,7 @@
                 }
             }
 
-            function toggleAction1RemarkField() {
-                const selected = String(action1Input?.value || '').trim();
-                const isOther = selected === 'Other';
-                if (action1RemarkWrap) {
-                    action1RemarkWrap.classList.toggle('d-none', !isOther);
-                }
-                if (action1RemarkInput) {
-                    action1RemarkInput.required = isOther;
-                    if (!isOther) action1RemarkInput.value = '';
-                }
-            }
+            function toggleAction1RemarkField() { /* always visible */ }
 
             function toggleCAction1RemarkField() {
                 const selected = String(cAction1Input?.value || '').trim();
@@ -1123,8 +1101,8 @@
                         '<td class="order-num-cell">' + (row.order_number ? '<button class="copy-order-btn" data-copy="' + escAttr(row.order_number) + '" title="' + escAttr(row.order_number) + '"><i class="bi bi-clipboard"></i></button><span class="order-num-short">' + escapeHtml(row.order_number) + '</span>' : '—') + '</td>' +
                         '<td>' + (row.total_loss != null ? '$' + parseFloat(row.total_loss).toFixed(2) : '—') + '</td>' +
                         @endif
-                        '<td>' + escapeHtml(row.order_qty) + '</td>' +
-                        '<td>' + escapeHtml(row.marketplace_1) + '</td>' +
+                        '<td>' + (row.order_qty != null && row.order_qty !== '' ? escapeHtml(row.order_qty) : '—') + '</td>' +
+                        '<td>' + escapeHtml(row.marketplace_1 || '—') + '</td>' +
                         '<td>' + whatHappenedDotHtml(row.what_happened) + '</td>' +
                         '<td>' + action1DisplayHtml(row.action_1, row.action_1_remark) + '</td>' +
                         '<td>' + trackingCellHtml(row.replacement_tracking) + '</td>' +
@@ -1165,8 +1143,8 @@
                         '<td>' + escapeHtml(row.issue_ref || row.orders_on_hold_issue_id || row.id) + '</td>' +
                         '<td class="orders-hold-col-img">' + (row.image_url ? '<img src="' + escAttr(row.image_url) + '" class="sku-thumb" alt="">' : '<span class="sku-thumb-placeholder"><i class="bi bi-image"></i></span>') + '</td>' +
                         '<td title="' + escAttr(row.sku) + '"><span class="sku-cell">' + escapeHtml(row.sku) + '</span></td>' +
-                        '<td>' + escapeHtml(row.order_qty) + '</td>' +
-                        '<td>' + escapeHtml(row.marketplace_1) + '</td>' +
+                        '<td>' + (row.order_qty != null && row.order_qty !== '' ? escapeHtml(row.order_qty) : '—') + '</td>' +
+                        '<td>' + escapeHtml(row.marketplace_1 || '—') + '</td>' +
                         '<td>' + whatHappenedDotHtml(row.what_happened) + '</td>' +
                         '<td>' + action1DisplayHtml(row.action_1, row.action_1_remark) + '</td>' +
                         '<td>' + trackingCellHtml(row.replacement_tracking) + '</td>' +
@@ -1474,11 +1452,6 @@
                 if (issueInput.value.trim() === 'Other' && issueRemarkInput.value.trim() === '') {
                     showAlert('Please enter Root Cause remark for Other.');
                     issueRemarkInput.focus();
-                    return;
-                }
-                if (action1Input.value.trim() === 'Other' && action1RemarkInput.value.trim() === '') {
-                    showAlert('Please enter Action remark for Other.');
-                    action1RemarkInput.focus();
                     return;
                 }
                 if (cAction1Input.value.trim() === 'Other' && cAction1RemarkInput.value.trim() === '') {
@@ -1796,7 +1769,7 @@
                         <button type="button" class="btn-close position-absolute top-0 end-0 m-1 remove-extra-sku-row"
                             style="font-size:0.65rem;" title="Remove this SKU"></button>
                         <div class="row g-2 align-items-end">
-                            <div class="col-md-5">
+                            <div class="col-md-8">
                                 <label class="form-label small mb-1">SKU <span class="text-danger">*</span></label>
                                 <input type="text" class="form-control form-control-sm extra-sku-input"
                                     list="hold_issue_sku_datalist" placeholder="Search SKU" autocomplete="off">
@@ -1804,15 +1777,14 @@
                                     <img src="" class="sku-image-preview" style="width:52px;height:52px;">
                                 </div>
                             </div>
-                            <div class="col-md-2" style="display:none;">
-                                <label class="form-label small mb-1">Qty in Stock</label>
+                            <div style="display:none;">
                                 <input type="number" class="form-control form-control-sm extra-sku-qty" readonly>
                             </div>
-                            <div class="col-md-2">
+                            <div class="col-md-4">
                                 <label class="form-label small mb-1">Order Qty</label>
                                 <input type="number" class="form-control form-control-sm extra-sku-order-qty" min="0" step="1" placeholder="Qty">
                             </div>
-                            <div class="col-md-3" style="display:none;">
+                            <div style="display:none;">
                                 <input type="text" class="form-control form-control-sm extra-sku-parent" readonly>
                             </div>
                         </div>`;
