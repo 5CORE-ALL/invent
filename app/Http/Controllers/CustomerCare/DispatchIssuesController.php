@@ -57,6 +57,56 @@ class DispatchIssuesController extends IssueBoardControllerBase
         ];
     }
 
+    public function l30Issues(): JsonResponse
+    {
+        $tz    = config('app.timezone');
+        $today = \Carbon\Carbon::now($tz)->toDateString();
+        $from  = \Carbon\Carbon::now($tz)->subDays(29)->toDateString();
+
+        $rows = DB::table($this->issuesTable())
+            ->selectRaw("COALESCE(issue_date, DATE(created_at)) as day, COUNT(*) as issue_count")
+            ->whereRaw("COALESCE(issue_date, DATE(created_at)) BETWEEN ? AND ?", [$from, $today])
+            ->groupByRaw("COALESCE(issue_date, DATE(created_at))")
+            ->orderByRaw("COALESCE(issue_date, DATE(created_at))")
+            ->get();
+
+        return response()->json([
+            'total' => (int) $rows->sum('issue_count'),
+            'from'  => $from,
+            'to'    => $today,
+            'daily' => $rows->map(fn ($r) => [
+                'date'  => $r->day,
+                'count' => (int) $r->issue_count,
+            ])->values(),
+        ]);
+    }
+
+    public function l30Loss(): JsonResponse
+    {
+        $tz    = config('app.timezone');
+        $today = \Carbon\Carbon::now($tz)->toDateString();
+        $from  = \Carbon\Carbon::now($tz)->subDays(29)->toDateString();
+
+        $rows = DB::table($this->issuesTable())
+            ->selectRaw("COALESCE(issue_date, DATE(created_at)) as day, SUM(total_loss) as daily_loss, COUNT(*) as issue_count")
+            ->whereRaw("COALESCE(issue_date, DATE(created_at)) BETWEEN ? AND ?", [$from, $today])
+            ->whereNotNull('total_loss')
+            ->groupByRaw("COALESCE(issue_date, DATE(created_at))")
+            ->orderByRaw("COALESCE(issue_date, DATE(created_at))")
+            ->get();
+
+        return response()->json([
+            'total' => round((float) $rows->sum('daily_loss'), 2),
+            'from'  => $from,
+            'to'    => $today,
+            'daily' => $rows->map(fn ($r) => [
+                'date'  => $r->day,
+                'loss'  => round((float) $r->daily_loss, 2),
+                'count' => (int) $r->issue_count,
+            ])->values(),
+        ]);
+    }
+
     /**
      * Override store to support multi-SKU entries (single Order ID, multiple SKUs = 1 error group).
      */

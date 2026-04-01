@@ -1097,7 +1097,7 @@
             });
 
             $('#export-pricing-btn').on('click', function() {
-                table.download("csv", "aliexpress_pricing_data.csv");
+                table.download("csv", "shein_pricing_data.csv");
             });
 
             $('#uploadPriceSheetBtn').on('click', function() {

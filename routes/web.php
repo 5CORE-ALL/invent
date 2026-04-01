@@ -1227,6 +1227,10 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         ->name('customer.care.dispatch.issues.sku.details');
     Route::get('/customer-care/dispatch-issues/issues', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'issuesIndex'])
         ->name('customer.care.dispatch.issues.list.index');
+    Route::get('/customer-care/dispatch-issues/l30-loss', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'l30Loss'])
+        ->name('customer.care.dispatch.issues.l30.loss');
+    Route::get('/customer-care/dispatch-issues/l30-issues', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'l30Issues'])
+        ->name('customer.care.dispatch.issues.l30.issues');
     Route::get('/customer-care/dispatch-issues/history', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'historyIndex'])
         ->name('customer.care.dispatch.issues.history.index');
     Route::post('/customer-care/dispatch-issues/issues', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'store'])

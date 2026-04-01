@@ -38,7 +38,7 @@
         }
 
         .orders-hold-col-sku {
-            width: 11%;
+            width: 22%;
         }
 
         .orders-hold-col-date {
@@ -73,6 +73,46 @@
 
         .orders-hold-col-action {
             width: 9%;
+        }
+
+        .order-num-cell {
+            white-space: nowrap;
+            position: relative;
+        }
+
+        .order-num-short {
+            display: inline-block;
+            max-width: 0;
+            overflow: hidden;
+            vertical-align: bottom;
+            white-space: nowrap;
+            opacity: 0;
+            transition: max-width 0.25s ease, opacity 0.2s ease;
+        }
+
+        .order-num-cell:hover .order-num-short {
+            max-width: 30ch;
+            opacity: 1;
+        }
+
+        .copy-order-btn {
+            color: #0d6efd;
+            font-size: 0.8rem;
+            line-height: 1;
+            padding: 0 2px;
+            border: none;
+            background: none;
+            cursor: pointer;
+            vertical-align: middle;
+            transition: color 0.15s;
+        }
+
+        .copy-order-btn:hover {
+            color: #0a58ca;
+        }
+
+        .copy-order-btn.copied {
+            color: #198754;
         }
 
         .orders-hold-col-what {
@@ -168,6 +208,83 @@
             vertical-align: middle;
             margin-right: 4px;
         }
+
+        /* ── L30 Loss Badge ───────────────────────────────────────── */
+        .l30-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            padding: 5px 12px 5px 10px;
+            background: linear-gradient(135deg, #fff5f5 0%, #fff 100%);
+            border: 1.5px solid #f5c2c7;
+            border-radius: 0.5rem;
+            cursor: pointer;
+            user-select: none;
+            transition: box-shadow 0.15s, border-color 0.15s;
+            text-decoration: none;
+        }
+
+        .l30-badge:hover {
+            box-shadow: 0 2px 10px rgba(220,53,69,.18);
+            border-color: #dc3545;
+        }
+
+        .l30-badge-info {
+            display: flex;
+            flex-direction: column;
+            line-height: 1.25;
+        }
+
+        .l30-badge-label {
+            font-size: 9px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: .07em;
+            color: #dc3545;
+        }
+
+        .l30-badge-value {
+            font-size: 17px;
+            font-weight: 700;
+            color: #212529;
+            min-width: 60px;
+        }
+
+        #l30-sparkline-container {
+            width: 80px;
+            height: 34px;
+            flex-shrink: 0;
+        }
+
+        /* ── L30 Issues Badge ─────────────────────────────────────── */
+        .l30-issues-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            padding: 5px 12px 5px 10px;
+            background: linear-gradient(135deg, #f0f5ff 0%, #fff 100%);
+            border: 1.5px solid #b6d0fe;
+            border-radius: 0.5rem;
+            cursor: pointer;
+            user-select: none;
+            transition: box-shadow 0.15s, border-color 0.15s;
+            text-decoration: none;
+        }
+
+        .l30-issues-badge:hover {
+            box-shadow: 0 2px 10px rgba(13,110,253,.18);
+            border-color: #0d6efd;
+        }
+
+        .l30-issues-badge .l30-badge-label {
+            color: #0d6efd;
+        }
+
+        #l30-issues-sparkline-container {
+            width: 80px;
+            height: 34px;
+            flex-shrink: 0;
+        }
     </style>
 @endsection
 
@@ -192,6 +309,26 @@
                 <button type="button" class="btn btn-outline-info" id="btnImportCsv">
                     <i class="bi bi-upload me-1"></i> Import CSV
                 </button>
+                @if($showDispatchExtras ?? false)
+                <div id="l30-loss-badge" class="l30-badge" role="button"
+                     data-bs-toggle="modal" data-bs-target="#l30LossModal"
+                     title="Last 30 Days Loss — click for detail">
+                    <div class="l30-badge-info">
+                        <span class="l30-badge-label"><i class="bi bi-graph-down-arrow me-1"></i>L30 Loss</span>
+                        <span class="l30-badge-value" id="l30-badge-total">…</span>
+                    </div>
+                    <div id="l30-sparkline-container"></div>
+                </div>
+                <div id="l30-issues-badge" class="l30-issues-badge" role="button"
+                     data-bs-toggle="modal" data-bs-target="#l30IssuesModal"
+                     title="Last 30 Days Issues — click for detail">
+                    <div class="l30-badge-info">
+                        <span class="l30-badge-label"><i class="bi bi-exclamation-circle me-1"></i>L30 Issues</span>
+                        <span class="l30-badge-value" id="l30-issues-badge-total">…</span>
+                    </div>
+                    <div id="l30-issues-sparkline-container"></div>
+                </div>
+                @endif
             </div>
             <div class="card">
                 <div class="card-body">
@@ -221,7 +358,6 @@
                                     <th class="orders-hold-col-qty">Order Qty</th>
                                     <th class="orders-hold-col-parent">Parent</th>
                                     <th class="orders-hold-col-mp">MKT1</th>
-                                    <th class="orders-hold-col-mp">MKT2</th>
                                     <th class="orders-hold-col-what">What?</th>
                                     <th class="orders-hold-col-action">Action</th>
                                     <th class="orders-hold-col-action">Replacement Tracking</th>
@@ -258,7 +394,6 @@
                                     <th class="orders-hold-col-qty">Order Qty</th>
                                     <th class="orders-hold-col-parent">Parent</th>
                                     <th class="orders-hold-col-mp">MKT1</th>
-                                    <th class="orders-hold-col-mp">MKT2</th>
                                     <th class="orders-hold-col-what">What?</th>
                                     <th class="orders-hold-col-action">Action</th>
                                     <th class="orders-hold-col-action">Replacement Tracking</th>
@@ -294,7 +429,7 @@
                     <div id="importCsvAlert" class="d-none mb-3"></div>
                     <p class="text-muted small mb-2">
                         Upload a CSV file with the following columns (header row required):<br>
-                        <code>sku, qty, order_qty, parent, marketplace_1, marketplace_2, what_happened, action_1, action_1_remark, replacement_tracking, issue, issue_remark, c_action_1, c_action_1_remark</code>
+                        <code>sku, qty, order_qty, parent, marketplace_1, what_happened, action_1, action_1_remark, replacement_tracking, issue, issue_remark, c_action_1, c_action_1_remark</code>
                     </p>
                     <p class="text-muted small mb-3">
                         Required: <strong>sku</strong>, <strong>qty</strong>, <strong>issue</strong> (Root Cause Found). All other columns are optional.
@@ -412,18 +547,9 @@
                             </div>
 
                             <div class="col-md-6">
-                                <label for="hold_issue_marketplace_2" class="form-label">MKT2</label>
-                                <input type="text" class="form-control" id="hold_issue_marketplace_2" name="marketplace_2"
-                                    list="hold_issue_marketplace_datalist" placeholder="Select Marketplace">
-                            </div>
-
-                            <div class="col-md-6">
                                 <label for="hold_issue_what_happened" class="form-label">What?</label>
-                                <select class="form-select" id="hold_issue_what_happened" name="what_happened">
-                                    <option value="">Select</option>
-                                    <option value="0 Stock">0 Stock</option>
-                                    <option value="Damaged">Damaged</option>
-                                </select>
+                                <input type="text" class="form-control" id="hold_issue_what_happened" name="what_happened"
+                                    placeholder="e.g. 0 Stock, Damaged">
                             </div>
 
                             <datalist id="hold_issue_marketplace_datalist">
@@ -502,6 +628,78 @@
             </div>
         </div>
     </div>
+
+    @if($showDispatchExtras ?? false)
+    {{-- ── L30 Loss Modal ───────────────────────────────────────────────── --}}
+    <div class="modal fade" id="l30LossModal" tabindex="-1" aria-labelledby="l30LossModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="l30LossModalLabel">
+                        <i class="bi bi-graph-down-arrow me-2 text-danger"></i>
+                        Last 30 Days Loss
+                        <small class="text-muted fw-normal ms-2" id="l30-modal-range" style="font-size:12px;"></small>
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="l30-chart-full" style="height:320px;"></div>
+                    <hr class="my-3">
+                    <div class="table-responsive">
+                        <table class="table table-sm table-striped table-hover mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Date</th>
+                                    <th class="text-end">Total Loss ($)</th>
+                                    <th class="text-end">Issues</th>
+                                </tr>
+                            </thead>
+                            <tbody id="l30-table-body">
+                                <tr><td colspan="3" class="text-center text-muted py-3">Loading…</td></tr>
+                            </tbody>
+                            <tfoot id="l30-table-foot"></tfoot>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {{-- ── L30 Issues Modal ─────────────────────────────────────────────── --}}
+    <div class="modal fade" id="l30IssuesModal" tabindex="-1" aria-labelledby="l30IssuesModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="l30IssuesModalLabel">
+                        <i class="bi bi-exclamation-circle me-2 text-primary"></i>
+                        Last 30 Days Issues
+                        <small class="text-muted fw-normal ms-2" id="l30-issues-modal-range" style="font-size:12px;"></small>
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="l30-issues-chart-full" style="height:320px;"></div>
+                    <hr class="my-3">
+                    <div class="table-responsive">
+                        <table class="table table-sm table-striped table-hover mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Date</th>
+                                    <th class="text-end">Issues</th>
+                                </tr>
+                            </thead>
+                            <tbody id="l30-issues-table-body">
+                                <tr><td colspan="2" class="text-center text-muted py-3">Loading…</td></tr>
+                            </tbody>
+                            <tfoot id="l30-issues-table-foot"></tfoot>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    @endif
+
 @endsection
 
 @section('script')
@@ -526,7 +724,6 @@
             const orderQtyInput = document.getElementById('hold_issue_order_qty');
             const parentInput = document.getElementById('hold_issue_parent');
             const marketplace1Input = document.getElementById('hold_issue_marketplace_1');
-            const marketplace2Input = document.getElementById('hold_issue_marketplace_2');
             const whatHappenedInput = document.getElementById('hold_issue_what_happened');
             const issueInput = document.getElementById('hold_issue_text');
             const issueRemarkInput = document.getElementById('hold_issue_remark');
@@ -847,7 +1044,7 @@
                         '<td>' + escapeHtml(row.sku) + groupBadge + '</td>' +
                         '<td>' + escapeHtml(row.issue_date || '—') + '</td>' +
                         @if($showDispatchExtras ?? false)
-                        '<td>' + escapeHtml(row.order_number || '—') + '</td>' +
+                        '<td class="order-num-cell">' + (row.order_number ? '<button class="copy-order-btn" data-copy="' + escAttr(row.order_number) + '" title="' + escAttr(row.order_number) + '"><i class="bi bi-clipboard"></i></button><span class="order-num-short">' + escapeHtml(row.order_number) + '</span>' : '—') + '</td>' +
                         '<td>' + (row.refund_amount != null ? '$' + parseFloat(row.refund_amount).toFixed(2) : '—') + '</td>' +
                         '<td>' + (row.total_loss != null ? '$' + parseFloat(row.total_loss).toFixed(2) : '—') + '</td>' +
                         @endif
@@ -855,7 +1052,6 @@
                         '<td>' + escapeHtml(row.order_qty) + '</td>' +
                         '<td>' + escapeHtml(row.parent) + '</td>' +
                         '<td>' + escapeHtml(row.marketplace_1) + '</td>' +
-                        '<td>' + escapeHtml(row.marketplace_2) + '</td>' +
                         '<td>' + whatHappenedDotHtml(row.what_happened) + '</td>' +
                         '<td>' + action1DisplayHtml(row.action_1, row.action_1_remark) + '</td>' +
                         '<td>' + escapeHtml(row.replacement_tracking || '—') + '</td>' +
@@ -898,7 +1094,6 @@
                         '<td>' + escapeHtml(row.order_qty) + '</td>' +
                         '<td>' + escapeHtml(row.parent) + '</td>' +
                         '<td>' + escapeHtml(row.marketplace_1) + '</td>' +
-                        '<td>' + escapeHtml(row.marketplace_2) + '</td>' +
                         '<td>' + whatHappenedDotHtml(row.what_happened) + '</td>' +
                         '<td>' + action1DisplayHtml(row.action_1, row.action_1_remark) + '</td>' +
                         '<td>' + escapeHtml(row.replacement_tracking || '—') + '</td>' +
@@ -926,7 +1121,6 @@
                     parent: row?.parent ?? '',
                     group_id: row?.group_id ?? null,
                     marketplace_1: row?.marketplace_1 ?? '',
-                    marketplace_2: row?.marketplace_2 ?? '',
                     what_happened: row?.what_happened ?? '',
                     issue: row?.issue ?? '',
                     issue_remark: row?.issue_remark ?? '',
@@ -957,7 +1151,6 @@
                     order_qty: row?.order_qty ?? '',
                     parent: row?.parent ?? '',
                     marketplace_1: row?.marketplace_1 ?? '',
-                    marketplace_2: row?.marketplace_2 ?? '',
                     what_happened: row?.what_happened ?? '',
                     issue: row?.issue ?? '',
                     issue_remark: row?.issue_remark ?? '',
@@ -1016,7 +1209,6 @@
                 parentInput.value = '';
                 resetSkuImage();
                 marketplace1Input.value = '';
-                marketplace2Input.value = '';
                 whatHappenedInput.value = '';
                 document.getElementById('hold_issue_date').value = '';
                 @if($showDispatchExtras ?? false)
@@ -1053,7 +1245,6 @@
                 orderQtyInput.value = record.order_qty ?? '';
                 parentInput.value = record.parent || '';
                 marketplace1Input.value = record.marketplace_1 || '';
-                marketplace2Input.value = record.marketplace_2 || '';
                 whatHappenedInput.value = record.what_happened || '';
                 issueInput.value = record.issue || '';
                 document.getElementById('hold_issue_date').value = record.issue_date || '';
@@ -1242,7 +1433,6 @@
                         total_loss: document.getElementById('hold_issue_total_loss')?.value || '',
                         @endif
                         marketplace_1: marketplace1Input.value.trim(),
-                        marketplace_2: marketplace2Input.value.trim(),
                         what_happened: whatHappenedInput.value.trim(),
                         issue_remark: issueRemarkInput.value.trim(),
                         action_1: action1Input.value.trim(),
@@ -1352,6 +1542,26 @@
                 if (archiveBtn) {
                     archiveRecord(archiveBtn.getAttribute('data-id'));
                 }
+
+                const copyBtn = event.target.closest('.copy-order-btn');
+                if (copyBtn) {
+                    const text = copyBtn.getAttribute('data-copy') || '';
+                    navigator.clipboard.writeText(text).then(() => {
+                        copyBtn.classList.add('copied');
+                        copyBtn.innerHTML = '<i class="bi bi-clipboard-check"></i>';
+                        setTimeout(() => {
+                            copyBtn.classList.remove('copied');
+                            copyBtn.innerHTML = '<i class="bi bi-clipboard"></i>';
+                        }, 1500);
+                    }).catch(() => {
+                        const ta = document.createElement('textarea');
+                        ta.value = text;
+                        document.body.appendChild(ta);
+                        ta.select();
+                        document.execCommand('copy');
+                        document.body.removeChild(ta);
+                    });
+                }
             });
 
             btnShowHistory.addEventListener('click', () => {
@@ -1387,13 +1597,13 @@
                     URL.revokeObjectURL(url);
                 }
 
-                const activeHeaders = ['#', 'SKU', 'Issue Date', 'QTY', 'Order QTY', 'Parent', 'MKT1', 'MKT2',
+                const activeHeaders = ['#', 'SKU', 'Issue Date', 'QTY', 'Order QTY', 'Parent', 'MKT1',
                     'What?', 'Action', 'Action Remark', 'Replacement Tracking',
                     'Root Cause Found', 'Root Cause Remark', 'Root Cause Fixed',
                     'Root Cause Fixed Remark', 'Created By', 'Created At'];
                 const activeData = holdIssueRows.map(r => [
                     r.id, r.sku, r.issue_date || '', r.qty, r.order_qty, r.parent,
-                    r.marketplace_1, r.marketplace_2, r.what_happened,
+                    r.marketplace_1, r.what_happened,
                     r.action_1, r.action_1_remark, r.replacement_tracking,
                     r.issue, r.issue_remark, r.c_action_1, r.c_action_1_remark,
                     r.created_by, r.created_at
@@ -1419,8 +1629,8 @@
 
             document.getElementById('importCsvSampleLink').addEventListener('click', (e) => {
                 e.preventDefault();
-                const headers = ['sku','issue_date','qty','order_qty','parent','marketplace_1','marketplace_2','what_happened','action_1','action_1_remark','replacement_tracking','issue','issue_remark','c_action_1','c_action_1_remark'];
-                const sample  = ['SAMPLE-SKU-001','5','2','PARENT-001','Amazon','eBay','Damaged','Cancelled','','TRK123','Quality Issue','','Fixed',''];
+                const headers = ['sku','issue_date','qty','order_qty','parent','marketplace_1','what_happened','action_1','action_1_remark','replacement_tracking','issue','issue_remark','c_action_1','c_action_1_remark'];
+                const sample  = ['SAMPLE-SKU-001','5','2','PARENT-001','Amazon','Damaged','Cancelled','','TRK123','Quality Issue','','Fixed',''];
                 const csv = [headers.join(','), sample.join(',')].join('\r\n');
                 const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
                 const url = URL.createObjectURL(blob);
@@ -1576,6 +1786,255 @@
             renderRows();
             renderHistoryRows();
             loadHoldIssueRows();
+
+            @if($showDispatchExtras ?? false)
+            // ── L30 Loss Badge ────────────────────────────────────────────────────
+            const l30LossUrl = @json(route('customer.care.dispatch.issues.l30.loss'));
+            let l30Data = null;
+            let l30SparkChart = null;
+            let l30FullChart  = null;
+
+            async function loadL30Loss() {
+                try {
+                    const res = await fetch(l30LossUrl, {
+                        headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                    });
+                    if (!res.ok) return;
+                    const json = await res.json();
+                    l30Data = json;
+
+                    const totalEl = document.getElementById('l30-badge-total');
+                    if (totalEl) {
+                        totalEl.textContent = '$' + (json.total || 0).toFixed(2);
+                    }
+                    renderL30Sparkline(json.daily || []);
+                } catch (e) { /* silent */ }
+            }
+
+            function renderL30Sparkline(daily) {
+                const el = document.getElementById('l30-sparkline-container');
+                if (!el || typeof Highcharts === 'undefined') return;
+                if (l30SparkChart) { l30SparkChart.destroy(); l30SparkChart = null; }
+                l30SparkChart = Highcharts.chart(el, {
+                    chart: { type: 'area', margin: [2,2,2,2], backgroundColor: 'transparent', animation: false },
+                    title: { text: '' }, credits: { enabled: false },
+                    xAxis: { visible: false },
+                    yAxis: { visible: false, min: 0 },
+                    legend: { enabled: false },
+                    tooltip: {
+                        headerFormat: '',
+                        pointFormatter: function () { return '<b>' + this.category + '</b>: $' + this.y.toFixed(2); },
+                        outside: true,
+                    },
+                    plotOptions: {
+                        area: {
+                            marker: { enabled: false, states: { hover: { enabled: true, radius: 3 } } },
+                            lineWidth: 1.5,
+                            color: '#dc3545',
+                            fillOpacity: 0.15,
+                            states: { hover: { lineWidth: 2 } },
+                        },
+                    },
+                    series: [{
+                        data: daily.length ? daily.map(d => ({ x: daily.indexOf(d), y: parseFloat(d.loss) || 0, category: d.date })) : [0],
+                    }],
+                });
+            }
+
+            function renderL30FullChart(daily) {
+                const el = document.getElementById('l30-chart-full');
+                if (!el || typeof Highcharts === 'undefined') return;
+                if (l30FullChart) { l30FullChart.destroy(); l30FullChart = null; }
+                const cats = daily.map(d => d.date);
+                const vals = daily.map(d => parseFloat(d.loss) || 0);
+                l30FullChart = Highcharts.chart(el, {
+                    chart: { type: 'area', backgroundColor: '#fff', animation: false },
+                    title: { text: '' },
+                    credits: { enabled: false },
+                    xAxis: {
+                        categories: cats,
+                        labels: { rotation: -45, style: { fontSize: '10px' } },
+                    },
+                    yAxis: { title: { text: 'Loss ($)' }, min: 0 },
+                    legend: { enabled: false },
+                    tooltip: {
+                        headerFormat: '<b>{point.key}</b><br>',
+                        pointFormat: 'Loss: <b>${point.y:.2f}</b>',
+                    },
+                    plotOptions: {
+                        area: {
+                            color: '#dc3545',
+                            fillOpacity: 0.12,
+                            marker: { enabled: true, radius: 4, symbol: 'circle' },
+                            dataLabels: {
+                                enabled: true,
+                                formatter: function () { return this.y > 0 ? '$' + this.y.toFixed(0) : ''; },
+                                style: { fontSize: '9px', color: '#333', textOutline: 'none' },
+                            },
+                        },
+                    },
+                    series: [{ name: 'Loss', data: vals }],
+                });
+            }
+
+            function renderL30Table(daily) {
+                const tbody = document.getElementById('l30-table-body');
+                const tfoot = document.getElementById('l30-table-foot');
+                if (!tbody) return;
+                if (!daily.length) {
+                    tbody.innerHTML = '<tr><td colspan="3" class="text-center text-muted py-3">No loss data in the last 30 days.</td></tr>';
+                    if (tfoot) tfoot.innerHTML = '';
+                    return;
+                }
+                tbody.innerHTML = daily.slice().reverse().map(d =>
+                    '<tr>' +
+                    '<td>' + escapeHtml(d.date) + '</td>' +
+                    '<td class="text-end text-danger fw-semibold">$' + parseFloat(d.loss).toFixed(2) + '</td>' +
+                    '<td class="text-end">' + d.count + '</td>' +
+                    '</tr>'
+                ).join('');
+                const grandTotal  = daily.reduce((s, d) => s + (parseFloat(d.loss) || 0), 0);
+                const totalIssues = daily.reduce((s, d) => s + (parseInt(d.count) || 0), 0);
+                if (tfoot) {
+                    tfoot.innerHTML =
+                        '<tr class="table-danger fw-bold">' +
+                        '<td>Total (L30)</td>' +
+                        '<td class="text-end">$' + grandTotal.toFixed(2) + '</td>' +
+                        '<td class="text-end">' + totalIssues + '</td>' +
+                        '</tr>';
+                }
+            }
+
+            loadL30Loss();
+
+            document.getElementById('l30LossModal')?.addEventListener('show.bs.modal', () => {
+                const daily = l30Data?.daily || [];
+                const rangeEl = document.getElementById('l30-modal-range');
+                if (rangeEl && l30Data) rangeEl.textContent = l30Data.from + ' → ' + l30Data.to;
+                renderL30FullChart(daily);
+                renderL30Table(daily);
+            });
+
+            // ── L30 Issues Badge ──────────────────────────────────────────────────
+            const l30IssuesUrl = @json(route('customer.care.dispatch.issues.l30.issues'));
+            let l30IssuesData       = null;
+            let l30IssuesSparkChart = null;
+            let l30IssuesFullChart  = null;
+
+            async function loadL30Issues() {
+                try {
+                    const res = await fetch(l30IssuesUrl, {
+                        headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                    });
+                    if (!res.ok) return;
+                    const json = await res.json();
+                    l30IssuesData = json;
+
+                    const totalEl = document.getElementById('l30-issues-badge-total');
+                    if (totalEl) totalEl.textContent = json.total || 0;
+                    renderL30IssuesSparkline(json.daily || []);
+                } catch (e) { /* silent */ }
+            }
+
+            function renderL30IssuesSparkline(daily) {
+                const el = document.getElementById('l30-issues-sparkline-container');
+                if (!el || typeof Highcharts === 'undefined') return;
+                if (l30IssuesSparkChart) { l30IssuesSparkChart.destroy(); l30IssuesSparkChart = null; }
+                l30IssuesSparkChart = Highcharts.chart(el, {
+                    chart: { type: 'area', margin: [2,2,2,2], backgroundColor: 'transparent', animation: false },
+                    title: { text: '' }, credits: { enabled: false },
+                    xAxis: { visible: false },
+                    yAxis: { visible: false, min: 0 },
+                    legend: { enabled: false },
+                    tooltip: {
+                        headerFormat: '',
+                        pointFormatter: function () { return '<b>' + this.category + '</b>: ' + this.y + ' issues'; },
+                        outside: true,
+                    },
+                    plotOptions: {
+                        area: {
+                            marker: { enabled: false, states: { hover: { enabled: true, radius: 3 } } },
+                            lineWidth: 1.5,
+                            color: '#0d6efd',
+                            fillOpacity: 0.15,
+                            states: { hover: { lineWidth: 2 } },
+                        },
+                    },
+                    series: [{
+                        data: daily.length ? daily.map(d => ({ x: daily.indexOf(d), y: d.count, category: d.date })) : [0],
+                    }],
+                });
+            }
+
+            function renderL30IssuesFullChart(daily) {
+                const el = document.getElementById('l30-issues-chart-full');
+                if (!el || typeof Highcharts === 'undefined') return;
+                if (l30IssuesFullChart) { l30IssuesFullChart.destroy(); l30IssuesFullChart = null; }
+                l30IssuesFullChart = Highcharts.chart(el, {
+                    chart: { type: 'area', backgroundColor: '#fff', animation: false },
+                    title: { text: '' },
+                    credits: { enabled: false },
+                    xAxis: {
+                        categories: daily.map(d => d.date),
+                        labels: { rotation: -45, style: { fontSize: '10px' } },
+                    },
+                    yAxis: { title: { text: 'Issues' }, min: 0, allowDecimals: false },
+                    legend: { enabled: false },
+                    tooltip: {
+                        headerFormat: '<b>{point.key}</b><br>',
+                        pointFormat: 'Issues: <b>{point.y}</b>',
+                    },
+                    plotOptions: {
+                        area: {
+                            color: '#0d6efd',
+                            fillOpacity: 0.12,
+                            marker: { enabled: true, radius: 4, symbol: 'circle' },
+                            dataLabels: {
+                                enabled: true,
+                                formatter: function () { return this.y > 0 ? this.y : ''; },
+                                style: { fontSize: '9px', color: '#333', textOutline: 'none' },
+                            },
+                        },
+                    },
+                    series: [{ name: 'Issues', data: daily.map(d => d.count) }],
+                });
+            }
+
+            function renderL30IssuesTable(daily) {
+                const tbody = document.getElementById('l30-issues-table-body');
+                const tfoot = document.getElementById('l30-issues-table-foot');
+                if (!tbody) return;
+                if (!daily.length) {
+                    tbody.innerHTML = '<tr><td colspan="2" class="text-center text-muted py-3">No issues in the last 30 days.</td></tr>';
+                    if (tfoot) tfoot.innerHTML = '';
+                    return;
+                }
+                tbody.innerHTML = daily.slice().reverse().map(d =>
+                    '<tr>' +
+                    '<td>' + escapeHtml(d.date) + '</td>' +
+                    '<td class="text-end fw-semibold">' + d.count + '</td>' +
+                    '</tr>'
+                ).join('');
+                const grandTotal = daily.reduce((s, d) => s + (parseInt(d.count) || 0), 0);
+                if (tfoot) {
+                    tfoot.innerHTML =
+                        '<tr class="table-primary fw-bold">' +
+                        '<td>Total (L30)</td>' +
+                        '<td class="text-end">' + grandTotal + '</td>' +
+                        '</tr>';
+                }
+            }
+
+            loadL30Issues();
+
+            document.getElementById('l30IssuesModal')?.addEventListener('show.bs.modal', () => {
+                const daily = l30IssuesData?.daily || [];
+                const rangeEl = document.getElementById('l30-issues-modal-range');
+                if (rangeEl && l30IssuesData) rangeEl.textContent = l30IssuesData.from + ' → ' + l30IssuesData.to;
+                renderL30IssuesFullChart(daily);
+                renderL30IssuesTable(daily);
+            });
+            @endif
         })();
     </script>
 @endsection

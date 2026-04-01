@@ -273,6 +273,7 @@ class EbayTwoController extends Controller
         $campaignListings = collect();
         $itemIds = array_keys($itemIdToSku);
         if (!empty($itemIds)) {
+            try {
             $campaignListings = DB::connection('apicentral')
                 ->table('ebay2_campaign_ads_listings as t')
                 ->join(DB::raw('(SELECT listing_id,
@@ -286,6 +287,10 @@ class EbayTwoController extends Controller
                 ->select('t.listing_id', 't.bid_percentage', 't.suggested_bid')
                 ->get()
                 ->keyBy('listing_id');
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::warning('ebay2_campaign_ads_listings table missing or query failed: ' . $e->getMessage());
+                $campaignListings = collect();
+            }
         }
 
         // 4. Fetch General Reports (listing_id → sku)
