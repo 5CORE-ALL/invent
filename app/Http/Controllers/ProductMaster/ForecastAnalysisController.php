@@ -21,6 +21,16 @@ class ForecastAnalysisController extends Controller
 {
     protected $apiController;
 
+    /** Cache::remember with silent fallback — if cache storage fails, run the query directly. */
+    private function cachedOrRun(string $key, int $ttl, callable $cb)
+    {
+        try {
+            return Cache::remember($key, $ttl, $cb);
+        } catch (\Throwable $e) {
+            return $cb();
+        }
+    }
+
     public function __construct(ApiController $apiController)
     {
         $this->apiController = $apiController;
@@ -76,7 +86,7 @@ class ForecastAnalysisController extends Controller
         };
 
         // Load JungleScout once — build parent-grouped data AND sku-level reviews/ratings together
-        $jungleScoutRaw = Cache::remember('fa_jungle_scout', 3600, function () {
+        $jungleScoutRaw = $this->cachedOrRun('fa_jungle_scout', 3600, function () {
             return JungleScoutProductData::query()->get(['parent', 'sku', 'data']);
         });
 
@@ -125,14 +135,14 @@ class ForecastAnalysisController extends Controller
             ->get(['sku', 'parent', 'Values']);
 
         // Load all shopify data and normalize SKUs for matching
-        $shopifyData = Cache::remember('fa_shopify_skus', 1800, function () {
+        $shopifyData = $this->cachedOrRun('fa_shopify_skus', 1800, function () {
             return ShopifySku::all();
         })->keyBy(function($item) use ($normalizeSku) {
             return $normalizeSku($item->sku);
         });
 
         $amazonPriceBySku = [];
-        foreach (Cache::remember('fa_amazon_prices', 1800, function () {
+        foreach ($this->cachedOrRun('fa_amazon_prices', 1800, function () {
             return DB::table('amazon_datsheets')->whereNotNull('sku')->get(['sku', 'price']);
         }) as $ar) {
             $k = $normalizeSku($ar->sku ?? '');
@@ -160,7 +170,7 @@ class ForecastAnalysisController extends Controller
         };
 
         $amazonAdvBySku = [];
-        foreach (Cache::remember('fa_amazon_adv', 1800, function () {
+        foreach ($this->cachedOrRun('fa_amazon_adv', 1800, function () {
             return AmazonDataView::query()->get(['sku', 'value']);
         }) as $advRow) {
             $k = $normalizeSku($advRow->sku ?? '');
@@ -246,7 +256,7 @@ class ForecastAnalysisController extends Controller
             return $group->first();
         });
         // Load movement_analysis with only needed columns
-        $movementMap = Cache::remember('fa_movement_analysis', 1800, function () {
+        $movementMap = $this->cachedOrRun('fa_movement_analysis', 1800, function () {
             return DB::table('movement_analysis')->get(['sku', 'months']);
         })->keyBy(fn($item) => $normalizeSku($item->sku));
         $readyToShipRows = DB::table('ready_to_ship')
@@ -471,7 +481,7 @@ class ForecastAnalysisController extends Controller
         // Load FBA monthly sales and build a map keyed by normalized base SKU
         // FBA seller_sku has suffix like " fba", " FBA", " Fba" appended to the base SKU
         $currentYear = (int) date('Y');
-        $fbaRows = Cache::remember('fa_fba_monthly', 1800, function () use ($currentYear) {
+        $fbaRows = $this->cachedOrRun('fa_fba_monthly', 1800, function () use ($currentYear) {
             return DB::table('fba_monthly_sales')
                 ->whereIn('year', [$currentYear, $currentYear - 1])
                 ->orderByDesc('year')
