@@ -138,16 +138,23 @@ class DispatchIssuesController extends IssueBoardControllerBase
         return parent::archive($id);
     }
 
-    public function l30Issues(): JsonResponse
+    public function l30Issues(\Illuminate\Http\Request $request): JsonResponse
     {
-        $tz    = config('app.timezone');
-        $today = \Carbon\Carbon::now($tz)->toDateString();
-        $from  = \Carbon\Carbon::now($tz)->subDays(29)->toDateString();
+        $tz         = config('app.timezone');
+        $days       = max(1, (int) $request->query('days', 30));
+        $department = $request->query('department', '');
+        $today      = \Carbon\Carbon::now($tz)->toDateString();
+        $from       = \Carbon\Carbon::now($tz)->subDays($days - 1)->toDateString();
 
-        $rows = DB::table($this->issuesTable())
+        $query = DB::table($this->issuesTable())
             ->selectRaw("DATE(created_at) as day, COUNT(*) as issue_count")
-            ->whereRaw("DATE(created_at) BETWEEN ? AND ?", [$from, $today])
-            ->groupByRaw("DATE(created_at)")
+            ->whereRaw("DATE(created_at) BETWEEN ? AND ?", [$from, $today]);
+
+        if ($department !== '') {
+            $query->where('department', $department);
+        }
+
+        $rows = $query->groupByRaw("DATE(created_at)")
             ->orderByRaw("DATE(created_at)")
             ->get();
 
@@ -155,6 +162,7 @@ class DispatchIssuesController extends IssueBoardControllerBase
             'total' => (int) $rows->sum('issue_count'),
             'from'  => $from,
             'to'    => $today,
+            'days'  => $days,
             'daily' => $rows->map(fn ($r) => [
                 'date'  => $r->day,
                 'count' => (int) $r->issue_count,
@@ -162,17 +170,24 @@ class DispatchIssuesController extends IssueBoardControllerBase
         ]);
     }
 
-    public function l30Loss(): JsonResponse
+    public function l30Loss(\Illuminate\Http\Request $request): JsonResponse
     {
-        $tz    = config('app.timezone');
-        $today = \Carbon\Carbon::now($tz)->toDateString();
-        $from  = \Carbon\Carbon::now($tz)->subDays(29)->toDateString();
+        $tz         = config('app.timezone');
+        $days       = max(1, (int) $request->query('days', 30));
+        $department = $request->query('department', '');
+        $today      = \Carbon\Carbon::now($tz)->toDateString();
+        $from       = \Carbon\Carbon::now($tz)->subDays($days - 1)->toDateString();
 
-        $rows = DB::table($this->issuesTable())
+        $query = DB::table($this->issuesTable())
             ->selectRaw("DATE(created_at) as day, SUM(total_loss) as daily_loss, COUNT(*) as issue_count")
             ->whereRaw("DATE(created_at) BETWEEN ? AND ?", [$from, $today])
-            ->whereNotNull('total_loss')
-            ->groupByRaw("DATE(created_at)")
+            ->whereNotNull('total_loss');
+
+        if ($department !== '') {
+            $query->where('department', $department);
+        }
+
+        $rows = $query->groupByRaw("DATE(created_at)")
             ->orderByRaw("DATE(created_at)")
             ->get();
 

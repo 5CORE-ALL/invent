@@ -526,10 +526,15 @@ class EbayTwoController extends Controller
                 2
             );
             
-            // Calculate SCVR = (eBay L30 / views) * 100
+            // Calculate SCVR = (eBay L30 / views) * 100, CVR_45, CVR_60
             $views = floatval($row['views'] ?? 0);
             $ebayL30 = floatval($row["eBay L30"] ?? 0);
+            $ebayL60 = floatval($row["eBay L60"] ?? 0);
             $row['SCVR'] = $views > 0 ? round(($ebayL30 / $views) * 100, 2) : 0;
+            $row["eBay L45"] = round(($ebayL30 + $ebayL60) / 2, 2);
+            $ebayL45 = $row["eBay L45"];
+            $row['CVR_45'] = $views > 0 ? round(($ebayL45 / $views) * 100, 2) : 0;
+            $row['CVR_60'] = $views > 0 ? round(($ebayL60 / $views) * 100, 2) : 0;
             
             $row["percentage"] = $percentage;
             $row["pmt_ads"] = $pmtAds;
@@ -659,6 +664,9 @@ class EbayTwoController extends Controller
                 $row["PFT %"] = 0;
                 $row["ROI%"] = 0;
                 $row['SCVR'] = 0;
+                $row['CVR_45'] = 0;
+                $row['CVR_60'] = 0;
+                $row["eBay L45"] = 0;
                 $row["percentage"] = 0.85;
                 $row["pmt_ads"] = 0;
                 $row["LP_productmaster"] = 0;

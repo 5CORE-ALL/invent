@@ -435,6 +435,7 @@ abstract class IssueBoardControllerBase extends Controller
             'c_action_1'           => ['c_action_1', 'root_cause_fixed', 'root cause fixed'],
             'c_action_1_remark'    => ['c_action_1_remark', 'root cause fixed remark', 'root_cause_fixed_remark'],
             'issue_date'           => ['issue_date', 'issue date', 'date'],
+            'department'           => ['department', 'dept'],
         ];
 
         while (($row = fgetcsv($handle)) !== false) {
@@ -497,6 +498,7 @@ abstract class IssueBoardControllerBase extends Controller
                     'c_action_1'           => $get('c_action_1'),
                     'c_action_1_remark'    => $get('c_action_1_remark'),
                     'issue_date'           => $get('issue_date'),
+                    'department'           => $get('department'),
                     'created_by'           => $createdBy,
                     'created_by_user_id'   => $user?->id,
                     'created_at'           => $now,

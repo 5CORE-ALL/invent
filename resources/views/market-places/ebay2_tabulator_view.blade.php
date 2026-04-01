@@ -283,6 +283,14 @@
                         <option value="10plus">10%+</option>
                     </select>
 
+                    <select id="cvr-trend-filter" class="form-select form-select-sm pricing-filter-item"
+                        style="width: auto; display: inline-block;">
+                        <option value="all">CVR trend</option>
+                        <option value="l60_gt_l30">CVR 60 &gt; CVR 30</option>
+                        <option value="l30_gt_l60">CVR 30 &gt; CVR 60</option>
+                        <option value="equal">CVR 60 = CVR 30</option>
+                    </select>
+
                     <select id="status-filter" class="form-select form-select-sm pricing-filter-item"
                         style="width: auto; display: inline-block;">
                         <option value="all">Status</option>
@@ -2571,42 +2579,61 @@
                     //     visible: false
                     // },
                     {
-                        title: "CVR",
+                        title: "CVR 30",
                         field: "SCVR",
                         hozAlign: "center",
                         sorter: function(a, b, aRow, bRow) {
                             const aData = aRow.getData();
                             const bData = bRow.getData();
-                            
-                            const aViews = parseFloat(aData.views || 0);
-                            const bViews = parseFloat(bData.views || 0);
-                            const aL30 = parseFloat(aData['eBay L30'] || 0);
-                            const bL30 = parseFloat(bData['eBay L30'] || 0);
-                            
-                            const aValue = aViews === 0 ? 0 : (aL30 / aViews) * 100;
-                            const bValue = bViews === 0 ? 0 : (bL30 / bViews) * 100;
-                            
-                            return aValue - bValue;
+                            const aVal = parseFloat(aData.SCVR) || 0;
+                            const bVal = parseFloat(bData.SCVR) || 0;
+                            return aVal - bVal;
                         },
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
-                            const views = parseFloat(rowData.views || 0);
-                            const l30 = parseFloat(rowData['eBay L30'] || 0);
-                            
-                            if (views === 0) {
-                                return '<span style="color: #6c757d; font-weight: 600;">0.0%</span>';
+                            const val = parseFloat(cell.getValue()) || 0;
+                            const cvr60 = parseFloat(rowData.CVR_60) || 0;
+                            const tol = 0.1;
+                            let arrowHtml = '';
+                            const isParent = rowData.Parent && String(rowData.Parent).toUpperCase().startsWith('PARENT');
+                            if (!isParent) {
+                                let arrowColor = '#6c757d';
+                                let arrowIcon = 'fa-minus';
+                                if (val > cvr60 + tol) {
+                                    arrowColor = '#28a745';
+                                    arrowIcon = 'fa-arrow-up';
+                                } else if (val < cvr60 - tol) {
+                                    arrowColor = '#a00211';
+                                    arrowIcon = 'fa-arrow-down';
+                                }
+                                arrowHtml = ` <span title="CVR 30 vs CVR 60: ${cvr60.toFixed(1)}%" style="vertical-align: middle;"><i class="fas ${arrowIcon}" style="color: ${arrowColor}; font-size: 12px;"></i></span>`;
                             }
-                            
-                            const scvrValue = (l30 / views) * 100;
-                            let color = '';
-                            
-                            // getCvrColor logic from inc/dec page
-                            if (scvrValue <= 4) color = '#a00211'; // red
-                            else if (scvrValue > 4 && scvrValue <= 7) color = '#ffc107'; // yellow
-                            else if (scvrValue > 7 && scvrValue <= 10) color = '#28a745'; // green
-                            else color = '#e83e8c'; // pink
-                            
-                            return `<span style="color: ${color}; font-weight: 600;">${scvrValue.toFixed(1)}%</span>`;
+                            const color = val <= 4 ? '#a00211' : (val > 4 && val <= 7 ? '#ffc107' : (val > 7 && val <= 10 ? '#28a745' : '#e83e8c'));
+                            return `<span style="color: ${color}; font-weight: 600;">${val.toFixed(1)}%</span>${arrowHtml}`;
+                        },
+                        width: 65
+                    },
+                    {
+                        title: "CVR 45",
+                        field: "CVR_45",
+                        hozAlign: "center",
+                        sorter: "number",
+                        formatter: function(cell) {
+                            const val = parseFloat(cell.getValue()) || 0;
+                            let color = val <= 4 ? '#a00211' : (val > 4 && val <= 7 ? '#ffc107' : (val > 7 && val <= 10 ? '#28a745' : '#e83e8c'));
+                            return `<span style="color: ${color}; font-weight: 600;">${val.toFixed(1)}%</span>`;
+                        },
+                        width: 60
+                    },
+                    {
+                        title: "CVR 60",
+                        field: "CVR_60",
+                        hozAlign: "center",
+                        sorter: "number",
+                        formatter: function(cell) {
+                            const val = parseFloat(cell.getValue()) || 0;
+                            let color = val <= 4 ? '#a00211' : (val > 4 && val <= 7 ? '#ffc107' : (val > 7 && val <= 10 ? '#28a745' : '#e83e8c'));
+                            return `<span style="color: ${color}; font-weight: 600;">${val.toFixed(1)}%</span>`;
                         },
                         width: 60
                     },
@@ -4110,6 +4137,7 @@
                 const nrlFilter = $('#nrl-filter').val();
                 const gpftFilter = $('#gpft-filter').val();
                 const cvrFilter = $('#cvr-filter').val();
+                const cvrTrendFilter = $('#cvr-trend-filter').val();
                 const statusFilter = $('#status-filter').val();
                 const adsFilter = $('#ads-filter').val();
                 const dilFilter = $('.column-filter[data-column="dil_percent"].active')?.data('color') || 'all';
@@ -4178,6 +4206,19 @@
                         if (cvrFilter === '4-7') return cvrRounded > 4 && cvrRounded <= 7;
                         if (cvrFilter === '7-10') return cvrRounded > 7 && cvrRounded <= 10;
                         if (cvrFilter === '10plus') return cvrRounded > 10;
+                        return true;
+                    });
+                }
+
+                // CVR trend filter: CVR 60 vs CVR 30
+                if (cvrTrendFilter !== 'all') {
+                    const cvrTrendTol = 0.1;
+                    table.addFilter(function(data) {
+                        const cvr30 = parseFloat(data['SCVR'] || 0);
+                        const cvr60 = parseFloat(data['CVR_60'] || 0);
+                        if (cvrTrendFilter === 'l60_gt_l30') return cvr60 > cvr30 + cvrTrendTol;
+                        if (cvrTrendFilter === 'l30_gt_l60') return cvr30 > cvr60 + cvrTrendTol;
+                        if (cvrTrendFilter === 'equal') return Math.abs(cvr60 - cvr30) <= cvrTrendTol;
                         return true;
                     });
                 }
@@ -4492,7 +4533,7 @@
                 }, 100);
             }
 
-            $('#inventory-filter, #nrl-filter, #gpft-filter, #cvr-filter, #status-filter, #ads-filter').on('change', function() {
+            $('#inventory-filter, #nrl-filter, #gpft-filter, #cvr-filter, #cvr-trend-filter, #status-filter, #ads-filter').on('change', function() {
                 applyFilters();
             });
 

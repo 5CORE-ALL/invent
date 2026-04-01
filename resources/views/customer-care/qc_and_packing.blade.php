@@ -105,6 +105,17 @@
             min-width: 70px;
         }
 
+        /* ── Department dropdown filter ──────────────────────────── */
+        #dept-filter-select {
+            font-size: 12px;
+            padding: 2px 8px;
+            height: 28px;
+            min-width: 130px;
+            border-radius: 0.375rem;
+            border: 1px solid #dee2e6;
+            cursor: pointer;
+        }
+
         .orders-hold-col-mp {
             width: 8%;
         }
@@ -341,6 +352,10 @@
         #l30-issues-sparkline-container {
             display: none;
         }
+
+        /* ── Period filter pills ──────────────────────────────────── */
+        .l30-period-pills { display: none; }
+        .l30-period-pill  { display: none; }
     </style>
 @endsection
 
@@ -376,7 +391,7 @@
                      data-bs-toggle="modal" data-bs-target="#l30IssuesModal"
                      title="Last 30 Days Issues — click for detail">
                     <i class="bi bi-exclamation-circle"></i>
-                    L30 Issues: <span id="l30-issues-badge-total">…</span>
+                    <span id="l30-issues-badge-label">L30</span> Issues: <span id="l30-issues-badge-total">…</span>
                 </div>
                 @endif
             </div>
@@ -389,8 +404,18 @@
             <div class="card mt-3">
                 <div class="card-header d-flex align-items-center justify-content-between">
                     <h5 class="mb-0">{{ $recordsTitle ?? 'QC And Packing Records' }}</h5>
-                    <span class="badge bg-light text-dark" id="hold_issue_total_count">0</span>
+                    <div class="d-flex align-items-center gap-2">
+                        @if($showDispatchExtras ?? false)
+                        <select id="dept-filter-select" class="form-select form-select-sm">
+                            <option value="">All Departments</option>
+                        </select>
+                        @endif
+                        <span class="badge bg-light text-dark" id="hold_issue_total_count">0</span>
+                    </div>
                 </div>
+                @if($showDispatchExtras ?? false)
+                <div id="dept-filter-bar" style="display:none;"></div>
+                @endif
                 <div class="card-body p-0">
                     <div class="table-responsive">
                         <table class="table table-striped table-hover table-sm mb-0 orders-hold-table">
@@ -477,7 +502,7 @@
                     <div id="importCsvAlert" class="d-none mb-3"></div>
                     <p class="text-muted small mb-2">
                         Upload a CSV file with the following columns (header row required):<br>
-                        <code>sku, qty, order_qty, parent, marketplace_1, what_happened, action_1, action_1_remark, replacement_tracking, issue, issue_remark, c_action_1, c_action_1_remark</code>
+                        <code>sku, qty, order_qty, parent, marketplace_1, what_happened, action_1, action_1_remark, replacement_tracking, issue, issue_remark, c_action_1, c_action_1_remark, department</code>
                     </p>
                     <p class="text-muted small mb-3">
                         Required: <strong>sku</strong>, <strong>qty</strong>, <strong>issue</strong> (Root Cause Found). All other columns are optional.
@@ -750,6 +775,21 @@
                     <div style="height:150px;margin-top:8px;">
                         <canvas id="l30IssuesBarChart"></canvas>
                     </div>
+                    <hr class="my-2">
+                    <div class="table-responsive" style="max-height:220px;overflow-y:auto;">
+                        <table class="table table-sm table-striped table-hover mb-0">
+                            <thead class="table-light sticky-top">
+                                <tr>
+                                    <th>Date</th>
+                                    <th class="text-end">Issues</th>
+                                </tr>
+                            </thead>
+                            <tbody id="l30-issues-table-body">
+                                <tr><td colspan="2" class="text-center text-muted py-3">Loading…</td></tr>
+                            </tbody>
+                            <tfoot id="l30-issues-table-foot"></tfoot>
+                        </table>
+                    </div>
                 </div>
             </div>
         </div>
@@ -814,6 +854,43 @@
             let holdIssueRows = [];
             let holdIssueHistoryRows = [];
             let editingIssueId = null;
+            let activeDeptFilter = null;
+
+            function getFilteredRows() {
+                if (!activeDeptFilter) return holdIssueRows;
+                return holdIssueRows.filter(r => (r.department || '') === activeDeptFilter);
+            }
+
+            function buildDeptFilters() {
+                const sel = document.getElementById('dept-filter-select');
+                if (!sel) return;
+                const counts = {};
+                holdIssueRows.forEach(r => {
+                    const d = r.department || '';
+                    if (d) counts[d] = (counts[d] || 0) + 1;
+                });
+                const depts = Object.keys(counts).sort();
+                const prev = sel.value;
+                sel.innerHTML = '<option value="">All Departments (' + holdIssueRows.length + ')</option>';
+                depts.forEach(d => {
+                    const opt = document.createElement('option');
+                    opt.value = d;
+                    opt.textContent = d + ' (' + counts[d] + ')';
+                    if (d === prev) opt.selected = true;
+                    sel.appendChild(opt);
+                });
+                if (prev && !counts[prev]) {
+                    activeDeptFilter = null;
+                    sel.value = '';
+                }
+            }
+
+            document.getElementById('dept-filter-select')?.addEventListener('change', (e) => {
+                activeDeptFilter = e.target.value || null;
+                renderRows();
+                loadL30Loss();
+                loadL30Issues();
+            });
 
             function escAttr(value) {
                 return String(value ?? '')
@@ -1051,26 +1128,22 @@
             }
 
             function updateTotalCount() {
-                // Count distinct errors: each unique group_id = 1 error; rows without group_id = 1 each
+                const filtered = getFilteredRows();
                 const seenGroups = new Set();
                 let errorCount = 0;
-                holdIssueRows.forEach(r => {
+                filtered.forEach(r => {
                     if (r.group_id) {
-                        if (!seenGroups.has(r.group_id)) {
-                            seenGroups.add(r.group_id);
-                            errorCount++;
-                        }
-                    } else {
-                        errorCount++;
-                    }
+                        if (!seenGroups.has(r.group_id)) { seenGroups.add(r.group_id); errorCount++; }
+                    } else { errorCount++; }
                 });
                 totalCountEl.textContent = String(errorCount);
             }
 
             function renderRows() {
                 if (!tableBody) return;
+                const filtered = getFilteredRows();
 
-                if (!holdIssueRows.length) {
+                if (!filtered.length) {
                     if (emptyRow) emptyRow.classList.remove('d-none');
                     updateTotalCount();
                     return;
@@ -1078,7 +1151,7 @@
 
                 if (emptyRow) emptyRow.classList.add('d-none');
 
-                const dataRowsHtml = holdIssueRows.map((row, index) => {
+                const dataRowsHtml = filtered.map((row, index) => {
                     const buttonsHtml =
                         '<div class="hold-close-actions">' +
                         '<button type="button" class="btn btn-sm hold-action-btn hold-edit-btn" data-id="' + row.id +
@@ -1229,9 +1302,11 @@
                     });
                     const data = await response.json();
                     holdIssueRows = Array.isArray(data?.data) ? data.data.map(normalizeRecord) : [];
+                    buildDeptFilters();
                     renderRows();
                 } catch (error) {
                     holdIssueRows = [];
+                    buildDeptFilters();
                     renderRows();
                 }
             }
@@ -1339,6 +1414,7 @@
                         return;
                     }
                     holdIssueRows = holdIssueRows.filter(r => Number(r.id) !== Number(recordId));
+                    buildDeptFilters();
                     renderRows();
                     loadHoldIssueHistoryRows();
                     showAlert(data?.message || 'Hold issue archived successfully.', 'success');
@@ -1547,13 +1623,14 @@
                     if (isEdit) {
                         await loadHoldIssueRows();
                     } else if (Array.isArray(data?.rows)) {
-                        // Multi-SKU response: add all rows
                         data.rows.reverse().forEach(rowData => {
                             holdIssueRows.unshift(normalizeRecord(rowData));
                         });
+                        buildDeptFilters();
                         renderRows();
                     } else {
                         holdIssueRows.unshift(normalizeRecord(data?.row || {}));
+                        buildDeptFilters();
                         renderRows();
                     }
                     loadHoldIssueHistoryRows();
@@ -1690,8 +1767,8 @@
 
             document.getElementById('importCsvSampleLink').addEventListener('click', (e) => {
                 e.preventDefault();
-                const headers = ['sku','qty','order_qty','parent','marketplace_1','what_happened','action_1','action_1_remark','replacement_tracking','issue','issue_remark','c_action_1','c_action_1_remark'];
-                const sample  = ['SAMPLE-SKU-001','5','2','PARENT-001','Amazon','Damaged','Cancelled','','TRK123','Quality Issue','','Fixed',''];
+                const headers = ['sku','qty','order_qty','parent','marketplace_1','what_happened','action_1','action_1_remark','replacement_tracking','issue','issue_remark','c_action_1','c_action_1_remark','department'];
+                const sample  = ['SAMPLE-SKU-001','5','2','PARENT-001','Amazon','Damaged','Cancelled','','TRK123','Quality Issue','','Fixed','','Dispatch'];
                 const csv = [headers.join(','), sample.join(',')].join('\r\n');
                 const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
                 const url = URL.createObjectURL(blob);
@@ -1855,7 +1932,9 @@
 
             async function loadL30Loss() {
                 try {
-                    const res = await fetch(l30LossUrl, {
+                    let url = l30LossUrl;
+                    if (activeDeptFilter) url += '?department=' + encodeURIComponent(activeDeptFilter);
+                    const res = await fetch(url, {
                         headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
                     });
                     if (!res.ok) return;
@@ -2012,10 +2091,13 @@
             let l30IssuesData       = null;
             let l30IssuesSparkChart = null;
             let l30IssuesFullChart  = null;
+            let l30IssuesDays       = 30;
 
             async function loadL30Issues() {
                 try {
-                    const res = await fetch(l30IssuesUrl, {
+                    let url = l30IssuesUrl + '?days=' + l30IssuesDays;
+                    if (activeDeptFilter) url += '&department=' + encodeURIComponent(activeDeptFilter);
+                    const res = await fetch(url, {
                         headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
                     });
                     if (!res.ok) return;
@@ -2024,6 +2106,8 @@
 
                     const totalEl = document.getElementById('l30-issues-badge-total');
                     if (totalEl) totalEl.textContent = json.total || 0;
+                    const labelEl = document.getElementById('l30-issues-badge-label');
+                    if (labelEl) labelEl.textContent = 'L' + l30IssuesDays;
                     renderL30IssuesSparkline(json.daily || []);
                 } catch (e) { /* silent */ }
             }
@@ -2044,15 +2128,41 @@
                 _buildBarChart('l30IssuesBarChart', labels, vals, fmt, '#0d6efd', null);
             }
 
-            function renderL30IssuesTable(daily) { /* removed */ }
+            function renderL30IssuesTable(daily) {
+                const tbody = document.getElementById('l30-issues-table-body');
+                const tfoot = document.getElementById('l30-issues-table-foot');
+                if (!tbody) return;
+                if (!daily.length) {
+                    tbody.innerHTML = '<tr><td colspan="2" class="text-center text-muted py-3">No data.</td></tr>';
+                    if (tfoot) tfoot.innerHTML = '';
+                    return;
+                }
+                tbody.innerHTML = daily.slice().reverse().map(d =>
+                    '<tr><td>' + escapeHtml(d.date) + '</td><td class="text-end fw-semibold">' + d.count + '</td></tr>'
+                ).join('');
+                const total = daily.reduce((s, d) => s + (parseInt(d.count) || 0), 0);
+                if (tfoot) tfoot.innerHTML = '<tr class="table-primary fw-bold"><td>Total (L' + l30IssuesDays + ')</td><td class="text-end">' + total + '</td></tr>';
+            }
 
             loadL30Issues();
+
+            // Period pill clicks
+            document.getElementById('l30-issues-period-pills')?.addEventListener('click', (e) => {
+                const pill = e.target.closest('.l30-period-pill');
+                if (!pill) return;
+                e.stopPropagation();
+                l30IssuesDays = parseInt(pill.getAttribute('data-days')) || 30;
+                document.querySelectorAll('#l30-issues-period-pills .l30-period-pill').forEach(p => p.classList.remove('active'));
+                pill.classList.add('active');
+                loadL30Issues();
+            });
 
             document.getElementById('l30IssuesModal')?.addEventListener('show.bs.modal', () => {
                 const daily = l30IssuesData?.daily || [];
                 const rangeEl = document.getElementById('l30-issues-modal-range');
-                if (rangeEl && l30IssuesData) rangeEl.textContent = l30IssuesData.from + ' → ' + l30IssuesData.to;
+                if (rangeEl && l30IssuesData) rangeEl.textContent = ' (' + l30IssuesData.from + ' → ' + l30IssuesData.to + ')';
                 renderL30IssuesFullChart(daily);
+                renderL30IssuesTable(daily);
             });
             @endif
         })();
