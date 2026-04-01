@@ -58,6 +58,12 @@
         .dm-skel-bar.w-40 { width:40%; } .dm-skel-bar.w-60 { width:60%; } .dm-skel-bar.w-80 { width:80%; }
         @keyframes dmShimmer { 0%{background-position:200% 0}100%{background-position:-200% 0} }
         #dmTableShell.is-loading .dm-table-wrap { opacity:.35; pointer-events:none; }
+        .dm-modal-section { border:1px solid #e2e8f0; border-radius:10px; padding:.75rem; background:#f8fafc; margin-bottom:.75rem; }
+        .dm-modal-section-title { font-size:12px; font-weight:700; color:#1e3a8a; margin-bottom:.5rem; }
+        .dm-aplus-preview { border:1px dashed #cbd5e1; border-radius:8px; background:#fff; padding:.65rem; max-height:280px; overflow:auto; }
+        .dm-aplus-preview img { max-width:100%; height:auto; border-radius:6px; margin-bottom:.5rem; }
+        .dm-mp-group-title { font-size:11px; font-weight:600; color:#334155; }
+        .btn.is-loading { opacity:.75; pointer-events:none; }
     </style>
 @endsection
 
@@ -152,11 +158,31 @@
                 </div>
                 <div class="modal-body">
                     <input type="hidden" id="modalSku">
+                    <input type="hidden" id="modalAplusImagesJson" value="[]">
                     <div class="mb-2"><strong>SKU:</strong> <span id="modalSkuLabel"></span></div>
                     <div class="mb-3"><strong>Product:</strong> <span id="modalProductLabel"></span></div>
-                    <div class="mb-3">
-                        <div class="fw-semibold mb-1">Select marketplaces to push</div>
+                    <div class="dm-modal-section">
+                        <div class="dm-modal-section-title">Select marketplaces to push</div>
                         <div id="modalMarketplaceChecks" class="row g-1"></div>
+                    </div>
+
+                    <div class="dm-modal-section">
+                        <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
+                            <div class="dm-modal-section-title mb-0">Amazon A+ Content</div>
+                            <div class="d-flex flex-wrap gap-2">
+                                <button type="button" class="btn btn-outline-warning btn-sm" id="modalFetchAmazonAplusBtn">
+                                    <i class="fab fa-amazon"></i> Fetch Amazon A+ Content
+                                </button>
+                                <button type="button" class="btn btn-outline-primary btn-sm" id="modalRegenerateAplusBtn">
+                                    <i class="fas fa-arrows-rotate"></i> Regenerate Tiers from A+
+                                </button>
+                            </div>
+                        </div>
+                        <div class="small text-muted mt-1 mb-2">Fetch A+ once, preview it, then regenerate all tier textareas.</div>
+                        <details id="aplusPreviewWrap" class="mt-1 d-none">
+                            <summary class="small fw-semibold text-primary" style="cursor:pointer;">A+ Preview (images + text)</summary>
+                            <div id="aplusPreviewContent" class="dm-aplus-preview mt-2 small text-muted">No A+ content fetched yet.</div>
+                        </details>
                     </div>
 
                     <div class="border rounded p-2 mb-2 bg-light">
@@ -754,17 +780,151 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('modalDesc800').value = String(row.description_800 || '');
         document.getElementById('modalDesc600').value = String(row.description_600 || '');
         updateAllModalCounters();
-        document.getElementById('modalMarketplaceChecks').innerHTML = ALL_MP.map((mp) => `
-            <div class="col-6 col-md-4 col-lg-3">
-                <label class="form-check small">
-                    <input type="checkbox" class="form-check-input modal-mp-chk" value="${esc(mp)}">
-                    <span>${esc(LABELS[mp])} <span class="text-muted">(${LIMITS[mp]})</span></span>
-                </label>
+        const groups = [
+            { title: 'DESC 1500', mps: GROUPS.g1500, limit: 1500 },
+            { title: 'DESC 1000', mps: GROUPS.g1000, limit: 1000 },
+            { title: 'DESC 800', mps: GROUPS.g800, limit: 800 },
+            { title: 'DESC 600', mps: GROUPS.g600, limit: 600 },
+        ];
+        document.getElementById('modalMarketplaceChecks').innerHTML = groups.map((g) => `
+            <div class="col-12 mt-1">
+                <div class="dm-mp-group-title">${esc(g.title)} (${g.limit} chars)</div>
+                <div class="row g-1 mt-1">
+                    ${g.mps.map((mp) => `
+                        <div class="col-6 col-md-4 col-lg-3">
+                            <label class="form-check small">
+                                <input type="checkbox" class="form-check-input modal-mp-chk" value="${esc(mp)}">
+                                <span>${esc(LABELS[mp])}</span>
+                            </label>
+                        </div>
+                    `).join('')}
+                </div>
             </div>
         `).join('');
+        const previewWrap = document.getElementById('aplusPreviewWrap');
+        const previewContent = document.getElementById('aplusPreviewContent');
+        let existingAplusHtml = String(row.amazon_aplus_content || '').trim();
+        let existingAplusImages = [];
+        try {
+            const parsed = row.amazon_aplus_images ? JSON.parse(row.amazon_aplus_images) : [];
+            if (Array.isArray(parsed)) existingAplusImages = parsed.filter((v) => typeof v === 'string' && v.trim() !== '');
+        } catch (e) {}
+        document.getElementById('modalAplusImagesJson').value = JSON.stringify(existingAplusImages || []);
+        if (previewWrap) previewWrap.classList.toggle('d-none', !(existingAplusHtml || existingAplusImages.length));
+        if (previewContent) {
+            if (existingAplusHtml || existingAplusImages.length) {
+                const imgHtml = existingAplusImages.slice(0, 12).map((u, i) => `<img src="${esc(u)}" alt="A+ image ${i + 1}">`).join('');
+                previewContent.innerHTML = `${imgHtml}${existingAplusHtml ? `<div>${existingAplusHtml}</div>` : ''}`;
+            } else {
+                previewContent.textContent = 'No A+ content fetched yet.';
+            }
+        }
         document.getElementById('modalAiLoadingWrap')?.classList.add('d-none');
         if (!editModal) editModal = new bootstrap.Modal(document.getElementById('editDescModal'));
         editModal.show();
+    }
+
+    function setButtonLoading(btnId, loading, textWhenLoading = 'Loading...') {
+        const btn = document.getElementById(btnId);
+        if (!btn) return;
+        if (!btn.dataset.originalText) btn.dataset.originalText = btn.innerHTML;
+        if (loading) {
+            btn.classList.add('is-loading');
+            btn.disabled = true;
+            btn.innerHTML = `<i class="fas fa-spinner fa-spin me-1"></i>${esc(textWhenLoading)}`;
+        } else {
+            btn.classList.remove('is-loading');
+            btn.disabled = false;
+            btn.innerHTML = btn.dataset.originalText;
+        }
+    }
+
+    async function fetchAmazonAplusToModal() {
+        const sku = document.getElementById('modalSku')?.value || '';
+        if (!sku) { toast('SKU not found in modal.', false); return; }
+        const wrap = document.getElementById('modalAiLoadingWrap');
+        const tierEl = document.getElementById('modalAiLoadingTier');
+        if (wrap) wrap.classList.remove('d-none');
+        if (tierEl) tierEl.textContent = 'Fetching Amazon A+ content…';
+        setButtonLoading('modalFetchAmazonAplusBtn', true, 'Fetching A+...');
+        try {
+            const resp = await fetch('/product-description/fetch-amazon-aplus', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json' },
+                body: JSON.stringify({ sku })
+            });
+            const res = await resp.json();
+            if (!res.success) {
+                toast(res.message || 'A+ fetch failed', false);
+                return;
+            }
+            const plain = String(res.data?.description_plain || '').trim();
+            const html = String(res.data?.description_html || '').trim();
+            const images = Array.isArray(res.data?.images) ? res.data.images.filter((v) => typeof v === 'string' && v.trim() !== '') : [];
+            const d1500 = plain ? (plain.length > 1500 ? plain.slice(0, 1500) : plain) : '';
+            if (d1500) {
+                document.getElementById('modalDesc1500').value = d1500;
+                document.getElementById('modalDesc1000').value = d1500.length > 1000 ? d1500.slice(0, 1000) : d1500;
+                document.getElementById('modalDesc800').value = d1500.length > 800 ? d1500.slice(0, 800) : d1500;
+                document.getElementById('modalDesc600').value = d1500.length > 600 ? d1500.slice(0, 600) : d1500;
+                updateAllModalCounters();
+            }
+            document.getElementById('modalAplusImagesJson').value = JSON.stringify(images.slice(0, 12));
+            const previewWrap = document.getElementById('aplusPreviewWrap');
+            const previewContent = document.getElementById('aplusPreviewContent');
+            if (previewWrap) previewWrap.classList.remove('d-none');
+            if (previewContent) {
+                const imgHtml = images.slice(0, 12).map((u, i) => `<img src="${esc(u)}" alt="A+ image ${i + 1}">`).join('');
+                previewContent.innerHTML = `${imgHtml}${html ? `<div>${html}</div>` : (plain ? `<div>${esc(plain)}</div>` : '')}`;
+            }
+            toast('Amazon A+ content fetched and applied to tiers.');
+            loadData(currentPage);
+        } catch (e) {
+            toast('A+ fetch error: ' + e.message, false);
+        } finally {
+            if (wrap) wrap.classList.add('d-none');
+            setButtonLoading('modalFetchAmazonAplusBtn', false);
+        }
+    }
+
+    async function regenerateTierFieldsFromAplus() {
+        const sku = document.getElementById('modalSku')?.value || '';
+        if (!sku) { toast('SKU not found in modal.', false); return; }
+        const wrap = document.getElementById('modalAiLoadingWrap');
+        const tierEl = document.getElementById('modalAiLoadingTier');
+        if (wrap) wrap.classList.remove('d-none');
+        setButtonLoading('modalRegenerateAplusBtn', true, 'Regenerating...');
+        try {
+            const req = async (marketplace) => {
+                if (tierEl) tierEl.textContent = `Regenerating ${LABELS[marketplace]} from A+…`;
+                const r = await fetch('/product-description/regenerate-marketplace', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json' },
+                    body: JSON.stringify({ sku, marketplace })
+                });
+                return r.json();
+            };
+
+            const [a1500, a1000, a800, a600] = await Promise.all([
+                req('amazon'),
+                req('shopify_main'),
+                req('ebay'),
+                req('macy'),
+            ]);
+            if (a1500?.success) document.getElementById('modalDesc1500').value = String(a1500.description || '');
+            if (a1000?.success) document.getElementById('modalDesc1000').value = String(a1000.description || '');
+            if (a800?.success) document.getElementById('modalDesc800').value = String(a800.description || '');
+            if (a600?.success) document.getElementById('modalDesc600').value = String(a600.description || '');
+            const images = Array.isArray(a1500?.images) ? a1500.images.filter((v) => typeof v === 'string' && v.trim() !== '') : [];
+            if (images.length) document.getElementById('modalAplusImagesJson').value = JSON.stringify(images.slice(0, 12));
+            updateAllModalCounters();
+            toast('Descriptions regenerated from Amazon A+ reference.');
+        } catch (e) {
+            toast('Regenerate error: ' + e.message, false);
+        } finally {
+            if (wrap) wrap.classList.add('d-none');
+            setButtonLoading('modalRegenerateAplusBtn', false);
+        }
     }
 
     function getModalTextForMp(mp) {
@@ -797,6 +957,8 @@ document.addEventListener('DOMContentLoaded', () => {
     ['modalDesc1500','modalDesc1000','modalDesc800','modalDesc600'].forEach((id) => {
         document.getElementById(id)?.addEventListener('input', updateAllModalCounters);
     });
+    document.getElementById('modalFetchAmazonAplusBtn')?.addEventListener('click', fetchAmazonAplusToModal);
+    document.getElementById('modalRegenerateAplusBtn')?.addEventListener('click', regenerateTierFieldsFromAplus);
 
     document.getElementById('editDescModal')?.addEventListener('click', (e) => {
         const btn = e.target.closest('.modal-ai-tier');
@@ -833,6 +995,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     document.getElementById('modalSavePmBtn')?.addEventListener('click', () => {
+        setButtonLoading('modalSavePmBtn', true, 'Saving...');
         const sku = document.getElementById('modalSku').value;
         const payload = {
             sku,
@@ -852,7 +1015,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     toast(res.message || 'Saved');
                     loadData(currentPage);
                 } else toast(res.message || 'Save failed', false);
-            });
+            })
+            .catch((e) => toast('Save failed: ' + e.message, false))
+            .finally(() => setButtonLoading('modalSavePmBtn', false));
     });
 
     document.getElementById('modalPushBtn')?.addEventListener('click', () => {
@@ -868,15 +1033,20 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             const lim = LIMITS[mp] || 1500;
             const chunk = text.length > lim ? text.slice(0, lim) : text;
-            updates.push({ marketplace: mp, description: chunk });
+            let imageUrls = [];
+            try {
+                imageUrls = JSON.parse(document.getElementById('modalAplusImagesJson')?.value || '[]');
+            } catch (e) {}
+            updates.push({ marketplace: mp, description: chunk, image_urls: Array.isArray(imageUrls) ? imageUrls : [] });
         }
-        pushPayload(sku, updates, () => { if (editModal) editModal.hide(); }, true);
+        setButtonLoading('modalPushBtn', true, 'Pushing...');
+        pushPayload(sku, updates, (ok) => { if (ok && editModal) editModal.hide(); setButtonLoading('modalPushBtn', false); }, true);
     });
 
     function pushPayload(sku, updates, done, doneOnlyOnSuccess) {
         const updateMps = Array.isArray(updates) ? updates.map((u) => u.marketplace) : [];
         if (!confirmEbay3Push(updateMps)) {
-            if (typeof done === 'function' && !doneOnlyOnSuccess) done();
+            if (typeof done === 'function') done(false);
             return;
         }
         fetch('/product-description/update', {
@@ -895,14 +1065,14 @@ document.addEventListener('DOMContentLoaded', () => {
                             row.descriptions[u.marketplace] = u.description;
                         }
                     });
-                    if (typeof done === 'function' && doneOnlyOnSuccess) done();
+                    if (typeof done === 'function') done(true);
                 } else toast(res.message || 'Push failed', false);
                 loadData(currentPage);
-                if (typeof done === 'function' && !doneOnlyOnSuccess) done();
+                if (!res.success && typeof done === 'function') done(false);
             })
             .catch((e) => {
                 toast('Push failed: ' + e.message, false);
-                if (typeof done === 'function' && !doneOnlyOnSuccess) done();
+                if (typeof done === 'function') done(false);
             });
     }
 

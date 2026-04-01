@@ -643,7 +643,7 @@ class ReverbApiService
      *
      * @return array{success: bool, message: string, listing_id?: string}
      */
-    public function updateDescription(string $identifier, string $description): array
+    public function updateDescription(string $identifier, string $description, array $imageUrls = []): array
     {
         $token = config('services.reverb.token');
         if (! $token) {
@@ -691,7 +691,8 @@ class ReverbApiService
                 $trim,
                 $skuForImages,
                 'Product Image',
-                12
+                12,
+                $imageUrls
             )['html'].
             '</div>';
         $mergedPlain = $this->appendUniqueText($current['plain'], $incomingPlain);
@@ -728,9 +729,9 @@ class ReverbApiService
     /**
      * @return array{success: bool, message: string, listing_id?: string}
      */
-    public function updateProductDescription(string $identifier, string $description): array
+    public function updateProductDescription(string $identifier, string $description, array $imageUrls = []): array
     {
-        return $this->updateDescription($identifier, $description);
+        return $this->updateDescription($identifier, $description, $imageUrls);
     }
 
     /**

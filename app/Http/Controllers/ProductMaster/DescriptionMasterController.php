@@ -12,6 +12,7 @@ use App\Services\MacysApiService;
 use App\Services\ReverbApiService;
 use App\Services\ShopifyApiService;
 use App\Services\ShopifyPLSApiService;
+use App\Services\Support\DescriptionWithImagesFormatter;
 use App\Services\TemuApiService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -71,6 +72,12 @@ class DescriptionMasterController extends Controller
                 'bullet1', 'bullet2', 'bullet3', 'bullet4', 'bullet5',
                 'product_description', 'description_1500', 'description_1000', 'description_800', 'description_600',
             ]);
+            if (Schema::hasColumn('product_master', 'amazon_aplus_content')) {
+                $query->addSelect('amazon_aplus_content');
+            }
+            if (Schema::hasColumn('product_master', 'amazon_aplus_images')) {
+                $query->addSelect('amazon_aplus_images');
+            }
 
             $paginator = $query->paginate($perPage, ['*'], 'page', $page);
             $products = $paginator->items();
@@ -115,6 +122,8 @@ class DescriptionMasterController extends Controller
                     'description_1000' => $product->description_1000,
                     'description_800' => $product->description_800,
                     'description_600' => $product->description_600,
+                    'amazon_aplus_content' => $product->amazon_aplus_content ?? '',
+                    'amazon_aplus_images' => $product->amazon_aplus_images ?? null,
                 ];
                 $desc = [];
                 foreach (array_keys($marketTables) as $mp) {
@@ -161,6 +170,8 @@ class DescriptionMasterController extends Controller
                 'updates' => 'required|array|min:1',
                 'updates.*.marketplace' => 'required|string',
                 'updates.*.description' => 'nullable|string',
+                'updates.*.image_urls' => 'nullable|array',
+                'updates.*.image_urls.*' => 'nullable|string',
             ]);
 
             $sku = $this->normalizeSku($validated['sku']);
@@ -170,6 +181,7 @@ class DescriptionMasterController extends Controller
             foreach ($validated['updates'] as $u) {
                 $marketplace = strtolower(trim($u['marketplace']));
                 $text = trim((string) ($u['description'] ?? ''));
+                $imageUrls = array_values(array_filter(array_map('trim', (array) ($u['image_urls'] ?? []))));
                 if ($text === '') {
                     $results[$marketplace] = ['success' => false, 'message' => 'Description cannot be empty'];
 
@@ -190,7 +202,7 @@ class DescriptionMasterController extends Controller
                 }
 
                 $this->saveDescriptionToMarketplaceTable($marketplace, $sku, $text);
-                $serviceResult = $this->callMarketplaceDescriptionService($marketplace, $sku, $text);
+                $serviceResult = $this->callMarketplaceDescriptionService($marketplace, $sku, $text, $imageUrls);
 
                 $success = (bool) ($serviceResult['success'] ?? false);
                 $results[$marketplace] = [
@@ -351,6 +363,129 @@ class DescriptionMasterController extends Controller
             ]);
         } catch (\Throwable $e) {
             Log::error('DescriptionMaster: generateDescriptionWithAI failed', ['error' => $e->getMessage()]);
+
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * POST /product-description/fetch-amazon-aplus
+     */
+    public function fetchAmazonAplusContent(Request $request)
+    {
+        try {
+            $validated = $request->validate([
+                'sku' => 'required|string',
+            ]);
+            $sku = $this->normalizeSku($validated['sku']);
+            if ($sku === '') {
+                return response()->json(['success' => false, 'message' => 'Invalid SKU'], 422);
+            }
+
+            $res = app(AmazonSpApiService::class)->fetchAplusContent($sku);
+            if (! ($res['success'] ?? false)) {
+                return response()->json(['success' => false, 'message' => (string) ($res['message'] ?? 'Fetch failed')], 422);
+            }
+
+            $data = (array) ($res['data'] ?? []);
+            $html = (string) ($data['description_html'] ?? '');
+            $images = (array) ($data['images'] ?? []);
+
+            if (Schema::hasTable('product_master')) {
+                $update = [];
+                if (Schema::hasColumn('product_master', 'amazon_aplus_content')) {
+                    $update['amazon_aplus_content'] = $html;
+                }
+                if (Schema::hasColumn('product_master', 'amazon_aplus_images')) {
+                    $encoded = json_encode(array_values($images), JSON_UNESCAPED_SLASHES);
+                    if ($encoded !== false) {
+                        $update['amazon_aplus_images'] = $encoded;
+                    }
+                }
+                if ($update !== []) {
+                    ProductMaster::query()->where('sku', $sku)->update($update);
+                }
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Amazon A+ content fetched.',
+                'data' => $data,
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('DescriptionMaster: fetchAmazonAplusContent failed', ['error' => $e->getMessage()]);
+
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * POST /product-description/regenerate-marketplace
+     */
+    public function regenerateDescriptionForMarketplace(Request $request)
+    {
+        try {
+            $validated = $request->validate([
+                'sku' => 'required|string',
+                'marketplace' => 'required|string',
+                'description' => 'nullable|string',
+            ]);
+
+            $sku = $this->normalizeSku($validated['sku']);
+            $marketplace = strtolower(trim($validated['marketplace']));
+            $description = trim((string) ($validated['description'] ?? ''));
+            if ($description === '') {
+                $pm = ProductMaster::query()->where('sku', $sku)->first();
+                $description = trim((string) ($pm->description_1500 ?? $pm->product_description ?? ''));
+            }
+
+            $payload = $this->buildDescriptionPayloadWithImages($sku, $description, $marketplace);
+
+            return response()->json([
+                'success' => true,
+                'marketplace' => $marketplace,
+                'description' => $payload['plain'],
+                'description_html' => $payload['html'],
+                'images' => $payload['images'],
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('DescriptionMaster: regenerateDescriptionForMarketplace failed', ['error' => $e->getMessage()]);
+
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * POST /product-description/with-images
+     */
+    public function getDescriptionWithImages(Request $request)
+    {
+        try {
+            $validated = $request->validate([
+                'sku' => 'required|string',
+                'marketplace' => 'nullable|string',
+                'description' => 'nullable|string',
+            ]);
+
+            $sku = $this->normalizeSku($validated['sku']);
+            $marketplace = strtolower(trim((string) ($validated['marketplace'] ?? 'amazon')));
+            $description = trim((string) ($validated['description'] ?? ''));
+            if ($description === '') {
+                $pm = ProductMaster::query()->where('sku', $sku)->first();
+                $description = trim((string) ($pm->description_1500 ?? $pm->product_description ?? ''));
+            }
+
+            $payload = $this->buildDescriptionPayloadWithImages($sku, $description, $marketplace);
+
+            return response()->json([
+                'success' => true,
+                'marketplace' => $marketplace,
+                'description' => $payload['plain'],
+                'description_html' => $payload['html'],
+                'images' => $payload['images'],
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('DescriptionMaster: getDescriptionWithImages failed', ['error' => $e->getMessage()]);
 
             return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
         }
@@ -520,13 +655,13 @@ class DescriptionMasterController extends Controller
     /**
      * @return array{success: bool, message: string}
      */
-    private function callMarketplaceDescriptionService(string $marketplace, string $sku, string $text): array
+    private function callMarketplaceDescriptionService(string $marketplace, string $sku, string $text, array $imageUrls = []): array
     {
         if ($marketplace === 'shopify_main') {
-            return app(ShopifyApiService::class)->updateDescription($sku, $text);
+            return app(ShopifyApiService::class)->updateDescription($sku, $text, $imageUrls);
         }
         if ($marketplace === 'shopify_pls') {
-            return app(ShopifyPLSApiService::class)->updateDescription($sku, $text);
+            return app(ShopifyPLSApiService::class)->updateDescription($sku, $text, $imageUrls);
         }
 
         $map = [
@@ -534,9 +669,9 @@ class DescriptionMasterController extends Controller
             'temu' => [TemuApiService::class, 'updateDescription'],
             'reverb' => [ReverbApiService::class, 'updateDescription'],
             'macy' => [MacysApiService::class, 'updateDescription'],
-            'ebay' => [EbayApiService::class, 'updateProductDescription'],
-            'ebay2' => [Ebay2ApiService::class, 'updateProductDescription'],
-            'ebay3' => [EbayThreeApiService::class, 'updateProductDescription'],
+            'ebay' => [EbayApiService::class, 'updateDescription'],
+            'ebay2' => [Ebay2ApiService::class, 'updateDescription'],
+            'ebay3' => [EbayThreeApiService::class, 'updateDescription'],
         ];
 
         try {
@@ -549,7 +684,7 @@ class DescriptionMasterController extends Controller
                 return ['success' => false, 'message' => 'Service method not available'];
             }
 
-            $result = $service->{$method}($sku, $text);
+            $result = $service->{$method}($sku, $text, $imageUrls);
             if (is_array($result)) {
                 return [
                     'success' => (bool) ($result['success'] ?? false),
@@ -570,5 +705,46 @@ class DescriptionMasterController extends Controller
         }
 
         return str_replace("\u{00a0}", ' ', trim((string) $sku));
+    }
+
+    /**
+     * @return array{html: string, plain: string, images: array<int, string>}
+     */
+    private function buildDescriptionPayloadWithImages(string $sku, string $description, string $marketplace): array
+    {
+        $pm = ProductMaster::query()->where('sku', $sku)->first();
+        $base = trim($description);
+        $aplusHtml = trim((string) ($pm?->amazon_aplus_content ?? ''));
+        $aplusImages = [];
+        $aplusRaw = $pm?->amazon_aplus_images ?? null;
+        if (is_string($aplusRaw) && trim($aplusRaw) !== '') {
+            $decoded = json_decode($aplusRaw, true);
+            if (is_array($decoded)) {
+                $aplusImages = array_values(array_filter($decoded, fn ($v) => is_string($v) && trim($v) !== ''));
+            }
+        }
+        if ($base === '' && $aplusHtml !== '') {
+            $base = trim(strip_tags($aplusHtml));
+        }
+
+        $limit = $this->maxCharsForMarketplace($marketplace);
+        if (mb_strlen($base) > $limit) {
+            $base = mb_substr($base, 0, $limit);
+        }
+
+        $formatted = DescriptionWithImagesFormatter::buildHtmlWithImages(
+            $base,
+            $sku,
+            $sku,
+            (string) ($pm?->title150 ?? 'Product Image'),
+            $marketplace === 'amazon' ? 9 : 12,
+            $aplusImages
+        );
+
+        return [
+            'html' => $formatted['html'],
+            'plain' => $base,
+            'images' => $formatted['images'],
+        ];
     }
 }
