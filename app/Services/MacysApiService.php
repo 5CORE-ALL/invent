@@ -344,7 +344,7 @@ class MacysApiService
      *
      * @return array{success: bool, message: string}
      */
-    public function updateDescription(string $identifier, string $description): array
+    public function updateDescription(string $identifier, string $description, array $imageUrls = []): array
     {
         if (trim($identifier) === '' || trim($description) === '') {
             return ['success' => false, 'message' => 'SKU (or marketplace product id) and description are required.'];
@@ -367,7 +367,8 @@ class MacysApiService
                 $identifier,
                 $sku,
                 'Product Image',
-                12
+                12,
+                $imageUrls
             )['html'];
             $merged = $this->appendUniqueText($current, $descriptionWithImages);
             $attributes = [
@@ -386,9 +387,9 @@ class MacysApiService
     /**
      * @return array{success: bool, message: string}
      */
-    public function updateProductDescription(string $identifier, string $description): array
+    public function updateProductDescription(string $identifier, string $description, array $imageUrls = []): array
     {
-        return $this->updateDescription($identifier, $description);
+        return $this->updateDescription($identifier, $description, $imageUrls);
     }
 
     /**
