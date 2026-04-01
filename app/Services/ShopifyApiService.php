@@ -196,6 +196,9 @@ class ShopifyApiService
                     'identifier' => $identifier,
                     'variant_id' => $shopifySku->variant_id,
                     'status' => $variantRes->status(),
+                    'x_request_id' => $variantRes->header('x-request-id'),
+                    'retry_after' => $variantRes->header('Retry-After'),
+                    'call_limit' => $variantRes->header('X-Shopify-Shop-Api-Call-Limit'),
                     'body_preview' => mb_substr($variantRes->body(), 0, 500),
                 ]);
                 $msg = $variantRes->status() === 429
@@ -255,6 +258,7 @@ class ShopifyApiService
                 'product_id' => $productId,
                 'status' => $updateRes->status(),
                 'x_request_id' => $updateRes->header('x-request-id'),
+                'call_limit' => $updateRes->header('X-Shopify-Shop-Api-Call-Limit'),
                 'body_preview' => mb_substr($updateRes->body(), 0, 800),
             ]);
 
@@ -277,6 +281,9 @@ class ShopifyApiService
                             'product_id' => $productId,
                             'attempt' => $idx + 1,
                             'status' => $verifyRes->status(),
+                            'x_request_id' => $verifyRes->header('x-request-id'),
+                            'retry_after' => $verifyRes->header('Retry-After'),
+                            'call_limit' => $verifyRes->header('X-Shopify-Shop-Api-Call-Limit'),
                             'body_preview' => mb_substr($verifyRes->body(), 0, 500),
                         ]);
                         continue;
@@ -316,10 +323,17 @@ class ShopifyApiService
                     return [
                         'success' => true,
                         'message' => 'Shopify API returned success, but verification could not confirm persisted body_html yet. Please retry fetch/check in a few seconds.',
+                        'variant_id' => (string) $shopifySku->variant_id,
+                        'product_id' => (string) $productId,
                     ];
                 }
 
-                return ['success' => true, 'message' => 'Shopify product bullets updated and verified.'];
+                return [
+                    'success' => true,
+                    'message' => 'Shopify product bullets updated and verified.',
+                    'variant_id' => (string) $shopifySku->variant_id,
+                    'product_id' => (string) $productId,
+                ];
             }
 
             $errBody = $updateRes->status() === 429
