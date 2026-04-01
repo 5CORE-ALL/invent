@@ -57,6 +57,76 @@ class DispatchIssuesController extends IssueBoardControllerBase
         ];
     }
 
+    public function issuesIndex(): \Illuminate\Http\JsonResponse
+    {
+        $rows = DB::table($this->issuesTable())
+            ->where(function ($q) {
+                $q->whereNull('is_archived')->orWhere('is_archived', false);
+            })
+            ->orderByDesc('id')
+            ->limit(1000)
+            ->get();
+
+        // Build image map: sku (lowercase) => image_url
+        $skus = $rows->pluck('sku')->map(fn ($s) => strtolower(trim((string) $s)))->unique()->values()->all();
+        $shopifyImages = DB::table('shopify_skus')
+            ->selectRaw('LOWER(TRIM(sku)) as sku_key, image_src')
+            ->whereRaw('LOWER(TRIM(sku)) IN (' . implode(',', array_fill(0, count($skus), '?')) . ')', $skus)
+            ->get()
+            ->keyBy('sku_key');
+
+        $pmImages = DB::table('product_master')
+            ->selectRaw('LOWER(TRIM(sku)) as sku_key, main_image, image1')
+            ->whereRaw('LOWER(TRIM(sku)) IN (' . implode(',', array_fill(0, count($skus), '?')) . ')', $skus)
+            ->get()
+            ->keyBy('sku_key');
+
+        $normalizeImage = static function ($path) {
+            $p = trim((string) ($path ?? ''));
+            if ($p === '') return null;
+            if (preg_match('/^(https?:)?\/\//i', $p) || str_starts_with($p, 'data:')) return $p;
+            return '/' . ltrim($p, '/');
+        };
+
+        $imageMap = [];
+        foreach ($skus as $key) {
+            $imageMap[$key] = $normalizeImage($shopifyImages[$key]->image_src ?? null)
+                ?? $normalizeImage($pmImages[$key]->main_image ?? null)
+                ?? $normalizeImage($pmImages[$key]->image1 ?? null);
+        }
+
+        $tz = config('app.timezone');
+        $data = $rows->map(function ($row) use ($tz, $imageMap) {
+            $skuKey = strtolower(trim((string) $row->sku));
+            return [
+                'id'                   => (int) $row->id,
+                'sku'                  => $row->sku,
+                'image_url'            => $imageMap[$skuKey] ?? null,
+                'qty'                  => (float) $row->qty,
+                'order_qty'            => $row->order_qty !== null ? (float) $row->order_qty : null,
+                'parent'               => $row->parent,
+                'marketplace_1'        => $row->marketplace_1,
+                'marketplace_2'        => $row->marketplace_2,
+                'what_happened'        => $row->what_happened,
+                'issue'                => $row->issue,
+                'issue_remark'         => $row->issue_remark,
+                'action_1'             => $row->action_1,
+                'action_1_remark'      => $row->action_1_remark,
+                'replacement_tracking' => $row->replacement_tracking,
+                'c_action_1'           => $row->c_action_1,
+                'c_action_1_remark'    => $row->c_action_1_remark,
+                'close_note'           => $row->close_note,
+                'created_by'           => $row->created_by,
+                'created_at'           => $row->created_at,
+                'created_at_display'   => $row->created_at
+                    ? \Carbon\Carbon::parse($row->created_at)->timezone($tz)->format('d-m-Y H:i')
+                    : '',
+            ] + $this->extraRowFields($row);
+        })->values();
+
+        return response()->json(['data' => $data]);
+    }
+
     public function archive(int $id): JsonResponse
     {
         if (auth()->user()?->email !== 'president@5core.com') {
@@ -135,7 +205,7 @@ class DispatchIssuesController extends IssueBoardControllerBase
     private function storeMultiSku(Request $request, array $skusPayload): JsonResponse
     {
         $request->validate([
-            'issue'              => 'required|string|max:255',
+            'issue'              => 'nullable|string|max:255',
             'order_number'       => 'nullable|string|max:255',
             'refund_amount'      => 'nullable|numeric|min:0',
             'total_loss'         => 'nullable|numeric',

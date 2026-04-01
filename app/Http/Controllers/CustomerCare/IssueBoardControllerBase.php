@@ -40,7 +40,7 @@ abstract class IssueBoardControllerBase extends Controller
             'marketplace_1' => 'nullable|string|max:255',
             'marketplace_2' => 'nullable|string|max:255',
             'what_happened' => 'nullable|string|max:50',
-            'issue' => 'required|string|max:255',
+            'issue' => 'nullable|string|max:255',
             'issue_remark' => 'nullable|string|max:255',
             'action_1' => 'nullable|string|in:Offer Customer Alterntive / Updgrade,Upgraded + Stock Alternate,Alternate Sent + Stock Alternate,Sent Wrong Item + Stock Outgoing,Cancelled,Other|max:255',
             'action_1_remark' => 'nullable|string|max:255',

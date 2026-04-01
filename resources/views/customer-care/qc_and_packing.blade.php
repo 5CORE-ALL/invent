@@ -42,6 +42,33 @@
             max-width: 80px;
         }
 
+        .orders-hold-col-img {
+            width: 42px;
+            min-width: 42px;
+            padding: 2px !important;
+        }
+
+        .sku-thumb {
+            width: 36px;
+            height: 36px;
+            object-fit: contain;
+            border-radius: 3px;
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+        }
+
+        .sku-thumb-placeholder {
+            width: 36px;
+            height: 36px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background: #f0f0f0;
+            border-radius: 3px;
+            color: #adb5bd;
+            font-size: 16px;
+        }
+
         .sku-cell {
             display: block;
             max-width: 80px;
@@ -365,6 +392,7 @@
                             <thead class="table-light">
                                 <tr>
                                     <th class="orders-hold-col-idx">#</th>
+                                    <th class="orders-hold-col-img"></th>
                                     <th class="orders-hold-col-sku">SKU</th>
                                     @if($showDispatchExtras ?? false)
                                     <th class="orders-hold-col-action">Order #</th>
@@ -403,6 +431,7 @@
                             <thead class="table-light">
                                 <tr>
                                     <th class="orders-hold-col-idx">#</th>
+                                    <th class="orders-hold-col-img"></th>
                                     <th class="orders-hold-col-sku">SKU</th>
                                     <th class="orders-hold-col-qty">Order Qty</th>
                                     <th class="orders-hold-col-mp">MKT</th>
@@ -589,10 +618,10 @@
                             </div>
 
                             <div class="col-12">
-                                <label for="hold_issue_text" class="form-label">Root Cause Found <span class="text-danger">*</span></label>
+                                <label for="hold_issue_text" class="form-label">Root Cause Found</label>
                                 <input type="text" class="form-control" id="hold_issue_text" name="issue"
                                     list="hold_issue_root_cause_found_datalist"
-                                    placeholder="Type or select root cause..." required autocomplete="off">
+                                    placeholder="Type or select root cause..." autocomplete="off">
                                 <datalist id="hold_issue_root_cause_found_datalist"></datalist>
                             </div>
 
@@ -1065,6 +1094,7 @@
                         : '';
                     return '<tr>' +
                         '<td>' + escapeHtml(row.id) + '</td>' +
+                        '<td class="orders-hold-col-img">' + (row.image_url ? '<img src="' + escAttr(row.image_url) + '" class="sku-thumb" alt="">' : '<span class="sku-thumb-placeholder"><i class="bi bi-image"></i></span>') + '</td>' +
                         '<td title="' + escAttr(row.sku) + '"><span class="sku-cell">' + escapeHtml(row.sku) + '</span>' + groupBadge + '</td>' +
                         @if($showDispatchExtras ?? false)
                         '<td class="order-num-cell">' + (row.order_number ? '<button class="copy-order-btn" data-copy="' + escAttr(row.order_number) + '" title="' + escAttr(row.order_number) + '"><i class="bi bi-clipboard"></i></button><span class="order-num-short">' + escapeHtml(row.order_number) + '</span>' : '—') + '</td>' +
@@ -1109,6 +1139,7 @@
                 const dataRowsHtml = holdIssueHistoryRows.map((row, index) => {
                     return '<tr>' +
                         '<td>' + escapeHtml(row.issue_ref || row.orders_on_hold_issue_id || row.id) + '</td>' +
+                        '<td class="orders-hold-col-img">' + (row.image_url ? '<img src="' + escAttr(row.image_url) + '" class="sku-thumb" alt="">' : '<span class="sku-thumb-placeholder"><i class="bi bi-image"></i></span>') + '</td>' +
                         '<td title="' + escAttr(row.sku) + '"><span class="sku-cell">' + escapeHtml(row.sku) + '</span></td>' +
                         '<td>' + escapeHtml(row.order_qty) + '</td>' +
                         '<td>' + escapeHtml(row.marketplace_1) + '</td>' +
@@ -1134,6 +1165,7 @@
                 return {
                     id: row?.id ?? null,
                     sku: row?.sku ?? '',
+                    image_url: row?.image_url ?? null,
                     qty: row?.qty ?? 0,
                     order_qty: row?.order_qty ?? '',
                     parent: row?.parent ?? '',
@@ -1163,6 +1195,7 @@
                     issue_ref: row?.issue_ref ?? null,
                     event_type: row?.event_type ?? '',
                     sku: row?.sku ?? '',
+                    image_url: row?.image_url ?? null,
                     qty: row?.qty ?? 0,
                     order_qty: row?.order_qty ?? '',
                     parent: row?.parent ?? '',
@@ -1407,11 +1440,6 @@
                 if (!sku) {
                     showAlert('SKU is required.');
                     skuInput.focus();
-                    return;
-                }
-                if (!issue) {
-                    showAlert('Root Cause Found is required.');
-                    issueInput.focus();
                     return;
                 }
                 if (issueInput.value.trim() === 'Other' && issueRemarkInput.value.trim() === '') {
