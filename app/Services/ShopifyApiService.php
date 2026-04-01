@@ -144,6 +144,14 @@ class ShopifyApiService
         }
 
         $formattedHtml = ShopifyBulletPointsFormatter::formatBodyHtml($bulletPoints);
+        $firstBullet = '';
+        foreach (preg_split('/\r\n|\r|\n/', $bulletPoints) as $line) {
+            $line = trim((string) $line, " \t\n\r\0\x0B-•*");
+            if ($line !== '') {
+                $firstBullet = $line;
+                break;
+            }
+        }
 
         try {
             $domain = config('services.shopify.store_url') ?: config('services.shopify.domain');
@@ -154,6 +162,12 @@ class ShopifyApiService
 
             $domain = preg_replace('#^https?://#', '', $domain);
             $domain = rtrim($domain, '/');
+            Log::info('Shopify updateBulletPoints start', [
+                'identifier' => $identifier,
+                'domain' => $domain,
+                'formatted_html_len' => mb_strlen($formattedHtml),
+                'formatted_html_md5' => md5($formattedHtml),
+            ]);
 
             $trim = trim($identifier);
             $shopifySku = ShopifySku::where('sku', $trim)
@@ -165,6 +179,7 @@ class ShopifyApiService
             }
 
             if (! $shopifySku || ! $shopifySku->variant_id) {
+                Log::warning('Shopify updateBulletPoints mapping missing', ['identifier' => $identifier]);
                 return ['success' => false, 'message' => 'Shopify variant mapping not found for SKU or variant_id.'];
             }
 
@@ -177,6 +192,12 @@ class ShopifyApiService
             });
 
             if (! $variantRes->successful()) {
+                Log::warning('Shopify updateBulletPoints variant lookup failed', [
+                    'identifier' => $identifier,
+                    'variant_id' => $shopifySku->variant_id,
+                    'status' => $variantRes->status(),
+                    'body_preview' => mb_substr($variantRes->body(), 0, 500),
+                ]);
                 $msg = $variantRes->status() === 429
                     ? 'Variant lookup rate limited after retries.'
                     : 'Variant lookup failed: '.$variantRes->body();
@@ -186,8 +207,19 @@ class ShopifyApiService
 
             $productId = $variantRes->json('variant.product_id');
             if (! $productId) {
+                Log::warning('Shopify updateBulletPoints missing product_id from variant lookup', [
+                    'identifier' => $identifier,
+                    'variant_id' => $shopifySku->variant_id,
+                    'variant_response_preview' => mb_substr($variantRes->body(), 0, 500),
+                ]);
                 return ['success' => false, 'message' => 'Product ID missing.'];
             }
+            Log::info('Shopify updateBulletPoints resolved mapping', [
+                'identifier' => $identifier,
+                'mapped_sku' => $shopifySku->sku,
+                'variant_id' => $shopifySku->variant_id,
+                'product_id' => $productId,
+            ]);
 
             usleep(500000);
 
@@ -197,6 +229,14 @@ class ShopifyApiService
             }
 
             $productUrl = "https://{$domain}/admin/api/2024-01/products/{$productId}.json";
+            Log::info('Shopify updateBulletPoints request payload', [
+                'identifier' => $identifier,
+                'variant_id' => $shopifySku->variant_id,
+                'product_id' => $productId,
+                'title_len' => mb_strlen($title),
+                'body_html_len' => mb_strlen($formattedHtml),
+                'body_html_md5' => md5($formattedHtml),
+            ]);
             $updateRes = $this->retryOnRateLimit(function () use ($token, $productUrl, $productId, $formattedHtml, $title) {
                 return Http::withHeaders([
                     'X-Shopify-Access-Token' => $token,
@@ -209,9 +249,77 @@ class ShopifyApiService
                     ],
                 ]);
             });
+            Log::info('Shopify updateBulletPoints API response', [
+                'identifier' => $identifier,
+                'variant_id' => $shopifySku->variant_id,
+                'product_id' => $productId,
+                'status' => $updateRes->status(),
+                'x_request_id' => $updateRes->header('x-request-id'),
+                'body_preview' => mb_substr($updateRes->body(), 0, 800),
+            ]);
 
             if ($updateRes->successful()) {
-                return ['success' => true, 'message' => 'Shopify product bullets updated.'];
+                $verificationDelaysMs = [400, 1000, 2000];
+                $verified = false;
+                $verifiedBodyLen = 0;
+                $verifiedContainsBullet = false;
+                foreach ($verificationDelaysMs as $idx => $delayMs) {
+                    usleep($delayMs * 1000);
+                    $verifyRes = $this->retryOnRateLimit(function () use ($token, $productUrl) {
+                        return Http::withHeaders([
+                            'X-Shopify-Access-Token' => $token,
+                            'Content-Type' => 'application/json',
+                        ])->timeout(30)->get($productUrl);
+                    });
+                    if (! $verifyRes->successful()) {
+                        Log::warning('Shopify updateBulletPoints verify fetch failed', [
+                            'identifier' => $identifier,
+                            'product_id' => $productId,
+                            'attempt' => $idx + 1,
+                            'status' => $verifyRes->status(),
+                            'body_preview' => mb_substr($verifyRes->body(), 0, 500),
+                        ]);
+                        continue;
+                    }
+
+                    $actualBody = (string) ($verifyRes->json('product.body_html') ?? '');
+                    $verifiedBodyLen = mb_strlen($actualBody);
+                    $actualBodyPlain = mb_strtolower(trim(strip_tags(html_entity_decode($actualBody))));
+                    $expectedBulletPlain = mb_strtolower(trim(strip_tags(html_entity_decode($firstBullet))));
+                    $verifiedContainsBullet = $expectedBulletPlain === '' || str_contains($actualBodyPlain, $expectedBulletPlain);
+                    $verified = $actualBody !== '' && $verifiedContainsBullet;
+
+                    Log::info('Shopify updateBulletPoints verify attempt', [
+                        'identifier' => $identifier,
+                        'product_id' => $productId,
+                        'attempt' => $idx + 1,
+                        'actual_body_len' => $verifiedBodyLen,
+                        'contains_first_bullet' => $verifiedContainsBullet,
+                        'actual_body_preview' => mb_substr($actualBody, 0, 400),
+                    ]);
+
+                    if ($verified) {
+                        break;
+                    }
+                }
+
+                if (! $verified) {
+                    Log::warning('Shopify updateBulletPoints success but verification mismatch', [
+                        'identifier' => $identifier,
+                        'variant_id' => $shopifySku->variant_id,
+                        'product_id' => $productId,
+                        'expected_body_md5' => md5($formattedHtml),
+                        'verified_body_len' => $verifiedBodyLen,
+                        'contains_first_bullet' => $verifiedContainsBullet,
+                    ]);
+
+                    return [
+                        'success' => true,
+                        'message' => 'Shopify API returned success, but verification could not confirm persisted body_html yet. Please retry fetch/check in a few seconds.',
+                    ];
+                }
+
+                return ['success' => true, 'message' => 'Shopify product bullets updated and verified.'];
             }
 
             $errBody = $updateRes->status() === 429
