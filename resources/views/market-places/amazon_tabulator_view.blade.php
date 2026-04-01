@@ -3695,45 +3695,13 @@
                             var hasCampaign = !!(row.has_own_pt_campaign && (row.pt_campaign_id || row.pt_campaignName));
                             if (!hasCampaign) return '-';
                             var paused = (row.pt_campaign_status || '').toUpperCase() !== 'ENABLED';
-
-                            // Prefer Amazon suggested bid from report (amazon_sp_campaign_reports.sbid), same idea as KW sbid
-                            var apiSbid = parseFloat(row.pt_sbid);
-                            if (!isNaN(apiSbid) && apiSbid > 0) {
-                                var s = apiSbid.toFixed(2);
-                                return paused ? '<span style="color: #999;">' + s + '</span>' : s;
+                            var out = '-';
+                            var value = cell.getValue();
+                            if (value !== null && value !== undefined && value !== '' && value !== 0 && value !== '0') {
+                                var num = parseFloat(value);
+                                if (!isNaN(num)) out = num.toFixed(2);
                             }
-                            
-                            // Fallback: PT SBID by 2UB and 1UB (same rules as KW SBID) when API sbid is not in report
-                            var l1_cpc = parseFloat(row.pt_l1_cpc) || 0;
-                            var l2_cpc = parseFloat(row.pt_l2_cpc) || 0;
-                            var l7_cpc = parseFloat(row.pt_l7_cpc) || 0;
-                            var budget = parseFloat(row.pt_campaignBudgetAmount) || 0;
-                            var l1_spend = parseFloat(row.pt_spend_L1) || 0;
-                            var l2_spend = parseFloat(row.pt_spend_L2) || 0;
-                            var ub1 = budget > 0 ? (l1_spend / budget) * 100 : 0;
-                            var ub2 = budget > 0 ? (l2_spend / budget) * 100 : 0;
-                            var ub1Red = ub1 < 66;
-                            var ub1Pink = ub1 > 99;
-                            var ub2Red = ub2 < 66;
-                            var ub2Pink = ub2 > 99;
-
-                            var sbid = 0;
-                            if (ub2Red && ub1Red) {
-                                if (l1_cpc > 0) {
-                                    sbid = Math.floor(l1_cpc * 1.10 * 100) / 100;
-                                } else if (l2_cpc > 0) {
-                                    sbid = Math.floor(l2_cpc * 1.10 * 100) / 100;
-                                } else if (l7_cpc > 0) {
-                                    sbid = Math.floor(l7_cpc * 1.10 * 100) / 100;
-                                } else {
-                                    sbid = 0.60;
-                                }
-                            } else if (ub2Pink && ub1Pink) {
-                                sbid = Math.floor(l1_cpc * 0.90 * 100) / 100;
-                            }
-
-                            if (sbid === 0) return paused ? '<span style="color: #999;">-</span>' : '-';
-                            var out = sbid.toFixed(2);
+                            if (out === '-') return '-';
                             return paused ? '<span style="color: #999;">' + out + '</span>' : out;
                         }
                     },
@@ -4028,81 +3996,13 @@
                                 || ((parseFloat(row.hl_spend_L30 || 0) > 0 || parseFloat(row.hl_sales_L30 || 0) > 0) && !!(row.hl_campaign_id || row.hl_campaignName));
                             if (!hasCampaign) return '-';
                             var paused = (row.hl_campaign_status || '').toUpperCase() !== 'ENABLED';
-
-                            // Prefer Amazon suggested bid from report (amazon_sb_campaign_reports.sbid), same idea as PT SBID
-                            var apiSbid = parseFloat(row.hl_sbid);
-                            if (!isNaN(apiSbid) && apiSbid > 0) {
-                                var s = apiSbid.toFixed(2);
-                                return paused ? '<span style="color: #999;">' + s + '</span>' : s;
+                            var out = '-';
+                            var value = cell.getValue();
+                            if (value !== null && value !== undefined && value !== '' && value !== 0 && value !== '0') {
+                                var num = parseFloat(value);
+                                if (!isNaN(num)) out = num.toFixed(2);
                             }
-
-                            var l1_cpc = parseFloat(row.hl_l1_cpc) || 0;
-                            var l7_cpc = parseFloat(row.hl_l7_cpc) || 0;
-                            var budget = parseFloat(row.hl_campaignBudgetAmount) || 0;
-                            var l7_spend = parseFloat(row.hl_spend_L7) || 0;
-                            var l1_spend = parseFloat(row.hl_spend_L1) || 0;
-                            var price = parseFloat(row.price) || 0;
-
-                            var ub7 = budget > 0 ? (l7_spend / (budget * 7)) * 100 : 0;
-                            var ub1 = budget > 0 ? (l1_spend / budget) * 100 : 0;
-
-                            var sbid = 0;
-
-                            var rowUtilizationType = 'all';
-                            if (ub7 > 99 && ub1 > 99) {
-                                rowUtilizationType = 'over';
-                            } else if (ub7 < 66 && ub1 < 66) {
-                                rowUtilizationType = 'under';
-                            } else if (ub7 >= 66 && ub7 <= 99 && ub1 >= 66 && ub1 <= 99) {
-                                rowUtilizationType = 'correctly';
-                            }
-
-                            if (ub7 === 0 && ub1 === 0) {
-                                if (price < 50) {
-                                    sbid = 0.60;
-                                } else if (price >= 50 && price < 100) {
-                                    sbid = 1.00;
-                                } else if (price >= 100 && price < 200) {
-                                    sbid = 1.50;
-                                } else {
-                                    sbid = 2.00;
-                                }
-                            } else if (rowUtilizationType === 'over') {
-                                if (l1_cpc > 0) {
-                                    sbid = Math.floor(l1_cpc * 0.90 * 100) / 100;
-                                } else if (l7_cpc > 0) {
-                                    sbid = Math.floor(l7_cpc * 0.90 * 100) / 100;
-                                } else {
-                                    sbid = 0.60;
-                                }
-                            } else if (rowUtilizationType === 'under') {
-                                if (l1_cpc >= 0.01 && l1_cpc <= 0.20) {
-                                    sbid = Math.floor((l1_cpc + 0.10) * 100) / 100;
-                                } else if (l1_cpc >= 0.201 && l1_cpc <= 0.30) {
-                                    sbid = Math.floor((l1_cpc + 0.05) * 100) / 100;
-                                } else if (l1_cpc > 0) {
-                                    sbid = Math.floor(l1_cpc * 1.10 * 100) / 100;
-                                } else if (l1_cpc === 0 && l7_cpc >= 0.20 && l7_cpc <= 0.30) {
-                                    sbid = Math.floor((l7_cpc + 0.05) * 100) / 100;
-                                } else if (l7_cpc > 0) {
-                                    sbid = Math.floor(l7_cpc * 1.10 * 100) / 100;
-                                } else {
-                                    sbid = 0.60;
-                                }
-                            }
-
-                            // "Correctly" / middle utilization leaves sbid at 0 — use last SBID from report or CPC (server also maps hl_sbid from last_sbid when sbid missing)
-                            if (sbid === 0) {
-                                var lastBid = parseFloat(row.hl_last_sbid);
-                                if (!isNaN(lastBid) && lastBid > 0) sbid = lastBid;
-                            }
-                            if (sbid === 0) {
-                                var acpc = parseFloat(row.hl_l1_cpc || 0) || parseFloat(row.hl_l7_cpc || 0) || parseFloat(row.hl_avg_cpc || 0);
-                                if (acpc > 0) sbid = Math.round(acpc * 100) / 100;
-                            }
-
-                            if (sbid === 0) return paused ? '<span style="color: #999;">-</span>' : '-';
-                            var out = sbid.toFixed(2);
+                            if (out === '-') return '-';
                             return paused ? '<span style="color: #999;">' + out + '</span>' : out;
                         }
                     },
@@ -4707,47 +4607,7 @@
                         hozAlign: "center",
                         visible: false,
                         minWidth: 72,
-                        sorter: function(a, b, aRow, bRow, column, dir, sorterParams) {
-                            var getSortVal = function(row) {
-                                if (!row || parseFloat(row.INV) <= 0) return -1;
-                                var currentSection = $('#section-filter').val();
-                                var hasCampaign = false;
-                                if (currentSection === 'kw-ads') {
-                                    hasCampaign = !!((row.campaign_id || row.campaignName) && (row.kw_campaign_status || '').toUpperCase() !== '');
-                                } else {
-                                    hasCampaign = row.hasCampaign !== undefined ? row.hasCampaign : (row.campaign_id && row.campaignName);
-                                }
-                                if (!hasCampaign) return -1;
-                                var kwStatus = (currentSection === 'kw-ads' ? (row.kw_campaign_status || '') : (row.kw_campaign_status || row.campaignStatus || '')).toUpperCase();
-                                if (kwStatus !== 'ENABLED') return -1;
-                                var l1Cpc = parseFloat(row.l1_cpc) || 0;
-                                var l2Cpc = parseFloat(row.l2_cpc) || 0;
-                                var l7Cpc = parseFloat(row.l7_cpc) || 0;
-                                var budget = (row.utilization_budget != null && row.utilization_budget !== '') ? parseFloat(row.utilization_budget) : (parseFloat(row.campaignBudgetAmount) || 0);
-                                var ub1 = budget > 0 ? (parseFloat(row.l1_spend) || 0) / budget * 100 : 0;
-                                var ub2 = budget > 0 ? (parseFloat(row.l2_spend) || 0) / budget * 100 : 0;
-                                var ub1Red = ub1 < 66;
-                                var ub1Pink = ub1 > 99;
-                                var ub2Red = ub2 < 66;
-                                var ub2Pink = ub2 > 99;
-                                var sbid = 0;
-                                if (ub2Red && ub1Red) {
-                                    if (l1Cpc > 0) sbid = Math.floor(l1Cpc * 1.10 * 100) / 100;
-                                    else if (l1Cpc <= 0 && l2Cpc > 0) sbid = Math.floor(l2Cpc * 1.10 * 100) / 100;
-                                    else if (l1Cpc <= 0 && l2Cpc <= 0 && l7Cpc > 0) sbid = Math.floor(l7Cpc * 1.10 * 100) / 100;
-                                    else sbid = 0.60;
-                                } else if (ub2Pink && ub1Pink) {
-                                    sbid = Math.floor(l1Cpc * 0.90 * 100) / 100;
-                                }
-                                return sbid <= 0 ? -1 : sbid;
-                            };
-                            var va = getSortVal(aRow.getData());
-                            var vb = getSortVal(bRow.getData());
-                            if (va === -1 && vb === -1) return 0;
-                            if (va === -1) return 1;
-                            if (vb === -1) return -1;
-                            return dir === 'asc' ? (va - vb) : (vb - va);
-                        },
+                        sorter: "number",
                         sorterParams: { alignEmptyValues: "bottom" },
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
@@ -4767,40 +4627,11 @@
                             if (kwStatus !== 'ENABLED') {
                                 return '<span style="color: #999;">-</span>';
                             }
-                            
-                            // KW SBID by 2UB and 1UB color only (formula takes precedence so display matches condition)
-                            var l1Cpc = parseFloat(row.l1_cpc) || 0;
-                            var l2Cpc = parseFloat(row.l2_cpc) || 0;
-                            var l7Cpc = parseFloat(row.l7_cpc) || 0;
-                            var budget = (row.utilization_budget != null && row.utilization_budget !== '') ? parseFloat(row.utilization_budget) : (parseFloat(row.campaignBudgetAmount) || 0);
-                            var ub1 = budget > 0 ? (parseFloat(row.l1_spend) || 0) / budget * 100 : 0;
-                            var ub2 = budget > 0 ? (parseFloat(row.l2_spend) || 0) / budget * 100 : 0;
-                            // Red = < 66, Pink = > 99
-                            var ub1Red = ub1 < 66;
-                            var ub1Pink = ub1 > 99;
-                            var ub2Red = ub2 < 66;
-                            var ub2Pink = ub2 > 99;
-
-                            var sbid = 0;
-                            // Case 1: KW 2UB = red AND KW 1UB = red
-                            if (ub2Red && ub1Red) {
-                                if (l1Cpc > 0) {
-                                    sbid = Math.floor(l1Cpc * 1.10 * 100) / 100;
-                                } else if (l1Cpc <= 0 && l2Cpc > 0) {
-                                    sbid = Math.floor(l2Cpc * 1.10 * 100) / 100;
-                                } else if (l1Cpc <= 0 && l2Cpc <= 0 && l7Cpc > 0) {
-                                    sbid = Math.floor(l7Cpc * 1.10 * 100) / 100;
-                                } else {
-                                    sbid = 0.60;
-                                }
-                            } else if (ub2Pink && ub1Pink) {
-                                // Case 2: KW 2UB = pink AND KW 1UB = pink → L1*0.90
-                                sbid = Math.floor(l1Cpc * 0.90 * 100) / 100;
-                            }
-                            // Else: conditions do not match → show "-"
-
-                            if (sbid === 0) return '-';
-                            return sbid.toFixed(2);
+                            var value = cell.getValue();
+                            if (value === null || value === undefined || value === '' || value === 0 || value === '0') return '-';
+                            var num = parseFloat(value);
+                            if (isNaN(num)) return '-';
+                            return num.toFixed(2);
                         }
                     },
                     {

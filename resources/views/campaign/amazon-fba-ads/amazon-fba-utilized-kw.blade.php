@@ -1031,7 +1031,7 @@
                     },
                     {
                         title: "SBID",
-                        field: "sbid_m",
+                        field: "sbid",
                         hozAlign: "center",
                         sorter: "number",
                         visible: function() {
@@ -1039,7 +1039,7 @@
                         },
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
-                            var sbid = row.sbid_m;
+                            var sbid = row.sbid;
                             if (sbid !== null && sbid !== undefined && sbid !== '') {
                                 var num = parseFloat(sbid);
                                 if (!isNaN(num)) return num.toFixed(2);
@@ -1062,7 +1062,7 @@
                         cellClick: function(e, cell) {
                             if (e.target.classList.contains("update-row-btn")) {
                                 var rowData = cell.getRow().getData();
-                                var sbid = rowData.sbid_m;
+                                var sbid = rowData.sbid;
                                 if (sbid !== '') {
                                     var num = parseFloat(sbid);
                                     if (!isNaN(num)) updateBid(num, rowData.campaign_id);
@@ -1620,7 +1620,7 @@
                     var rowEl = row.getElement();
                     if (rowEl && rowEl.offsetParent !== null) {
                         var rowData = row.getData();
-                        var sbid = rowData.sbid_m;
+                        var sbid = rowData.sbid;
 
                         if (sbid !== '') {
                             var num = parseFloat(sbid);
