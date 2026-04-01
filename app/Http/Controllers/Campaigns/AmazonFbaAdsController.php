@@ -585,9 +585,28 @@ class AmazonFbaAdsController extends Controller
                 );
             });
 
+            $matchedCampaignL30 = $amazonSpCampaignReportsL30->first(function ($item) use ($sellerSkuUpper) {
+                $cleanName = strtoupper(trim(rtrim($item->campaignName, '.')));
+                return (
+                    str_contains($cleanName, $sellerSkuUpper)
+                    && !str_ends_with($cleanName, ' PT')
+                    && !str_ends_with($cleanName, ' PT.')
+                );
+            });
+
+            $matchedCampaign15 = $amazonSpCampaignReportsL15->first(function ($item) use ($sellerSkuUpper) {
+                $cleanName = strtoupper(trim(rtrim($item->campaignName, '.')));
+                return (
+                    str_contains($cleanName, $sellerSkuUpper)
+                    && !str_ends_with($cleanName, ' PT')
+                    && !str_ends_with($cleanName, ' PT.')
+                );
+            });
+
             // Include all SKUs, even if they don't have campaigns
-            $campaignId = $matchedCampaignL7 ? ($matchedCampaignL7->campaign_id ?? '') : ($matchedCampaignL1 ? ($matchedCampaignL1->campaign_id ?? '') : '');
-            $campaignName = $matchedCampaignL7 ? ($matchedCampaignL7->campaignName ?? '') : ($matchedCampaignL1 ? ($matchedCampaignL1->campaignName ?? '') : '');
+            // Prefer longer-range rows first for stable identifiers and current bid display.
+            $campaignId = $matchedCampaignL30->campaign_id ?? ($matchedCampaign15->campaign_id ?? ($matchedCampaignL7->campaign_id ?? ($matchedCampaignL1->campaign_id ?? '')));
+            $campaignName = $matchedCampaignL30->campaignName ?? ($matchedCampaign15->campaignName ?? ($matchedCampaignL7->campaignName ?? ($matchedCampaignL1->campaignName ?? '')));
 
             // Check NRA filter
             $nra = '';
@@ -603,7 +622,7 @@ class AmazonFbaAdsController extends Controller
                 }
             }
 
-            $budget = $matchedCampaignL7 ? ($matchedCampaignL7->campaignBudgetAmount ?? 0) : ($matchedCampaignL1 ? ($matchedCampaignL1->campaignBudgetAmount ?? 0) : 0);
+            $budget = $matchedCampaignL30->campaignBudgetAmount ?? ($matchedCampaign15->campaignBudgetAmount ?? ($matchedCampaignL7->campaignBudgetAmount ?? ($matchedCampaignL1->campaignBudgetAmount ?? 0)));
             $l7_spend = $matchedCampaignL7 ? ($matchedCampaignL7->spend ?? 0) : 0;
             $l1_spend = $matchedCampaignL1 ? ($matchedCampaignL1->spend ?? 0) : 0;
 
@@ -639,10 +658,10 @@ class AmazonFbaAdsController extends Controller
             $row['L30']    = $monthlySales ? ($monthlySales->l30_units ?? 0) : 0; // FBA L30 data
             $row['campaign_id'] = $campaignId;
             $row['campaignName'] = $campaignName;
-            $row['campaignStatus'] = $matchedCampaignL7 ? ($matchedCampaignL7->campaignStatus ?? '') : ($matchedCampaignL1 ? ($matchedCampaignL1->campaignStatus ?? '') : '');
+            $row['campaignStatus'] = $matchedCampaignL30->campaignStatus ?? ($matchedCampaign15->campaignStatus ?? ($matchedCampaignL7->campaignStatus ?? ($matchedCampaignL1->campaignStatus ?? '')));
             $row['campaignBudgetAmount'] = $budget;
-            $row['sbid'] = $matchedCampaignL7 ? ($matchedCampaignL7->sbid ?? '') : ($matchedCampaignL1 ? ($matchedCampaignL1->sbid ?? '') : '');
-            $row['crnt_bid'] = $matchedCampaignL7 ? ($matchedCampaignL7->currentSpBidPrice ?? '') : ($matchedCampaignL1 ? ($matchedCampaignL1->currentSpBidPrice ?? '') : '');
+            $row['sbid'] = $matchedCampaignL30->sbid ?? ($matchedCampaign15->sbid ?? ($matchedCampaignL7->sbid ?? ($matchedCampaignL1->sbid ?? '')));
+            $row['crnt_bid'] = $matchedCampaignL30->currentSpBidPrice ?? ($matchedCampaign15->currentSpBidPrice ?? ($matchedCampaignL7->currentSpBidPrice ?? ($matchedCampaignL1->currentSpBidPrice ?? '')));
             $row['l7_spend'] = $l7_spend;
             $row['l7_cpc'] = $matchedCampaignL7 ? ($matchedCampaignL7->costPerClick ?? 0) : 0;
             $row['l1_spend'] = $l1_spend;
@@ -1014,9 +1033,24 @@ class AmazonFbaAdsController extends Controller
                 return $cleanName === $expected || $cleanName === ($expected . '.');
             });
 
+            $matchedCampaignL30 = $amazonSpCampaignReportsL30->first(function ($item) use ($sellerSkuUpper) {
+                $cleanName = strtoupper(trim(rtrim($item->campaignName, '.')));
+                $cleanSku = strtoupper(trim(rtrim($sellerSkuUpper, '.')));
+                $expected = $cleanSku . ' PT';
+                return $cleanName === $expected || $cleanName === ($expected . '.');
+            });
+
+            $matchedCampaign15 = $amazonSpCampaignReportsL15->first(function ($item) use ($sellerSkuUpper) {
+                $cleanName = strtoupper(trim(rtrim($item->campaignName, '.')));
+                $cleanSku = strtoupper(trim(rtrim($sellerSkuUpper, '.')));
+                $expected = $cleanSku . ' PT';
+                return $cleanName === $expected || $cleanName === ($expected . '.');
+            });
+
             // Include all SKUs, even if they don't have campaigns
-            $campaignId = $matchedCampaignL7 ? ($matchedCampaignL7->campaign_id ?? '') : ($matchedCampaignL1 ? ($matchedCampaignL1->campaign_id ?? '') : '');
-            $campaignName = $matchedCampaignL7 ? ($matchedCampaignL7->campaignName ?? '') : ($matchedCampaignL1 ? ($matchedCampaignL1->campaignName ?? '') : '');
+            // Prefer longer-range rows first for stable identifiers and current bid display.
+            $campaignId = $matchedCampaignL30->campaign_id ?? ($matchedCampaign15->campaign_id ?? ($matchedCampaignL7->campaign_id ?? ($matchedCampaignL1->campaign_id ?? '')));
+            $campaignName = $matchedCampaignL30->campaignName ?? ($matchedCampaign15->campaignName ?? ($matchedCampaignL7->campaignName ?? ($matchedCampaignL1->campaignName ?? '')));
 
             // Check NRA filter (removed continue statement)
             $nra = '';
@@ -1035,7 +1069,7 @@ class AmazonFbaAdsController extends Controller
             // Mark SKU as processed (unique filter)
             $processedSkus[] = $baseSkuUpper;
 
-            $budget = $matchedCampaignL7 ? ($matchedCampaignL7->campaignBudgetAmount ?? 0) : ($matchedCampaignL1 ? ($matchedCampaignL1->campaignBudgetAmount ?? 0) : 0);
+            $budget = $matchedCampaignL30->campaignBudgetAmount ?? ($matchedCampaign15->campaignBudgetAmount ?? ($matchedCampaignL7->campaignBudgetAmount ?? ($matchedCampaignL1->campaignBudgetAmount ?? 0)));
             $l7_spend = $matchedCampaignL7 ? ($matchedCampaignL7->spend ?? 0) : 0;
             $l1_spend = $matchedCampaignL1 ? ($matchedCampaignL1->spend ?? 0) : 0;
 
@@ -1074,10 +1108,10 @@ class AmazonFbaAdsController extends Controller
             $row['L30']    = $monthlySales ? ($monthlySales->l30_units ?? 0) : 0; // Changed to FBA L30 data
             $row['campaign_id'] = $campaignId;
             $row['campaignName'] = $campaignName;
-            $row['campaignStatus'] = $matchedCampaignL7 ? ($matchedCampaignL7->campaignStatus ?? '') : ($matchedCampaignL1 ? ($matchedCampaignL1->campaignStatus ?? '') : '');
+            $row['campaignStatus'] = $matchedCampaignL30->campaignStatus ?? ($matchedCampaign15->campaignStatus ?? ($matchedCampaignL7->campaignStatus ?? ($matchedCampaignL1->campaignStatus ?? '')));
             $row['campaignBudgetAmount'] = $budget;
-            $row['sbid'] = $matchedCampaignL7 ? ($matchedCampaignL7->sbid ?? '') : ($matchedCampaignL1 ? ($matchedCampaignL1->sbid ?? '') : '');
-            $row['crnt_bid'] = $matchedCampaignL7 ? ($matchedCampaignL7->currentSpBidPrice ?? '') : ($matchedCampaignL1 ? ($matchedCampaignL1->currentSpBidPrice ?? '') : '');
+            $row['sbid'] = $matchedCampaignL30->sbid ?? ($matchedCampaign15->sbid ?? ($matchedCampaignL7->sbid ?? ($matchedCampaignL1->sbid ?? '')));
+            $row['crnt_bid'] = $matchedCampaignL30->currentSpBidPrice ?? ($matchedCampaign15->currentSpBidPrice ?? ($matchedCampaignL7->currentSpBidPrice ?? ($matchedCampaignL1->currentSpBidPrice ?? '')));
             $row['l7_spend'] = $l7_spend;
             $row['l7_cpc'] = $matchedCampaignL7 ? ($matchedCampaignL7->costPerClick ?? 0) : 0;
             $row['l1_spend'] = $l1_spend;
