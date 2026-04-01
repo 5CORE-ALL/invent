@@ -57,6 +57,15 @@ class DispatchIssuesController extends IssueBoardControllerBase
         ];
     }
 
+    public function archive(int $id): JsonResponse
+    {
+        if (auth()->user()?->email !== 'president@5core.com') {
+            return response()->json(['message' => 'Unauthorised.'], 403);
+        }
+
+        return parent::archive($id);
+    }
+
     public function l30Issues(): JsonResponse
     {
         $tz    = config('app.timezone');
@@ -64,10 +73,10 @@ class DispatchIssuesController extends IssueBoardControllerBase
         $from  = \Carbon\Carbon::now($tz)->subDays(29)->toDateString();
 
         $rows = DB::table($this->issuesTable())
-            ->selectRaw("COALESCE(issue_date, DATE(created_at)) as day, COUNT(*) as issue_count")
-            ->whereRaw("COALESCE(issue_date, DATE(created_at)) BETWEEN ? AND ?", [$from, $today])
-            ->groupByRaw("COALESCE(issue_date, DATE(created_at))")
-            ->orderByRaw("COALESCE(issue_date, DATE(created_at))")
+            ->selectRaw("DATE(created_at) as day, COUNT(*) as issue_count")
+            ->whereRaw("DATE(created_at) BETWEEN ? AND ?", [$from, $today])
+            ->groupByRaw("DATE(created_at)")
+            ->orderByRaw("DATE(created_at)")
             ->get();
 
         return response()->json([
@@ -88,11 +97,11 @@ class DispatchIssuesController extends IssueBoardControllerBase
         $from  = \Carbon\Carbon::now($tz)->subDays(29)->toDateString();
 
         $rows = DB::table($this->issuesTable())
-            ->selectRaw("COALESCE(issue_date, DATE(created_at)) as day, SUM(total_loss) as daily_loss, COUNT(*) as issue_count")
-            ->whereRaw("COALESCE(issue_date, DATE(created_at)) BETWEEN ? AND ?", [$from, $today])
+            ->selectRaw("DATE(created_at) as day, SUM(total_loss) as daily_loss, COUNT(*) as issue_count")
+            ->whereRaw("DATE(created_at) BETWEEN ? AND ?", [$from, $today])
             ->whereNotNull('total_loss')
-            ->groupByRaw("COALESCE(issue_date, DATE(created_at))")
-            ->orderByRaw("COALESCE(issue_date, DATE(created_at))")
+            ->groupByRaw("DATE(created_at)")
+            ->orderByRaw("DATE(created_at)")
             ->get();
 
         return response()->json([
