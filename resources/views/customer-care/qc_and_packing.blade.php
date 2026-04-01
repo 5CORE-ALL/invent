@@ -4,11 +4,16 @@
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <style>
         .orders-hold-table {
-            table-layout: fixed;
+            table-layout: auto;
             width: 100%;
             font-size: 12px;
             border: 1px solid #dee2e6;
             border-collapse: collapse;
+        }
+
+        .orders-hold-table-wrap {
+            overflow-x: auto;
+            width: 100%;
         }
 
         .orders-hold-table th,
@@ -17,6 +22,10 @@
             vertical-align: middle;
             border: 1px solid #dee2e6;
             text-align: center;
+        }
+
+        .orders-hold-table th {
+            white-space: nowrap;
         }
 
         .orders-hold-table td {
@@ -32,16 +41,22 @@
             width: 11%;
         }
 
-        .orders-hold-col-qty {
+        .orders-hold-col-date {
+            min-width: 75px;
             width: 7%;
+            white-space: nowrap;
+        }
+
+        .orders-hold-col-qty {
+            width: 5%;
         }
 
         .orders-hold-col-parent {
-            width: 13%;
+            width: 10%;
         }
 
         .orders-hold-col-mp {
-            width: 11%;
+            width: 8%;
         }
 
         .orders-hold-col-issue {
@@ -49,23 +64,23 @@
         }
 
         .orders-hold-col-created-by {
-            width: 11%;
+            width: 8%;
         }
 
         .orders-hold-col-created-at {
-            width: 12%;
+            width: 9%;
         }
 
         .orders-hold-col-action {
-            width: 10%;
+            width: 9%;
         }
 
         .orders-hold-col-what {
-            width: 6%;
+            width: 5%;
         }
 
         .orders-hold-col-close {
-            width: 8%;
+            width: 7%;
             text-align: center;
         }
 
@@ -196,6 +211,12 @@
                                 <tr>
                                     <th class="orders-hold-col-idx">#</th>
                                     <th class="orders-hold-col-sku">SKU</th>
+                                    <th class="orders-hold-col-date">Issue Date</th>
+                                    @if($showDispatchExtras ?? false)
+                                    <th class="orders-hold-col-action">Order #</th>
+                                    <th class="orders-hold-col-action">Refund ($)</th>
+                                    <th class="orders-hold-col-action">Total Loss ($)</th>
+                                    @endif
                                     <th class="orders-hold-col-qty">QTY</th>
                                     <th class="orders-hold-col-qty">Order Qty</th>
                                     <th class="orders-hold-col-parent">Parent</th>
@@ -345,6 +366,30 @@
                                 <input type="text" class="form-control" id="hold_issue_parent" name="parent" readonly>
                             </div>
 
+                            <div class="col-md-3">
+                                <label for="hold_issue_date" class="form-label">Issue Date</label>
+                                <input type="text" class="form-control" id="hold_issue_date" name="issue_date"
+                                    placeholder="e.g. 01-Apr-2026 or any format">
+                            </div>
+
+                            @if($showDispatchExtras ?? false)
+                            <div class="col-md-4">
+                                <label for="hold_issue_order_number" class="form-label">Order Number</label>
+                                <input type="text" class="form-control" id="hold_issue_order_number" name="order_number"
+                                    placeholder="Enter order number">
+                            </div>
+                            <div class="col-md-4">
+                                <label for="hold_issue_refund_amount" class="form-label">Refund Amount ($)</label>
+                                <input type="number" class="form-control" id="hold_issue_refund_amount" name="refund_amount"
+                                    min="0" step="0.01" placeholder="0.00">
+                            </div>
+                            <div class="col-md-4">
+                                <label for="hold_issue_total_loss" class="form-label">Total Loss ($)</label>
+                                <input type="number" class="form-control" id="hold_issue_total_loss" name="total_loss"
+                                    step="0.01" placeholder="0.00">
+                            </div>
+                            @endif
+
                             <div class="col-md-6">
                                 <label for="hold_issue_marketplace_1" class="form-label">MKT1</label>
                                 <input type="text" class="form-control" id="hold_issue_marketplace_1" name="marketplace_1"
@@ -391,8 +436,13 @@
 
                             <div class="col-md-8 d-none" id="action1RemarkWrap">
                                 <label for="hold_issue_action_1_remark" class="form-label">Action Remark</label>
+                                @if($showDispatchExtras ?? false)
+                                <textarea class="form-control" id="hold_issue_action_1_remark" name="action_1_remark"
+                                    rows="3" placeholder="Write action remark..."></textarea>
+                                @else
                                 <input type="text" class="form-control" id="hold_issue_action_1_remark" name="action_1_remark"
                                     placeholder="Write remark for Other">
+                                @endif
                             </div>
 
                             <div class="col-md-6">
@@ -785,6 +835,12 @@
                     return '<tr>' +
                         '<td>' + escapeHtml(row.id) + '</td>' +
                         '<td>' + escapeHtml(row.sku) + '</td>' +
+                        '<td>' + escapeHtml(row.issue_date || '—') + '</td>' +
+                        @if($showDispatchExtras ?? false)
+                        '<td>' + escapeHtml(row.order_number || '—') + '</td>' +
+                        '<td>' + (row.refund_amount != null ? '$' + parseFloat(row.refund_amount).toFixed(2) : '—') + '</td>' +
+                        '<td>' + (row.total_loss != null ? '$' + parseFloat(row.total_loss).toFixed(2) : '—') + '</td>' +
+                        @endif
                         '<td>' + escapeHtml(row.qty) + '</td>' +
                         '<td>' + escapeHtml(row.order_qty) + '</td>' +
                         '<td>' + escapeHtml(row.parent) + '</td>' +
@@ -871,6 +927,10 @@
                     close_note: row?.close_note ?? '',
                     created_by: row?.created_by ?? 'System',
                     created_at: row?.created_at_display ?? row?.created_at ?? '',
+                    issue_date: row?.issue_date ?? '',
+                    order_number: row?.order_number ?? '',
+                    refund_amount: row?.refund_amount ?? null,
+                    total_loss: row?.total_loss ?? null,
                 };
             }
 
@@ -947,6 +1007,12 @@
                 marketplace1Input.value = '';
                 marketplace2Input.value = '';
                 whatHappenedInput.value = '';
+                document.getElementById('hold_issue_date').value = '';
+                @if($showDispatchExtras ?? false)
+                if (document.getElementById('hold_issue_order_number')) document.getElementById('hold_issue_order_number').value = '';
+                if (document.getElementById('hold_issue_refund_amount')) document.getElementById('hold_issue_refund_amount').value = '';
+                if (document.getElementById('hold_issue_total_loss')) document.getElementById('hold_issue_total_loss').value = '';
+                @endif
                 issueRemarkInput.value = '';
                 toggleRootCauseRemarkField();
                 action1Input.value = '';
@@ -975,6 +1041,12 @@
                 marketplace2Input.value = record.marketplace_2 || '';
                 whatHappenedInput.value = record.what_happened || '';
                 issueInput.value = record.issue || '';
+                document.getElementById('hold_issue_date').value = record.issue_date || '';
+                @if($showDispatchExtras ?? false)
+                if (document.getElementById('hold_issue_order_number')) document.getElementById('hold_issue_order_number').value = record.order_number || '';
+                if (document.getElementById('hold_issue_refund_amount')) document.getElementById('hold_issue_refund_amount').value = record.refund_amount ?? '';
+                if (document.getElementById('hold_issue_total_loss')) document.getElementById('hold_issue_total_loss').value = record.total_loss ?? '';
+                @endif
                 issueRemarkInput.value = record.issue_remark || '';
                 toggleRootCauseRemarkField();
                 action1Input.value = record.action_1 || '';
@@ -1150,6 +1222,12 @@
                         marketplace_2: marketplace2Input.value.trim(),
                         what_happened: whatHappenedInput.value.trim(),
                         issue: issue,
+                        issue_date: document.getElementById('hold_issue_date').value.trim(),
+                        @if($showDispatchExtras ?? false)
+                        order_number: (document.getElementById('hold_issue_order_number')?.value || '').trim(),
+                        refund_amount: document.getElementById('hold_issue_refund_amount')?.value || '',
+                        total_loss: document.getElementById('hold_issue_total_loss')?.value || '',
+                        @endif
                         issue_remark: issueRemarkInput.value.trim(),
                         action_1: action1Input.value.trim(),
                         action_1_remark: action1RemarkInput.value.trim(),
@@ -1254,12 +1332,12 @@
                     URL.revokeObjectURL(url);
                 }
 
-                const activeHeaders = ['#', 'SKU', 'QTY', 'Order QTY', 'Parent', 'MKT1', 'MKT2',
+                const activeHeaders = ['#', 'SKU', 'Issue Date', 'QTY', 'Order QTY', 'Parent', 'MKT1', 'MKT2',
                     'What?', 'Action', 'Action Remark', 'Replacement Tracking',
                     'Root Cause Found', 'Root Cause Remark', 'Root Cause Fixed',
                     'Root Cause Fixed Remark', 'Created By', 'Created At'];
                 const activeData = holdIssueRows.map(r => [
-                    r.id, r.sku, r.qty, r.order_qty, r.parent,
+                    r.id, r.sku, r.issue_date || '', r.qty, r.order_qty, r.parent,
                     r.marketplace_1, r.marketplace_2, r.what_happened,
                     r.action_1, r.action_1_remark, r.replacement_tracking,
                     r.issue, r.issue_remark, r.c_action_1, r.c_action_1_remark,
@@ -1286,7 +1364,7 @@
 
             document.getElementById('importCsvSampleLink').addEventListener('click', (e) => {
                 e.preventDefault();
-                const headers = ['sku','qty','order_qty','parent','marketplace_1','marketplace_2','what_happened','action_1','action_1_remark','replacement_tracking','issue','issue_remark','c_action_1','c_action_1_remark'];
+                const headers = ['sku','issue_date','qty','order_qty','parent','marketplace_1','marketplace_2','what_happened','action_1','action_1_remark','replacement_tracking','issue','issue_remark','c_action_1','c_action_1_remark'];
                 const sample  = ['SAMPLE-SKU-001','5','2','PARENT-001','Amazon','eBay','Damaged','Cancelled','','TRK123','Quality Issue','','Fixed',''];
                 const csv = [headers.join(','), sample.join(',')].join('\r\n');
                 const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });

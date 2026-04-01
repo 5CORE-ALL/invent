@@ -1,0 +1,54 @@
+Sr.No	Item SKU	ORDER ID	WORK BY	PLATFORM	REASON	ACTION	REFUNDED BY CC	TOTAL AMOUNT ESTIMATED	ACTUAL  AMOUNT LOSS	
+Jan 3	RTRO MIC GLD BLK	04-13977-20260
+	Hrit	eBay	ordered RTRO MIC CH BLK and received GLD variant, label was correct-  opened return and refund issued	Refunded by Hrit	$33.86	33.86	33.86	
+Jan 5	MUS FLD BLU	PO-211-11812690046072407	Hrit	Temu	"opened returnless refund- Wrong item was sent
+Comment: Wring cilor"	Partial Refund	$4.67	4.67	4.67	
+Jan 7	DS CH BLU-VEL REST LVR	"05-14044-80609
+"	Hrit	Ebay 3	received: DS CH BLU   label was correct (sku in mail)	FULL Replacement		8+11.21	19.21	
+Jan 8	DS VEL RED REST-SWL	113-0258354-1594613	Hrit	Amazon	received DS CH RED REST-LVR	FULL Replacement		8+8	16	
+Jan 17	DS CH RED-VEL REST LVR
+	251461	Hrit	Shopify	received DS CH RED REST LVR label was correct- mailed	FULL Replacement		8+8	16	
+Jan 19	SS HD 1PK 3FT YLW BAG	05-14105-12545
+	Hrit	Ebay 3	ordered 2pcs, dispatched only 1pc, label correct	Required Item sent		8	8	
+Jan 22	FR 15 140 MS	PO-211-01361806894710475	Hrit	Temu	opened reshipment request- only 1 box received image given	FULL Replacement		8	8	
+Jan 22	WF 8"-890 2PC	26-14085-72265	Hrit	eBay	ordered 3pcs, llabel was correct- received 1pc, needs 2pcs	Required Item sent		8	8	
+Jan 24	WS-11 5 2PCS	PO-211-12017477304952467	Hrit	Temu	ordered WS-11 5 2PCS received WST 04-15 Pair- opened return and delivered on 23rd jan	Refunded by Hrit	$23.36	23.56+8.72	32.28	
+Jan 24	GSH HD RED
+	252836	Hrit	Shopify	ordered 2pcs received 1pc, label was correct	Required Item sent		8	8	
+Jan 26	FR 15 190 MS	113-5641107-0457040	Hrit	Amazon	received 18" instead of 15", buyer called	FULL Replacement		8+8	16	
+Jan 26	WF 15 140 4OHM GTR	PO-211-06449092414072121	Anish	Temu	ordered 2 item received only 1 	Required Item sent		8	8	
+Jan 27	SS HD 1PK BLK WOB	15-14107-00153 	Anish	eBay	wrong item sent sku: SS HD 1PK 3FT BLK WOB, label was correct	FULL Replacement		8+3.49	11.49	
+Jan 27	GRack 5N1 OVAL 2pcs	03-14149-41594	Hrit	eBay	ordered 3pcs, received only 1pc	Buyer demanded REFUND only		0	0	
+Jan 29	GSS BR 6PCS	15-14105-19219	Anish	eBay	ordered 4 sets and received 1set only- send 3sets	Required Item sent		8	8	
+Jan 31	GFS BLK 3PCS	25-14118-70140	Hrit	eBay	wrong items sent GFF TP BLK 3PCS	FULL Replacement		8+5.16	13.16	
+Jan 31	CS 04 2W WoG	10-14109-96070
+	Hrit	eBay	wrong item sent CS 06 2W 	FULL Replacement		8+7.42	15.42	
+Jan 31	WF 10120 4OHM	111-5268521-0936233	Hrit	Amazon	buyer says received only 1 speaker, label made for 2pcs	Required Item sent		8	8	
+Feb 2	WF 15 156 PP 4OHM	112-6539839-8602663	Hrit	Amazon	ordered 15" sent 12" (WF 12 156 PP 4OHM)	FULL Replacement		8+16.62	24.62	
+Feb 3	MUS FLD 4S PNK 4pcs	11-14159-94747	Hrit	eBay	buyer opened req for 3pcs- tracking shows delivered- last date 6th feb	Refunded by Hrit	$65.04	0	0	
+Feb 4	HW 405 WH 2PCS	113-9203796-4987466	Anish	Amazon	label made for 4pcs, dispatched 2pcs	Required Item sent		8	8	
+Feb 6	KS 2X HAND	PO-211-06257001626234032	Hrit	Temu	buyer called and msgd-ordered 2pcs received only 1	Required Item sent		8	8	
+Feb 7	SS SQ BLK 2 poles	PO-211-06050179318393395	Hrit	Temu	received 4 bases- called, opened reship req for 2 poles, will return 2 extra base	Required Item sent		8+110	118	bases not returned. return Label not voided
+Feb 9	DS 01 RED 3pcs	114-8473653-3774600	Anish	Amazon	ordered 3pcs, received 1 incomplete pc, label was correct	Required Item sent		8	8	
+Feb 9	WM SPK PNK	577269875093508843	Hrit	TikTok	received WF 890 instead of mics- out of stock ritu maam offered 3pc GLD	FULL Replacement		6.5+4.89	11.39	
+Feb 10	SS SQ BLK 2poles	PO-211-05976882949752742	Hrit	Temu	2 labels, 4 bases sent	Required Item sent		8+110	118	bases not returned. return Label not voided
+Feb 11	FR 15190 17 AL 2pcs	PO-211-05803059717751666	Anish	Temu	wrong quantity sent	Refund by platform	$126.22	126.22+34.34	160.56	
+Feb 12	DS 01 BR 2pcs	PO-211-07497969444473853	Hrit	Temu	ordered 3pcs, received 1pc- fedex image	Required Item sent	8	8	8	
+Feb 16	KS 1X BLU+KBB 02 BLK	PO-211-12983917143674048	Hrit	Temu	opened reship req- All that's missing is the bench to sit on; only the keyboard stand arrived.	Required Item sent	8	8	8	
+Feb 16	GFF TP GRY	18-14151-04974	Hrit	EBAY 2	gave neg feedback	FULL Replacement	1+1.82		2.82	
+Feb 18	GFS BLK	16-14215-74817
+	Hrit	eBay	received GFF TP BLK	FULL Replacement	1.82+5		6.82	
+Feb 19	WF 8"-890 4PC	 PO-211-21301589371513689	Hrit	Temu	returned, got DS CH ORG	Refunded by Hrit	35.04+8		43.04	
+Feb 19	FR 15 140 MS	111-0319326-8881853	Hrit	Amazon	buyer received only 1pc, label was correct	Required Item sent	0		0	
+Feb 19	MUS FLD BLK	 16-14219-40073	Hrit	Ebay 3	received MUS FLD PNK	FULL Replacement	8+3.36		11.36	
+Feb 20	TW BLT 180 BLK PAIR	PO-211-21053795850872988	Hrit	Temu	received WF 8"-890 2pcs	NA	19.73+9.78		29.51	
+Feb 21	KS Z1 BPNK HD	 04-14241-74707	Hrit	Ebay 3	received KS Z1 BPNK	Partial Refund	$4		4	
+Feb 23	GRack 3N1 	24920505	Hrit	Reverb	3 out of 4 separators sent, 0 out of 8 knobs and 0 out of 2 screws were sent but marked done in caps in mail when i gave proper marked image. why?	Required Item sent	3.56+1.03(letter)		4.59	
+Feb 24	10T G 2PCS	PO-211-14785037589112467
+	Hrit	Temu	sent 2pcs instead of 4pcs	Required Item sent	8		8	
+Feb 25	SS HD 1PK BLK WOB 3pcs	24973598	Hrit	Reverb	send SS HD 3FT BLK WoB 1pc	FULL Replacement	8+ 4		12	
+Feb 25	MS 080	05-14188-62238	Hrit	eBay	missing mic stand, label was correct	Required Item sent	8		8	
+Feb 26	DS CH BLU-VEL REST LVR	112-4702834-8764253	Hrit	Temu	label correct, sent black color	FULL Replacement	8+8		16	
+Feb 26	SS HD 2PK BLK BAG 2sets	26012669031528	Hrit	Doba	ordered 4pcs, sent 2pcs, canada order dropshipper furious	Refunded by Hrit	62.1+13.24		75.34	
+Feb 28	CD 90 4PCS	03-14288-65450
+	Hrit	Ebay 3	ordered 4 sets, received 2 sets	Required Item sent	8		8	
