@@ -2,6 +2,11 @@
 
 namespace App\Http\Controllers\CustomerCare;
 
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
+
 class DispatchIssuesController extends IssueBoardControllerBase
 {
     protected function viewName(): string
@@ -48,6 +53,138 @@ class DispatchIssuesController extends IssueBoardControllerBase
             'order_number'  => $row->order_number  ?? null,
             'refund_amount' => $row->refund_amount  !== null ? (float) $row->refund_amount : null,
             'total_loss'    => $row->total_loss     !== null ? (float) $row->total_loss    : null,
+            'group_id'      => $row->group_id       ?? null,
         ];
+    }
+
+    /**
+     * Override store to support multi-SKU entries (single Order ID, multiple SKUs = 1 error group).
+     */
+    public function store(Request $request): JsonResponse
+    {
+        $skusPayload = $request->input('skus');
+
+        // Multi-SKU mode: array of {sku, qty, order_qty, parent}
+        if (is_array($skusPayload) && count($skusPayload) >= 1) {
+            return $this->storeMultiSku($request, $skusPayload);
+        }
+
+        // Single-SKU mode – use base behaviour
+        return parent::store($request);
+    }
+
+    private function storeMultiSku(Request $request, array $skusPayload): JsonResponse
+    {
+        $request->validate([
+            'issue'              => 'required|string|max:255',
+            'order_number'       => 'nullable|string|max:255',
+            'refund_amount'      => 'nullable|numeric|min:0',
+            'total_loss'         => 'nullable|numeric',
+            'marketplace_1'      => 'nullable|string|max:255',
+            'marketplace_2'      => 'nullable|string|max:255',
+            'what_happened'      => 'nullable|string|max:50',
+            'issue_remark'       => 'nullable|string|max:255',
+            'action_1'           => 'nullable|string|max:255',
+            'action_1_remark'    => 'nullable|string|max:255',
+            'replacement_tracking' => 'nullable|string|max:50',
+            'c_action_1'         => 'nullable|string|max:255',
+            'c_action_1_remark'  => 'nullable|string|max:255',
+            'issue_date'         => 'nullable|string|max:100',
+        ]);
+
+        $user      = auth()->user();
+        $createdBy = trim((string) ($user?->name ?? 'System')) ?: 'System';
+        $groupId   = Str::uuid()->toString();
+        $now       = now();
+        $tz        = config('app.timezone');
+
+        $sharedPayload = [
+            'group_id'             => $groupId,
+            'order_number'         => $request->input('order_number') ? trim($request->input('order_number')) : null,
+            'refund_amount'        => $request->input('refund_amount') !== null && $request->input('refund_amount') !== '' ? (float) $request->input('refund_amount') : null,
+            'total_loss'           => $request->input('total_loss') !== null && $request->input('total_loss') !== '' ? (float) $request->input('total_loss') : null,
+            'marketplace_1'        => $request->input('marketplace_1') ? trim($request->input('marketplace_1')) : null,
+            'marketplace_2'        => $request->input('marketplace_2') ? trim($request->input('marketplace_2')) : null,
+            'what_happened'        => $request->input('what_happened') ? trim($request->input('what_happened')) : null,
+            'issue'                => trim($request->input('issue')),
+            'issue_remark'         => $request->input('issue_remark') ? trim($request->input('issue_remark')) : null,
+            'action_1'             => $request->input('action_1') ? trim($request->input('action_1')) : null,
+            'action_1_remark'      => $request->input('action_1_remark') ? trim($request->input('action_1_remark')) : null,
+            'replacement_tracking' => $request->input('replacement_tracking') ? trim($request->input('replacement_tracking')) : null,
+            'c_action_1'           => $request->input('c_action_1') ? trim($request->input('c_action_1')) : null,
+            'c_action_1_remark'    => $request->input('c_action_1_remark') ? trim($request->input('c_action_1_remark')) : null,
+            'close_note'           => null,
+            'issue_date'           => $request->input('issue_date') ? trim($request->input('issue_date')) : null,
+            'created_by'           => $createdBy,
+            'created_by_user_id'   => $user?->id,
+            'created_at'           => $now,
+            'updated_at'           => $now,
+        ];
+
+        $insertedRows = [];
+
+        DB::transaction(function () use ($skusPayload, $sharedPayload, $now, $tz, &$insertedRows) {
+            foreach ($skusPayload as $skuEntry) {
+                $sku = trim((string) ($skuEntry['sku'] ?? ''));
+                if ($sku === '') {
+                    continue;
+                }
+
+                $payload = array_merge($sharedPayload, [
+                    'sku'       => $sku,
+                    'qty'       => isset($skuEntry['qty']) && $skuEntry['qty'] !== '' ? (float) $skuEntry['qty'] : 0,
+                    'order_qty' => isset($skuEntry['order_qty']) && $skuEntry['order_qty'] !== '' ? (float) $skuEntry['order_qty'] : null,
+                    'parent'    => isset($skuEntry['parent']) ? trim((string) $skuEntry['parent']) : null,
+                ]);
+
+                $issueId = DB::table($this->issuesTable())->insertGetId($payload);
+                DB::table($this->historyTable())->insert(array_merge($payload, [
+                    'orders_on_hold_issue_id' => $issueId,
+                    'event_type'              => 'created',
+                    'revision_no'             => 0,
+                    'logged_at'               => $now,
+                ]));
+
+                $row = DB::table($this->issuesTable())->where('id', $issueId)->first();
+                $insertedRows[] = [
+                    'id'                   => (int) $row->id,
+                    'sku'                  => $row->sku,
+                    'qty'                  => (float) $row->qty,
+                    'order_qty'            => $row->order_qty !== null ? (float) $row->order_qty : null,
+                    'parent'               => $row->parent,
+                    'group_id'             => $row->group_id,
+                    'marketplace_1'        => $row->marketplace_1,
+                    'marketplace_2'        => $row->marketplace_2,
+                    'what_happened'        => $row->what_happened,
+                    'issue'                => $row->issue,
+                    'issue_remark'         => $row->issue_remark,
+                    'action_1'             => $row->action_1,
+                    'action_1_remark'      => $row->action_1_remark,
+                    'replacement_tracking' => $row->replacement_tracking,
+                    'c_action_1'           => $row->c_action_1,
+                    'c_action_1_remark'    => $row->c_action_1_remark,
+                    'close_note'           => $row->close_note,
+                    'created_by'           => $row->created_by,
+                    'created_at'           => $row->created_at,
+                    'issue_date'           => $row->issue_date ?? null,
+                    'order_number'         => $row->order_number ?? null,
+                    'refund_amount'        => $row->refund_amount !== null ? (float) $row->refund_amount : null,
+                    'total_loss'           => $row->total_loss !== null ? (float) $row->total_loss : null,
+                    'created_at_display'   => $row->created_at
+                        ? \Carbon\Carbon::parse($row->created_at)->timezone($tz)->format('d-m-Y H:i')
+                        : '',
+                ];
+            }
+        });
+
+        if (empty($insertedRows)) {
+            return response()->json(['message' => 'No valid SKUs provided.'], 422);
+        }
+
+        return response()->json([
+            'message'  => count($insertedRows) . ' SKU(s) saved as 1 error group.',
+            'rows'     => $insertedRows,
+            'group_id' => $groupId,
+        ], 201);
     }
 }

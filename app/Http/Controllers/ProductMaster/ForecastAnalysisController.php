@@ -27,6 +27,38 @@ class ForecastAnalysisController extends Controller
 
     private function buildForecastAnalysisData()
     {
+        // ── Ads% calculation identical to getAmazonChannelData() / all-marketplace-master ──
+        // 28-day window ending yesterday (Pacific) — same window used by the active-channel page.
+        $yesterdayPacific = \Carbon\Carbon::yesterday('America/Los_Angeles');
+        $endToday  = $yesterdayPacific->copy()->endOfDay();
+        $start28   = $yesterdayPacific->copy()->subDays(27)->startOfDay();
+
+        // Live L30 sales from amazon_orders (non-cancelled)
+        $orderHead = DB::table('amazon_orders as o')
+            ->where('o.order_date', '>=', $start28)
+            ->where('o.order_date', '<=', $endToday)
+            ->where(function ($w) {
+                $w->whereNull('o.status')->orWhere('o.status', '!=', 'Canceled');
+            })
+            ->selectRaw('COALESCE(SUM(o.total_amount), 0) as total_sales')
+            ->first();
+        $liveL30Sales = (float) ($orderHead->total_sales ?? 0);
+
+        // Ad spend from latest marketplace_daily_metrics row for Amazon
+        $amazonMetrics = DB::table('marketplace_daily_metrics')
+            ->where('channel', 'Amazon')
+            ->orderByDesc('date')
+            ->first();
+        $kwSpent      = (float) ($amazonMetrics?->kw_spent  ?? 0);
+        $ptSpent      = (float) ($amazonMetrics?->pmt_spent ?? 0);
+        $hlSpent      = (float) ($amazonMetrics?->hl_spent  ?? 0);
+        $totalAdSpend = $kwSpent + $ptSpent + $hlSpent;
+
+        // Ads% = same formula as all-marketplace-master
+        $defaultChannelAds = $liveL30Sales > 0
+            ? round(($totalAdSpend / $liveL30Sales) * 100, 1)
+            : null;
+
         // Improved normalization to handle multiple spaces and hidden whitespace
         $normalizeSku = function ($sku) {
             if (empty($sku)) return '';
@@ -488,6 +520,8 @@ class ForecastAnalysisController extends Controller
 
             $adv = $getAmazonAdv($sheetSku);
             $item->avg_gpft_pct = null;
+            $item->avg_groi_pct = null;
+            $item->avg_ad_pct   = $defaultChannelAds;   // channel-level Ads% (same for all rows)
             $item->avg_npft_pct = null;
             $item->avg_nroi_pct = null;
             if (is_array($adv)) {
@@ -498,6 +532,7 @@ class ForecastAnalysisController extends Controller
                     || array_key_exists('AD_percent', $adv) || array_key_exists('AD%', $adv);
                 if ($hasAdv || $gpft != 0.0 || $roiPct != 0.0 || $adPct != 0.0) {
                     $item->avg_gpft_pct = (int) round($gpft);
+                    $item->avg_groi_pct = (int) round($roiPct);
                     $item->avg_npft_pct = (int) round($gpft - $adPct);
                     $item->avg_nroi_pct = (int) round($roiPct - $adPct);
                 }
