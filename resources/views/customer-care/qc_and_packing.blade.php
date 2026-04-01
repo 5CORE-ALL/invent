@@ -4,11 +4,16 @@
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <style>
         .orders-hold-table {
-            table-layout: fixed;
+            table-layout: auto;
             width: 100%;
             font-size: 12px;
             border: 1px solid #dee2e6;
             border-collapse: collapse;
+        }
+
+        .orders-hold-table-wrap {
+            overflow-x: auto;
+            width: 100%;
         }
 
         .orders-hold-table th,
@@ -17,6 +22,10 @@
             vertical-align: middle;
             border: 1px solid #dee2e6;
             text-align: center;
+        }
+
+        .orders-hold-table th {
+            white-space: nowrap;
         }
 
         .orders-hold-table td {
@@ -32,16 +41,22 @@
             width: 11%;
         }
 
-        .orders-hold-col-qty {
+        .orders-hold-col-date {
+            min-width: 75px;
             width: 7%;
+            white-space: nowrap;
+        }
+
+        .orders-hold-col-qty {
+            width: 5%;
         }
 
         .orders-hold-col-parent {
-            width: 13%;
+            width: 10%;
         }
 
         .orders-hold-col-mp {
-            width: 11%;
+            width: 8%;
         }
 
         .orders-hold-col-issue {
@@ -49,23 +64,23 @@
         }
 
         .orders-hold-col-created-by {
-            width: 11%;
+            width: 8%;
         }
 
         .orders-hold-col-created-at {
-            width: 12%;
+            width: 9%;
         }
 
         .orders-hold-col-action {
-            width: 10%;
+            width: 9%;
         }
 
         .orders-hold-col-what {
-            width: 6%;
+            width: 5%;
         }
 
         .orders-hold-col-close {
-            width: 8%;
+            width: 7%;
             text-align: center;
         }
 
@@ -196,6 +211,12 @@
                                 <tr>
                                     <th class="orders-hold-col-idx">#</th>
                                     <th class="orders-hold-col-sku">SKU</th>
+                                    <th class="orders-hold-col-date">Issue Date</th>
+                                    @if($showDispatchExtras ?? false)
+                                    <th class="orders-hold-col-action">Order #</th>
+                                    <th class="orders-hold-col-action">Refund ($)</th>
+                                    <th class="orders-hold-col-action">Total Loss ($)</th>
+                                    @endif
                                     <th class="orders-hold-col-qty">QTY</th>
                                     <th class="orders-hold-col-qty">Order Qty</th>
                                     <th class="orders-hold-col-parent">Parent</th>
@@ -319,31 +340,70 @@
                         <div id="ordersOnHoldIssueAlert" class="alert alert-danger d-none mb-3" role="alert"></div>
 
                         <div class="row g-3">
-                            <div class="col-md-6">
-                                <label for="hold_issue_sku" class="form-label">SKU <span class="text-danger">*</span></label>
-                                <input type="text" class="form-control" id="hold_issue_sku" name="sku"
-                                    list="hold_issue_sku_datalist" placeholder="Search SKU" required>
-                                <datalist id="hold_issue_sku_datalist"></datalist>
-                                <div class="mt-2 d-none" id="hold_issue_sku_image_wrap">
-                                    <img src="" alt="SKU Image" id="hold_issue_sku_image" class="sku-image-preview">
+                            {{-- ── SKU Row 1 (always shown) ── --}}
+                            <div class="col-12" id="sku-rows-wrapper">
+                                <div class="sku-entry-row" data-row-index="0">
+                                    <div class="row g-2 align-items-end">
+                                        <div class="col-md-5">
+                                            <label class="form-label">SKU <span class="text-danger">*</span></label>
+                                            <input type="text" class="form-control sku-entry-input" id="hold_issue_sku" name="sku"
+                                                list="hold_issue_sku_datalist" placeholder="Search SKU" required autocomplete="off">
+                                            <datalist id="hold_issue_sku_datalist"></datalist>
+                                            <div class="mt-1 d-none" id="hold_issue_sku_image_wrap">
+                                                <img src="" alt="SKU Image" id="hold_issue_sku_image" class="sku-image-preview">
+                                            </div>
+                                        </div>
+                                        <div class="col-md-2">
+                                            <label class="form-label">Qty in Stock</label>
+                                            <input type="number" class="form-control sku-entry-qty" id="hold_issue_qty" name="qty" readonly>
+                                        </div>
+                                        <div class="col-md-2">
+                                            <label class="form-label">Order Qty</label>
+                                            <input type="number" class="form-control sku-entry-order-qty" id="hold_issue_order_qty" name="order_qty"
+                                                min="0" step="1" placeholder="Qty">
+                                        </div>
+                                        <div class="col-md-3">
+                                            <label class="form-label">Parent</label>
+                                            <input type="text" class="form-control sku-entry-parent" id="hold_issue_parent" name="parent" readonly>
+                                        </div>
+                                    </div>
                                 </div>
+
+                                @if($showDispatchExtras ?? false)
+                                {{-- Extra SKU rows container (dispatch issues only) --}}
+                                <div id="extra-sku-rows-container" class="mt-2"></div>
+                                <button type="button" class="btn btn-sm btn-outline-primary mt-2" id="btn-add-sku-row">
+                                    <i class="bi bi-plus-circle me-1"></i> Add Another SKU
+                                </button>
+                                <div class="mt-1">
+                                    <small class="text-muted">Multiple SKUs for the same order are grouped and counted as <strong>1 error</strong>.</small>
+                                </div>
+                                @endif
                             </div>
 
                             <div class="col-md-3">
-                                <label for="hold_issue_qty" class="form-label">Qty as in Stock</label>
-                                <input type="number" class="form-control" id="hold_issue_qty" name="qty" readonly>
+                                <label for="hold_issue_date" class="form-label">Issue Date</label>
+                                <input type="text" class="form-control" id="hold_issue_date" name="issue_date"
+                                    placeholder="e.g. 01-Apr-2026 or any format">
                             </div>
 
-                            <div class="col-md-3">
-                                <label for="hold_issue_order_qty" class="form-label">Order Qty</label>
-                                <input type="number" class="form-control" id="hold_issue_order_qty" name="order_qty"
-                                    min="0" step="1" placeholder="Enter order qty">
+                            @if($showDispatchExtras ?? false)
+                            <div class="col-md-4">
+                                <label for="hold_issue_order_number" class="form-label">Order Number</label>
+                                <input type="text" class="form-control" id="hold_issue_order_number" name="order_number"
+                                    placeholder="Enter order number">
                             </div>
-
-                            <div class="col-md-3">
-                                <label for="hold_issue_parent" class="form-label">Parent</label>
-                                <input type="text" class="form-control" id="hold_issue_parent" name="parent" readonly>
+                            <div class="col-md-4">
+                                <label for="hold_issue_refund_amount" class="form-label">Refund Amount ($)</label>
+                                <input type="number" class="form-control" id="hold_issue_refund_amount" name="refund_amount"
+                                    min="0" step="0.01" placeholder="0.00">
                             </div>
+                            <div class="col-md-4">
+                                <label for="hold_issue_total_loss" class="form-label">Total Loss ($)</label>
+                                <input type="number" class="form-control" id="hold_issue_total_loss" name="total_loss"
+                                    step="0.01" placeholder="0.00">
+                            </div>
+                            @endif
 
                             <div class="col-md-6">
                                 <label for="hold_issue_marketplace_1" class="form-label">MKT1</label>
@@ -372,27 +432,30 @@
                                 @endforeach
                             </datalist>
 
-                            <div class="col-md-4">
+                            <div class="col-md-6">
                                 <label for="hold_issue_action_1" class="form-label">Action</label>
-                                <select class="form-select" id="hold_issue_action_1" name="action_1">
-                                    <option value="">Select Action</option>
-                                    <option value="Offer Customer Alterntive / Updgrade">Offer Customer Alterntive / Updgrade</option>
-                                    <option value="Upgraded + Stock Alternate">Upgraded + Stock Alternate</option>
-                                    <option value="Alternate Sent + Stock Alternate">Alternate Sent + Stock Alternate</option>
-                                    <option value="Sent Wrong Item + Stock Outgoing">Sent Wrong Item + Stock Outgoing</option>
-                                    <option value="Cancelled">Cancelled</option>
-                                    <option value="Other">Other</option>
-                                </select>
-                                <div class="action-icon-hints">
-                                    <span><i class="bi bi-arrow-up-circle"></i>Upgrade</span>
-                                    <span><i class="bi bi-arrow-left-right"></i>Alternate</span>
-                                </div>
+                                <input type="text" class="form-control" id="hold_issue_action_1" name="action_1"
+                                    list="hold_issue_action_datalist"
+                                    placeholder="Type or select action..." autocomplete="off">
+                                <datalist id="hold_issue_action_datalist">
+                                    <option value="Offer Customer Alterntive / Updgrade"></option>
+                                    <option value="Upgraded + Stock Alternate"></option>
+                                    <option value="Alternate Sent + Stock Alternate"></option>
+                                    <option value="Sent Wrong Item + Stock Outgoing"></option>
+                                    <option value="Cancelled"></option>
+                                    <option value="Other"></option>
+                                </datalist>
                             </div>
 
                             <div class="col-md-8 d-none" id="action1RemarkWrap">
                                 <label for="hold_issue_action_1_remark" class="form-label">Action Remark</label>
+                                @if($showDispatchExtras ?? false)
+                                <textarea class="form-control" id="hold_issue_action_1_remark" name="action_1_remark"
+                                    rows="3" placeholder="Write action remark..."></textarea>
+                                @else
                                 <input type="text" class="form-control" id="hold_issue_action_1_remark" name="action_1_remark"
                                     placeholder="Write remark for Other">
+                                @endif
                             </div>
 
                             <div class="col-md-6">
@@ -402,16 +465,11 @@
                             </div>
 
                             <div class="col-12">
-                                <div class="d-flex align-items-center justify-content-between">
-                                    <label for="hold_issue_text" class="form-label mb-1">Root Cause Found <span class="text-danger">*</span></label>
-                                    <div class="btn-group btn-group-sm mb-1" role="group" aria-label="Root Cause Found actions">
-                                        <button type="button" class="btn btn-outline-success" id="add-root-cause-found-option">Add</button>
-                                        <button type="button" class="btn btn-outline-danger" id="delete-root-cause-found-option">Delete</button>
-                                    </div>
-                                </div>
-                                <select class="form-select" id="hold_issue_text" name="issue" required>
-                                    <option value="">Select Root Cause Found</option>
-                                </select>
+                                <label for="hold_issue_text" class="form-label">Root Cause Found <span class="text-danger">*</span></label>
+                                <input type="text" class="form-control" id="hold_issue_text" name="issue"
+                                    list="hold_issue_root_cause_found_datalist"
+                                    placeholder="Type or select root cause..." required autocomplete="off">
+                                <datalist id="hold_issue_root_cause_found_datalist"></datalist>
                             </div>
 
                             <div class="col-12 d-none" id="rootCauseRemarkWrap">
@@ -421,17 +479,11 @@
                             </div>
 
                             <div class="col-md-4">
-                                <div class="d-flex align-items-center justify-content-between">
-                                    <label for="hold_issue_c_action_1" class="form-label mb-1">Root Cause Fixed</label>
-                                    <div class="btn-group btn-group-sm mb-1" role="group" aria-label="Root Cause Fixed actions">
-                                        <button type="button" class="btn btn-outline-success" id="add-root-cause-fixed-option">Add</button>
-                                        <button type="button" class="btn btn-outline-danger" id="delete-root-cause-fixed-option">Delete</button>
-                                    </div>
-                                </div>
-                                <select class="form-select" id="hold_issue_c_action_1" name="c_action_1">
-                                    <option value="">Select Root Cause Fixed</option>
-                                </select>
-                                <datalist id="hold_issue_root_cause_fixed_datalist" class="d-none"></datalist>
+                                <label for="hold_issue_c_action_1" class="form-label">Root Cause Fixed</label>
+                                <input type="text" class="form-control" id="hold_issue_c_action_1" name="c_action_1"
+                                    list="hold_issue_root_cause_fixed_datalist"
+                                    placeholder="Type or select fix..." autocomplete="off">
+                                <datalist id="hold_issue_root_cause_fixed_datalist"></datalist>
                             </div>
 
                             <div class="col-md-8 d-none" id="cAction1RemarkWrap">
@@ -533,10 +585,8 @@
             }
 
             function getStaticOptionValues(selectEl) {
-                if (!selectEl) return [];
-                return Array.from(selectEl.options)
-                    .map(opt => String(opt.value || '').trim())
-                    .filter(v => v !== '');
+                // No longer used (inputs with datalist don't need static option tracking)
+                return [];
             }
 
             function mergeUniqueOptions(baseOptions, dynamicOptions) {
@@ -551,27 +601,10 @@
                 return merged;
             }
 
-            function rebuildSelectOptions(selectEl, options, placeholder) {
-                if (!selectEl) return;
-                const currentValue = selectEl.value;
-                selectEl.innerHTML = '';
-                const placeholderOption = document.createElement('option');
-                placeholderOption.value = '';
-                placeholderOption.textContent = placeholder;
-                selectEl.appendChild(placeholderOption);
-
-                options.forEach((optValue) => {
-                    const opt = document.createElement('option');
-                    opt.value = optValue;
-                    opt.textContent = optValue;
-                    selectEl.appendChild(opt);
-                });
-
-                if (currentValue && options.includes(currentValue)) {
-                    selectEl.value = currentValue;
-                } else {
-                    selectEl.value = '';
-                }
+            function rebuildDatalistOptions(datalistId, options) {
+                const dl = document.getElementById(datalistId);
+                if (!dl) return;
+                dl.innerHTML = options.map(v => `<option value="${escAttr(v)}"></option>`).join('');
             }
 
             async function fetchDropdownOptions(fieldType) {
@@ -701,7 +734,7 @@
                 }
             }
 
-            async function addRootCauseOption(selectEl, fieldType, placeholderText) {
+            async function addRootCauseOption(inputEl, fieldType, datalistId) {
                 const newOption = prompt('Enter new option');
                 const value = String(newOption || '').trim();
                 if (!value) return;
@@ -715,21 +748,27 @@
                         showAlert(data?.message || 'Unable to add option.');
                         return;
                     }
-                    await initializeDynamicRootCauseOptions();
-                    selectEl.value = value;
-                    selectEl.dispatchEvent(new Event('change', { bubbles: true }));
+                    // Add to datalist immediately
+                    const dl = document.getElementById(datalistId);
+                    if (dl && !Array.from(dl.options).some(o => o.value === value)) {
+                        const opt = document.createElement('option');
+                        opt.value = value;
+                        dl.appendChild(opt);
+                    }
+                    inputEl.value = value;
+                    inputEl.dispatchEvent(new Event('input', { bubbles: true }));
                 } catch (error) {
                     showAlert('Unable to add option.');
                 }
             }
 
-            async function deleteRootCauseOption(selectEl, fieldType, placeholderText) {
-                const selected = String(selectEl?.value || '').trim();
+            async function deleteRootCauseOption(inputEl, fieldType, datalistId) {
+                const selected = String(inputEl?.value || '').trim();
                 if (!selected) {
-                    showAlert('Please select an option to delete.');
+                    showAlert('Please type the value to delete first.');
                     return;
                 }
-                if (!confirm('Delete selected option?')) {
+                if (!confirm(`Delete "${selected}" from suggestions?`)) {
                     return;
                 }
 
@@ -742,25 +781,42 @@
                         showAlert(data?.message || 'Unable to delete option.');
                         return;
                     }
-                    await initializeDynamicRootCauseOptions();
-                    selectEl.dispatchEvent(new Event('change', { bubbles: true }));
+                    // Remove from datalist
+                    const dl = document.getElementById(datalistId);
+                    if (dl) {
+                        const opt = Array.from(dl.options).find(o => o.value === selected);
+                        if (opt) opt.remove();
+                    }
+                    inputEl.value = '';
+                    inputEl.dispatchEvent(new Event('input', { bubbles: true }));
                 } catch (error) {
                     showAlert('Unable to delete option.');
                 }
             }
 
             async function initializeDynamicRootCauseOptions() {
-                const issueStatic = getStaticOptionValues(issueInput);
                 const issueDynamic = await fetchDropdownOptions('root_cause_found');
-                rebuildSelectOptions(issueInput, mergeUniqueOptions(issueStatic, issueDynamic), 'Select Root Cause Found');
+                rebuildDatalistOptions('hold_issue_root_cause_found_datalist', issueDynamic);
 
-                const fixedStatic = getStaticOptionValues(cAction1Input);
                 const fixedDynamic = await fetchDropdownOptions('root_cause_fixed');
-                rebuildSelectOptions(cAction1Input, mergeUniqueOptions(fixedStatic, fixedDynamic), 'Select Root Cause Fixed');
+                rebuildDatalistOptions('hold_issue_root_cause_fixed_datalist', fixedDynamic);
             }
 
             function updateTotalCount() {
-                totalCountEl.textContent = String(holdIssueRows.length);
+                // Count distinct errors: each unique group_id = 1 error; rows without group_id = 1 each
+                const seenGroups = new Set();
+                let errorCount = 0;
+                holdIssueRows.forEach(r => {
+                    if (r.group_id) {
+                        if (!seenGroups.has(r.group_id)) {
+                            seenGroups.add(r.group_id);
+                            errorCount++;
+                        }
+                    } else {
+                        errorCount++;
+                    }
+                });
+                totalCountEl.textContent = String(errorCount);
             }
 
             function renderRows() {
@@ -782,9 +838,19 @@
                         '<button type="button" class="btn btn-sm hold-action-btn hold-archive-btn" data-id="' + row.id +
                         '" title="Archive"><i class="bi bi-archive-fill"></i></button>' +
                         '</div>';
+                    // Group badge: show small colored pill for multi-SKU groups
+                    const groupBadge = row.group_id
+                        ? '<span class="badge bg-warning text-dark ms-1" style="font-size:0.7rem;" title="Grouped entry (1 error)">G</span>'
+                        : '';
                     return '<tr>' +
                         '<td>' + escapeHtml(row.id) + '</td>' +
-                        '<td>' + escapeHtml(row.sku) + '</td>' +
+                        '<td>' + escapeHtml(row.sku) + groupBadge + '</td>' +
+                        '<td>' + escapeHtml(row.issue_date || '—') + '</td>' +
+                        @if($showDispatchExtras ?? false)
+                        '<td>' + escapeHtml(row.order_number || '—') + '</td>' +
+                        '<td>' + (row.refund_amount != null ? '$' + parseFloat(row.refund_amount).toFixed(2) : '—') + '</td>' +
+                        '<td>' + (row.total_loss != null ? '$' + parseFloat(row.total_loss).toFixed(2) : '—') + '</td>' +
+                        @endif
                         '<td>' + escapeHtml(row.qty) + '</td>' +
                         '<td>' + escapeHtml(row.order_qty) + '</td>' +
                         '<td>' + escapeHtml(row.parent) + '</td>' +
@@ -858,6 +924,7 @@
                     qty: row?.qty ?? 0,
                     order_qty: row?.order_qty ?? '',
                     parent: row?.parent ?? '',
+                    group_id: row?.group_id ?? null,
                     marketplace_1: row?.marketplace_1 ?? '',
                     marketplace_2: row?.marketplace_2 ?? '',
                     what_happened: row?.what_happened ?? '',
@@ -871,6 +938,10 @@
                     close_note: row?.close_note ?? '',
                     created_by: row?.created_by ?? 'System',
                     created_at: row?.created_at_display ?? row?.created_at ?? '',
+                    issue_date: row?.issue_date ?? '',
+                    order_number: row?.order_number ?? '',
+                    refund_amount: row?.refund_amount ?? null,
+                    total_loss: row?.total_loss ?? null,
                 };
             }
 
@@ -947,6 +1018,15 @@
                 marketplace1Input.value = '';
                 marketplace2Input.value = '';
                 whatHappenedInput.value = '';
+                document.getElementById('hold_issue_date').value = '';
+                @if($showDispatchExtras ?? false)
+                if (document.getElementById('hold_issue_order_number')) document.getElementById('hold_issue_order_number').value = '';
+                if (document.getElementById('hold_issue_refund_amount')) document.getElementById('hold_issue_refund_amount').value = '';
+                if (document.getElementById('hold_issue_total_loss')) document.getElementById('hold_issue_total_loss').value = '';
+                // Clear all extra SKU rows
+                const extraContainer = document.getElementById('extra-sku-rows-container');
+                if (extraContainer) extraContainer.innerHTML = '';
+                @endif
                 issueRemarkInput.value = '';
                 toggleRootCauseRemarkField();
                 action1Input.value = '';
@@ -967,6 +1047,7 @@
             function openEditModal(record) {
                 if (!record) return;
                 editingIssueId = Number(record.id);
+
                 skuInput.value = record.sku || '';
                 qtyInput.value = record.qty ?? '';
                 orderQtyInput.value = record.order_qty ?? '';
@@ -975,6 +1056,12 @@
                 marketplace2Input.value = record.marketplace_2 || '';
                 whatHappenedInput.value = record.what_happened || '';
                 issueInput.value = record.issue || '';
+                document.getElementById('hold_issue_date').value = record.issue_date || '';
+                @if($showDispatchExtras ?? false)
+                if (document.getElementById('hold_issue_order_number')) document.getElementById('hold_issue_order_number').value = record.order_number || '';
+                if (document.getElementById('hold_issue_refund_amount')) document.getElementById('hold_issue_refund_amount').value = record.refund_amount ?? '';
+                if (document.getElementById('hold_issue_total_loss')) document.getElementById('hold_issue_total_loss').value = record.total_loss ?? '';
+                @endif
                 issueRemarkInput.value = record.issue_remark || '';
                 toggleRootCauseRemarkField();
                 action1Input.value = record.action_1 || '';
@@ -1088,23 +1175,24 @@
             skuInput.addEventListener('change', fillSkuDetails);
             skuInput.addEventListener('blur', fillSkuDetails);
 
-            issueInput.addEventListener('change', toggleRootCauseRemarkField);
+            issueInput.addEventListener('input', toggleRootCauseRemarkField);
             addRootCauseFoundOptionBtn?.addEventListener('click', function () {
-                addRootCauseOption(issueInput, 'root_cause_found', 'Select Root Cause Found');
+                addRootCauseOption(issueInput, 'root_cause_found', 'hold_issue_root_cause_found_datalist');
             });
             deleteRootCauseFoundOptionBtn?.addEventListener('click', function () {
-                deleteRootCauseOption(issueInput, 'root_cause_found', 'Select Root Cause Found');
+                deleteRootCauseOption(issueInput, 'root_cause_found', 'hold_issue_root_cause_found_datalist');
             });
 
+            action1Input.addEventListener('input', toggleAction1RemarkField);
             action1Input.addEventListener('change', toggleAction1RemarkField);
 
             cAction1Input.addEventListener('input', toggleCAction1RemarkField);
             cAction1Input.addEventListener('change', toggleCAction1RemarkField);
             addRootCauseFixedOptionBtn?.addEventListener('click', function () {
-                addRootCauseOption(cAction1Input, 'root_cause_fixed', 'Select Root Cause Fixed');
+                addRootCauseOption(cAction1Input, 'root_cause_fixed', 'hold_issue_root_cause_fixed_datalist');
             });
             deleteRootCauseFixedOptionBtn?.addEventListener('click', function () {
-                deleteRootCauseOption(cAction1Input, 'root_cause_fixed', 'Select Root Cause Fixed');
+                deleteRootCauseOption(cAction1Input, 'root_cause_fixed', 'hold_issue_root_cause_fixed_datalist');
             });
 
             form.addEventListener('submit', async (event) => {
@@ -1141,15 +1229,21 @@
                 }
 
                 try {
-                    const payload = {
-                        sku: sku,
-                        qty: qtyInput.value === '' ? 0 : Number(qtyInput.value),
-                        order_qty: orderQtyInput.value === '' ? null : Number(orderQtyInput.value),
-                        parent: parentInput.value.trim(),
+                    // ── Collect extra SKU rows (dispatch issues only) ──────────────────
+                    const extraSkuRows = document.querySelectorAll('#extra-sku-rows-container .extra-sku-row');
+                    const isMultiSku = extraSkuRows.length > 0;
+
+                    const sharedFields = {
+                        issue: issue,
+                        issue_date: document.getElementById('hold_issue_date').value.trim(),
+                        @if($showDispatchExtras ?? false)
+                        order_number: (document.getElementById('hold_issue_order_number')?.value || '').trim(),
+                        refund_amount: document.getElementById('hold_issue_refund_amount')?.value || '',
+                        total_loss: document.getElementById('hold_issue_total_loss')?.value || '',
+                        @endif
                         marketplace_1: marketplace1Input.value.trim(),
                         marketplace_2: marketplace2Input.value.trim(),
                         what_happened: whatHappenedInput.value.trim(),
-                        issue: issue,
                         issue_remark: issueRemarkInput.value.trim(),
                         action_1: action1Input.value.trim(),
                         action_1_remark: action1RemarkInput.value.trim(),
@@ -1157,6 +1251,39 @@
                         c_action_1: cAction1Input.value.trim(),
                         c_action_1_remark: cAction1RemarkInput.value.trim(),
                     };
+
+                    let payload;
+                    if (isMultiSku) {
+                        // Collect all SKUs into the skus[] array
+                        const skus = [{
+                            sku: sku,
+                            qty: qtyInput.value === '' ? 0 : Number(qtyInput.value),
+                            order_qty: orderQtyInput.value === '' ? null : Number(orderQtyInput.value),
+                            parent: parentInput.value.trim(),
+                        }];
+                        extraSkuRows.forEach(rowEl => {
+                            const skuVal = rowEl.querySelector('.extra-sku-input')?.value?.trim() || '';
+                            if (skuVal) {
+                                skus.push({
+                                    sku: skuVal,
+                                    qty: Number(rowEl.querySelector('.extra-sku-qty')?.value || 0),
+                                    order_qty: rowEl.querySelector('.extra-sku-order-qty')?.value !== ''
+                                        ? Number(rowEl.querySelector('.extra-sku-order-qty')?.value)
+                                        : null,
+                                    parent: rowEl.querySelector('.extra-sku-parent')?.value?.trim() || '',
+                                });
+                            }
+                        });
+                        payload = { ...sharedFields, skus };
+                    } else {
+                        payload = {
+                            sku: sku,
+                            qty: qtyInput.value === '' ? 0 : Number(qtyInput.value),
+                            order_qty: orderQtyInput.value === '' ? null : Number(orderQtyInput.value),
+                            parent: parentInput.value.trim(),
+                            ...sharedFields,
+                        };
+                    }
 
                     const isEdit = editingIssueId !== null;
                     const targetUrl = isEdit
@@ -1189,6 +1316,12 @@
 
                     if (isEdit) {
                         await loadHoldIssueRows();
+                    } else if (Array.isArray(data?.rows)) {
+                        // Multi-SKU response: add all rows
+                        data.rows.reverse().forEach(rowData => {
+                            holdIssueRows.unshift(normalizeRecord(rowData));
+                        });
+                        renderRows();
                     } else {
                         holdIssueRows.unshift(normalizeRecord(data?.row || {}));
                         renderRows();
@@ -1254,12 +1387,12 @@
                     URL.revokeObjectURL(url);
                 }
 
-                const activeHeaders = ['#', 'SKU', 'QTY', 'Order QTY', 'Parent', 'MKT1', 'MKT2',
+                const activeHeaders = ['#', 'SKU', 'Issue Date', 'QTY', 'Order QTY', 'Parent', 'MKT1', 'MKT2',
                     'What?', 'Action', 'Action Remark', 'Replacement Tracking',
                     'Root Cause Found', 'Root Cause Remark', 'Root Cause Fixed',
                     'Root Cause Fixed Remark', 'Created By', 'Created At'];
                 const activeData = holdIssueRows.map(r => [
-                    r.id, r.sku, r.qty, r.order_qty, r.parent,
+                    r.id, r.sku, r.issue_date || '', r.qty, r.order_qty, r.parent,
                     r.marketplace_1, r.marketplace_2, r.what_happened,
                     r.action_1, r.action_1_remark, r.replacement_tracking,
                     r.issue, r.issue_remark, r.c_action_1, r.c_action_1_remark,
@@ -1286,7 +1419,7 @@
 
             document.getElementById('importCsvSampleLink').addEventListener('click', (e) => {
                 e.preventDefault();
-                const headers = ['sku','qty','order_qty','parent','marketplace_1','marketplace_2','what_happened','action_1','action_1_remark','replacement_tracking','issue','issue_remark','c_action_1','c_action_1_remark'];
+                const headers = ['sku','issue_date','qty','order_qty','parent','marketplace_1','marketplace_2','what_happened','action_1','action_1_remark','replacement_tracking','issue','issue_remark','c_action_1','c_action_1_remark'];
                 const sample  = ['SAMPLE-SKU-001','5','2','PARENT-001','Amazon','eBay','Damaged','Cancelled','','TRK123','Quality Issue','','Fixed',''];
                 const csv = [headers.join(','), sample.join(',')].join('\r\n');
                 const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
@@ -1351,6 +1484,89 @@
                     document.getElementById('importCsvSubmitBtn').disabled = false;
                 }
             });
+
+            // ── Multi-SKU: Add Another SKU row (dispatch issues only) ────────────
+            const btnAddSkuRow = document.getElementById('btn-add-sku-row');
+            if (btnAddSkuRow) {
+                btnAddSkuRow.addEventListener('click', function () {
+                    const container = document.getElementById('extra-sku-rows-container');
+                    if (!container) return;
+
+                    const rowEl = document.createElement('div');
+                    rowEl.className = 'extra-sku-row border rounded p-2 mb-2 position-relative';
+                    rowEl.innerHTML = `
+                        <button type="button" class="btn-close position-absolute top-0 end-0 m-1 remove-extra-sku-row"
+                            style="font-size:0.65rem;" title="Remove this SKU"></button>
+                        <div class="row g-2 align-items-end">
+                            <div class="col-md-5">
+                                <label class="form-label small mb-1">SKU <span class="text-danger">*</span></label>
+                                <input type="text" class="form-control form-control-sm extra-sku-input"
+                                    list="hold_issue_sku_datalist" placeholder="Search SKU" autocomplete="off">
+                                <div class="mt-1 d-none extra-sku-image-wrap">
+                                    <img src="" class="sku-image-preview" style="width:52px;height:52px;">
+                                </div>
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label small mb-1">Qty in Stock</label>
+                                <input type="number" class="form-control form-control-sm extra-sku-qty" readonly>
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label small mb-1">Order Qty</label>
+                                <input type="number" class="form-control form-control-sm extra-sku-order-qty" min="0" step="1" placeholder="Qty">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label small mb-1">Parent</label>
+                                <input type="text" class="form-control form-control-sm extra-sku-parent" readonly>
+                            </div>
+                        </div>`;
+                    container.appendChild(rowEl);
+
+                    // Wire up SKU lookup for this new row
+                    const skuInput = rowEl.querySelector('.extra-sku-input');
+                    const qtyInp   = rowEl.querySelector('.extra-sku-qty');
+                    const parentInp = rowEl.querySelector('.extra-sku-parent');
+                    const imgWrap  = rowEl.querySelector('.extra-sku-image-wrap');
+                    const imgEl    = imgWrap?.querySelector('img');
+
+                    let timer = null;
+                    async function fetchAndFill(skuVal) {
+                        const s = String(skuVal || '').trim();
+                        qtyInp.value = '';
+                        parentInp.value = '';
+                        if (imgWrap) imgWrap.classList.add('d-none');
+                        if (!s) return;
+                        try {
+                            const res = await fetch(skuDetailsUrl + '?sku=' + encodeURIComponent(s), {
+                                headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
+                            });
+                            const d = await res.json();
+                            if (d.found) {
+                                qtyInp.value   = d.qty ?? 0;
+                                parentInp.value = d.parent ?? '';
+                                if (d.image_url && imgEl && imgWrap) {
+                                    imgEl.src = d.image_url;
+                                    imgWrap.classList.remove('d-none');
+                                }
+                            }
+                        } catch (e) { /* ignore */ }
+                    }
+                    skuInput.addEventListener('input', () => {
+                        clearTimeout(timer);
+                        timer = setTimeout(() => refreshSkuSuggestions(skuInput.value), 220);
+                    });
+                    skuInput.addEventListener('change', () => fetchAndFill(skuInput.value));
+                    skuInput.addEventListener('blur',   () => fetchAndFill(skuInput.value));
+                    skuInput.focus();
+                });
+
+                // Remove a row when × is clicked
+                document.getElementById('extra-sku-rows-container')?.addEventListener('click', function (e) {
+                    const removeBtn = e.target.closest('.remove-extra-sku-row');
+                    if (removeBtn) {
+                        removeBtn.closest('.extra-sku-row')?.remove();
+                    }
+                });
+            }
 
             modalEl.addEventListener('hidden.bs.modal', resetForm);
             initializeDynamicRootCauseOptions();

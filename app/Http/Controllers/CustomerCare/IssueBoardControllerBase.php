@@ -14,6 +14,15 @@ abstract class IssueBoardControllerBase extends Controller
     abstract protected function historyTable(): string;
     abstract protected function moduleKey(): string;
 
+    /** Extra validation rules for page-specific fields (override in subclass) */
+    protected function extraValidationRules(): array { return []; }
+
+    /** Build extra payload fields from validated data (override in subclass) */
+    protected function buildExtraPayload(array $validated): array { return []; }
+
+    /** Extra fields to include in issuesIndex API response (override in subclass) */
+    protected function extraRowFields(object $row): array { return []; }
+
     protected function normalizeFieldType(string $fieldType): string
     {
         $value = trim($fieldType);
@@ -39,7 +48,14 @@ abstract class IssueBoardControllerBase extends Controller
             'c_action_1' => 'nullable|string|max:255',
             'c_action_1_remark' => 'nullable|string|max:255',
             'close_note' => 'nullable|string|max:255',
+            'issue_date' => 'nullable|string|max:100',
         ]);
+
+        // Merge page-specific extra field validation
+        $extra = $this->extraValidationRules();
+        if (!empty($extra)) {
+            $validated = array_merge($validated, $request->validate($extra));
+        }
 
         if (($validated['action_1'] ?? null) === 'Other' && trim((string) ($validated['action_1_remark'] ?? '')) === '') {
             abort(response()->json([
@@ -225,10 +241,11 @@ abstract class IssueBoardControllerBase extends Controller
                 'close_note' => $row->close_note,
                 'created_by' => $row->created_by,
                 'created_at' => $row->created_at,
+                'issue_date' => $row->issue_date ?? null,
                 'created_at_display' => $row->created_at
                     ? \Carbon\Carbon::parse($row->created_at)->timezone($tz)->format('d-m-Y H:i')
                     : '',
-            ];
+            ] + $this->extraRowFields($row);
         })->values();
 
         return response()->json(['data' => $data]);
@@ -302,9 +319,11 @@ abstract class IssueBoardControllerBase extends Controller
                 'close_note' => isset($validated['close_note']) ? trim((string) $validated['close_note']) : null,
                 'created_by' => $createdBy,
                 'created_by_user_id' => $user?->id,
+                'issue_date' => isset($validated['issue_date']) ? trim((string) $validated['issue_date']) : null,
                 'created_at' => $now,
                 'updated_at' => $now,
             ];
+            $payload = array_merge($payload, $this->buildExtraPayload($validated));
             $issueId = DB::table($this->issuesTable())->insertGetId($payload);
             DB::table($this->historyTable())->insert(array_merge($payload, [
                 'orders_on_hold_issue_id' => $issueId,
@@ -338,8 +357,9 @@ abstract class IssueBoardControllerBase extends Controller
                 'close_note' => $row->close_note,
                 'created_by' => $row->created_by,
                 'created_at' => $row->created_at,
+                'issue_date' => $row->issue_date ?? null,
                 'created_at_display' => $row->created_at ? \Carbon\Carbon::parse($row->created_at)->timezone($tz)->format('d-m-Y H:i') : '',
-            ],
+            ] + $this->extraRowFields($row),
         ], 201);
     }
 
@@ -374,7 +394,9 @@ abstract class IssueBoardControllerBase extends Controller
                 'c_action_1_remark' => isset($validated['c_action_1_remark']) ? trim((string) $validated['c_action_1_remark']) : null,
                 'close_note' => isset($validated['close_note']) ? trim((string) $validated['close_note']) : null,
                 'updated_at' => $now,
+                'issue_date' => isset($validated['issue_date']) ? trim((string) $validated['issue_date']) : null,
             ];
+            $payload = array_merge($payload, $this->buildExtraPayload($validated));
             DB::table($this->issuesTable())->where('id', $id)->update($payload);
             DB::table($this->historyTable())->insert(array_merge($payload, [
                 'orders_on_hold_issue_id' => $id,
@@ -419,6 +441,7 @@ abstract class IssueBoardControllerBase extends Controller
             'issue_remark'         => ['issue_remark', 'root cause remark', 'root_cause_remark'],
             'c_action_1'           => ['c_action_1', 'root_cause_fixed', 'root cause fixed'],
             'c_action_1_remark'    => ['c_action_1_remark', 'root cause fixed remark', 'root_cause_fixed_remark'],
+            'issue_date'           => ['issue_date', 'issue date', 'date'],
         ];
 
         while (($row = fgetcsv($handle)) !== false) {
@@ -480,6 +503,7 @@ abstract class IssueBoardControllerBase extends Controller
                     'replacement_tracking' => $get('replacement_tracking'),
                     'c_action_1'           => $get('c_action_1'),
                     'c_action_1_remark'    => $get('c_action_1_remark'),
+                    'issue_date'           => $get('issue_date'),
                     'created_by'           => $createdBy,
                     'created_by_user_id'   => $user?->id,
                     'created_at'           => $now,

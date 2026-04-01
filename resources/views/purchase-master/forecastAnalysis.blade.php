@@ -2157,8 +2157,8 @@
                     }
                 },
                 {
-                    title: "NPFT%",
-                    field: "avg_npft_pct",
+                    title: "GPFT%",
+                    field: "avg_gpft_pct",
                     minWidth: 58,
                     width: 62,
                     headerSort: true,
@@ -2166,13 +2166,13 @@
                     sorter: "number",
                     titleFormatter: function() {
                         const span = document.createElement("span");
-                        span.textContent = "NPFT%";
-                        span.setAttribute("title", "GPFT% − AD% (amazon_data_view)");
+                        span.textContent = "GPFT%";
+                        span.setAttribute("title", "Gross Profit % (amazon_data_view)");
                         return span;
                     },
                     accessor: function(row) {
                         if (!row) return null;
-                        const v = parseFloat(row.avg_npft_pct);
+                        const v = parseFloat(row.avg_gpft_pct);
                         return Number.isFinite(v) ? v : null;
                     },
                     formatter: function(cell) {
@@ -2182,47 +2182,126 @@
                         }
                         const n = Math.round(parseFloat(v));
                         let col = '#1b5e20';
-                        if (n < 18) {
-                            col = '#b71c1c';
-                        } else if (n > 33) {
-                            col = '#c2185b';
+                        if (n < 18) col = '#b71c1c';
+                        else if (n > 33) col = '#c2185b';
+                        return `<span style="display:block;text-align:center;font-weight:700;color:${col};" title="Gross Profit % — red &lt;18, green 18–33, magenta &gt;33">${n}%</span>`;
+                    }
+                },
+                {
+                    title: "Ads%",
+                    field: "avg_ad_pct",
+                    minWidth: 52,
+                    width: 58,
+                    headerSort: true,
+                    hozAlign: "center",
+                    sorter: "number",
+                    titleFormatter: function() {
+                        const span = document.createElement("span");
+                        span.textContent = "Ads%";
+                        span.setAttribute("title", "Ads % — live channel-level Ads% from all-marketplace-master (Amazon)");
+                        return span;
+                    },
+                    accessor: function(row) {
+                        if (!row) return null;
+                        const v = parseFloat(row.avg_ad_pct);
+                        return Number.isFinite(v) ? v : null;
+                    },
+                    formatter: function(cell) {
+                        const v = cell.getValue();
+                        if (v === null || v === undefined || v === '' || (typeof v === 'number' && isNaN(v))) {
+                            return '<span style="display:block;text-align:center;color:#6c757d">—</span>';
                         }
-                        return `<span style="display:block;text-align:center;font-weight:700;color:${col};" title="GPFT% − AD% — red &lt;18, green 18–33, magenta &gt;33">${n}%</span>`;
+                        const n = parseFloat(v);
+                        let col = '#1b5e20';
+                        if (n > 10) col = '#b71c1c';
+                        else if (n >= 5) col = '#e65100';
+                        const dot = `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${col};vertical-align:middle;margin-left:3px;"></span>`;
+                        return `<span style="display:block;text-align:center;font-weight:600;color:${col};" title="Ads % — green &lt;5, orange 5–10, red &gt;10">${n.toFixed(1)}%${dot}</span>`;
+                    }
+                },
+                {
+                    title: "NPFT%",
+                    field: "avg_gpft_pct",
+                    minWidth: 58,
+                    width: 62,
+                    headerSort: false,
+                    hozAlign: "center",
+                    titleFormatter: function() {
+                        const span = document.createElement("span");
+                        span.textContent = "NPFT%";
+                        span.setAttribute("title", "Net Profit % = GPFT% − Ads%");
+                        return span;
+                    },
+                    formatter: function(cell) {
+                        const row = cell.getRow().getData();
+                        const gpft = parseFloat(row.avg_gpft_pct);
+                        const ads  = parseFloat(row.avg_ad_pct);
+                        if (!Number.isFinite(gpft) || !Number.isFinite(ads)) {
+                            return '<span style="display:block;text-align:center;color:#6c757d">—</span>';
+                        }
+                        const n = Math.round(gpft - ads);
+                        let col = '#1b5e20';
+                        if (n < 18) col = '#b71c1c';
+                        else if (n > 33) col = '#c2185b';
+                        return `<span style="display:block;text-align:center;font-weight:700;color:${col};" title="GPFT% − Ads% — red &lt;18, green 18–33, magenta &gt;33">${n}%</span>`;
+                    }
+                },
+                {
+                    title: "GROI%",
+                    field: "avg_groi_pct",
+                    minWidth: 58,
+                    width: 62,
+                    headerSort: true,
+                    hozAlign: "center",
+                    sorter: "number",
+                    titleFormatter: function() {
+                        const span = document.createElement("span");
+                        span.textContent = "GROI%";
+                        span.setAttribute("title", "Gross ROI % (amazon_data_view)");
+                        return span;
+                    },
+                    accessor: function(row) {
+                        if (!row) return null;
+                        const v = parseFloat(row.avg_groi_pct);
+                        return Number.isFinite(v) ? v : null;
+                    },
+                    formatter: function(cell) {
+                        const v = cell.getValue();
+                        if (v === null || v === undefined || v === '' || (typeof v === 'number' && isNaN(v))) {
+                            return '<span style="display:block;text-align:center;color:#6c757d">—</span>';
+                        }
+                        const n = Math.round(parseFloat(v));
+                        let col = '#1b5e20';
+                        if (n < 50) col = '#b71c1c';
+                        else if (n > 100) col = '#c2185b';
+                        return `<span style="display:block;text-align:center;font-weight:700;color:${col};" title="Gross ROI % — red &lt;50, green 50–100, magenta &gt;100">${n}%</span>`;
                     }
                 },
                 {
                     title: "NROI%",
-                    field: "avg_nroi_pct",
+                    field: "avg_groi_pct",
                     minWidth: 58,
                     width: 62,
-                    headerSort: true,
+                    headerSort: false,
                     hozAlign: "center",
-                    sorter: "number",
                     titleFormatter: function() {
                         const span = document.createElement("span");
                         span.textContent = "NROI%";
-                        span.setAttribute("title", "ROI% − AD% (amazon_data_view)");
+                        span.setAttribute("title", "Net ROI % = GROI% − Ads%");
                         return span;
                     },
-                    accessor: function(row) {
-                        if (!row) return null;
-                        const v = parseFloat(row.avg_nroi_pct);
-                        return Number.isFinite(v) ? v : null;
-                    },
                     formatter: function(cell) {
-                        const v = cell.getValue();
-                        if (v === null || v === undefined || v === '' || (typeof v === 'number' && isNaN(v))) {
+                        const row = cell.getRow().getData();
+                        const groi = parseFloat(row.avg_groi_pct);
+                        const ads  = parseFloat(row.avg_ad_pct);
+                        if (!Number.isFinite(groi) || !Number.isFinite(ads)) {
                             return '<span style="display:block;text-align:center;color:#6c757d">—</span>';
                         }
-                        const n = Math.round(parseFloat(v));
+                        const n = Math.round(groi - ads);
                         let col = '#1b5e20';
-                        if (n < 50) {
-                            col = '#b71c1c';
-                        } else if (n > 100) {
-                            col = '#c2185b';
-                        }
-
-                        return `<span style="display:block;text-align:center;font-weight:700;color:${col};" title="ROI% − AD% — red &lt;50, green 50–100, magenta &gt;100">${n}%</span>`;
+                        if (n < 50) col = '#b71c1c';
+                        else if (n > 100) col = '#c2185b';
+                        return `<span style="display:block;text-align:center;font-weight:700;color:${col};" title="GROI% − Ads% — red &lt;50, green 50–100, magenta &gt;100">${n}%</span>`;
                     }
                 },
                 {
@@ -2249,7 +2328,7 @@
                         const mAvg = parseFloat(row.m_avg) || 0;
                         const moq = parseFloat(row.MOQ) || 0;
                         const tat = mAvg > 0 ? Math.round(moq / mAvg) : 0;
-                        const nroi = parseFloat(row.avg_nroi_pct);
+                        const nroi = parseFloat(row.avg_groi_pct);
                         if (!tat || tat <= 0 || !Number.isFinite(nroi)) {
                             return null;
                         }
@@ -2282,7 +2361,7 @@
                         const mAvg = parseFloat(d.m_avg) || 0;
                         const moq = parseFloat(d.MOQ) || 0;
                         const tat = mAvg > 0 ? Math.round(moq / mAvg) : 0;
-                        const nroi = parseFloat(d.avg_nroi_pct);
+                        const nroi = parseFloat(d.avg_groi_pct);
                         if (!tat || tat <= 0 || !Number.isFinite(nroi)) {
                             return '<span style="display:block;text-align:center;color:#6c757d">—</span>';
                         }
@@ -2864,23 +2943,29 @@
                         row.avg_gpft_pct = gpftKids.length
                             ? Math.round(gpftKids.reduce(function(s, x) { return s + parseFloat(x); }, 0) / gpftKids.length)
                             : null;
+                        const adKids = children.map(c => c.avg_ad_pct).filter(function(v) {
+                            return v != null && v !== '' && Number.isFinite(parseFloat(v));
+                        });
+                        row.avg_ad_pct = adKids.length
+                            ? Math.round(adKids.reduce(function(s, x) { return s + parseFloat(x); }, 0) / adKids.length * 10) / 10
+                            : null;
                         const npftKids = children.map(c => c.avg_npft_pct).filter(function(v) {
                             return v != null && v !== '' && Number.isFinite(parseFloat(v));
                         });
                         row.avg_npft_pct = npftKids.length
                             ? Math.round(npftKids.reduce(function(s, x) { return s + parseFloat(x); }, 0) / npftKids.length)
                             : null;
-                        const nroiKids = children.map(c => c.avg_nroi_pct).filter(function(v) {
+                        const nroiKids = children.map(c => c.avg_groi_pct).filter(function(v) {
                             return v != null && v !== '' && Number.isFinite(parseFloat(v));
                         });
-                        row.avg_nroi_pct = nroiKids.length
+                        row.avg_groi_pct = nroiKids.length
                             ? Math.round(nroiKids.reduce(function(s, x) { return s + parseFloat(x); }, 0) / nroiKids.length)
                             : null;
                         const effKids = children.map(function(c) {
                             const mAvg = parseFloat(c.m_avg) || 0;
                             const moq = parseFloat(c.MOQ) || 0;
                             const tat = mAvg > 0 ? Math.round(moq / mAvg) : 0;
-                            const nroi = parseFloat(c.avg_nroi_pct);
+                            const nroi = parseFloat(c.avg_groi_pct);
                             if (!tat || tat <= 0 || !Number.isFinite(nroi)) {
                                 return null;
                             }
