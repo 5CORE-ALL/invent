@@ -331,7 +331,7 @@ class ShopifyPLSApiService
      *
      * @return array{success: bool, message: string}
      */
-    public function updateDescription(string $identifier, string $description): array
+    public function updateDescription(string $identifier, string $description, array $imageUrls = []): array
     {
         if (trim($identifier) === '' || trim($description) === '') {
             return ['success' => false, 'message' => 'SKU (or variant_id / product_id) and description are required.'];
@@ -442,7 +442,8 @@ class ShopifyPLSApiService
                 $trim,
                 $trim,
                 $title,
-                12
+                12,
+                $imageUrls
             )['html'];
 
             $combined = $this->appendUniqueHtmlByPlainText($currentBody, $descriptionHtml, $descriptionPlain);

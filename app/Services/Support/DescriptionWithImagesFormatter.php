@@ -15,10 +15,14 @@ class DescriptionWithImagesFormatter
         string $identifier,
         ?string $skuHint = null,
         string $altText = 'Product Image',
-        int $maxImages = 12
+        int $maxImages = 12,
+        array $preferredImages = []
     ): array {
         $descriptionPlain = trim($descriptionPlain);
-        $images = self::resolveImageUrls($identifier, $skuHint, $maxImages);
+        $images = self::normalizeProvidedImages($preferredImages, $maxImages);
+        if ($images === []) {
+            $images = self::resolveImageUrls($identifier, $skuHint, $maxImages);
+        }
 
         $descriptionHtml = '<p>'.nl2br(htmlspecialchars($descriptionPlain, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'), false).'</p>';
         if ($images === []) {
@@ -228,5 +232,31 @@ class DescriptionWithImagesFormatter
         }
 
         return $base.'/'.ltrim($raw, '/');
+    }
+
+    /**
+     * @param  array<int, mixed>  $images
+     * @return array<int, string>
+     */
+    private static function normalizeProvidedImages(array $images, int $maxImages): array
+    {
+        $urls = [];
+        $seen = [];
+        foreach ($images as $item) {
+            if (! is_string($item)) {
+                continue;
+            }
+            $url = self::normalizeImageUrl($item);
+            if ($url === '' || isset($seen[$url])) {
+                continue;
+            }
+            $urls[] = $url;
+            $seen[$url] = true;
+            if (count($urls) >= $maxImages) {
+                break;
+            }
+        }
+
+        return $urls;
     }
 }
