@@ -14,6 +14,7 @@ use App\Models\ProductMaster;
 use App\Models\ProductStockMapping;
 use App\Models\TemuPricing;
 use App\Models\TemuMetric;
+use App\Services\Support\DescriptionWithImagesFormatter;
 use Carbon\Carbon;
 
 class TemuApiService
@@ -1276,9 +1277,20 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
 
         $field = config('services.temu.goods_desc_field', 'goodsDesc');
 
+        $resolved = $this->resolveTemuGoodsAndSku($identifier);
+        $skuForImages = (string) ($resolved['sku'] ?? $identifier);
+
+        $descriptionWithImages = DescriptionWithImagesFormatter::buildHtmlWithImages(
+            $description,
+            $identifier,
+            $skuForImages,
+            'Product Image',
+            12
+        )['html'];
+
         return $this->pushTemuGoodsBasicField(
             $identifier,
-            $description,
+            $descriptionWithImages,
             $field,
             'Temu product description updated.',
             'SKU (or goods_id) and description are required.',

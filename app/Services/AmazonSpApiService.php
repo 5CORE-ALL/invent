@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\DB;
 use App\Models\AmazonListingRaw;
 use App\Models\ProductStockMapping;
+use App\Services\Support\DescriptionWithImagesFormatter;
 
 class AmazonSpApiService
 {
@@ -3532,8 +3533,16 @@ class AmazonSpApiService
             return ['success' => false, 'message' => 'SKU (or ASIN from amazon_metrics) and description are required.'];
         }
 
+        $descriptionWithImages = DescriptionWithImagesFormatter::buildHtmlWithImages(
+            $description,
+            $identifier,
+            $sku,
+            'Product Image',
+            9
+        )['html'];
+
         $value = [[
-            'value' => $description,
+            'value' => $descriptionWithImages,
             'language_tag' => 'en_US',
         ]];
 
