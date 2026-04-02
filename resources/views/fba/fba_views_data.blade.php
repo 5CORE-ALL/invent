@@ -358,8 +358,10 @@
                 </form>
             </div>
         </div>
-        <!-- LMP Modal -->
-        <div class="modal fade" id="lmpModal" tabindex="-1" aria-hidden="true" style="z-index: 1060;">
+    </div>
+
+    <!-- LMP Modal -->
+    <div class="modal fade" id="lmpModal" tabindex="-1" aria-hidden="true" style="z-index: 1060;">
             <div class="modal-dialog modal-lg modal-dialog-scrollable">
                 <div class="modal-content">
                     <div class="modal-header">
@@ -373,58 +375,41 @@
             </div>
         </div>
 
-    {{-- ── FBA Badge Trend Chart Modal ─────────────────────────────── --}}
-    <div class="modal fade" id="fbaBadgeChartModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog shadow-none" style="max-width:98vw;width:98vw;margin:10px auto 0;">
-            <div class="modal-content" style="border-radius:8px;overflow:hidden;">
-                <div class="modal-header bg-info text-white py-1 px-3">
-                    <h6 class="modal-title mb-0" style="font-size:13px;">
-                        <i class="fas fa-chart-area me-1"></i>
-                        <span id="fbaBadgeChartTitle">FBA – Trend</span>
-                    </h6>
+    {{-- FBA Badge Trend Modal --}}
+    <div class="modal fade" id="fbaBadgeTrendModal" tabindex="-1">
+        <div class="modal-dialog modal-xl">
+            <div class="modal-content">
+                <div class="modal-header bg-info text-white py-2 px-3">
+                    <h6 class="modal-title mb-0" id="fbaChartTitle"><i class="fas fa-chart-area me-1"></i> FBA Trend</h6>
                     <div class="d-flex align-items-center gap-2">
-                        <select id="fbaBadgeChartRange" class="form-select form-select-sm bg-white"
-                            style="width:110px;height:26px;font-size:11px;padding:1px 8px;">
+                        <select id="fbaChartDays" class="form-select form-select-sm" style="width:110px;">
                             <option value="7">7 Days</option>
                             <option value="14">14 Days</option>
                             <option value="30" selected>30 Days</option>
                             <option value="60">60 Days</option>
                             <option value="90">90 Days</option>
                         </select>
-                        <button type="button" class="btn-close btn-close-white" style="font-size:10px;" data-bs-dismiss="modal"></button>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                     </div>
                 </div>
                 <div class="modal-body p-2">
-                    <div id="fbaBadgeLineWrap" style="display:none;height:38vh;align-items:stretch;">
-                        <div style="flex:1;min-width:0;position:relative;">
-                            <canvas id="fbaBadgeLineCanvas"></canvas>
-                        </div>
-                        <div id="fbaBadgeStatPanel" style="width:100px;display:flex;flex-direction:column;justify-content:center;
-                                gap:8px;padding:6px 8px;border-left:1px solid #e9ecef;background:#f8f9fa;border-radius:0 4px 4px 0;">
-                            <div style="text-align:center;">
-                                <div style="font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#dc3545;margin-bottom:1px;">Highest</div>
-                                <div id="fbaBadgeHighest" style="font-size:13px;font-weight:700;color:#dc3545;">–</div>
-                            </div>
-                            <div style="text-align:center;border-top:1px dashed #adb5bd;border-bottom:1px dashed #adb5bd;padding:4px 0;">
-                                <div style="font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#6c757d;margin-bottom:1px;">Median</div>
-                                <div id="fbaBadgeMedian" style="font-size:13px;font-weight:700;color:#6c757d;">–</div>
-                            </div>
-                            <div style="text-align:center;">
-                                <div style="font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#198754;margin-bottom:1px;">Lowest</div>
-                                <div id="fbaBadgeLowest" style="font-size:13px;font-weight:700;color:#198754;">–</div>
-                            </div>
-                        </div>
+                    <div id="fbaChartLoading" class="text-center py-4" style="display:none;">
+                        <div class="spinner-border text-primary"></div><p class="mt-2 text-muted">Loading…</p>
                     </div>
-                    <div id="fbaBadgeBarWrap" style="display:none;height:160px;margin-top:8px;">
-                        <canvas id="fbaBadgeBarCanvas"></canvas>
-                    </div>
-                    <div id="fbaBadgeLoading" class="text-center py-3" style="display:none;">
-                        <div class="spinner-border spinner-border-sm text-primary"></div>
-                        <p class="mt-1 text-muted small mb-0">Loading chart data…</p>
-                    </div>
-                    <div id="fbaBadgeNoData" class="text-center py-3" style="display:none;">
+                    <div id="fbaChartNoData" class="text-center py-4" style="display:none;">
                         <i class="fas fa-exclamation-circle text-warning fa-2x mb-2"></i>
-                        <p class="text-muted small mb-0">No data yet. Runs daily at 23:50 UTC.</p>
+                        <p class="text-muted">No data yet. Command runs daily at 23:50 UTC.</p>
+                    </div>
+                    <div id="fbaChartLineWrap" style="display:none;height:55vh;align-items:stretch;">
+                        <div style="flex:1;min-width:0;position:relative;"><canvas id="fbaChartLineCanvas"></canvas></div>
+                        <div style="width:90px;display:flex;flex-direction:column;justify-content:center;gap:8px;padding:6px;border-left:1px solid #dee2e6;background:#f8f9fa;">
+                            <div class="text-center"><div style="font-size:8px;color:#dc3545;font-weight:700;">Highest</div><div id="fbaChartHighest" style="font-size:13px;font-weight:700;color:#dc3545;">–</div></div>
+                            <div class="text-center" style="border-top:1px dashed #adb5bd;border-bottom:1px dashed #adb5bd;padding:4px 0;"><div style="font-size:8px;color:#6c757d;font-weight:700;">Median</div><div id="fbaChartMedian" style="font-size:13px;font-weight:700;color:#6c757d;">–</div></div>
+                            <div class="text-center"><div style="font-size:8px;color:#198754;font-weight:700;">Lowest</div><div id="fbaChartLowest" style="font-size:13px;font-weight:700;color:#198754;">–</div></div>
+                        </div>
+                    </div>
+                    <div id="fbaChartBarWrap" style="display:none;">
+                        <canvas id="fbaChartBarCanvas"></canvas>
                     </div>
                 </div>
             </div>
@@ -3584,146 +3569,109 @@
             $('#invageModal').modal('show');
         };
 
-        // ── FBA Badge Trend Chart ─────────────────────────────────────────
-        const fbaBadgeMetricLabels = {
-            sales: 'Sales ($)', pft: 'PFT ($)', gpft: 'GPFT (%)',
-            price: 'Avg Price ($)', cvr: 'CVR (%)', views: 'Views',
-            inv: 'FBA INV', l30: 'L30', dil: 'DIL (%)',
-            zero_sold: '0 Sold SKUs', ads_pct: 'Ads% (%)', spend: 'Spend ($)', roi: 'ROI (%)',
+        // ── FBA Badge Trend Chart ─────────────────────────────────────────────
+        let fbaChartMetric = '', fbaChartDays = 30, fbaChartAjax = null;
+        let fbaLineChart = null, fbaBarChart = null;
+
+        const fbaChartLabels = {
+            sales:'Sales ($)', pft:'PFT ($)', gpft:'GPFT%', price:'Price ($)',
+            cvr:'CVR%', views:'Views', inv:'INV', l30:'L30', dil:'DIL%',
+            zero_sold:'0 Sold', ads_pct:'Ads%', spend:'Spend ($)', roi:'ROI%'
         };
-        const fbaDollarMetrics  = ['sales','pft','price','spend'];
-        const fbaPercentMetrics = ['gpft','cvr','dil','ads_pct','roi'];
 
-        let fbaBadgeLineChart = null, fbaBadgeBarChart = null;
-        let fbaBadgeMetric = '', fbaBadgeDays = 30, fbaBadgeAjax = null;
-
-        function fbaFmtVal(v) {
-            const n = Number(v) || 0;
-            if (fbaDollarMetrics.includes(fbaBadgeMetric))  return '$' + Math.round(n).toLocaleString('en-US');
-            if (fbaPercentMetrics.includes(fbaBadgeMetric)) return n.toFixed(1) + '%';
-            return Math.round(n).toLocaleString('en-US');
+        function fbaChartFmt(v) {
+            const n = Number(v)||0;
+            const dollar  = ['sales','pft','price','spend'];
+            const percent = ['gpft','cvr','dil','ads_pct','roi'];
+            if (dollar.includes(fbaChartMetric))  return '$'+Math.round(n).toLocaleString();
+            if (percent.includes(fbaChartMetric)) return n.toFixed(1)+'%';
+            return Math.round(n).toLocaleString();
         }
 
-        function fbaRenderCharts(points) {
-            if (!Array.isArray(points) || !points.length) return false;
-            const labels = points.map(p => p.date);
-            const values = points.map(p => Number(p.value) || 0);
-            const sorted = [...values].sort((a, b) => a - b);
-            const mid    = Math.floor(sorted.length / 2);
-            const median = sorted.length % 2 ? sorted[mid] : (sorted[mid-1] + sorted[mid]) / 2;
+        function fbaLoadBadgeChart() {
+            if (!fbaChartMetric) return;
+            if (fbaChartAjax) fbaChartAjax.abort();
+            $('#fbaChartLoading').show();
+            $('#fbaChartNoData,#fbaChartLineWrap,#fbaChartBarWrap').hide();
 
-            $('#fbaBadgeHighest').text(fbaFmtVal(sorted[sorted.length - 1]));
-            $('#fbaBadgeMedian').text(fbaFmtVal(median));
-            $('#fbaBadgeLowest').text(fbaFmtVal(sorted[0]));
-
-            const lineCtx = document.getElementById('fbaBadgeLineCanvas');
-            const barCtx  = document.getElementById('fbaBadgeBarCanvas');
-            if (!lineCtx || typeof Chart === 'undefined') return false;
-            if (fbaBadgeLineChart) fbaBadgeLineChart.destroy();
-            if (fbaBadgeBarChart)  fbaBadgeBarChart.destroy();
-
-            const label       = fbaBadgeMetricLabels[fbaBadgeMetric] || fbaBadgeMetric;
-            const pointColors = values.map(v => v >= median ? '#28a745' : '#dc3545');
-
-            if (typeof ChartDataLabels !== 'undefined') Chart.register(ChartDataLabels);
-
-            fbaBadgeLineChart = new Chart(lineCtx.getContext('2d'), {
-                type: 'line',
-                plugins: typeof ChartDataLabels !== 'undefined' ? [ChartDataLabels] : [],
-                data: {
-                    labels,
-                    datasets: [{ label, data: values, borderColor: '#adb5bd', backgroundColor: 'rgba(173,181,189,0.08)',
-                        pointBackgroundColor: pointColors, pointBorderColor: pointColors,
-                        pointRadius: 5, pointHoverRadius: 7, borderWidth: 2, tension: 0.2, fill: true }]
-                },
-                options: {
-                    responsive: true, maintainAspectRatio: false,
-                    layout: { padding: { top: 24 } },
-                    scales: {
-                        y: { min: sorted[0] >= 0 ? 0 : undefined,
-                             ticks: { callback: v => fbaFmtVal(v), font: { size: 11 } },
-                             grid: { color: 'rgba(0,0,0,0.05)' } },
-                        x: { ticks: { font: { size: 10 }, maxRotation: 45 } }
-                    },
-                    plugins: {
-                        legend: { display: false },
-                        tooltip: { callbacks: { label: ctx => label + ': ' + fbaFmtVal(ctx.parsed.y) } },
-                        datalabels: typeof ChartDataLabels !== 'undefined' ? {
-                            align: 'top', anchor: 'end', font: { size: 10, weight: '600' },
-                            color: ctx => ctx.dataset.pointBackgroundColor[ctx.dataIndex],
-                            formatter: v => fbaFmtVal(v), clip: false
-                        } : false
-                    }
-                }
-            });
-
-            fbaBadgeBarChart = new Chart(barCtx.getContext('2d'), {
-                type: 'bar',
-                plugins: typeof ChartDataLabels !== 'undefined' ? [ChartDataLabels] : [],
-                data: {
-                    labels,
-                    datasets: [{ label, data: values,
-                        backgroundColor: values.map(v => v >= median ? 'rgba(13,110,253,0.7)' : 'rgba(13,110,253,0.4)'),
-                        borderRadius: 3 }]
-                },
-                options: {
-                    responsive: true, maintainAspectRatio: false,
-                    scales: {
-                        y: { ticks: { callback: v => fbaFmtVal(v), font: { size: 10 } }, beginAtZero: false },
-                        x: { ticks: { maxRotation: 45, font: { size: 9 } } }
-                    },
-                    plugins: {
-                        legend: { display: false },
-                        tooltip: { callbacks: { label: ctx => label + ': ' + fbaFmtVal(ctx.parsed.y) } },
-                        datalabels: { display: false }
-                    }
-                }
-            });
-            return true;
-        }
-
-        function fbaLoadChart() {
-            if (!fbaBadgeMetric) return;
-            if (fbaBadgeAjax) fbaBadgeAjax.abort();
-            $('#fbaBadgeNoData,#fbaBadgeLineWrap,#fbaBadgeBarWrap').hide();
-            $('#fbaBadgeLoading').show();
-            fbaBadgeAjax = $.ajax({
+            fbaChartAjax = $.ajax({
                 url: '/fba-badge-chart-data',
                 method: 'GET',
-                data: { metric: fbaBadgeMetric, days: fbaBadgeDays },
+                data: { metric: fbaChartMetric, days: fbaChartDays },
                 success: function(res) {
-                    fbaBadgeAjax = null;
-                    $('#fbaBadgeLoading').hide();
+                    fbaChartAjax = null;
+                    $('#fbaChartLoading').hide();
                     const pts = (res && res.success && Array.isArray(res.data)) ? res.data : [];
-                    if (fbaRenderCharts(pts)) {
-                        $('#fbaBadgeLineWrap').css('display','flex');
-                        $('#fbaBadgeBarWrap').show();
-                    } else {
-                        $('#fbaBadgeNoData').show();
-                    }
+                    if (!pts.length) { $('#fbaChartNoData').show(); return; }
+
+                    const labels = pts.map(p => p.date);
+                    const values = pts.map(p => Number(p.value)||0);
+                    const sorted = [...values].sort((a,b)=>a-b);
+                    const mid    = Math.floor(sorted.length/2);
+                    const median = sorted.length%2 ? sorted[mid] : (sorted[mid-1]+sorted[mid])/2;
+                    const label  = fbaChartLabels[fbaChartMetric] || fbaChartMetric;
+
+                    $('#fbaChartHighest').text(fbaChartFmt(sorted[sorted.length-1]));
+                    $('#fbaChartMedian').text(fbaChartFmt(median));
+                    $('#fbaChartLowest').text(fbaChartFmt(sorted[0]));
+
+                    if (fbaLineChart) fbaLineChart.destroy();
+                    if (fbaBarChart)  fbaBarChart.destroy();
+
+                    const ptColors = values.map(v => v >= median ? '#28a745' : '#dc3545');
+                    fbaLineChart = new Chart($('#fbaChartLineCanvas')[0], {
+                        type: 'line',
+                        data: { labels, datasets: [{ label, data: values,
+                            borderColor:'#adb5bd', backgroundColor:'rgba(173,181,189,0.08)',
+                            pointBackgroundColor:ptColors, pointBorderColor:ptColors,
+                            pointRadius:5, pointHoverRadius:7, borderWidth:2, tension:0.2, fill:true }] },
+                        options: { responsive:true, maintainAspectRatio:false,
+                            layout:{ padding:{top:20} },
+                            scales: {
+                                y:{ ticks:{ callback: v=>fbaChartFmt(v), font:{size:11} } },
+                                x:{ ticks:{ maxRotation:45, font:{size:10} } }
+                            },
+                            plugins: { legend:{display:false}, tooltip:{callbacks:{label: ctx=>label+': '+fbaChartFmt(ctx.parsed.y)}} }
+                        }
+                    });
+
+                    fbaBarChart = new Chart($('#fbaChartBarCanvas')[0], {
+                        type: 'bar',
+                        data: { labels, datasets: [{ label, data: values,
+                            backgroundColor: values.map(v=>v>=median?'rgba(13,110,253,0.7)':'rgba(13,110,253,0.4)'),
+                            borderRadius:3 }] },
+                        options: { responsive:true, maintainAspectRatio:false,
+                            scales: {
+                                y:{ ticks:{ callback: v=>fbaChartFmt(v), font:{size:10} } },
+                                x:{ ticks:{ maxRotation:45, font:{size:9} } }
+                            },
+                            plugins: { legend:{display:false}, tooltip:{callbacks:{label: ctx=>label+': '+fbaChartFmt(ctx.parsed.y)}} }
+                        }
+                    });
+
+                    $('#fbaChartLineWrap').css('display','flex');
+                    // bar chart hidden
                 },
                 error: function() {
-                    fbaBadgeAjax = null;
-                    $('#fbaBadgeLoading').hide();
-                    $('#fbaBadgeNoData').show();
+                    fbaChartAjax = null;
+                    $('#fbaChartLoading').hide();
+                    $('#fbaChartNoData').show();
                 }
             });
         }
 
         $(document).on('click', '.fba-badge-chart', function() {
-            fbaBadgeMetric = $(this).data('metric');
-            fbaBadgeDays   = 30;
-            $('#fbaBadgeChartRange').val('30');
-            $('#fbaBadgeChartTitle').text('FBA – ' + (fbaBadgeMetricLabels[fbaBadgeMetric] || fbaBadgeMetric) + ' Trend');
-            $('#fbaBadgeChartModal').modal('show');
-            fbaLoadChart();
+            fbaChartMetric = $(this).data('metric');
+            fbaChartDays   = 30;
+            $('#fbaChartDays').val('30');
+            $('#fbaChartTitle').text('FBA – '+(fbaChartLabels[fbaChartMetric]||fbaChartMetric)+' Trend');
+            $('#fbaBadgeTrendModal').appendTo('body').modal('show');
+            fbaLoadBadgeChart();
         });
 
-        $(document).on('change', '#fbaBadgeChartRange', function() {
-            const d = parseInt($(this).val(), 10) || 30;
-            if (d === fbaBadgeDays) return;
-            fbaBadgeDays = d;
-            fbaLoadChart();
+        $('#fbaChartDays').on('change', function() {
+            const d = parseInt($(this).val())||30;
+            if (d !== fbaChartDays) { fbaChartDays = d; fbaLoadBadgeChart(); }
         });
 
         </script>
