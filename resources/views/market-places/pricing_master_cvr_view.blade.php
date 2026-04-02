@@ -1239,7 +1239,7 @@
                     sroi = lp > 0 ? ((sprice * margin - lp - ship) / lp) * 100 : 0;
                 }
                 
-                const isEditable = ['amazon', 'doba', 'ebay', 'ebaytwo', 'ebaythree', 'temu', 'walmart', 'tiktok', 'bestbuy', 'macy', 'reverb', 'tiendamia', 'sb2c', 'shopifyb2c', 'sb2b', 'shopifyb2b', 'fba'].includes((item.marketplace || '').toLowerCase());
+                const isEditable = ['amazon', 'doba', 'ebay', 'ebaytwo', 'ebaythree', 'temu', 'walmart', 'tiktok', 'bestbuy', 'macy', 'reverb', 'tiendamia', 'sb2c', 'shopifyb2c', 'sb2b', 'shopifyb2b', 'fba', 'shein', 'aliexpress'].includes((item.marketplace || '').toLowerCase());
                 
                 // Color coding for CVR%
                 let cvrColor = '';
@@ -2110,6 +2110,31 @@ title: "Dil %",
                         return `<span style="${styleForCellColor(color)}">${value.toFixed(1)}%</span>`;
                     },
                     minWidth: 70
+                },
+                {
+                    title: "Sh L30",
+                    field: "shein_l30",
+                    hozAlign: "center",
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        const value = parseInt(cell.getValue() || 0);
+                        if (value === 0) return '<span style="color:#6c757d;">0</span>';
+                        return `<span style="color:#e83e8c;font-weight:600;">${value.toLocaleString()}</span>`;
+                    },
+                    minWidth: 60
+                },
+                {
+                    title: "AE L30",
+                    field: "ae_l30",
+                    hozAlign: "center",
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const value = parseInt(cell.getValue() || 0);
+                        if (value === 0) return '<span style="color:#6c757d;">0</span>';
+                        return `<span style="color:#ff6600;font-weight:600;">${value.toLocaleString()}</span>`;
+                    },
+                    minWidth: 60
                 }
             ]
         });

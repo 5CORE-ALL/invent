@@ -2803,7 +2803,7 @@
                                 }
                                 arrowHtml = ` <span title="CVR 30 vs CVR 60: ${cvr60.toFixed(1)}%" style="vertical-align: middle;"><i class="fas ${arrowIcon}" style="color: ${arrowColor}; font-size: 12px;"></i></span>`;
                             }
-                            const color = val <= 4 ? '#a00211' : (val > 4 && val <= 7 ? '#ffc107' : (val > 7 && val <= 10 ? '#28a745' : '#e83e8c'));
+                            const color = val <= 4 ? '#a00211' : (val > 4 && val <= 7 ? '#ffc107' : (val > 7 && val <= 13 ? '#28a745' : '#e83e8c'));
                             return `<span style="color: ${color}; font-weight: 600;">${val.toFixed(1)}%</span>${arrowHtml}`;
                         },
                         width: 65
@@ -2815,7 +2815,7 @@
                         sorter: "number",
                         formatter: function(cell) {
                             const val = parseFloat(cell.getValue()) || 0;
-                            let color = val <= 4 ? '#a00211' : (val > 4 && val <= 7 ? '#ffc107' : (val > 7 && val <= 10 ? '#28a745' : '#e83e8c'));
+                            let color = val <= 4 ? '#a00211' : (val > 4 && val <= 7 ? '#ffc107' : (val > 7 && val <= 13 ? '#28a745' : '#e83e8c'));
                             return `<span style="color: ${color}; font-weight: 600;">${val.toFixed(1)}%</span>`;
                         },
                         width: 60
@@ -2827,7 +2827,7 @@
                         sorter: "number",
                         formatter: function(cell) {
                             const val = parseFloat(cell.getValue()) || 0;
-                            let color = val <= 4 ? '#a00211' : (val > 4 && val <= 7 ? '#ffc107' : (val > 7 && val <= 10 ? '#28a745' : '#e83e8c'));
+                            let color = val <= 4 ? '#a00211' : (val > 4 && val <= 7 ? '#ffc107' : (val > 7 && val <= 13 ? '#28a745' : '#e83e8c'));
                             return `<span style="color: ${color}; font-weight: 600;">${val.toFixed(1)}%</span>`;
                         },
                         width: 60

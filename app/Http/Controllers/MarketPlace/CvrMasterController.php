@@ -314,6 +314,56 @@ class CvrMasterController extends Controller
                 'ebay3_metrics' => $ebay3Metrics->count()
             ]);
 
+            // Get Shein percentage from MarketplacePercentage (default 100%)
+            $sheinMarketplace = MarketplacePercentage::where('marketplace', 'Shein')->first();
+            $sheinPercentage = $sheinMarketplace ? ($sheinMarketplace->percentage / 100) : 1.00;
+
+            // Fetch Shein pricing data from shein_pricing_prices (same source as Shein pricing page)
+            // Price = special_offer_price (falls back to price); L30 from shein_daily_data by seller_sku
+            $sheinPricings = collect();
+            $sheinDailySales = collect();
+            try {
+                $sheinPricings = \App\Models\SheinPricingPrice::whereIn('sku', $skus)->get()->keyBy('sku');
+                $sheinDailySales = \App\Models\SheinDailyData::whereIn('seller_sku', $skus)
+                    ->selectRaw('seller_sku as sku, SUM(COALESCE(quantity, 0)) AS shein_l30')
+                    ->groupBy('seller_sku')
+                    ->get()
+                    ->keyBy('sku');
+                Log::info('CVR Master - Shein Data fetched', [
+                    'shein_pricings'    => $sheinPricings->count(),
+                    'shein_daily_sales' => $sheinDailySales->count(),
+                    'shein_percentage'  => $sheinPercentage * 100 . '%',
+                ]);
+            } catch (\Exception $e) {
+                Log::warning('CVR Master - Shein data fetch skipped: ' . $e->getMessage());
+            }
+
+            // Get AliExpress percentage from MarketplacePercentage (default 100%)
+            $aeMarketplace = MarketplacePercentage::where('marketplace', 'Aliexpress')
+                ->orWhere('marketplace', 'AliExpress')->first();
+            $aePercentage = $aeMarketplace ? ($aeMarketplace->percentage / 100) : 1.00;
+
+            // Fetch AliExpress pricing + L30 data (same source as AliExpress pricing page)
+            $aePricings = collect();
+            $aeDailySales = collect();
+            try {
+                $aePricings = \App\Models\AliexpressPricingPrice::whereIn('sku', $skus)
+                    ->get()->keyBy('sku');
+                $aeDailySales = \App\Models\AliexpressDailyData::query()
+                    ->selectRaw('sku_code, SUM(COALESCE(quantity, 0)) AS ae_l30, SUM(COALESCE(order_amount, 0)) AS ae_sales')
+                    ->whereIn('sku_code', $skus)
+                    ->groupBy('sku_code')
+                    ->get()
+                    ->keyBy('sku_code');
+                Log::info('CVR Master - AliExpress Data fetched', [
+                    'ae_pricings'    => $aePricings->count(),
+                    'ae_daily_sales' => $aeDailySales->count(),
+                    'ae_percentage'  => $aePercentage * 100 . '%',
+                ]);
+            } catch (\Exception $e) {
+                Log::warning('CVR Master - AliExpress data fetch skipped: ' . $e->getMessage());
+            }
+
             // Amazon marketplace percentage (for Amz PFT / ROI)
             $amazonMarketplace = MarketplacePercentage::where('marketplace', 'Amazon')->first();
             $amazonPercentage = $amazonMarketplace ? ($amazonMarketplace->percentage / 100) : 0.80;
@@ -733,7 +783,33 @@ class CvrMasterController extends Controller
                 } else {
                     $temuPFT = $temuGPFT - $temuAD;
                 }
-                
+
+                // === SHEIN CALCULATIONS ===
+                // Price = special_offer_price (same logic as Shein pricing page)
+                $sheinPricing = $sheinPricings->get($sku);
+                $sheinSpOffer = $sheinPricing ? floatval($sheinPricing->special_offer_price ?? 0) : 0;
+                $sheinPrice   = $sheinSpOffer > 0 ? $sheinSpOffer : ($sheinPricing ? floatval($sheinPricing->price ?? 0) : 0);
+                $sheinViews   = 0; // shein_pricing_prices doesn't track views
+                $sheinSaleRow = $sheinDailySales->get($sku);
+                $sheinL30     = $sheinSaleRow ? intval($sheinSaleRow->shein_l30 ?? 0) : 0;
+                $sheinShip    = 0;
+                if ($values) {
+                    foreach ($values as $k => $v) {
+                        if (strtolower($k) === 'shein_ship') $sheinShip = floatval($v);
+                    }
+                }
+                $sheinGPFT = $sheinPrice > 0 ? ((($sheinPrice * $sheinPercentage - $lp - $sheinShip) / $sheinPrice) * 100) : 0;
+                $sheinPFT  = $sheinGPFT; // No ads for Shein
+
+                // === ALIEXPRESS CALCULATIONS ===
+                // Price from aliexpress_pricing_prices; L30 from aliexpress_daily_data by sku_code
+                $aePricing  = $aePricings->get($sku);
+                $aePrice    = $aePricing ? floatval($aePricing->price ?? 0) : 0;
+                $aeSaleRow  = $aeDailySales->get($sku);
+                $aeL30      = $aeSaleRow ? intval($aeSaleRow->ae_l30 ?? 0) : 0;
+                $aeGPFT     = $aePrice > 0 ? ((($aePrice * $aePercentage - $lp - $ship) / $aePrice) * 100) : 0;
+                $aePFT      = $aeGPFT; // No ads for AliExpress
+
                 // Calculate aggregated metrics across all marketplaces
                 
                 // Get views from all marketplaces
@@ -761,8 +837,7 @@ class CvrMasterController extends Controller
                 // Total Views (sum of all marketplace views)
                 $totalViews = $amazonViews + $ebay1Views + $ebay2Views + $ebay3Views + $temuViews + 
                               $walmartViews + $tiktokViews + $bbViews + $sb2cViews + 
-                              $macyViews + $reverbViews + $dobaViews;
-                
+                              $macyViews + $reverbViews + $dobaViews + $sheinViews; // AliExpress has no views tracked                
                 // Get L30 from all marketplaces
                 $ebay1L30 = $ebay1Metric ? intval($ebay1Metric->ebay_l30 ?? 0) : 0;
                 $ebay2L30 = $ebay2Metric ? intval($ebay2Metric->ebay_l30 ?? 0) : 0;
@@ -778,7 +853,7 @@ class CvrMasterController extends Controller
                 // Total L30 across all marketplaces
                 $totalL30 = $amazonL30 + $ebay1L30 + $ebay2L30 + $ebay3L30 + $temuL30 + 
                            $walmartL30 + $tiktokL30 + $bbL30 + $sb2cL30 + 
-                           $macyL30 + $reverbL30 + $dobaL30;
+                           $macyL30 + $reverbL30 + $dobaL30 + $sheinL30 + $aeL30;
                 
                 // Calculate Avg CVR using CVR formula: (Total L30 / Total Views) × 100
                 $avgCVR = $totalViews > 0 ? round(($totalL30 / $totalViews) * 100, 2) : 0;
@@ -797,6 +872,8 @@ class CvrMasterController extends Controller
                 if ($macyPrice > 0) $prices[] = $macyPrice;
                 if ($reverbPrice > 0) $prices[] = $reverbPrice;
                 if ($dobaPrice > 0) $prices[] = $dobaPrice;
+                if ($sheinPrice > 0) $prices[] = $sheinPrice;
+                if ($aePrice > 0) $prices[] = $aePrice;
                 
                 // Collect all GPFT values (non-zero or negative)
                 $gpftValues = [];
@@ -812,6 +889,8 @@ class CvrMasterController extends Controller
                 if ($macyPrice > 0) $gpftValues[] = $macyGPFT;
                 if ($reverbPrice > 0) $gpftValues[] = $reverbGPFT;
                 if ($dobaPrice > 0) $gpftValues[] = $dobaGPFT;
+                if ($sheinPrice > 0) $gpftValues[] = $sheinGPFT;
+                if ($aePrice > 0) $gpftValues[] = $aeGPFT;
                 
                 // Collect all AD values (marketplaces with ads: Amazon, Temu, Walmart)
                 $adValues = [];
@@ -833,6 +912,8 @@ class CvrMasterController extends Controller
                 if ($macyPrice > 0) $pftValues[] = $macyPFT;
                 if ($reverbPrice > 0) $pftValues[] = $reverbPFT;
                 if ($dobaPrice > 0) $pftValues[] = $dobaPFT;
+                if ($sheinPrice > 0) $pftValues[] = $sheinPFT;
+                if ($aePrice > 0) $pftValues[] = $aePFT;
                 
                 // Calculate averages
                 $avgPrice = count($prices) > 0 ? round(array_sum($prices) / count($prices), 2) : 0;
@@ -895,6 +976,8 @@ class CvrMasterController extends Controller
                     "amazon_ad" => round($amazonAD, 2),
                     "amazon_margin" => 0.80,
                     "amazon_l30" => $amazonL30,
+                    "shein_l30" => $sheinL30,
+                    "ae_l30"    => $aeL30,
                     "amz_pft" => $amzPft,
                     "amz_roi" => $amzRoi,
                     "overall_l30" => $overallL30,
@@ -962,6 +1045,8 @@ class CvrMasterController extends Controller
                     'amazon_ad' => null,
                     'amazon_margin' => 0.80,
                     'amazon_l30' => null,
+                    'shein_l30' => $rows->sum('shein_l30'),
+                    'ae_l30'    => $rows->sum('ae_l30'),
                     'amz_pft' => $rows->filter(fn ($r) => isset($r->amz_pft) && $r->amz_pft !== null)->isNotEmpty()
                         ? round($rows->filter(fn ($r) => isset($r->amz_pft) && $r->amz_pft !== null)->avg('amz_pft'), 2) : null,
                     'amz_roi' => $rows->filter(fn ($r) => isset($r->amz_roi) && $r->amz_roi !== null)->isNotEmpty()
@@ -2156,8 +2241,7 @@ class CvrMasterController extends Controller
 
             // NOTE: Macy is added earlier as 'MACY' with enhanced suggested data (line ~1500)
             
-            // Add BestBuy
-            $bestbuyProduct = BestbuyUsaProduct::where('sku', $fullSku)->first();
+            // Add BestBuy            $bestbuyProduct = BestbuyUsaProduct::where('sku', $fullSku)->first();
             $bestbuyMarketplace = MarketplacePercentage::where('marketplace', 'BestbuyUSA')->first();
             $bestbuyMargin = $bestbuyMarketplace ? ($bestbuyMarketplace->percentage / 100) : 0.80;
             $bestbuyPrice = $bestbuyProduct->price ?? 0;
@@ -2239,6 +2323,142 @@ class CvrMasterController extends Controller
                 'pushed_at' => null,
                 'buyer_link' => ($tiendamiaLinks = $getListingLinks(TiendamiaListingStatus::class, $fullSku))[0],
                 'seller_link' => $tiendamiaLinks[1],
+            ];
+
+            // Add Shein
+            $sheinMarketplacePerc = MarketplacePercentage::where('marketplace', 'Shein')->first();
+            $sheinMarginBd = $sheinMarketplacePerc ? ($sheinMarketplacePerc->percentage / 100) : 1.00;
+            $sheinPricingRowBd = null;
+            $sheinL30Bd = 0;
+            try {
+                $sheinPricingRowBd = \App\Models\SheinPricingPrice::where('sku', $fullSku)->first();
+                $sheinL30Bd = (int) (\App\Models\SheinDailyData::where('seller_sku', $fullSku)
+                    ->selectRaw('SUM(COALESCE(quantity, 0)) as l30')
+                    ->value('l30') ?? 0);
+            } catch (\Exception $e) {
+                Log::warning('Shein breakdown data fetch skipped for SKU ' . $fullSku . ': ' . $e->getMessage());
+            }
+            // Use special_offer_price for calculations (same as Shein pricing page)
+            $sheinPriceBd = 0;
+            if ($sheinPricingRowBd) {
+                $sheinPriceBd = floatval($sheinPricingRowBd->special_offer_price ?? 0);
+                if ($sheinPriceBd <= 0) $sheinPriceBd = floatval($sheinPricingRowBd->price ?? 0);
+            }
+            $sheinShipBd = 0;
+            if ($values) {
+                foreach ($values as $k => $v) {
+                    if (strtolower($k) === 'shein_ship') $sheinShipBd = floatval($v);
+                }
+            }
+            $sheinGPFTBd = $sheinPriceBd > 0 ? (($sheinPriceBd * $sheinMarginBd - $lp - $sheinShipBd) / $sheinPriceBd) * 100 : 0;
+            $sheinNPFTBd = $sheinGPFTBd; // No ads
+            $sheinSuggestedBd = ['sprice' => 0, 'sgpft' => 0, 'sroi' => 0, 'spft' => 0];
+            $sheinBuyerLink = null;
+            $sheinSellerLink = null;
+            try {
+                $sheinDataViewBd = \App\Models\SheinDataView::where('sku', $fullSku)->first();
+                if ($sheinDataViewBd) {
+                    $val = is_array($sheinDataViewBd->value) ? $sheinDataViewBd->value : json_decode($sheinDataViewBd->value, true);
+                    if (is_array($val)) {
+                        $sheinSuggestedBd = [
+                            'sprice' => floatval($val['SPRICE'] ?? 0),
+                            'sgpft'  => floatval($val['SGPFT'] ?? 0),
+                            'sroi'   => floatval($val['SROI'] ?? 0),
+                            'spft'   => floatval($val['SPFT'] ?? 0),
+                        ];
+                    }
+                }
+                [$sheinBuyerLink, $sheinSellerLink] = $getListingLinks(\App\Models\SheinListingStatus::class, $fullSku);
+            } catch (\Exception $e) {
+                Log::warning('Shein DataView/ListingStatus fetch skipped for SKU ' . $fullSku . ': ' . $e->getMessage());
+            }
+            $hasSheinData = $sheinPricingRowBd && ($sheinPriceBd > 0 || $sheinL30Bd > 0);
+
+            $breakdownData[] = [
+                'marketplace' => 'Shein',
+                'sku'         => $hasSheinData ? $fullSku : 'Not Listed',
+                'price'       => round($sheinPriceBd, 2),
+                'views'       => 0,
+                'l30'         => $sheinL30Bd,
+                'gpft'        => round($sheinGPFTBd, 2),
+                'ad'          => 0,
+                'tacos_ch'    => $getChannelTACOS('Shein'),
+                'npft'        => round($sheinNPFTBd, 2),
+                'is_listed'   => $hasSheinData ? true : false,
+                'sprice'      => $sheinSuggestedBd['sprice'],
+                'sgpft'       => $sheinSuggestedBd['sgpft'],
+                'sroi'        => $sheinSuggestedBd['sroi'],
+                'spft'        => $sheinSuggestedBd['spft'],
+                'lp'          => $lp,
+                'ship'        => $sheinShipBd,
+                'margin'      => $sheinMarginBd,
+                'pushed_by'   => null,
+                'pushed_at'   => null,
+                'buyer_link'  => $sheinBuyerLink,
+                'seller_link' => $sheinSellerLink,
+            ];
+
+            // Add AliExpress
+            $aeMarketplacePerc = MarketplacePercentage::where('marketplace', 'Aliexpress')
+                ->orWhere('marketplace', 'AliExpress')->first();
+            $aeMarginBd = $aeMarketplacePerc ? ($aeMarketplacePerc->percentage / 100) : 1.00;
+            $aePricingRowBd = null;
+            $aeL30Bd = 0;
+            try {
+                $aePricingRowBd = \App\Models\AliexpressPricingPrice::where('sku', $fullSku)->first();
+                $aeL30Bd = (int) (\App\Models\AliexpressDailyData::where('sku_code', $fullSku)
+                    ->selectRaw('SUM(COALESCE(quantity, 0)) as l30')
+                    ->value('l30') ?? 0);
+            } catch (\Exception $e) {
+                Log::warning('AliExpress breakdown data fetch skipped for SKU ' . $fullSku . ': ' . $e->getMessage());
+            }
+            $aePriceBd = $aePricingRowBd ? floatval($aePricingRowBd->price ?? 0) : 0;
+            $aeGPFTBd  = $aePriceBd > 0 ? (($aePriceBd * $aeMarginBd - $lp - $ship) / $aePriceBd) * 100 : 0;
+            $aeNPFTBd  = $aeGPFTBd; // No ads for AliExpress
+            $aeSuggestedBd = ['sprice' => 0, 'sgpft' => 0, 'sroi' => 0, 'spft' => 0];
+            $aeBuyerLink = null;
+            $aeSellerLink = null;
+            try {
+                $aeDataViewBd = \App\Models\AliexpressDataView::where('sku', $fullSku)->first();
+                if ($aeDataViewBd) {
+                    $val = is_array($aeDataViewBd->value) ? $aeDataViewBd->value : json_decode($aeDataViewBd->value, true);
+                    if (is_array($val)) {
+                        $aeSuggestedBd = [
+                            'sprice' => floatval($val['SPRICE'] ?? 0),
+                            'sgpft'  => floatval($val['SGPFT'] ?? 0),
+                            'sroi'   => floatval($val['SROI'] ?? 0),
+                            'spft'   => floatval($val['SPFT'] ?? 0),
+                        ];
+                    }
+                }
+                [$aeBuyerLink, $aeSellerLink] = $getListingLinks(\App\Models\AliexpressListingStatus::class, $fullSku);
+            } catch (\Exception $e) {
+                Log::warning('AliExpress DataView/ListingStatus fetch skipped for SKU ' . $fullSku . ': ' . $e->getMessage());
+            }
+            $hasAeData = $aePricingRowBd && ($aePriceBd > 0 || $aeL30Bd > 0);
+
+            $breakdownData[] = [
+                'marketplace' => 'AliExpress',
+                'sku'         => $hasAeData ? $fullSku : 'Not Listed',
+                'price'       => round($aePriceBd, 2),
+                'views'       => 0,
+                'l30'         => $aeL30Bd,
+                'gpft'        => round($aeGPFTBd, 2),
+                'ad'          => 0,
+                'tacos_ch'    => $getChannelTACOS('Aliexpress'),
+                'npft'        => round($aeNPFTBd, 2),
+                'is_listed'   => $hasAeData ? true : false,
+                'sprice'      => $aeSuggestedBd['sprice'],
+                'sgpft'       => $aeSuggestedBd['sgpft'],
+                'sroi'        => $aeSuggestedBd['sroi'],
+                'spft'        => $aeSuggestedBd['spft'],
+                'lp'          => $lp,
+                'ship'        => $ship,
+                'margin'      => $aeMarginBd,
+                'pushed_by'   => null,
+                'pushed_at'   => null,
+                'buyer_link'  => $aeBuyerLink,
+                'seller_link' => $aeSellerLink,
             ];
 
             // FBA row – same structure as other marketplaces (only when SKU has FBA data)
