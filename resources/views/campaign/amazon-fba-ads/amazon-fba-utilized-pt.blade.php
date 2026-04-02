@@ -1037,6 +1037,20 @@
                         }
                     },
                     {
+                        title: "HL SBID",
+                        field: "hl_sbid",
+                        hozAlign: "center",
+                        sorter: "number",
+                        formatter: function(cell) {
+                            var value = cell.getValue();
+                            if (value !== null && value !== undefined && value !== '') {
+                                var num = parseFloat(value);
+                                if (!isNaN(num)) return num.toFixed(2);
+                            }
+                            return '';
+                        }
+                    },
+                    {
                         title: "APR BID",
                         field: "apr_bid",
                         hozAlign: "center",

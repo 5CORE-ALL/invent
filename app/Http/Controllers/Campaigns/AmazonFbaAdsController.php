@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Campaigns;
 use App\Http\Controllers\Controller;
 use App\Models\AmazonDatasheet;
 use App\Models\AmazonDataView;
+use App\Models\AmazonSbCampaignReport;
 use App\Models\AmazonSpCampaignReport;
 use App\Models\FbaManualData;
 use App\Models\FbaMonthlySale;
@@ -554,6 +555,26 @@ class AmazonFbaAdsController extends Controller
             ->where('campaignStatus', '!=', 'ARCHIVED')
             ->get();
 
+        $amazonSbCampaignReportsL30 = AmazonSbCampaignReport::where('ad_type', 'SPONSORED_BRANDS')
+            ->where('report_date_range', 'L30')
+            ->where('campaignStatus', '!=', 'ARCHIVED')
+            ->get();
+
+        $amazonSbCampaignReportsL15 = AmazonSbCampaignReport::where('ad_type', 'SPONSORED_BRANDS')
+            ->where('report_date_range', 'L15')
+            ->where('campaignStatus', '!=', 'ARCHIVED')
+            ->get();
+
+        $amazonSbCampaignReportsL7 = AmazonSbCampaignReport::where('ad_type', 'SPONSORED_BRANDS')
+            ->where('report_date_range', 'L7')
+            ->where('campaignStatus', '!=', 'ARCHIVED')
+            ->get();
+
+        $amazonSbCampaignReportsL1 = AmazonSbCampaignReport::where('ad_type', 'SPONSORED_BRANDS')
+            ->where('report_date_range', 'L1')
+            ->where('campaignStatus', '!=', 'ARCHIVED')
+            ->get();
+
         $result = [];
 
         foreach ($fbaData as $fba) {
@@ -661,6 +682,13 @@ class AmazonFbaAdsController extends Controller
             $row['campaignStatus'] = $matchedCampaignL30->campaignStatus ?? ($matchedCampaign15->campaignStatus ?? ($matchedCampaignL7->campaignStatus ?? ($matchedCampaignL1->campaignStatus ?? '')));
             $row['campaignBudgetAmount'] = $budget;
             $row['sbid'] = $matchedCampaignL30->sbid ?? ($matchedCampaign15->sbid ?? ($matchedCampaignL7->sbid ?? ($matchedCampaignL1->sbid ?? '')));
+            $hlNames = $this->hlExpectedCampaignNamesForFbaSellerSku($sellerSku);
+            $row['hl_sbid'] = $this->resolveHlSbidFromReports(
+                $this->findFirstHlSbMatch($amazonSbCampaignReportsL30, $hlNames),
+                $this->findFirstHlSbMatch($amazonSbCampaignReportsL15, $hlNames),
+                $this->findFirstHlSbMatch($amazonSbCampaignReportsL7, $hlNames),
+                $this->findFirstHlSbMatch($amazonSbCampaignReportsL1, $hlNames)
+            );
             $row['crnt_bid'] = $matchedCampaignL30->currentSpBidPrice ?? ($matchedCampaign15->currentSpBidPrice ?? ($matchedCampaignL7->currentSpBidPrice ?? ($matchedCampaignL1->currentSpBidPrice ?? '')));
             $row['l7_spend'] = $l7_spend;
             $row['l7_cpc'] = $matchedCampaignL7 ? ($matchedCampaignL7->costPerClick ?? 0) : 0;
@@ -1000,6 +1028,26 @@ class AmazonFbaAdsController extends Controller
             ->where('campaignStatus', '!=', 'ARCHIVED')
             ->get();
 
+        $amazonSbCampaignReportsL30 = AmazonSbCampaignReport::where('ad_type', 'SPONSORED_BRANDS')
+            ->where('report_date_range', 'L30')
+            ->where('campaignStatus', '!=', 'ARCHIVED')
+            ->get();
+
+        $amazonSbCampaignReportsL15 = AmazonSbCampaignReport::where('ad_type', 'SPONSORED_BRANDS')
+            ->where('report_date_range', 'L15')
+            ->where('campaignStatus', '!=', 'ARCHIVED')
+            ->get();
+
+        $amazonSbCampaignReportsL7 = AmazonSbCampaignReport::where('ad_type', 'SPONSORED_BRANDS')
+            ->where('report_date_range', 'L7')
+            ->where('campaignStatus', '!=', 'ARCHIVED')
+            ->get();
+
+        $amazonSbCampaignReportsL1 = AmazonSbCampaignReport::where('ad_type', 'SPONSORED_BRANDS')
+            ->where('report_date_range', 'L1')
+            ->where('campaignStatus', '!=', 'ARCHIVED')
+            ->get();
+
         $result = [];
         $processedSkus = []; // For PT campaigns to ensure unique SKUs
 
@@ -1111,6 +1159,13 @@ class AmazonFbaAdsController extends Controller
             $row['campaignStatus'] = $matchedCampaignL30->campaignStatus ?? ($matchedCampaign15->campaignStatus ?? ($matchedCampaignL7->campaignStatus ?? ($matchedCampaignL1->campaignStatus ?? '')));
             $row['campaignBudgetAmount'] = $budget;
             $row['sbid'] = $matchedCampaignL30->sbid ?? ($matchedCampaign15->sbid ?? ($matchedCampaignL7->sbid ?? ($matchedCampaignL1->sbid ?? '')));
+            $hlNames = $this->hlExpectedCampaignNamesForFbaSellerSku($sellerSku);
+            $row['hl_sbid'] = $this->resolveHlSbidFromReports(
+                $this->findFirstHlSbMatch($amazonSbCampaignReportsL30, $hlNames),
+                $this->findFirstHlSbMatch($amazonSbCampaignReportsL15, $hlNames),
+                $this->findFirstHlSbMatch($amazonSbCampaignReportsL7, $hlNames),
+                $this->findFirstHlSbMatch($amazonSbCampaignReportsL1, $hlNames)
+            );
             $row['crnt_bid'] = $matchedCampaignL30->currentSpBidPrice ?? ($matchedCampaign15->currentSpBidPrice ?? ($matchedCampaignL7->currentSpBidPrice ?? ($matchedCampaignL1->currentSpBidPrice ?? '')));
             $row['l7_spend'] = $l7_spend;
             $row['l7_cpc'] = $matchedCampaignL7 ? ($matchedCampaignL7->costPerClick ?? 0) : 0;
@@ -1183,6 +1238,72 @@ class AmazonFbaAdsController extends Controller
             'total_fba_sku_count' => $totalFbaSkuCount,
             'status'  => 200,
         ]);
+    }
+
+    /**
+     * HL (Sponsored Brands) campaign name candidates for an FBA seller SKU.
+     * Matches OverallAmazonController: hlMatchSku / HEAD / PARENT variants.
+     *
+     * @return list<string>
+     */
+    private function hlExpectedCampaignNamesForFbaSellerSku(string $sellerSku): array
+    {
+        $cleanSku = strtoupper(trim(preg_replace('/\s*FBA\s*/i', '', $sellerSku)));
+        $hlMatchSku = $cleanSku;
+        if (stripos($cleanSku, 'PARENT') !== false) {
+            $hlMatchSku = strtoupper(trim(str_replace('PARENT ', '', $cleanSku)));
+        } else {
+            $productMaster = ProductMaster::where('sku', $cleanSku)->first();
+            if ($productMaster && $productMaster->parent) {
+                $hlMatchSku = strtoupper(trim($productMaster->parent));
+            }
+        }
+
+        return array_values(array_unique([
+            $hlMatchSku,
+            $hlMatchSku . ' HEAD',
+            $cleanSku,
+            $cleanSku . ' HEAD',
+        ]));
+    }
+
+    /**
+     * @param  \Illuminate\Support\Collection<int, \App\Models\AmazonSbCampaignReport>  $collection
+     */
+    private function findFirstHlSbMatch($collection, array $expectedNames): ?AmazonSbCampaignReport
+    {
+        foreach ($expectedNames as $name) {
+            $key = strtoupper(trim(rtrim($name, '.')));
+            $found = $collection->first(function ($item) use ($key) {
+                $cn = strtoupper(trim(rtrim($item->campaignName ?? '', '.')));
+
+                return $cn === $key;
+            });
+            if ($found) {
+                return $found;
+            }
+        }
+
+        return null;
+    }
+
+    private function resolveHlSbidFromReports(
+        ?AmazonSbCampaignReport $l30,
+        ?AmazonSbCampaignReport $l15,
+        ?AmazonSbCampaignReport $l7,
+        ?AmazonSbCampaignReport $l1
+    ) {
+        foreach ([$l30, $l15, $l7, $l1] as $r) {
+            if ($r === null) {
+                continue;
+            }
+            $v = $r->sbid;
+            if ($v !== null && $v !== '') {
+                return $v;
+            }
+        }
+
+        return '';
     }
 
 }
