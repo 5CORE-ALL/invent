@@ -1038,11 +1038,15 @@
                     },
                     {
                         title: "HL SBID",
-                        field: "hl_sbid",
+                        field: "hl_sbid_m",
                         hozAlign: "center",
                         sorter: "number",
                         formatter: function(cell) {
-                            var value = cell.getValue();
+                            var row = cell.getRow().getData();
+                            var value = row.hl_sbid;
+                            if (value === null || value === undefined || value === '') {
+                                value = row.hl_sbid_m;
+                            }
                             if (value !== null && value !== undefined && value !== '') {
                                 var num = parseFloat(value);
                                 if (!isNaN(num)) return num.toFixed(2);

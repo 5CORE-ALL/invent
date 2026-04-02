@@ -683,12 +683,12 @@ class AmazonFbaAdsController extends Controller
             $row['campaignBudgetAmount'] = $budget;
             $row['sbid'] = $matchedCampaignL30->sbid ?? ($matchedCampaign15->sbid ?? ($matchedCampaignL7->sbid ?? ($matchedCampaignL1->sbid ?? '')));
             $hlNames = $this->hlExpectedCampaignNamesForFbaSellerSku($sellerSku);
-            $row['hl_sbid'] = $this->resolveHlSbidFromReports(
-                $this->findFirstHlSbMatch($amazonSbCampaignReportsL30, $hlNames),
-                $this->findFirstHlSbMatch($amazonSbCampaignReportsL15, $hlNames),
-                $this->findFirstHlSbMatch($amazonSbCampaignReportsL7, $hlNames),
-                $this->findFirstHlSbMatch($amazonSbCampaignReportsL1, $hlNames)
-            );
+            $hlL30 = $this->findFirstHlSbMatch($amazonSbCampaignReportsL30, $hlNames);
+            $hlL15 = $this->findFirstHlSbMatch($amazonSbCampaignReportsL15, $hlNames);
+            $hlL7 = $this->findFirstHlSbMatch($amazonSbCampaignReportsL7, $hlNames);
+            $hlL1 = $this->findFirstHlSbMatch($amazonSbCampaignReportsL1, $hlNames);
+            $row['hl_sbid'] = $this->resolveHlSbidFromReports($hlL30, $hlL15, $hlL7, $hlL1);
+            $row['hl_sbid_m'] = $this->resolveHlSbidMFromReports($hlL30, $hlL15, $hlL7, $hlL1);
             $row['crnt_bid'] = $matchedCampaignL30->currentSpBidPrice ?? ($matchedCampaign15->currentSpBidPrice ?? ($matchedCampaignL7->currentSpBidPrice ?? ($matchedCampaignL1->currentSpBidPrice ?? '')));
             $row['l7_spend'] = $l7_spend;
             $row['l7_cpc'] = $matchedCampaignL7 ? ($matchedCampaignL7->costPerClick ?? 0) : 0;
@@ -1160,12 +1160,12 @@ class AmazonFbaAdsController extends Controller
             $row['campaignBudgetAmount'] = $budget;
             $row['sbid'] = $matchedCampaignL30->sbid ?? ($matchedCampaign15->sbid ?? ($matchedCampaignL7->sbid ?? ($matchedCampaignL1->sbid ?? '')));
             $hlNames = $this->hlExpectedCampaignNamesForFbaSellerSku($sellerSku);
-            $row['hl_sbid'] = $this->resolveHlSbidFromReports(
-                $this->findFirstHlSbMatch($amazonSbCampaignReportsL30, $hlNames),
-                $this->findFirstHlSbMatch($amazonSbCampaignReportsL15, $hlNames),
-                $this->findFirstHlSbMatch($amazonSbCampaignReportsL7, $hlNames),
-                $this->findFirstHlSbMatch($amazonSbCampaignReportsL1, $hlNames)
-            );
+            $hlL30 = $this->findFirstHlSbMatch($amazonSbCampaignReportsL30, $hlNames);
+            $hlL15 = $this->findFirstHlSbMatch($amazonSbCampaignReportsL15, $hlNames);
+            $hlL7 = $this->findFirstHlSbMatch($amazonSbCampaignReportsL7, $hlNames);
+            $hlL1 = $this->findFirstHlSbMatch($amazonSbCampaignReportsL1, $hlNames);
+            $row['hl_sbid'] = $this->resolveHlSbidFromReports($hlL30, $hlL15, $hlL7, $hlL1);
+            $row['hl_sbid_m'] = $this->resolveHlSbidMFromReports($hlL30, $hlL15, $hlL7, $hlL1);
             $row['crnt_bid'] = $matchedCampaignL30->currentSpBidPrice ?? ($matchedCampaign15->currentSpBidPrice ?? ($matchedCampaignL7->currentSpBidPrice ?? ($matchedCampaignL1->currentSpBidPrice ?? '')));
             $row['l7_spend'] = $l7_spend;
             $row['l7_cpc'] = $matchedCampaignL7 ? ($matchedCampaignL7->costPerClick ?? 0) : 0;
@@ -1287,6 +1287,9 @@ class AmazonFbaAdsController extends Controller
         return null;
     }
 
+    /**
+     * Current SB bid from reports (amazon_sb_campaign_reports.sbid), when synced from Amazon.
+     */
     private function resolveHlSbidFromReports(
         ?AmazonSbCampaignReport $l30,
         ?AmazonSbCampaignReport $l15,
@@ -1298,6 +1301,28 @@ class AmazonFbaAdsController extends Controller
                 continue;
             }
             $v = $r->sbid;
+            if ($v !== null && $v !== '') {
+                return $v;
+            }
+        }
+
+        return '';
+    }
+
+    /**
+     * Calculated / managed bid (sbid_m), often populated when live sbid is still null.
+     */
+    private function resolveHlSbidMFromReports(
+        ?AmazonSbCampaignReport $l30,
+        ?AmazonSbCampaignReport $l15,
+        ?AmazonSbCampaignReport $l7,
+        ?AmazonSbCampaignReport $l1
+    ) {
+        foreach ([$l30, $l15, $l7, $l1] as $r) {
+            if ($r === null) {
+                continue;
+            }
+            $v = $r->sbid_m;
             if ($v !== null && $v !== '') {
                 return $v;
             }
