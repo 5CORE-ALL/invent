@@ -1052,6 +1052,44 @@
         const SECTION_PT_ADS_COLUMNS = ['(Child) sku', 'pt_acos', 'pt_spend_L30', 'pt_clicks_L30', 'pt_ad_cvr', 'rating', 'INV', 'FBA_Quantity', 'L30', 'E Dil%', 'A_L30', 'A DIL %', 'NRL', 'NRA', 'active_toggle', 'missing_ad', 'price', 'fba_price', 'campaign_info_icon', 'GPFT%', 'GROI%', 'pt_campaignBudgetAmount', 'pt_sbgt', 'pt_sales_L30', 'pt_sold_L30', 'pt_7ub', 'pt_1ub', 'pt_2ub', 'pt_avg_cpc', 'pt_l7_cpc', 'pt_l1_cpc', 'pt_l2_cpc', 'pt_last_sbid', 'pt_sbid', 'pt_sbid_m', 'pt_apr_bid', 'pt_campaignName', 'TPFT'];
         const SECTION_HL_ADS_COLUMNS = ['(Child) sku', 'hl_acos', 'hl_spend_L30', 'hl_clicks_L30', 'hl_ad_cvr', 'rating', 'INV', 'FBA_Quantity', 'L30', 'E Dil%', 'A_L30', 'A DIL %', 'NRL', 'NRA', 'active_toggle', 'missing_ad', 'price', 'fba_price', 'campaign_info_icon', 'GPFT%', 'GROI%', 'hl_campaignBudgetAmount', 'hl_sbgt', 'hl_sales_L30', 'hl_sold_L30', 'hl_7ub', 'hl_1ub', 'hl_avg_cpc', 'hl_l7_cpc', 'hl_l1_cpc', 'hl_last_sbid', 'hl_sbid', 'hl_sbid_m', 'hl_apr_bid', 'hl_campaignName', 'TPFT'];
 
+        /** Set false to silence [amazon-tabulator] browser console debug lines */
+        const AMAZON_TABULATOR_DEBUG_LOG = true;
+        function amazonTabulatorDebug(label, payload) {
+            if (!AMAZON_TABULATOR_DEBUG_LOG || typeof console === 'undefined' || !console.debug) return;
+            console.debug('[amazon-tabulator] ' + label, payload || {});
+        }
+
+        /** True if (Child) sku / SKU OR Amazon FBA seller sku field contains "FBA" (case-insensitive) */
+        function rowHasFbaSkuFields(rowData) {
+            const childSku = String(rowData['(Child) sku'] || rowData.SKU || '').toUpperCase();
+            const fbaSku = String(rowData.FBA_SKU != null && rowData.FBA_SKU !== '' ? rowData.FBA_SKU : '').toUpperCase();
+            return childSku.includes('FBA') || fbaSku.includes('FBA');
+        }
+
+        /** FBA INV: dash when neither field indicates FBA; never show 0 for non-FBA rows */
+        function formatFbaQuantityDisplay(rowData) {
+            const value = rowData.FBA_Quantity;
+            const num = parseFloat(value);
+            if (!rowHasFbaSkuFields(rowData)) {
+                return '-';
+            }
+            if (rowData.is_parent_summary === true) {
+                if (isNaN(num)) return '-';
+                return Math.round(num).toLocaleString();
+            }
+            if (isNaN(num)) return '0';
+            return Math.round(num).toLocaleString();
+        }
+
+        /** tier 1 = no FBA in sku fields (dash rows, sort last); tier 0 = show numeric (parent or FBA-linked child) */
+        function fbaQuantitySortKey(rowData) {
+            const num = parseFloat(rowData.FBA_Quantity);
+            if (!rowHasFbaSkuFields(rowData)) {
+                return { tier: 1, v: 0 };
+            }
+            return { tier: 0, v: isNaN(num) ? 0 : Math.round(num) };
+        }
+
         function amzFmtVal(v) {
             if (amzDollarMetrics.includes(amzChartMetricKey)) return '$' + Math.round(v).toLocaleString('en-US');
             if (amzPctMetrics.includes(amzChartMetricKey)) return v.toFixed(1) + '%';
@@ -2456,8 +2494,25 @@
                     if (response.campaign_totals) {
                         campaignTotals = response.campaign_totals;
                     }
-                    // Return only the data array to Tabulator
-                    return response.data || response;
+                    var payload = response.data || response;
+                    if (Array.isArray(payload)) {
+                        var withFba = 0, sumFba = 0, childN = 0;
+                        payload.forEach(function(row) {
+                            if (!row || row.is_parent_summary) return;
+                            childN++;
+                            var q = parseInt(row.FBA_Quantity, 10) || 0;
+                            if (q > 0) withFba++;
+                            sumFba += q;
+                        });
+                        amazonTabulatorDebug('ajax data loaded', {
+                            url: url,
+                            totalRows: payload.length,
+                            childRows: childN,
+                            childRowsWithFbaInvGt0: withFba,
+                            sumFbaQuantityNonParent: sumFba
+                        });
+                    }
+                    return payload;
                 },
                 rowFormatter: function(row) {
                     const data = row.getData();
@@ -2912,14 +2967,22 @@
                     },
 
                     {
-                        title: "FBA<br>INV",
+                        title: "FBA <br> INV",
                         field: "FBA_Quantity",
                         hozAlign: "center",
-                        width: 58,
-                        sorter: "number",
+                        width: 64,
+                        sorter: function(a, b, aRow, bRow, column, dir, sorterParams) {
+                            const ka = fbaQuantitySortKey(aRow.getData());
+                            const kb = fbaQuantitySortKey(bRow.getData());
+                            if (ka.tier !== kb.tier) {
+                                return ka.tier - kb.tier;
+                            }
+                            const diff = ka.v - kb.v;
+                            return (dir === 'desc') ? -diff : diff;
+                        },
+                        sorterParams: { alignEmptyValues: "bottom" },
                         formatter: function(cell) {
-                            const n = Math.round(parseFloat(cell.getValue()) || 0);
-                            return String(n);
+                            return formatFbaQuantityDisplay(cell.getRow().getData());
                         }
                     },
 
@@ -6234,7 +6297,16 @@
                     columnsToShow = SECTION_HL_ADS_COLUMNS;
                 }
                 
+                if (section !== 'all' && columnsToShow) {
+                    amazonTabulatorDebug('section column whitelist', {
+                        section: section,
+                        fbaQuantityInWhitelist: columnsToShow.indexOf('FBA_Quantity') !== -1,
+                        whitelistLength: columnsToShow.length
+                    });
+                }
+                
                 if (section === 'all') {
+                    amazonTabulatorDebug('section all', { mode: 'default column visibility from definitions' });
                     // Reset to default visibility based on column definitions
                     table.getColumns().forEach(function(col) {
                         var def = col.getDefinition();
@@ -6347,30 +6419,31 @@
                     table.moveColumn("pt_ad_cvr", "pt_clicks_L30", true);    // 5. PT CVR
                     table.moveColumn("rating", "pt_ad_cvr", true);           // 6. Rating
                     
-                    // 7-12: INV, OV L30, DIL%, A L30, A DIL%, NRL
+                    // 7-13: INV, FBA INV, OV L30, DIL%, A L30, A DIL%, NRL
                     table.moveColumn("INV", "rating", true);                 // 7. INV
-                    table.moveColumn("L30", "INV", true);                    // 8. OV L30
-                    table.moveColumn("E Dil%", "L30", true);                 // 9. DIL %
-                    table.moveColumn("A_L30", "E Dil%", true);               // 10. A L30
-                    table.moveColumn("A DIL %", "A_L30", true);              // 11. A DIL %
-                    table.moveColumn("NRL", "A DIL %", true);                // 12. NRL
+                    table.moveColumn("FBA_Quantity", "INV", true);          // 8. FBA INV
+                    table.moveColumn("L30", "FBA_Quantity", true);           // 9. OV L30
+                    table.moveColumn("E Dil%", "L30", true);                 // 10. DIL %
+                    table.moveColumn("A_L30", "E Dil%", true);               // 11. A L30
+                    table.moveColumn("A DIL %", "A_L30", true);              // 12. A DIL %
+                    table.moveColumn("NRL", "A DIL %", true);                // 13. NRL
                     
-                    // 13-16: NRA, Active, Missing AD, Price
-                    table.moveColumn("NRA", "NRL", true);                    // 13. NRA
-                    table.moveColumn("active_toggle", "NRA", true);          // 14. Active
-                    table.moveColumn("missing_ad", "active_toggle", true);   // 15. Missing AD
-                    table.moveColumn("price", "missing_ad", true);           // 16. Price
+                    // 14-17: NRA, Active, Missing AD, Price
+                    table.moveColumn("NRA", "NRL", true);                    // 14. NRA
+                    table.moveColumn("active_toggle", "NRA", true);          // 15. Active
+                    table.moveColumn("missing_ad", "active_toggle", true);   // 16. Missing AD
+                    table.moveColumn("price", "missing_ad", true);           // 17. Price
                     
-                    // 17-18: BGT, SBGT
-                    table.moveColumn("pt_campaignBudgetAmount", "price", true); // 17. PT BGT
-                    table.moveColumn("pt_sbgt", "pt_campaignBudgetAmount", true); // 18. PT SBGT
+                    // 18-19: BGT, SBGT
+                    table.moveColumn("pt_campaignBudgetAmount", "price", true); // 18. PT BGT
+                    table.moveColumn("pt_sbgt", "pt_campaignBudgetAmount", true); // 19. PT SBGT
                     
-                    // 19-20: L30 detail columns
-                    table.moveColumn("pt_sales_L30", "pt_sbgt", true);       // 19. Sales L30
-                    table.moveColumn("pt_sold_L30", "pt_sales_L30", true);   // 20. Ad Sold L30
+                    // 20-21: L30 detail columns
+                    table.moveColumn("pt_sales_L30", "pt_sbgt", true);       // 20. Sales L30
+                    table.moveColumn("pt_sold_L30", "pt_sales_L30", true);   // 21. Ad Sold L30
                     
-                    // 25-33: Utilization, CPC, SBID columns
-                    table.moveColumn("pt_7ub", "pt_sold_L30", true);         // 25. PT 7 UB%
+                    // Utilization, CPC, SBID columns
+                    table.moveColumn("pt_7ub", "pt_sold_L30", true);         // PT 7 UB%
                     table.moveColumn("pt_1ub", "pt_7ub", true);              // 26. PT 1 UB%
                     table.moveColumn("pt_avg_cpc", "pt_1ub", true);          // 27. PT AVG CPC
                     table.moveColumn("pt_l7_cpc", "pt_avg_cpc", true);       // 28. PT L7 CPC
@@ -6409,30 +6482,31 @@
                     table.moveColumn("hl_ad_cvr", "hl_clicks_L30", true);          // 5. HL CVR
                     table.moveColumn("rating", "hl_ad_cvr", true);                 // 6. Rating
                     
-                    // 7-12: INV, OV L30, DIL%, A L30, A DIL%, NRL
+                    // 7-13: INV, FBA INV, OV L30, DIL%, A L30, A DIL%, NRL
                     table.moveColumn("INV", "rating", true);                       // 7. INV
-                    table.moveColumn("L30", "INV", true);                          // 8. OV L30
-                    table.moveColumn("E Dil%", "L30", true);                       // 9. DIL %
-                    table.moveColumn("A_L30", "E Dil%", true);                     // 10. A L30
-                    table.moveColumn("A DIL %", "A_L30", true);                    // 11. A DIL %
-                    table.moveColumn("NRL", "A DIL %", true);                      // 12. NRL
+                    table.moveColumn("FBA_Quantity", "INV", true);                 // 8. FBA INV
+                    table.moveColumn("L30", "FBA_Quantity", true);                 // 9. OV L30
+                    table.moveColumn("E Dil%", "L30", true);                       // 10. DIL %
+                    table.moveColumn("A_L30", "E Dil%", true);                     // 11. A L30
+                    table.moveColumn("A DIL %", "A_L30", true);                    // 12. A DIL %
+                    table.moveColumn("NRL", "A DIL %", true);                      // 13. NRL
                     
-                    // 13-16: NRA, Active, Missing AD, Price
-                    table.moveColumn("NRA", "NRL", true);                          // 13. NRA
-                    table.moveColumn("active_toggle", "NRA", true);                // 14. Active
-                    table.moveColumn("missing_ad", "active_toggle", true);         // 15. Missing AD
-                    table.moveColumn("price", "missing_ad", true);                 // 16. Price
+                    // 14-17: NRA, Active, Missing AD, Price
+                    table.moveColumn("NRA", "NRL", true);                          // 14. NRA
+                    table.moveColumn("active_toggle", "NRA", true);                // 15. Active
+                    table.moveColumn("missing_ad", "active_toggle", true);         // 16. Missing AD
+                    table.moveColumn("price", "missing_ad", true);                 // 17. Price
                     
-                    // 17-18: BGT, SBGT
-                    table.moveColumn("hl_campaignBudgetAmount", "price", true);    // 17. HL BGT
-                    table.moveColumn("hl_sbgt", "hl_campaignBudgetAmount", true);  // 18. HL SBGT
+                    // 18-19: BGT, SBGT
+                    table.moveColumn("hl_campaignBudgetAmount", "price", true);    // 18. HL BGT
+                    table.moveColumn("hl_sbgt", "hl_campaignBudgetAmount", true);  // 19. HL SBGT
                     
-                    // 19-20: L30 detail columns
-                    table.moveColumn("hl_sales_L30", "hl_sbgt", true);             // 19. Sales L30
-                    table.moveColumn("hl_sold_L30", "hl_sales_L30", true);         // 20. Ad Sold L30
+                    // 20-21: L30 detail columns
+                    table.moveColumn("hl_sales_L30", "hl_sbgt", true);             // 20. Sales L30
+                    table.moveColumn("hl_sold_L30", "hl_sales_L30", true);         // 21. Ad Sold L30
                     
-                    // 25-33: Utilization, CPC, SBID columns
-                    table.moveColumn("hl_7ub", "hl_sold_L30", true);               // 25. HL 7 UB%
+                    // Utilization, CPC, SBID columns
+                    table.moveColumn("hl_7ub", "hl_sold_L30", true);               // HL 7 UB%
                     table.moveColumn("hl_1ub", "hl_7ub", true);                    // 26. HL 1 UB%
                     table.moveColumn("hl_avg_cpc", "hl_1ub", true);                // 27. HL LIFE CPC
                     table.moveColumn("hl_l7_cpc", "hl_avg_cpc", true);             // 28. HL L7 CPC
@@ -8679,6 +8753,9 @@ $('#nmap-count').text(missingCount.toLocaleString());
             data.forEach(row => {
                 const values = columnsToExport.map(col => {
                     let value = row[col];
+                    if (col === 'FBA_Quantity') {
+                        value = formatFbaQuantityDisplay(row);
+                    }
                     if (value === null || value === undefined) value = '';
                     // Escape commas and quotes
                     value = String(value).replace(/"/g, '""');

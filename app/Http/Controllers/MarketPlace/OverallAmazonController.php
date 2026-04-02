@@ -1488,6 +1488,11 @@ class OverallAmazonController extends Controller
                 return strtoupper(str_replace(' ', '', trim($base)));
             });
 
+        Log::debug('Amazon tabulator getViewAmazonData: FBA inventory map loaded', [
+            'fba_table_keyed_rows' => $fbaInventoryBySku->count(),
+            'product_master_skus' => count($skus),
+        ]);
+
         // Get Amazon inventory from product_stock_mappings table
         $stockMappings = ProductStockMapping::whereIn('sku', $skus)
             ->get()
@@ -2365,6 +2370,7 @@ class OverallAmazonController extends Controller
 
             $fbaInvRecord = $fbaInventoryBySku->get($skuLookupKey) ?? $fbaInventoryBySku->get(str_replace(' ', '', $skuClean)) ?? $fbaInventoryBySku->get($sku);
             $row['FBA_Quantity'] = $fbaInvRecord ? (int) ($fbaInvRecord->quantity_available ?? 0) : 0;
+            $row['FBA_SKU'] = $fbaInvRecord ? ($fbaInvRecord->seller_sku ?? null) : null;
 
             $row['INV'] = $shopify->inv ?? 0;
             
@@ -3186,6 +3192,14 @@ class OverallAmazonController extends Controller
             $result[] = (object) $row;
         }
 
+        $fbaInvPositiveCount = collect($result)->filter(function ($r) {
+            return (int) ($r->FBA_Quantity ?? 0) > 0;
+        })->count();
+        Log::debug('Amazon tabulator getViewAmazonData: FBA_Quantity snapshot (product rows, before parent summaries)', [
+            'rows_with_fba_inv_gt_0' => $fbaInvPositiveCount,
+            'product_rows' => count($result),
+        ]);
+
         // Parent-wise grouping
         $groupedByParent = collect($result)->groupBy('Parent');
         $parentSkus = $groupedByParent->keys()->filter(function ($p) { return $p !== '' && $p !== null; })->values()->toArray();
@@ -3234,6 +3248,17 @@ class OverallAmazonController extends Controller
                     $v = $row->FBA_Quantity ?? 0;
                     return is_numeric($v) ? (int) $v : 0;
                 }),
+                'FBA_SKU' => (function () use ($rows) {
+                    foreach ($rows as $row) {
+                        $childSku = strtoupper((string) ($row->{'(Child) sku'} ?? ''));
+                        $fbaSku = strtoupper((string) ($row->FBA_SKU ?? ''));
+                        if (str_contains($childSku, 'FBA') || str_contains($fbaSku, 'FBA')) {
+                            $seller = (string) ($row->FBA_SKU ?? '');
+                            return $seller !== '' ? $seller : 'FBA';
+                        }
+                    }
+                    return '';
+                })(),
                 'is_missing_amazon' => false, // Parent rows are never missing
                 'L30' => $rows->sum('L30'),
                 'price' => '',
