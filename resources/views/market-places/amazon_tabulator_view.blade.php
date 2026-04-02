@@ -4110,8 +4110,21 @@
                                 || ((parseFloat(row.hl_spend_L30 || 0) > 0 || parseFloat(row.hl_sales_L30 || 0) > 0) && !!(row.hl_campaign_id || row.hl_campaignName));
                             if (!hasCampaign) return '-';
                             var paused = (row.hl_campaign_status || '').toUpperCase() !== 'ENABLED';
-                            // Priority: current bid (hl_sbid) > calculated (hl_sbid_m) > blank — never last_sbid / other fields
+                            // Priority: hl_sbid (Amazon) > avg CPC from spend/clicks (L30, else L7) > hl_sbid_m > blank
                             var raw = row.hl_sbid;
+                            if (raw === null || raw === undefined || raw === '') {
+                                var spend30 = parseFloat(row.hl_spend_L30 || 0);
+                                var clicks30 = parseFloat(row.hl_clicks_L30 || 0);
+                                if (spend30 > 0 && clicks30 > 0) {
+                                    raw = spend30 / clicks30;
+                                } else {
+                                    var spend7 = parseFloat(row.hl_spend_L7 || 0);
+                                    var clicks7 = parseFloat(row.hl_clicks_L7 || 0);
+                                    if (spend7 > 0 && clicks7 > 0) {
+                                        raw = spend7 / clicks7;
+                                    }
+                                }
+                            }
                             if (raw === null || raw === undefined || raw === '') {
                                 raw = row.hl_sbid_m;
                             }
@@ -4119,7 +4132,7 @@
                                 return '';
                             }
                             var num = parseFloat(raw);
-                            if (isNaN(num)) return '';
+                            if (isNaN(num) || num <= 0) return '';
                             var out = num.toFixed(2);
                             return paused ? '<span style="color: #999;">' + out + '</span>' : out;
                         }
