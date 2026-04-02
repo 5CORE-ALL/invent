@@ -1480,16 +1480,60 @@ class OverallAmazonController extends Controller
                 return strtoupper(str_replace(' ', '', trim($base)));
             });
 
-        // FBA available units (FBA INV) — same keying as FbaPrice
-        $fbaInventoryBySku = FbaTable::whereRaw("seller_sku LIKE '%FBA%' OR seller_sku LIKE '%fba%'")
-            ->get()
-            ->keyBy(function ($item) {
-                $base = preg_replace('/\s*FBA\s*/i', '', $item->seller_sku ?? '');
-                return strtoupper(str_replace(' ', '', trim($base)));
-            });
+        // FBA INV: use the SAME base-SKU key as FbaDataController::getFbaData() / fba-data-json
+        // (strtoupper(trim(strip FBA))) — spaces preserved. Space-stripped keys collide (e.g. "A B C" vs "ABC")
+        // and attach the wrong FbaTable row to ProductMaster SKUs.
+        $fbaTableFbaRows = FbaTable::whereRaw("seller_sku LIKE '%FBA%' OR seller_sku LIKE '%fba%'")->get();
+        $fbaInventoryByFbaAnalyticsKey = $fbaTableFbaRows->keyBy(function ($item) {
+            $sku = $item->seller_sku ?? '';
+            $base = preg_replace('/\s*FBA\s*/i', '', $sku);
+
+            return strtoupper(trim($base));
+        });
+        $fbaRowsByCompactKey = [];
+        foreach ($fbaTableFbaRows as $fbaRow) {
+            $sku = $fbaRow->seller_sku ?? '';
+            $base = preg_replace('/\s*FBA\s*/i', '', $sku);
+            $ck = strtoupper(str_replace(' ', '', str_replace("\xC2\xA0", ' ', trim($base))));
+            if (! isset($fbaRowsByCompactKey[$ck])) {
+                $fbaRowsByCompactKey[$ck] = [];
+            }
+            $fbaRowsByCompactKey[$ck][] = $fbaRow;
+        }
+        $resolveFbaTableRowForProductSku = function (string $pmSku) use ($fbaInventoryByFbaAnalyticsKey, $fbaRowsByCompactKey): ?FbaTable {
+            $norm = str_replace("\xC2\xA0", ' ', trim($pmSku));
+            if ($norm === '') {
+                return null;
+            }
+            $base = preg_replace('/\s*FBA\s*/i', '', $norm);
+            $analyticsKey = strtoupper(trim($base));
+            $hit = $fbaInventoryByFbaAnalyticsKey->get($analyticsKey);
+            if ($hit) {
+                return $hit;
+            }
+            $compactKey = strtoupper(str_replace(' ', '', trim($base)));
+            $cands = $fbaRowsByCompactKey[$compactKey] ?? [];
+            if (count($cands) === 1) {
+                return $cands[0];
+            }
+            if (count($cands) > 1) {
+                $pmCompact = strtoupper(str_replace(' ', '', str_replace("\xC2\xA0", ' ', trim($norm))));
+                foreach ($cands as $c) {
+                    $ss = strtoupper(str_replace(' ', '', str_replace("\xC2\xA0", ' ', trim($c->seller_sku ?? ''))));
+                    if ($ss === $pmCompact) {
+                        return $c;
+                    }
+                }
+
+                return null;
+            }
+
+            return null;
+        };
 
         Log::debug('Amazon tabulator getViewAmazonData: FBA inventory map loaded', [
-            'fba_table_keyed_rows' => $fbaInventoryBySku->count(),
+            'fba_table_rows' => $fbaTableFbaRows->count(),
+            'fba_analytics_key_count' => $fbaInventoryByFbaAnalyticsKey->count(),
             'product_master_skus' => count($skus),
         ]);
 
@@ -2368,7 +2412,7 @@ class OverallAmazonController extends Controller
             $fbaPriceRecord = $fbaPriceBySku->get($skuLookupKey) ?? $fbaPriceBySku->get(str_replace(' ', '', $skuClean)) ?? $fbaPriceBySku->get($sku);
             $row['fba_price'] = $fbaPriceRecord ? round(floatval($fbaPriceRecord->price ?? 0), 2) : null;
 
-            $fbaInvRecord = $fbaInventoryBySku->get($skuLookupKey) ?? $fbaInventoryBySku->get(str_replace(' ', '', $skuClean)) ?? $fbaInventoryBySku->get($sku);
+            $fbaInvRecord = $resolveFbaTableRowForProductSku((string) $pm->sku);
             $row['FBA_Quantity'] = $fbaInvRecord ? (int) ($fbaInvRecord->quantity_available ?? 0) : 0;
             $row['FBA_SKU'] = $fbaInvRecord ? ($fbaInvRecord->seller_sku ?? null) : null;
 
