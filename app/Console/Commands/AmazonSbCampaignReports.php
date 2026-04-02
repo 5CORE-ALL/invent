@@ -63,6 +63,7 @@ class AmazonSbCampaignReports extends Command
             }
 
             $this->info("✅ All Sponsored Brands reports processed successfully.");
+            $this->backfillNullHlCampaignStatus();
         } catch (\Exception $e) {
             $this->error("Error in handle: " . $e->getMessage());
             $this->info("Error trace: " . $e->getTraceAsString());
@@ -252,7 +253,7 @@ class AmazonSbCampaignReports extends Command
 
                     try {
                         // Ensure bid-related fields are consistently populated before persisting.
-                        $row = $this->enrichBidFields($row);
+                        $row = $this->normalizeCampaignStatus($this->enrichBidFields($row));
 
                         if ($isDailyChart) {
                             // For daily data, include date in unique key to prevent overwriting
@@ -411,6 +412,45 @@ class AmazonSbCampaignReports extends Command
         }
 
         return $baseMetrics;
+    }
+
+    /**
+     * Map campaign status from report row; Amazon sometimes omits campaignStatus or uses "state".
+     */
+    private function normalizeCampaignStatus(array $row): array
+    {
+        $status = $row['campaignStatus'] ?? $row['state'] ?? null;
+        if ($status === null || $status === '') {
+            $status = 'ENABLED';
+        }
+        $row['campaignStatus'] = is_string($status) ? strtoupper(trim($status)) : 'ENABLED';
+
+        return $row;
+    }
+
+    /**
+     * Existing rows may have NULL status and are skipped by jobs filtering on ENABLED.
+     */
+    private function backfillNullHlCampaignStatus(): void
+    {
+        $profileId = config('services.amazon_ads.profile_ids');
+        if (empty($profileId)) {
+            return;
+        }
+
+        $n = DB::table('amazon_sb_campaign_reports')
+            ->where('ad_type', 'SPONSORED_BRANDS')
+            ->where('profile_id', $profileId)
+            ->whereNull('campaignStatus')
+            ->where('report_date_range', 'L30')
+            ->update([
+                'campaignStatus' => 'ENABLED',
+                'updated_at' => now(),
+            ]);
+
+        if ($n > 0) {
+            $this->info("Backfilled campaignStatus=ENABLED for {$n} L30 SB row(s) where status was NULL.");
+        }
     }
 
     /**
