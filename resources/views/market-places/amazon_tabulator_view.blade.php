@@ -1046,11 +1046,11 @@
         const amzDollarMetrics = ['l30_sales', 'ad_spend', 'kw_spend', 'hl_spend', 'pt_spend', 'total_pft', 'total_sales', 'total_spend'];
 
         // Section column lists (defined once for faster section switching)
-        const SECTION_KW_ADS_COLUMNS = ['(Child) sku', 'acos', 'l30_spend', 'l30_clicks', 'ad_cvr', 'rating', 'campaignBudgetAmount', 'sbgt', 'NRA', 'active_toggle', 'missing_ad', 'l30_sales', 'l30_purchases', 'INV', 'L30', 'E Dil%', 'A_L30', 'A DIL %', 'NRL', 'price', 'fba_price', 'campaign_info_icon', 'GPFT%', 'GROI%', 'l7_spend', 'l1_spend', 'l2_spend', 'avg_cpc', 'l7_cpc', 'l1_cpc', 'l2_cpc', 'last_sbid', 'sbid', 'sbid_m', 'apr_bid', 'TPFT', 'campaignName'];
-        const SECTION_PRICING_COLUMNS = ['(Child) sku', 'price', 'fba_price', 'campaign_info_icon', 'c_price', 'actual_cost', 'buy_box_price', 'GPFT%', 'PFT%', 'ROI_percentage', 'cost', 'margin', 'INV', 'A_L30'];
-        const SECTION_MISSING_COLUMNS = ['image_path', '(Child) sku', 'NR', 'is_missing', 'inv_map', 'variation_dot'];
-        const SECTION_PT_ADS_COLUMNS = ['(Child) sku', 'pt_acos', 'pt_spend_L30', 'pt_clicks_L30', 'pt_ad_cvr', 'rating', 'INV', 'L30', 'E Dil%', 'A_L30', 'A DIL %', 'NRL', 'NRA', 'active_toggle', 'missing_ad', 'price', 'fba_price', 'campaign_info_icon', 'GPFT%', 'GROI%', 'pt_campaignBudgetAmount', 'pt_sbgt', 'pt_sales_L30', 'pt_sold_L30', 'pt_7ub', 'pt_1ub', 'pt_2ub', 'pt_avg_cpc', 'pt_l7_cpc', 'pt_l1_cpc', 'pt_l2_cpc', 'pt_last_sbid', 'pt_sbid', 'pt_sbid_m', 'pt_apr_bid', 'pt_campaignName', 'TPFT'];
-        const SECTION_HL_ADS_COLUMNS = ['(Child) sku', 'hl_acos', 'hl_spend_L30', 'hl_clicks_L30', 'hl_ad_cvr', 'rating', 'INV', 'L30', 'E Dil%', 'A_L30', 'A DIL %', 'NRL', 'NRA', 'active_toggle', 'missing_ad', 'price', 'fba_price', 'campaign_info_icon', 'GPFT%', 'GROI%', 'hl_campaignBudgetAmount', 'hl_sbgt', 'hl_sales_L30', 'hl_sold_L30', 'hl_7ub', 'hl_1ub', 'hl_avg_cpc', 'hl_l7_cpc', 'hl_l1_cpc', 'hl_last_sbid', 'hl_sbid', 'hl_sbid_m', 'hl_apr_bid', 'hl_campaignName', 'TPFT'];
+        const SECTION_KW_ADS_COLUMNS = ['(Child) sku', 'acos', 'l30_spend', 'l30_clicks', 'ad_cvr', 'rating', 'campaignBudgetAmount', 'sbgt', 'NRA', 'active_toggle', 'missing_ad', 'l30_sales', 'l30_purchases', 'INV', 'FBA_Quantity', 'L30', 'E Dil%', 'A_L30', 'A DIL %', 'NRL', 'price', 'fba_price', 'campaign_info_icon', 'GPFT%', 'GROI%', 'l7_spend', 'l1_spend', 'l2_spend', 'avg_cpc', 'l7_cpc', 'l1_cpc', 'l2_cpc', 'last_sbid', 'sbid', 'sbid_m', 'apr_bid', 'TPFT', 'campaignName'];
+        const SECTION_PRICING_COLUMNS = ['(Child) sku', 'price', 'fba_price', 'campaign_info_icon', 'c_price', 'actual_cost', 'buy_box_price', 'GPFT%', 'PFT%', 'ROI_percentage', 'cost', 'margin', 'INV', 'FBA_Quantity', 'A_L30'];
+        const SECTION_MISSING_COLUMNS = ['image_path', '(Child) sku', 'NR', 'is_missing', 'inv_map', 'FBA_Quantity', 'variation_dot'];
+        const SECTION_PT_ADS_COLUMNS = ['(Child) sku', 'pt_acos', 'pt_spend_L30', 'pt_clicks_L30', 'pt_ad_cvr', 'rating', 'INV', 'FBA_Quantity', 'L30', 'E Dil%', 'A_L30', 'A DIL %', 'NRL', 'NRA', 'active_toggle', 'missing_ad', 'price', 'fba_price', 'campaign_info_icon', 'GPFT%', 'GROI%', 'pt_campaignBudgetAmount', 'pt_sbgt', 'pt_sales_L30', 'pt_sold_L30', 'pt_7ub', 'pt_1ub', 'pt_2ub', 'pt_avg_cpc', 'pt_l7_cpc', 'pt_l1_cpc', 'pt_l2_cpc', 'pt_last_sbid', 'pt_sbid', 'pt_sbid_m', 'pt_apr_bid', 'pt_campaignName', 'TPFT'];
+        const SECTION_HL_ADS_COLUMNS = ['(Child) sku', 'hl_acos', 'hl_spend_L30', 'hl_clicks_L30', 'hl_ad_cvr', 'rating', 'INV', 'FBA_Quantity', 'L30', 'E Dil%', 'A_L30', 'A DIL %', 'NRL', 'NRA', 'active_toggle', 'missing_ad', 'price', 'fba_price', 'campaign_info_icon', 'GPFT%', 'GROI%', 'hl_campaignBudgetAmount', 'hl_sbgt', 'hl_sales_L30', 'hl_sold_L30', 'hl_7ub', 'hl_1ub', 'hl_avg_cpc', 'hl_l7_cpc', 'hl_l1_cpc', 'hl_last_sbid', 'hl_sbid', 'hl_sbid_m', 'hl_apr_bid', 'hl_campaignName', 'TPFT'];
 
         function amzFmtVal(v) {
             if (amzDollarMetrics.includes(amzChartMetricKey)) return '$' + Math.round(v).toLocaleString('en-US');
@@ -1622,6 +1622,7 @@
                     table.getColumn('inv_map').hide();
                     table.getColumn('rating').hide();
                     table.getColumn('INV_AMZ').hide();
+                    table.getColumn('FBA_Quantity').hide();
                     
                     // Hide columns from NROI to AD SALES L30
                     table.getColumn('NROI').hide();
@@ -1645,6 +1646,7 @@
                     table.getColumn('inv_map').show();
                     table.getColumn('rating').show();
                     table.getColumn('INV_AMZ').show();
+                    table.getColumn('FBA_Quantity').show();
                     
                     // Show columns from NROI to AD SALES L30
                     table.getColumn('NROI').show();
@@ -2906,6 +2908,18 @@
                             else color = '#dc3545';
                             const dotBtn = (sku && isListed) ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${escAttr(sku)}" data-metric="inv_amz" title="View INV AMZ chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #17a2b8;"></span></button>` : '';
                             return `<span style="color: ${color}; font-weight: 600;">${Math.round(value)}</span> ${dotBtn}`.trim();
+                        }
+                    },
+
+                    {
+                        title: "FBA<br>INV",
+                        field: "FBA_Quantity",
+                        hozAlign: "center",
+                        width: 58,
+                        sorter: "number",
+                        formatter: function(cell) {
+                            const n = Math.round(parseFloat(cell.getValue()) || 0);
+                            return String(n);
                         }
                     },
 
@@ -8630,27 +8644,27 @@ $('#nmap-count').text(missingCount.toLocaleString());
                 columnsToExport = [
                     '(Child) sku', 'acos', 'l30_spend', 'l30_clicks', 'ad_cvr', 'rating',
                     'campaignBudgetAmount', 'sbgt', 'NRA', 'campaignName', 'campaignStatus',
-                    'l30_sales', 'l30_purchases', 'INV', 'L30', 'price', 'GPFT%', 'GROI%',
+                    'l30_sales', 'l30_purchases', 'INV', 'FBA_Quantity', 'L30', 'price', 'GPFT%', 'GROI%',
                     'l7_cpc', 'l1_cpc', 'last_sbid', 'sbid', 'sbid_m', 'TPFT', 'bid_cap'
                 ];
             } else if (currentSection === 'pt-ads') {
                 columnsToExport = [
                     '(Child) sku', 'pt_acos', 'pt_spend_L30', 'pt_clicks_L30', 'pt_ad_cvr', 'rating',
                     'pt_campaignBudgetAmount', 'pt_sbgt', 'NRA', 'pt_campaignName', 'pt_campaign_status',
-                    'pt_sales_L30', 'pt_sold_L30', 'INV', 'L30', 'price', 'GPFT%', 'GROI%',
+                    'pt_sales_L30', 'pt_sold_L30', 'INV', 'FBA_Quantity', 'L30', 'price', 'GPFT%', 'GROI%',
                     'pt_l7_cpc', 'pt_l1_cpc', 'pt_last_sbid', 'pt_sbid', 'pt_sbid_m', 'TPFT'
                 ];
             } else if (currentSection === 'hl-ads') {
                 columnsToExport = [
                     '(Child) sku', 'hl_acos', 'hl_spend_L30', 'hl_clicks_L30', 'hl_ad_cvr', 'rating',
                     'hl_campaignBudgetAmount', 'hl_sbgt', 'NRA', 'hl_campaignName', 'hl_campaign_status',
-                    'hl_sales_L30', 'hl_sold_L30', 'INV', 'L30', 'price', 'GPFT%', 'GROI%',
+                    'hl_sales_L30', 'hl_sold_L30', 'INV', 'FBA_Quantity', 'L30', 'price', 'GPFT%', 'GROI%',
                     'hl_l7_cpc', 'hl_l1_cpc', 'hl_last_sbid', 'hl_sbid', 'hl_sbid_m', 'TPFT'
                 ];
             } else {
                 // Pricing/All - export main columns
                 columnsToExport = [
-                    '(Child) sku', 'price', 'INV', 'L30', 'A_L30', 'GPFT%', 'GROI%', 'PFT%',
+                    '(Child) sku', 'price', 'INV', 'FBA_Quantity', 'L30', 'A_L30', 'GPFT%', 'GROI%', 'PFT%',
                     'ROI_percentage', 'NRL', 'NRA', 'rating', 'lmp_price'
                 ];
             }

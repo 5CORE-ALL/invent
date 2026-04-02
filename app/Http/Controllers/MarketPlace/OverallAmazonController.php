@@ -32,6 +32,7 @@ use App\Models\AmazonChannelSummary;
 use App\Models\AmazonSeoAuditHistory;
 use App\Models\AmazonSkuCompetitor;
 use App\Models\FbaPrice;
+use App\Models\FbaTable;
 
 class OverallAmazonController extends Controller
 {
@@ -1479,6 +1480,14 @@ class OverallAmazonController extends Controller
                 return strtoupper(str_replace(' ', '', trim($base)));
             });
 
+        // FBA available units (FBA INV) — same keying as FbaPrice
+        $fbaInventoryBySku = FbaTable::whereRaw("seller_sku LIKE '%FBA%' OR seller_sku LIKE '%fba%'")
+            ->get()
+            ->keyBy(function ($item) {
+                $base = preg_replace('/\s*FBA\s*/i', '', $item->seller_sku ?? '');
+                return strtoupper(str_replace(' ', '', trim($base)));
+            });
+
         // Get Amazon inventory from product_stock_mappings table
         $stockMappings = ProductStockMapping::whereIn('sku', $skus)
             ->get()
@@ -2354,6 +2363,9 @@ class OverallAmazonController extends Controller
             $fbaPriceRecord = $fbaPriceBySku->get($skuLookupKey) ?? $fbaPriceBySku->get(str_replace(' ', '', $skuClean)) ?? $fbaPriceBySku->get($sku);
             $row['fba_price'] = $fbaPriceRecord ? round(floatval($fbaPriceRecord->price ?? 0), 2) : null;
 
+            $fbaInvRecord = $fbaInventoryBySku->get($skuLookupKey) ?? $fbaInventoryBySku->get(str_replace(' ', '', $skuClean)) ?? $fbaInventoryBySku->get($sku);
+            $row['FBA_Quantity'] = $fbaInvRecord ? (int) ($fbaInvRecord->quantity_available ?? 0) : 0;
+
             $row['INV'] = $shopify->inv ?? 0;
             
             // Get Amazon inventory from stock mappings (null-safe, handle string values)
@@ -3217,6 +3229,10 @@ class OverallAmazonController extends Controller
                 'INV_AMZ' => $rows->sum(function($row) {
                     $val = $row->INV_AMZ ?? 0;
                     return is_numeric($val) ? (int)$val : 0;
+                }),
+                'FBA_Quantity' => $rows->sum(function ($row) {
+                    $v = $row->FBA_Quantity ?? 0;
+                    return is_numeric($v) ? (int) $v : 0;
                 }),
                 'is_missing_amazon' => false, // Parent rows are never missing
                 'L30' => $rows->sum('L30'),
