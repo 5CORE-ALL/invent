@@ -338,7 +338,29 @@ class CvrMasterController extends Controller
                 Log::warning('CVR Master - Shein data fetch skipped: ' . $e->getMessage());
             }
 
-            // Get AliExpress percentage from MarketplacePercentage (default 100%)
+            // Get Purchasing Power percentage (default 70%)
+            $ppMarketplace = MarketplacePercentage::where('marketplace', 'Purchase')->first();
+            $ppPercentage = $ppMarketplace ? ($ppMarketplace->percentage / 100) : 0.70;
+
+            // Fetch PP pricing data + L30 sales (same source as Purchasing Power pricing page)
+            $ppProducts = collect();
+            $ppSalesQty = collect();
+            try {
+                $ppProducts = \App\Models\PurchasingPowerProduct::whereIn('sku', $skus)
+                    ->get()->keyBy('sku');
+                $ppSalesQty = \App\Models\PurchasingPowerSale::whereNotIn('status', ['Canceled', 'canceled'])
+                    ->selectRaw('UPPER(offer_sku) as sku_upper, SUM(quantity) as total_qty')
+                    ->whereIn(DB::raw('UPPER(offer_sku)'), array_map('strtoupper', $skus))
+                    ->groupBy('sku_upper')
+                    ->pluck('total_qty', 'sku_upper');
+                Log::info('CVR Master - Purchasing Power Data fetched', [
+                    'pp_products'  => $ppProducts->count(),
+                    'pp_sales'     => $ppSalesQty->count(),
+                    'pp_percentage'=> $ppPercentage * 100 . '%',
+                ]);
+            } catch (\Exception $e) {
+                Log::warning('CVR Master - Purchasing Power data fetch skipped: ' . $e->getMessage());
+            }
             $aeMarketplace = MarketplacePercentage::where('marketplace', 'Aliexpress')
                 ->orWhere('marketplace', 'AliExpress')->first();
             $aePercentage = $aeMarketplace ? ($aeMarketplace->percentage / 100) : 1.00;
@@ -501,10 +523,12 @@ class CvrMasterController extends Controller
                 // Get LP and Ship from ProductMaster Values
                 $lp = 0;
                 $ship = 0;
+                $actWt = 0;
                 if ($values) {
                     foreach ($values as $k => $v) {
                         if (strtolower($k) === "lp") $lp = floatval($v);
                         if (strtolower($k) === "ship") $ship = floatval($v);
+                        if (strtolower($k) === "wt_act") $actWt = floatval($v);
                     }
                 }
 
@@ -810,6 +834,14 @@ class CvrMasterController extends Controller
                 $aeGPFT     = $aePrice > 0 ? ((($aePrice * $aePercentage - $lp - $ship) / $aePrice) * 100) : 0;
                 $aePFT      = $aeGPFT; // No ads for AliExpress
 
+                // === PURCHASING POWER CALCULATIONS ===
+                $ppProduct = $ppProducts->get($sku);
+                $ppPrice   = $ppProduct ? floatval($ppProduct->price ?? 0) : 0;
+                $ppSaleRow = $ppSalesQty->get(strtoupper($sku));
+                $ppL30     = $ppSaleRow ? intval($ppSaleRow) : ($ppProduct ? intval($ppProduct->m_l30 ?? 0) : 0);
+                $ppGPFT    = $ppPrice > 0 ? ((($ppPrice * $ppPercentage - $lp - $ship) / $ppPrice) * 100) : 0;
+                $ppPFT     = $ppGPFT; // No ads for Purchasing Power
+
                 // Calculate aggregated metrics across all marketplaces
                 
                 // Get views from all marketplaces
@@ -853,7 +885,7 @@ class CvrMasterController extends Controller
                 // Total L30 across all marketplaces
                 $totalL30 = $amazonL30 + $ebay1L30 + $ebay2L30 + $ebay3L30 + $temuL30 + 
                            $walmartL30 + $tiktokL30 + $bbL30 + $sb2cL30 + 
-                           $macyL30 + $reverbL30 + $dobaL30 + $sheinL30 + $aeL30;
+                           $macyL30 + $reverbL30 + $dobaL30 + $sheinL30 + $aeL30 + $ppL30;
                 
                 // Calculate Avg CVR using CVR formula: (Total L30 / Total Views) × 100
                 $avgCVR = $totalViews > 0 ? round(($totalL30 / $totalViews) * 100, 2) : 0;
@@ -874,6 +906,7 @@ class CvrMasterController extends Controller
                 if ($dobaPrice > 0) $prices[] = $dobaPrice;
                 if ($sheinPrice > 0) $prices[] = $sheinPrice;
                 if ($aePrice > 0) $prices[] = $aePrice;
+                if ($ppPrice > 0) $prices[] = $ppPrice;
                 
                 // Collect all GPFT values (non-zero or negative)
                 $gpftValues = [];
@@ -891,6 +924,7 @@ class CvrMasterController extends Controller
                 if ($dobaPrice > 0) $gpftValues[] = $dobaGPFT;
                 if ($sheinPrice > 0) $gpftValues[] = $sheinGPFT;
                 if ($aePrice > 0) $gpftValues[] = $aeGPFT;
+                if ($ppPrice > 0) $gpftValues[] = $ppGPFT;
                 
                 // Collect all AD values (marketplaces with ads: Amazon, Temu, Walmart)
                 $adValues = [];
@@ -914,6 +948,7 @@ class CvrMasterController extends Controller
                 if ($dobaPrice > 0) $pftValues[] = $dobaPFT;
                 if ($sheinPrice > 0) $pftValues[] = $sheinPFT;
                 if ($aePrice > 0) $pftValues[] = $aePFT;
+                if ($ppPrice > 0) $pftValues[] = $ppPFT;
                 
                 // Calculate averages
                 $avgPrice = count($prices) > 0 ? round(array_sum($prices) / count($prices), 2) : 0;
@@ -961,6 +996,19 @@ class CvrMasterController extends Controller
                     if (isset($avVal['SROI'])) $amazonSroi = round(floatval($avVal['SROI']), 2);
                 }
 
+                // Determine if any channel is missing a listing (price = 0 / null)
+                // eBay2 is excluded from the check if SKU weight > 0.75 LB
+                // Walmart excluded – removed from this page
+                $missingChannelPrices = [
+                    $amazonPrice, $ebay1Price, $ebay3Price, $temuPrice,
+                    $tiktokPrice, $bbPrice, $sb2cPrice,
+                    $macyPrice, $reverbPrice, $dobaPrice, $sheinPrice, $aePrice,
+                ];
+                if ($actWt <= 0.75) {
+                    $missingChannelPrices[] = $ebay2Price;
+                }
+                $missingL = in_array(true, array_map(fn($p) => floatval($p) <= 0, $missingChannelPrices));
+
                 $result[] = (object) [
                     "sku" => $sku,
                     "parent" => $parent,
@@ -978,6 +1026,7 @@ class CvrMasterController extends Controller
                     "amazon_l30" => $amazonL30,
                     "shein_l30" => $sheinL30,
                     "ae_l30"    => $aeL30,
+                    "pp_l30"    => $ppL30,
                     "amz_pft" => $amzPft,
                     "amz_roi" => $amzRoi,
                     "overall_l30" => $overallL30,
@@ -1000,6 +1049,7 @@ class CvrMasterController extends Controller
                     "listing_quality_score" => $listingQualityScore,
                     "latest_remark" => $remarkText,
                     "remark_solved" => $remarkSolved,
+                    "missing_l" => $missingL,
                 ];
             }
 
@@ -1047,6 +1097,7 @@ class CvrMasterController extends Controller
                     'amazon_l30' => null,
                     'shein_l30' => $rows->sum('shein_l30'),
                     'ae_l30'    => $rows->sum('ae_l30'),
+                    'pp_l30'    => $rows->sum('pp_l30'),
                     'amz_pft' => $rows->filter(fn ($r) => isset($r->amz_pft) && $r->amz_pft !== null)->isNotEmpty()
                         ? round($rows->filter(fn ($r) => isset($r->amz_pft) && $r->amz_pft !== null)->avg('amz_pft'), 2) : null,
                     'amz_roi' => $rows->filter(fn ($r) => isset($r->amz_roi) && $r->amz_roi !== null)->isNotEmpty()
@@ -1078,6 +1129,8 @@ class CvrMasterController extends Controller
                 $parentInv = $parentRow['inventory'];
                 $parentL30 = $parentRow['overall_l30'];
                 $parentRow['dil_percent'] = $parentInv > 0 ? round(($parentL30 / $parentInv) * 100, 2) : 0;
+                // Parent missing_l = true if any child has missing listings
+                $parentRow['missing_l'] = $rows->contains(fn ($r) => isset($r->missing_l) && $r->missing_l === true);
 
                 $finalResult[] = (object) $parentRow;
             }
@@ -1293,6 +1346,7 @@ class CvrMasterController extends Controller
             $ship = 0;
             $temuShip = 0;
             $ebay2Ship = 0;
+            $actWt = 0;
             
             if ($values) {
                 foreach ($values as $k => $v) {
@@ -1300,6 +1354,7 @@ class CvrMasterController extends Controller
                     if (strtolower($k) === "ship") $ship = floatval($v);
                     if (strtolower($k) === "temu_ship") $temuShip = floatval($v);
                     if (strtolower($k) === "ebay2_ship") $ebay2Ship = floatval($v);
+                    if (strtolower($k) === "wt_act") $actWt = floatval($v);
                 }
             }
 
@@ -1515,6 +1570,7 @@ class CvrMasterController extends Controller
                 'lp' => $lp,
                 'ship' => $ebay2Ship,
                 'margin' => $ebay2Margin,
+                'act_wt' => $actWt,
                 'pushed_by' => null,
                 'pushed_at' => null,
                 'buyer_link' => ($ebay2Links = $getListingLinks(EbayTwoListingStatus::class, $ebay2Data ? $ebay2Data->sku : null))[0],
@@ -1751,112 +1807,6 @@ class CvrMasterController extends Controller
                 'pushed_at' => $dobaPushedAt,
                 'buyer_link' => ($dobaLinks = $getListingLinks(DobaListingStatus::class, $fullSku))[0],
                 'seller_link' => $dobaLinks[1],
-            ];
-
-            // Fetch Walmart data (matching WalmartSheetUploadController)
-            $walmartPriceItem = WalmartPriceData::where('sku', $fullSku)->first();
-            $walmartViewsItem = WalmartListingViewsData::where('sku', $fullSku)->first();
-            $walmartDataViewItem = WalmartDataView::where('sku', $fullSku)->first();
-            
-            // Get SPRICE (priority: WalmartDataView > WalmartPriceData)
-            $wPrice = 0;
-            if ($walmartDataViewItem && isset($walmartDataViewItem->value['sprice']) && $walmartDataViewItem->value['sprice'] > 0) {
-                $wPrice = floatval($walmartDataViewItem->value['sprice']);
-            } else {
-                $wPrice = $walmartPriceItem ? floatval($walmartPriceItem->price ?? $walmartPriceItem->comparison_price ?? 0) : 0;
-            }
-            
-            // Orders from walmart_order_data (L30 only)
-            $walmartOrders = WalmartOrderData::where('sku', $fullSku)
-                ->where('status', '!=', 'Canceled')
-                ->selectRaw('SUM(qty) as total_qty, SUM(item_cost) as total_revenue')
-                ->first();
-            
-            $wViews = $walmartViewsItem ? ($walmartViewsItem->page_views ?? 0) : 0;
-            $wQty = $walmartOrders ? intval($walmartOrders->total_qty ?? 0) : 0;
-            $wRevenue = $walmartOrders ? floatval($walmartOrders->total_revenue ?? 0) : 0;
-            
-            // Get Walmart campaign ad spend
-            $normalizeSku = fn($sku) => strtoupper(trim(preg_replace('/\s+/', ' ', str_replace("\xc2\xa0", ' ', $sku))));
-            $normalizedFullSku = $normalizeSku($fullSku);
-            $walmartCampaign = WalmartCampaignReport::where('report_range', 'L30')
-                ->where('campaignName', $normalizedFullSku)
-                ->first();
-            $wAdSpend = $walmartCampaign ? floatval($walmartCampaign->spend ?? 0) : 0;
-            
-            // Calculate W L30 Sales Amount
-            $wL30Sales = $wPrice * $wQty;
-            
-            // Get Walmart margin from marketplace_percentages
-            $walmartMarketplace = MarketplacePercentage::where('marketplace', 'Walmart')->first();
-            $walmartMargin = $walmartMarketplace ? ($walmartMarketplace->percentage / 100) : 0.80;
-            
-            // Calculate Walmart GPFT% = ((price × margin - ship - lp) / price) × 100
-            $wGPFT = $wPrice > 0 ? ((($wPrice * $walmartMargin - $ship - $lp) / $wPrice) * 100) : 0;
-            
-            // Calculate Walmart AD%
-            $wAD = 0;
-            if ($wL30Sales > 0) {
-                $wAD = ($wAdSpend / $wL30Sales) * 100;
-            } elseif ($wAdSpend > 0) {
-                $wAD = 100;
-            }
-            
-            // Calculate Walmart NPFT% = GPFT% - AD%
-            $wNPFT = $wQty == 0 ? $wGPFT : ($wGPFT - $wAD);
-            
-            // Get Walmart suggested data from walmart_data_view (uses lowercase 'sprice')
-            $walmartSuggested = ['sprice' => 0, 'sgpft' => 0, 'sroi' => 0, 'spft' => 0];
-            $walmartPushedBy = null;
-            $walmartPushedAt = null;
-            if ($walmartDataViewItem) {
-                $val = is_array($walmartDataViewItem->value) ? $walmartDataViewItem->value : 
-                       json_decode($walmartDataViewItem->value, true);
-                if (is_array($val)) {
-                    // Note: Walmart uses lowercase 'sprice', not 'SPRICE'
-                    $walmartSuggested = [
-                        'sprice' => floatval($val['sprice'] ?? $val['SPRICE'] ?? 0),
-                        'sgpft' => floatval($val['SGPFT'] ?? 0),
-                        'sroi' => floatval($val['SROI'] ?? 0),
-                        'spft' => floatval($val['SPFT'] ?? 0)
-                    ];
-                    // Get pushed by information
-                    $walmartPushedBy = $val['SPRICE_PUSHED_BY'] ?? null;
-                    $walmartPushedAt = $val['SPRICE_PUSHED_AT'] ?? null;
-                    // Format pushed at timestamp
-                    if ($walmartPushedAt) {
-                        try {
-                            $walmartPushedAt = Carbon::parse($walmartPushedAt)->format('M d, Y h:i A');
-                        } catch (\Exception $e) {
-                            $walmartPushedAt = null;
-                        }
-                    }
-                }
-            }
-            
-            $hasWalmartData = $walmartPriceItem || $walmartDataViewItem || ($walmartOrders && $wQty > 0) || $walmartViewsItem;
-            
-            $breakdownData[] = [
-                'marketplace' => 'Walmart',
-                'sku' => $hasWalmartData ? $fullSku : 'Not Listed',
-                'price' => $wPrice,
-                'views' => $wViews,
-                'l30' => $wQty,
-                'gpft' => $wGPFT,
-                'ad' => $wAD,
-                'npft' => $wNPFT,
-                'is_listed' => $hasWalmartData,
-                'sprice' => $walmartSuggested['sprice'],
-                'sgpft' => $walmartSuggested['sgpft'],
-                'sroi' => $walmartSuggested['sroi'],
-                'spft' => $walmartSuggested['spft'],
-                'lp' => $lp,
-                'ship' => $ship,
-                'margin' => $walmartMargin,
-                'pushed_by' => $walmartPushedBy,
-                'pushed_at' => $walmartPushedAt,
-                'buyer_link' => ($walmartLinks = $getListingLinks(WalmartListingStatus::class, $fullSku))[0],
-                'seller_link' => $walmartLinks[1],
             ];
 
             // Fetch TikTok data (matching TikTokPricingController)
@@ -2459,6 +2409,65 @@ class CvrMasterController extends Controller
                 'pushed_at'   => null,
                 'buyer_link'  => $aeBuyerLink,
                 'seller_link' => $aeSellerLink,
+            ];
+
+            // Add Purchasing Power
+            $ppMarketplacePercBd = MarketplacePercentage::where('marketplace', 'Purchase')->first();
+            $ppMarginBd = $ppMarketplacePercBd ? ($ppMarketplacePercBd->percentage / 100) : 0.70;
+            $ppProductBd = null;
+            $ppL30Bd = 0;
+            try {
+                $ppProductBd = \App\Models\PurchasingPowerProduct::where('sku', $fullSku)->first();
+                $ppL30Bd = (int) (\App\Models\PurchasingPowerSale::whereNotIn('status', ['Canceled', 'canceled'])
+                    ->whereRaw('UPPER(offer_sku) = ?', [strtoupper($fullSku)])
+                    ->sum('quantity') ?? ($ppProductBd->m_l30 ?? 0));
+            } catch (\Exception $e) {
+                Log::warning('PP breakdown data fetch skipped for SKU ' . $fullSku . ': ' . $e->getMessage());
+            }
+            $ppPriceBd = $ppProductBd ? floatval($ppProductBd->price ?? 0) : 0;
+            $ppGPFTBd  = $ppPriceBd > 0 ? (($ppPriceBd * $ppMarginBd - $lp - $ship) / $ppPriceBd) * 100 : 0;
+            $ppNPFTBd  = round($ppGPFTBd - $getChannelTACOS('Purchase'), 2);
+            $ppSuggestedBd = ['sprice' => 0, 'sgpft' => 0, 'sroi' => 0, 'spft' => 0];
+            try {
+                $ppDataViewBd = \App\Models\PurchasingPowerDataView::where('sku', $fullSku)->first();
+                if ($ppDataViewBd) {
+                    $val = is_array($ppDataViewBd->value) ? $ppDataViewBd->value : json_decode($ppDataViewBd->value, true);
+                    if (is_array($val)) {
+                        $ppSuggestedBd = [
+                            'sprice' => floatval($val['SPRICE'] ?? 0),
+                            'sgpft'  => floatval($val['SGPFT'] ?? 0),
+                            'sroi'   => floatval($val['SROI']  ?? 0),
+                            'spft'   => floatval($val['SPFT']  ?? 0),
+                        ];
+                    }
+                }
+            } catch (\Exception $e) {
+                Log::warning('PP DataView fetch skipped for SKU ' . $fullSku . ': ' . $e->getMessage());
+            }
+            $hasPpData = $ppProductBd && ($ppPriceBd > 0 || $ppL30Bd > 0);
+
+            $breakdownData[] = [
+                'marketplace' => 'PurchasingPower',
+                'sku'         => $hasPpData ? $fullSku : 'Not Listed',
+                'price'       => round($ppPriceBd, 2),
+                'views'       => 0,
+                'l30'         => $ppL30Bd,
+                'gpft'        => round($ppGPFTBd, 2),
+                'ad'          => 0,
+                'tacos_ch'    => $getChannelTACOS('Purchase'),
+                'npft'        => $ppNPFTBd,
+                'is_listed'   => $hasPpData ? true : false,
+                'sprice'      => $ppSuggestedBd['sprice'],
+                'sgpft'       => $ppSuggestedBd['sgpft'],
+                'sroi'        => $ppSuggestedBd['sroi'],
+                'spft'        => $ppSuggestedBd['spft'],
+                'lp'          => $lp,
+                'ship'        => $ship,
+                'margin'      => $ppMarginBd,
+                'pushed_by'   => null,
+                'pushed_at'   => null,
+                'buyer_link'  => null,
+                'seller_link' => null,
             ];
 
             // FBA row – same structure as other marketplaces (only when SKU has FBA data)

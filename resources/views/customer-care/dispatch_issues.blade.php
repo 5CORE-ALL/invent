@@ -2,7 +2,7 @@
     'pageTitle' => 'Issues Record',
     'addIssueButtonText' => 'Add Dispatch Issue',
     'introText' => 'Use Add Dispatch Issue to record SKU issues. SKU lookup auto-fills Parent and available QTY.',
-    'recordsTitle' => 'Dispatch Issues Records',
+    'recordsTitle' => 'Issues Record',
     'modalTitle' => 'Dispatch Issue',
     'skuDetailsUrl' => route('customer.care.dispatch.issues.sku.details'),
     'recordsListUrl' => route('customer.care.dispatch.issues.list.index'),

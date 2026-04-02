@@ -158,6 +158,16 @@
         #ovl30DetailsModal .table thead .modal-vertical-header th.ovl30-sortable:hover {
             background-color: #cbd5e1 !important;
         }
+
+        /* Missing L modal – stacks above the detail modal */
+        #missingLModal {
+            z-index: 1060;
+        }
+        .missing-l-dot:hover {
+            box-shadow: 0 0 0 3px rgba(220, 53, 69, 0.35);
+            transform: scale(1.3);
+            transition: transform 0.12s ease, box-shadow 0.12s ease;
+        }
         #ovl30DetailsModal .ovl30-sort-icon {
             font-size: 10px;
             margin-left: 2px;
@@ -515,6 +525,7 @@
                                 <tr class="modal-vertical-header">
                                     <th class="ovl30-sortable" data-sort="marketplace" data-dir="asc" title="Sort by Marketplace"><span>M</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
                                     <th class="ovl30-sortable" data-sort="l30" data-dir="desc" title="Sort by L30"><span>L30</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
+                                    <th title="Missing Listings – click dot to view channels with no price"><span>Missing L</span></th>
                                     <th class="ovl30-sortable" data-sort="price" data-dir="desc" title="Sort by Price"><span>Price</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
                                     <th class="ovl30-sortable" data-sort="views" data-dir="desc" title="Sort by Views"><span>Views</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
                                     <th class="ovl30-sortable" data-sort="cvr" data-dir="desc" title="Sort by CVR%"><span>CVR%</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
@@ -534,6 +545,11 @@
                                 <tr class="modal-totals-row">
                                     <th><img id="modal-product-image" src="" alt="" style="width: 50px; height: 50px; object-fit: cover; display: none;"><span class="ms-1">Total</span></th>
                                     <th class="text-end" id="modal-total-l30">0</th>
+                                    <th class="text-center">
+                                        <span class="missing-l-dot" data-sku=""
+                                            style="display:inline-block;width:12px;height:12px;border-radius:50%;background:#dc3545;cursor:pointer;border:1px solid #a00211;"
+                                            title="View missing listings for this SKU"></span>
+                                    </th>
                                     <th class="text-end" id="modal-total-price">$0.00</th>
                                     <th class="text-end" id="modal-total-views">0</th>
                                     <th class="text-end" id="modal-avg-cvr">0%</th>
@@ -554,12 +570,46 @@
                             <tbody id="ovl30DetailsTableBody">
                                 <!-- Table rows will be populated dynamically -->
                                 <tr>
-                                    <td colspan="17" class="text-center text-muted py-4">No data available</td>
+                                    <td colspan="18" class="text-center text-muted py-4">No data available</td>
                                 </tr>
                             </tbody>
                         </table>
 
                     
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Missing L – Channels with Price Modal -->
+    <div class="modal fade" id="missingLModal" tabindex="-1" aria-hidden="true" style="z-index: 1060;">
+        <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header" style="background-color: #e2e8f0; color: #0f172a;">
+                    <h5 class="modal-title">
+                        <i class="fas fa-exclamation-triangle me-2" style="color:#dc3545;"></i> Missing Listings &mdash; <span id="missingLSkuName" style="font-weight:bold;"></span>
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-bordered table-hover mb-0" id="missingLTable">
+                            <thead style="background-color: #e2e8f0; color: #0f172a;">
+                                <tr>
+                                    <th>Channel</th>
+                                    <th class="text-center">Status</th>
+                                    <th class="text-center">Listed</th>
+                                    <th class="text-end">L30</th>
+                                </tr>
+                            </thead>
+                            <tbody id="missingLTableBody">
+                                <tr><td colspan="4" class="text-center text-muted py-4">No data.</td></tr>
+                            </tbody>
+                        </table>
                     </div>
                 </div>
                 <div class="modal-footer">
@@ -1023,6 +1073,108 @@
             loadLmpCompetitorsModal(sku);
         });
 
+        // Missing L main-table dot – directly open missing listings modal without detail modal
+        $(document).on('click', '.missing-l-main-dot', function(e) {
+            e.stopPropagation();
+            const sku = $(this).data('sku');
+
+            // Show modal with loading state immediately
+            $('#missingLSkuName').text(sku);
+            $('#missingLTableBody').html(
+                '<tr><td colspan="4" class="text-center text-muted py-4">' +
+                '<div class="spinner-border spinner-border-sm text-danger me-2" role="status"></div>' +
+                'Loading missing listings for ' + sku + '…</td></tr>'
+            );
+            const missingLModalEl = document.getElementById('missingLModal');
+            const existing = bootstrap.Modal.getInstance(missingLModalEl);
+            if (existing) { existing.dispose(); }
+            new bootstrap.Modal(missingLModalEl, { backdrop: true }).show();
+
+            // Fetch breakdown data and render missing channels
+            $.ajax({
+                url: '/cvr-master-breakdown?sku=' + encodeURIComponent(sku),
+                method: 'GET',
+                headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+                success: function(data) {
+                    ovl30ModalData = data.slice();
+
+                    const channels = data.filter(function(item) {
+                        const price = parseFloat(item.price || 0);
+                        if (price > 0) return false;
+                        const mp = (item.marketplace || '').toLowerCase();
+                        if (mp === 'ebaytwo' && parseFloat(item.act_wt || 0) > 0.75) return false;
+                        return true;
+                    });
+
+                    let html = '';
+                    channels.forEach(function(item) {
+                        const l30 = parseInt(item.l30 || 0);
+                        const isListed = item.is_listed !== false;
+                        const listedBadge = isListed
+                            ? '<span class="badge" style="background:#28a745;">Listed</span>'
+                            : '<span class="badge bg-danger">Not Listed</span>';
+                        html += '<tr>' +
+                            '<td><strong>' + (item.marketplace || '-') + '</strong></td>' +
+                            '<td class="text-center"><span class="badge bg-danger">Missing Listing</span></td>' +
+                            '<td class="text-center">' + listedBadge + '</td>' +
+                            '<td class="text-end">' + l30.toLocaleString() + '</td>' +
+                            '</tr>';
+                    });
+                    if (!html) {
+                        html = '<tr><td colspan="4" class="text-center text-muted py-4">No missing listings found.</td></tr>';
+                    }
+                    $('#missingLTableBody').html(html);
+                },
+                error: function() {
+                    $('#missingLTableBody').html(
+                        '<tr><td colspan="4" class="text-center text-danger py-4">' +
+                        '<i class="fas fa-exclamation-circle me-2"></i>Failed to load data.</td></tr>'
+                    );
+                }
+            });
+        });
+
+        // Missing L – show all channels with price
+        $(document).on('click', '.missing-l-dot', function(e) {
+            e.stopPropagation();
+            const sku = $(this).data('sku') || $('#modalSkuName').text();
+            $('#missingLSkuName').text(sku);
+
+            // Show only channels where price is 0 or null (missing listings)
+            // Exception: hide EbayTwo if act_wt > 0.75 LB (weight restriction)
+            const channels = ovl30ModalData.filter(item => {
+                const price = parseFloat(item.price || 0);
+                if (price > 0) return false; // already listed – hide
+                const mp = (item.marketplace || '').toLowerCase();
+                if (mp === 'ebaytwo' && parseFloat(item.act_wt || 0) > 0.75) return false; // weight restriction
+                return true; // missing listing – show
+            });
+
+            let html = '';
+            channels.forEach(item => {
+                const l30 = parseInt(item.l30 || 0);
+                const isListed = item.is_listed !== false;
+                const listedBadge = isListed
+                    ? '<span class="badge" style="background:#28a745;">Listed</span>'
+                    : '<span class="badge bg-danger">Not Listed</span>';
+                html += `<tr>
+                    <td><strong>${item.marketplace || '-'}</strong></td>
+                    <td class="text-center"><span class="badge bg-danger">Missing Listing</span></td>
+                    <td class="text-center">${listedBadge}</td>
+                    <td class="text-end">${l30.toLocaleString()}</td>
+                </tr>`;
+            });
+            if (!html) {
+                html = '<tr><td colspan="4" class="text-center text-muted py-4">No missing listings found.</td></tr>';
+            }
+            $('#missingLTableBody').html(html);
+
+            const missingLModalEl = document.getElementById('missingLModal');
+            const existing = bootstrap.Modal.getInstance(missingLModalEl);
+            if (existing) { existing.dispose(); }
+            new bootstrap.Modal(missingLModalEl, { backdrop: false }).show();
+        });
+
         function loadMarketplaceBreakdown(sku, imagePath, inv, l30, dil) {
             $('#modalSkuName').text(sku);
             
@@ -1070,7 +1222,7 @@
         function showModalLoading(sku) {
             $('#ovl30DetailsTableBody').html(`
                 <tr>
-                    <td colspan="17" class="text-center text-muted py-4">
+                    <td colspan="18" class="text-center text-muted py-4">
                         <div class="spinner-border spinner-border-sm text-info me-2" role="status"></div>
                         Loading data for ${sku}...
                     </td>
@@ -1081,7 +1233,7 @@
         function showModalEmpty(sku) {
             $('#ovl30DetailsTableBody').html(`
                 <tr>
-                    <td colspan="17" class="text-center text-muted py-4">
+                    <td colspan="18" class="text-center text-muted py-4">
                         No marketplace data available for ${sku}
                     </td>
                 </tr>
@@ -1091,7 +1243,7 @@
         function showModalError(message) {
             $('#ovl30DetailsTableBody').html(`
                 <tr>
-                    <td colspan="17" class="text-center text-danger py-4">
+                    <td colspan="18" class="text-center text-danger py-4">
                         <i class="fas fa-exclamation-circle me-2"></i>${message}
                     </td>
                 </tr>
@@ -1239,7 +1391,7 @@
                     sroi = lp > 0 ? ((sprice * margin - lp - ship) / lp) * 100 : 0;
                 }
                 
-                const isEditable = ['amazon', 'doba', 'ebay', 'ebaytwo', 'ebaythree', 'temu', 'walmart', 'tiktok', 'bestbuy', 'macy', 'reverb', 'tiendamia', 'sb2c', 'shopifyb2c', 'sb2b', 'shopifyb2b', 'fba', 'shein', 'aliexpress'].includes((item.marketplace || '').toLowerCase());
+                const isEditable = ['amazon', 'doba', 'ebay', 'ebaytwo', 'ebaythree', 'temu', 'tiktok', 'bestbuy', 'macy', 'reverb', 'tiendamia', 'sb2c', 'shopifyb2c', 'sb2b', 'shopifyb2b', 'fba', 'shein', 'aliexpress', 'purchasingpower'].includes((item.marketplace || '').toLowerCase());
                 
                 // Color coding for CVR%
                 let cvrColor = '';
@@ -1360,13 +1512,14 @@
                 }
                 
                 // Determine if upload button should be shown (Amazon, Doba, Walmart, Shopify B2C, Shopify B2B)
-                const canPushPrice = ['amazon', 'doba', 'walmart', 'sb2c', 'sb2b', 'reverb', 'fba'].includes((item.marketplace || '').toLowerCase()) && isListed;
+                const canPushPrice = ['amazon', 'doba', 'sb2c', 'sb2b', 'reverb', 'fba'].includes((item.marketplace || '').toLowerCase()) && isListed;
                 
                 html += `
                     <tr class="${rowClass}" data-marketplace="${item.marketplace}" data-sku="${item.sku}" 
                         data-lp="${lp}" data-ship="${ship}" data-ad="${ad}" data-margin="${margin}" data-l30="${l30}">
                         <td class="${textClass}">${item.marketplace || '-'}</td>
                         <td class="text-end ${textClass}">${isListed ? l30.toLocaleString() : '-'}</td>
+                        <td class="text-center">-</td>
                         <td class="text-end ${textClass}">${isListed ? '$' + parseFloat(item.price || 0).toFixed(2) : '-'}</td>
                         <td class="text-end ${textClass}">${isListed ? views.toLocaleString() : '-'}</td>
                         <td class="text-end ${textClass}">${isListed && views > 0 ? '<span style="' + styleForCellColor(cvrColor) + '">' + cvr.toFixed(1) + '%</span>' : '-'}</td>
@@ -1722,6 +1875,33 @@ title: "Dil %",
                         return html;
                     },
                     minWidth: 60
+                },
+                {
+                    title: "Missing L",
+                    field: "missing_l",
+                    hozAlign: "center",
+                    minWidth: 55,
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        if (rowData.is_parent_summary === true) return '';
+                        const hasMissing = cell.getValue();
+                        const color = hasMissing ? '#dc3545' : '#28a745';
+                        const borderColor = hasMissing ? '#a00211' : '#1a7a38';
+                        const title = hasMissing ? 'Has missing listings – click to view breakdown' : 'All channels have a price';
+                        const sku = (rowData.sku || '').replace(/"/g, '&quot;');
+                        const imagePath = (rowData.image_path || '').replace(/"/g, '&quot;');
+                        const inv = rowData.inventory ?? rowData.inv ?? 0;
+                        const l30 = rowData.overall_l30 || 0;
+                        const dil = rowData.dil_percent || 0;
+                        return `<span class="missing-l-main-dot"
+                            data-sku="${sku}"
+                            data-image="${imagePath}"
+                            data-inv="${inv}"
+                            data-l30="${l30}"
+                            data-dil="${dil}"
+                            style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${color};cursor:pointer;border:1px solid ${borderColor};"
+                            title="${title}"></span>`;
+                    }
                 },
                 {
                     title: "CVR",
@@ -2133,6 +2313,19 @@ title: "Dil %",
                         const value = parseInt(cell.getValue() || 0);
                         if (value === 0) return '<span style="color:#6c757d;">0</span>';
                         return `<span style="color:#ff6600;font-weight:600;">${value.toLocaleString()}</span>`;
+                    },
+                    minWidth: 60
+                },
+                {
+                    title: "PP L30",
+                    field: "pp_l30",
+                    hozAlign: "center",
+                    sorter: "number",
+                    tooltip: "Purchasing Power last-30-days sales",
+                    formatter: function(cell) {
+                        const value = parseInt(cell.getValue() || 0);
+                        if (value === 0) return '<span style="color:#6c757d;">0</span>';
+                        return `<span style="color:#6f42c1;font-weight:600;">${value.toLocaleString()}</span>`;
                     },
                     minWidth: 60
                 }
