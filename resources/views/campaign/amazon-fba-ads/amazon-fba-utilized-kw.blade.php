@@ -1031,7 +1031,7 @@
                     },
                     {
                         title: "SBID",
-                        field: "sbid_m",
+                        field: "sbid",
                         hozAlign: "center",
                         sorter: "number",
                         visible: function() {
@@ -1039,9 +1039,27 @@
                         },
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
-                            var sbid = row.sbid_m;
+                            var sbid = row.sbid;
                             if (sbid !== null && sbid !== undefined && sbid !== '') {
                                 var num = parseFloat(sbid);
+                                if (!isNaN(num)) return num.toFixed(2);
+                            }
+                            return '';
+                        }
+                    },
+                    {
+                        title: "HL SBID",
+                        field: "hl_sbid_m",
+                        hozAlign: "center",
+                        sorter: "number",
+                        formatter: function(cell) {
+                            var row = cell.getRow().getData();
+                            var value = row.hl_sbid;
+                            if (value === null || value === undefined || value === '') {
+                                value = row.hl_sbid_m;
+                            }
+                            if (value !== null && value !== undefined && value !== '') {
+                                var num = parseFloat(value);
                                 if (!isNaN(num)) return num.toFixed(2);
                             }
                             return '';
@@ -1062,7 +1080,7 @@
                         cellClick: function(e, cell) {
                             if (e.target.classList.contains("update-row-btn")) {
                                 var rowData = cell.getRow().getData();
-                                var sbid = rowData.sbid_m;
+                                var sbid = rowData.sbid;
                                 if (sbid !== '') {
                                     var num = parseFloat(sbid);
                                     if (!isNaN(num)) updateBid(num, rowData.campaign_id);
@@ -1620,7 +1638,7 @@
                     var rowEl = row.getElement();
                     if (rowEl && rowEl.offsetParent !== null) {
                         var rowData = row.getData();
-                        var sbid = rowData.sbid_m;
+                        var sbid = rowData.sbid;
 
                         if (sbid !== '') {
                             var num = parseFloat(sbid);

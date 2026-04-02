@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Http\Controllers\Campaigns\AmazonSbBudgetController;
 use App\Models\AmazonSbCampaignReport;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Http;
@@ -250,6 +251,9 @@ class AmazonSbCampaignReports extends Command
                     }
 
                     try {
+                        // Ensure bid-related fields are consistently populated before persisting.
+                        $row = $this->enrichBidFields($row);
+
                         if ($isDailyChart) {
                             // For daily data, include date in unique key to prevent overwriting
                             AmazonSbCampaignReport::updateOrCreate(
@@ -291,6 +295,8 @@ class AmazonSbCampaignReports extends Command
                 DB::connection()->disconnect();
             }
 
+            $this->syncSbidFromSbKeywordsApi($reportName, $rows, $profileId, $adType);
+
             $this->info("[SPONSORED_BRANDS - $finalRangeKey] Stored " . $totalStored . " rows to DB.");
             $this->info("[$reportName] Report saved successfully.");
         } catch (\Exception $e) {
@@ -298,6 +304,50 @@ class AmazonSbCampaignReports extends Command
             $this->info("Error trace: " . $e->getTraceAsString());
         } finally {
             DB::connection()->disconnect();
+        }
+    }
+
+    /**
+     * Campaign reports (sbCampaigns) do not include live keyword bids. Populate sbid from the
+     * Sponsored Brands Keywords API (same source as bid updates).
+     */
+    private function syncSbidFromSbKeywordsApi(string $reportName, array $rows, $profileId, string $adType): void
+    {
+        $campaignIds = [];
+        foreach ($rows as $row) {
+            if (! empty($row['campaignId'])) {
+                $campaignIds[] = (string) $row['campaignId'];
+            }
+        }
+        $campaignIds = array_values(array_unique($campaignIds));
+        if ($campaignIds === []) {
+            return;
+        }
+
+        try {
+            $controller = app(AmazonSbBudgetController::class);
+            $rowsUpdated = 0;
+            foreach (array_chunk($campaignIds, AmazonSbBudgetController::HL_BATCH_SIZE) as $batchIndex => $batch) {
+                if ($batchIndex > 0) {
+                    sleep(AmazonSbBudgetController::HL_BATCH_DELAY_SECONDS);
+                }
+                $bidsByCampaign = $controller->getMaxKeywordBidForCampaigns($batch);
+                foreach ($bidsByCampaign as $cid => $bid) {
+                    if ($bid === null || $bid <= 0) {
+                        continue;
+                    }
+                    $rowsUpdated += AmazonSbCampaignReport::where('profile_id', $profileId)
+                        ->where('campaign_id', $cid)
+                        ->where('ad_type', $adType)
+                        ->update([
+                            'sbid' => round((float) $bid, 4),
+                            'updated_at' => now(),
+                        ]);
+                }
+            }
+            $this->info("[{$reportName}] sbid synced from SB Keywords API ({$rowsUpdated} row updates, " . count($campaignIds) . " campaigns).");
+        } catch (\Throwable $e) {
+            $this->warn("[{$reportName}] sbid sync from SB Keywords API skipped: " . $e->getMessage());
         }
     }
 
@@ -361,5 +411,75 @@ class AmazonSbCampaignReports extends Command
         }
 
         return $baseMetrics;
+    }
+
+    /**
+     * Normalize SB bid fields from any available report keys.
+     */
+    private function enrichBidFields(array $row): array
+    {
+        $sbid = $this->extractBidValue($row, [
+            'sbid',
+            'bid',
+            'keywordBid',
+            'suggestedBid',
+            'effectiveBid',
+            'costPerClick', // fallback when explicit bid key is missing
+        ]);
+
+        $lastSbid = $this->extractBidValue($row, [
+            'last_sbid',
+            'lastBid',
+            'previousBid',
+            'priorBid',
+            'yes_sbid',
+        ]);
+
+        $yesSbid = $this->extractBidValue($row, [
+            'yes_sbid',
+            'yesterdayBid',
+            'yesterday_sbid',
+            'last_sbid',
+        ]);
+
+        if ($sbid !== null) {
+            $row['sbid'] = $sbid;
+        }
+        if ($lastSbid !== null) {
+            $row['last_sbid'] = $lastSbid;
+        }
+        if ($yesSbid !== null) {
+            $row['yes_sbid'] = $yesSbid;
+        }
+
+        return $row;
+    }
+
+    /**
+     * Extract first numeric bid value from candidate keys.
+     */
+    private function extractBidValue(array $row, array $keys): ?float
+    {
+        foreach ($keys as $key) {
+            if (!array_key_exists($key, $row)) {
+                continue;
+            }
+
+            $value = $row[$key];
+
+            if (is_array($value)) {
+                $value = $value['amount'] ?? $value['value'] ?? null;
+            }
+
+            if ($value === null || $value === '') {
+                continue;
+            }
+
+            if (is_numeric($value)) {
+                return round((float) $value, 4);
+            }
+        }
+
+        return null;
     }
 }

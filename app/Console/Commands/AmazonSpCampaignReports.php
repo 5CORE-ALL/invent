@@ -240,6 +240,9 @@ class AmazonSpCampaignReports extends Command
                     }
 
                     try {
+                        // Ensure bid-related fields are consistently populated before persisting.
+                        $row = $this->enrichBidFields($row);
+
                         if ($isDailyChart) {
                             $row = $this->normalizeRowForDaily($row);
                             $payload = array_merge($row, [
@@ -442,5 +445,77 @@ class AmazonSpCampaignReports extends Command
         }
 
         return $baseMetrics;
+    }
+
+    /**
+     * Normalize SP bid fields from any available report keys.
+     */
+    private function enrichBidFields(array $row): array
+    {
+        $sbid = $this->extractBidValue($row, [
+            'sbid',
+            'bid',
+            'keywordBid',
+            'suggestedBid',
+            'currentSpBidPrice',
+            'effectiveBid',
+            'costPerClick', // last-resort fallback when explicit bid is missing
+        ]);
+
+        $lastSbid = $this->extractBidValue($row, [
+            'last_sbid',
+            'lastBid',
+            'previousBid',
+            'priorBid',
+            'yes_sbid',
+        ]);
+
+        $yesSbid = $this->extractBidValue($row, [
+            'yes_sbid',
+            'yesterdayBid',
+            'yesterday_sbid',
+            'last_sbid',
+        ]);
+
+        if ($sbid !== null) {
+            $row['sbid'] = $sbid;
+        }
+        if ($lastSbid !== null) {
+            $row['last_sbid'] = $lastSbid;
+        }
+        if ($yesSbid !== null) {
+            $row['yes_sbid'] = $yesSbid;
+        }
+
+        return $row;
+    }
+
+    /**
+     * Extract first numeric bid value from candidate keys.
+     */
+    private function extractBidValue(array $row, array $keys): ?float
+    {
+        foreach ($keys as $key) {
+            if (!array_key_exists($key, $row)) {
+                continue;
+            }
+
+            $value = $row[$key];
+
+            if (is_array($value)) {
+                // Handle nested structures like {amount: 1.23}
+                $value = $value['amount'] ?? $value['value'] ?? null;
+            }
+
+            if ($value === null || $value === '') {
+                continue;
+            }
+
+            if (is_numeric($value)) {
+                return round((float) $value, 4);
+            }
+        }
+
+        return null;
     }
 }

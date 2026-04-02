@@ -111,7 +111,87 @@ class AmazonSbBudgetController extends Controller
         ]);
 
         $data = json_decode($response->getBody(), true);
-        return $data ?? [];
+        if (! is_array($data)) {
+            return [];
+        }
+        if (isset($data['keywords']) && is_array($data['keywords'])) {
+            return $data['keywords'];
+        }
+
+        return array_is_list($data) ? $data : [];
+    }
+
+    /**
+     * Current keyword bids from the SB API (max bid per campaign across ad groups and keywords).
+     * Campaign performance reports do not include live bids; those live on keywords.
+     *
+     * @param  list<string|int>  $campaignIds
+     * @return array<string, float|null>  campaignId string => max bid or null
+     */
+    public function getMaxKeywordBidForCampaigns(array $campaignIds): array
+    {
+        $normalized = [];
+        foreach ($campaignIds as $id) {
+            $s = trim((string) $id);
+            if ($s !== '') {
+                $normalized[] = $s;
+            }
+        }
+        if ($normalized === []) {
+            return [];
+        }
+
+        $out = array_fill_keys($normalized, null);
+
+        try {
+            $adGroups = $this->getAdGroupsByCampaigns($normalized);
+        } catch (\Throwable $e) {
+            Log::warning('getMaxKeywordBidForCampaigns: list ad groups failed', [
+                'campaign_ids' => $normalized,
+                'error' => $e->getMessage(),
+            ]);
+
+            return $out;
+        }
+
+        foreach ($adGroups as $ag) {
+            if (! is_array($ag)) {
+                continue;
+            }
+            $cid = isset($ag['campaignId']) ? trim((string) $ag['campaignId']) : '';
+            $agid = $ag['adGroupId'] ?? null;
+            if ($cid === '' || $agid === null || $agid === '') {
+                continue;
+            }
+            try {
+                $keywords = $this->getKeywordsByAdGroup($agid);
+            } catch (\Throwable $e) {
+                Log::warning('getMaxKeywordBidForCampaigns: list keywords failed', [
+                    'ad_group_id' => $agid,
+                    'error' => $e->getMessage(),
+                ]);
+                continue;
+            }
+            foreach ($keywords as $kw) {
+                if (! is_array($kw)) {
+                    continue;
+                }
+                $bid = $kw['bid'] ?? null;
+                if (is_array($bid)) {
+                    $bid = $bid['amount'] ?? $bid['value'] ?? null;
+                }
+                if ($bid === null || $bid === '' || ! is_numeric($bid)) {
+                    continue;
+                }
+                $bid = (float) $bid;
+                if ($bid <= 0) {
+                    continue;
+                }
+                $out[$cid] = max($out[$cid] ?? 0, $bid);
+            }
+        }
+
+        return $out;
     }
 
     /**

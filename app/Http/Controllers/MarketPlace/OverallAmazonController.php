@@ -1846,6 +1846,33 @@ class OverallAmazonController extends Controller
         // Prefer YESTERDAY so KW Last SBID column shows the previous day's SBID (not 2 days ago).
         $dayBeforeYesterday = date('Y-m-d', strtotime('-2 days'));
         $yesterday = date('Y-m-d', strtotime('-1 day'));
+
+        // Initialize maps once; seed KW sbid from L30 first so UI SBID reflects current bid.
+        $lastSbidMap = [];
+        $sbidMMap = [];
+        $sbidMap = [];
+
+        $kwSbidL30Reports = DB::table('amazon_sp_campaign_reports')
+            ->select('campaignName', 'campaign_id', 'sbid')
+            ->where('ad_type', 'SPONSORED_PRODUCTS')
+            ->where('report_date_range', 'L30')
+            ->whereRaw("campaignName NOT REGEXP '(PT\\.?$|FBA$)'")
+            ->whereNotNull('sbid')
+            ->where('sbid', '>', 0)
+            ->get();
+
+        foreach ($kwSbidL30Reports as $report) {
+            $campaignIdStr = (string) $report->campaign_id;
+            if (!empty($campaignIdStr) && !isset($sbidMap[$campaignIdStr])) {
+                $sbidMap[$campaignIdStr] = $report->sbid;
+            }
+            if (!empty($report->campaignName)) {
+                $normalizedName = strtoupper(trim(rtrim($report->campaignName, '.')));
+                if (!isset($sbidMap['name_' . $normalizedName])) {
+                    $sbidMap['name_' . $normalizedName] = $report->sbid;
+                }
+            }
+        }
         
         $lastSbidReports = DB::table('amazon_sp_campaign_reports')
             ->select('campaignName', 'campaign_id', 'last_sbid', 'sbid_m', 'sbid')
@@ -1866,10 +1893,7 @@ class OverallAmazonController extends Controller
             ->orderByRaw("CASE WHEN report_date_range = ? THEN 0 ELSE 1 END", [$yesterday])
             ->get();
         
-        // Build last_sbid, sbid_m, and sbid maps by campaign_id and campaignName
-        $lastSbidMap = [];
-        $sbidMMap = [];
-        $sbidMap = [];
+        // Build remaining last_sbid and sbid_m maps (sbid map already seeded from L30).
         foreach ($lastSbidReports as $report) {
             $campaignIdStr = (string)$report->campaign_id;
             if (!empty($campaignIdStr) && !isset($lastSbidMap[$campaignIdStr]) && !empty($report->last_sbid)) {
