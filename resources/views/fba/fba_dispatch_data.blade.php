@@ -128,6 +128,15 @@
                                 <option value="NRL">NRL</option>
                                 <option value="Both">Both</option>
                             </select>
+                            <select id="roi-filter" class="form-select form-select-sm me-2"
+                                style="width: auto; display: inline-block;">
+                                <option value="all">ROI%</option>
+                                <option value="lt40">&lt; 40%</option>
+                                <option value="40-75">40–75%</option>
+                                <option value="75-125">75–125%</option>
+                                <option value="125-250">125–250%</option>
+                                <option value="gt250">&gt; 250%</option>
+                            </select>
                             <select id="sugg-send-filter" class="form-select form-select-sm me-2"
                                 style="width: auto; display: inline-block;">
                                 <option value="all">All Sugg Send</option>
@@ -2065,6 +2074,7 @@
                     const inventoryFilter = $('#inventory-filter').val();
                     const parentFilter = $('#parent-filter').val();
                     const pftFilter = $('#pft-filter').val();
+                    const roiFilter = $('#roi-filter').val();
                     const nrlFbaFilter = $('#nrl-fba-filter').val();
                     const suggSendFilter = $('#sugg-send-filter').val();
 
@@ -2110,6 +2120,17 @@
                                 default:
                                     return true;
                             }
+                        });
+                    }
+
+                    if (roiFilter !== 'all') {
+                        table.addFilter(function(data) {
+                            if (data.is_parent) return true;
+                            const roi = parseFloat(data['ROI%']) || 0;
+                            if (roiFilter === 'lt40')  return roi < 40;
+                            if (roiFilter === 'gt250') return roi > 250;
+                            const [min, max] = roiFilter.split('-').map(Number);
+                            return roi >= min && roi <= max;
                         });
                     }
 
@@ -2173,6 +2194,11 @@
                 });
 
                 $('#pft-filter').on('change', function() {
+                    applyFilters();
+                    updateSuggSendBadge();
+                });
+
+                $('#roi-filter').on('change', function() {
                     applyFilters();
                     updateSuggSendBadge();
                 });

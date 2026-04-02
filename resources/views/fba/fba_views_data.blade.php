@@ -74,6 +74,16 @@
                         <option value="60plus">60%+</option>
                     </select>
 
+                    <select id="roi-filter" class="form-select form-select-sm"
+                        style="width: auto; display: inline-block;">
+                        <option value="all">ROI%</option>
+                        <option value="lt40">&lt; 40%</option>
+                        <option value="40-75">40–75%</option>
+                        <option value="75-125">75–125%</option>
+                        <option value="125-250">125–250%</option>
+                        <option value="gt250">&gt; 250%</option>
+                    </select>
+
                     <select id="cvr-filter" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;">
                         <option value="all">CVR</option>
@@ -127,11 +137,8 @@
                         <i class="fa fa-eye-slash"></i> Hide Chart
                     </button>
                     
-                    <button id="decrease-btn" class="btn btn-sm btn-warning">
-                        <i class="fas fa-percent"></i> Decrease
-                    </button>
-                    <button id="increase-btn" class="btn btn-sm btn-success">
-                        <i class="fas fa-percent"></i> Increase
+                    <button id="decrease-btn" class="btn btn-sm btn-secondary" title="Cycle: Off → Decrease → Increase">
+                        <i class="fas fa-exchange-alt"></i> Price Mode
                     </button>
                 </div>
 
@@ -181,21 +188,20 @@
                 </div>
             </div>
             <div class="card-body" style="padding: 0;">
-                <!-- Discount Input Box (shown when SKUs are selected) -->
-                <div id="discount-input-container" class="p-2 bg-light border-bottom" style="display: none;">
-                    <div class="d-flex align-items-center gap-2 flex-wrap">
-                        <label class="mb-0 fw-bold" id="discount-label">Discount %:</label>
-                        <input type="number" id="discount-percentage-input" class="form-control form-control-sm" 
-                            placeholder="%" step="0.1" min="0" max="100" 
-                            style="width: 90px; display: inline-block;">
-                        <label class="mb-0 fw-bold ms-2">Value ($):</label>
-                        <input type="number" id="discount-value-input" class="form-control form-control-sm" 
-                            placeholder="0.00" step="0.01" min="0" 
-                            style="width: 100px; display: inline-block;" title="Fixed amount to add (increase) or subtract (decrease)">
-                        <button id="apply-discount-btn" class="btn btn-sm btn-primary ms-1">
-                            <i class="fas fa-check"></i> Apply
+                <!-- Discount Input Box (shown when SKUs are selected and mode is active) -->
+                <div id="discount-input-container" class="p-2 bg-light border rounded mb-2" style="display: none;">
+                    <div class="d-flex align-items-center gap-2">
+                        <span id="selected-skus-count" class="fw-bold text-secondary"></span>
+                        <select id="discount-type" class="form-select form-select-sm" style="width:120px;">
+                            <option value="percentage">Percentage</option>
+                            <option value="value">Value ($)</option>
+                        </select>
+                        <input type="number" id="discount-percentage-input" class="form-control form-control-sm"
+                            placeholder="Enter %" step="0.01" style="width:110px;">
+                        <button id="apply-discount-btn" class="btn btn-primary btn-sm">Apply</button>
+                        <button id="clear-sprice-btn" class="btn btn-danger btn-sm">
+                            <i class="fas fa-eraser"></i> Clear S.Price
                         </button>
-                        <span id="selected-skus-count" class="text-muted ms-2"></span>
                     </div>
                 </div>
                 <div id="fba-table-wrapper" style="height: 600px; display: flex; flex-direction: column;">
@@ -959,7 +965,7 @@
                     }
                     
                     if (!isBackgroundRetry) {
-                        showToast('success', `Price $${price.toFixed(2)} pushed successfully for SKU: ${sku}`);
+                        showToast(`Price $${price.toFixed(2)} pushed successfully for SKU: ${sku}`, 'success');
                     }
                     
                     return true;
@@ -986,7 +992,7 @@
                         
                         // Save for background retry (only if not already a background retry)
                         saveFailedSkuForRetry(sku, price, 0);
-                        showToast('error', `Failed to apply price for SKU: ${sku} after multiple retries. Will retry in background (max 5 times).`);
+                        showToast(`Failed to apply price for SKU: ${sku} after multiple retries. Will retry in background (max 5 times).`, 'error');
                         
                         return false;
                     }
@@ -995,9 +1001,31 @@
 
             // Update selected count display
             function updateSelectedCount() {
-                const count = selectedSkus.size;
-                $('#selected-skus-count').text(`${count} SKU${count !== 1 ? 's' : ''} selected`);
-                $('#discount-input-container').toggle(count > 0);
+                const cnt = selectedSkus.size;
+                $('#selected-skus-count').text(`${cnt} SKU${cnt !== 1 ? 's' : ''} selected`);
+                $('#discount-input-container').toggle(cnt > 0 && (decreaseModeActive || increaseModeActive));
+            }
+
+            function syncPriceModeUi() {
+                const $btn = $('#decrease-btn');
+                const selectCol = table ? table.getColumn('_select') : null;
+                if (decreaseModeActive) {
+                    $btn.removeClass('btn-secondary btn-primary').addClass('btn-danger')
+                        .html('<i class="fas fa-arrow-down"></i> Decrease ON');
+                    if (selectCol) selectCol.show();
+                    return;
+                }
+                if (increaseModeActive) {
+                    $btn.removeClass('btn-secondary btn-danger').addClass('btn-primary')
+                        .html('<i class="fas fa-arrow-up"></i> Increase ON');
+                    if (selectCol) selectCol.show();
+                    return;
+                }
+                $btn.removeClass('btn-danger btn-primary').addClass('btn-secondary')
+                    .html('<i class="fas fa-exchange-alt"></i> Price Mode');
+                if (selectCol) selectCol.hide();
+                selectedSkus.clear();
+                updateSelectedCount();
             }
 
             // Update select all checkbox state
@@ -1008,30 +1036,18 @@
                 $('#select-all-checkbox').prop('checked', allSelected);
             }
 
-            // Apply discount/increase to selected SKUs (supports both percentage and fixed value)
+            // Apply discount/increase to selected SKUs (mirrors AliExpress applyAeDiscount)
             function applyDiscount() {
-                const percentRaw = $('#discount-percentage-input').val();
-                const valueRaw = $('#discount-value-input').val();
-                const percent = (percentRaw !== '' && !isNaN(parseFloat(percentRaw))) ? parseFloat(percentRaw) : 0;
-                const value = (valueRaw !== '' && !isNaN(parseFloat(valueRaw))) ? parseFloat(valueRaw) : 0;
+                const discountType = $('#discount-type').val();
+                const discountVal  = parseFloat($('#discount-percentage-input').val());
 
-                if (percent < 0 || percent > 100) {
-                    showToast('error', 'Please enter a valid percentage (0-100)');
-                    return;
-                }
-
-                if (selectedSkus.size === 0) {
-                    showToast('error', 'Please select at least one SKU');
+                if (isNaN(discountVal) || discountVal === 0 || selectedSkus.size === 0) {
+                    showToast('Please select SKUs and enter a value', 'error');
                     return;
                 }
 
                 if (!decreaseModeActive && !increaseModeActive) {
-                    showToast('error', 'Please activate Decrease or Increase mode first');
-                    return;
-                }
-
-                if (percent === 0 && value === 0) {
-                    showToast('error', 'Please enter a percentage and/or a value');
+                    showToast('Please activate Price Mode first', 'error');
                     return;
                 }
 
@@ -1041,45 +1057,69 @@
 
                 allData.forEach(row => {
                     if (row.is_parent) return;
-                    
-                    if (selectedSkus.has(row.SKU)) {
-                        const currentPrice = parseFloat(row.FBA_Price) || 0;
-                        if (currentPrice > 0) {
-                            let newSPrice;
-                            if (increaseModeActive) {
-                                // Increase: (current * (1 + percent/100)) + value
-                                newSPrice = currentPrice * (1 + percent / 100) + value;
-                            } else {
-                                // Decrease: (current * (1 - percent/100)) - value
-                                newSPrice = currentPrice * (1 - percent / 100) - value;
-                            }
-                            newSPrice = Math.max(0.01, newSPrice);
-                            
-                            // Update S_Price in database
-                            $.ajax({
-                                url: '/update-fba-manual-data',
-                                method: 'POST',
-                                data: {
-                                    sku: row.FBA_SKU,
-                                    field: 's_price',
-                                    value: newSPrice,
-                                    _token: '{{ csrf_token() }}'
-                                },
-                                success: function() {
-                                    updatedCount++;
-                                    if (updatedCount === selectedSkus.size) {
-                                        const actionText = increaseModeActive ? 'Increase' : 'Decrease';
-                                        showToast('success', `${actionText} applied to ${updatedCount} SKU(s)`);
-                                        table.replaceData();
-                                    }
-                                },
-                                error: function() {
-                                    showToast('error', `Error applying ${mode}`);
-                                }
-                            });
-                        }
+                    if (!selectedSkus.has(row.SKU)) return;
+
+                    const currentPrice = parseFloat(row.FBA_Price) || 0;
+                    if (currentPrice <= 0) return;
+
+                    let newSPrice;
+                    if (discountType === 'percentage') {
+                        newSPrice = increaseModeActive
+                            ? currentPrice * (1 + discountVal / 100)
+                            : currentPrice * (1 - discountVal / 100);
+                    } else {
+                        newSPrice = increaseModeActive
+                            ? currentPrice + discountVal
+                            : currentPrice - discountVal;
                     }
+                    newSPrice = Math.max(0.01, Math.round(newSPrice * 100) / 100);
+
+                    // ── Recalculate derived S_Price metrics instantly ───────────
+                    const LP        = parseFloat(row.LP)   || 0;
+                    const FBA_SHIP  = parseFloat(row.FBA_Ship_Calculation) || 0;
+                    const COMM      = parseFloat(row.Commission_Percentage) || 34;
+
+                    const sPft   = newSPrice > 0 ? ((newSPrice * 0.66 - LP - FBA_SHIP) / newSPrice) * 100 : 0;
+                    const sRoi   = LP > 0        ? ((newSPrice * 0.66 - LP - FBA_SHIP) / LP) * 100         : 0;
+                    const sGpft  = newSPrice > 0 ? ((newSPrice * (1 - (COMM / 100 + 0.05)) - LP - FBA_SHIP) / newSPrice) * 100 : 0;
+                    const sGroi  = LP > 0        ? ((newSPrice * (1 - (COMM / 100 + 0.05)) - LP - FBA_SHIP) / LP) * 100       : 0;
+
+                    // Instantly reflect in table row (no replaceData needed)
+                    const tableRow = table.searchRows('SKU', '=', row.SKU)[0];
+                    if (tableRow) {
+                        tableRow.update({
+                            S_Price : newSPrice,
+                            'SGPFT%': `${sGpft.toFixed(1)} %`,
+                            'SGROI%': `${sGroi.toFixed(1)} %`,
+                            SPFT    : sPft,
+                            'SROI%' : `${sRoi.toFixed(1)} %`,
+                        });
+                    }
+
+                    // ── Save to DB in background ─────────────────────────────
+                    $.ajax({
+                        url: '/update-fba-manual-data',
+                        method: 'POST',
+                        data: {
+                            sku: row.FBA_SKU,
+                            field: 's_price',
+                            value: newSPrice,
+                            _token: '{{ csrf_token() }}'
+                        },
+                        success: function() {
+                            updatedCount++;
+                            if (updatedCount === selectedSkus.size) {
+                                const actionText = increaseModeActive ? 'Increase' : 'Decrease';
+                                showToast(`${actionText} applied to ${updatedCount} SKU(s)`, 'success');
+                            }
+                        },
+                        error: function() {
+                            showToast(`Error applying ${mode}`, 'error');
+                        }
+                    });
                 });
+
+                $('#discount-percentage-input').val('');
             }
 
             // Retry function for applying price with up to 5 attempts (Promise-based for Apply All)
@@ -1183,13 +1223,13 @@
             // Apply all selected prices
             window.applyAllSelectedPrices = function() {
                 if (selectedSkus.size === 0) {
-                    showToast('error', 'Please select at least one SKU to apply prices');
+                    showToast('Please select at least one SKU to apply prices', 'error');
                     return;
                 }
                 
                 const $btn = $('#apply-all-btn');
                 if ($btn.length === 0) {
-                    showToast('error', 'Apply All button not found');
+                    showToast('Apply All button not found', 'error');
                     return;
                 }
                 
@@ -1222,7 +1262,7 @@
                 if (skusToProcess.length === 0) {
                     $btn.prop('disabled', false);
                     $btn.html(originalHtml);
-                    showToast('error', 'No valid prices found for selected SKUs');
+                    showToast('No valid prices found for selected SKUs', 'error');
                     return;
                 }
                 
@@ -1239,7 +1279,7 @@
                         if (errorCount === 0) {
                             // All successful
                             $btn.html(`<i class="fas fa-check-double" style="color: #28a745;"></i>`);
-                            showToast('success', `Successfully applied prices to ${successCount} SKU${successCount > 1 ? 's' : ''}`);
+                            showToast(`Successfully applied prices to ${successCount} SKU${successCount > 1 ? 's' : ''}`, 'success');
                             
                             // Reset to original state after 3 seconds
                             setTimeout(() => {
@@ -1247,7 +1287,7 @@
                             }, 3000);
                         } else {
                             $btn.html(originalHtml);
-                            showToast('error', `Applied to ${successCount} SKU${successCount > 1 ? 's' : ''}, ${errorCount} failed`);
+                            showToast(`Applied to ${successCount} SKU${successCount > 1 ? 's' : ''}, ${errorCount} failed`, 'error');
                         }
                         return;
                     }
@@ -1435,57 +1475,50 @@
                 $('#toggle-chart-btn').show();
 
                 // Decrease button toggle
+                // Price Mode button – cycles: Off → Decrease → Increase → Off (mirrors AliExpress)
                 $('#decrease-btn').on('click', function() {
-                    decreaseModeActive = !decreaseModeActive;
-                    const selectColumn = table.getColumn('_select');
-                    
-                    if (decreaseModeActive) {
-                        // If increase mode is active, deactivate it first
-                        if (increaseModeActive) {
-                            increaseModeActive = false;
-                            $('#increase-btn').removeClass('btn-danger').addClass('btn-success');
-                            $('#increase-btn').html('<i class="fas fa-percent"></i> Increase');
-                        }
-                        selectColumn.show();
-                        $(this).removeClass('btn-warning').addClass('btn-danger');
-                        $(this).html('<i class="fas fa-times"></i> Cancel Decrease');
-                        $('#discount-label').text('Decrease %:');
+                    if (!decreaseModeActive && !increaseModeActive) {
+                        decreaseModeActive = true; increaseModeActive = false;
+                    } else if (decreaseModeActive) {
+                        decreaseModeActive = false; increaseModeActive = true;
                     } else {
-                        selectColumn.hide();
-                        $(this).removeClass('btn-danger').addClass('btn-warning');
-                        $(this).html('<i class="fas fa-percent"></i> Decrease');
-                        selectedSkus.clear();
-                        updateSelectedCount();
-                        updateSelectAllCheckbox();
-                        $('#discount-input-container').hide();
+                        decreaseModeActive = false; increaseModeActive = false;
                     }
+                    syncPriceModeUi();
                 });
 
-                // Increase button toggle
-                $('#increase-btn').on('click', function() {
-                    increaseModeActive = !increaseModeActive;
-                    const selectColumn = table.getColumn('_select');
-                    
-                    if (increaseModeActive) {
-                        // If decrease mode is active, deactivate it first
-                        if (decreaseModeActive) {
-                            decreaseModeActive = false;
-                            $('#decrease-btn').removeClass('btn-danger').addClass('btn-warning');
-                            $('#decrease-btn').html('<i class="fas fa-percent"></i> Decrease');
+                // Type selector updates placeholder
+                $('#discount-type').on('change', function() {
+                    $('#discount-percentage-input').attr('placeholder',
+                        $(this).val() === 'percentage' ? 'Enter %' : 'Enter $');
+                });
+
+                // Clear S.Price for selected SKUs
+                $('#clear-sprice-btn').on('click', function() {
+                    if (!selectedSkus.size) return;
+                    const allData = table.getData('active');
+                    let cleared = 0;
+                    allData.forEach(row => {
+                        if (row.is_parent || !selectedSkus.has(row.SKU)) return;
+
+                        // Instantly clear in table
+                        const tableRow = table.searchRows('SKU', '=', row.SKU)[0];
+                        if (tableRow) {
+                            tableRow.update({ S_Price: 0, 'SGPFT%': '', 'SGROI%': '', SPFT: 0, 'SROI%': '' });
                         }
-                        selectColumn.show();
-                        $(this).removeClass('btn-success').addClass('btn-danger');
-                        $(this).html('<i class="fas fa-times"></i> Cancel Increase');
-                        $('#discount-label').text('Increase %:');
-                    } else {
-                        selectColumn.hide();
-                        $(this).removeClass('btn-danger').addClass('btn-success');
-                        $(this).html('<i class="fas fa-percent"></i> Increase');
-                        selectedSkus.clear();
-                        updateSelectedCount();
-                        updateSelectAllCheckbox();
-                        $('#discount-input-container').hide();
-                    }
+
+                        $.ajax({
+                            url: '/update-fba-manual-data',
+                            method: 'POST',
+                            data: { sku: row.FBA_SKU, field: 's_price', value: 0, _token: '{{ csrf_token() }}' },
+                            success: function() {
+                                cleared++;
+                                if (cleared === selectedSkus.size) {
+                                    showToast(`S.Price cleared for ${cleared} SKU(s)`, 'success');
+                                }
+                            }
+                        });
+                    });
                 });
 
                 // Select all checkbox handler
@@ -1537,7 +1570,6 @@
                         applyDiscount();
                     }
                 });
-
                 // Apply All button handler
                 $(document).on('click', '#apply-all-btn', function(e) {
                     e.preventDefault();
@@ -1744,21 +1776,30 @@
                             formatter: function(cell) {
                                 const rowData = cell.getRow().getData();
                                 if (rowData.is_parent) return '';
-                                const health = rowData.Inv_age;
                                 const ageData = rowData.age_data;
 
                                 if (!ageData) {
                                     return `<span style="cursor:pointer;color:#ccc;" title="No age data"><i class="fa fa-eye"></i></span>`;
                                 }
 
-                                const colorMap = {
-                                    'Excess'      : '#e74c3c',
-                                    'Healthy'     : '#27ae60',
-                                    'Low stock'   : '#e67e22',
-                                    'Out of stock': '#95a5a6',
-                                };
-                                const color = colorMap[health] || '#3b7ddd';
-                                return `<span class="badge" style="background:${color};font-size:10px;cursor:pointer;" title="Click to view age details">${health || '—'} <i class="fa fa-eye ms-1"></i></span>`;
+                                // Find the oldest bucket that has units
+                                const buckets = [
+                                    { label: '456+',      val: ageData.inv_age_456_plus_days   || 0, color: '#2c3e50' },
+                                    { label: '366 – 455', val: ageData.inv_age_366_to_455_days || 0, color: '#8e44ad' },
+                                    { label: '271 – 365', val: ageData.inv_age_271_to_365_days || 0, color: '#c0392b' },
+                                    { label: '181 – 270', val: ageData.inv_age_181_to_270_days || 0, color: '#e74c3c' },
+                                    { label: '91 – 180',  val: ageData.inv_age_91_to_180_days  || 0, color: '#e67e22' },
+                                    { label: '61 – 90',   val: ageData.inv_age_61_to_90_days   || 0, color: '#f39c12' },
+                                    { label: '31 – 60',   val: ageData.inv_age_31_to_60_days   || 0, color: '#2ecc71' },
+                                    { label: '0 – 30',    val: ageData.inv_age_0_to_30_days    || 0, color: '#27ae60' },
+                                ];
+
+                                const oldest = buckets.find(b => b.val > 0);
+                                if (!oldest) {
+                                    return `<span style="color:#aaa;cursor:pointer;" title="Click to view age details">—</span>`;
+                                }
+
+                                return `<span style="color:${oldest.color};font-weight:700;cursor:pointer;" title="Click to view age details">${oldest.label}</span>`;
                             }
                         },
 
@@ -2384,7 +2425,7 @@
                                             success: function(response) {
                                                 if (response.success) {
                                                     table.replaceData();
-                                                    showToast('success', 'Status updated to Applied');
+                                                    showToast('Status updated to Applied', 'success');
                                                 }
                                             }
                                         });
@@ -2399,7 +2440,7 @@
                                     const price = parseFloat($btn.attr('data-price') || $btn.data('price'));
                                     
                                     if (!sku || !price || price <= 0 || isNaN(price)) {
-                                        showToast('error', 'Invalid SKU or price');
+                                        showToast('Invalid SKU or price', 'error');
                                         return;
                                     }
                                     
@@ -3011,6 +3052,7 @@
                     const parentFilter = $('#parent-filter').val();
                     const pftFilter = $('#pft-filter').val();
                     const gpftFilter = $('#gpft-filter').val();
+                    const roiFilter = $('#roi-filter').val();
                     const cvrFilter = $('#cvr-filter').val();
                     const statusFilter = $('#status-filter').val();
 
@@ -3065,6 +3107,17 @@
                             if (gpftFilter === '50-60') return gpft >= 50 && gpft < 60;
                             if (gpftFilter === '60plus') return gpft >= 60;
                             return true;
+                        });
+                    }
+
+                    if (roiFilter !== 'all') {
+                        table.addFilter(function(data) {
+                            if (data.is_parent) return true;
+                            const roi = parseFloat(data['ROI']) || 0;
+                            if (roiFilter === 'lt40')    return roi < 40;
+                            if (roiFilter === 'gt250')   return roi > 250;
+                            const [min, max] = roiFilter.split('-').map(Number);
+                            return roi >= min && roi <= max;
                         });
                     }
 
@@ -3125,6 +3178,11 @@
                 });
 
                 $('#gpft-filter').on('change', function() {
+                    applyFilters();
+                    updateSummary();
+                });
+
+                $('#roi-filter').on('change', function() {
                     applyFilters();
                     updateSummary();
                 });
@@ -3409,7 +3467,7 @@
                 
                 // Copy to clipboard
                 navigator.clipboard.writeText(sku).then(function() {
-                    showToast('success', `SKU "${sku}" copied to clipboard!`);
+                    showToast(`SKU "${sku}" copied to clipboard!`, 'success');
                 }).catch(function(err) {
                     // Fallback for older browsers
                     const textarea = document.createElement('textarea');
@@ -3418,7 +3476,7 @@
                     textarea.select();
                     document.execCommand('copy');
                     document.body.removeChild(textarea);
-                    showToast('success', `SKU "${sku}" copied to clipboard!`);
+                    showToast(`SKU "${sku}" copied to clipboard!`, 'success');
                 });
             });
 
@@ -3586,14 +3644,14 @@
             };
 
             const ageBuckets = [
-                { label: '0 – 30 days',    val: ageData.inv_age_0_to_30_days   || 0, color: '#27ae60' },
-                { label: '31 – 60 days',   val: ageData.inv_age_31_to_60_days  || 0, color: '#2ecc71' },
-                { label: '61 – 90 days',   val: ageData.inv_age_61_to_90_days  || 0, color: '#f39c12' },
-                { label: '91 – 180 days',  val: ageData.inv_age_91_to_180_days || 0, color: '#e67e22' },
-                { label: '181 – 270 days', val: ageData.inv_age_181_to_270_days|| 0, color: '#e74c3c' },
-                { label: '271 – 365 days', val: ageData.inv_age_271_to_365_days|| 0, color: '#c0392b' },
-                { label: '366 – 455 days', val: ageData.inv_age_366_to_455_days|| 0, color: '#8e44ad' },
-                { label: '456+ days',      val: ageData.inv_age_456_plus_days  || 0, color: '#2c3e50' },
+                { label: '0 – 30',    val: ageData.inv_age_0_to_30_days   || 0, color: '#27ae60' },
+                { label: '31 – 60',   val: ageData.inv_age_31_to_60_days  || 0, color: '#2ecc71' },
+                { label: '61 – 90',   val: ageData.inv_age_61_to_90_days  || 0, color: '#f39c12' },
+                { label: '91 – 180',  val: ageData.inv_age_91_to_180_days || 0, color: '#e67e22' },
+                { label: '181 – 270', val: ageData.inv_age_181_to_270_days|| 0, color: '#e74c3c' },
+                { label: '271 – 365', val: ageData.inv_age_271_to_365_days|| 0, color: '#c0392b' },
+                { label: '366 – 455', val: ageData.inv_age_366_to_455_days|| 0, color: '#8e44ad' },
+                { label: '456+',      val: ageData.inv_age_456_plus_days  || 0, color: '#2c3e50' },
             ];
 
             let bucketRows = ageBuckets.map(b => `
@@ -3682,7 +3740,7 @@
 
                 <p class="fw-bold mb-1" style="font-size:12px;color:#1a8a8a;"><i class="fas fa-calendar-alt me-1"></i>Inventory Age Breakdown (${total} units total)</p>
                 <table class="table table-sm table-bordered mb-0" style="font-size:12px;">
-                    <thead style="background:#1a8a8a;color:#fff;"><tr><th>Age Bucket</th><th class="text-end">Units</th><th>Bar</th></tr></thead>
+                    <thead style="background:#1a8a8a;color:#fff;"><tr><th>Age Bucket Days</th><th class="text-end">Units</th><th>Bar</th></tr></thead>
                     <tbody>${bucketRows}</tbody>
                 </table>
 

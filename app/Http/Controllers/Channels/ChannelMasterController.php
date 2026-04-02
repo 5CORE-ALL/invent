@@ -897,6 +897,35 @@ class ChannelMasterController extends Controller
         }
         // ─────────────────────────────────────────────────────────────────────
 
+        // Amazon Y Sales: single-day revenue for the day before the latest order date in amazon_orders.
+        // "Yesterday" is relative to the latest date present in the table (not wall-clock yesterday),
+        // so if the latest order date is April 2, Y Sales shows April 1 revenue.
+        try {
+            $amazonLatestOrderDate = DB::table('amazon_orders')
+                ->where(function ($q) {
+                    $q->whereNull('status')->orWhere('status', '!=', 'Canceled');
+                })
+                ->max('order_date');
+
+            if ($amazonLatestOrderDate) {
+                $latestPacific = Carbon::parse($amazonLatestOrderDate)->setTimezone('America/Los_Angeles');
+                $yStartPacific = $latestPacific->copy()->subDay()->startOfDay();
+                $yEndPacific   = $latestPacific->copy()->subDay()->endOfDay();
+
+                $amazonYSales = (float) DB::table('amazon_orders')
+                    ->where('order_date', '>=', $yStartPacific)
+                    ->where('order_date', '<=', $yEndPacific)
+                    ->where(function ($q) {
+                        $q->whereNull('status')->orWhere('status', '!=', 'Canceled');
+                    })
+                    ->sum('total_amount');
+
+                $yesterdaySummaries['amazon'] = round($amazonYSales, 2);
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Amazon Y Sales calculation failed: ' . $e->getMessage());
+        }
+
         // Map lowercase channel key => controller method
         $controllerMap = [
             'amazon'    => 'getAmazonChannelData',
