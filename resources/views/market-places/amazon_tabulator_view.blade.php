@@ -1059,21 +1059,46 @@
             console.debug('[amazon-tabulator] ' + label, payload || {});
         }
 
-        /** True if (Child) sku / SKU OR Amazon FBA seller sku field contains "FBA" (case-insensitive) */
-        function rowHasFbaSkuFields(rowData) {
-            const childSku = String(rowData['(Child) sku'] || rowData.SKU || '').toUpperCase();
-            const fbaSku = String(rowData.FBA_SKU != null && rowData.FBA_SKU !== '' ? rowData.FBA_SKU : '').toUpperCase();
-            return childSku.includes('FBA') || fbaSku.includes('FBA');
+        /** Normalize SKU-ish strings: trim, NBSP → space, uppercase */
+        function normalizeFbaSkuToken(v) {
+            if (v == null || v === '') return '';
+            return String(v).replace(/\u00A0/g, ' ').replace(/\s+/g, ' ').trim().toUpperCase();
         }
 
-        /** FBA INV: dash when neither field indicates FBA; never show 0 for non-FBA rows */
+        function isParentSummaryRow(rowData) {
+            const f = rowData.is_parent_summary;
+            return f === true || f === 1 || f === '1' || f === 'true';
+        }
+
+        /**
+         * True when "FBA" appears in relevant identifiers (case-insensitive).
+         * Parent summaries: ONLY (Child) sku, SKU, Parent, parent — NOT FBA_SKU.
+         *   (Inherited FBA_SKU from children is always Amazon seller_sku like "… FBA" and forced 0 to display as "0".)
+         * Child rows: also check FBA_SKU so base SKUs without "FBA" in the name still show FBA inventory when linked.
+         */
+        function rowHasFbaSkuFields(rowData) {
+            const tokens = [
+                normalizeFbaSkuToken(rowData['(Child) sku']),
+                normalizeFbaSkuToken(rowData.SKU),
+                normalizeFbaSkuToken(rowData.Parent),
+                normalizeFbaSkuToken(rowData.parent),
+            ];
+            const hasInDisplay = tokens.some(function(s) { return s && s.includes('FBA'); });
+            if (isParentSummaryRow(rowData)) {
+                return hasInDisplay;
+            }
+            const fbaSku = normalizeFbaSkuToken(rowData.FBA_SKU);
+            return hasInDisplay || (fbaSku && fbaSku.includes('FBA'));
+        }
+
+        /** FBA INV: dash when row is not FBA-relevant; never show 0 for those rows */
         function formatFbaQuantityDisplay(rowData) {
             const value = rowData.FBA_Quantity;
             const num = parseFloat(value);
             if (!rowHasFbaSkuFields(rowData)) {
                 return '-';
             }
-            if (rowData.is_parent_summary === true) {
+            if (isParentSummaryRow(rowData)) {
                 if (isNaN(num)) return '-';
                 return Math.round(num).toLocaleString();
             }
@@ -1081,7 +1106,7 @@
             return Math.round(num).toLocaleString();
         }
 
-        /** tier 1 = no FBA in sku fields (dash rows, sort last); tier 0 = show numeric (parent or FBA-linked child) */
+        /** tier 1 = dash rows (sort last); tier 0 = numeric FBA rows */
         function fbaQuantitySortKey(rowData) {
             const num = parseFloat(rowData.FBA_Quantity);
             if (!rowHasFbaSkuFields(rowData)) {
@@ -2971,6 +2996,8 @@
                         field: "FBA_Quantity",
                         hozAlign: "center",
                         width: 64,
+                        topCalc: false,
+                        bottomCalc: false,
                         sorter: function(a, b, aRow, bRow, column, dir, sorterParams) {
                             const ka = fbaQuantitySortKey(aRow.getData());
                             const kb = fbaQuantitySortKey(bRow.getData());
