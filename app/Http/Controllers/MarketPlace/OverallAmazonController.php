@@ -1480,47 +1480,86 @@ class OverallAmazonController extends Controller
                 return strtoupper(str_replace(' ', '', trim($base)));
             });
 
-        // FBA INV: use the SAME base-SKU key as FbaDataController::getFbaData() / fba-data-json
-        // (strtoupper(trim(strip FBA))) — spaces preserved. Space-stripped keys collide (e.g. "A B C" vs "ABC")
-        // and attach the wrong FbaTable row to ProductMaster SKUs.
-        $fbaTableFbaRows = FbaTable::whereRaw("seller_sku LIKE '%FBA%' OR seller_sku LIKE '%fba%'")->get();
-        $fbaInventoryByFbaAnalyticsKey = $fbaTableFbaRows->keyBy(function ($item) {
-            $sku = $item->seller_sku ?? '';
-            $base = preg_replace('/\s*FBA\s*/i', '', $sku);
+        // FBA INV: mirror FbaDataController::getFbaData() / fba-data-json quantity_available.
+        // 1) Prefer exact match ProductMaster.sku ↔ fba_table.seller_sku (NBSP/space/case tolerant).
+        // 2) Then FBA Analytics base key: strtoupper(trim(preg_replace FBA)) — spaces kept (avoids "A B C" vs "ABC" collisions).
+        // 3) Compact-base fallback when unambiguous or seller_sku matches product sku.
+        $normalizeFbaSkuChars = static function (?string $s): string {
+            $s = (string) $s;
+            $s = str_replace("\xC2\xA0", ' ', $s);
+            $s = preg_replace('/\s+/u', ' ', trim($s));
+
+            return $s;
+        };
+        $fbaAnalyticsBaseKey = static function (string $raw) use ($normalizeFbaSkuChars): string {
+            $s = $normalizeFbaSkuChars($raw);
+            if ($s === '') {
+                return '';
+            }
+            $base = preg_replace('/\s*FBA\s*/i', '', $s);
 
             return strtoupper(trim($base));
+        };
+        $fbaSkuCompact = static function (string $raw) use ($normalizeFbaSkuChars): string {
+            return strtoupper(str_replace(' ', '', $normalizeFbaSkuChars($raw)));
+        };
+
+        $fbaTableFbaRows = FbaTable::whereRaw("seller_sku LIKE '%FBA%' OR seller_sku LIKE '%fba%'")->get();
+        $fbaInventoryByFbaAnalyticsKey = $fbaTableFbaRows->keyBy(function ($item) use ($fbaAnalyticsBaseKey) {
+            return $fbaAnalyticsBaseKey($item->seller_sku ?? '');
         });
+        $fbaRowByFullSellerSkuCompact = [];
+        foreach ($fbaTableFbaRows as $fbaRow) {
+            $k = $fbaSkuCompact($fbaRow->seller_sku ?? '');
+            if ($k !== '') {
+                $fbaRowByFullSellerSkuCompact[$k] = $fbaRow;
+            }
+        }
         $fbaRowsByCompactKey = [];
         foreach ($fbaTableFbaRows as $fbaRow) {
-            $sku = $fbaRow->seller_sku ?? '';
-            $base = preg_replace('/\s*FBA\s*/i', '', $sku);
-            $ck = strtoupper(str_replace(' ', '', str_replace("\xC2\xA0", ' ', trim($base))));
+            $base = preg_replace('/\s*FBA\s*/i', '', $normalizeFbaSkuChars($fbaRow->seller_sku ?? ''));
+            $ck = $fbaSkuCompact($base);
+            if ($ck === '') {
+                continue;
+            }
             if (! isset($fbaRowsByCompactKey[$ck])) {
                 $fbaRowsByCompactKey[$ck] = [];
             }
             $fbaRowsByCompactKey[$ck][] = $fbaRow;
         }
-        $resolveFbaTableRowForProductSku = function (string $pmSku) use ($fbaInventoryByFbaAnalyticsKey, $fbaRowsByCompactKey): ?FbaTable {
-            $norm = str_replace("\xC2\xA0", ' ', trim($pmSku));
+        $resolveFbaTableRowForProductSku = function (string $pmSku) use (
+            $fbaInventoryByFbaAnalyticsKey,
+            $fbaRowsByCompactKey,
+            $fbaRowByFullSellerSkuCompact,
+            $normalizeFbaSkuChars,
+            $fbaAnalyticsBaseKey,
+            $fbaSkuCompact
+        ): ?FbaTable {
+            $norm = $normalizeFbaSkuChars($pmSku);
             if ($norm === '') {
                 return null;
             }
-            $base = preg_replace('/\s*FBA\s*/i', '', $norm);
-            $analyticsKey = strtoupper(trim($base));
-            $hit = $fbaInventoryByFbaAnalyticsKey->get($analyticsKey);
-            if ($hit) {
-                return $hit;
+            // Exact listing: PM sku is the same MSKU as fba_table.seller_sku (most FBA rows on Analytics)
+            $pmFullCompact = $fbaSkuCompact($norm);
+            if (isset($fbaRowByFullSellerSkuCompact[$pmFullCompact])) {
+                return $fbaRowByFullSellerSkuCompact[$pmFullCompact];
             }
-            $compactKey = strtoupper(str_replace(' ', '', trim($base)));
+            $analyticsKey = $fbaAnalyticsBaseKey($norm);
+            if ($analyticsKey !== '') {
+                $hit = $fbaInventoryByFbaAnalyticsKey->get($analyticsKey);
+                if ($hit) {
+                    return $hit;
+                }
+            }
+            $baseRaw = preg_replace('/\s*FBA\s*/i', '', $norm);
+            $compactKey = $fbaSkuCompact($baseRaw);
             $cands = $fbaRowsByCompactKey[$compactKey] ?? [];
             if (count($cands) === 1) {
                 return $cands[0];
             }
             if (count($cands) > 1) {
-                $pmCompact = strtoupper(str_replace(' ', '', str_replace("\xC2\xA0", ' ', trim($norm))));
                 foreach ($cands as $c) {
-                    $ss = strtoupper(str_replace(' ', '', str_replace("\xC2\xA0", ' ', trim($c->seller_sku ?? ''))));
-                    if ($ss === $pmCompact) {
+                    if ($fbaSkuCompact($c->seller_sku ?? '') === $pmFullCompact) {
                         return $c;
                     }
                 }
